@@ -5,13 +5,19 @@ import type { SessionStore } from './session';
 /** A 401 from these means "bad credentials", not "your session ended". */
 const CREDENTIAL_PATHS = new Set(['/auth/login', '/auth/pin-login', '/auth/device-login']);
 
+/** The only endpoints that read X-Device-Token; it is not sent anywhere else. */
+const DEVICE_TOKEN_PATHS = new Set(['/auth/device-roster', '/auth/pin-login', '/auth/device-login']);
+
+/** A hung request must fail instead of leaving the UI waiting forever. */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
 /** Token a request was actually sent with, recorded on its config. */
 type TrackedConfig = InternalAxiosRequestConfig & { _sentToken?: string };
 
 const ABSOLUTE = /^([a-z][a-z0-9+.-]*:)?\/\//i;
 
 export function createHttp(opts: { baseURL: string; sessions: SessionStore }): AxiosInstance {
-    const http = axios.create({ baseURL: opts.baseURL });
+    const http = axios.create({ baseURL: opts.baseURL, timeout: DEFAULT_TIMEOUT_MS });
     const baseIsAbsolute = ABSOLUTE.test(opts.baseURL);
     const baseOrigin = baseIsAbsolute ? new URL(opts.baseURL).origin : null;
     const basePath = baseIsAbsolute ? new URL(opts.baseURL).pathname.replace(/\/+$/, '') : opts.baseURL.replace(/\/+$/, '');
@@ -28,23 +34,34 @@ export function createHttp(opts: { baseURL: string; sessions: SessionStore }): A
         }
     }
 
-    function isCredentialRequest(config: InternalAxiosRequestConfig | undefined): boolean {
-        if (!config) return false;
+    /** Request path relative to the API base, without a trailing slash; null if unparseable. */
+    function apiPath(config: InternalAxiosRequestConfig | undefined): string | null {
+        if (!config) return null;
         let path: string;
         try {
             path = new URL(http.getUri(config), 'http://local.invalid').pathname;
         } catch {
-            return false;
+            return null;
         }
         path = path.replace(/\/+$/, '');
         if (basePath && path.startsWith(basePath + '/')) path = path.slice(basePath.length);
-        return CREDENTIAL_PATHS.has(path);
+        return path;
+    }
+
+    function isCredentialRequest(config: InternalAxiosRequestConfig | undefined): boolean {
+        const path = apiPath(config);
+        return path !== null && CREDENTIAL_PATHS.has(path);
     }
 
     http.interceptors.request.use(async (config) => {
         if (!isApiRequest(config)) return config;
-        const [session, deviceToken] = await Promise.all([opts.sessions.load(), opts.sessions.deviceToken()]);
-        if (session?.token) {
+        const sendsDeviceToken = DEVICE_TOKEN_PATHS.has(apiPath(config) ?? '');
+        const [session, deviceToken] = await Promise.all([
+            opts.sessions.load(),
+            sendsDeviceToken ? opts.sessions.deviceToken() : Promise.resolve(null),
+        ]);
+        // An explicit Authorization (admin setup, background revoke) is never overridden.
+        if (session?.token && !config.headers.has('Authorization')) {
             config.headers.set('Authorization', `Bearer ${session.token}`);
             (config as TrackedConfig)._sentToken = session.token;
         }
@@ -63,8 +80,12 @@ export function createHttp(opts: { baseURL: string; sessions: SessionStore }): A
         if (expiring?.token === sentToken) return expiring.done;
         const done = (async () => {
             // Only the session goes; the device token and any local data stay.
-            await opts.sessions.clear();
-            appEvents.emit('session-expired');
+            try {
+                await opts.sessions.clear();
+            } finally {
+                // The UI must lock even if storage misbehaves.
+                appEvents.emit('session-expired');
+            }
         })().finally(() => {
             if (expiring?.done === done) expiring = null;
         });
@@ -78,7 +99,11 @@ export function createHttp(opts: { baseURL: string; sessions: SessionStore }): A
             const config = error?.config as TrackedConfig | undefined;
             const sent = config?._sentToken;
             if (error?.response?.status === 401 && sent && !isCredentialRequest(config)) {
-                await expire(sent);
+                try {
+                    await expire(sent);
+                } catch {
+                    // Surface the original 401, not a storage error.
+                }
             }
             return Promise.reject(error);
         },

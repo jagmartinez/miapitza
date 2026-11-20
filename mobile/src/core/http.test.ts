@@ -25,13 +25,58 @@ function setup(status = 200) {
 }
 
 describe('http', () => {
-    it('adds Bearer and X-Device-Token', async () => {
+    it('adds Bearer, and X-Device-Token only on the device endpoints', async () => {
         const { sessions, http, seen } = setup();
         await sessions.save(session);
         await sessions.saveDeviceToken('dev-9');
         await http.get('/orders');
         expect(seen[0].headers.get('Authorization')).toBe('Bearer jwt-123');
-        expect(seen[0].headers.get('X-Device-Token')).toBe('dev-9');
+        expect(seen[0].headers.get('X-Device-Token')).toBeFalsy();
+        for (const path of ['/auth/device-roster', '/auth/device-roster/', '/auth/pin-login', '/auth/device-login']) {
+            await http.get(path);
+            expect(seen[seen.length - 1].headers.get('X-Device-Token'), path).toBe('dev-9');
+        }
+        for (const path of ['/auth/logout', '/reports/auth/pin-login', '/auth/device-roster-x', '/auth/login']) {
+            await http.get(path);
+            expect(seen[seen.length - 1].headers.get('X-Device-Token'), path).toBeFalsy();
+        }
+    });
+
+    it('never sends the device token to a foreign origin even on a device path', async () => {
+        const { sessions, http, seen } = setup();
+        await sessions.saveDeviceToken('dev-9');
+        await http.get('http://evil.test/api/auth/device-roster');
+        expect(seen[0].headers.get('X-Device-Token')).toBeFalsy();
+    });
+
+    it('has a default timeout so a hung request fails', () => {
+        expect(setup().http.defaults.timeout).toBe(15000);
+    });
+
+    it('an explicit Authorization header is not overridden by the stored session', async () => {
+        const { sessions, http, seen } = setup();
+        await sessions.save(session);
+        await http.post('/auth/logout', undefined, { headers: { Authorization: 'Bearer old' } });
+        expect(seen[0].headers.get('Authorization')).toBe('Bearer old');
+    });
+
+    it('a 401 still surfaces as the original error and emits session-expired when storage throws', async () => {
+        const sessions = createSessionStore({
+            get: async () => JSON.stringify(session),
+            set: async () => {},
+            remove: async () => {
+                throw new Error('keystore');
+            },
+        });
+        const http = createHttp({ baseURL: 'http://x/api', sessions });
+        http.defaults.adapter = async (config) => {
+            throw new AxiosError('fail', '401', config, null, { data: {}, status: 401, statusText: '', headers: {}, config });
+        };
+        const fn = vi.fn();
+        const off = appEvents.on('session-expired', fn);
+        await expect(http.get('/orders')).rejects.toMatchObject({ response: { status: 401 } });
+        off();
+        expect(fn).toHaveBeenCalledTimes(1);
     });
 
     it('sends neither header when nothing is stored', async () => {
@@ -139,6 +184,6 @@ describe('session store', () => {
         await sessions.save(session);
         expect(await sessions.load()).toEqual(session);
         await store.set('session', '{not json');
-        expect(await sessions.load()).toBeNull();
+        expect(await createSessionStore(store).load()).toBeNull();
     });
 });
