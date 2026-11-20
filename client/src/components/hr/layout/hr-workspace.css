@@ -267,11 +267,89 @@
   flex-grow: 2;
 }
 
-.hr-ws-toolbar :is(input, select):not([type='checkbox']):not([type='radio']) {
-  min-height: 40px;
+/* Labels use small caps; the controls inside them must not inherit that.
+   Reset every form control (native, react-select and search wrappers) to
+   the app's regular input typography and surface. */
+.hr-ws-toolbar :is(input, select, textarea, button, .hr-react-select, .react-select__control, [class*='search']),
+.hr-ws-toolbar :is(input, select, textarea, button, .hr-react-select, .react-select__control, [class*='search']) * {
   text-transform: none;
   letter-spacing: normal;
+  font-size: .875rem;
   font-weight: 500;
+}
+
+.hr-ws-toolbar :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 .75rem;
+  border: 1px solid var(--hr-ws-border);
+  border-radius: .65rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.hr-ws-toolbar :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input):focus-visible {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.hr-ws-toolbar input[type='date'],
+.hr-ws-toolbar input[type='time'],
+.hr-ws-toolbar input[type='month'] {
+  color-scheme: light dark;
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-ws-toolbar .react-select__control {
+  min-height: 40px;
+  border-color: var(--hr-ws-border);
+  border-radius: .65rem;
+  background: var(--color-background);
+  box-shadow: none;
+}
+
+.hr-ws-toolbar .react-select__control--is-focused {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.hr-ws-toolbar :is(.react-select__single-value, .react-select__input-container, .react-select__input) {
+  color: var(--color-text);
+}
+
+.hr-ws-toolbar .react-select__placeholder {
+  color: var(--hr-ws-text-2);
+}
+
+/* Any field with a leading icon (search boxes) keeps room for it */
+.hr-ws-toolbar :is(div, span, label):has(> svg + input, > svg ~ input) {
+  position: relative;
+}
+
+.hr-ws-toolbar :is(div, span, label):has(> svg ~ input) > svg {
+  position: absolute;
+  top: 50%;
+  left: .75rem;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  color: var(--hr-ws-text-2);
+  pointer-events: none;
+}
+
+/* !important: the generic control rule above is more specific and would
+   otherwise put the text under the icon. */
+.hr-ws-toolbar :is(div, span, label):has(> svg ~ input) > input:not([type='checkbox']):not([type='radio']) {
+  padding-left: 2.3rem !important;
+}
+
+.hr-ws-toolbar .btn {
+  min-height: 40px;
 }
 
 .hr-ws-toolbar-actions {

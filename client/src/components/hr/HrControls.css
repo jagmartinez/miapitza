@@ -167,3 +167,16 @@
     min-width: 0;
   }
 }
+
+/* The select sits inside small-caps labels across RH forms and modals; its
+   value, placeholder, input and menu must keep regular input typography. */
+.hr-react-select :is(.react-select__control, .react-select__menu),
+.hr-react-select :is(.react-select__control, .react-select__menu) * {
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.hr-react-select :is(.react-select__single-value, .react-select__placeholder, .react-select__input-container, .react-select__option) {
+  font-size: .875rem;
+  font-weight: 500;
+}

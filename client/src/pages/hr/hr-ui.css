@@ -289,3 +289,21 @@
   outline-offset: 2px;
   border-radius: var(--radius-md);
 }
+
+/* Form labels use small caps, but the controls nested inside a label must
+   keep the regular input typography (selects showed "SELECCIONAR…" in caps). */
+.page-wrapper[class*='hr-'] label :is(input, select, textarea, .hr-react-select, .react-select__control),
+.page-wrapper[class*='hr-'] label :is(.hr-react-select, .react-select__control) * {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: .875rem;
+  font-weight: 500;
+}
+
+.page-wrapper[class*='hr-'] label :is(.react-select__single-value, .react-select__input-container) {
+  color: var(--color-text);
+}
+
+.page-wrapper[class*='hr-'] label .react-select__placeholder {
+  color: var(--color-neutral-500);
+}
