@@ -1,4 +1,5 @@
 import type { MobileDB } from './cache';
+import { guarded } from './storage';
 import type { DraftData } from './types';
 
 /** Credential-looking keys are dropped at any depth: a draft is cart data, never auth. */
@@ -16,18 +17,21 @@ function sanitize(value: unknown): unknown {
     return value;
 }
 
-const idOf = (userId: number, tableId: number) => `${userId}:${tableId}`;
+const idOf = (ownerKey: string, tableId: number) => `${ownerKey}:${tableId}`;
 
+/** Drafts are keyed by owner (`companyId:userId`) and table. Storage failures surface as StorageError. */
 export function createDrafts(db: MobileDB, now: () => number = Date.now) {
     return {
-        async get(userId: number, tableId: number): Promise<DraftData | null> {
-            return (await db.drafts.get(idOf(userId, tableId)))?.data ?? null;
+        async get(ownerKey: string, tableId: number): Promise<DraftData | null> {
+            return guarded('drafts', 'get', async () => (await db.drafts.get(idOf(ownerKey, tableId)))?.data ?? null);
         },
-        async set(userId: number, tableId: number, data: DraftData): Promise<void> {
-            await db.drafts.put({ id: idOf(userId, tableId), userId, tableId, data: sanitize(data) as DraftData, updatedAt: now() });
+        async set(ownerKey: string, tableId: number, data: DraftData): Promise<void> {
+            await guarded('drafts', 'set', () =>
+                db.drafts.put({ id: idOf(ownerKey, tableId), ownerKey, tableId, data: sanitize(data) as DraftData, updatedAt: now() }),
+            );
         },
-        async clear(userId: number, tableId: number): Promise<void> {
-            await db.drafts.delete(idOf(userId, tableId));
+        async clear(ownerKey: string, tableId: number): Promise<void> {
+            await guarded('drafts', 'clear', () => db.drafts.delete(idOf(ownerKey, tableId)));
         },
     };
 }

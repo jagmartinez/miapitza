@@ -42,11 +42,20 @@ export interface AuthorizeDiscountBody {
     discount: number;
     discountReason: string;
 }
+/** A server order id, or the temp id of an order created offline that has not synced yet. */
+export type OrderRef = number | string;
+
+/** Cached lists that every order/table mutation makes stale. */
+const STALE_AFTER_MUTATION = ['/orders/active', '/tables/plan'];
+
 export interface QueueOptions {
     entityTempId?: string;
     dependencyKey?: string;
     forceQueue?: boolean;
 }
+
+/** Temp ids are strings (`order-...`); a queued dependent waits for that create. */
+const tempDependency = (orderId: OrderRef): string | undefined => (typeof orderId === 'string' ? orderId : undefined);
 
 export function isQueuedOffline(value: unknown): value is QueuedOffline {
     return !!value && typeof value === 'object' && (value as QueuedOffline)._offline === true;
@@ -59,6 +68,8 @@ type Spec = {
     /** Present only for the four operations the web also queues. */
     queue?: { operationType: SyncOperationType; entityTempId?: string; dependencyKey?: string; forceQueue?: boolean };
     config?: AxiosRequestConfig;
+    /** Changes orders or tables: drop the owner's cached active orders and floor plan once applied. */
+    invalidates?: boolean;
 };
 
 const MAX_ATTEMPTS_KEPT = 200;
@@ -69,8 +80,13 @@ export function createWaiterApi(deps: WaiterApiDeps) {
     // Keys of ambiguous failures, by action fingerprint, so a retry of the same action reuses its key.
     const attempts = new Map<string, IdempotentAttempt>();
 
+    // Replayed items change orders too: the owner's cached lists must not outlive them.
+    queue.onSynced((item) => void cache.invalidate(item.ownerKey, STALE_AFTER_MUTATION));
+
     async function mutate<T>(spec: Spec): Promise<T | QueuedOffline> {
-        const fingerprint = `${spec.method} ${spec.url} ${JSON.stringify(spec.data ?? null)}`;
+        const owner = ownerKeyOf(await sessions.load());
+        // Scoped by owner so one user's pending retry key is never picked up by another.
+        const fingerprint = `${owner ?? '-'} ${spec.method} ${spec.url} ${JSON.stringify(spec.data ?? null)}`;
         const attempt = getIdempotentAttempt(attempts.get(fingerprint) ?? null, fingerprint);
         attempts.set(fingerprint, attempt);
         if (attempts.size > MAX_ATTEMPTS_KEPT) attempts.delete(attempts.keys().next().value as string);
@@ -99,6 +115,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 headers: { ...(spec.config?.headers as object | undefined), 'X-Idempotency-Key': attempt.key },
             });
             attempts.delete(fingerprint);
+            if (spec.invalidates && owner) await cache.invalidate(owner, STALE_AFTER_MUTATION);
             return (res.data?.data ?? res.data) as T;
         } catch (error) {
             // Only an ambiguous failure (network, 5xx, 408/409/429) may have been applied: keep its key.
@@ -119,7 +136,17 @@ export function createWaiterApi(deps: WaiterApiDeps) {
     }
 
     async function cached<T>(url: string, params: Record<string, unknown> | undefined, ttlMs: number, swr: boolean, onRefresh?: (d: T) => void): Promise<CacheResult<T>> {
-        return cache.read<T>({ ownerKey: await ownerKey(), url, params, ttlMs, swr, fetch: () => get<T>(url, params), onRefresh });
+        const owner = await ownerKey();
+        return cache.read<T>({
+            ownerKey: owner,
+            url,
+            params,
+            ttlMs,
+            swr,
+            fetch: () => get<T>(url, params),
+            isCurrent: async () => ownerKeyOf(await sessions.load()) === owner,
+            onRefresh,
+        });
     }
 
     return {
@@ -146,44 +173,59 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 method: 'POST',
                 url: '/orders',
                 data: body,
+                invalidates: true,
                 queue: { operationType: 'CREATE_ORDER', entityTempId: `order-${Date.now()}-${newIdempotencyKey().slice(0, 8)}` },
             });
         },
-        addItem(orderId: number, body: NewOrderLine, opts: QueueOptions = {}) {
+        /** `orderId` may be the temp id of an offline-created order: the item is queued behind it and its URL resolved on replay. */
+        addItem(orderId: OrderRef, body: NewOrderLine, opts: QueueOptions = {}) {
             return mutate<Json>({
                 method: 'POST',
                 url: `/orders/${orderId}/items`,
                 data: body,
-                queue: { operationType: 'ADD_ORDER_ITEM', entityTempId: opts.entityTempId, dependencyKey: opts.dependencyKey, forceQueue: opts.forceQueue },
+                invalidates: true,
+                queue: {
+                    operationType: 'ADD_ORDER_ITEM',
+                    entityTempId: opts.entityTempId,
+                    dependencyKey: opts.dependencyKey ?? tempDependency(orderId),
+                    forceQueue: opts.forceQueue || typeof orderId === 'string',
+                },
             });
         },
-        sendToKitchen(orderId: number, opts: QueueOptions = {}) {
+        sendToKitchen(orderId: OrderRef, opts: QueueOptions = {}) {
             return mutate<Json>({
                 method: 'POST',
                 url: `/orders/${orderId}/send-to-kitchen`,
-                queue: { operationType: 'SEND_TO_KITCHEN', entityTempId: opts.entityTempId, dependencyKey: opts.dependencyKey, forceQueue: opts.forceQueue },
+                invalidates: true,
+                queue: {
+                    operationType: 'SEND_TO_KITCHEN',
+                    entityTempId: opts.entityTempId,
+                    dependencyKey: opts.dependencyKey ?? tempDependency(orderId),
+                    forceQueue: opts.forceQueue || typeof orderId === 'string',
+                },
             });
         },
-        createPayment(body: { orderId: number; paymentMethodId: number; amount: number; reference?: string; payerName?: string }, opts: { legId?: string } = {}) {
+        createPayment(body: { orderId: OrderRef; paymentMethodId: number; amount: number; reference?: string; payerName?: string }, opts: { legId?: string } = {}) {
             return mutate<Json>({
                 method: 'POST',
                 url: '/payments',
                 data: body,
+                invalidates: true,
                 queue: { operationType: 'CREATE_PAYMENT', entityTempId: `payment-${body.orderId}-${opts.legId ?? newIdempotencyKey().slice(0, 8)}` },
             });
         },
 
         // ---- mutations (online only) ----
-        updateItem: (itemId: number, body: { quantity?: number; notes?: string }) => mutate<Json>({ method: 'PATCH', url: `/orders/items/${itemId}`, data: body }),
-        removeItem: (itemId: number) => mutate<Json>({ method: 'DELETE', url: `/orders/items/${itemId}` }),
+        updateItem: (itemId: number, body: { quantity?: number; notes?: string }) => mutate<Json>({ method: 'PATCH', url: `/orders/items/${itemId}`, data: body, invalidates: true }),
+        removeItem: (itemId: number) => mutate<Json>({ method: 'DELETE', url: `/orders/items/${itemId}`, invalidates: true }),
         deliverItems: (orderId: number, itemIds: number[]) =>
-            mutate<{ delivered: number[]; skipped: number[]; alreadyDelivered: number[] }>({ method: 'POST', url: `/orders/${orderId}/items/deliver`, data: { itemIds } }),
-        setGuests: (orderId: number, guests: number) => mutate<Json>({ method: 'PATCH', url: `/orders/${orderId}/guests`, data: { guests } }),
+            mutate<{ delivered: number[]; skipped: number[]; alreadyDelivered: number[] }>({ method: 'POST', url: `/orders/${orderId}/items/deliver`, data: { itemIds }, invalidates: true }),
+        setGuests: (orderId: number, guests: number) => mutate<Json>({ method: 'PATCH', url: `/orders/${orderId}/guests`, data: { guests }, invalidates: true }),
         transfer: (body: { sourceTableId: number; destinationTableId: number; orderId: number; items?: { orderItemId: number; quantity: number }[]; reason?: string }) =>
-            mutate<Json>({ method: 'POST', url: '/tables/transfer', data: body }),
-        groupTables: (body: { primaryTableId: number; memberTableIds: number[]; reason?: string }) => mutate<Json>({ method: 'POST', url: '/tables/groups', data: body }),
-        pricing: (orderId: number, body: PricingBody) => mutate<Json>({ method: 'PATCH', url: `/orders/${orderId}/pricing`, data: body }),
-        authorizeDiscount: (orderId: number, body: AuthorizeDiscountBody) => mutate<Json>({ method: 'POST', url: `/orders/${orderId}/discount/authorize`, data: body }),
+            mutate<Json>({ method: 'POST', url: '/tables/transfer', data: body, invalidates: true }),
+        groupTables: (body: { primaryTableId: number; memberTableIds: number[]; reason?: string }) => mutate<Json>({ method: 'POST', url: '/tables/groups', data: body, invalidates: true }),
+        pricing: (orderId: number, body: PricingBody) => mutate<Json>({ method: 'PATCH', url: `/orders/${orderId}/pricing`, data: body, invalidates: true }),
+        authorizeDiscount: (orderId: number, body: AuthorizeDiscountBody) => mutate<Json>({ method: 'POST', url: `/orders/${orderId}/discount/authorize`, data: body, invalidates: true }),
         preinvoice: (orderId: number) => mutate<Json>({ method: 'POST', url: `/invoices/${orderId}/preinvoice` }),
         validateCoupon: (body: { code: string; orderTotal: number; branchId?: number; items?: Json[] }) => mutate<Json>({ method: 'POST', url: '/promotions/validate', data: body }),
         splitEvenly: (orderId: number, numberOfPeople: number) => mutate<Json>({ method: 'POST', url: `/split-bill/${orderId}/evenly`, data: { numberOfPeople } }),

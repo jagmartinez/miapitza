@@ -9,6 +9,7 @@ import { createWaiterApi } from './waiterApi';
 export function createWaiterData(services: Pick<Services, 'http' | 'sessions'>) {
     const db = new MobileDB();
     const cache = createCache(db);
+    void cache.purgeExpired(); // eviction sweep on start (rows older than 24 h)
     const queue = createOfflineQueue({ db, http: services.http, sessions: services.sessions, isOnline });
     const api = createWaiterApi({ http: services.http, sessions: services.sessions, cache, queue, isOnline });
     return { db, cache, queue, api, drafts: createDrafts(db) };

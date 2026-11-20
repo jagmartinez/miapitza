@@ -19,6 +19,8 @@ export interface SyncItem {
     lastError?: string | null;
     idempotencyKey?: string | null;
     nextAttemptAt?: number | null;
+    /** Network-level failures (no HTTP response); they back off but never count toward the 5 retries. */
+    networkFailures?: number;
     /** `${companyId}:${userId}`. Never a token. */
     ownerKey: string;
 }
@@ -33,9 +35,9 @@ export interface CacheEntry {
 }
 
 export interface DraftRow {
-    /** `${userId}:${tableId}` */
+    /** `${companyId}:${userId}:${tableId}` */
     id: string;
-    userId: number;
+    ownerKey: string;
     tableId: number;
     data: DraftData;
     updatedAt: number;

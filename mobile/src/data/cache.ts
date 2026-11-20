@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import { reportStorage, toStorageError } from './storage';
 import type { CacheEntry, DraftRow, SyncItem } from './types';
 
 /** Local store of the waiter app. Holds no tokens: owners are identified by `companyId:userId`. */
@@ -14,6 +15,10 @@ export class MobileDB extends Dexie {
             syncQueue: '++id, ownerKey, status, timestamp, entityTempId, dependencyKey',
             drafts: 'id, userId',
         });
+        // Drafts were keyed by userId only; they are keyed by owner now. Unreleased data, so drop it.
+        this.version(2)
+            .stores({ drafts: 'id, ownerKey' })
+            .upgrade((tx) => tx.table('drafts').clear());
     }
 }
 
@@ -33,6 +38,8 @@ export interface ReadOptions<T> {
     /** Stale-while-revalidate: always answer from cache when there is an entry, refresh in the background. */
     swr?: boolean;
     fetch: () => Promise<T>;
+    /** Checked after the fetch: false means the session changed meanwhile and the response must be dropped. */
+    isCurrent?: () => Promise<boolean>;
     /** Called when a background refresh produced different data. */
     onRefresh?: (data: T) => void;
 }
@@ -45,6 +52,17 @@ export interface CacheResult<T> {
     /** Settles when the background refresh (if any) has finished. Never rejects. */
     refresh: Promise<void>;
 }
+
+/** The session changed while a request was in flight; its response belongs to nobody. */
+export class StaleOwnerError extends Error {
+    constructor() {
+        super('La sesión cambió durante la consulta');
+        this.name = 'StaleOwnerError';
+    }
+}
+
+/** Cache rows older than this are purged on start. */
+export const MAX_CACHE_AGE_MS = 24 * 60 * 60_000;
 
 export function cacheKey(ownerKey: string, url: string, params?: Record<string, unknown>): string {
     const qs = Object.entries(params ?? {})
@@ -61,16 +79,19 @@ export function createCache(db: MobileDB, now: () => number = Date.now) {
     async function load(id: string): Promise<CacheEntry | undefined> {
         try {
             return await db.caches.get(id);
-        } catch {
-            return undefined; // an unreadable cache is a miss, never an error
+        } catch (cause) {
+            // The cache is an optimisation: an unreadable one is a miss, but the UI is told.
+            reportStorage(toStorageError('cache', 'read', cause));
+            return undefined;
         }
     }
 
     async function store(id: string, o: ReadOptions<unknown>, data: unknown): Promise<void> {
         try {
             await db.caches.put({ id, url: o.url, ownerKey: o.ownerKey, data, timestamp: now() });
-        } catch {
-            // Quota or storage failure: the fresh data is still returned.
+        } catch (cause) {
+            // Quota or storage failure: the fresh data is still returned, the UI is told.
+            reportStorage(toStorageError('cache', 'write', cause));
         }
     }
 
@@ -80,6 +101,7 @@ export function createCache(db: MobileDB, now: () => number = Date.now) {
         if (running) return running;
         const p = (async () => {
             const data = await o.fetch();
+            if (o.isCurrent && !(await o.isCurrent())) throw new StaleOwnerError();
             await store(id, o as ReadOptions<unknown>, data);
             return data;
         })().finally(() => {
@@ -115,9 +137,35 @@ export function createCache(db: MobileDB, now: () => number = Date.now) {
             }
         },
 
+        /** Drops an owner's cached responses whose url starts with any prefix (after own mutations). */
+        async invalidate(ownerKey: string, urlPrefixes: string[]): Promise<void> {
+            try {
+                await db.caches
+                    .where('ownerKey')
+                    .equals(ownerKey)
+                    .filter((r) => urlPrefixes.some((p) => r.url.startsWith(p)))
+                    .delete();
+            } catch (cause) {
+                reportStorage(toStorageError('cache', 'invalidate', cause));
+            }
+        },
+
+        /** Eviction sweep, run on start. */
+        async purgeExpired(maxAgeMs: number = MAX_CACHE_AGE_MS): Promise<void> {
+            try {
+                await db.caches.where('timestamp').below(now() - maxAgeMs).delete();
+            } catch (cause) {
+                reportStorage(toStorageError('cache', 'purge', cause));
+            }
+        },
+
         /** Drops every cached response of an owner (e.g. on sign-out of a shared tablet). */
         async clearOwner(ownerKey: string): Promise<void> {
-            await db.caches.where('ownerKey').equals(ownerKey).delete();
+            try {
+                await db.caches.where('ownerKey').equals(ownerKey).delete();
+            } catch (cause) {
+                reportStorage(toStorageError('cache', 'clear', cause));
+            }
         },
     };
 }
