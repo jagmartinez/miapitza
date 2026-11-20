@@ -23,18 +23,28 @@ Usar hasta el **80 %** del límite semanal. Revisar uso antes de cada tarea; al 
 
 Pruebas: `npm run test:unit` 191 suites / 1499 tests en verde; `tsc --noEmit` limpio.
 
-## Pendiente antes de fusionar
+## Estado de tareas (Fase 1, app móvil `mobile/`) — actualizado 2026-11-20
+| Tarea | Estado |
+|---|---|
+| 6 Esqueleto Capacitor + tema oscuro | ✅ (proyecto `android/` generado, minSdk 28) |
+| 7 Sesión segura, HTTP y tiempo real | ✅ |
+| 8 Configuración de dispositivo, PIN y bloqueo | ✅ |
+| 9 Modos por tipo de dispositivo, permisos y orientación | ✅ |
+| Revisión final de la capa móvil (opus) + correcciones | ✅ limpia |
+
+Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzip (límite 250 KB).
+
+## Pendiente para cerrar la Fase 1 (gate)
+- Instalar **Android Studio** (JDK + SDK): generar APK y hacer las verificaciones manuales (a)–(d) del Task 9 en la tablet real.
+- **Fase 0** (prototipo de rendimiento en la tablet real) — se puede hacer junto con lo anterior.
 - Ensayar la migración `20261120_operational_devices_pin` contra MySQL (`db:rehearse-migrations`) — nunca se ejecutó.
-- Re-ejecutar `npx prisma generate` en `server/` cuando no haya un servidor node corriendo (falló por DLL bloqueada).
+- En la tablet: comprobar que el bloqueo de 2 min funcione tras despertar la pantalla.
 
-## Notas para la app móvil (tareas 7–9)
-- La pantalla de PIN debe enviar `currentPassword` al configurar el PIN (`PUT /api/auth/me/pin`).
-- La tablet de cocina debe repetir `device-login` en silencio con su token guardado al recibir 401 (la sesión dura 8 h).
-- Ignorar `mustChangePassword`/`passwordExpired` en respuestas de `device-login`.
-- WebSocket: enviar `{type:'AUTH', token}` como primer mensaje en < 5 s.
-
-## Bloqueado por el usuario
-- **Fase 0 y tareas 6–9 (app móvil)**: requieren instalar **Android Studio** (JDK + Android SDK) en este equipo y la tablet real para medir rendimiento.
+## Reglas para la Fase 2 (de las revisiones)
+- Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
+- Fase 3: la tablet de cocina no debe desemparejarse ante cualquier 401 del servidor; evitar sesiones duplicadas en re-login.
+- Fase 4: manejar `mustChangePassword`/`passwordExpired` en el celular; la pantalla de PIN envía `currentPassword`.
+- Fase 5/6: jitter en reconexión, fallar el build sin `VITE_API_URL`, `npm audit`, quitar paquetes Capacitor sin uso, selectores en la configuración de dispositivo (hoy se escriben IDs), aviso visible ante fallo de almacenamiento seguro.
 
 ## Cómo retomar
 1. `git checkout feat/app-android`
