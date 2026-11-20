@@ -1,6 +1,7 @@
 import type { DocumentType, Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SettingService } from './setting.service';
+import { CashError } from './cash-errors';
 import { zonedDateKey } from '../utils/timezone';
 import {
     CashMovementReportService,
@@ -195,18 +196,21 @@ export class CashShiftService {
                     cashRegisterId: data.cashRegisterId,
                     companyId,
                     endDate: null
-                }
+                },
+                include: { user: { select: { id: true, name: true } } }
             });
 
             if (activeShift) {
-                throw new Error('Esta caja ya tiene un turno abierto');
+                throw new CashError('Esta caja ya tiene un turno abierto', 409, 'CASH_REGISTER_OCCUPIED', {
+                    occupiedBy: activeShift.user ? { id: activeShift.user.id, name: activeShift.user.name } : null
+                });
             }
 
             const userActiveShift = await tx.cashShift.findFirst({
                 where: { userId: data.userId, companyId, endDate: null },
                 select: { id: true }
             });
-            if (userActiveShift) throw new Error('El usuario ya tiene un turno de caja abierto');
+            if (userActiveShift) throw new CashError('El usuario ya tiene un turno de caja abierto', 409, 'CASH_SHIFT_ALREADY_OPEN');
 
             return await tx.cashShift.create({
                 data: {
@@ -308,7 +312,7 @@ export class CashShiftService {
         documentType?: string;
         documentNumber?: string;
         supplierId?: number;
-    }) {
+    }, actorId?: number) {
         const unknownFields = Object.keys(data as Record<string, unknown>)
             .filter((field) => !MANUAL_MOVEMENT_FIELDS.has(field));
         if (unknownFields.length > 0) {
@@ -386,9 +390,13 @@ export class CashShiftService {
 
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${shiftId} AND companyId = ${companyId} FOR UPDATE`;
-            const shift = await tx.cashShift.findFirst({ where: { id: shiftId, companyId }, select: { endDate: true } });
+            const shift = await tx.cashShift.findFirst({ where: { id: shiftId, companyId }, select: { endDate: true, closedById: true } });
             if (!shift) throw new Error('Turno de caja no encontrado');
-            if (shift.endDate) throw new Error('No se pueden agregar movimientos a turnos cerrados');
+            if (shift.endDate) {
+                throw new CashError('No se pueden agregar movimientos a turnos cerrados', 409, 'CASH_SHIFT_ALREADY_CLOSED', {
+                    closedByMe: actorId !== undefined && shift.closedById === actorId
+                });
+            }
             return tx.cashMovement.create({
                 data: createData,
                 include: { supplier: { select: { id: true, name: true } } }
@@ -419,7 +427,8 @@ export class CashShiftService {
             include: {
                 movements: true,
                 cashRegister: true,
-                user: true
+                // Never expose the full User row (passwordHash, PIN, ...).
+                user: { select: { id: true, name: true } }
             }
         });
 

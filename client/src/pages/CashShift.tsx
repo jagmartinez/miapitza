@@ -48,6 +48,8 @@ interface ArqueoDetailsState {
 }
 
 interface ClosePreviewState {
+    /** Always present; the server omits expected/difference for blind cashiers. */
+    status?: 'CUADRADO' | 'SOBRANTE' | 'FALTANTE';
     difference?: number;
     tolerance?: number;
     requiresNote?: boolean;
@@ -213,6 +215,10 @@ export default function CashShiftPage() {
     }, [summary?.expectedAmount, totalCounted]);
 
     const effectiveDifference = closePreview?.difference ?? closeDifference;
+    // Blind cashiers never receive the numeric difference: classify by status.
+    const closeStatusLabel = closePreview?.status === 'SOBRANTE' ? 'Sobrante'
+        : closePreview?.status === 'FALTANTE' ? 'Faltante' : 'Cuadrado';
+    const closeDiffPositive = isBlindCashier ? closePreview?.status !== 'FALTANTE' : effectiveDifference >= 0;
     const closeTolerance = Number(closePreview?.tolerance ?? 1);
     const showLegacyExactMatchWarning = false;
 
@@ -1075,7 +1081,7 @@ export default function CashShiftPage() {
                             <div>
                                 <span className="label">Esperado</span>
                                 <span className="value">
-                                    {isBlindCashier && !closePreview ? 'Oculto' : formatMoney(Number(closePreview?.expectedAmount ?? (summary?.expectedAmount || 0)))}
+                                    {isBlindCashier ? 'Oculto' : formatMoney(Number(closePreview?.expectedAmount ?? (summary?.expectedAmount || 0)))}
                                 </span>
                             </div>
                         </div>
@@ -1086,12 +1092,16 @@ export default function CashShiftPage() {
                                 <span className="value">{formatMoney(totalCounted)}</span>
                             </div>
                         </div>
-                        <div className={`arqueo-summary-card ${effectiveDifference >= 0 ? 'positive' : 'negative'}`}>
-                            {effectiveDifference >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                        <div className={`arqueo-summary-card ${closeDiffPositive ? 'positive' : 'negative'}`}>
+                            {closeDiffPositive ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                             <div>
                                 <span className="label">Diferencia</span>
                                 <span className="value">
-                                    {closePreview ? `${effectiveDifference >= 0 ? '+' : ''}${formatMoney(effectiveDifference)}` : 'Pendiente validar'}
+                                    {!closePreview
+                                        ? 'Pendiente validar'
+                                        : isBlindCashier
+                                            ? closeStatusLabel
+                                            : `${effectiveDifference >= 0 ? '+' : ''}${formatMoney(effectiveDifference)}`}
                                 </span>
                             </div>
                         </div>

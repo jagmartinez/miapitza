@@ -24,7 +24,8 @@ export class CashRegisterService {
                     select: {
                         id: true,
                         startDate: true,
-                        userId: true
+                        userId: true,
+                        user: { select: { id: true, name: true } }
                     }
                 },
                 _count: {

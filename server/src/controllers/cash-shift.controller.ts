@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import prisma from '../utils/prisma';
 import { CashShiftService } from '../services/cash-shift.service';
 import { getErrorMessage } from '../utils/error';
+import { CashError } from '../services/cash-errors';
+import { redactBlindSummary } from '../services/cash-blind';
 import { assertBranchAccess, isCompanyWide, resolveBranchScope } from '../utils/branch-scope';
 
 export class CashShiftController {
@@ -98,7 +100,7 @@ export class CashShiftController {
             const summary = await CashShiftService.getShiftSummary(id, companyId);
             res.json({
                 success: true,
-                data: summary
+                data: redactBlindSummary(summary, req.user!)
             });
         } catch (error: unknown) {
             next({ statusCode: 404, message: getErrorMessage(error) });
@@ -153,6 +155,7 @@ export class CashShiftController {
             });
         } catch (error: unknown) {
             console.error('[CASH-SHIFT] Error opening shift:', getErrorMessage(error));
+            if (error instanceof CashError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -172,13 +175,14 @@ export class CashShiftController {
             const shiftId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             await CashShiftController.assertShiftBranchAccess(req, shiftId);
-            const movement = await CashShiftService.addMovement(shiftId, companyId, req.body);
+            const movement = await CashShiftService.addMovement(shiftId, companyId, req.body, req.user!.userId);
             res.status(201).json({
                 success: true,
                 message: 'Movimiento agregado exitosamente',
                 data: movement
             });
         } catch (error: unknown) {
+            if (error instanceof CashError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

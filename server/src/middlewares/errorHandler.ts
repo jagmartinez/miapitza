@@ -126,6 +126,8 @@ export interface ClassifiedError {
     message: string;
     code?: string;
     details?: Array<{ field?: string; message: string }>;
+    /** Extra flat fields a domain error wants echoed (e.g. `occupiedBy`). */
+    extras?: Record<string, unknown>;
     /** Extra response headers (e.g. `Retry-After` for transient conflicts). */
     headers?: Record<string, string>;
 }
@@ -259,6 +261,14 @@ function inferDomainStatus(message: string): number | null {
     return null;
 }
 
+/** Plain-object `extras` attached by a typed domain error (never overrides core fields). */
+function domainExtras(bag: ErrorBag): Record<string, unknown> | undefined {
+    const extras = bag.extras;
+    if (typeof extras !== 'object' || extras === null || Array.isArray(extras)) return undefined;
+    const { success: _s, message: _m, code: _c, details: _d, ...rest } = extras as Record<string, unknown>;
+    return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
 export function classifyError(err: unknown): ClassifiedError {
     const bag = asBag(err);
     const framework = classifyFramework(bag) ?? classifyPrisma(bag);
@@ -280,7 +290,8 @@ export function classifyError(err: unknown): ClassifiedError {
         // Errors given an explicit 4xx by our own code are intentional domain
         // messages; forward them unless they look like leaked internals.
         if (isSafeMessage(message) || isPresentableMessage(message)) {
-            return { status, message, ...(code && { code }) };
+            const extras = domainExtras(bag);
+            return { status, message, ...(code && { code }), ...(extras && { extras }) };
         }
         return { status, message: defaultMessageForStatus(status), ...(code && { code }) };
     }
@@ -367,5 +378,6 @@ export const errorHandler = (
         message: classified.message,
         ...(classified.code && { code: classified.code }),
         ...(classified.details && classified.details.length > 0 && { details: classified.details }),
+        ...(classified.extras && classified.extras),
     });
 };
