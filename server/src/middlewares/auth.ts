@@ -25,6 +25,9 @@ declare global {
     }
 }
 
+// Express routes are case-insensitive and tolerate trailing slashes: match likewise.
+const PIN_SETUP_PATH = /^\/+api\/+auth\/+me\/+pin\/*$/i;
+
 export const auth = async (
     req: Request,
     res: Response,
@@ -181,7 +184,7 @@ export const auth = async (
         // Sessions opened from a registered tablet authenticate with device token
         // (+ PIN), not the password, so the password gate does not apply to them.
         // Setting a PIN stays gated even there.
-        if (passwordChangeRequired && req.originalUrl.split('?')[0] !== '/api/auth/me/pin') {
+        if (passwordChangeRequired && !PIN_SETUP_PATH.test(req.originalUrl.split('?')[0])) {
             const sessionDevice = await SessionService.deviceOf(token);
             if (typeof sessionDevice === 'string' && sessionDevice.startsWith('op-device:')) {
                 passwordChangeRequired = false;

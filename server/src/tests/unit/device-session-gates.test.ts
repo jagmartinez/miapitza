@@ -67,6 +67,16 @@ describe('auth middleware password gate vs device sessions', () => {
         expect(res.body.code).toBe('PASSWORD_CHANGE_REQUIRED');
     });
 
+    it.each(['/api/auth/me/pin/', '/API/auth/me/pin', '/api/AUTH/Me/PIN//', '/api/auth/me/pin/?x=1'])(
+        'keeps the PIN route gated for the variant %s',
+        async (url) => {
+            setup('op-device:7');
+            app.put('/api/auth/me/pin/', (_req, res) => { res.json({ ok: true }); });
+            const res = await request(app).put(url).set('Authorization', bearer()).expect(403);
+            expect(res.body.code).toBe('PASSWORD_CHANGE_REQUIRED');
+        },
+    );
+
     it('does not look up the session device when no password change is required', async () => {
         setup('Windows', userRow({ passwordChangedAt: new Date() }));
         const find = jest.spyOn(prisma.userSession, 'findUnique');
