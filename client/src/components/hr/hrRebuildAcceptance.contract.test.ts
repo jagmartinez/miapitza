@@ -23,13 +23,14 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
   it('administra asistencia, permisos y prestaciones desde tablas con acciones por fila', () => {
     [attendance, leave, benefits, payroll].forEach((source) => {
       expect(source).toContain('inventory-header-new');
-      expect(source).toContain('inventory-table');
-      expect(source).toContain('<Pagination');
+      // <CatalogTable> renders the shared catalog table frame and its own pagination footer.
+      expect(source).toMatch(/inventory-table|<CatalogTable</);
+      expect(source).toMatch(/<Pagination|<CatalogTable[\s\S]*pagination=\{/);
       expect(source).toContain('table-action-btn');
     });
     [attendance, leave, benefits].forEach((source) => {
-      expect(source).toContain('hr-admin-table');
-      expect(source).toContain('<table');
+      expect(source).toMatch(/hr-admin-table|<CatalogTable</);
+      expect(source).toMatch(/<table|<CatalogTable</);
       expect(source).toMatch(/Acci[oó]n(?:es)?/);
     });
     expect(attendance).toContain("setActiveTable('DAY')");
@@ -41,8 +42,8 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
   });
 
   it('presenta nómina como registro operativo, abre cada corrida en su propia vista y entrega reportes y colillas', () => {
-    expect(payroll).toContain('payroll-run-table');
-    expect(payroll).toContain('<th scope="col">Acciones</th>');
+    expect(payroll).toContain('<CatalogTable<HrPayrollRun>');
+    expect(payroll).toContain("header: 'Acciones'");
     expect(payroll).toContain('Buscar código o periodo');
     expect(payroll).toContain('filteredRuns');
     expect(payroll).toContain("params.set('corrida'");
@@ -75,7 +76,8 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
       // <HrTabs> renders aria-controls for each tab, so either form keeps tabs wired to their panels.
       expect(source).toMatch(/aria-controls=|<HrTabs/);
       expect(source).toContain('role="tabpanel"');
-      expect(source).toContain('scope="col"');
+      // <CatalogTable> renders scope="col" on every header cell.
+      expect(source).toMatch(/scope="col"|<CatalogTable</);
     });
     // Uses the shared table component (header, footer and pagination styling come from it).
     expect(attendanceReview).toContain('<CatalogTable<HrAttendanceEvent>');

@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { HrHero, HrPage, HrSection, HrTabs, HrToolbar, type HrFact } from '../../components/hr/layout/HrWorkspace';
-import Pagination from '../../components/Pagination';
+import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
+import { HrHero, HrPage, HrPanelState, HrSection, HrTablePanel, HrTabs, HrToolbar, type HrFact } from '../../components/hr/layout/HrWorkspace';
 import Sidebar from '../../components/Sidebar';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import HrReactSelect from '../../components/hr/HrReactSelect';
@@ -401,6 +401,29 @@ export default function PayrollManagement() {
     ];
   }, [aguinaldoRuns, loading, regularRuns]);
 
+  const formatMoney = (amount: number | string, currency: string) => new Intl.NumberFormat('es-NI', { style: 'currency', currency }).format(Number(amount));
+  const runColumns: CatalogColumn<HrPayrollRun>[] = [
+    { key: 'code', header: 'Corrida', render: (run) => <><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></> },
+    { key: 'period', header: 'Periodo', render: (run) => runPeriodLabel(run) },
+    { key: 'status', header: 'Estado', render: (run) => <PayrollStatusPill status={run.status} /> },
+    { key: 'employees', header: 'Empleados', render: (run) => run.totals?.employeeCount ?? 0 },
+    { key: 'gross', header: 'Ingresos', align: 'right', render: (run) => run.totals ? formatMoney(run.totals.grossIncome, run.totals.currency) : '—' },
+    { key: 'net', header: 'Neto a pagar', align: 'right', render: (run) => <strong>{run.totals ? formatMoney(run.totals.netPay, run.totals.currency) : '—'}</strong> },
+    { key: 'anomalies', header: 'Incidencias', render: (run) => run.blockingAnomalyCount ? <span className="nm-chip is-danger"><AlertTriangle size={13} aria-hidden="true" /> {run.blockingAnomalyCount} por resolver</span> : run.anomalyCount ? <span className="nm-chip">{run.anomalyCount} informativa(s)</span> : <span className="nm-chip is-success">Sin incidencias</span> },
+    { key: 'payDate', header: 'Fecha de pago', render: (run) => formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) },
+    {
+      key: 'actions',
+      header: 'Acciones',
+      align: 'right',
+      className: 'hr-admin-actions-col',
+      render: (run) => <div className="nm-row-actions table-actions">
+        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openRun(run)} title={run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`Abrir corrida ${run.code}`}><Eye size={16} /></Button>
+        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`}><FileSpreadsheet size={16} /></Button>
+        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`}><Download size={16} /></Button>
+      </div>,
+    },
+  ];
+
   return (
     <HrPage className="inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page inventory-header-new nm-page">
       {runParam ? (
@@ -472,58 +495,36 @@ export default function PayrollManagement() {
         {activeKind === 'REGULAR' && <div className="hr-ws-toolbar-actions"><Button variant="secondary" onClick={() => setCreatePanel({ kind: 'period' })}><FilePlus2 size={15} /> Periodos</Button></div>}
       </HrToolbar>
 
-      {loading && <LoadingSpinner text="Cargando corridas…" />}
-      {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={42} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}>Reintentar</Button></div>}
-      {!loading && !error && (
-        <>
-          <HrSection
-            flush
-            className="nm-runs"
-            role="tabpanel"
-            id={`payroll-panel-${activeKind.toLowerCase()}`}
-            aria-labelledby={`payroll-tab-${activeKind.toLowerCase()}`}
-            eyebrow="Registro de corridas"
-            title={activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}
-            description="Consulta el periodo, los totales y el estado. Abre una corrida para revisarla, aprobarla y pagarla."
-          >
-            {filteredRuns.length === 0 ? (
+      <HrTablePanel
+        id={`payroll-panel-${activeKind.toLowerCase()}`}
+        role="tabpanel"
+        aria-labelledby={`payroll-tab-${activeKind.toLowerCase()}`}
+        className="nm-runs"
+      >
+        {loading && <HrPanelState><LoadingSpinner text="Cargando corridas…" /></HrPanelState>}
+        {!loading && error && <HrPanelState role="alert"><AlertTriangle size={42} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}>Reintentar</Button></HrPanelState>}
+        {!loading && !error && (
+          <CatalogTable<HrPayrollRun>
+            className="nm-runs-table"
+            ariaLabel={activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}
+            rows={pagedRuns}
+            rowKey={(run) => `${run.kind}-${run.id}`}
+            rowClassName={() => 'nm-run-row'}
+            onRowClick={openRun}
+            columns={runColumns}
+            pagination={{ page: tablePage, totalPages: Math.max(1, Math.ceil(filteredRuns.length / PAGE_SIZE)), totalItems: filteredRuns.length, pageSize: PAGE_SIZE, onPageChange: setTablePage }}
+            emptyLabel="Sin corridas"
+            emptyState={(
               <div className="nm-empty">
                 <span className="nm-empty-icon" aria-hidden="true"><Receipt size={28} /></span>
                 <h3>No hay corridas que coincidan con los filtros.</h3>
                 <p>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</p>
                 {runs.length === 0 && <Button size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}
               </div>
-            ) : (
-              <div className="hr-ws-table-scroll">
-                <table className="payroll-run-table inventory-table nm-runs-table">
-                  <thead><tr><th scope="col">Corrida</th><th scope="col">Periodo</th><th scope="col">Estado</th><th scope="col">Empleados</th><th scope="col" className="hr-amount-cell">Ingresos</th><th scope="col" className="hr-amount-cell">Neto a pagar</th><th scope="col">Incidencias</th><th scope="col">Fecha de pago</th><th scope="col">Acciones</th></tr></thead>
-                  <tbody>{pagedRuns.map((run) => {
-                    return <tr key={`${run.kind}-${run.id}`} className="nm-run-row" onClick={(event) => { if (!(event.target as HTMLElement).closest('button')) openRun(run); }}>
-                      <th scope="row"><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></th>
-                      <td>{runPeriodLabel(run)}</td>
-                      <td><PayrollStatusPill status={run.status} /></td>
-                      <td>{run.totals?.employeeCount ?? 0}</td>
-                      <td className="hr-amount-cell">{run.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: run.totals.currency }).format(Number(run.totals.grossIncome)) : '—'}</td>
-                      <td className="hr-amount-cell"><strong>{run.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: run.totals.currency }).format(Number(run.totals.netPay)) : '—'}</strong></td>
-                      <td>{run.blockingAnomalyCount ? <span className="nm-chip is-danger"><AlertTriangle size={13} aria-hidden="true" /> {run.blockingAnomalyCount} por resolver</span> : run.anomalyCount ? <span className="nm-chip">{run.anomalyCount} informativa(s)</span> : <span className="nm-chip is-success">Sin incidencias</span>}</td>
-                      <td>{formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate)}</td>
-                      <td><div className="nm-row-actions table-actions">
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openRun(run)} title={run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`Abrir corrida ${run.code}`}><Eye size={16} /></Button>
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`}><FileSpreadsheet size={16} /></Button>
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`}><Download size={16} /></Button>
-                      </div></td>
-                    </tr>;
-                  })}</tbody>
-                </table>
-              </div>
             )}
-            <div className="nm-pagination">
-              <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(filteredRuns.length / PAGE_SIZE))} totalItems={filteredRuns.length} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin corridas" />
-            </div>
-          </HrSection>
-
-        </>
-      )}
+          />
+        )}
+      </HrTablePanel>
       </>)}
 
       <Sidebar isOpen={Boolean(createPanel)} onClose={() => { if (!saving) { if (createPanel?.kind === 'component') componentOperationKey.current = null; setCreatePanel(null); } }} title={createPanel?.kind === 'rule' ? 'Nueva regla base' : createPanel?.kind === 'period' ? 'Nuevo periodo de nómina' : createPanel?.kind === 'component' ? 'Ingreso o deducción' : createPanel?.runKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>

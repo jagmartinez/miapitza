@@ -7,7 +7,7 @@ import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable'
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
-import { HrHero, HrPage, HrSection, HrTabs, HrToolbar, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
+import { HrHero, HrPage, HrPanelState, HrTablePanel, HrTabs, HrToolbar, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
 import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
@@ -34,7 +34,6 @@ type ReviewTab = 'ALL' | HrAttendanceDecision;
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
 const ACTION_OPTIONS: Option[] = [{ value: '', label: 'Todas las acciones' }, ...Object.entries(ATTENDANCE_ACTION_LABELS).map(([value, label]) => ({ value, label }))];
-const DECISION_OPTIONS: Option[] = [{ value: '', label: 'Todos los resultados' }, ...Object.entries(ATTENDANCE_DECISION_LABELS).map(([value, label]) => ({ value, label }))];
 
 const REVIEW_TABS: HrTabItem<ReviewTab>[] = [
     { key: 'REVIEW_REQUIRED', label: 'Por revisar', icon: AlertTriangle },
@@ -258,21 +257,17 @@ export default function AttendanceReview() {
                 </div>
             </HrToolbar>
 
-            <HrSection
-                flush
-                title="Eventos de asistencia"
-                description={DECISION_OPTIONS.find((option) => option.value === decision)?.label ?? 'Todos los resultados'}
-                count={loading || error ? undefined : total}
+            <HrTablePanel
                 id={`attendance-review-panel-${activeTab.toLowerCase()}`}
                 role="tabpanel"
                 aria-labelledby={`attendance-review-tab-${activeTab.toLowerCase()}`}
-                className="hr-asis-table-section"
+                className="hr-asis-table-panel"
             >
-                {loading && <div className="hr-asis-state"><LoadingSpinner text="Cargando eventos…" /></div>}
-                {!loading && error && <div className="state-placeholder hr-asis-state" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></div>}
+                {loading && <HrPanelState><LoadingSpinner text="Cargando eventos…" /></HrPanelState>}
+                {!loading && error && <HrPanelState role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></HrPanelState>}
                 {!loading && !error && (
                     <CatalogTable<HrAttendanceEvent>
-                        className="is-flush hr-asis-table"
+                        className="hr-asis-table"
                         ariaLabel="Eventos de asistencia"
                         rows={events}
                         rowKey={(attendanceEvent) => attendanceEvent.id}
@@ -282,7 +277,7 @@ export default function AttendanceReview() {
                         emptyState={<div className="hr-admin-empty"><ClipboardCheck size={34} /><strong>No hay eventos para los filtros seleccionados</strong><span>Amplía el rango o cambia los filtros para consultar otros marcajes.</span></div>}
                     />
                 )}
-            </HrSection>
+            </HrTablePanel>
             <Sidebar isOpen={Boolean(selected)} onClose={() => !saving && setSelected(null)} title="Revisar incidencia" width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
                 {selected && (
                     <HrModalFormShell

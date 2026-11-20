@@ -47,7 +47,8 @@ describe('RH operational UI contract', () => {
       expect(source).toContain('filters-toolbar hr-admin-tab-toolbar');
       expect(source).toContain('role="tablist"');
       expect(source).toContain('role="tabpanel"');
-      expect(source).toContain('className="hr-admin-table inventory-table"');
+      // Either the legacy admin table or the shared <CatalogTable> keeps the queue table-first.
+      expect(source).toMatch(/className="hr-admin-table inventory-table"|<CatalogTable</);
       expect(source).not.toContain('<caption>');
     });
     expect(attendanceReview).not.toContain('attendance-review-table-title');

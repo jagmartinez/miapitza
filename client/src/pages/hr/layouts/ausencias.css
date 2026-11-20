@@ -166,32 +166,22 @@
   white-space: nowrap;
 }
 
-/* ---------- Section / tables ---------- */
-.hr-ausencias .hr-aus-section .hr-admin-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.hr-ausencias .hr-aus-section .hr-admin-table-wrap:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
-}
-
-.hr-ausencias .hr-aus-section .hr-admin-table tbody tr.is-selected {
-  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
-  box-shadow: inset 3px 0 var(--color-primary);
-}
-
-.hr-ausencias .hr-aus-section .hr-admin-empty {
-  padding-block: 2rem;
-}
-
+/* ---------- Calendar section / tables ---------- */
 .hr-ausencias .hr-aus-section .leave-calendar-grid-wrap {
   padding: .9rem 1.1rem 1.1rem;
 }
 
-.hr-ausencias .hr-aus-section .hr-ws-section-body > :last-child:not(.hr-admin-table-wrap) {
-  border-top: 1px solid var(--hr-ws-border);
+.hr-ausencias .hr-aus-table .catalog-table {
+  min-width: 920px;
+}
+
+.hr-ausencias .hr-aus-table .catalog-table tbody tr.is-selected {
+  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
+  box-shadow: inset 3px 0 var(--color-primary);
+}
+
+.hr-ausencias .hr-aus-table .hr-admin-empty {
+  padding-block: 2rem;
 }
 
 @media (max-width: 680px) {

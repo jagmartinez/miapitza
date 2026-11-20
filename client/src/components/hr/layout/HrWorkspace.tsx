@@ -165,6 +165,31 @@ export function HrSection({
   );
 }
 
+/**
+ * Main list area of a view: the table stands on its own, like every catalog
+ * screen (Menú, Proveedores…). Put a <CatalogTable> inside — no section card or
+ * title around it. Use <HrPanelState> for loading / error / empty states.
+ */
+export function HrTablePanel({
+  children,
+  className = '',
+  ...rest
+}: {
+  children: ReactNode;
+  className?: string;
+  id?: string;
+  role?: string;
+  'aria-labelledby'?: string;
+  'aria-label'?: string;
+}) {
+  return <div className={`hr-ws-table-panel ${className}`.trim()} {...rest}>{children}</div>;
+}
+
+/** Loading / error / empty block framed like the table it replaces. */
+export function HrPanelState({ children, className = '', role }: { children: ReactNode; className?: string; role?: string }) {
+  return <div className={`hr-ws-panel-state ${className}`.trim()} role={role}>{children}</div>;
+}
+
 /** Two-column content: main column plus a sticky summary/aside column. */
 export function HrSplit({ main, aside }: { main: ReactNode; aside: ReactNode }) {
   return (

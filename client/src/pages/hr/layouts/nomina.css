@@ -85,13 +85,9 @@
 }
 
 /* ---------- Registro de corridas ---------- */
-.nm-page .nm-runs-table { min-width: 980px; margin: 0; border: 0; }
-.nm-page .nm-runs-table tbody tr.selected {
-  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
-  box-shadow: inset 3px 0 var(--color-primary);
-}
-.nm-page .nm-runs-table tbody th[scope='row'] strong { font-weight: 800; }
-.nm-page .nm-runs-table .hr-amount-cell { text-align: right; }
+.nm-page .nm-runs-table .catalog-table { min-width: 980px; }
+.nm-page .nm-runs-table tbody td small { display: block; margin-top: 2px; color: var(--hr-ws-text-2); font-size: .74rem; font-weight: 400; }
+.nm-page .nm-runs-table tbody tr.nm-run-row { cursor: pointer; }
 
 .nm-page .nm-chip {
   display: inline-flex;
@@ -127,7 +123,6 @@
   flex-wrap: wrap;
 }
 .nm-page .nm-detail-crumb { color: var(--hr-ws-text-2); font-size: .85rem; font-weight: 600; }
-.nm-page .nm-runs-table tbody tr.nm-run-row { cursor: pointer; }
 
 /* Indicator cards: money and signals, never bare counts. */
 .nm-page .nm-indicators {

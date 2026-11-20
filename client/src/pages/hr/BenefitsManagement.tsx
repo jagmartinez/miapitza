@@ -16,13 +16,14 @@ import {
 import Button from '../../components/Button';
 import HrReactSelect from '../../components/hr/HrReactSelect';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import Pagination from '../../components/Pagination';
+import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
 import Sidebar from '../../components/Sidebar';
 import {
   HrHero,
   HrPage,
   HrSection,
   HrSplit,
+  HrTablePanel,
   HrTabs,
   HrToolbar,
   type HrFact,
@@ -97,6 +98,7 @@ const STATUS_OPTIONS: Record<OperationalTab, Array<{ value: string; label: strin
     { value: 'CANCELLED', label: 'Cancelada' },
   ],
 };
+type BoardItem = HrTravelRequest | HrLoan | HrDeduction;
 type Selected =
   | { resource: 'TRAVEL'; item: HrTravelRequest }
   | { resource: 'LOAN'; item: HrLoan }
@@ -874,6 +876,77 @@ export default function BenefitsManagement() {
     </HrSection>
   );
 
+  const boardDescription = (item: BoardItem) =>
+    tab === 'TRAVEL'
+      ? `${(item as HrTravelRequest).destination} · ${dateLabel((item as HrTravelRequest).departureDate)} a ${dateLabel((item as HrTravelRequest).returnDate)}`
+      : tab === 'LOAN'
+        ? (item as HrLoan).purpose
+        : `${(item as HrDeduction).name} · desde ${dateLabel((item as HrDeduction).effectiveFrom)}`;
+  const boardAmount = (item: BoardItem) =>
+    tab === 'TRAVEL'
+      ? money(
+          (item as HrTravelRequest).currency,
+          (item as HrTravelRequest).approvedAmount ?? (item as HrTravelRequest).requestedAmount
+        )
+      : tab === 'LOAN'
+        ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
+        : money((item as HrDeduction).currency, (item as HrDeduction).applicableAmount);
+  const boardNextLabel = (item: BoardItem) => {
+    const nextAction = item.allowedActions[0];
+    return !nextAction
+      ? 'Sin acciones pendientes'
+      : tab === 'TRAVEL'
+        ? TRAVEL_ACTION_LABELS[nextAction as HrTravelRequest['allowedActions'][number]]
+        : tab === 'LOAN'
+          ? LOAN_ACTION_LABELS[nextAction as HrLoan['allowedActions'][number]]
+          : DEDUCTION_ACTION_LABELS[nextAction as HrDeduction['allowedActions'][number]];
+  };
+  const boardColumns: CatalogColumn<BoardItem>[] = [
+    { key: 'code', header: 'Código', render: (item) => <strong>{item.code}</strong> },
+    { key: 'user', header: 'Empleado', render: (item) => item.user?.name ?? `Usuario #${item.userId}` },
+    {
+      key: 'description',
+      header: tab === 'TRAVEL' ? 'Destino y fechas' : tab === 'LOAN' ? 'Motivo' : 'Deducción y vigencia',
+      className: 'bnx-desc-cell',
+      render: (item) => boardDescription(item),
+    },
+    {
+      key: 'amount',
+      header: tab === 'LOAN' ? 'Saldo' : 'Importe',
+      align: 'right',
+      className: 'hr-amount-cell',
+      render: (item) => <strong>{boardAmount(item)}</strong>,
+    },
+    { key: 'status', header: 'Estado', render: (item) => <BenefitsStatusPill status={item.status} /> },
+    {
+      key: 'next',
+      header: 'Siguiente paso',
+      render: (item) => (
+        <span className={item.allowedActions[0] ? 'bnx-next' : 'bnx-next is-idle'}>{boardNextLabel(item)}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Acción',
+      align: 'right',
+      className: 'hr-admin-actions-col',
+      render: (item) => (
+        <div className="table-actions">
+          <Button
+            className="table-action-btn"
+            size="sm"
+            variant="ghost"
+            onClick={() => void openDetail({ resource: tab, item } as Selected)}
+            title="Ver y gestionar"
+            aria-label={`Ver y gestionar ${item.code}`}
+          >
+            <Eye size={16} />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <HrPage className="inventory-page hr-benefits-page hr-admin-catalog-page hr-operation-page prestaciones-page">
       {hero}
@@ -925,142 +998,43 @@ export default function BenefitsManagement() {
           <HrSplit
             main={
               <>
-                <HrSection
-                  flush
-                  className="pr-table-card hr-benefits-admin-board bnx-board"
+                <HrTablePanel
+                  className="hr-benefits-admin-board bnx-board"
                   aria-label={`Bandeja de ${tabLabel.toLocaleLowerCase('es-NI')}`}
-                  eyebrow="Bandeja"
-                  title={tabLabel}
-                  count={filteredCards.length}
-                  description="Abre un registro para ver montos, acciones y trazabilidad."
                 >
-                  <div className="hr-ws-table-scroll hr-admin-table-wrap">
-                    <table className="hr-admin-table inventory-table" aria-label={`${tabLabel}: ${filteredCards.length} registros`}>
-                      <thead>
-                        <tr>
-                          <th scope="col">Código</th>
-                          <th scope="col">Empleado</th>
-                          <th scope="col">
-                            {tab === 'TRAVEL'
-                              ? 'Destino y fechas'
-                              : tab === 'LOAN'
-                                ? 'Motivo'
-                                : 'Deducción y vigencia'}
-                          </th>
-                          <th scope="col" className="hr-amount-cell">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th>
-                          <th scope="col">Estado</th>
-                          <th scope="col">Siguiente paso</th>
-                          <th scope="col" className="hr-admin-actions-col">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredCards.length === 0 ? (
-                          <tr>
-                            <td colSpan={7}>
-                              <div className="hr-admin-empty">
-                                <strong>{search ? 'No hay coincidencias' : 'No hay registros para este estado'}</strong>
-                                <span>{search ? 'Prueba otro código, empleado o detalle.' : 'Cambia el estado o crea un nuevo registro.'}</span>
-                                {search && <Button size="sm" variant="ghost" onClick={() => setSearch('')}>Limpiar búsqueda</Button>}
-                                {status && (
-                                  <Button size="sm" variant="ghost" onClick={() => setStatus('')}>
-                                    Mostrar todos
-                                  </Button>
-                                )}
-                                <Button size="sm" onClick={() => setCreatePanel(tab)} disabled={!online}>
-                                  <Plus size={15} /> {createLabel}
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : (
-                          pagedCards.map((entry) => {
-                            const resource = tab;
-                            const item = entry as HrTravelRequest | HrLoan | HrDeduction;
-                            const description =
-                              resource === 'TRAVEL'
-                                ? `${(item as HrTravelRequest).destination} · ${dateLabel((item as HrTravelRequest).departureDate)} a ${dateLabel((item as HrTravelRequest).returnDate)}`
-                                : resource === 'LOAN'
-                                  ? (item as HrLoan).purpose
-                                  : `${(item as HrDeduction).name} · desde ${dateLabel((item as HrDeduction).effectiveFrom)}`;
-                            const amount =
-                              resource === 'TRAVEL'
-                                ? money(
-                                    (item as HrTravelRequest).currency,
-                                    (item as HrTravelRequest).approvedAmount ??
-                                      (item as HrTravelRequest).requestedAmount
-                                  )
-                                : resource === 'LOAN'
-                                  ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
-                                  : money(
-                                      (item as HrDeduction).currency,
-                                      (item as HrDeduction).applicableAmount
-                                    );
-                            const nextAction = item.allowedActions[0];
-                            const nextLabel = !nextAction
-                              ? 'Sin acciones pendientes'
-                              : resource === 'TRAVEL'
-                                ? TRAVEL_ACTION_LABELS[
-                                    nextAction as HrTravelRequest['allowedActions'][number]
-                                  ]
-                                : resource === 'LOAN'
-                                  ? LOAN_ACTION_LABELS[nextAction as HrLoan['allowedActions'][number]]
-                                  : DEDUCTION_ACTION_LABELS[
-                                      nextAction as HrDeduction['allowedActions'][number]
-                                    ];
-                            return (
-                              <tr
-                                key={`${resource}-${item.id}`}
-                                className={
-                                  selected?.resource === resource && selected.item.id === item.id
-                                    ? 'is-selected'
-                                    : ''
-                                }
-                              >
-                                <td>
-                                  <strong>{item.code}</strong>
-                                </td>
-                                <td>{item.user?.name ?? `Usuario #${item.userId}`}</td>
-                                <td className="bnx-desc-cell">{description}</td>
-                                <td className="hr-amount-cell">
-                                  <strong>{amount}</strong>
-                                </td>
-                                <td>
-                                  <BenefitsStatusPill status={item.status} />
-                                </td>
-                                <td>
-                                  <span className={nextAction ? 'bnx-next' : 'bnx-next is-idle'}>{nextLabel}</span>
-                                </td>
-                                <td className="hr-admin-actions-col">
-                                  <div className="table-actions">
-                                    <Button
-                                      className="table-action-btn"
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => void openDetail({ resource, item } as Selected)}
-                                      title="Ver y gestionar"
-                                      aria-label={`Ver y gestionar ${item.code}`}
-                                    >
-                                      <Eye size={16} />
-                                    </Button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <Pagination
-                    page={tablePage}
-                    totalPages={Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))}
-                    totalItems={filteredCards.length}
-                    pageSize={PAGE_SIZE}
-                    onPageChange={setTablePage}
-                    alwaysShow
+                  <CatalogTable<BoardItem>
+                    ariaLabel={`${tabLabel}: ${filteredCards.length} registros`}
+                    rows={pagedCards as BoardItem[]}
+                    rowKey={(item) => `${tab}-${item.id}`}
+                    columns={boardColumns}
+                    rowClassName={(item) =>
+                      selected?.resource === tab && selected.item.id === item.id ? 'is-selected' : undefined
+                    }
+                    pagination={{
+                      page: tablePage,
+                      totalPages: Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE)),
+                      totalItems: filteredCards.length,
+                      pageSize: PAGE_SIZE,
+                      onPageChange: setTablePage,
+                    }}
                     emptyLabel="Sin registros"
+                    emptyState={
+                      <div className="hr-admin-empty">
+                        <strong>{search ? 'No hay coincidencias' : 'No hay registros para este estado'}</strong>
+                        <span>{search ? 'Prueba otro código, empleado o detalle.' : 'Cambia el estado o crea un nuevo registro.'}</span>
+                        {search && <Button size="sm" variant="ghost" onClick={() => setSearch('')}>Limpiar búsqueda</Button>}
+                        {status && (
+                          <Button size="sm" variant="ghost" onClick={() => setStatus('')}>
+                            Mostrar todos
+                          </Button>
+                        )}
+                        <Button size="sm" onClick={() => setCreatePanel(tab)} disabled={!online}>
+                          <Plus size={15} /> {createLabel}
+                        </Button>
+                      </div>
+                    }
                   />
-                </HrSection>
+                </HrTablePanel>
                 {detailPanel}
               </>
             }

@@ -36,11 +36,11 @@ describe('Phase 4 workforce UI safety contract', () => {
   });
 
   it('presents attendance and leave as table-first administrative workspaces', () => {
-    expect(attendance).toContain('className="hr-admin-table inventory-table"');
+    expect(attendance).toContain('<CatalogTable<HrDailyAttendanceSummary>');
     expect(attendance).toContain("['INCIDENTS', 'Incidencias'");
     expect(attendance).toContain('Revisar y decidir');
     expect(attendance).not.toContain('hr-summary-grid');
-    expect(leave).toContain('className="hr-admin-table inventory-table"');
+    expect(leave).toContain('<CatalogTable<HrLeaveRequest>');
     expect(leave).toContain("['BALANCES', 'Saldos'");
     expect(leave).toContain('Movimientos de saldos');
     expect(leave).not.toContain('hr-type-grid');
@@ -58,7 +58,8 @@ describe('Phase 4 workforce UI safety contract', () => {
       expect(source).toContain('collectAllPages');
       expect(source).toContain('aria-controls=');
       expect(source).toContain('role="tabpanel"');
-      expect(source).toContain('scope="col"');
+      // <CatalogTable> renders scope="col" on every header cell.
+      expect(source).toMatch(/scope="col"|<CatalogTable</);
     });
   });
 

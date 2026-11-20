@@ -38,7 +38,7 @@ import type {
 } from '../../types/hr';
 import { useDebounce } from '../../utils/useDebounce';
 import { formatHrMoney } from '../../utils/hrFormat';
-import { HrHero, HrPage, HrSection, HrTabs, HrToolbar, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
+import { HrHero, HrPage, HrPanelState, HrTablePanel, HrTabs, HrToolbar, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
 import './hr.css';
 import './layouts/personal.css';
 
@@ -412,37 +412,33 @@ export default function Employees() {
                 </div>
             </HrToolbar>
 
-            <HrSection
+            <HrTablePanel
                 id={`hr-employees-panel-${status.toLowerCase()}`}
                 role="tabpanel"
                 aria-labelledby={`hr-employees-tab-${status.toLowerCase()}`}
-                eyebrow="Plantilla"
-                title="Expedientes laborales"
-                description={viewMode === 'table' ? 'Vista tabular con identificación y compensación vigente.' : 'Fichas por colaborador con su compensación vigente.'}
-                flush={viewMode === 'table' && !loading && !error && employees.length > 0}
                 className="hr-pe-results"
             >
-                {loading && <LoadingSpinner text="Cargando personal…" />}
+                {loading && <HrPanelState><LoadingSpinner text="Cargando personal…" /></HrPanelState>}
 
                 {!loading && error && (
-                    <div className="hr-pe-state" role="alert">
+                    <HrPanelState className="hr-pe-state" role="alert">
                         <UsersRound size={42} aria-hidden="true" />
                         <p className="state-error">{error}</p>
                         <Button variant="ghost" onClick={() => void loadEmployees()}><RefreshCw size={16} /> Reintentar</Button>
-                    </div>
+                    </HrPanelState>
                 )}
 
                 {!loading && !error && employees.length === 0 && (
-                    <div className="hr-pe-state">
+                    <HrPanelState className="hr-pe-state">
                         <UsersRound size={48} aria-hidden="true" />
                         <p>No hay empleados que coincidan con los filtros.</p>
                         <Button variant="ghost" onClick={clearFilters}>Limpiar filtros</Button>
-                    </div>
+                    </HrPanelState>
                 )}
 
                 {!loading && !error && employees.length > 0 && viewMode === 'table' && (
                     <CatalogTable<HrEmployee>
-                        className="is-flush hr-pe-table"
+                        className="hr-pe-table"
                         ariaLabel="Expedientes laborales"
                         rows={employees}
                         rowKey={(employee) => employee.id}
@@ -495,12 +491,12 @@ export default function Employees() {
                     </div>
                 )}
 
-                {!loading && !error && (viewMode === 'cards' || employees.length === 0) && (
+                {!loading && !error && viewMode === 'cards' && employees.length > 0 && (
                     <div className="hr-pe-pagination">
                         <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={PAGE_SIZE} onPageChange={setPage} alwaysShow emptyLabel="Sin expedientes" />
                     </div>
                 )}
-            </HrSection>
+            </HrTablePanel>
 
             <Sidebar
                 isOpen={editorOpen}

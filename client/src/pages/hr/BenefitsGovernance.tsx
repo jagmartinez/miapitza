@@ -13,10 +13,10 @@ import {
 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import Pagination from '../../components/Pagination';
+import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
 import Sidebar from '../../components/Sidebar';
 import HrReactSelect from '../../components/hr/HrReactSelect';
-import { HrHero, HrPage, HrSection, HrTabs, HrToolbar } from '../../components/hr/layout/HrWorkspace';
+import { HrHero, HrPage, HrTablePanel, HrTabs, HrToolbar } from '../../components/hr/layout/HrWorkspace';
 import { benefitsGovernanceClient } from '../../components/hr/benefitsGovernanceClient';
 import { getBenefitsErrorMessage } from '../../components/hr/benefitsClient';
 import { hrClient } from '../../components/hr/hrClient';
@@ -404,6 +404,178 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
       ),
     }));
 
+  const settlementColumns: CatalogColumn<EmploymentSettlement>[] = [
+    { key: 'code', header: 'Código', render: (row) => row.code },
+    {
+      key: 'employee',
+      header: 'Empleado',
+      render: (row) => (
+        <>
+          {row.employee.legalName}
+          <small>{row.employee.employeeCode}</small>
+        </>
+      ),
+    },
+    { key: 'terminationDate', header: 'Salida', render: (row) => row.terminationDate.slice(0, 10) },
+    {
+      key: 'status',
+      header: 'Estado',
+      render: (row) => (
+        <span className={`governance-status ${row.status.toLowerCase()}`}>{statusLabel[row.status]}</span>
+      ),
+    },
+    {
+      key: 'netPay',
+      header: 'Neto',
+      align: 'right',
+      className: 'hr-amount-cell',
+      render: (row) => (
+        <>
+          {row.currency} {row.netPay}
+        </>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Acciones',
+      align: 'right',
+      className: 'hr-admin-actions-col',
+      render: (row) => (
+        <div className="table-actions">
+          <Button
+            className="table-action-btn"
+            size="sm"
+            variant="ghost"
+            title={`Ver y gestionar ${row.code}`}
+            aria-label={`Ver y gestionar ${row.code}`}
+            onClick={() =>
+              void benefitsGovernanceClient
+                .settlement(row.id)
+                .then(setSelectedSettlement)
+                .catch((error) =>
+                  toast.error(getBenefitsErrorMessage(error, 'No se pudo abrir el detalle.'))
+                )
+            }
+          >
+            <Eye size={16} />
+          </Button>
+          {row.status === 'DRAFT' && (
+            <Button
+              className="table-action-btn"
+              size="sm"
+              variant="ghost"
+              title={`Editar ${row.code}`}
+              aria-label={`Editar ${row.code}`}
+              onClick={() => openSettlementEditor(row)}
+            >
+              <Pencil size={16} />
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const policyColumns: CatalogColumn<BenefitPolicy>[] = [
+    {
+      key: 'version',
+      header: 'Versión',
+      render: (row) => (
+        <>
+          v{row.version}
+          <small>{row.sourceReference}</small>
+        </>
+      ),
+    },
+    {
+      key: 'effective',
+      header: 'Vigencia',
+      render: (row) => (
+        <>
+          {row.effectiveFrom.slice(0, 10)}
+          {row.effectiveTo ? ` — ${row.effectiveTo.slice(0, 10)}` : ''}
+        </>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Estado',
+      render: (row) => (
+        <span className={`governance-status ${row.status.toLowerCase()}`}>
+          {statusLabel[row.status] ?? row.status}
+        </span>
+      ),
+    },
+    {
+      key: 'travel',
+      header: 'Viáticos',
+      render: (row) => (
+        <>
+          {row.travelCategories.length} categorías · {row.travelMaxDays} días
+        </>
+      ),
+    },
+    {
+      key: 'loans',
+      header: 'Préstamos',
+      render: (row) => (
+        <>
+          Tope {row.currency} {row.loanMaxAmount} · {row.loanMaxInstallments} cuotas
+        </>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Acción',
+      align: 'right',
+      className: 'hr-admin-actions-col',
+      render: (row) => (
+        <div className="table-actions">
+          {row.status === 'DRAFT' && (
+            <Button
+              className="table-action-btn"
+              size="sm"
+              variant="ghost"
+              title={`Editar versión ${row.version}`}
+              aria-label={`Editar versión ${row.version}`}
+              disabled={busy}
+              onClick={() => openPolicyEditor(row)}
+            >
+              <Pencil size={16} />
+            </Button>
+          )}
+          <Button
+            className="table-action-btn"
+            size="sm"
+            variant="ghost"
+            title={`Clonar versión ${row.version}`}
+            aria-label={`Clonar versión ${row.version}`}
+            disabled={busy}
+            onClick={() => openPolicyEditor(row, true)}
+          >
+            <Copy size={16} />
+          </Button>
+          {row.status === 'DRAFT' && (
+            <Button
+              className="table-action-btn"
+              size="sm"
+              variant="ghost"
+              title={`Activar versión ${row.version}`}
+              aria-label={`Activar versión ${row.version}`}
+              disabled={busy}
+              onClick={() => {
+                setPolicyToActivate(row);
+                setPolicyActivationConfirmed(false);
+              }}
+            >
+              <ShieldCheck size={16} />
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   if (loading) return <LoadingSpinner />;
   const content = (
     <>
@@ -742,104 +914,28 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 )}
               </section>
             </Sidebar>
-            <HrSection
-              flush
-              className="pr-table-card bnx-board"
-              eyebrow="Cierres laborales"
-              title="Liquidaciones de empleados"
-              count={pagination.total}
-              description="Cada fila conserva cálculo, aprobaciones, pago y constancia PDF."
-            >
-              <div className="hr-ws-table-scroll">
-              <table className="hr-admin-table inventory-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Código</th>
-                    <th scope="col">Empleado</th>
-                    <th scope="col">Salida</th>
-                    <th scope="col">Estado</th>
-                    <th scope="col" className="hr-amount-cell">Neto</th>
-                    <th scope="col">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {settlements.length === 0 ? (
-                    <tr>
-                      <td colSpan={6}>
-                        <div className="hr-admin-empty">
-                          <strong>No hay liquidaciones en este filtro</strong>
-                          <span>Crea una liquidación o cambia la búsqueda.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    settlements.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.code}</td>
-                        <td>
-                          {row.employee.legalName}
-                          <small>{row.employee.employeeCode}</small>
-                        </td>
-                        <td>{row.terminationDate.slice(0, 10)}</td>
-                        <td>
-                          <span className={`governance-status ${row.status.toLowerCase()}`}>
-                            {statusLabel[row.status]}
-                          </span>
-                        </td>
-                        <td className="hr-amount-cell">
-                          {row.currency} {row.netPay}
-                        </td>
-                        <td>
-                          <div className="table-actions">
-                            <Button
-                              className="table-action-btn"
-                              size="sm"
-                              variant="ghost"
-                              title={`Ver y gestionar ${row.code}`}
-                              aria-label={`Ver y gestionar ${row.code}`}
-                              onClick={() =>
-                                void benefitsGovernanceClient
-                                  .settlement(row.id)
-                                  .then(setSelectedSettlement)
-                                  .catch((error) =>
-                                    toast.error(
-                                      getBenefitsErrorMessage(error, 'No se pudo abrir el detalle.')
-                                    )
-                                  )
-                              }
-                            >
-                              <Eye size={16} />
-                            </Button>
-                            {row.status === 'DRAFT' && (
-                              <Button
-                                className="table-action-btn"
-                                size="sm"
-                                variant="ghost"
-                                title={`Editar ${row.code}`}
-                                aria-label={`Editar ${row.code}`}
-                                onClick={() => openSettlementEditor(row)}
-                              >
-                                <Pencil size={16} />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-              </div>
-              <Pagination
-                page={pagination.page}
-                totalPages={pagination.totalPages}
-                totalItems={pagination.total}
-                pageSize={pagination.pageSize}
-                onPageChange={setPage}
-                alwaysShow
+            <HrTablePanel className="bnx-board" aria-label="Liquidaciones de empleados">
+              <CatalogTable<EmploymentSettlement>
+                ariaLabel="Liquidaciones de empleados"
+                rows={settlements}
+                rowKey={(row) => row.id}
+                columns={settlementColumns}
+                pagination={{
+                  page: pagination.page,
+                  totalPages: pagination.totalPages,
+                  totalItems: pagination.total,
+                  pageSize: pagination.pageSize,
+                  onPageChange: setPage,
+                }}
                 emptyLabel="Sin liquidaciones"
+                emptyState={
+                  <div className="hr-admin-empty">
+                    <strong>No hay liquidaciones en este filtro</strong>
+                    <span>Crea una liquidación o cambia la búsqueda.</span>
+                  </div>
+                }
               />
-            </HrSection>
+            </HrTablePanel>
           </>
         ) : (
           <>
@@ -1135,118 +1231,28 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 </div>
               </section>
             </Sidebar>
-            <HrSection
-              flush
-              className="pr-table-card bnx-board"
-              eyebrow="Reglas vigentes"
-              title="Políticas versionadas"
-              count={policyPagination.total}
-              description="Las corridas congelan la versión vigente. Una persona crea y otra activa."
-            >
-              <div className="hr-ws-table-scroll">
-              <table className="hr-admin-table inventory-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Versión</th>
-                    <th scope="col">Vigencia</th>
-                    <th scope="col">Estado</th>
-                    <th scope="col">Viáticos</th>
-                    <th scope="col">Préstamos</th>
-                    <th scope="col">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {policies.length === 0 ? (
-                    <tr>
-                      <td colSpan={6}>
-                        <div className="hr-admin-empty">
-                          <strong>No hay políticas en este filtro</strong>
-                          <span>Crea una versión o cambia el estado seleccionado.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    policies.map((row) => (
-                      <tr key={row.id}>
-                        <td>
-                          v{row.version}
-                          <small>{row.sourceReference}</small>
-                        </td>
-                        <td>
-                          {row.effectiveFrom.slice(0, 10)}
-                          {row.effectiveTo ? ` — ${row.effectiveTo.slice(0, 10)}` : ''}
-                        </td>
-                        <td>
-                          <span className={`governance-status ${row.status.toLowerCase()}`}>
-                            {statusLabel[row.status] ?? row.status}
-                          </span>
-                        </td>
-                        <td>
-                          {row.travelCategories.length} categorías · {row.travelMaxDays} días
-                        </td>
-                        <td>
-                          Tope {row.currency} {row.loanMaxAmount} · {row.loanMaxInstallments} cuotas
-                        </td>
-                        <td>
-                          <div className="table-actions">
-                            {row.status === 'DRAFT' && (
-                              <Button
-                                className="table-action-btn"
-                                size="sm"
-                                variant="ghost"
-                                title={`Editar versión ${row.version}`}
-                                aria-label={`Editar versión ${row.version}`}
-                                disabled={busy}
-                                onClick={() => openPolicyEditor(row)}
-                              >
-                                <Pencil size={16} />
-                              </Button>
-                            )}
-                            <Button
-                              className="table-action-btn"
-                              size="sm"
-                              variant="ghost"
-                              title={`Clonar versión ${row.version}`}
-                              aria-label={`Clonar versión ${row.version}`}
-                              disabled={busy}
-                              onClick={() => openPolicyEditor(row, true)}
-                            >
-                              <Copy size={16} />
-                            </Button>
-                            {row.status === 'DRAFT' && (
-                              <Button
-                                className="table-action-btn"
-                                size="sm"
-                                variant="ghost"
-                                title={`Activar versión ${row.version}`}
-                                aria-label={`Activar versión ${row.version}`}
-                                disabled={busy}
-                                onClick={() => {
-                                  setPolicyToActivate(row);
-                                  setPolicyActivationConfirmed(false);
-                                }}
-                              >
-                                <ShieldCheck size={16} />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-              </div>
-              <Pagination
-                page={policyPagination.page}
-                totalPages={policyPagination.totalPages}
-                totalItems={policyPagination.total}
-                pageSize={policyPagination.pageSize}
-                onPageChange={setPolicyPage}
-                alwaysShow
+            <HrTablePanel className="bnx-board" aria-label="Políticas versionadas">
+              <CatalogTable<BenefitPolicy>
+                ariaLabel="Políticas versionadas"
+                rows={policies}
+                rowKey={(row) => row.id}
+                columns={policyColumns}
+                pagination={{
+                  page: policyPagination.page,
+                  totalPages: policyPagination.totalPages,
+                  totalItems: policyPagination.total,
+                  pageSize: policyPagination.pageSize,
+                  onPageChange: setPolicyPage,
+                }}
                 emptyLabel="Sin políticas"
+                emptyState={
+                  <div className="hr-admin-empty">
+                    <strong>No hay políticas en este filtro</strong>
+                    <span>Crea una versión o cambia el estado seleccionado.</span>
+                  </div>
+                }
               />
-            </HrSection>
+            </HrTablePanel>
           </>
         )}
       </section>

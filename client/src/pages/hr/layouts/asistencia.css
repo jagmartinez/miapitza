@@ -79,29 +79,13 @@
   color: var(--color-primary);
 }
 
-/* ---------- Table sections ---------- */
-.hr-asis-page .hr-asis-table-section.hr-asis-table-section {
-  margin: 0;
-  padding: 0;
-}
-
-.hr-asis-page .hr-asis-table-section .hr-admin-table {
+/* ---------- Table ---------- */
+.hr-asis-page .hr-asis-table .catalog-table {
   min-width: 860px;
-  border: 0;
 }
 
-.hr-asis-page .hr-asis-table-section .hr-attendance-alert {
-  margin: .85rem 1.1rem;
-}
-
-.hr-asis-page .hr-asis-table-section [role='tabpanel']:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
-}
-
-.hr-asis-page .hr-asis-state {
-  padding: 2rem 1rem;
-  border-radius: 0;
+.hr-asis-page .hr-asis-management-table .catalog-table {
+  min-width: 960px;
 }
 
 .hr-asis-page .hr-asis-chip {

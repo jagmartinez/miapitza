@@ -416,6 +416,41 @@
   padding: 0;
 }
 
+/* ---------- Main table panel (same frame as catalog screens) ---------- */
+.hr-ws-table-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Title + secondary line inside a cell. */
+.hr-ws-table-panel .catalog-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-ws-panel-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  padding: 32px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.hr-ws-panel-state p {
+  margin: 0;
+}
+
 /* Raw tables inside sections follow the shared .catalog-table look
    (components/CatalogView.css). Prefer <CatalogTable flush> for new tables. */
 .hr-ws-section table:not(.catalog-table) {

@@ -89,27 +89,20 @@
   min-width: 0;
 }
 
-.prestaciones-page .bnx-board.hr-ws-section {
-  margin: 0;
-  padding: 0;
-  border-radius: var(--hr-ws-radius);
-}
-
-.prestaciones-page .bnx-board .hr-ws-table-scroll {
-  border: 0;
-  border-radius: 0;
-}
-
-.prestaciones-page .bnx-board .hr-admin-table {
+.prestaciones-page .bnx-board .catalog-table {
   min-width: 860px;
-  margin: 0;
-  border: 0;
-  background: transparent;
 }
 
-.prestaciones-page .bnx-board .hr-admin-table tbody tr.is-selected {
+.prestaciones-page .bnx-board .catalog-table tbody tr.is-selected {
   background: color-mix(in srgb, var(--color-primary) 9%, transparent);
   box-shadow: inset 3px 0 var(--color-primary);
+}
+
+.prestaciones-page .bnx-board .catalog-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--hr-ws-text-2);
+  font-size: .74rem;
 }
 
 .prestaciones-page .bnx-board :is(th, td).hr-amount-cell {
@@ -145,12 +138,6 @@
 .prestaciones-page .bnx-board .hr-admin-actions-col {
   width: 1%;
   text-align: right;
-}
-
-.prestaciones-page .bnx-board .pagination,
-.prestaciones-page .bnx-board .table-pagination {
-  margin: 0;
-  border-top: 1px solid var(--hr-ws-border);
 }
 
 /* ---------- Summary aside ---------- */
@@ -442,22 +429,20 @@
   outline-offset: 1px;
 }
 
-.bnx-gov .bnx-board .hr-admin-table {
+.bnx-gov .bnx-board .catalog-table {
   min-width: 820px;
-  margin: 0;
-  border: 0;
-  background: transparent;
+}
+
+.bnx-gov .bnx-board .catalog-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: .74rem;
 }
 
 .bnx-gov .bnx-board :is(th, td).hr-amount-cell {
   text-align: right;
   white-space: nowrap;
-}
-
-.bnx-gov .bnx-board .pagination,
-.bnx-gov .bnx-board .table-pagination {
-  margin: 0;
-  border-top: 1px solid var(--color-border);
 }
 
 .bnx-gov .governance-status {

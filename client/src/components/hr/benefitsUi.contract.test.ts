@@ -33,7 +33,8 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('allowedActions.map');
     expect(owner).toContain('createBenefitsIdempotencyKey()');
     expect(owner).toContain('STATUS_OPTIONS[tab].map');
-    expect(owner).toContain('className="hr-admin-table inventory-table"');
+    // Either the legacy admin table or the shared <CatalogTable> keeps the board table-first.
+    expect(owner).toMatch(/className="hr-admin-table inventory-table"|<CatalogTable</);
     expect(owner).toContain('className="hr-benefits-admin-register"');
     expect(owner).toContain('placeholder="Código, empleado o detalle"');
     expect(owner).toContain('filteredCards');

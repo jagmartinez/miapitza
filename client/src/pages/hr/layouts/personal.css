@@ -84,10 +84,6 @@
   min-width: 1080px;
 }
 
-.hr-personal-page .hr-pe-results:not(.is-flush) .hr-pe-pagination {
-  margin-top: 1rem;
-}
-
 /* Cards */
 .hr-personal-page .hr-pe-grid {
   display: grid;
