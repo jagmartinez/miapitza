@@ -40,6 +40,11 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - Ensayar la migración `20261120_operational_devices_pin` contra MySQL (`db:rehearse-migrations`) — nunca se ejecutó.
 - En la tablet: comprobar que el bloqueo de 2 min funcione tras despertar la pantalla.
 
+## Fase 2 (Modo Mesero) — plan escrito 2026-11-20
+- Plan: `docs/superpowers/plans/2026-11-20-app-android-fase-2-mesero.md` (12 tareas: 5 backend, 7 app). Pendiente de aprobación del usuario antes de ejecutar.
+- Decisiones del usuario: cobra el **cajero con su PIN**; Fase 2 = **cupón + descuento manual con PIN de supervisor**; promociones automáticas en una fase propia.
+- Inventario de API: `.superpowers/sdd/2026-11-20-app-android-fase-2-mesero/api-inventory.md` (no versionado).
+
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
 - Fase 3: la tablet de cocina no debe desemparejarse ante cualquier 401 del servidor; evitar sesiones duplicadas en re-login.
