@@ -274,4 +274,15 @@ describe('CountCloseScreen', () => {
         expect(within(saved).queryByText(/1,/)).toBeNull();
         expect(api.count.mock.calls[0][1]).toEqual({ bills: [{ denomination: 100, count: 2 }], coins: [], usdBills: [] });
     });
+
+    it('the action buttons sit in a footer outside the scrolling columns', async () => {
+        setup({ role: 'ADMIN' });
+        await ready();
+        const foot = screen.getByRole('contentinfo', { name: 'Acciones del arqueo' });
+        for (const name of ['Validar', 'Guardar arqueo', 'Cerrar turno']) expect(within(foot).getByRole('button', { name })).toBeInTheDocument();
+        expect(foot.closest('.cash-count-body')).toBeNull();
+        expect(foot.closest('.cash-dcol')).toBeNull();
+        expect(foot.closest('.cash-count-panel')).toBeNull();
+        expect(foot.parentElement).toHaveClass('cash');
+    });
 });

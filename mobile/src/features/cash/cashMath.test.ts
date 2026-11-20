@@ -68,3 +68,34 @@ describe('cashMath', () => {
         expect(expectedFromSummary(null)).toBeNull();
     });
 });
+
+describe('server-exact counted total', () => {
+    const server = (bills: number, coins: number, usd: number, rate: number) => Math.round((bills + coins + usd * rate) * 100) / 100;
+    const bd = (nio: number, usd: number): Breakdown => ({ nioBills: nio ? { '100': nio / 100 } : {}, nioCoins: {}, usdBills: usd ? { '5': usd / 5 } : {} });
+
+    it('rate 30.003 with 5 US$ and C$100 is 250.02', () => {
+        const p = buildClosePayload(bd(100, 5), 30.003, '');
+        expect(p.endAmount).toBe(250.02);
+        expect(p.endAmount).toBe(server(100, 0, 5, 30.003));
+    });
+
+    it('endAmount matches the server formula over a seeded sweep of 3-4 decimal rates', () => {
+        let seed = 12345;
+        const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+        for (let i = 0; i < 4000; i++) {
+            const rate = Math.round((20 + rnd() * 30) * 10 ** (3 + Math.floor(rnd() * 2))) / 10 ** (3 + Math.floor(rnd() * 2));
+            const b: Breakdown = { nioBills: { '100': Math.floor(rnd() * 5) }, nioCoins: { '0.25': Math.floor(rnd() * 9), '0.5': Math.floor(rnd() * 3) }, usdBills: { '5': Math.floor(rnd() * 9) + 1, '1': Math.floor(rnd() * 7) } };
+            const bills = 100 * (b.nioBills['100'] ?? 0);
+            const coins = 0.25 * (b.nioCoins['0.25'] ?? 0) + 0.5 * (b.nioCoins['0.5'] ?? 0);
+            const usd = 5 * (b.usdBills['5'] ?? 0) + (b.usdBills['1'] ?? 0);
+            expect(buildClosePayload(b, rate, '').endAmount).toBe(server(bills, coins, usd, rate));
+        }
+    });
+
+    it('countedTotals parts add up to the total', () => {
+        for (const rate of [30.003, 30.005, 36.5, 36.355]) {
+            const t = countedTotals({ nioBills: { '100': 1 }, nioCoins: { '0.25': 3 }, usdBills: { '5': 1, '1': 1 } }, rate);
+            expect(t.nioBillsC + t.nioCoinsC + t.usdInNioC).toBe(t.totalC);
+        }
+    });
+});

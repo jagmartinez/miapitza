@@ -77,7 +77,7 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
     useEffect(() => {
         let live = true;
         api.settings().then(
-            (s) => live && setRateText((cur) => (cur === '' ? String(s.exchangeRateUsd) : cur)),
+            (s) => live && setRateText((cur) => (cur === '' && Number.isFinite(Number(s.exchangeRateUsd)) ? String(Number(Number(s.exchangeRateUsd).toFixed(4))) : cur)),
             () => live && setLoadError('No se pudo cargar el tipo de cambio: escríbelo.'),
         );
         api.summary(shiftId).then(
@@ -315,31 +315,31 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
                         </p>
                     )}
                     {!rateOk && <span className="muted">Indica el tipo de cambio.</span>}
-                    <div className="cash-panel-actions">
-                        {retry && (
-                            <button type="button" className="btn" disabled={!online || pending !== null} onClick={() => void send(retry.op, retry.payload, retry.id)}>
-                                Reintentar
-                            </button>
-                        )}
-                        <button type="button" className="btn" disabled={!can} onClick={() => void validate()}>
-                            {pending === 'validate' ? 'Validando…' : 'Validar'}
-                        </button>
-                        <button type="button" className="btn" disabled={!can} onClick={saveCount}>
-                            {pending === 'count' ? 'Guardando…' : 'Guardar arqueo'}
-                        </button>
-                        {mode === 'close' &&
-                            (exceeds && admin ? (
-                                <button type="button" className="btn btn-primary" disabled={!can || !hasNote} onClick={() => close(true)}>
-                                    {pending === 'close' ? 'Cerrando…' : 'Forzar cierre'}
-                                </button>
-                            ) : (
-                                <button type="button" className="btn btn-primary" disabled={!can || !result || exceeds || (noteRequired && !hasNote)} onClick={() => close(false)}>
-                                    {pending === 'close' ? 'Cerrando…' : 'Cerrar turno'}
-                                </button>
-                            ))}
-                    </div>
                 </aside>
             </div>
+                <footer className="cash-count-foot" aria-label="Acciones del arqueo">
+                    {retry && (
+                        <button type="button" className="btn" disabled={!online || pending !== null} onClick={() => void send(retry.op, retry.payload, retry.id)}>
+                            Reintentar
+                        </button>
+                    )}
+                    <button type="button" className="btn" disabled={!can} onClick={() => void validate()}>
+                        {pending === 'validate' ? 'Validando…' : 'Validar'}
+                    </button>
+                    <button type="button" className="btn" disabled={!can} onClick={saveCount}>
+                        {pending === 'count' ? 'Guardando…' : 'Guardar arqueo'}
+                    </button>
+                    {mode === 'close' &&
+                        (exceeds && admin ? (
+                            <button type="button" className="btn btn-primary" disabled={!can || !hasNote} onClick={() => close(true)}>
+                                {pending === 'close' ? 'Cerrando…' : 'Forzar cierre'}
+                            </button>
+                        ) : (
+                            <button type="button" className="btn btn-primary" disabled={!can || !result || exceeds || (noteRequired && !hasNote)} onClick={() => close(false)}>
+                                {pending === 'close' ? 'Cerrando…' : 'Cerrar turno'}
+                            </button>
+                        ))}
+                </footer>
         </main>
     );
 }

@@ -330,6 +330,7 @@
 
 /* Count / close screen: Córdobas | Dólares + keypad | panel. */
 .cash-count-body {
+    overflow: hidden;
     flex: 1;
     min-height: 0;
     display: grid;
@@ -347,6 +348,7 @@
 }
 
 .cash-dcol {
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -421,15 +423,20 @@
     font: inherit;
 }
 
-.cash-panel-actions {
+.cash-count-foot {
+    flex: none;
     display: flex;
-    flex-direction: column;
+    justify-content: flex-end;
     gap: 8px;
-    margin-top: auto;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
 }
 
-.cash-panel-actions .btn {
+.cash-count-foot .btn {
     min-height: 48px;
+    min-width: 0;
+    padding: 0 16px;
     white-space: nowrap;
 }
 
@@ -461,13 +468,17 @@
         padding: 8px;
     }
     .cash-drow {
-        min-height: 30px;
+        min-height: 26px;
+        font-size: 14px;
         padding: 0 8px;
     }
     .cash-count-mid .pay-keys .btn {
         min-height: 40px;
     }
-    .cash-panel-actions .btn {
+    .cash-count-foot {
+        padding: 4px 8px;
+    }
+    .cash-count-foot .btn {
         min-height: 40px;
     }
 }
