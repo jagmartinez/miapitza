@@ -35,6 +35,36 @@ export class MenuItemService {
         return image.menuItem.branchId;
     }
 
+    /**
+     * Units sold per menu item in a branch over the last `days` days, for the
+     * waiter's "most sold" shortcut. Cancelled orders are excluded. A voided
+     * line is stored with quantity 0 (its units live in voidedQuantity), so
+     * summing the remaining quantity already nets voids out.
+     */
+    static async getTopSellers(companyId: number, branchId: number, days: number, limit: number) {
+        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const rows = await prisma.orderItem.groupBy({
+            by: ['menuItemId'],
+            where: {
+                quantity: { gt: 0 },
+                createdAt: { gte: since },
+                order: { companyId, branchId, status: { not: 'CANCELLED' } },
+            },
+            _sum: { quantity: true },
+        });
+        if (rows.length === 0) return [];
+        const active = await prisma.menuItem.findMany({
+            where: { companyId, active: true, id: { in: rows.map((row) => row.menuItemId) } },
+            select: { id: true },
+        });
+        const activeIds = new Set(active.map((item) => item.id));
+        return rows
+            .filter((row) => activeIds.has(row.menuItemId))
+            .map((row) => ({ menuItemId: row.menuItemId, quantity: row._sum?.quantity ?? 0 }))
+            .sort((a, b) => b.quantity - a.quantity || a.menuItemId - b.menuItemId)
+            .slice(0, limit);
+    }
+
     static async getAll(companyId: number, filters?: {
         branchId?: number;
         categoryId?: number;

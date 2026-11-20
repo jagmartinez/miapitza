@@ -28,6 +28,33 @@ export class MenuItemController {
         }
     }
 
+    /** GET /menu-items/top?branchId&days=30&limit=12 -- most sold items of a branch. */
+    static async getTopSellers(req: Request, res: Response, next: NextFunction) {
+        try {
+            const readInt = (value: unknown, fallback: number, min: number, max: number): number | null => {
+                if (value === undefined || value === '') return fallback;
+                const n = typeof value === 'string' && /^\d+$/.test(value) ? parseInt(value, 10) : NaN;
+                return Number.isInteger(n) && n >= min && n <= max ? n : null;
+            };
+            const days = readInt(req.query.days, 30, 1, 90);
+            const limit = readInt(req.query.limit, 12, 1, 30);
+            if (days === null || limit === null) {
+                return next({ statusCode: 400, message: 'Parámetros days (1-90) o limit (1-30) inválidos' });
+            }
+            const raw = req.query.branchId ? parseInt(req.query.branchId as string, 10) : undefined;
+            const requested = raw !== undefined && Number.isInteger(raw) && raw > 0 ? raw : undefined;
+            const branchId = resolveBranchScope(req.user!, requested) ?? req.user!.branchId ?? undefined;
+            if (!branchId) {
+                return next({ statusCode: 400, message: 'Seleccione una sucursal' });
+            }
+            const data = await MenuItemService.getTopSellers(req.user!.companyId, branchId, days, limit);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
     private static async assertMenuItemBranch(req: Request, menuItemId: number, allowGlobal: boolean) {
         const branchId = await MenuItemService.getOwnerBranch(menuItemId, req.user!.companyId);
         assertBranchAccess(req.user!, branchId, { allowGlobal });

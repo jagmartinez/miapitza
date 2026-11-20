@@ -11,6 +11,8 @@ router.use(authMiddleware);
 router.get('/', MenuItemController.getAll);
 // Must precede '/:id'. Branch-scoped and tenant-checked in the controller/service.
 router.get('/availability', MenuItemController.getAvailability);
+// Must precede '/:id'. Any authenticated user, pinned to their branch in the controller.
+router.get('/top', MenuItemController.getTopSellers);
 router.get('/:id', validate(s.idParam), MenuItemController.getById);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'CHEF'), validate(s.createMenuItem), MenuItemController.create);
 router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'CHEF'), validate(s.idParam), MenuItemController.update);
