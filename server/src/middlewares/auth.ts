@@ -186,7 +186,7 @@ export const auth = async (
         // Setting a PIN stays gated even there.
         if (passwordChangeRequired && !PIN_SETUP_PATH.test(req.originalUrl.split('?')[0])) {
             const sessionDevice = await SessionService.deviceOf(token);
-            if (typeof sessionDevice === 'string' && sessionDevice.startsWith('op-device:')) {
+            if (SessionService.isDeviceTag(sessionDevice)) {
                 passwordChangeRequired = false;
             }
         }
@@ -206,7 +206,7 @@ export const auth = async (
     }
 };
 
-function extractAuthToken(req: Request): string | null {
+export function extractAuthToken(req: Request): string | null {
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
         return authHeader.slice(7);
