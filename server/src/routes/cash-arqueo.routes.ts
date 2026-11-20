@@ -8,7 +8,7 @@ import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
 import { CashError } from '../services/cash-errors';
-import { isBlindCashier, redactBlindCount, redactBlindDetails } from '../services/cash-blind';
+import { isBlindCashier, redactBlindCount, redactBlindDetails, redactBlindReport } from '../services/cash-blind';
 
 const router = Router();
 
@@ -175,7 +175,7 @@ router.get('/:shiftId/report', validate(s.shiftIdParam), async (req: Request, re
 
         res.json({
             success: true,
-            data: report
+            data: redactBlindReport(report, req.user!)
         });
     } catch (error: unknown) {
         next({ statusCode: 500, message: getErrorMessage(error) });

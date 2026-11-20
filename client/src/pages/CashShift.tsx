@@ -502,7 +502,7 @@ export default function CashShiftPage() {
                                      <div class="amount-item"><span>Ventas netas en efectivo (POS + Catering):</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(amounts.totalSalesCash || 0))}</span></div>
                                      <div class="amount-item"><span>Otros ingresos de caja:</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(amounts.otherIncome || 0))}</span></div>
                                      <div class="amount-item"><span>Gastos / Retiros:</span> <span style="color: #dc3545;">- ${safeCurrencySymbol} ${formatCurrency(Number(amounts.otherOutflows || 0))}</span></div>
-                                     <div class="amount-item grand-total"><span>Monto Esperado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.expectedEndAmount)}</span></div>
+                                     <div class="amount-item grand-total"><span>Monto Esperado:</span> <span>${amounts.expectedEndAmount === undefined ? 'Oculto hasta cerrar' : `${safeCurrencySymbol} ${formatCurrency(amounts.expectedEndAmount)}`}</span></div>
                                      <p style="font-size: 11px; color: #666; margin-top: 12px;">
                                          Otros ingresos son únicamente entradas manuales o no asociadas a una venta.
                                          No incluyen cobros POS/Catering. Las ventas netas descuentan reversos y notas de crédito.
@@ -510,10 +510,10 @@ export default function CashShiftPage() {
                                     
                                     <div class="section-title">Resultados del Arqueo</div>
                                      <div class="amount-item"><span>Monto Contado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.actualEndAmount || 0)}</span></div>
-                                    <div class="amount-item" style="font-weight: 700; color: ${amounts.difference >= 0 ? '#28a745' : '#dc3545'};">
+                                    ${amounts.expectedEndAmount === undefined ? '' : `<div class="amount-item" style="font-weight: 700; color: ${amounts.difference >= 0 ? '#28a745' : '#dc3545'};">
                                         <span>Diferencia:</span> 
                                          <span>${safeCurrencySymbol} ${formatCurrency(amounts.difference || 0)}</span>
-                                    </div>
+                                    </div>`}
                                 </div>
 
                                 <div>

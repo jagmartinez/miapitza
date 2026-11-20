@@ -96,7 +96,8 @@ describe('cash API typed errors', () => {
             .send({ endAmount: 90, bills: [{ denomination: 10, count: 9 }], coins: [] });
         expect(res.status).toBe(403);
         expect(res.body.code).toBe('CASH_DIFF_EXCEEDS_TOLERANCE');
-        expect(res.body.message).toMatch(/excede la tolerancia/);
+        expect(res.body.message).toBe('La diferencia excede la tolerancia. Llama a un supervisor.');
+        expect(res.body.message).not.toMatch(/\d/);
     });
 
     it('close with a diff inside tolerance and no note returns 400 CASH_NOTE_REQUIRED', async () => {
@@ -274,5 +275,53 @@ describe('cash API blind arqueo detail', () => {
         const res = await request(app).get('/cash-arqueo/5').set('x-test-user', as(cajero)).expect(200);
         expect(res.body.data.amounts.expectedEndAmount).toBe(50);
         expect(res.body.data.amounts.difference).toBe(-10);
+    });
+});
+
+describe('cash API blind scope and report', () => {
+    const detailsShift = (endDate: Date | null) => jest.spyOn(prisma.cashShift, 'findFirst').mockImplementation((async (args: any) => {
+        if (args?.select?.cashRegister?.select?.branchId) return { cashRegister: { branchId: 1 } };
+        if (args?.select?.cashRegister?.select?.branch) {
+            return { cashRegister: { branch: { name: 'S', address: null, phone: null, company: { name: 'C', ruc: 'R' } } } };
+        }
+        return {
+            id: 5, startAmount: 50, endAmount: endDate ? 40 : null, endDate, startDate: new Date(),
+            forceClosed: false, closingExchangeRate: null, closedBy: null, movements: [],
+            cashRegister: { id: 1, name: 'Caja', branchId: 1 }, user: { id: 7, name: 'Ana' },
+        };
+    }) as never);
+
+    it('report of an OPEN shift omits expected/difference for blind CAJERO, also in summary text', async () => {
+        detailsShift(null);
+        jest.spyOn(prisma.cashCount, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(SettingService, 'getCurrencySymbol').mockResolvedValue('C$' as never);
+        const res = await request(app).get('/cash-arqueo/5/report').set('x-test-user', as(cajero)).expect(200);
+        expect(res.body.data.amounts).not.toHaveProperty('expectedEndAmount');
+        expect(res.body.data.amounts).not.toHaveProperty('difference');
+        expect(res.body.data.reconciliation).not.toHaveProperty('surplus');
+        expect(res.body.data.report.summary).not.toMatch(/Esperado|Diferencia/);
+        expect(res.body.data.report.summary).toMatch(/Monto Inicial/);
+    });
+
+    it('report of a CLOSED shift stays complete for CAJERO (R2)', async () => {
+        detailsShift(new Date());
+        jest.spyOn(prisma.cashCount, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(SettingService, 'getCurrencySymbol').mockResolvedValue('C$' as never);
+        const res = await request(app).get('/cash-arqueo/5/report').set('x-test-user', as(cajero)).expect(200);
+        expect(res.body.data.amounts.expectedEndAmount).toBe(50);
+        expect(res.body.data.report.summary).toMatch(/Esperado/);
+    });
+
+    it('CAJERO combined with ADMIN or SUPERADMIN is not blinded', async () => {
+        jest.spyOn(CashArqueoService, 'previewClose').mockResolvedValue({ expectedAmount: 100, difference: 1, absoluteDifference: 1, status: 'SOBRANTE' } as never);
+        jest.spyOn(prisma.cashShift, 'findFirst').mockImplementation((async (args: any) =>
+            args?.select?.cashRegister ? { cashRegister: { branchId: 1 } } : null) as never);
+        for (const roles of [['CAJERO', 'ADMIN'], ['CAJERO', 'SUPERADMIN'], ['SUPERADMIN']]) {
+            const user = { userId: 3, companyId: 5, role: roles[0], roles, branchId: 1 };
+            const res = await request(app).post('/cash-arqueo/5/preview-close').set('x-test-user', as(user))
+                .send({ endAmount: 101, bills: [], coins: [] }).expect(200);
+            expect(res.body.data.expectedAmount).toBe(100);
+            expect(res.body.data.difference).toBe(1);
+        }
     });
 });

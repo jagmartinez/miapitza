@@ -14,6 +14,9 @@ import {
 /** Roles that may close a cash shift opened by another user. */
 export const SHIFT_CLOSE_SUPERVISOR_ROLES: ReadonlySet<string> = new Set(['ADMIN', 'SUPERADMIN']);
 
+/** Amount-free message for non-admin callers: the blind count must not leak the difference. */
+const BLIND_EXCEEDS_MESSAGE = 'La diferencia excede la tolerancia. Llama a un supervisor.';
+
 export class ShiftCloseForbiddenError extends Error {
     readonly statusCode = 403;
     constructor() {
@@ -366,6 +369,7 @@ export class CashArqueoService {
             if (!(options?.forceClose && isAdminOverride)) {
                 const diffType = difference > 0 ? 'sobrante' : 'faltante';
                 const diffAmount = Math.abs(difference).toFixed(2);
+                if (!isAdminOverride) throw new CashError(BLIND_EXCEEDS_MESSAGE, 403, 'CASH_DIFF_EXCEEDS_TOLERANCE');
                 throw new CashError(
                     `No se puede cerrar el turno con ${diffType} de ${currencySymbol} ${diffAmount}. ` +
                     `La diferencia excede la tolerancia de ${currencySymbol} ${preview.tolerance.toFixed(2)}.`,
@@ -407,6 +411,7 @@ export class CashArqueoService {
             );
             if (currentSummary.requiresNote && !notes?.trim()) throw new CashError('Debe agregar una observación cuando exista diferencia dentro de tolerancia.', 400, 'CASH_NOTE_REQUIRED');
             if (currentSummary.exceedsTolerance && !(options?.forceClose && isAdminOverride)) {
+                if (!isAdminOverride) throw new CashError(BLIND_EXCEEDS_MESSAGE, 403, 'CASH_DIFF_EXCEEDS_TOLERANCE');
                 throw new CashError(`No se puede cerrar el turno: la diferencia de ${currencySymbol} ${Math.abs(currentSummary.difference).toFixed(2)} excede la tolerancia.`, 403, 'CASH_DIFF_EXCEEDS_TOLERANCE');
             }
             if (currentSummary.exceedsTolerance && !notes?.trim()) throw new CashError('El cierre forzado requiere una observación obligatoria.', 400, 'CASH_NOTE_REQUIRED');

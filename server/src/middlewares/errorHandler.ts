@@ -361,7 +361,9 @@ export const errorHandler = (
     const { message: logMessage, stack } = normalizeError(err);
 
     // Log full error server-side; stack only outside production.
-    console.error('Error:', {
+    // Expected cash-domain rejections (CASH_*, 4xx) are not server faults.
+    const logError = classified.status < 500 && classified.code?.startsWith('CASH_') ? console.warn : console.error;
+    logError('Error:', {
         message: logMessage,
         statusCode: classified.status,
         code: classified.code,

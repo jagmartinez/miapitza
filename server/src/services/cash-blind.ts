@@ -48,3 +48,19 @@ export function redactBlindDetails<T extends {
     delete reconciliation.isBalanced;
     return { ...data, amounts, reconciliation } as T;
 }
+
+/** Blind redaction of the printable report: details amounts plus the Esperado/Diferencia summary lines. */
+export function redactBlindReport<T extends {
+    shift: { status?: string };
+    amounts: object;
+    reconciliation: object;
+    report: { summary: string };
+}>(data: T, user: Viewer): T {
+    if (!isBlindCashier(user) || data.shift.status === 'CERRADO') return data;
+    const redacted = redactBlindDetails(data, user);
+    const summary = data.report.summary
+        .split('\n')
+        .filter((line) => !/^\s*(Esperado|Diferencia):/.test(line))
+        .join('\n');
+    return { ...redacted, report: { ...data.report, summary } } as T;
+}
