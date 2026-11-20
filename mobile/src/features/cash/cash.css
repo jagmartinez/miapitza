@@ -158,3 +158,172 @@
     flex-direction: column;
     gap: 8px;
 }
+
+.grow {
+    flex: 1;
+}
+
+.cash-head {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cash-warn {
+    color: var(--ready);
+}
+
+.cash-active-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr);
+    gap: 16px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.cash-left {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.cash-cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.cash-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.cash-card-amount {
+    font-size: 22px;
+}
+
+.cash-moves {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cash-move {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.cash-move-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cash-out {
+    color: var(--alert);
+}
+
+.cash-right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    align-self: start;
+}
+
+.cash-lines {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cash-lines > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.cash-lines dt {
+    color: var(--muted);
+}
+
+.cash-lines dd {
+    margin: 0;
+}
+
+.cash-expected {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.cash-expected strong {
+    font-size: 26px;
+}
+
+.cash-blind {
+    margin: 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.cash-sheet {
+    max-width: 900px;
+}
+
+.cash-sheet-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+}
+
+.cash-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.cash-sheet-actions {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+}
+
+.cash-sheet-actions .cash-main {
+    width: auto;
+    min-height: 56px;
+    font-size: 18px;
+}
+
+@media (max-height: 640px) {
+    .cash-amount {
+        font-size: 34px;
+    }
+    .cash .pay-keys .btn {
+        min-height: 44px;
+    }
+}
