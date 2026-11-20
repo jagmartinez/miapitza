@@ -468,11 +468,34 @@ export class CashShiftService {
             ? (Math.round(actualBalance * 100) - expectedBalanceCents) / 100
             : null;
 
+        // Sales by payment method for the shift's cashier and window (payments carry no shift id; cash uses the same
+        // net figure as the drawer). OTHER methods count with transfers. Not blind data: every role gets it.
+        const grouped = await prisma.payment.groupBy({
+            by: ['methodType'],
+            where: {
+                registeredById: shift.userId,
+                status: 'ACTIVE',
+                createdAt: { gte: shift.startDate, lte: shift.endDate ?? new Date() },
+                order: { companyId }
+            },
+            _sum: { amount: true },
+            _count: { _all: true }
+        });
+        const sumOf = (...types: string[]) =>
+            grouped.filter((g) => types.includes(g.methodType)).reduce((n, g) => n + Math.round(Number(g._sum.amount ?? 0) * 100), 0) / 100;
+        const salesByMethod = {
+            cash: movementSummary.totalSalesCash,
+            card: sumOf('CARD'),
+            transfer: sumOf('BANK_TRANSFER', 'OTHER'),
+            paymentCount: grouped.reduce((n, g) => n + g._count._all, 0)
+        };
+
         return {
             shift,
             summary: {
                 startAmount: Number(shift.startAmount),
                 ...movementSummary,
+                salesByMethod,
                 expectedBalance,
                 expectedAmount: expectedBalance, // Alias for frontend compatibility
                 actualBalance,
