@@ -359,7 +359,7 @@ describe('Factura tile', () => {
         const { sharePdf } = setupInvoiced([...ALL, 'invoices.view'], { invoicePdf });
         const sheet = await sheetOf(4);
         fireEvent.click(within(sheet).getByRole('button', { name: 'Factura' }));
-        expect(await within(sheet).findByRole('alert')).toHaveTextContent('No se pudo descargar la factura');
+        expect(await within(sheet).findByRole('alert')).toHaveTextContent('No se pudo abrir la factura');
         expect(sharePdf).not.toHaveBeenCalled();
         fireEvent.click(within(sheet).getByRole('button', { name: 'Factura' })); // tapping again retries
         await waitFor(() => expect(sharePdf).toHaveBeenCalledTimes(1));

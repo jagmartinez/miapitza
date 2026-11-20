@@ -496,7 +496,7 @@ export class CashArqueoService {
 
         // Same window and scope as the shift summary. A shift that vanished between the two reads has no sales to count.
         const breakdown = owner
-            ? await CashShiftService.salesBreakdown(owner, companyId, details.amounts.totalSalesCash)
+            ? await CashShiftService.salesBreakdown(owner, companyId, details.amounts.totalSalesCash, { orderTotals: true })
             : { salesByMethod: { cash: details.amounts.totalSalesCash, card: 0, transfer: 0, paymentCount: 0 }, discounts: 0, tips: 0 };
 
         return {

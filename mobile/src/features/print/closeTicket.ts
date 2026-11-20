@@ -16,7 +16,8 @@ const MAP: Record<string, string> = { '“': '"', '”': '"', '„': '"', '‘':
 
 export function ticketText(input: string): string {
     let out = '';
-    for (const ch of String(input ?? '')) {
+    // Composed form first, so a decomposed "e + accent" survives as one allowed letter.
+    for (const ch of String(input ?? '').normalize('NFC')) {
         if (KEEP.has(ch) || (ch >= ' ' && ch <= '~')) out += ch;
         else if (MAP[ch]) out += MAP[ch];
         else if (/\s/.test(ch) || ch < ' ' || ch === '\u007f') out += ' ';
@@ -29,14 +30,15 @@ export function ticketText(input: string): string {
 }
 
 /** Group thousands and always show two decimals; no locale involved, so the ticket is identical on every device. */
-const num = (v: number) => {
+const num = (value: number) => {
+    const v = Number.isFinite(value) ? value : 0; // a malformed amount prints 0.00, never NaN
     const sign = v < 0 ? '-' : '';
     const [whole, dec] = Math.abs(v).toFixed(2).split('.');
     return `${sign}${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${dec}`;
 };
 const nio = (v: number) => `C$ ${num(v)}`;
 const usd = (v: number) => `US$ ${num(v)}`;
-const whole = (v: number) => (Number.isInteger(v) ? num(v).slice(0, -3) : String(v));
+const whole = (v: number) => (Number.isInteger(v) ? num(v).slice(0, -3) : Number.isFinite(v) ? String(v) : '0');
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const stamp = (value: Date | string | null | undefined): string => {

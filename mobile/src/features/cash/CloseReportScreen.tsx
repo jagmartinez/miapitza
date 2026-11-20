@@ -179,11 +179,12 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
                         <section className="cash-right" aria-label="Arqueo">
                             <h2 className="cash-h">Arqueo</h2>
                             <dl className="cash-lines">
-                                <Line label="Córdobas" value={money(v.nioCounted)} />
-                                <Line label={`Dólares US$ ${v.usd}${v.rate != null ? ` · TC ${v.rate}` : ''}`} value={money(v.usdInNio)} />
+                                {v.bills.length + v.coins.length > 0 && <Line label="Córdobas" value={money(v.nioCounted)} />}
+                                {v.usdBills.length > 0 && <Line label={`Dólares US$ ${v.usd}${v.rate != null ? ` · TC ${v.rate}` : ''}`} value={money(v.usdInNio)} />}
                                 <Line label="Contado" value={dash(v.counted)} strong />
                                 <Line label="Diferencia" value={signed(v.difference)} />
                             </dl>
+                            {!v.hasBreakdown && <p className="muted cash-note">Sin desglose de denominaciones.</p>}
                             {v.notes && <p className="muted cash-note">{`Nota: ${v.notes}`}</p>}
                         </section>
                     </div>

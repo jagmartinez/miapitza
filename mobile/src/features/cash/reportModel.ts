@@ -21,6 +21,8 @@ export interface ReportView {
     bills: CountLine[];
     coins: CountLine[];
     usdBills: CountLine[];
+    /** The close saved a denomination count. Without one (force close, close with only the total) nothing can be split into córdobas and dólares. */
+    hasBreakdown: boolean;
     nioCounted: number;
     usd: number;
     usdInNio: number;
@@ -51,7 +53,7 @@ export function reportView(report: ShiftReport): ReportView {
     const nioCents = cents(sumLines(bills) + sumLines(coins));
     const usd = sumLines(usdBills);
     // Like the count screen: the part of the counted total that is not córdobas is the dollars at the day's rate.
-    const usdInNio = counted == null ? 0 : (cents(counted) - nioCents) / 100;
+    const usdInNio = counted == null || usdBills.length === 0 ? 0 : (cents(counted) - nioCents) / 100;
     return {
         register: report.shift.cashRegister ?? 'Caja',
         shiftNo: typeof report.shift.id === 'number' ? report.shift.id : null,
@@ -71,6 +73,7 @@ export function reportView(report: ShiftReport): ReportView {
         bills,
         coins,
         usdBills,
+        hasBreakdown: bills.length + coins.length + usdBills.length > 0,
         nioCounted: nioCents / 100,
         usd,
         usdInNio,

@@ -76,7 +76,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
         try {
             await onInvoicePdf(order);
         } catch {
-            setInvoiceError('No se pudo descargar la factura. Toca Factura para reintentar.');
+            setInvoiceError('No se pudo abrir la factura. Toca Factura para reintentar.');
         } finally {
             invoiceRef.current = false;
             setInvoiceBusy(false);
@@ -132,7 +132,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
                     )}
                     {canInvoice && (
                         <button type="button" className="btn action-tile" disabled={!online || invoiceBusy} onClick={() => void openInvoice()}>
-                            <span>Factura</span>
+                            <span>{invoiceBusy ? 'Abriendo…' : 'Factura'}</span>
                             {!online && <small className="muted">requiere conexión</small>}
                         </button>
                     )}

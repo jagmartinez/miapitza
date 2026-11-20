@@ -9,6 +9,13 @@ describe('CashArqueoService.generateShiftReport carries note, sales by method, d
         jest.restoreAllMocks();
     });
 
+    const inWindow = new Date('2026-11-20T20:00:00Z');
+    const lastPayments = [
+        { orderId: 1, _max: { createdAt: inWindow } },
+        { orderId: 2, _max: { createdAt: inWindow } },
+        { orderId: 3, _max: { createdAt: inWindow } }
+    ];
+
     function arrange(status: 'CERRADO' | 'ABIERTO') {
         const endDate = status === 'CERRADO' ? new Date('2026-11-20T22:00:00Z') : null;
         jest.spyOn(CashArqueoService, 'getShiftDetails').mockResolvedValue({
@@ -25,6 +32,7 @@ describe('CashArqueoService.generateShiftReport carries note, sales by method, d
             endDate,
             cashRegister: { branchId: 5, branch: { name: 'Centro', address: null, phone: null, company: { name: 'Mia Pitza', ruc: 'J1' } } }
         } as never);
+        jest.spyOn(prisma.payment, 'groupBy').mockResolvedValue(lastPayments as never);
         return jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([
             { orderId: 1, methodType: 'CASH', amount: 80, order: { discount: 10, tipAmount: 5 } },
             { orderId: 2, methodType: 'CARD', amount: 30.25, order: { discount: 0, tipAmount: 3.5 } },
@@ -50,6 +58,36 @@ describe('CashArqueoService.generateShiftReport carries note, sales by method, d
             order: { companyId: 2, branchId: 5 }
         });
         expect(report.header.companyName).toBe('Mia Pitza');
+    });
+
+    it('counts an order discount and tip once: in the shift that holds its LAST active payment', async () => {
+        const findMany = arrange('CERRADO');
+        findMany.mockResolvedValue([
+            { orderId: 1, methodType: 'CASH', amount: 80, order: { discount: 10, tipAmount: 5 } },
+            // order 4 was paid half in this shift and half in the next one: its discount and tip belong to the next shift
+            { orderId: 4, methodType: 'CARD', amount: 50, order: { discount: 20, tipAmount: 7 } }
+        ] as never);
+        (prisma.payment.groupBy as jest.Mock).mockResolvedValue([
+            { orderId: 1, _max: { createdAt: inWindow } },
+            { orderId: 4, _max: { createdAt: new Date('2026-11-20T22:30:00Z') } }
+        ] as never);
+        const report = await CashArqueoService.generateShiftReport(9, 2);
+        expect(report.discounts).toBe(10);
+        expect(report.tips).toBe(5);
+        // the money itself is still this shift's
+        expect(report.salesByMethod).toEqual({ cash: 80, card: 50, transfer: 0, paymentCount: 2 });
+        const where = ((prisma.payment.groupBy as jest.Mock).mock.calls[0][0] as { where: Record<string, unknown> }).where;
+        expect(where).toMatchObject({ orderId: { in: [1, 4] }, status: 'ACTIVE' });
+
+        // the next shift (window starts at 22:00) holds the last payment of order 4
+        jest.spyOn(prisma.cashShift, 'findFirst').mockResolvedValue({
+            userId: 3, startDate: new Date('2026-11-20T22:00:00Z'), endDate: null,
+            cashRegister: { branchId: 5, branch: { name: 'Centro', address: null, phone: null, company: { name: 'Mia Pitza', ruc: 'J1' } } }
+        } as never);
+        findMany.mockResolvedValue([{ orderId: 4, methodType: 'CARD', amount: 50, order: { discount: 20, tipAmount: 7 } }] as never);
+        const next = await CashArqueoService.generateShiftReport(10, 2);
+        expect(next.discounts).toBe(20);
+        expect(next.tips).toBe(7);
     });
 
     it('stays out of the blind redaction: sales are not blind data', async () => {

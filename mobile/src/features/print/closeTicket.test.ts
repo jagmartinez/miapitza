@@ -56,6 +56,12 @@ describe('closeTicket', () => {
         expect(text).toMatch(/TOTAL VENTAS +C\$ 2,000\.00/);
     });
 
+    it('keeps decomposed accents and never prints NaN', () => {
+        expect(ticketText('José ñ')).toBe('José ñ');
+        const text = closeTicket(reportOf({ amounts: { startAmount: NaN, totalSalesCash: NaN } }), opts);
+        expect(text).not.toMatch(/NaN|undefined/);
+    });
+
     it('keeps only printable ASCII plus the Spanish letters (policy)', () => {
         expect(ticketText('Ñandú “Café” – ✓ Zürich 😀\tok')).toBe('Ñandú "Café" - ? Zurich ? ok');
         const text = closeTicket(reportOf({ shift: { user: 'Ana 🍕 Müller' } }), opts);

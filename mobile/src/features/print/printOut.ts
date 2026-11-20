@@ -35,6 +35,20 @@ function toBase64(blob: Blob): Promise<string> {
     });
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Fiscal PDFs carry customer data: do not leave them in the cache. Best effort; removes the .pdf files older than a day. */
+async function clearOldPdfs(fs: unknown, directory: unknown, keep: string) {
+    const api = fs as { readdir(o: { path: string; directory: unknown }): Promise<{ files: { name: string; mtime?: number }[] }>; deleteFile(o: { path: string; directory: unknown }): Promise<void> };
+    try {
+        const { files } = await api.readdir({ path: '', directory });
+        const old = files.filter((f) => f.name !== keep && /\.pdf$/i.test(f.name) && typeof f.mtime === 'number' && Date.now() - f.mtime > DAY_MS);
+        await Promise.all(old.map((f) => api.deleteFile({ path: f.name, directory }).catch(() => undefined)));
+    } catch {
+        // the cache is the OS's to clear anyway
+    }
+}
+
 /** A file name the file system accepts. */
 const safeName = (name: string) => name.replace(/[^\w.\-]+/g, '_') || 'documento.pdf';
 
@@ -53,6 +67,7 @@ export const printOut: PrintOut = {
     async sharePdf(blob, name) {
         const [{ Filesystem, Directory }, { Share }] = await Promise.all([import('@capacitor/filesystem'), import('@capacitor/share')]);
         const file = safeName(name);
+        await clearOldPdfs(Filesystem, Directory.Cache, file);
         const { uri } = await Filesystem.writeFile({ path: file, data: await toBase64(blob), directory: Directory.Cache });
         try {
             await Share.share({ title: file, url: uri, dialogTitle: 'Enviar' });

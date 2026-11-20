@@ -137,6 +137,7 @@ describe('report header', () => {
         }) as never);
         jest.spyOn(prisma.cashCount, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.payment, 'groupBy').mockResolvedValue([] as never);
         jest.spyOn(SettingService, 'getCurrencySymbol').mockResolvedValue('C$' as never);
         const res = await request(app).get('/cash-arqueo/5/report').set('x-test-user', as(cajero)).expect(200);
         expect(res.body.data.header).toEqual({

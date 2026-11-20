@@ -447,7 +447,8 @@ export class CashShiftService {
     static async salesBreakdown(
         shift: { userId: number; startDate: Date; endDate: Date | null; cashRegister: { branchId: number } },
         companyId: number,
-        cashSales: number
+        cashSales: number,
+        opts: { orderTotals?: boolean } = {}
     ) {
         const payments = await prisma.payment.findMany({
             where: {
@@ -469,7 +470,24 @@ export class CashShiftService {
                 });
             }
         }
-        const totalOf = (key: 'discount' | 'tip') => [...orders.values()].reduce((n, o) => n + o[key], 0) / 100;
+        // An order's discount and tip are counted once, in the shift whose window holds the order's LAST active payment
+        // (by any cashier): a bill paid across two shifts is not counted in both. Only the report asks for these totals.
+        let counted = [...orders.values()];
+        if (opts.orderTotals && orders.size > 0) {
+            const last = await prisma.payment.groupBy({
+                by: ['orderId'],
+                where: { orderId: { in: [...orders.keys()] }, status: 'ACTIVE' },
+                _max: { createdAt: true }
+            });
+            counted = last
+                .filter((row) => {
+                    const at = row._max.createdAt;
+                    return !!at && at >= shift.startDate && (shift.endDate ? at < shift.endDate : true);
+                })
+                .map((row) => orders.get(row.orderId))
+                .filter((o): o is { discount: number; tip: number } => !!o);
+        }
+        const totalOf = (key: 'discount' | 'tip') => counted.reduce((n, o) => n + o[key], 0) / 100;
         return {
             salesByMethod: {
                 cash: cashSales,

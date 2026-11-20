@@ -47,6 +47,16 @@ describe('CloseReportScreen', () => {
         expect(screen.getByRole('list', { name: 'Dólares contados' })).toHaveTextContent('US$ 20 × 2');
     });
 
+    it('a close without denomination breakdown shows the counted total only, never a dollar split', async () => {
+        const base = reportOf();
+        setup({ report: { ...base, counts: { bills: [], coins: [], usdBills: [] } } });
+        const arqueo = await screen.findByRole('region', { name: 'Arqueo' });
+        expect(arqueo).toHaveTextContent('Sin desglose de denominaciones');
+        expect(arqueo).toHaveTextContent('Contado');
+        expect(arqueo).not.toHaveTextContent('Dólares');
+        expect(arqueo).not.toHaveTextContent('Córdobas');
+    });
+
     it('shows Faltante and Cuadrado tags', async () => {
         setup({ report: reportOf({ amounts: { actualEndAmount: 2415.5, difference: -5 } }) });
         expect(await screen.findByTestId('result-tag')).toHaveTextContent('Faltante C$ 5');
