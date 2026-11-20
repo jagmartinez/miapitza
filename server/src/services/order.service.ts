@@ -1241,8 +1241,8 @@ export class OrderService {
         if (!hasQuantity && !hasNotes) {
             throw new Error('Indique la cantidad o las notas a modificar');
         }
-        if (hasQuantity && (typeof data.quantity !== 'number' || !Number.isInteger(data.quantity) || data.quantity < 1)) {
-            throw new Error('La cantidad debe ser un entero mayor a 0');
+        if (hasQuantity && (typeof data.quantity !== 'number' || !Number.isInteger(data.quantity) || data.quantity < 1 || data.quantity > 999)) {
+            throw new Error('La cantidad debe ser un entero entre 1 y 999');
         }
         if (hasNotes && data.notes !== null && (typeof data.notes !== 'string' || data.notes.length > 200)) {
             throw new Error('Las notas no pueden superar 200 caracteres');
@@ -1287,6 +1287,24 @@ export class OrderService {
             }
             if (item.voidedAt) {
                 throw new Error('La línea fue anulada y no se puede editar');
+            }
+
+            // Asking for more of a dish that went inactive / lost its recipe
+            // since it was added must fail like addItem would.
+            if (hasQuantity && (data.quantity as number) > item.quantity) {
+                const menuItem = await tx.menuItem.findFirst({
+                    where: {
+                        id: item.menuItemId,
+                        companyId,
+                        active: true,
+                        OR: [{ branchId: null }, { branchId: item.order.branchId }]
+                    },
+                    include: { _count: { select: { recipes: true } } }
+                });
+                if (!menuItem) {
+                    throw new Error('Elemento de menú no encontrado, inactivo o no disponible en la sucursal');
+                }
+                this.assertMenuItemSellable(menuItem);
             }
 
             const lineData: Prisma.OrderItemUpdateInput = {};
@@ -1360,6 +1378,9 @@ export class OrderService {
                     .filter((l) => l.status === 'DONE' && !l.voidedAt && l.quantity > 0 && !l.deliveredAt)
                     .map((l) => l.id)
             );
+            const alreadyDelivered = new Set(
+                lines.filter((l) => !l.voidedAt && l.quantity > 0 && l.deliveredAt).map((l) => l.id)
+            );
             const toDeliver = ids.filter((id) => deliverable.has(id));
             if (toDeliver.length > 0) {
                 // The where repeats the eligibility guards so a concurrent
@@ -1371,7 +1392,10 @@ export class OrderService {
             }
             return {
                 delivered: toDeliver,
-                skipped: ids.filter((id) => !deliverable.has(id))
+                // Delivered on an earlier call: lets a replay tell this apart from "not ready".
+                alreadyDelivered: ids.filter((id) => alreadyDelivered.has(id)),
+                // Not eligible: unknown, not DONE yet, voided.
+                skipped: ids.filter((id) => !deliverable.has(id) && !alreadyDelivered.has(id))
             };
         });
     }
@@ -1619,6 +1643,8 @@ export class OrderService {
                         sentAt: item.sentAt,
                         startedAt: item.startedAt,
                         finishedAt: item.finishedAt,
+                        deliveredAt: item.deliveredAt,
+                        deliveredById: item.deliveredById,
                         originOrderId: item.originOrderId,
                         originTableId: item.originTableId,
                         voidedFromItemId: item.id,

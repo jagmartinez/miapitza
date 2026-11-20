@@ -57,7 +57,7 @@ export const addOrderItem: ValidationSchema = {
 export const updateOrderItem: ValidationSchema = {
     params: { itemId: { type: 'number', required: true, min: 1 } },
     body: {
-        quantity: { type: 'number', min: 1, integer: true },
+        quantity: { type: 'number', min: 1, max: 999, integer: true },
         notes: { type: 'string', max: 200 },
     },
 };

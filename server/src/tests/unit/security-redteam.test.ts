@@ -148,6 +148,45 @@ describe('red-team session enforcement', () => {
         expect(next).not.toHaveBeenCalled();
     });
 
+    it('keeps the mustChangePassword gate (fail closed) when the device-session lookup fails', async () => {
+        jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 5 } as never);
+        jest.spyOn(SessionService, 'isValid').mockResolvedValue(true);
+        jest.spyOn(SessionService, 'deviceOf').mockRejectedValue(new Error('database unavailable'));
+        jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+            id: 5,
+            branchId: 2,
+            companyId: 3,
+            role: { name: 'ADMIN' },
+            userRoles: [],
+            status: 'ACTIVE',
+            mustChangePassword: true,
+            passwordChangedAt: null,
+            company: { active: true },
+            branch: { status: 'ACTIVE' },
+            allowedBranches: []
+        } as never);
+        const status = jest.fn().mockReturnThis();
+        const json = jest.fn();
+        const req = {
+            headers: { authorization: 'Bearer tracked-token' },
+            originalUrl: '/api/orders'
+        } as unknown as Request;
+        const res = { status, json } as unknown as Response;
+        const next = jest.fn() as unknown as jest.MockedFunction<NextFunction>;
+        const oldSecret = process.env.JWT_SECRET;
+        process.env.JWT_SECRET = 'red-team-test-secret';
+        try {
+            await auth(req, res, next);
+        } finally {
+            if (oldSecret === undefined) delete process.env.JWT_SECRET;
+            else process.env.JWT_SECRET = oldSecret;
+        }
+
+        expect(status).toHaveBeenCalledWith(403);
+        expect(json).toHaveBeenCalledWith(expect.objectContaining({ code: 'PASSWORD_CHANGE_REQUIRED' }));
+        expect(next).not.toHaveBeenCalled();
+    });
+
     it('drops a long-lived socket after its tracked session is revoked', async () => {
         jest.spyOn(SessionService, 'isHashValid').mockResolvedValue(false);
         jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({

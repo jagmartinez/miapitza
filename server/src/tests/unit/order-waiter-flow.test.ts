@@ -106,7 +106,7 @@ describe('OrderService.setGuests', () => {
 });
 
 // -- PATCH items/:itemId -----------------------------------------------------
-function updateTx(over: { item?: Row | null; order?: Row; subtotals?: number[] } = {}) {
+function updateTx(over: { item?: Row | null; order?: Row; subtotals?: number[]; menuItem?: Row | null } = {}) {
     const order = {
         id: 41, companyId: 1, branchId: 3, status: 'OPEN', invoiceNumber: null, preInvoicedAt: null,
         discount: 0, discountCode: null, tipAmount: 0, payments: [], ...over.order,
@@ -127,6 +127,7 @@ function updateTx(over: { item?: Row | null; order?: Row; subtotals?: number[] }
         kitchenBatch: { count: jest.fn(async () => 0) },
         setting: taxSettings(),
         promotion: { findFirst: jest.fn(async () => null) },
+        menuItem: { findFirst: jest.fn(async (_a: unknown) => over.menuItem === undefined ? { id: 3, name: 'Plato', type: 'DIRECT', _count: { recipes: 0 } } : over.menuItem) },
     };
 }
 
@@ -177,12 +178,30 @@ describe('OrderService.updateItem', () => {
         expect(tx.orderItem.update).not.toHaveBeenCalled();
     });
 
+    it('raising quantity rechecks the menu item is still sellable; lowering does not', async () => {
+        const inactive = updateTx({ menuItem: null });
+        useTx(inactive);
+        await expect(OrderService.updateItem(10, 1, 3, { quantity: 2 })).rejects.toThrow(/inactivo|no encontrado/i);
+        expect(inactive.orderItem.update).not.toHaveBeenCalled();
+
+        const noRecipe = updateTx({ menuItem: { id: 3, name: 'Lomo', type: 'PREPARED', _count: { recipes: 0 } } });
+        useTx(noRecipe);
+        await expect(OrderService.updateItem(10, 1, 3, { quantity: 2 })).rejects.toThrow(/receta/i);
+
+        const lower = updateTx({ item: { id: 10, orderId: 41, menuItemId: 3, quantity: 3, price: 12.5, subtotal: 37.5, sentAt: null, voidedAt: null }, menuItem: null });
+        useTx(lower);
+        await OrderService.updateItem(10, 1, 3, { quantity: 2 });
+        expect(lower.menuItem.findFirst).not.toHaveBeenCalled();
+        expect(lower.orderItem.update).toHaveBeenCalled();
+    });
+
     it('update validates input', async () => {
         const tx = updateTx();
         useTx(tx);
         await expect(OrderService.updateItem(10, 1, 3, {})).rejects.toThrow(/cantidad|notas/i);
         await expect(OrderService.updateItem(10, 1, 3, { quantity: 0 })).rejects.toThrow(/cantidad/i);
         await expect(OrderService.updateItem(10, 1, 3, { quantity: 1.5 })).rejects.toThrow(/cantidad/i);
+        await expect(OrderService.updateItem(10, 1, 3, { quantity: 1000 })).rejects.toThrow(/cantidad/i);
         await expect(OrderService.updateItem(10, 1, 3, { notes: 'x'.repeat(201) })).rejects.toThrow(/200/);
         expect(tx.orderItem.update).not.toHaveBeenCalled();
     });
@@ -227,7 +246,8 @@ describe('OrderService.deliverItems', () => {
 
         const first = await OrderService.deliverItems(41, 1, 8, [1, 2, 3, 4, 999]);
         expect(first.delivered).toEqual([1]);
-        expect([...first.skipped].sort((a, b) => a - b)).toEqual([2, 3, 4, 999]);
+        expect([...first.skipped].sort((a, b) => a - b)).toEqual([2, 3, 999]);
+        expect(first.alreadyDelivered).toEqual([4]);
         expect(tx.orderItem.updateMany).toHaveBeenCalledTimes(1);
         expect(tx.orderItem.updateMany).toHaveBeenCalledWith({
             where: { id: { in: [1] }, orderId: 41, status: 'DONE', voidedAt: null, deliveredAt: null },
@@ -239,7 +259,8 @@ describe('OrderService.deliverItems', () => {
         useTx(replayTx);
         const second = await OrderService.deliverItems(41, 1, 8, [1, 2, 3, 4, 999]);
         expect(second.delivered).toEqual([]);
-        expect([...second.skipped].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 999]);
+        expect([...second.skipped].sort((a, b) => a - b)).toEqual([2, 3, 999]);
+        expect([...second.alreadyDelivered].sort((a, b) => a - b)).toEqual([1, 4]);
         expect(replayTx.orderItem.updateMany).not.toHaveBeenCalled();
     });
 
@@ -250,7 +271,7 @@ describe('OrderService.deliverItems', () => {
         ]);
         useTx(tx);
         const result = await OrderService.deliverItems(41, 1, 8, [5, 6]);
-        expect(result).toEqual({ delivered: [], skipped: [5, 6] });
+        expect(result).toEqual({ delivered: [], alreadyDelivered: [], skipped: [5, 6] });
         expect(tx.orderItem.updateMany).not.toHaveBeenCalled();
     });
 
@@ -258,7 +279,7 @@ describe('OrderService.deliverItems', () => {
         const tx = deliverTx([line(1)]);
         useTx(tx);
         const result = await OrderService.deliverItems(41, 1, 8, [1, 1, 1]);
-        expect(result).toEqual({ delivered: [1], skipped: [] });
+        expect(result).toEqual({ delivered: [1], alreadyDelivered: [], skipped: [] });
         expect(tx.orderItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: { in: [1] }, orderId: 41 },
         }));
@@ -373,12 +394,12 @@ describe('order WS events', () => {
         jest.spyOn(OrderService, 'getById').mockResolvedValue(fullOrder as never);
         const deliver = jest.spyOn(OrderService, 'deliverItems');
         const res1 = mockRes();
-        deliver.mockResolvedValueOnce({ delivered: [1], skipped: [2] });
+        deliver.mockResolvedValueOnce({ delivered: [1], alreadyDelivered: [], skipped: [2] });
         await OrderController.deliverItems(reqFor({ params: { id: '41' }, body: { itemIds: [1, 2] } }), res1, jest.fn());
         expect((res1 as unknown as { json: jest.Mock }).json).toHaveBeenCalledWith(expect.objectContaining({
-            success: true, data: { delivered: [1], skipped: [2] },
+            success: true, data: { delivered: [1], alreadyDelivered: [], skipped: [2] },
         }));
-        deliver.mockResolvedValueOnce({ delivered: [], skipped: [1, 2] });
+        deliver.mockResolvedValueOnce({ delivered: [], alreadyDelivered: [], skipped: [1, 2] });
         await OrderController.deliverItems(reqFor({ params: { id: '41' }, body: { itemIds: [1, 2] } }), mockRes(), jest.fn());
 
         expect(deliver).toHaveBeenCalledWith(41, 1, 8, [1, 2]);
@@ -438,5 +459,23 @@ describe('order routes', () => {
         expect(firstMatch('post', '/41/items')).toBe('/:id/items');
         expect(firstMatch('post', '/41/items/10/void')).toBe('/:id/items/:itemId/void');
         expect(firstMatch('patch', '/41/items/10/start')).toBe('/:id/items/:itemId/start');
+    });
+});
+
+// -- copies of OrderItem rows must keep the delivery stamp --------------------
+describe('OrderItem row copies keep deliveredAt/deliveredById', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('node:fs') as typeof import('node:fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('node:path') as typeof import('node:path');
+    const src = (f: string) => fs.readFileSync(path.resolve(__dirname, '../../services', f), 'utf8');
+
+    it.each([
+        ['table-account.service.ts', 'partial table transfer'],
+        ['order.service.ts', 'void split'],
+    ])('%s (%s) copies the delivery stamp next to finishedAt', (file) => {
+        const text = src(file);
+        expect(text).toContain("finishedAt: item.finishedAt,");
+        expect(text).toMatch(/finishedAt: item\.finishedAt,\s*deliveredAt: item\.deliveredAt,\s*deliveredById: item\.deliveredById,/);
     });
 });

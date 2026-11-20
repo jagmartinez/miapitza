@@ -90,6 +90,7 @@ describe('OperationalDeviceService', () => {
             .mockResolvedValue({ id: 7, companyId: 5, status: 'ACTIVE' } as never);
         jest.spyOn(prisma.operationalDevice, 'updateMany').mockResolvedValue({ count: 1 } as never);
         jest.spyOn(prisma.auditLog, 'create').mockResolvedValue({} as never);
+        jest.spyOn(prisma.userSession, 'findMany').mockResolvedValue([] as never);
         const sessions = jest.spyOn(prisma.userSession, 'updateMany').mockResolvedValue({ count: 2 } as never);
 
         await OperationalDeviceService.revoke(actor, 7);

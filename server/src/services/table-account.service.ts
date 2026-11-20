@@ -1038,6 +1038,8 @@ export class TableAccountService {
                             sentAt: item.sentAt,
                             startedAt: item.startedAt,
                             finishedAt: item.finishedAt,
+                            deliveredAt: item.deliveredAt,
+                            deliveredById: item.deliveredById,
                             originOrderId: item.originOrderId ?? order.id,
                             originTableId: item.originTableId ?? sourceTableId,
                             modifiers: {

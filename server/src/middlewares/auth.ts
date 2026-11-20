@@ -185,7 +185,8 @@ export const auth = async (
         // (+ PIN), not the password, so the password gate does not apply to them.
         // Setting a PIN stays gated even there.
         if (passwordChangeRequired && !PIN_SETUP_PATH.test(req.originalUrl.split('?')[0])) {
-            const sessionDevice = await SessionService.deviceOf(token);
+            // Fail closed: if the lookup throws or finds nothing, the gate stays.
+            const sessionDevice = await SessionService.deviceOf(token).catch(() => null);
             if (SessionService.isDeviceTag(sessionDevice)) {
                 passwordChangeRequired = false;
             }
