@@ -7,9 +7,11 @@ import type { Drafts } from '../../../data/drafts';
 import type { OfflineQueue } from '../../../data/offlineQueue';
 import { OfflineIndicator } from '../../../data/OfflineIndicator';
 import { ownerKeyOf } from '../../../data/types';
+import { isOnline } from '../../../data/useOnline';
 import type { OrderRef, WaiterApi } from '../../../data/waiterApi';
 import type { OrderIntent } from '../tables/TablesScreen';
 import { CategoryRail } from './CategoryRail';
+import { FullTicketScreen } from './FullTicketScreen';
 import { ModifierSheet, type ModifierChoice } from './ModifierSheet';
 import { ProductGrid } from './ProductGrid';
 import { TicketPanel } from './TicketPanel';
@@ -29,6 +31,7 @@ import {
 } from './orderModel';
 import { useOrderDraft } from './useOrderDraft';
 import './order.css';
+import './ticket.css';
 import '../tables/sheets.css';
 
 export type OrderApi = Pick<
@@ -86,9 +89,13 @@ export function OrderScreen(props: OrderScreenProps) {
     const alive = useRef(true);
     const seq = useRef(0);
     const payHandled = useRef(false);
+    const busyRef = useRef(false);
+    const [busy, setBusy] = useState(false);
+    const [full, setFull] = useState(false);
 
     const tableId = props.tableId ?? (typeof order?.tableId === 'number' ? order.tableId : (order?.table?.id ?? null));
     const canEdit = can(user, 'orders.edit');
+    const canDeliver = can(user, 'orders.deliver');
 
     // ---- order ----
     const loadOrder = useCallback(async () => {
@@ -234,6 +241,42 @@ export function OrderScreen(props: OrderScreenProps) {
         }
     }, [intent, order, onPay, user]);
 
+    /** One server mutation at a time (deliver, edit an unsent server line): a double tap never repeats it. */
+    const run = async (action: () => Promise<unknown>, needsConnection: string) => {
+        if (busyRef.current) return;
+        if (!isOnline()) {
+            setNotice(needsConnection);
+            return;
+        }
+        busyRef.current = true;
+        setBusy(true);
+        setNotice(null);
+        try {
+            await action();
+            await loadOrder();
+        } catch (cause) {
+            const notSynced = cause instanceof Error && cause.name === 'OrderNotSyncedError';
+            setNotice(notSynced ? `${needsConnection} El pedido aún se está sincronizando.` : getApiErrorMessage(cause));
+        } finally {
+            busyRef.current = false;
+            setBusy(false);
+        }
+    };
+    const deliver = (ids: number[]) => void run(() => api.deliverItems(orderId, ids), 'Entregar requiere conexión.');
+    const editConn = 'Editar el pedido requiere conexión.';
+    const serverQuantity = (l: ServerLine, q: number) => void run(() => (q <= 0 ? api.removeItem(l.id) : api.updateItem(l.id, { quantity: q })), editConn);
+    const serverNote = (l: ServerLine, note: string) => void run(() => api.updateItem(l.id, { notes: note.trim() }), editConn);
+    const serverRemove = (l: ServerLine) => void run(() => api.removeItem(l.id), editConn);
+
+    const actions = {
+        canPay: can(user, 'payments.process'),
+        canSplit: can(user, 'bills.split'),
+        canDiscount: can(user, 'orders.discount.apply'),
+        onPay,
+        onSplit,
+        onDiscount,
+        onMore,
+    };
     const productCount = sumQuantity(serverLines) + draft.count;
     const sentTotal = Number(order?.total) || 0;
     const elapsed = order?.createdAt ? `${minutesSince(order.createdAt, now)} min` : '';
@@ -275,25 +318,42 @@ export function OrderScreen(props: OrderScreenProps) {
                     drafts={draft.lines}
                     highlightKey={draft.highlightKey}
                     serverLines={serverLines}
+                    now={now}
                     total={sentTotal + draft.total}
                     sendCount={draft.sendCount}
                     sending={draft.sending}
                     error={draft.error}
                     canEdit={canEdit}
+                    canDeliver={canDeliver}
+                    busy={busy}
                     onQuantity={draft.setQuantity}
+                    onDraftNote={draft.setNote}
+                    onServerQuantity={serverQuantity}
+                    onServerNote={serverNote}
+                    onServerRemove={serverRemove}
+                    onDeliver={deliver}
                     onSend={() => void draft.send()}
-                    actions={{
-                        canSend: canEdit,
-                        canPay: can(user, 'payments.process'),
-                        canSplit: can(user, 'bills.split'),
-                        canDiscount: can(user, 'orders.discount.apply'),
-                        onPay,
-                        onSplit,
-                        onDiscount,
-                        onMore,
-                    }}
+                    onOpenFull={() => setFull(true)}
+                    actions={actions}
                 />
             </div>
+            {full && (
+                <FullTicketScreen
+                    title={`${tableLabel}${guests != null ? ` · ${guests} pers` : ''}`}
+                    drafts={draft.lines}
+                    serverLines={serverLines}
+                    canEdit={canEdit}
+                    canDeliver={canDeliver}
+                    busy={busy}
+                    sendCount={draft.sendCount}
+                    sending={draft.sending}
+                    error={draft.error ?? notice}
+                    actions={actions}
+                    onDeliver={deliver}
+                    onSend={() => void draft.send()}
+                    onBack={() => setFull(false)}
+                />
+            )}
             {sheet && <ModifierSheet product={sheet.product} groups={sheet.groups} onConfirm={confirmSheet} onClose={() => setSheet(null)} />}
         </main>
     );

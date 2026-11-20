@@ -1,9 +1,12 @@
-import type { ReactNode } from 'react';
-import { money, type LineState, type ServerLine } from './orderModel';
+import { useMemo, useState } from 'react';
+import { Sheet } from '../tables/Sheet';
+import { ReadyCard } from './ReadyCard';
+import { TicketList, type ListRow } from './TicketList';
+import { EXPANDED_HEIGHT, ROW_HEIGHT, TicketRow } from './TicketRow';
+import { money, sumQuantity, type LineState, type ServerLine } from './orderModel';
 import type { DraftTicketLine } from './useOrderDraft';
 
 export interface TicketActions {
-    canSend: boolean;
     onPay?: () => void;
     onSplit?: () => void;
     onDiscount?: () => void;
@@ -18,22 +21,34 @@ export interface TicketPanelProps {
     subtitle: string;
     drafts: DraftTicketLine[];
     highlightKey: string | null;
-    /** Sent or unsent lines already on the server. */
+    /** Everything the server holds for the order (unsent and sent). */
     serverLines: ServerLine[];
+    now: number;
     total: number;
     sendCount: number;
     sending: boolean;
     error: string | null;
     canEdit: boolean;
+    canDeliver: boolean;
+    /** A mutation (deliver, edit a server line) is in flight. */
+    busy: boolean;
     actions: TicketActions;
     onQuantity: (key: string, quantity: number) => void;
+    onDraftNote: (key: string, note: string) => void;
+    onServerQuantity: (line: ServerLine, quantity: number) => void;
+    onServerNote: (line: ServerLine, note: string) => void;
+    onServerRemove: (line: ServerLine) => void;
+    onDeliver: (itemIds: number[]) => void;
     onSend: () => void;
-    children?: ReactNode;
+    onOpenFull: () => void;
 }
 
-const STATE_LABEL: Record<LineState, string> = { new: 'Sin enviar', preparing: 'En preparación', ready: 'Listo', delivered: 'Entregado' };
+export const STATE_LABEL: Record<Exclude<LineState, 'new'>, string> = { ready: 'Listo', preparing: 'En preparación', delivered: 'Entregado' };
 
-export function Footer({ total, sendCount, sending, canEdit, actions, onSend }: Pick<TicketPanelProps, 'total' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>) {
+type FooterProps = Pick<TicketPanelProps, 'total' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>;
+
+/** Pinned footer: total, "Enviar a cocina · N" and the secondary actions. Never scrolls with the list. */
+export function TicketFooter({ total, sendCount, sending, canEdit, actions, onSend }: FooterProps) {
     return (
         <footer className="ticket-foot">
             <div className="ticket-total">
@@ -71,79 +86,151 @@ export function Footer({ total, sendCount, sending, canEdit, actions, onSend }: 
     );
 }
 
+type NoteTarget = { kind: 'draft'; key: string; initial: string } | { kind: 'server'; line: ServerLine; initial: string };
+
+export function NoteSheet({ initial, onSave, onClose }: { initial: string; onSave: (note: string) => void; onClose: () => void }) {
+    const [text, setText] = useState(initial);
+    return (
+        <Sheet label="Nota" onClose={onClose}>
+            <h2 className="sheet-title">Nota</h2>
+            <label className="field">
+                Nota
+                <input value={text} maxLength={200} autoFocus placeholder="Ej. sin cebolla" onChange={(e) => setText(e.target.value)} />
+            </label>
+            <button type="button" className="btn btn-primary sheet-main" onClick={() => onSave(text)}>
+                Guardar nota
+            </button>
+        </Sheet>
+    );
+}
+
+const subOf = (modifiers: string[], notes: string) => [...modifiers, notes].filter(Boolean).join(' · ');
+
 export function TicketPanel(props: TicketPanelProps) {
-    const { title, subtitle, drafts, highlightKey, serverLines, error, canEdit, onQuantity } = props;
-    const unsent = serverLines.filter((l) => l.state === 'new');
-    const sent = serverLines.filter((l) => l.state !== 'new');
+    const { title, subtitle, drafts, highlightKey, serverLines, now, error, canEdit, canDeliver, busy } = props;
+    const [expanded, setExpanded] = useState<string | null>(null); // one row open at a time
+    const [noteFor, setNoteFor] = useState<NoteTarget | null>(null);
+
+    const unsent = useMemo(() => serverLines.filter((l) => l.state === 'new'), [serverLines]);
+    const sent = useMemo(() => serverLines.filter((l) => l.state !== 'new'), [serverLines]);
+    const ready = useMemo(() => sent.filter((l) => l.state === 'ready'), [sent]);
+
+    const rows = useMemo<ListRow[]>(() => {
+        const out: ListRow[] = [];
+        const toggle = (key: string) => setExpanded((cur) => (cur === key ? null : key));
+        if (drafts.length + unsent.length > 0) {
+            out.push({ key: 'h-new', height: 32, node: <h3 className="ticket-section">Nuevo · sin enviar</h3> });
+        }
+        for (const l of drafts) {
+            const key = `d:${l.key}`;
+            const open = canEdit && expanded === key;
+            out.push({
+                key,
+                height: open ? EXPANDED_HEIGHT : ROW_HEIGHT,
+                node: (
+                    <TicketRow
+                        data={{ key, quantity: l.quantity, name: l.name, sub: subOf(l.modifierNames, l.notes), price: l.unitPrice * l.quantity }}
+                        testId={`draft-${l.key}`}
+                        expanded={open}
+                        highlighted={highlightKey === l.key}
+                        editable={canEdit}
+                        onToggle={() => toggle(key)}
+                        onQuantity={(q) => {
+                            if (q <= 0) setExpanded(null);
+                            props.onQuantity(l.key, q);
+                        }}
+                        onNote={() => setNoteFor({ kind: 'draft', key: l.key, initial: l.notes })}
+                        onRemove={() => {
+                            setExpanded(null);
+                            props.onQuantity(l.key, 0);
+                        }}
+                    />
+                ),
+            });
+        }
+        for (const l of unsent) {
+            const key = `s:${l.id}`;
+            const open = canEdit && expanded === key;
+            out.push({
+                key,
+                height: open ? EXPANDED_HEIGHT : ROW_HEIGHT,
+                node: (
+                    <TicketRow
+                        data={{ key, quantity: l.quantity, name: l.name, sub: subOf(l.modifiers, l.notes), price: l.subtotal }}
+                        testId={`unsent-${l.id}`}
+                        expanded={open}
+                        editable={canEdit}
+                        busy={busy}
+                        onToggle={() => toggle(key)}
+                        onQuantity={(q) => {
+                            if (q <= 0) setExpanded(null);
+                            props.onServerQuantity(l, q);
+                        }}
+                        onNote={() => setNoteFor({ kind: 'server', line: l, initial: l.notes })}
+                        onRemove={() => {
+                            setExpanded(null);
+                            props.onServerRemove(l);
+                        }}
+                    />
+                ),
+            });
+        }
+        if (sent.length > 0) {
+            const by = (s: LineState) => sumQuantity(sent.filter((l) => l.state === s));
+            const parts = (['ready', 'preparing', 'delivered'] as const).map((s) => ({ s, n: by(s) })).filter((p) => p.n > 0);
+            out.push({
+                key: 'sent-card',
+                height: 56 + parts.length * 32,
+                node: (
+                    <button type="button" className="sent-card" onClick={props.onOpenFull}>
+                        <span className="sent-card-head">
+                            <strong>{`Enviado · ${sumQuantity(sent)}`}</strong>
+                            <span className="muted" aria-hidden="true">
+                                Ver ›
+                            </span>
+                        </span>
+                        {parts.map((p) => (
+                            <span key={p.s} className="sent-line" data-state={p.s}>
+                                {`${STATE_LABEL[p.s]} · ${p.n}`}
+                            </span>
+                        ))}
+                    </button>
+                ),
+            });
+        }
+        return out;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [drafts, unsent, sent, expanded, highlightKey, canEdit, busy, props.onOpenFull]);
+
+    const saveNote = (text: string) => {
+        if (!noteFor) return;
+        if (noteFor.kind === 'draft') {
+            props.onDraftNote(noteFor.key, text);
+            setExpanded(null);
+        } else props.onServerNote(noteFor.line, text);
+        setNoteFor(null);
+    };
+
     return (
         <section className="ticket" aria-label="Ticket">
             <header className="ticket-head">
-                <strong>{title}</strong>
-                <span className="muted">{subtitle}</span>
+                <div className="ticket-head-text">
+                    <strong>{title}</strong>
+                    <span className="muted">{subtitle}</span>
+                </div>
+                <button type="button" className="btn icon-btn" aria-label="Ver ticket completo" onClick={props.onOpenFull}>
+                    ⤢
+                </button>
             </header>
-            <div className="ticket-body">
-                {(drafts.length > 0 || unsent.length > 0) && (
-                    <>
-                        <h3 className="ticket-section">Nuevo · sin enviar</h3>
-                        <ul className="ticket-list">
-                            {drafts.map((l) => (
-                                <li key={l.key} className="row" data-testid={`draft-${l.key}`} data-highlighted={highlightKey === l.key ? 'true' : undefined}>
-                                    <span className="qty-badge">{l.quantity}</span>
-                                    <span className="row-main">
-                                        <span className="row-name">{l.name}</span>
-                                        {(l.modifierNames.length > 0 || l.notes) && <span className="row-sub">{[...l.modifierNames, l.notes].filter(Boolean).join(' · ')}</span>}
-                                    </span>
-                                    {canEdit && (
-                                        <span className="stepper">
-                                            <button type="button" className="btn" aria-label={`Menos ${l.name}`} onClick={() => onQuantity(l.key, l.quantity - 1)}>
-                                                −
-                                            </button>
-                                            <button type="button" className="btn" aria-label={`Más ${l.name}`} onClick={() => onQuantity(l.key, l.quantity + 1)}>
-                                                +
-                                            </button>
-                                        </span>
-                                    )}
-                                    <span className="row-price">{money(l.unitPrice * l.quantity)}</span>
-                                </li>
-                            ))}
-                            {unsent.map((l) => (
-                                <li key={`s${l.id}`} className="row" data-testid={`unsent-${l.id}`}>
-                                    <span className="qty-badge">{l.quantity}</span>
-                                    <span className="row-main">
-                                        <span className="row-name">{l.name}</span>
-                                        {(l.modifiers.length > 0 || l.notes) && <span className="row-sub">{[...l.modifiers, l.notes].filter(Boolean).join(' · ')}</span>}
-                                    </span>
-                                    <span className="row-price">{money(l.subtotal)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </>
-                )}
-                {sent.length > 0 && (
-                    <>
-                        <h3 className="ticket-section">{`En cocina · ${sent.reduce((n, l) => n + l.quantity, 0)}`}</h3>
-                        <ul className="ticket-list">
-                            {sent.map((l) => (
-                                <li key={l.id} className="row row-sent" data-state={l.state}>
-                                    <span className="qty-badge">{l.quantity}</span>
-                                    <span className="row-main">
-                                        <span className="row-name">{l.name}</span>
-                                        <span className="row-sub">{[STATE_LABEL[l.state], ...l.modifiers, l.notes].filter(Boolean).join(' · ')}</span>
-                                    </span>
-                                    <span className="row-price">{money(l.subtotal)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </>
-                )}
-                {drafts.length === 0 && serverLines.length === 0 && <p className="muted ticket-empty">Toca un producto para agregarlo.</p>}
-            </div>
+            {canDeliver && <ReadyCard lines={ready} now={now} busy={busy} onDeliver={props.onDeliver} />}
+            {rows.length > 0 ? <TicketList rows={rows} scrollToKey={highlightKey ? `d:${highlightKey}` : null} /> : <p className="muted ticket-empty">Toca un producto para agregarlo.</p>}
             {error && (
                 <p className="error ticket-error" role="alert">
                     {error}
                 </p>
             )}
-            <Footer {...props} />
+            <TicketFooter {...props} />
+            {noteFor && <NoteSheet initial={noteFor.initial} onSave={saveNote} onClose={() => setNoteFor(null)} />}
         </section>
     );
 }

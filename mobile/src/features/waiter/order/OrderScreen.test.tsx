@@ -25,7 +25,7 @@ function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[];
 
 /** Products stay off until this waiter's draft has loaded. */
 const product = async (name: string) => {
-    const el = await screen.findByRole('button', { name: new RegExp(`^${name}`) });
+    const el = await within(await screen.findByRole('region', { name: 'Productos' })).findByRole('button', { name: new RegExp(`^${name}`) });
     await waitFor(() => expect(el).toBeEnabled());
     return el;
 };
@@ -70,9 +70,9 @@ describe('OrderScreen', () => {
         expect(within(row).getByText('Pizza Margarita')).toBeInTheDocument();
         expect(within(row).getByText('C$ 100')).toBeInTheDocument();
         // the product shows its quantity in the ticket
-        expect(screen.getByRole('button', { name: /^Pizza Margarita/ })).toHaveTextContent('×1');
-        fireEvent.click(screen.getByRole('button', { name: /^Pizza Margarita/ }));
-        await waitFor(() => expect(screen.getByRole('button', { name: /^Pizza Margarita/ })).toHaveTextContent('×2'));
+        expect(within(screen.getByRole('region', { name: 'Productos' })).getByRole('button', { name: /^Pizza Margarita/ })).toHaveTextContent('×1');
+        fireEvent.click(within(screen.getByRole('region', { name: 'Productos' })).getByRole('button', { name: /^Pizza Margarita/ }));
+        await waitFor(() => expect(within(screen.getByRole('region', { name: 'Productos' })).getByRole('button', { name: /^Pizza Margarita/ })).toHaveTextContent('×2'));
         await waitFor(async () => expect((await drafts.get('1:7', 2))?.items[0].quantity).toBe(2));
         expect(screen.getByRole('button', { name: 'Enviar a cocina · 2' })).toBeEnabled();
     });
@@ -150,14 +150,13 @@ describe('OrderScreen', () => {
         expect(screen.getByRole('button', { name: 'Enviar a cocina · 1' })).toBeEnabled();
     });
 
-    it('lists what is already in the kitchen read-only', async () => {
+    it('summarises what is already in the kitchen in a read-only card', async () => {
         const api = makeApi();
         api.orderDetail.mockResolvedValue(orderOf([serverItem(1, 1, 'Pizza Margarita', { quantity: 2, status: 'IN_PROGRESS' })]));
         setup({ api });
-        const sent = await within(ticket()).findByText(/En cocina|Enviado/);
-        expect(sent).toBeInTheDocument();
-        expect(within(ticket()).getByText('Pizza Margarita')).toBeInTheDocument();
-        expect(within(ticket()).queryByRole('button', { name: /Quitar/ })).toBeNull();
+        const card = await within(ticket()).findByRole('button', { name: /Enviado · 2/ });
+        expect(within(card).getByText('En preparación · 2')).toBeInTheDocument();
+        expect(within(ticket()).queryByRole('button', { name: /Quitar|Menos/ })).toBeNull();
     });
 
     it('hides actions the user has no permission for', async () => {

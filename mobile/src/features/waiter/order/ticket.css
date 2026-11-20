@@ -1,0 +1,281 @@
+/* Long ticket: virtualized list, expanded row, Enviado card, ready card and the full ticket. */
+.ticket-head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ticket-head-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.vlist {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.vlist-inner {
+    position: relative;
+}
+
+.vlist-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.vlist .ticket-section {
+    height: 32px;
+    box-sizing: border-box;
+}
+
+.trow {
+    height: 100%;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+}
+
+.trow[data-highlighted='true'],
+.trow-open {
+    background: var(--surface-2);
+}
+
+.trow-face {
+    flex: none;
+    height: 56px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    width: 100%;
+    text-align: left;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    font-size: 16px;
+}
+
+.trow-edit {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 10px;
+}
+
+.stepper-big {
+    margin-right: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.stepper-big .btn {
+    min-width: 56px;
+    min-height: 56px;
+    font-size: 24px;
+}
+
+.stepper-n {
+    min-width: 32px;
+    text-align: center;
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+}
+
+.sent-card {
+    width: calc(100% - 28px);
+    margin: 8px 14px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    text-align: left;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 15px;
+}
+
+.sent-card-head {
+    display: flex;
+    justify-content: space-between;
+}
+
+.sent-line {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+}
+
+.sent-line[data-state='ready'] {
+    color: var(--ready);
+}
+
+.ready-card {
+    margin: 8px 14px 0;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border: 1px solid var(--ready);
+    border-radius: 10px;
+}
+
+.ready-card-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.ready-card-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 132px;
+    overflow-y: auto;
+}
+
+.ready-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 48px;
+}
+
+.check-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    font-size: 20px;
+}
+
+.ready-card-all {
+    min-height: 48px;
+}
+
+/* Full ticket (landscape, two panels) */
+.full {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    background: var(--bg);
+}
+
+.full-side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-right: 1px solid var(--border);
+}
+
+.full-title {
+    margin: 4px 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.full-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-btn {
+    min-height: 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 16px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+}
+
+.filter-btn[aria-pressed='true'] {
+    color: var(--text);
+    background: var(--surface-2);
+    border-color: var(--text);
+}
+
+.filter-count {
+    font-variant-numeric: tabular-nums;
+}
+
+.full-main {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.frow {
+    height: 100%;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 130px 96px 110px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.frow-head {
+    height: 40px;
+    flex: none;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.frow-state {
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.frow[data-state='ready'] .frow-state {
+    color: var(--ready);
+}
+
+.frow[data-state='delivered'] {
+    opacity: 0.6;
+}
+
+.frow .row-price {
+    min-width: 0;
+}
+
+.deliver-btn {
+    min-height: 40px;
+    width: 100%;
+    padding: 0 8px;
+}
+
+.full-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+}
+
+.full-foot .btn {
+    min-height: 56px;
+    padding: 0 22px;
+}
