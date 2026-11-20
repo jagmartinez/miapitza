@@ -594,6 +594,7 @@ model UserSession {
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([device])
 }
 
 /// Authoritative, cross-replica login lockout state. Unknown usernames are not

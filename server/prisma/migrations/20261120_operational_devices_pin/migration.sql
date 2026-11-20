@@ -34,6 +34,9 @@ CREATE TABLE `OperationalDevice` (
   CONSTRAINT `OperationalDevice_revokedById_fkey` FOREIGN KEY (`revokedById`) REFERENCES `User` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- Sweeps of sessions by device tag (revoke) must not scan the whole table.
+CREATE INDEX `UserSession_device_idx` ON `UserSession`(`device`);
+
 INSERT IGNORE INTO `Permission` (`name`, `description`) VALUES
   ('devices.manage', 'Registrar, listar y revocar dispositivos operativos (tablets)');
 
