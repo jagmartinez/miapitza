@@ -3,6 +3,7 @@ import prisma from '../utils/prisma';
 import { PIN_ROLES } from '../constants/roles';
 import { BCRYPT_ROUNDS } from '../utils/password-policy';
 import { AuditLogService } from './audit-log.service';
+import { loginAttemptService } from './login-attempt.service';
 
 export class PinError extends Error {
     constructor(message: string, public statusCode = 400) {
@@ -11,6 +12,7 @@ export class PinError extends Error {
     }
 }
 
+const PIN_AUTH_ERROR = 'Credenciales inválidas';
 const PIN_PATTERN = /^\d{4,6}$/;
 
 function isRun(digits: number[], step: 1 | -1): boolean {
@@ -37,13 +39,26 @@ export class PinService {
         return roleNames.length > 0 && roleNames.every((name) => (PIN_ROLES as string[]).includes(name));
     }
 
-    static async setPin(userId: number, pin: string): Promise<void> {
-        PinService.validateFormat(pin);
+    /**
+     * Sets the caller's own PIN. A PIN is a standing credential, so the account
+     * password must be re-entered; every failure is the same generic 401 and
+     * counts toward the user's login lockout. Neither value is ever logged.
+     */
+    static async setPin(userId: number, pin: string, currentPassword: unknown, ip?: string): Promise<void> {
+        if (typeof currentPassword !== 'string' || currentPassword.length === 0 || currentPassword.length > 128) {
+            throw new PinError(PIN_AUTH_ERROR, 401);
+        }
+        try {
+            await loginAttemptService.assertAllowed(userId, ip);
+        } catch {
+            throw new PinError(PIN_AUTH_ERROR, 401);
+        }
 
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: {
                 id: true,
+                password: true,
                 companyId: true,
                 status: true,
                 role: { select: { name: true } },
@@ -53,6 +68,12 @@ export class PinService {
         if (!user || user.status !== 'ACTIVE' || !user.companyId) {
             throw new PinError('Usuario no encontrado', 404);
         }
+        if (!(await bcrypt.compare(currentPassword, user.password))) {
+            await loginAttemptService.recordFailure(user.id, ip);
+            throw new PinError(PIN_AUTH_ERROR, 401);
+        }
+        await loginAttemptService.recordSuccess(user.id, ip);
+        PinService.validateFormat(pin);
         const roleNames = [user.role.name, ...user.userRoles.map((entry) => entry.role.name)];
         if (!PinService.rolesAllowPin(roleNames)) {
             throw new PinError('Tu rol no puede usar PIN de acceso rápido', 403);

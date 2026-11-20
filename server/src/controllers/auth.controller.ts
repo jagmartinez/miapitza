@@ -230,7 +230,12 @@ export class AuthController {
     static async setMyPin(req: Request, res: Response, next: NextFunction) {
         try {
             if (!req.user) return next({ statusCode: 401, message: 'No autenticado' });
-            await PinService.setPin(req.user.userId, req.body?.pin);
+            await PinService.setPin(
+                req.user.userId,
+                req.body?.pin,
+                req.body?.currentPassword,
+                req.ip || (req.headers['x-forwarded-for'] as string) || '',
+            );
             res.json({ success: true, message: 'PIN actualizado' });
         } catch (error) {
             if (error instanceof PinError) {
