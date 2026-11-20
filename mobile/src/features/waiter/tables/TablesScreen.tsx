@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiErrorMessage } from '@web/utils/apiError';
+import { can } from '../../../core/permissions';
 import type { Realtime } from '../../../core/realtime';
 import type { Session } from '../../../core/session';
 import type { OfflineQueue } from '../../../data/offlineQueue';
 import { OfflineIndicator } from '../../../data/OfflineIndicator';
+import { useOnline } from '../../../data/useOnline';
 import type { OrderRef, WaiterApi } from '../../../data/waiterApi';
 import { FloorPlan } from './FloorPlan';
+import { OpenTableSheet } from './OpenTableSheet';
 import { ReadyBanner, type ReadyNotice } from './ReadyBanner';
-import { initialsOf, normalizeOrders, normalizePlan, ordersByTable, tableState, type ActiveOrder, type Plan, type PlanTable } from './tableState';
+import { TableActionsSheet, type SheetAction } from './TableActionsSheet';
+import { useTablePicking } from './useTablePicking';
+import { initialsOf, normalizeOrders, normalizePlan, ordersByTable, tableState, type ActiveOrder, type Plan, type PlanTable, type TableState } from './tableState';
 import './tables.css';
+import './sheets.css';
 
 export type TablesApi = Pick<WaiterApi, 'floorPlan' | 'activeOrders' | 'createOrder' | 'transfer' | 'groupTables'>;
 /** Where the order screen should land. */
@@ -48,6 +54,9 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
     const [mineOnly, setMineOnly] = useState(false);
     const [notice, setNotice] = useState<ReadyNotice | null>(null);
     const [now, setNow] = useState(() => Date.now());
+    const [sheet, setSheet] = useState<{ kind: 'open'; table: PlanTable } | { kind: 'actions'; table: PlanTable; order: ActiveOrder } | null>(null);
+    const [toast, setToast] = useState<string | null>(null);
+    const online = useOnline();
 
     const alive = useRef(true);
     const seq = useRef(0);
@@ -70,7 +79,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 setError(null);
                 setNow(Date.now());
             } catch (cause) {
-                if (alive.current && mine === seq.current) setError(getApiErrorMessage(cause, 'No se pudieron cargar las mesas.'));
+                if (alive.current && mine === seq.current) setError(getApiErrorMessage(cause));
             }
         },
         [api, branchId, invalidate],
@@ -136,8 +145,47 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
     }, [plan, byTable]);
     const branchName = plan?.tables.find((t) => t.branch?.name)?.branch?.name ?? 'Sucursal';
 
-    const handleTap = (_table: PlanTable, order: ActiveOrder | undefined) => {
+    const areaNameOf = (table: PlanTable) => plan?.areas.find((x) => x.id === table.floorAreaId)?.name ?? 'Sin área';
+    const stateOf = (table: PlanTable): TableState => tableState(table, byTable.get(table.id));
+
+    const picking = useTablePicking({
+        api,
+        online,
+        stateOf,
+        onDone: (message) => {
+            setToast(message);
+            void load(false);
+        },
+    });
+
+    const handleTap = (table: PlanTable, order: ActiveOrder | undefined, state: TableState) => {
+        if (picking.mode) {
+            void picking.choose(table);
+            return;
+        }
         if (order) onOpenOrder(order.id);
+        else if (state === 'free') setSheet({ kind: 'open', table });
+        else void load(true); // the plan says occupied but we hold no order: our data is stale
+    };
+
+    const handleLongPress = (table: PlanTable, order: ActiveOrder | undefined) => {
+        if (picking.mode || !order) return;
+        setSheet({ kind: 'actions', table, order });
+    };
+
+    const openTable = async (table: PlanTable, guests: number) => {
+        const created = (await api.createOrder({ tableId: table.id, guests, orderType: 'DINE_IN' })) as { id?: number; _offline?: boolean; entityTempId?: string | null };
+        // Created offline: it only exists in the queue until it syncs, so the order screen opens on its temp id.
+        const id = created._offline ? created.entityTempId : created.id;
+        if (id == null) throw new Error('No se pudo abrir la mesa.');
+        setSheet(null);
+        onOpenOrder(id);
+    };
+
+    const runAction = (action: SheetAction, table: PlanTable, order: ActiveOrder) => {
+        setSheet(null);
+        if (action === 'view' || action === 'pay' || action === 'invoice') onOpenOrder(order.id, action);
+        else picking.begin(action, table, order);
     };
 
     return (
@@ -179,6 +227,26 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 </button>
             </header>
 
+            {picking.mode && (
+                <div className="pick-bar" role="status">
+                    <span>
+                        {picking.mode === 'transfer' ? 'Trasladar' : 'Unir'} mesa {picking.source?.table.number}: Elige la mesa destino
+                    </span>
+                    <button type="button" className="btn" onClick={picking.cancel}>
+                        Cancelar
+                    </button>
+                </div>
+            )}
+            {picking.error && <p className="error pad">{picking.error}</p>}
+            {toast && (
+                <div className="toast" role="status">
+                    <span>{toast}</span>
+                    <button type="button" className="ready-banner-close" aria-label="Cerrar aviso" onClick={() => setToast(null)}>
+                        ×
+                    </button>
+                </div>
+            )}
+
             <ReadyBanner notice={notice} onOpen={(orderId) => onOpenOrder(orderId)} onDismiss={() => setNotice(null)} />
 
             {branchId == null && <p className="error pad">Tu usuario no tiene sucursal asignada.</p>}
@@ -200,11 +268,34 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                         now={now}
                         onlyUserId={mineOnly ? session.user.id : null}
                         onTap={handleTap}
-                        onLongPress={() => undefined}
+                        canPick={picking.mode ? picking.canPick : undefined}
+                        onLongPress={handleLongPress}
                     />
                 )}
                 {plan && !currentTab && !error && <p className="muted pad">No hay mesas configuradas.</p>}
             </div>
+
+            {sheet?.kind === 'open' && (
+                <OpenTableSheet
+                    table={sheet.table}
+                    areaName={areaNameOf(sheet.table)}
+                    canOpen={can(session.user, 'orders.create')}
+                    onClose={() => setSheet(null)}
+                    onOpen={(guests) => openTable(sheet.table, guests)}
+                />
+            )}
+            {sheet?.kind === 'actions' && (
+                <TableActionsSheet
+                    table={sheet.table}
+                    areaName={areaNameOf(sheet.table)}
+                    order={sheet.order}
+                    user={session.user}
+                    online={online}
+                    now={now}
+                    onClose={() => setSheet(null)}
+                    onAction={(action) => runAction(action, sheet.table, sheet.order)}
+                />
+            )}
         </main>
     );
 }

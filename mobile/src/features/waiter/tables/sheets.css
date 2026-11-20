@@ -1,0 +1,147 @@
+/* Bottom sheets, destination-picking bar and toast. Flat, tokens only. */
+.pick-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 8px 16px 0;
+    padding: 4px 4px 4px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--text);
+    border-radius: 10px;
+    font-size: 16px;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 8px 16px 0;
+    padding: 0 0 0 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.sheet {
+    width: 100%;
+    max-width: 640px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 20px 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+}
+
+.sheet-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.sheet-sub {
+    margin: 0;
+    font-size: 14px;
+}
+
+.sheet-main {
+    min-height: 56px;
+    font-size: 18px;
+}
+
+.guest-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+.guest {
+    min-height: 56px;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+}
+
+.guest[aria-pressed='true'] {
+    border-color: var(--text);
+    background: var(--surface-2);
+    font-weight: 600;
+}
+
+.guest[data-over-capacity='true'] {
+    opacity: 0.45;
+}
+
+.actions-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.actions-total {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 14px;
+}
+
+.actions-total strong {
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+}
+
+.info-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.info-chip {
+    padding: 6px 12px;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    color: var(--muted);
+}
+
+.actions-main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.actions-main .btn {
+    min-height: 56px;
+    font-size: 18px;
+}
+
+.actions-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.action-tile {
+    min-height: 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
