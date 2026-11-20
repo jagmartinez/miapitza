@@ -187,3 +187,33 @@ describe('session store', () => {
         expect(await createSessionStore(store).load()).toBeNull();
     });
 });
+
+describe('http discount endpoints', () => {
+    it('sends X-Device-Token only to the discount supervisor endpoints, by pattern', async () => {
+        const { sessions, http, seen } = setup();
+        await sessions.save(session);
+        await sessions.saveDeviceToken('dev-9');
+        for (const [method, path] of [['get', '/orders/discount/supervisors'], ['get', '/orders/discount/supervisors/'], ['post', '/orders/12/discount/authorize'], ['post', '/orders/12/discount/authorize/']] as const) {
+            await http.request({ method, url: path });
+            expect(seen[seen.length - 1].headers.get('X-Device-Token'), path).toBe('dev-9');
+        }
+        for (const path of ['/orders/discount/supervisors/x', '/orders/12/discount', '/orders/x/discount/authorize', '/orders/12/pricing', '/orders/12/discount/authorize/extra', '/x/orders/12/discount/authorize']) {
+            await http.post(path);
+            expect(seen[seen.length - 1].headers.get('X-Device-Token'), path).toBeFalsy();
+        }
+    });
+
+    it('a 401 from the discount endpoints is a wrong PIN, not session expiry', async () => {
+        const { sessions, http } = setup(401);
+        await sessions.save(session);
+        const fn = vi.fn();
+        const off = appEvents.on('session-expired', fn);
+        await expect(http.post('/orders/12/discount/authorize')).rejects.toMatchObject({ response: { status: 401 } });
+        await expect(http.get('/orders/discount/supervisors')).rejects.toMatchObject({ response: { status: 401 } });
+        expect(fn).not.toHaveBeenCalled();
+        expect(await sessions.load()).not.toBeNull();
+        await expect(http.post('/orders/12/pricing')).rejects.toMatchObject({ response: { status: 401 } });
+        off();
+        expect(fn).toHaveBeenCalledTimes(1);
+    });
+});

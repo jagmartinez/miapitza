@@ -5,7 +5,17 @@ import type { SessionStore } from './session';
 /** A 401 from these means "bad credentials", not "your session ended". */
 const CREDENTIAL_PATHS = new Set(['/auth/login', '/auth/pin-login', '/auth/device-login']);
 
-/** The only endpoints that read X-Device-Token; it is not sent anywhere else. */
+/**
+ * Supervisor discount endpoints. They also read X-Device-Token, and a 401 from them
+ * means a wrong supervisor PIN or a bad device token, never that the waiter's session ended.
+ */
+const DISCOUNT_AUTH_PATTERNS: readonly RegExp[] = [
+    /^\/orders\/discount\/supervisors$/,
+    /^\/orders\/\d+\/discount\/authorize$/,
+];
+const isDiscountAuthPath = (path: string) => DISCOUNT_AUTH_PATTERNS.some((re) => re.test(path));
+
+/** The only endpoints that read X-Device-Token (plus DISCOUNT_AUTH_PATTERNS); it is not sent anywhere else. */
 const DEVICE_TOKEN_PATHS = new Set(['/auth/device-roster', '/auth/pin-login', '/auth/device-login']);
 
 /** A hung request must fail instead of leaving the UI waiting forever. */
@@ -50,12 +60,13 @@ export function createHttp(opts: { baseURL: string; sessions: SessionStore }): A
 
     function isCredentialRequest(config: InternalAxiosRequestConfig | undefined): boolean {
         const path = apiPath(config);
-        return path !== null && CREDENTIAL_PATHS.has(path);
+        return path !== null && (CREDENTIAL_PATHS.has(path) || isDiscountAuthPath(path));
     }
 
     http.interceptors.request.use(async (config) => {
         if (!isApiRequest(config)) return config;
-        const sendsDeviceToken = DEVICE_TOKEN_PATHS.has(apiPath(config) ?? '');
+        const path = apiPath(config) ?? '';
+        const sendsDeviceToken = DEVICE_TOKEN_PATHS.has(path) || isDiscountAuthPath(path);
         const [session, deviceToken] = await Promise.all([
             opts.sessions.load(),
             sendsDeviceToken ? opts.sessions.deviceToken() : Promise.resolve(null),
