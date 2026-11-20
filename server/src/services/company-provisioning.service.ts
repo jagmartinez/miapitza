@@ -39,6 +39,7 @@ const OPERATIONAL_PERMISSIONS = [
     'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver',
     'invoices.issue', 'invoices.view', 'invoices.cancel', 'invoices.credit',
     'payments.process', 'payments.reverse', 'bills.split',
+    'orders.discount.apply', 'orders.discount.authorize',
 ];
 
 const SELF_SERVICE_HR = [
@@ -70,12 +71,12 @@ const ROLE_PERMISSION_MAP: Record<string, string[]> = {
     [ROLES.CAJERO]: [
         'view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports',
         'tables.map.view', 'tables.consolidate', 'orders.view', 'orders.create', 'orders.deliver',
-        'invoices.issue', 'invoices.view', 'payments.process', 'bills.split', ...SELF_SERVICE_HR,
+        'invoices.issue', 'invoices.view', 'payments.process', 'orders.discount.apply', 'bills.split', ...SELF_SERVICE_HR,
     ],
     [ROLES.MESERO]: [
         'view_orders', 'create_order', 'edit_order', 'view_menu',
         'tables.map.view', 'tables.transfer', 'tables.status.manage', 'tables.group.manage',
-        'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver', 'bills.split',
+        'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver', 'orders.discount.apply', 'bills.split',
         ...SELF_SERVICE_HR,
     ],
     [ROLES.COCINA]: [

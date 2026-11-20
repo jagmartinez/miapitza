@@ -121,6 +121,8 @@ async function main() {
         'payments.process',
         'payments.reverse',
         'bills.split',
+        'orders.discount.apply',
+        'orders.discount.authorize',
     ];
     const permissions = [
         ...basePermissions,
@@ -150,9 +152,9 @@ async function main() {
         // default. Employee mutation/read and geofence mutation remain explicit.
         ADMIN: [...basePermissions, ...tablePermissions, ...kdsPermissions, ...devicePermissions, ...operationalPermissions, 'hr.dashboard.read', 'hr.catalog.read', 'hr.geofence.read', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Cashier: manage orders + read-only menu/reports
-        CAJERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports', 'tables.map.view', 'tables.consolidate', 'orders.view', 'orders.create', 'orders.deliver', 'invoices.issue', 'invoices.view', 'payments.process', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
+        CAJERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports', 'tables.map.view', 'tables.consolidate', 'orders.view', 'orders.create', 'orders.deliver', 'invoices.issue', 'invoices.view', 'payments.process', 'orders.discount.apply', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Waiter: take and edit orders
-        MESERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'tables.map.view', 'tables.transfer', 'tables.status.manage', 'tables.group.manage', 'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
+        MESERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'tables.map.view', 'tables.transfer', 'tables.status.manage', 'tables.group.manage', 'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver', 'orders.discount.apply', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Kitchen: read orders only
         COCINA: ['view_orders', 'view_menu', 'orders.view', ...kdsPermissions, 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Chef: kitchen execution plus recipe/menu and stock maintenance.

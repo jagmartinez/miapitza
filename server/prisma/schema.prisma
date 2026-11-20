@@ -441,6 +441,8 @@ model User {
   cancelledOrders                   Order[]                            @relation("OrderCancelledBy")
   kitchenStarts                     Order[]                            @relation("OrderKitchenStartedBy")
   kitchenReleases                   Order[]                            @relation("OrderKitchenReleasedBy")
+  discountAuthorizedOrders          Order[]                            @relation("OrderDiscountAuthorizedBy")
+  deliveredOrderItems               OrderItem[]                        @relation("OrderItemDeliveredBy")
   kitchenBatchStarts                KitchenBatch[]                     @relation("KitchenBatchStartedBy")
   kitchenBatchReleases              KitchenBatch[]                     @relation("KitchenBatchReleasedBy")
   kitchenNotifications              KitchenNotification[]              @relation("KitchenNotificationRecipient")
@@ -647,6 +649,8 @@ model Role {
   companyId   Int?
   name        String // SUPERADMIN, ADMIN, WAITER, etc.
   description String?
+  // Manual discount cap (0-100 % of subtotal) for this role; null = legacy rule.
+  maxDiscountPercent Int?
 
   company     Company?     @relation(fields: [companyId], references: [id])
   users       User[]
@@ -4117,6 +4121,10 @@ model Order {
   // table-account consolidation. Kept scalar intentionally: cancelled source
   // orders remain immutable audit records without a cascading self relation.
   consolidatedIntoOrderId Int?
+  // Waiter mode: party size and the reason/authorizer of a manual discount.
+  guests                   Int?
+  discountReason           String?              @db.VarChar(120)
+  discountAuthorizedById   Int?
 
   company           Company      @relation(fields: [companyId], references: [id])
   branch            Branch       @relation(fields: [branchId], references: [id])
@@ -4126,6 +4134,7 @@ model Order {
   cancelledBy       User?        @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
   kitchenStartedBy  User?        @relation("OrderKitchenStartedBy", fields: [kitchenStartedById], references: [id], onDelete: SetNull)
   kitchenReleasedBy User?        @relation("OrderKitchenReleasedBy", fields: [kitchenReleasedById], references: [id], onDelete: SetNull)
+  discountAuthorizedBy User?     @relation("OrderDiscountAuthorizedBy", fields: [discountAuthorizedById], references: [id], onDelete: SetNull)
 
   items                         OrderItem[]
   kitchenBatches                KitchenBatch[]
@@ -4138,6 +4147,7 @@ model Order {
   tableConsolidationSnapshots   TableConsolidationOrder[]  @relation("TableConsolidationSnapshotOrder")
   tableConsolidationItemSources TableConsolidationItem[]   @relation("TableConsolidationItemSourceOrder")
 
+  @@index([discountAuthorizedById])
   @@index([companyId, branchId])
   @@index([companyId, status])
   @@index([companyId, financialStatus, closedAt])
@@ -4228,6 +4238,9 @@ model OrderItem {
   sentAt         DateTime? // When sent to kitchen
   startedAt      DateTime? // When kitchen started preparing
   finishedAt     DateTime? // When kitchen finished preparing
+  // Waiter mode: line handed to the guest (only DONE, non-voided lines).
+  deliveredAt    DateTime?
+  deliveredById  Int?
   // Durable provenance for table transfers/consolidations. The first origin is
   // retained even if an item is moved more than once.
   originOrderId        Int?
@@ -4256,6 +4269,7 @@ model OrderItem {
   order                       Order                    @relation(fields: [orderId], references: [id], onDelete: Restrict)
   menuItem                    MenuItem                 @relation(fields: [menuItemId], references: [id])
   kitchenBatch                KitchenBatch?            @relation(fields: [kitchenBatchId], references: [id], onDelete: Restrict)
+  deliveredBy                 User?                    @relation("OrderItemDeliveredBy", fields: [deliveredById], references: [id], onDelete: SetNull)
   modifiers                   OrderItemModifier[]
   fiscalCreditNoteLines       FiscalCreditNoteLine[]
   tableConsolidationSnapshots TableConsolidationItem[]
@@ -4263,6 +4277,7 @@ model OrderItem {
   @@unique([orderId, voidIdempotencyKey])
   @@index([orderId])
   @@index([menuItemId])
+  @@index([deliveredById])
   @@index([kitchenBatchId])
   @@index([originOrderId])
   @@index([originTableId])
