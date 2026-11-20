@@ -8,7 +8,7 @@ import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
 import { CashError } from '../services/cash-errors';
-import { isBlindCashier, redactBlindCount } from '../services/cash-blind';
+import { isBlindCashier, redactBlindCount, redactBlindDetails } from '../services/cash-blind';
 
 const router = Router();
 
@@ -62,7 +62,7 @@ router.get('/:shiftId', validate(s.shiftIdParam), async (req: Request, res: Resp
 
         res.json({
             success: true,
-            data: details
+            data: redactBlindDetails(details, req.user!)
         });
     } catch (error: unknown) {
         console.error('[CASH-ARQUEO] Error getting shift details:', getErrorMessage(error));

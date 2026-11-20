@@ -244,3 +244,35 @@ describe('cash API blind count for CAJERO', () => {
         expect(res.body.data.summary.expectedBalance).toBe(50);
     });
 });
+
+describe('cash API blind arqueo detail', () => {
+    function mockDetailsShift(endDate: Date | null) {
+        jest.spyOn(prisma.cashShift, 'findFirst').mockImplementation((async (args: any) =>
+            args?.select?.cashRegister ? { cashRegister: { branchId: 1 } } : {
+                id: 5, startAmount: 50, endAmount: endDate ? 40 : null, endDate, startDate: new Date(),
+                forceClosed: false, closingExchangeRate: null, closedBy: null, movements: [],
+                cashRegister: { id: 1, name: 'Caja', branchId: 1 }, user: { id: 7, name: 'Ana' },
+            }) as never);
+        jest.spyOn(prisma.cashCount, 'findMany').mockResolvedValue([] as never);
+    }
+
+    it('CAJERO open shift omits expected and reconciliation amounts; ADMIN includes them', async () => {
+        mockDetailsShift(null);
+        const blind = await request(app).get('/cash-arqueo/5').set('x-test-user', as(cajero)).expect(200);
+        expect(blind.body.data.amounts).not.toHaveProperty('expectedEndAmount');
+        expect(blind.body.data.amounts).not.toHaveProperty('difference');
+        expect(blind.body.data.reconciliation).not.toHaveProperty('surplus');
+        expect(blind.body.data.reconciliation).not.toHaveProperty('deficit');
+        expect(blind.body.data.amounts.startAmount).toBe(50);
+        const full = await request(app).get('/cash-arqueo/5').set('x-test-user', as(admin)).expect(200);
+        expect(full.body.data.amounts.expectedEndAmount).toBe(50);
+        expect(full.body.data.reconciliation).toHaveProperty('surplus');
+    });
+
+    it('CAJERO closed shift detail stays complete (R2)', async () => {
+        mockDetailsShift(new Date());
+        const res = await request(app).get('/cash-arqueo/5').set('x-test-user', as(cajero)).expect(200);
+        expect(res.body.data.amounts.expectedEndAmount).toBe(50);
+        expect(res.body.data.amounts.difference).toBe(-10);
+    });
+});

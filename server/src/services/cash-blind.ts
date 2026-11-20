@@ -31,3 +31,20 @@ export function redactBlindSummary<T extends { shift: { endDate?: Date | null };
     delete summary.expectedAmount;
     return { ...data, summary } as T;
 }
+
+/** Drops expected/difference amounts from the arqueo detail of an OPEN shift for blind cashiers. */
+export function redactBlindDetails<T extends {
+    shift: { status?: string };
+    amounts: object;
+    reconciliation: object;
+}>(data: T, user: Viewer): T {
+    if (!isBlindCashier(user) || data.shift.status === 'CERRADO') return data;
+    const amounts = { ...data.amounts } as Record<string, unknown>;
+    delete amounts.expectedEndAmount;
+    delete amounts.difference;
+    const reconciliation = { ...data.reconciliation } as Record<string, unknown>;
+    delete reconciliation.surplus;
+    delete reconciliation.deficit;
+    delete reconciliation.isBalanced;
+    return { ...data, amounts, reconciliation } as T;
+}
