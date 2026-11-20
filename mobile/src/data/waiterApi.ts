@@ -5,9 +5,9 @@ import type { SessionStore } from '../core/session';
 import { TTL, type Cache, type CacheResult } from './cache';
 import type { OfflineQueue } from './offlineQueue';
 import { appEvents } from '../core/events';
-import { isTempOrderId, ownerKeyOf, SessionChangedError, type QueuedOffline, type SyncMeta, type SyncOperationType } from './types';
+import { isTempOrderId, ownerKeyOf, SessionChangedError, TableHasLocalOrderError, type QueuedOffline, type SyncMeta, type SyncOperationType } from './types';
 
-export { SessionChangedError };
+export { SessionChangedError, TableHasLocalOrderError };
 
 export interface WaiterApiDeps {
     http: AxiosInstance;
@@ -70,14 +70,6 @@ export class OrderNotSyncedError extends Error {
     constructor(readonly tempId: string) {
         super('El pedido aún no se sincroniza; esta operación requiere conexión');
         this.name = 'OrderNotSyncedError';
-    }
-}
-
-/** The table already has an order that only exists in this device's queue: open that one, never create a second. */
-export class TableHasLocalOrderError extends Error {
-    constructor(readonly tempId: string) {
-        super('Esta mesa ya tiene un pedido sin sincronizar en este equipo');
-        this.name = 'TableHasLocalOrderError';
     }
 }
 

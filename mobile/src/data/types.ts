@@ -101,6 +101,14 @@ export class SessionChangedError extends Error {
     }
 }
 
+/** The table already has an order that only exists in this device's queue: open that one, never create a second. */
+export class TableHasLocalOrderError extends Error {
+    constructor(readonly tempId: string) {
+        super('Esta mesa ya tiene un pedido sin sincronizar en este equipo');
+        this.name = 'TableHasLocalOrderError';
+    }
+}
+
 export function ownerKeyOf(session: Session | null): string | null {
     if (!session) return null;
     return `${session.user.companyId ?? 0}:${session.user.id}`;
