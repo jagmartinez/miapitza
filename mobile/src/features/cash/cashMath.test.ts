@@ -36,6 +36,16 @@ describe('cashMath', () => {
         }
     });
 
+    it('parts add up exactly to the total', () => {
+        for (const rate of [36.55, 36.555, 36.6243, 36.5]) {
+            for (let seed = 1; seed <= 40; seed++) {
+                const b: Breakdown = { nioBills: { '10': seed % 3 }, nioCoins: { '0.25': seed % 7, '0.5': seed % 5 }, usdBills: { '1': seed % 9, '5': seed % 4 } };
+                const t = countedTotals(b, rate);
+                expect(t.nioBillsC + t.nioCoinsC + t.usdInNioC).toBe(t.totalC);
+            }
+        }
+    });
+
     it('builds the payload: no zero rows, trimmed notes, rate only with USD, forceClose only when set', () => {
         const b: Breakdown = { nioBills: { '50': 1, '20': 0 }, nioCoins: {}, usdBills: {} };
         const p = buildClosePayload(b, 36.5, '  ok  ');

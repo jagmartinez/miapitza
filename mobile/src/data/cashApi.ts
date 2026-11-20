@@ -1,5 +1,5 @@
 import type { AxiosInstance } from 'axios';
-import { getIdempotentAttempt, isAmbiguousMutationFailure, type IdempotentAttempt } from '@web/utils/idempotency';
+import { isAmbiguousMutationFailure, newIdempotencyKey, type IdempotentAttempt } from '@web/utils/idempotency';
 import { appEvents } from '../core/events';
 import type { SessionStore } from '../core/session';
 import {
@@ -33,6 +33,11 @@ export interface CashApiDeps {
 
 const OFFLINE_MESSAGE = 'Requiere conexión';
 const MAX_ATTEMPTS_KEPT = 50;
+
+/** `actionId` identifies one user action (one form submit): only a retry of that same action reuses its key. Without it every call is a new action. */
+export interface ActionOpts {
+    actionId?: string;
+}
 
 /** A server error with a cash `code` becomes a CashError; anything else is returned untouched. */
 export function toCashError(error: unknown): unknown {
@@ -91,15 +96,19 @@ export function createCashApi(deps: CashApiDeps) {
         return (res.data?.data ?? res.data) as T;
     }
 
-    async function mutate<T>(method: 'POST', url: string, data: unknown): Promise<T> {
+    async function mutate<T>(method: 'POST', url: string, data: unknown, opts: ActionOpts = {}): Promise<T> {
         requireOnline();
         const session = await sessions.load();
         const owner = ownerKeyOf(session);
-        const fingerprint = `${owner ?? '-'} ${method} ${url} ${JSON.stringify(data ?? null)}`;
-        const attempt = getIdempotentAttempt(attempts.get(fingerprint) ?? null, fingerprint);
-        attempts.set(fingerprint, attempt);
-        if (attempts.size > MAX_ATTEMPTS_KEPT) attempts.delete(attempts.keys().next().value as string);
+        const fingerprint = opts.actionId ? `${owner ?? '-'} ${method} ${url} ${opts.actionId} ${JSON.stringify(data ?? null)}` : null;
+        const attempt: IdempotentAttempt = (fingerprint && attempts.get(fingerprint)) || { fingerprint: fingerprint ?? '', key: newIdempotencyKey() };
+        if (fingerprint) {
+            attempts.set(fingerprint, attempt);
+            if (attempts.size > MAX_ATTEMPTS_KEPT) attempts.delete(attempts.keys().next().value as string);
+        }
         try {
+            // Last look before sending: a lock or switch since the call started cancels it.
+            await assertOwner(owner);
             const res = await http.request({
                 method,
                 url,
@@ -107,7 +116,7 @@ export function createCashApi(deps: CashApiDeps) {
                 // The token the call started with: a switch while it is in flight cannot re-bind it.
                 headers: { ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}), 'X-Idempotency-Key': attempt.key },
             });
-            attempts.delete(fingerprint);
+            if (fingerprint) attempts.delete(fingerprint);
             await assertOwner(owner);
             return (res.data?.data ?? res.data) as T;
         } catch (error) {
@@ -115,7 +124,7 @@ export function createCashApi(deps: CashApiDeps) {
             if (session?.token && (error as { response?: { status?: number } } | null)?.response?.status === 401) await expireIfCurrent(session.token);
             const typed = toCashError(error);
             // A typed business error is a definitive answer; only network/5xx/timeout may have been applied.
-            if (typed instanceof CashError || !isAmbiguousMutationFailure(error)) attempts.delete(fingerprint);
+            if (fingerprint && (typed instanceof CashError || !isAmbiguousMutationFailure(error))) attempts.delete(fingerprint);
             throw typed;
         }
     }
@@ -137,19 +146,19 @@ export function createCashApi(deps: CashApiDeps) {
         settings: () => get<CashSettings>('/cash-shifts/cash-settings'),
 
         // ---- mutations (online only, each with an idempotency key) ----
-        openShift: (body: { cashRegisterId: number; startAmount: number }) => mutate<CashShiftInfo>('POST', '/cash-shifts/open', body),
-        addMovement(shiftId: number, input: MovementInput) {
+        openShift: (body: { cashRegisterId: number; startAmount: number }, opts?: ActionOpts) => mutate<CashShiftInfo>('POST', '/cash-shifts/open', body, opts),
+        async addMovement(shiftId: number, input: MovementInput, opts?: ActionOpts) {
             const { reason, description, ...rest } = input;
             // The validator rejects unknown keys: the reason travels inside the description.
             const why = reason?.trim();
-            return mutate<Record<string, unknown>>('POST', `/cash-shifts/${shiftId}/movements`, { ...rest, description: why ? `${why}: ${description.trim()}` : description.trim() });
+            return mutate<Record<string, unknown>>('POST', `/cash-shifts/${shiftId}/movements`, { ...rest, description: why ? `${why}: ${description.trim()}` : description.trim() }, opts);
         },
-        count: (shiftId: number, breakdown: CountBody) => mutate<CountResult>('POST', `/cash-arqueo/${shiftId}/count`, breakdown),
-        previewClose: (shiftId: number, payload: ClosePayload) => mutate<ClosePreview>('POST', `/cash-arqueo/${shiftId}/preview-close`, payload),
+        count: (shiftId: number, breakdown: CountBody, opts?: ActionOpts) => mutate<CountResult>('POST', `/cash-arqueo/${shiftId}/count`, breakdown, opts),
+        previewClose: (shiftId: number, payload: ClosePayload, opts?: ActionOpts) => mutate<ClosePreview>('POST', `/cash-arqueo/${shiftId}/preview-close`, payload, opts),
         /** A retry whose first answer was lost finds the shift already closed by this user: that is a success (`alreadyClosed`). */
-        async close(shiftId: number, payload: ClosePayload): Promise<CloseResult> {
+        async close(shiftId: number, payload: ClosePayload, opts?: ActionOpts): Promise<CloseResult> {
             try {
-                const shift = await mutate<CashShiftInfo>('POST', `/cash-arqueo/${shiftId}/close`, payload);
+                const shift = await mutate<CashShiftInfo>('POST', `/cash-arqueo/${shiftId}/close`, payload, opts);
                 return { alreadyClosed: false, shift };
             } catch (error) {
                 if (error instanceof CashError && error.code === 'CASH_SHIFT_ALREADY_CLOSED' && error.closedByMe === true) return { alreadyClosed: true };

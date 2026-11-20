@@ -113,11 +113,11 @@ describe('useCashShift', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
         const payload = { endAmount: 5, bills: [], coins: [] };
         await act(async () => {
-            await expect(result.current.close(9, payload)).rejects.toBeTruthy();
+            await expect(result.current.close(9, payload, { actionId: 'c1' })).rejects.toBeTruthy();
         });
         let done: Awaited<ReturnType<typeof result.current.close>> | undefined;
         await act(async () => {
-            done = await result.current.close(9, payload);
+            done = await result.current.close(9, payload, { actionId: 'c1' });
         });
         expect(done?.alreadyClosed).toBe(true);
         expect(done?.report?.report.title).toBe('REPORTE DE CIERRE DE CAJA');
@@ -138,5 +138,50 @@ describe('useCashShift', () => {
             await result.current.addMovement(1, { type: 'IN', amount: 5, description: 'x' });
         });
         expect(env.seen.filter((s) => s.url.endsWith('/active-status')).length).toBe(before + 2);
+    });
+
+    it('a mutation that settles after a user switch leaves the next user clean and not loading', async () => {
+        let releaseOpen: () => void = () => undefined;
+        const calls: Array<(s: ActiveShiftStatus) => void> = [];
+        const api = {
+            openShift: vi.fn(() => new Promise((resolve) => (releaseOpen = () => resolve({ id: 1 })))),
+            activeStatus: vi.fn(() => new Promise<ActiveShiftStatus>((resolve) => calls.push(resolve))),
+        } as unknown as CashApi;
+        const { result, rerender } = renderHook(({ owner }) => useCashShift(api, owner), { initialProps: { owner: '1:1' as string | null } });
+        await waitFor(() => expect(calls).toHaveLength(1));
+        await act(async () => calls[0](open(5)));
+        let mutation: Promise<unknown> = Promise.resolve();
+        act(() => {
+            mutation = result.current.openShift({ cashRegisterId: 1, startAmount: 1 });
+        });
+        rerender({ owner: '1:2' }); // lock + switch while A's mutation is in flight
+        await waitFor(() => expect(calls).toHaveLength(2)); // B's own load
+        await act(async () => {
+            releaseOpen();
+            await mutation;
+        });
+        expect(calls).toHaveLength(2); // A's continuation did not fetch under B
+        expect(result.current.status).toBeNull();
+        expect(result.current.loading).toBe(true); // B's load is still the only pending one
+        await act(async () => calls[1](open(9)));
+        expect(result.current.status?.shift?.id).toBe(9);
+        expect(result.current.loading).toBe(false);
+    });
+
+    it('overlapping polls are not stacked', async () => {
+        const calls: Array<(s: ActiveShiftStatus) => void> = [];
+        const api = { activeStatus: vi.fn(() => new Promise<ActiveShiftStatus>((resolve) => calls.push(resolve))) } as unknown as CashApi;
+        renderHook(() => useCashShift(api, '1:1'));
+        await waitFor(() => expect(calls).toHaveLength(1));
+        await act(async () => {
+            window.dispatchEvent(new Event('focus'));
+            window.dispatchEvent(new Event('focus'));
+        });
+        expect(calls).toHaveLength(1);
+        await act(async () => calls[0](open(1)));
+        await act(async () => {
+            window.dispatchEvent(new Event('focus'));
+        });
+        expect(calls).toHaveLength(2);
     });
 });

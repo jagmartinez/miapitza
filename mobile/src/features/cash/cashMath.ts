@@ -54,13 +54,12 @@ export function countedTotals(breakdown: Breakdown, rate: number): CountedTotals
     const usd = sumFloat(breakdown.usdBills);
     const effectiveRate = usd > 0 && Number.isFinite(rate) && rate > 0 ? rate : 0;
     const usdInNio = usd * effectiveRate;
-    return {
-        nioBillsC: toCents(bills),
-        nioCoinsC: toCents(coins),
-        usd,
-        usdInNioC: toCents(usdInNio),
-        totalC: Math.round((bills + coins + usdInNio) * 100),
-    };
+    const nioBillsC = toCents(bills);
+    const nioCoinsC = toCents(coins);
+    const usdInNioC = toCents(usdInNio);
+    // Parts first, total as their sum: what the screen shows always adds up. Bills and coins are whole cents, so this equals the
+    // server's single rounding of the float sum (:70) up to float noise on an exact half cent; the tests compare them.
+    return { nioBillsC, nioCoinsC, usd, usdInNioC, totalC: nioBillsC + nioCoinsC + usdInNioC };
 }
 
 const rows = (map: CountMap | undefined): CountRow[] =>

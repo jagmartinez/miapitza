@@ -50,21 +50,52 @@ describe('cashApi', () => {
         expect(JSON.stringify(seen[0].data)).not.toContain('reason');
     });
 
-    it('every mutation carries a key; ambiguous failure reuses it, a definitive one does not', async () => {
+    it('every mutation carries a key; a retry of the same action reuses it after an ambiguous failure, a definitive one does not', async () => {
         const { api, seen, reply } = await setup();
+        const body = { cashRegisterId: 4, startAmount: 100 };
         reply(() => ({ network: true }));
-        await expect(api.openShift({ cashRegisterId: 4, startAmount: 100 })).rejects.toBeTruthy();
+        await expect(api.openShift(body, { actionId: 'a1' })).rejects.toBeTruthy();
         reply(() => ({ status: 500 }));
-        await expect(api.openShift({ cashRegisterId: 4, startAmount: 100 })).rejects.toBeTruthy();
+        await expect(api.openShift(body, { actionId: 'a1' })).rejects.toBeTruthy();
         reply(() => ({}));
-        await api.openShift({ cashRegisterId: 4, startAmount: 100 });
+        await api.openShift(body, { actionId: 'a1' });
         expect(seen.every((s) => !!s.key)).toBe(true);
         expect(new Set(seen.map((s) => s.key)).size).toBe(1);
         reply(() => ({ status: 409, code: 'CASH_SHIFT_ALREADY_OPEN' }));
-        await expect(api.openShift({ cashRegisterId: 4, startAmount: 100 })).rejects.toMatchObject({ code: 'CASH_SHIFT_ALREADY_OPEN' });
+        await expect(api.openShift(body, { actionId: 'a1' })).rejects.toMatchObject({ code: 'CASH_SHIFT_ALREADY_OPEN' });
         reply(() => ({}));
-        await api.openShift({ cashRegisterId: 4, startAmount: 100 });
+        await api.openShift(body, { actionId: 'a1' });
         expect(seen[seen.length - 1].key).not.toBe(seen[0].key);
+    });
+
+    it('two identical movements are two actions: the first failing ambiguously does not lend its key to the second', async () => {
+        const { api, seen, reply } = await setup();
+        const mv = { type: 'OUT' as const, amount: 10, description: 'Cambio' };
+        reply(() => ({ network: true }));
+        await expect(api.addMovement(9, mv)).rejects.toBeTruthy();
+        reply(() => ({}));
+        await api.addMovement(9, mv);
+        expect(seen[0].key).toBeTruthy();
+        expect(seen[1].key).not.toBe(seen[0].key);
+        // Same action id (explicit retry) does reuse it.
+        reply(() => ({ network: true }));
+        await expect(api.addMovement(9, mv, { actionId: 'm1' })).rejects.toBeTruthy();
+        reply(() => ({}));
+        await api.addMovement(9, mv, { actionId: 'm1' });
+        expect(seen[3].key).toBe(seen[2].key);
+    });
+
+    it('addMovement with a bad description rejects asynchronously', async () => {
+        const { api } = await setup();
+        await expect(api.addMovement(9, { type: 'IN', amount: 1 } as never)).rejects.toBeInstanceOf(TypeError);
+    });
+
+    it('a mutation started under a user that is gone is not sent', async () => {
+        const { api, sessions, seen } = await setup();
+        const p = api.openShift({ cashRegisterId: 1, startAmount: 1 });
+        await sessions.save(sessionFor(2)); // lock + switch before the send
+        await expect(p).rejects.toBeInstanceOf(SessionChangedError);
+        expect(seen).toHaveLength(0);
     });
 
     it('occupied register error exposes occupant name', async () => {
@@ -89,9 +120,9 @@ describe('cashApi', () => {
     it('close retry after lost response resolves alreadyClosed', async () => {
         const { api, seen, reply } = await setup();
         reply(() => ({ network: true }));
-        await expect(api.close(9, { endAmount: 5, bills: [], coins: [] })).rejects.toBeTruthy();
+        await expect(api.close(9, { endAmount: 5, bills: [], coins: [] }, { actionId: 'c1' })).rejects.toBeTruthy();
         reply(() => ({ status: 409, code: 'CASH_SHIFT_ALREADY_CLOSED', data: { closedByMe: true } }));
-        expect(await api.close(9, { endAmount: 5, bills: [], coins: [] })).toEqual({ alreadyClosed: true });
+        expect(await api.close(9, { endAmount: 5, bills: [], coins: [] }, { actionId: 'c1' })).toEqual({ alreadyClosed: true });
         expect(seen[0].key).toBe(seen[1].key);
         // Someone else closed it: that is an error, not a success.
         reply(() => ({ status: 409, code: 'CASH_SHIFT_ALREADY_CLOSED', data: { closedByMe: false } }));
