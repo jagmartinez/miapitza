@@ -27,7 +27,7 @@ export interface TablesScreenProps {
     queue: OfflineQueue | null;
     /** Drops the cached plan and active orders so the next read hits the server. */
     invalidate: () => Promise<void>;
-    onOpenOrder: (orderId: OrderRef, intent?: OrderIntent) => void;
+    onOpenOrder: (orderId: OrderRef, intent?: OrderIntent, tableId?: number) => void;
     onSwitchUser: () => void;
 }
 
@@ -183,7 +183,9 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
         const id = created._offline ? created.entityTempId : created.id;
         if (id == null) throw new Error('No se pudo abrir la mesa.');
         setSheet(null);
-        onOpenOrder(id);
+        // An order that only exists in the queue cannot tell its table: hand it over.
+        if (created._offline) onOpenOrder(id, undefined, table.id);
+        else onOpenOrder(id);
     };
 
     const runAction = (action: SheetAction, table: PlanTable, order: ActiveOrder) => {

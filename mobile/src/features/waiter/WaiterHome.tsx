@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
 import { loadWaiterData } from '../../data/loadWaiterData';
 import type { WaiterData } from '../../data/waiterData';
 import type { OrderRef } from '../../data/waiterApi';
 import { ownerKeyOf } from '../../data/types';
-import { PosScreen } from './pos/PosScreen';
+
+
 import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
 
-type Route = { name: 'tables' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent };
+type Route = { name: 'tables' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number };
+
+// The order screen is the biggest waiter chunk: it loads when the first order opens.
+const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ default: m.OrderScreen })));
 
 const STALE_URLS = ['/orders/active', '/tables/plan'];
 
@@ -57,7 +61,23 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
     }
 
     if (route.name === 'order') {
-        return <PosScreen orderId={route.orderId} intent={route.intent} onBack={() => setRoute({ name: 'tables' })} />;
+        return (
+            <Suspense fallback={<main className="screen"><p className="muted">Cargando…</p></main>}>
+                <OrderScreen
+                    key={String(route.orderId)}
+                    session={session}
+                    api={data.api}
+                    drafts={data.drafts}
+                    realtime={services.realtime}
+                    queue={data.queue}
+                    orderId={route.orderId}
+                    tableId={route.tableId}
+                    intent={route.intent}
+                    invalidate={invalidate}
+                    onBack={() => setRoute({ name: 'tables' })}
+                />
+            </Suspense>
+        );
     }
 
     return (
@@ -67,7 +87,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
             realtime={services.realtime}
             queue={data.queue}
             invalidate={invalidate}
-            onOpenOrder={(orderId, intent) => setRoute({ name: 'order', orderId, intent })}
+            onOpenOrder={(orderId, intent, tableId) => setRoute({ name: 'order', orderId, intent, tableId })}
             onSwitchUser={onSwitchUser}
         />
     );

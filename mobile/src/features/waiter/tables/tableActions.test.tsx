@@ -69,7 +69,7 @@ describe('open table', () => {
         fireEvent.click(tile(1));
         fireEvent.click(await screen.findByRole('button', { name: '2' }));
         fireEvent.click(screen.getByRole('button', { name: 'Abrir y tomar pedido' }));
-        await waitFor(() => expect(onOpenOrder).toHaveBeenCalledWith('order-1700-abcd1234'));
+        await waitFor(() => expect(onOpenOrder).toHaveBeenCalledWith('order-1700-abcd1234', undefined, 1));
     });
 
     it('double tap on the open button creates one order', async () => {
