@@ -37,6 +37,23 @@ function credentialNamespace(prefix: string, credential: string): string {
     return `${prefix}:${crypto.createHash('sha256').update(credential).digest('hex').slice(0, 60)}`;
 }
 
+/**
+ * Session-issuing / session-ending auth routes (see routes/auth.routes.ts).
+ * Their responses carry or clear a credential, so they are never stored or
+ * replayed (a replay could hand back a revoked or other-device token), and
+ * pre-auth must not 401 a stale Bearer before the client can log back in.
+ */
+const SESSION_AUTH_PATHS = new Set([
+    '/auth/login', '/auth/pin-login', '/auth/device-login',
+    '/auth/logout', '/auth/change-password',
+]);
+
+export function isSessionAuthPath(originalUrl: string): boolean {
+    let path = originalUrl.split('?')[0].toLowerCase().replace(/\/+/g, '/').replace(/\/+$/, '');
+    path = path.replace(/^\/api(\/v\d+)?(?=\/|$)/, '');
+    return SESSION_AUTH_PATHS.has(path) || path === '/auth/sessions' || path.startsWith('/auth/sessions/');
+}
+
 export function resolveIdempotencyNamespace(req: Request): string {
     const token = extractAuthToken(req);
     if (token && req.user && req.authContextValidated === true) {
@@ -82,8 +99,7 @@ export function preAuthenticateIdempotentRequest(
     next: NextFunction,
 ) {
     const key = req.headers['x-idempotency-key'];
-    const path = req.originalUrl.split('?')[0].replace(/\/+$/, '') || '/';
-    if (!key || req.method === 'GET' || path === '/api/auth/login' || !extractAuthToken(req)) {
+    if (!key || req.method === 'GET' || isSessionAuthPath(req.originalUrl) || !extractAuthToken(req)) {
         return next();
     }
     return auth(req, res, next);
@@ -107,6 +123,7 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
     }
     const key = rawKey;
     if (!key || req.method === 'GET') return next();
+    if (isSessionAuthPath(req.originalUrl)) return next();
     if (key.length > 191) {
         res.status(400).json({ success: false, message: 'Clave de idempotencia demasiado larga' });
         return;
