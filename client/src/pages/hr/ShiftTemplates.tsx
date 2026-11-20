@@ -9,7 +9,7 @@ import {
     ShiftTemplateForm,
     type ShiftTemplateFormValues,
 } from '../../components/hr/ShiftTemplateCatalog';
-import { HrHero, HrPage, HrSection, HrTabs, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
+import { HrHero, HrPage, HrTabs, type HrFact, type HrTabItem, HrTablePanel, HrPanelState } from '../../components/hr/layout/HrWorkspace';
 import { getScheduleErrorMessage, scheduleClient } from '../../components/hr/scheduleClient';
 import { ROLES, HR_OWNER } from '../../constants/roles';
 import { useConfirmDialog } from '../../context/ConfirmContext';
@@ -199,7 +199,6 @@ export default function ShiftTemplates() {
         { key: 'ACTIVE', label: 'Activas', count: activeCount },
         { key: 'INACTIVE', label: 'Inactivas', count: inactiveCount },
     ];
-    const sectionTitle = statusFilter === 'ACTIVE' ? 'Jornadas activas' : statusFilter === 'INACTIVE' ? 'Jornadas inactivas' : 'Catálogo de jornadas';
 
     return (
         <HrPage className="hr-shift-templates-page hr-hz-page hr-hz-templates">
@@ -232,23 +231,19 @@ export default function ShiftTemplates() {
                 />
             </div>
 
-            <HrSection
+            <HrTablePanel
                 id={`hr-shift-templates-panel-${statusFilter.toLowerCase()}`}
                 role="tabpanel"
                 aria-labelledby={`hr-shift-templates-tab-${statusFilter.toLowerCase()}`}
                 className="hr-hz-catalog"
-                eyebrow="Catálogo"
-                title={sectionTitle}
-                count={ready ? visibleTemplates.length : undefined}
-                description="Cada jornada define horario, descanso y color para asignarla desde Horarios."
             >
-                {loading && <LoadingSpinner text="Cargando jornadas configuradas…" />}
+                {loading && <HrPanelState><LoadingSpinner text="Cargando jornadas configuradas…" /></HrPanelState>}
                 {!loading && loadError && (
-                    <div className="state-placeholder" role="alert">
+                    <HrPanelState role="alert">
                         <AlertTriangle size={42} aria-hidden="true" />
                         <p className="state-error">{loadError}</p>
                         <Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} aria-hidden="true" /> Reintentar</Button>
-                    </div>
+                    </HrPanelState>
                 )}
                 {!loading && !loadError && (
                     <ShiftTemplateCatalog
@@ -260,7 +255,7 @@ export default function ShiftTemplates() {
                         onToggleActive={(template) => void toggleActive(template)}
                     />
                 )}
-            </HrSection>
+            </HrTablePanel>
 
             <Sidebar
                 isOpen={editorOpen}

@@ -18,7 +18,7 @@ import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
-import { HrHero, HrPage, HrSection, HrToolbar, type HrFact } from '../../components/hr/layout/HrWorkspace';
+import { HrHero, HrPage, HrSection, HrToolbar, type HrFact, HrTablePanel, HrPanelState } from '../../components/hr/layout/HrWorkspace';
 import {
     addDaysDateOnly,
     existingShiftApiInput,
@@ -511,26 +511,21 @@ export default function Schedules() {
                         <Clock3 size={17} aria-hidden="true" /> Jornadas configuradas
                     </Button>
                 )}
-                aside={(
-                    <section className="hr-hz-weeknav" aria-label="Navegación semanal">
-                        <div className="hr-hz-weeknav-label">
-                            <span>Semana</span>
-                            <strong>{weekLabel(weekStart)}</strong>
-                            <small>{weekStart === currentWeek ? 'Semana en curso' : 'Otra semana'}</small>
-                        </div>
-                        <div className="hr-hz-weeknav-controls">
-                            <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
-                            <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || mutationBusy || anyEditorOpen}>Hoy</Button>
-                            <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana siguiente">Siguiente <ChevronRight size={18} aria-hidden="true" /></Button>
-                        </div>
-                    </section>
-                )}
                 facts={heroFacts}
             />
 
             <HrToolbar className="filters-toolbar hr-schedule-filters hr-hz-filters" ariaLabel="Filtros y acciones de la semana">
-                <div className="filter-field hr-ws-field is-wide"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
-                <div className="filter-field hr-ws-field is-wide"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
+                <div className="hr-ws-field hr-hz-weeknav" role="group" aria-label="Navegación semanal">
+                    <span className="hr-hz-weeknav-caption">Semana{weekStart === currentWeek ? ' en curso' : ''}</span>
+                    <div className="hr-hz-weeknav-control">
+                        <button type="button" className="hr-hz-weeknav-step" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana anterior" title="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /></button>
+                        <strong className="hr-hz-weeknav-range">{weekLabel(weekStart)}</strong>
+                        <button type="button" className="hr-hz-weeknav-step" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana siguiente" title="Semana siguiente"><ChevronRight size={18} aria-hidden="true" /></button>
+                        <button type="button" className="hr-hz-weeknav-today" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || mutationBusy || anyEditorOpen}>Hoy</button>
+                    </div>
+                </div>
+                <div className="filter-field hr-ws-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
+                <div className="filter-field hr-ws-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
                 <div className="filter-field hr-ws-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
                 <div className="filter-actions hr-ws-toolbar-actions">
                     <Button variant="ghost" disabled={mutationBusy || anyEditorOpen} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
@@ -603,35 +598,27 @@ export default function Schedules() {
                 </HrSection>
             )}
 
-            <HrSection
-                className="hr-hz-planner"
-                eyebrow="Planificación"
-                title="Turnos de la semana"
-                count={ready ? visibleShiftCount : undefined}
-                description={`${weekLabel(weekStart)} · ${canManageSchedule && !fromCache ? 'Selecciona una celda vacía para asignar una jornada.' : 'Vista de consulta.'}`}
-            >
-                {loading && <LoadingSpinner text="Cargando horarios…" />}
+            <HrTablePanel className="hr-hz-planner" aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
+                {loading && <HrPanelState><LoadingSpinner text="Cargando horarios…" /></HrPanelState>}
                 {!loading && error && (
-                    <div className="state-placeholder" role="alert"><CalendarDays size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></div>
+                    <HrPanelState role="alert"><CalendarDays size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></HrPanelState>
                 )}
                 {!loading && !error && visibleWorkers.length === 0 && !hasShifts && (
-                    <div className="state-placeholder"><CalendarDays size={44} aria-hidden="true" /><p>No hay trabajadores activos autorizados para esta semana y filtros.</p></div>
+                    <HrPanelState><CalendarDays size={44} aria-hidden="true" /><p>No hay trabajadores activos autorizados para esta semana y filtros.</p></HrPanelState>
                 )}
                 {!loading && !error && (visibleWorkers.length > 0 || hasShifts) && (
-                    <div className="hr-hz-matrix-scroll">
-                        <ScheduleWeekView
-                            weekStart={weekStart}
-                            schedules={visibleSchedules}
-                            holidays={holidays}
-                            workers={visibleWorkers}
-                            readOnly={mutationBusy || fromCache || !canManageSchedule}
-                            onCreate={openCreateForCell}
-                            onEdit={openEdit}
-                            onDelete={(shift, schedule) => void deleteShift(shift, schedule)}
-                        />
-                    </div>
+                    <ScheduleWeekView
+                        weekStart={weekStart}
+                        schedules={visibleSchedules}
+                        holidays={holidays}
+                        workers={visibleWorkers}
+                        readOnly={mutationBusy || fromCache || !canManageSchedule}
+                        onCreate={openCreateForCell}
+                        onEdit={openEdit}
+                        onDelete={(shift, schedule) => void deleteShift(shift, schedule)}
+                    />
                 )}
-            </HrSection>
+            </HrTablePanel>
 
             <Sidebar isOpen={editorOpen} onClose={closeEditor} title={editingShift ? 'Editar turno' : newShiftDefaults ? 'Asignar jornada' : 'Nuevo turno'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
                 <ScheduleShiftForm

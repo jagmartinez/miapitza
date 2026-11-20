@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 const attendanceReview = read('./AttendanceReview.tsx');
+const consoleCss = read('../../components/hr/layout/hr-console.css');
 const attendanceManagement = read('./AttendanceManagement.tsx');
 const leaveManagement = read('./LeaveManagement.tsx');
 const benefitsManagement = read('./BenefitsManagement.tsx');
@@ -35,7 +36,9 @@ describe('RH operational UI contract', () => {
     adminOperationalPages.forEach((source) => expect(source).toContain('hr-operation-page'));
     selfServicePages.forEach((source) => expect(source).toContain('my-hr-page'));
     expect(adminCss).toContain('.hr-operation-page .hr-operation-kpis');
-    expect(adminCss).toContain('.hr-operation-page .hr-operation-toolbar');
+    // Filter bars get their (box-less) look from the canonical RH layout, not from page CSS.
+    expect(consoleCss).toContain('.page-wrapper.hr-ws-page.hr-console .hr-ws-toolbar.hr-ws-toolbar');
+    expect(adminCss).not.toContain('.hr-operation-page .hr-operation-toolbar');
     expect(adminCss).toContain("[role='tabpanel']:focus-visible");
     expect(adminCss).not.toMatch(/(^|\n)\s*(body|:root)\s*\{/);
   });

@@ -22,63 +22,6 @@
 
 .hr-asis-page .hr-asis-alert > span { flex: 1 1 240px; }
 
-/* ---------- Toolbar: controls keep normal casing ---------- */
-.hr-asis-page .hr-ws-toolbar.hr-ws-toolbar {
-  margin: 0;
-  box-shadow: var(--shadow-sm);
-}
-
-.hr-asis-page .hr-ws-toolbar :is(label, .hr-ws-field) > :not(.select-label) {
-  color: var(--color-text);
-  font-size: var(--font-size-sm, .875rem);
-  font-weight: 500;
-  letter-spacing: normal;
-  text-transform: none;
-}
-
-.hr-asis-page .hr-ws-toolbar .select-label {
-  margin: 0 0 .3rem;
-  color: var(--hr-ws-text-2);
-  font-size: .68rem;
-  font-weight: 800;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-}
-
-.hr-asis-page .hr-ws-toolbar .select-group { width: 100%; margin: 0; }
-
-.hr-asis-page .hr-ws-toolbar input[type='date'] {
-  width: 100%;
-  min-width: 0;
-}
-
-/* ---------- Manual tablist (Control diario) on top of kit pills ---------- */
-.hr-asis-page .hr-asis-tabs-bar .hr-ws-tabs.hr-admin-tab-toolbar {
-  flex-wrap: wrap;
-  gap: .3rem;
-  padding: 0;
-  overflow: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.hr-asis-page .hr-asis-tabs-bar .hr-ws-tabs.hr-admin-tab-toolbar button {
-  min-height: 40px;
-  padding: 0 .9rem;
-  border: 1px solid transparent;
-  border-radius: .7rem;
-  font-size: .84rem;
-  font-weight: 700;
-}
-
-.hr-asis-page .hr-asis-tabs-bar .hr-ws-tabs.hr-admin-tab-toolbar button[aria-selected='true'] {
-  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
-  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-  color: var(--color-primary);
-}
-
 /* ---------- Table ---------- */
 .hr-asis-page .hr-asis-table .catalog-table {
   min-width: 860px;
@@ -298,8 +241,6 @@
 }
 
 @media (max-width: 680px) {
-  .hr-asis-page .hr-ws-toolbar-actions { width: 100%; margin-left: 0; }
-  .hr-asis-page .hr-ws-toolbar-actions > * { flex: 1 1 auto; }
   .hr-asis-settings .hr-settings-savebar { flex-direction: column; align-items: stretch; }
   .hr-asis-settings .hr-asis-scope .hr-settings-scope-mode { max-width: none; width: 100%; }
 }

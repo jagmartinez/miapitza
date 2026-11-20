@@ -313,14 +313,6 @@
   line-height: 1.55;
 }
 
-.hr-operation-page .hr-operation-toolbar {
-  margin-block: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
-}
-
 .hr-operation-page .hr-operation-kpis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

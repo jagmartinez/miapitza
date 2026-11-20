@@ -249,7 +249,7 @@ export default function AttendanceReview() {
             <HrToolbar ariaLabel="Filtros de eventos de asistencia" className="hr-attendance-filters hr-operation-toolbar hr-asis-toolbar">
                 <label htmlFor="attendance-from">Desde<input id="attendance-from" className="filter-input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
                 <label htmlFor="attendance-to">Hasta<input id="attendance-to" className="filter-input" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
-                <div className="hr-ws-field is-wide"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isSearchable /></div>
+                <div className="hr-ws-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isSearchable /></div>
                 <div className="hr-ws-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isSearchable /></div>
                 <div className="hr-ws-field"><Select<Option> label="Acción" options={ACTION_OPTIONS} value={ACTION_OPTIONS.find((option) => option.value === action)} onChange={(option: SingleValue<Option>) => setAction(option?.value ?? '')} /></div>
                 <div className="hr-ws-toolbar-actions">
