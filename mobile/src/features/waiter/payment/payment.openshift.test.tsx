@@ -51,7 +51,7 @@ describe('payment without a cash shift', () => {
         // back on the payment, cash is usable now
         await screen.findByText('Cobrar · Mesa 2');
         await waitFor(() => expect(screen.queryByText('Abre tu turno de caja')).toBeNull());
-        fireEvent.click(screen.getByRole('button', { name: 'Efectivo' }));
+        // the method picked before opening the shift is still the selected one
         expect(screen.queryByText('Abre tu turno de caja')).toBeNull();
         expect(screen.getByRole('button', { name: 'Efectivo' })).toHaveAttribute('aria-pressed', 'true');
     });

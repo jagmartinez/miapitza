@@ -280,20 +280,6 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         onClose();
     };
 
-    if (openingShift && loadCash) {
-        return (
-            <Suspense fallback={<main className="pay" data-testid="payment-screen"><p className="muted pay-notice">Cargando caja…</p></main>}>
-                <OpenShiftFlow
-                    loadCash={loadCash}
-                    onBack={() => setOpeningShift(false)}
-                    onOpened={() => {
-                        setOpeningShift(false);
-                        void refresh().catch(() => undefined); // the shift is open now: cash unlocks
-                    }}
-                />
-            </Suspense>
-        );
-    }
     if (loadError) {
         return (
             <main className="pay" data-testid="payment-screen">
@@ -325,7 +311,23 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
     const customerName = customer?.customerName || (typeof order.customerName === 'string' && order.customerName ? order.customerName : 'Consumidor final');
     const locked = attempted || busy;
 
+    // The shift flow is an overlay: the payment stays mounted underneath, so the method the cashier picked survives.
+    const openShiftOverlay =
+        openingShift && loadCash ? (
+            <Suspense fallback={<main className="cash"><p className="muted cash-notice">Cargando caja…</p></main>}>
+                <OpenShiftFlow
+                    loadCash={loadCash}
+                    onBack={() => setOpeningShift(false)}
+                    onOpened={() => {
+                        setOpeningShift(false);
+                        void refresh().catch(() => undefined); // the shift is open now: cash unlocks
+                    }}
+                />
+            </Suspense>
+        ) : null;
+
     return (
+        <>
         <main className="pay" data-testid="payment-screen" data-mode={mode}>
             <header className="pay-bar-top" data-fixed={48}>
                 <button type="button" className="btn" aria-label="Volver" disabled={busy} onClick={() => void leave()}>
@@ -374,5 +376,7 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
                 {mode === 'split' && <SplitPayment key={`split-${epoch}`} ctx={ctx} />}
             </div>
         </main>
+        {openShiftOverlay}
+        </>
     );
 }
