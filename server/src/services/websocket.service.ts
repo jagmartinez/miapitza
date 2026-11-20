@@ -245,7 +245,9 @@ export class WebSocketService {
                     userRoles: { select: { role: { select: { name: true } } } }
                 }
             });
-            if (!user || user.status !== 'ACTIVE' || user.mustChangePassword || !user.companyId) return false;
+            if (!user || user.status !== 'ACTIVE' || !user.companyId) return false;
+            // Device sessions authenticate with device token (+ PIN), not the password.
+            if (user.mustChangePassword && !SessionService.isDeviceTag(await SessionService.deviceOf(token))) return false;
 
             const authoritativeRoles = Array.from(new Set([
                 user.role.name,
@@ -358,7 +360,11 @@ export class WebSocketService {
             })
         ]);
 
-        if (!sessionIsValid || !user || user.status !== 'ACTIVE' || user.mustChangePassword || !user.companyId) return false;
+        if (!sessionIsValid || !user || user.status !== 'ACTIVE' || !user.companyId) return false;
+        if (
+            user.mustChangePassword
+            && !SessionService.isDeviceTag(await SessionService.deviceOfHash(client.sessionTokenHash))
+        ) return false;
 
         const authoritativeRoles = Array.from(new Set([
             user.role.name,
@@ -375,6 +381,18 @@ export class WebSocketService {
         client.branchId = user.branchId ?? undefined;
         client.roles = authoritativeRoles;
         return true;
+    }
+
+    /** Closes (4001) every open socket whose session is one of the given token hashes. */
+    static closeBySessionHashes(tokenHashes: string[], reason = 'Session revoked'): number {
+        if (tokenHashes.length === 0) return 0;
+        const hashes = new Set(tokenHashes);
+        let closed = 0;
+        this.clients.forEach((client) => {
+            if (!client.sessionTokenHash || !hashes.has(client.sessionTokenHash)) return;
+            try { client.close(4001, reason); closed++; } catch { /* already closed */ }
+        });
+        return closed;
     }
 
     static broadcast(message: WebSocketMessage, criteria: BroadcastCriteria = {}): void {

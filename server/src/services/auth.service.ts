@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SessionService } from './session.service';
 import { TwoFactorService } from './twoFactor.service';
-import { ROLES, KITCHEN_DEVICE_ROLES, PIN_ROLES } from '../constants/roles';
+import { ROLES, PIN_ROLES } from '../constants/roles';
 import {
     assertStrongPassword,
     BCRYPT_ROUNDS
@@ -12,7 +12,7 @@ import {
 import { collectPermissionNames } from '../utils/permission-names';
 import { AuditLogService } from './audit-log.service';
 import { loginAttemptService } from './login-attempt.service';
-import { OperationalDeviceService, deviceSessionTag } from './operational-device.service';
+import { OperationalDeviceService, deviceSessionTag, isKitchenDeviceUser } from './operational-device.service';
 import { PinService } from './pin.service';
 import type { AuditAction } from './audit-log.service';
 
@@ -486,8 +486,7 @@ export class AuthService {
             !user
             || !isUserEligibleContext(user, device)
             || user.branchId !== device.branchId
-            || !roleNames.includes(ROLES.COCINA)
-            || !roleNames.every((name) => (KITCHEN_DEVICE_ROLES as string[]).includes(name))
+            || !isKitchenDeviceUser(roleNames)
         ) {
             throw new Error(GENERIC_AUTH_ERROR);
         }

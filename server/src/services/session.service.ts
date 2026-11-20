@@ -2,6 +2,9 @@ import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 
+/** Prefix of `UserSession.device` for sessions opened from an operational device. */
+export const OP_DEVICE_TAG_PREFIX = 'op-device:';
+
 function hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -103,6 +106,29 @@ export class SessionService {
             select: { device: true },
         });
         return session?.device ?? null;
+    }
+
+    /** True for the `op-device:<id>` tag of sessions opened from a registered tablet. */
+    static isDeviceTag(device: string | null | undefined): boolean {
+        return typeof device === 'string' && device.startsWith(OP_DEVICE_TAG_PREFIX);
+    }
+
+    /** Same as `deviceOf`, for callers that only hold the stored token hash (WebSocket). */
+    static async deviceOfHash(tokenHash: string, db: SessionClient = prisma): Promise<string | null> {
+        const session = await db.userSession.findUnique({
+            where: { tokenHash },
+            select: { device: true },
+        });
+        return session?.device ?? null;
+    }
+
+    /** Token hashes of the still-active sessions tagged with an operational-device tag. */
+    static async activeHashesByDevice(tag: string, db: SessionClient = prisma): Promise<string[]> {
+        const rows = await db.userSession.findMany({
+            where: { device: tag, revoked: false },
+            select: { tokenHash: true },
+        });
+        return rows.map((row) => row.tokenHash);
     }
 
     /** Revoke every active session tagged with an operational-device tag (e.g. `op-device:7`). */

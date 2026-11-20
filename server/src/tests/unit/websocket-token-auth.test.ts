@@ -281,4 +281,65 @@ describe('WebSocket message-based token auth', () => {
         expect(WebSocketService.isOriginAllowed('capacitor://evil', list, 'production')).toBe(false);
         expect(WebSocketService.isOriginAllowed('capacitor://localhost', ['https://app.example.com'], 'production')).toBe(false);
     });
+
+    describe('password gate vs device sessions', () => {
+        const mustChange = (id: number) => ({ ...activeUser(id), mustChangePassword: true });
+
+        it('authenticates a device session whose user has mustChangePassword', async () => {
+            jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 40 } as never);
+            jest.spyOn(SessionService, 'isValid').mockResolvedValue(true);
+            jest.spyOn(SessionService, 'deviceOf').mockResolvedValue('op-device:11');
+            jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(mustChange(40) as never);
+            const ws = new FakeSocket();
+            await svc().handleConnection(ws, { headers: {} });
+            ws.emit('message', authMsg('kitchen-token'));
+            await flush();
+            expect(ws.close).not.toHaveBeenCalled();
+            expect(svc().clients.size).toBe(1);
+        });
+
+        it('still rejects a web session whose user has mustChangePassword', async () => {
+            jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 7 } as never);
+            jest.spyOn(SessionService, 'isValid').mockResolvedValue(true);
+            jest.spyOn(SessionService, 'deviceOf').mockResolvedValue('Windows');
+            jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(mustChange(7) as never);
+            const ws = new FakeSocket();
+            await svc().handleConnection(ws, { headers: {} });
+            ws.emit('message', authMsg('web-token'));
+            await flush();
+            expect(ws.close).toHaveBeenCalledWith(4001, expect.any(String));
+            expect(svc().clients.size).toBe(0);
+        });
+
+        const revalidate = (client: unknown) =>
+            (WebSocketService as unknown as { revalidateClient(c: unknown): Promise<boolean> }).revalidateClient(client);
+        const client = (hash: string) => ({ userId: 40, sessionTokenHash: hash, authenticated: true });
+
+        it('keeps a device session through heartbeat revalidation with mustChangePassword', async () => {
+            jest.spyOn(SessionService, 'isHashValid').mockResolvedValue(true);
+            jest.spyOn(SessionService, 'deviceOfHash').mockResolvedValue('op-device:11');
+            jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(mustChange(40) as never);
+            expect(await revalidate(client('h1'))).toBe(true);
+        });
+
+        it('fails revalidation of a web session with mustChangePassword', async () => {
+            jest.spyOn(SessionService, 'isHashValid').mockResolvedValue(true);
+            jest.spyOn(SessionService, 'deviceOfHash').mockResolvedValue('Chrome');
+            jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(mustChange(40) as never);
+            expect(await revalidate(client('h2'))).toBe(false);
+        });
+    });
+
+    describe('closeBySessionHashes', () => {
+        it('closes with 4001 only the sockets whose session hash is listed', () => {
+            const a = new FakeSocket();
+            const b = new FakeSocket();
+            svc().clients.set('a', Object.assign(a, { sessionTokenHash: 'h-a' }) as never);
+            svc().clients.set('b', Object.assign(b, { sessionTokenHash: 'h-b' }) as never);
+            expect(WebSocketService.closeBySessionHashes(['h-a', 'unknown'])).toBe(1);
+            expect(a.close).toHaveBeenCalledWith(4001, expect.any(String));
+            expect(b.close).not.toHaveBeenCalled();
+            expect(WebSocketService.closeBySessionHashes([])).toBe(0);
+        });
+    });
 });

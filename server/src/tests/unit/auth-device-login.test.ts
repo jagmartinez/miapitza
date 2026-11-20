@@ -93,6 +93,12 @@ describe('AuthService.deviceLogin', () => {
 
         find.mockResolvedValue(cook({ role: { id: 3, name: 'MESERO', permissions: [] } }) as never);
         await expect(AuthService.deviceLogin({ deviceToken: 'tok' })).rejects.toThrow(GENERIC);
+
+        // Kitchen kiosks are COCINA only: a CHEF role (alone or combined) never signs in by token.
+        find.mockResolvedValue(cook({ userRoles: [{ role: { id: 4, name: 'CHEF', permissions: [] } }] }) as never);
+        await expect(AuthService.deviceLogin({ deviceToken: 'tok' })).rejects.toThrow(GENERIC);
+        find.mockResolvedValue(cook({ role: { id: 4, name: 'CHEF', permissions: [] } }) as never);
+        await expect(AuthService.deviceLogin({ deviceToken: 'tok' })).rejects.toThrow(GENERIC);
         expect(sessionCreate).not.toHaveBeenCalled();
     });
 

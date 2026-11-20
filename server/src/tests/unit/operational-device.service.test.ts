@@ -4,8 +4,10 @@ import prisma from '../../utils/prisma';
 import {
     OperationalDeviceService,
     deviceSessionTag,
+    isKitchenDeviceUser,
 } from '../../services/operational-device.service';
 import { SessionService } from '../../services/session.service';
+import { WebSocketService } from '../../services/websocket.service';
 
 const sha256 = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 const actor = { userId: 3, companyId: 5 };
@@ -96,6 +98,65 @@ describe('OperationalDeviceService', () => {
         expect(sessions).toHaveBeenCalledWith({
             where: { device: 'op-device:7', revoked: false },
             data: { revoked: true },
+        });
+    });
+
+    it('revoke closes the open sockets of the revoked sessions immediately', async () => {
+        jest.spyOn(prisma.operationalDevice, 'findFirst')
+            .mockResolvedValue({ id: 7, companyId: 5, status: 'ACTIVE' } as never);
+        jest.spyOn(prisma.operationalDevice, 'updateMany').mockResolvedValue({ count: 1 } as never);
+        jest.spyOn(prisma.auditLog, 'create').mockResolvedValue({} as never);
+        jest.spyOn(prisma.userSession, 'findMany')
+            .mockResolvedValue([{ tokenHash: 'h1' }, { tokenHash: 'h2' }] as never);
+        jest.spyOn(prisma.userSession, 'updateMany').mockResolvedValue({ count: 2 } as never);
+        const close = jest.spyOn(WebSocketService, 'closeBySessionHashes').mockReturnValue(2);
+
+        await OperationalDeviceService.revoke(actor, 7);
+
+        expect(close).toHaveBeenCalledWith(['h1', 'h2'], expect.any(String));
+    });
+
+    describe('kitchen user eligibility (shared by register and device-login)', () => {
+        it.each([
+            [['COCINA'], true],
+            [['COCINA', 'COCINA'], true],
+            [['COCINA', 'CHEF'], false],
+            [['CHEF'], false],
+            [['COCINA', 'MESERO'], false],
+            [['MESERO'], false],
+            [[], false],
+        ])('%j -> %s', (roles, expected) => {
+            expect(isKitchenDeviceUser(roles as string[])).toBe(expected);
+        });
+
+        const registerWith = (roleRow: unknown) => {
+            jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 9 } as never);
+            jest.spyOn(prisma.user, 'findFirst').mockResolvedValue(roleRow as never);
+            return OperationalDeviceService.register(actor, {
+                branchId: 9, type: 'KITCHEN_TABLET', name: 'KDS', kitchenUserId: 44,
+            });
+        };
+
+        it('register rejects a COCINA user who also holds another role', async () => {
+            const create = jest.spyOn(prisma.operationalDevice, 'create');
+            await expect(registerWith({
+                id: 44, role: { name: 'COCINA' }, userRoles: [{ role: { name: 'MESERO' } }],
+            })).rejects.toThrow('Usuario de cocina inválido');
+            expect(create).not.toHaveBeenCalled();
+        });
+
+        it('register rejects a COCINA+CHEF user', async () => {
+            await expect(registerWith({
+                id: 44, role: { name: 'COCINA' }, userRoles: [{ role: { name: 'CHEF' } }],
+            })).rejects.toThrow('Usuario de cocina inválido');
+        });
+
+        it('register accepts a pure COCINA user', async () => {
+            jest.spyOn(prisma.operationalDevice, 'create')
+                .mockImplementation((async (args: { data: Record<string, unknown> }) => ({ id: 7, ...args.data })) as never);
+            jest.spyOn(prisma.auditLog, 'create').mockResolvedValue({} as never);
+            const { device } = await registerWith({ id: 44, role: { name: 'COCINA' }, userRoles: [] });
+            expect(device.kitchenUserId).toBe(44);
         });
     });
 

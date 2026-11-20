@@ -3,6 +3,8 @@ import type { OperationalDevice, OperationalDeviceType, Prisma } from '@prisma/c
 import prisma from '../utils/prisma';
 import { AuditLogService } from './audit-log.service';
 import { SessionService } from './session.service';
+import { WebSocketService } from './websocket.service';
+import { ROLES, KITCHEN_DEVICE_ROLES } from '../constants/roles';
 
 export class OperationalDeviceError extends Error {
     constructor(message: string, public statusCode: number) {
@@ -30,6 +32,16 @@ export function deviceSessionTag(deviceId: number): string {
 
 function hashDeviceToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Single source of truth for who may be the account of a kitchen tablet:
+ * holds COCINA and no role outside KITCHEN_DEVICE_ROLES (a token-only kiosk
+ * must not carry elevated permissions). Used by register and device-login.
+ */
+export function isKitchenDeviceUser(roleNames: string[]): boolean {
+    return roleNames.includes(ROLES.COCINA)
+        && roleNames.every((name) => (KITCHEN_DEVICE_ROLES as string[]).includes(name));
 }
 
 export class OperationalDeviceService {
@@ -64,14 +76,19 @@ export class OperationalDeviceService {
                     status: 'ACTIVE',
                     // The kitchen account is fixed per branch.
                     branchId: branch.id,
-                    OR: [
-                        { role: { name: 'COCINA' } },
-                        { userRoles: { some: { role: { name: 'COCINA' } } } },
-                    ],
                 },
-                select: { id: true },
+                select: {
+                    id: true,
+                    role: { select: { name: true } },
+                    userRoles: { select: { role: { select: { name: true } } } },
+                },
             });
-            if (!kitchenUser) throw new OperationalDeviceError('Usuario de cocina inválido', 400);
+            const roleNames = kitchenUser
+                ? [kitchenUser.role.name, ...kitchenUser.userRoles.map((entry) => entry.role.name)]
+                : [];
+            if (!kitchenUser || !isKitchenDeviceUser(roleNames)) {
+                throw new OperationalDeviceError('Usuario de cocina inválido', 400);
+            }
             kitchenUserId = kitchenUser.id;
         }
 
@@ -154,7 +171,11 @@ export class OperationalDeviceService {
             data: { status: 'REVOKED', revokedById: actor.userId, revokedAt: now },
         });
         // Always sweep sessions, even if the device was already revoked: it is idempotent.
-        const revokedSessions = await SessionService.revokeByDevice(deviceSessionTag(device.id));
+        const tag = deviceSessionTag(device.id);
+        const sessionHashes = await SessionService.activeHashesByDevice(tag);
+        const revokedSessions = await SessionService.revokeByDevice(tag);
+        // Do not wait for the next heartbeat: drop the device's sockets now.
+        WebSocketService.closeBySessionHashes(sessionHashes, 'Device revoked');
 
         await AuditLogService.log({
             companyId: actor.companyId,

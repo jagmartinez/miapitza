@@ -54,4 +54,4 @@ export const MENU_MANAGEMENT: RoleName[] = [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES
 export const PIN_ROLES: RoleName[] = [ROLES.MESERO, ROLES.CAJERO, ROLES.HOST, ROLES.BODEGA, ROLES.CHEF];
 
 /** Roles a fixed kitchen-tablet account may hold. */
-export const KITCHEN_DEVICE_ROLES: RoleName[] = [ROLES.COCINA, ROLES.CHEF];
+export const KITCHEN_DEVICE_ROLES: RoleName[] = [ROLES.COCINA];
