@@ -10,13 +10,14 @@ import { PinService } from '../../services/pin.service';
 import { WebSocketService } from '../../services/websocket.service';
 import { OperationalDeviceService } from '../../services/operational-device.service';
 import { loginAttemptService } from '../../services/login-attempt.service';
+import { AuditLogService } from '../../services/audit-log.service';
 import {
     DiscountAuthRejectedError,
     DiscountAuthRequiredError,
     DiscountAuthorizationService,
     getManualDiscountLimit,
 } from '../../services/discount-authorization.service';
-import { isSessionAuthPath } from '../../middlewares/device-rate-limit';
+import { isLenientSessionPath } from '../../middlewares/device-rate-limit';
 
 const PIN = '2580';
 const GENERIC = 'Autorización inválida';
@@ -30,6 +31,10 @@ beforeAll(async () => {
 afterEach(() => {
     jest.restoreAllMocks();
 });
+
+// Rejection audits go through the global client (mocked away); in-transaction audits reach tx.auditLog.
+const mockAuditLog = () => jest.spyOn(AuditLogService, 'log').mockImplementation((async (entry: Record<string, unknown>, db?: { auditLog: { create: (a: unknown) => Promise<unknown> } }) =>
+    db ? db.auditLog.create({ data: { ...entry } }) : undefined) as never);
 
 const requester = { userId: 21, companyId: 5, branchId: 1, role: 'MESERO', roles: ['MESERO'], permissions: ['orders.discount.apply'] };
 const device = (over: Record<string, unknown> = {}) => ({
@@ -250,6 +255,23 @@ describe('OrderService.updatePricing with a supervisor authorization', () => {
         }));
     });
 
+    it('persists the authorized percent with the stamp (I1) and clears both when the discount changes', async () => {
+        const tx = pricingTx({ cap: '10' });
+        useTx(tx);
+        await OrderService.updatePricing(41, 5, { discount: 12.5, discountReason: 'Error de cocina' }, 21, mesero,
+            { authorization: authorization() });
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ discountAuthorizedById: 50, discountAuthorizedPercent: 12.5 }),
+        }));
+
+        const tx2 = pricingTx({ cap: '50', order: { discount: 12.5, discountReason: 'Error de cocina', discountAuthorizedById: 50 } });
+        useTx(tx2);
+        await OrderService.updatePricing(41, 5, { discount: 20, discountReason: 'Error de cocina' }, 21, mesero);
+        expect(tx2.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ discountAuthorizedById: null, discountAuthorizedPercent: null }),
+        }));
+    });
+
     it.each([
         ['pre-invoiced', { preInvoicedAt: new Date() }, /facturada/],
         ['invoiced', { invoiceNumber: 'F-1' }, /facturada/],
@@ -289,6 +311,44 @@ describe('OrderService.updatePricing with a supervisor authorization', () => {
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ discount: 40, discountCode: null, discountAuthorizedById: 50 }),
         }));
+    });
+});
+
+describe('reason-only change on a stamped discount (M5)', () => {
+    const stamped = { discount: 20, discountReason: 'Error de cocina', discountAuthorizedById: 50, discountAuthorizedPercent: 20 };
+    const auditsOf = (tx: ReturnType<typeof pricingTx>) => tx.auditLog.create.mock.calls
+        .map((c) => (c[0] as { data: { action: string; details: Record<string, unknown> } }).data);
+
+    it('clears the stamp, audits PRICING_UPDATED with previousReason and keeps the discount', async () => {
+        const tx = pricingTx({ cap: '50', order: stamped });
+        useTx(tx);
+        await OrderService.updatePricing(41, 5, { discount: 20, discountReason: 'Cortesía gerente' }, 21, mesero);
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                discount: 20, discountReason: 'Cortesía gerente', discountAuthorizedById: null, discountAuthorizedPercent: null,
+            }),
+        }));
+        const audit = auditsOf(tx).find((a) => a.action === 'PRICING_UPDATED')!;
+        expect(audit.details).toMatchObject({ previousReason: 'Error de cocina', discountReason: 'Cortesía gerente', previousDiscount: 20, discount: 20 });
+    });
+
+    it('re-applies the requester limit: over it, 403 DISCOUNT_AUTH_REQUIRED and nothing changes', async () => {
+        const tx = pricingTx({ cap: '10', order: stamped });
+        useTx(tx);
+        const error = await OrderService.updatePricing(41, 5, { discount: 20, discountReason: 'Cortesía gerente' }, 21, mesero)
+            .catch((e) => e);
+        expect(error).toMatchObject({ code: 'DISCOUNT_AUTH_REQUIRED', limitPercent: 10, requestedPercent: 20 });
+        expect(tx.order.update).not.toHaveBeenCalled();
+        expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('re-sending the same reason keeps the stamp and writes no audit', async () => {
+        const tx = pricingTx({ cap: '10', order: stamped });
+        useTx(tx);
+        await OrderService.updatePricing(41, 5, { discount: 20, discountReason: 'Error de cocina' }, 21, mesero);
+        const data = (tx.order.update.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+        expect(data.discountAuthorizedById).toBeUndefined();
+        expect(tx.auditLog.create).not.toHaveBeenCalled();
     });
 });
 
@@ -338,7 +398,8 @@ describe('DiscountAuthorizationService.verifySupervisor', () => {
         const failure = jest.spyOn(loginAttemptService, 'recordFailure').mockResolvedValue(undefined);
         const success = jest.spyOn(loginAttemptService, 'recordSuccess').mockResolvedValue(undefined);
         const compare = jest.spyOn(bcrypt, 'compare');
-        return { resolve, attempts, findUser, assertAllowed, failure, success, compare };
+        const audit = mockAuditLog();
+        return { resolve, attempts, findUser, assertAllowed, failure, success, compare, audit };
     }
     const input = (over: Record<string, unknown> = {}) => ({
         requester,
@@ -411,6 +472,65 @@ describe('DiscountAuthorizationService.verifySupervisor', () => {
         expect(error).toMatchObject({ statusCode: 401, message: GENERIC });
         expect(m.compare).toHaveBeenCalledTimes(1);
         expect(m.success).not.toHaveBeenCalled();
+    });
+
+    const REJECT_LOG = {
+        companyId: 5, userId: 21, entityType: 'Order', entityId: 41, action: 'DISCOUNT_AUTH_REJECTED',
+    };
+
+    it.each(rejections)('audits DISCOUNT_AUTH_REJECTED for %s, without the PIN (I3)', async (_label, setup, over) => {
+        const m = setup();
+        if (over?.supervisorUserId === 21) m.findUser.mockResolvedValue(supervisor({ id: 21 }) as never);
+        await verify(over).catch(() => undefined);
+        expect(m.audit).toHaveBeenCalledTimes(1);
+        const entry = m.audit.mock.calls[0][0] as { details: Record<string, unknown> };
+        expect(entry).toMatchObject(REJECT_LOG);
+        expect(entry.details).toEqual({
+            requesterUserId: 21,
+            supervisorUserId: (over?.supervisorUserId as number | undefined) ?? 50,
+            deviceId: 7, orderId: 41, requestedAmount: 40,
+        });
+        expect(JSON.stringify(m.audit.mock.calls)).not.toMatch(/2580|1357/);
+    });
+
+    it.each([
+        ['unknown device', { dev: null }, null],
+        ['device lock', { deviceFailures: 20 }, 7],
+        ['unknown supervisor', { sup: null }, 7],
+    ])('audits the early reject path (%s) the same way (I3)', async (_label, opts, deviceId) => {
+        const m = infra(opts as never);
+        await verify().catch(() => undefined);
+        expect(m.audit).toHaveBeenCalledTimes(1);
+        expect(m.audit.mock.calls[0][0]).toMatchObject({
+            ...REJECT_LOG, details: expect.objectContaining({ deviceId, supervisorUserId: 50, requestedAmount: 40 }),
+        });
+    });
+
+    it('a failing audit write changes neither the error nor the outcome (I3)', async () => {
+        const m = infra();
+        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        m.audit.mockRejectedValue(new Error('db down') as never);
+        await expect(verify({ pin: '1357' })).rejects.toMatchObject({ statusCode: 401, message: GENERIC });
+    });
+
+    it('does not audit a successful verification as a rejection', async () => {
+        const m = infra();
+        await verify();
+        expect(m.audit).not.toHaveBeenCalled();
+    });
+
+    it('a revalidation failure under the order lock is audited outside the transaction', async () => {
+        const m = infra();
+        const verified = await verify();
+        const tx = {
+            user: { findFirst: jest.fn(async () => supervisor({ status: 'INACTIVE' })) },
+            setting: { findUnique: jest.fn(async () => null) },
+            auditLog: { create: jest.fn() },
+        };
+        await expect(verified.revalidate(tx as never, 100, 40)).rejects.toBeInstanceOf(DiscountAuthRejectedError);
+        expect(m.audit).toHaveBeenCalledTimes(1);
+        expect(m.audit.mock.calls[0][1]).toBeUndefined();
+        expect(tx.auditLog.create).not.toHaveBeenCalled();
     });
 
     it('a requester from another branch cannot use a tablet of this branch', async () => {
@@ -569,6 +689,7 @@ describe('POST /orders/:id/discount/authorize', () => {
         jest.spyOn(loginAttemptService, 'assertAllowed').mockResolvedValue(undefined);
         const failure = jest.spyOn(loginAttemptService, 'recordFailure').mockResolvedValue(undefined);
         jest.spyOn(loginAttemptService, 'recordSuccess').mockResolvedValue(undefined);
+        const rejectedAudit = mockAuditLog();
         const tx = pricingTx({ cap: '10' });
         const transaction = jest.spyOn(prisma, '$transaction')
             .mockImplementation((async (cb: (db: unknown) => unknown) => cb({
@@ -577,7 +698,7 @@ describe('POST /orders/:id/discount/authorize', () => {
             })) as never);
         const txState = tx;
         const broadcast = jest.spyOn(WebSocketService, 'broadcastOrderUpdate').mockImplementation(() => undefined as never);
-        return { tx: txState, transaction, broadcast, failure };
+        return { tx: txState, transaction, broadcast, failure, rejectedAudit };
     }
 
     it('authorize applies discount, reason and authorizer atomically and audits', async () => {
@@ -661,15 +782,43 @@ describe('POST /orders/:id/discount/authorize', () => {
         expect(w.failure).not.toHaveBeenCalled();
     });
 
-    it('a requester without orders.discount.apply gets 403 and no PIN is checked', async () => {
+    it('a requester without orders.discount.apply may still obtain a supervisor authorization (M4)', async () => {
         const w = wire();
         jest.spyOn(prisma.permission, 'findUnique').mockResolvedValue({ id: 1 } as never);
         const response = res();
         await OrderController.authorizeDiscount(
             req(body, { user: { ...requester, permissions: [] } }), response, jest.fn() as unknown as NextFunction);
-        expect(response.status).toHaveBeenCalledWith(403);
-        expect(w.failure).not.toHaveBeenCalled();
-        expect(w.transaction).not.toHaveBeenCalled();
+        expect(response.status).not.toHaveBeenCalledWith(403);
+        expect(w.transaction).toHaveBeenCalled();
+    });
+
+    it('an authorize call with an idempotency key stores no row and a replay with another PIN is really verified (I2)', async () => {
+        const { idempotency } = require('../../middlewares/idempotency') as typeof import('../../middlewares/idempotency');
+        const w = wire();
+        const create = jest.spyOn(prisma.idempotencyRecord, 'create');
+        const find = jest.spyOn(prisma.idempotencyRecord, 'findUnique');
+        const authorizeReq = (pin: string) => ({
+            ...req({ ...body, pin }),
+            headers: { 'x-device-token': 'tok', authorization: 'Bearer t', 'x-idempotency-key': 'k-1' },
+            method: 'POST', originalUrl: '/api/orders/41/discount/authorize', authContextValidated: true,
+        }) as unknown as Request;
+
+        // First, successful call goes through the idempotency middleware untouched.
+        const next1 = jest.fn();
+        await idempotency(authorizeReq(PIN), res(), next1 as unknown as NextFunction);
+        expect(next1).toHaveBeenCalledWith();
+        await OrderController.authorizeDiscount(authorizeReq(PIN), res(), jest.fn() as unknown as NextFunction);
+
+        // Replay with the same key but a wrong PIN: not 409, not a stored 200 - the real check runs.
+        const next2 = jest.fn();
+        await idempotency(authorizeReq('1357'), res(), next2 as unknown as NextFunction);
+        expect(next2).toHaveBeenCalledWith();
+        const response = res();
+        await OrderController.authorizeDiscount(authorizeReq('1357'), response, jest.fn() as unknown as NextFunction);
+        expect(response.status).toHaveBeenCalledWith(401);
+        expect(w.failure).toHaveBeenCalledWith(50, 'discount-auth:device:7');
+        expect(create).not.toHaveBeenCalled();
+        expect(find).not.toHaveBeenCalled();
     });
 
     it('the PATCH pricing 403 DISCOUNT_AUTH_REQUIRED carries both percents and applies nothing', async () => {
@@ -689,7 +838,7 @@ describe('POST /orders/:id/discount/authorize', () => {
         expect(next).not.toHaveBeenCalled();
     });
 
-    it('the PATCH pricing with a reason requires orders.discount.apply', async () => {
+    it('the PATCH pricing with a reason and no orders.discount.apply answers 403 DISCOUNT_AUTH_REQUIRED (M4)', async () => {
         const w = wire();
         jest.spyOn(prisma.permission, 'findUnique').mockResolvedValue({ id: 1 } as never);
         const response = res();
@@ -697,6 +846,9 @@ describe('POST /orders/:id/discount/authorize', () => {
             req({ discount: 5, discountReason: 'Cortesía' }, { user: { ...requester, permissions: [] } }),
             response, jest.fn() as unknown as NextFunction);
         expect(response.status).toHaveBeenCalledWith(403);
+        expect(response.json).toHaveBeenCalledWith(expect.objectContaining({
+            code: 'DISCOUNT_AUTH_REQUIRED', limitPercent: 0, requestedPercent: 5,
+        }));
         expect(w.tx.order.update).not.toHaveBeenCalled();
     });
 
@@ -723,8 +875,8 @@ describe('GET /auth/me/discount-limit', () => {
     });
 
     it('is exempt from the shared credential limiter (it checks no credential)', () => {
-        expect(isSessionAuthPath('/me/discount-limit')).toBe(true);
-        expect(isSessionAuthPath('/ME/discount-limit/')).toBe(true);
+        expect(isLenientSessionPath('/me/discount-limit')).toBe(true);
+        expect(isLenientSessionPath('/ME/discount-limit/')).toBe(true);
     });
 });
 
@@ -840,7 +992,7 @@ describe('reason-less PATCH /pricing enforces a role maxDiscountPercent', () => 
 describe('removing or shrinking unsent lines re-caps the manual discount', () => {
     type Role = { name: string; maxDiscountPercent: number | null };
     function lineTx(o: {
-        discount: number; remaining: number; author: Role; authorizerId?: number | null;
+        discount: number; remaining: number; author: Role; authorizerId?: number | null; authorizedPercent?: number | null;
         lastPricingUser?: number | null; cap?: string | null;
         audits?: Array<{ userId: number; details: Record<string, number> }>;
         roleOf?: Record<number, Role>;
@@ -863,7 +1015,10 @@ describe('removing or shrinking unsent lines re-caps the manual discount', () =>
             },
             kitchenBatch: { count: jest.fn(async () => 0) },
             order: {
-                findUnique: jest.fn(async (_a: unknown) => ({ discountAuthorizedById: o.authorizerId ?? null })),
+                findUnique: jest.fn(async (_a: unknown) => ({
+                    discountAuthorizedById: o.authorizerId ?? null,
+                    discountAuthorizedPercent: o.authorizedPercent ?? null,
+                })),
                 update: jest.fn(async (args: unknown) => args),
             },
             user: {
@@ -919,13 +1074,36 @@ describe('removing or shrinking unsent lines re-caps the manual discount', () =>
         expect(clampAudit(tx)!.details).toMatchObject({ maxPercent: 30, limitOwnerUserId: 50 });
     });
 
-    it.each(actions)('%s: an authorized discount by an ADMIN authorizer is not clamped', async (_n, run) => {
+    it.each(actions)('%s: an ADMIN-authorized discount is re-capped to the AUTHORIZED percent, not the ADMIN limit (I1)', async (_n, run) => {
+        // 12% of a padded 1200 bill = 144; the padding lines are then removed (remaining 200).
         const tx = lineTx({
-            discount: 30, remaining: 50, author: { name: 'ADMIN', maxDiscountPercent: null }, authorizerId: 50, cap: '10',
+            discount: 144, remaining: 200, author: { name: 'ADMIN', maxDiscountPercent: null },
+            authorizerId: 50, authorizedPercent: 12, cap: '10',
         });
         useTx(tx);
         await run(21);
-        expect(orderUpdate(tx).discount).toBe(30);
+        expect(orderUpdate(tx).discount).toBe(24); // 12% of 200, not 72%
+        expect(clampAudit(tx)!.details).toMatchObject({ previousDiscount: 144, discount: 24, maxPercent: 12, limitOwnerUserId: 50 });
+    });
+
+    it.each(actions)('%s: the authorized percent never raises the authorizer role limit', async (_n, run) => {
+        const tx = lineTx({
+            discount: 30, remaining: 50, author: { name: 'CAJERO', maxDiscountPercent: 30 },
+            authorizerId: 50, authorizedPercent: 60,
+        });
+        useTx(tx);
+        await run(21);
+        expect(orderUpdate(tx).discount).toBe(15); // min(30, 60)
+    });
+
+    it.each(actions)('%s: an authorized discount still within its authorized percent is left alone', async (_n, run) => {
+        const tx = lineTx({
+            discount: 6, remaining: 50, author: { name: 'ADMIN', maxDiscountPercent: null },
+            authorizerId: 50, authorizedPercent: 12,
+        });
+        useTx(tx);
+        await run(21);
+        expect(orderUpdate(tx).discount).toBe(6);
         expect(clampAudit(tx)).toBeUndefined();
     });
 

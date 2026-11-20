@@ -54,6 +54,17 @@ export function isSessionAuthPath(originalUrl: string): boolean {
     return SESSION_AUTH_PATHS.has(path) || path === '/auth/sessions' || path.startsWith('/auth/sessions/');
 }
 
+/**
+ * Routes whose body carries a credential (PINs). Their request fingerprint
+ * would be a crackable hash of the PIN and a replay would bypass the lockout
+ * counters, so they are never stored nor replayed.
+ */
+export function isCredentialBearingPath(originalUrl: string): boolean {
+    let path = originalUrl.split('?')[0].toLowerCase().replace(/\/+/g, '/').replace(/\/+$/, '');
+    path = path.replace(/^\/api(\/v\d+)?(?=\/|$)/, '');
+    return path === '/auth/me/pin' || /^\/orders\/[^/]+\/discount\/authorize$/.test(path);
+}
+
 export function resolveIdempotencyNamespace(req: Request): string {
     const token = extractAuthToken(req);
     if (token && req.user && req.authContextValidated === true) {
@@ -123,7 +134,7 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
     }
     const key = rawKey;
     if (!key || req.method === 'GET') return next();
-    if (isSessionAuthPath(req.originalUrl)) return next();
+    if (isSessionAuthPath(req.originalUrl) || isCredentialBearingPath(req.originalUrl)) return next();
     if (key.length > 191) {
         res.status(400).json({ success: false, message: 'Clave de idempotencia demasiado larga' });
         return;

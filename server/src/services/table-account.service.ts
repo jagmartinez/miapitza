@@ -118,6 +118,50 @@ export function allocatePartialFinancials(input: {
     };
 }
 
+export interface DiscountMetadataPart {
+    discount: Prisma.Decimal | number | string | null;
+    discountReason: string | null;
+    discountAuthorizedById: number | null;
+    discountAuthorizedPercent: Prisma.Decimal | number | string | null;
+}
+
+/**
+ * Reason / supervisor stamp / authorized percent of a manual discount that
+ * results from merging the discounts of several orders (first part wins ties:
+ * pass the primary or destination first). Orders without a discount carry no
+ * metadata. When the discounted orders do not share one stamp (different
+ * authorizer, or one unstamped), the stamp and its percent are dropped so the
+ * creator limit applies again, and `stampCleared` is true for the audit.
+ */
+export function mergeDiscountMetadata(parts: DiscountMetadataPart[]) {
+    const discounted = parts.filter((part) => toCents(part.discount ?? 0) > 0);
+    if (discounted.length === 0) {
+        return { discountReason: null, discountAuthorizedById: null, discountAuthorizedPercent: null, stampCleared: false };
+    }
+    const reason = discounted.map((part) => part.discountReason).find((value) => !!value) ?? null;
+    const stamps = new Set(discounted.map((part) => part.discountAuthorizedById ?? null));
+    if (stamps.size > 1 || stamps.has(null)) {
+        const hadStamp = discounted.some((part) => part.discountAuthorizedById !== null && part.discountAuthorizedById !== undefined);
+        return { discountReason: reason, discountAuthorizedById: null, discountAuthorizedPercent: null, stampCleared: hadStamp };
+    }
+    const percents = discounted
+        .map((part) => part.discountAuthorizedPercent)
+        .filter((value) => value !== null && value !== undefined)
+        .map(Number);
+    // A stamp without its authorized percent (pre-migration row) cannot bound the
+    // merged discount: drop it and fall back to the creator limit.
+    if (percents.length !== discounted.length) {
+        return { discountReason: reason, discountAuthorizedById: null, discountAuthorizedPercent: null, stampCleared: true };
+    }
+    return {
+        discountReason: reason,
+        discountAuthorizedById: [...stamps][0] as number,
+        // Merged percentage is bounded by the highest percentage any part was authorized at.
+        discountAuthorizedPercent: Math.max(...percents),
+        stampCleared: false,
+    };
+}
+
 /** Legacy order-status merge, only for accounts without persisted kitchen batches. */
 function workflowStatus(statuses: ActiveStatus[]): ActiveStatus {
     if (statuses.length > 0 && statuses.every((status) => status === 'READY')) return 'READY';
@@ -463,6 +507,15 @@ export class TableAccountService {
                 postUpdateByOrderId.set(source.id, updatedSource.updatedAt);
             }
 
+            // The primary takes over the metadata of the discounts it absorbed.
+            const { stampCleared: consolidateStampCleared, ...mergedDiscountMeta } = mergeDiscountMetadata(
+                [primary, ...secondary].map((order) => ({
+                    discount: order.discount,
+                    discountReason: order.discountReason ?? null,
+                    discountAuthorizedById: order.discountAuthorizedById ?? null,
+                    discountAuthorizedPercent: order.discountAuthorizedPercent ?? null,
+                }))
+            );
             const updatedPrimary = await tx.order.update({
                 where: { id: primary.id },
                 data: {
@@ -477,6 +530,7 @@ export class TableAccountService {
                     }),
                     total: fromCents(sumCents(orders.map((order) => order.total))),
                     discount: fromCents(sumCents(orders.map((order) => order.discount))),
+                    ...mergedDiscountMeta,
                     tax: fromCents(sumCents(orders.map((order) => order.tax))),
                     tipAmount: fromCents(sumCents(orders.map((order) => order.tipAmount))),
                     channelCommission: fromCents(sumCents(orders.map((order) => order.channelCommission))),
@@ -549,7 +603,13 @@ export class TableAccountService {
                         consolidationId: consolidation.id,
                         absorbedOrderIds: secondary.map((order) => order.id),
                         movedItemIds,
-                        reason: data.reason?.trim() || null
+                        reason: data.reason?.trim() || null,
+                        discountAuthorizerStampCleared: consolidateStampCleared,
+                        discountAuthorizedById: mergedDiscountMeta.discountAuthorizedById,
+                        discountAuthorizedPercent: mergedDiscountMeta.discountAuthorizedPercent,
+                        absorbedDiscountAuthorizers: secondary
+                            .filter((order) => order.discountAuthorizedById !== null && order.discountAuthorizedById !== undefined)
+                            .map((order) => ({ orderId: order.id, authorizerUserId: order.discountAuthorizedById }))
                     }
                 }
             });
@@ -1088,6 +1148,10 @@ export class TableAccountService {
                 data: {
                     total: fromCents(sourceTotalCents),
                     discount: fromCents(toCents(order.discount) - movedDiscount),
+                    // A source left without any discount no longer has a reason or stamp.
+                    ...(toCents(order.discount) - movedDiscount <= 0
+                        ? { discountReason: null, discountAuthorizedById: null, discountAuthorizedPercent: null }
+                        : {}),
                     tax: fromCents(toCents(order.tax) - movedTax),
                     tipAmount: fromCents(toCents(order.tipAmount) - movedTip),
                     channelCommission: fromCents(toCents(order.channelCommission) - movedCommission),
@@ -1114,12 +1178,28 @@ export class TableAccountService {
                     ? workflowStatus([destinationOrder.status as ActiveStatus, order.status as ActiveStatus])
                     : order.status as ActiveStatus
             );
+            // Moved discount keeps its reason / supervisor stamp; unequal stamps are dropped.
+            const { stampCleared: transferStampCleared, ...transferDiscountMeta } = movedDiscount > 0
+                ? mergeDiscountMetadata([
+                    {
+                        discount: destinationOrder.discount, discountReason: destinationOrder.discountReason ?? null,
+                        discountAuthorizedById: destinationOrder.discountAuthorizedById ?? null,
+                        discountAuthorizedPercent: destinationOrder.discountAuthorizedPercent ?? null,
+                    },
+                    {
+                        discount: fromCents(movedDiscount), discountReason: order.discountReason ?? null,
+                        discountAuthorizedById: order.discountAuthorizedById ?? null,
+                        discountAuthorizedPercent: order.discountAuthorizedPercent ?? null,
+                    },
+                ])
+                : { stampCleared: false };
             const updatedDestination = await tx.order.update({
                 where: { id: destinationOrder.id },
                 data: {
                     status: targetStatus,
                     total: fromCents(toCents(destinationOrder.total) + movedTotalCents),
                     discount: fromCents(toCents(destinationOrder.discount) + movedDiscount),
+                    ...transferDiscountMeta,
                     tax: fromCents(toCents(destinationOrder.tax) + movedTax),
                     tipAmount: fromCents(toCents(destinationOrder.tipAmount) + movedTip),
                     channelCommission: fromCents(toCents(destinationOrder.channelCommission) + movedCommission),
@@ -1137,7 +1217,12 @@ export class TableAccountService {
                         sourceTableId, destinationTableId, destinationOrderId: destinationOrder.id,
                         mode: 'PARTIAL', slices: normalized, movedItemIds,
                         allocationPolicy: 'proportional_by_item_subtotal_round_half_up_remainder_on_source',
-                        reason: data.reason?.trim() || null
+                        reason: data.reason?.trim() || null,
+                        ...(movedDiscount > 0 ? {
+                            movedDiscount: movedDiscount / 100,
+                            discountAuthorizedById: (transferDiscountMeta as { discountAuthorizedById?: number | null }).discountAuthorizedById ?? null,
+                            discountAuthorizerStampCleared: transferStampCleared
+                        } : {})
                     }
                 }
             });

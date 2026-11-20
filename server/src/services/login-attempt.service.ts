@@ -13,6 +13,12 @@ const DEFAULT_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 /** ipKey of the per-user global counter row. */
 export const GLOBAL_IP_KEY = '*';
 const UNKNOWN_IP_KEY = 'unknown';
+/** Discount-PIN attempts use their own per-user row so they never touch the '*' password counter. */
+export const DISCOUNT_AUTH_KEY_PREFIX = 'discount-auth:';
+export const discountUserKey = (userId: number) => `discount-auth:user:${userId}`;
+// Per supervisor across all tablets: 10 wrong discount PINs in 15 minutes lock them out.
+const DISCOUNT_USER_MAX_FAILURES = 10;
+const DISCOUNT_USER_WINDOW_MS = 15 * 60 * 1000;
 const MAX_IP_KEY_LENGTH = 64;
 
 type LoginAttemptDatabase = Pick<PrismaClient, '$transaction' | 'loginAttempt'>;
@@ -84,14 +90,22 @@ export class LoginAttemptService {
         });
     }
 
-    /** Row keys in a fixed order ('*' sorts first) so replicas lock consistently. */
-    private keysFor(ip?: string | null): string[] {
+    private isDiscountKey(ip?: string | null): boolean {
+        return typeof ip === 'string' && ip.startsWith(DISCOUNT_AUTH_KEY_PREFIX);
+    }
+
+    /**
+     * [user-level row, per-source row]. Password logins use the '*' row;
+     * discount-PIN attempts use their own per-user key so the two never mix.
+     */
+    private keysFor(userId: number, ip?: string | null): string[] {
+        if (this.isDiscountKey(ip)) return [discountUserKey(userId), String(ip)];
         return [GLOBAL_IP_KEY, normalizeIpKey(ip)];
     }
 
     async assertAllowed(userId: number, ip?: string | null): Promise<void> {
         const rows = await this.db.loginAttempt.findMany({
-            where: { userId, ipKey: { in: this.keysFor(ip) } },
+            where: { userId, ipKey: { in: this.keysFor(userId, ip) } },
             select: { lockedUntil: true },
         });
         const lockedUntil = this.latestActiveLock(rows, this.now());
@@ -104,7 +118,7 @@ export class LoginAttemptService {
      */
     async recordFailure(userId: number, ip?: string | null): Promise<void> {
         const now = this.now();
-        const [globalKey, ipKey] = this.keysFor(ip);
+        const [globalKey, ipKey] = this.keysFor(userId, ip);
         for (let attempt = 0; attempt < 5; attempt += 1) {
             try {
                 await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -129,10 +143,16 @@ export class LoginAttemptService {
                     for (const current of rows) {
                         // Do not shorten or continuously extend an active lock.
                         if (current.lockedUntil && current.lockedUntil > now) continue;
-                        const isGlobal = current.ipKey === GLOBAL_IP_KEY;
-                        const threshold = isGlobal ? this.globalMaxAttempts : this.maxAttempts;
-                        const duration = isGlobal ? this.globalBackoffMs : this.lockoutDurationMs;
-                        const nextCount = current.failedCount + 1;
+                        const isGlobal = current.ipKey === globalKey;
+                        const discount = isGlobal && this.isDiscountKey(ip);
+                        const threshold = discount ? DISCOUNT_USER_MAX_FAILURES
+                            : isGlobal ? this.globalMaxAttempts : this.maxAttempts;
+                        const duration = discount ? this.lockoutDurationMs
+                            : isGlobal ? this.globalBackoffMs : this.lockoutDurationMs;
+                        // The supervisor cap is a rolling 15 minute budget: stale failures do not count.
+                        const stale = discount
+                            && now.getTime() - current.lastAttemptAt.getTime() > DISCOUNT_USER_WINDOW_MS;
+                        const nextCount = (stale ? 0 : current.failedCount) + 1;
                         const lockReached = nextCount >= threshold;
                         await tx.loginAttempt.update({
                             where: { id: current.id },
@@ -160,7 +180,7 @@ export class LoginAttemptService {
      */
     async recordSuccess(userId: number, ip?: string | null): Promise<void> {
         const now = this.now();
-        const [globalKey, ipKey] = this.keysFor(ip);
+        const [globalKey, ipKey] = this.keysFor(userId, ip);
         await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.$queryRaw`
                 SELECT id FROM \`LoginAttempt\`
@@ -174,8 +194,11 @@ export class LoginAttemptService {
             const lockedUntil = this.latestActiveLock(rows, now);
             if (lockedUntil) throw this.lockError(lockedUntil);
             if (rows.length > 0) {
+                // Discount success clears only the per-device row: the per-supervisor
+                // row keeps its evidence of guessing from other tablets until it decays.
+                const clearKeys = this.isDiscountKey(ip) ? [ipKey] : [globalKey, ipKey];
                 await tx.loginAttempt.deleteMany({
-                    where: { userId, ipKey: { in: [globalKey, ipKey] } },
+                    where: { userId, ipKey: { in: clearKeys } },
                 });
             }
         });

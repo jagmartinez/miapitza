@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
-import { allocatePartialFinancials, TableAccountService } from '../../services/table-account.service';
+import { allocatePartialFinancials, mergeDiscountMetadata, TableAccountService } from '../../services/table-account.service';
 import { assertCompatiblePhysicalGroups, validateTableGroupSelection, validateUpdatedGroupMembers } from '../../services/table-group.service';
 
 describe('Table account operations', () => {
@@ -109,5 +109,47 @@ describe('Table account operations', () => {
         expect(service).toContain('originTableId: null');
         expect(service).toContain('data: { orderId: primary.id }');
         expect(service).not.toContain('orderId: primary.id,\n                            originOrderId: source.id');
+    });
+
+    describe('mergeDiscountMetadata (M1)', () => {
+        const part = (discount: number, by: number | null, percent: number | null, reason: string | null = 'Error de cocina') => ({
+            discount, discountReason: reason, discountAuthorizedById: by, discountAuthorizedPercent: percent,
+        });
+
+        it('carries reason, authorizer and percent when only one order has a discount', () => {
+            expect(mergeDiscountMetadata([part(0, null, null, null), part(20, 50, 12)])).toEqual({
+                discountReason: 'Error de cocina', discountAuthorizedById: 50, discountAuthorizedPercent: 12, stampCleared: false,
+            });
+        });
+
+        it('keeps a shared stamp with the highest authorized percent', () => {
+            expect(mergeDiscountMetadata([part(20, 50, 12), part(5, 50, 20)])).toMatchObject({
+                discountAuthorizedById: 50, discountAuthorizedPercent: 20, stampCleared: false,
+            });
+        });
+
+        it('clears the stamp and percent when the stamps differ, keeping the reason', () => {
+            expect(mergeDiscountMetadata([part(20, 50, 12, 'Cortesía'), part(5, 51, 20)])).toEqual({
+                discountReason: 'Cortesía', discountAuthorizedById: null, discountAuthorizedPercent: null, stampCleared: true,
+            });
+        });
+
+        it('clears the stamp when a stamped discount is merged with an unstamped one', () => {
+            expect(mergeDiscountMetadata([part(20, 50, 12), part(5, null, null)])).toMatchObject({
+                discountAuthorizedById: null, discountAuthorizedPercent: null, stampCleared: true,
+            });
+        });
+
+        it('drops a stamp whose percent is unknown rather than inventing one', () => {
+            expect(mergeDiscountMetadata([part(20, 50, null), part(5, 50, 20)])).toMatchObject({
+                discountAuthorizedById: null, discountAuthorizedPercent: null, stampCleared: true,
+            });
+        });
+
+        it('has no metadata when nobody has a discount', () => {
+            expect(mergeDiscountMetadata([part(0, 50, 12), part(0, null, null)])).toEqual({
+                discountReason: null, discountAuthorizedById: null, discountAuthorizedPercent: null, stampCleared: false,
+            });
+        });
     });
 });

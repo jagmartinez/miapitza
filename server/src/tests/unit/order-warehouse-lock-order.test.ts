@@ -30,6 +30,7 @@ function recordingTx(order: Row) {
             findFirst: jest.fn(async () => order),
             update: jest.fn(async (args: { data: Row }) => ({ ...order, ...args.data }))
         },
+        orderItem: { updateMany: jest.fn(async (_args: unknown) => ({ count: 1 })) },
         user: { findFirst: jest.fn(async () => ({ id: 8 })) },
         warehouse: { findFirst: jest.fn(async () => ({ id: 2 })) },
         auditLog: { create: jest.fn(async () => ({})) }
@@ -77,6 +78,25 @@ describe('OrderService warehouse lock order', () => {
         // Sale delivery keeps ingredient routing and re-validates the branch under the lock.
         expect(params.route).toBeUndefined();
         expect(params.expectedBranchId).toBe(3);
+    });
+
+    it('delivering the order stamps still-undelivered lines with the acting user (M6)', async () => {
+        const { tx, sql } = recordingTx({
+            id: 41, branchId: 3, userId: 5, status: 'READY', financialStatus: 'PAID',
+            total: 11.5, discountCode: null, tableId: null, items: [sentItem]
+        });
+        spyConsume(sql);
+
+        const updated = await OrderService.completeWithTransaction(tx as never, 41, 1, 2, 8);
+
+        expect(tx.orderItem.updateMany).toHaveBeenCalledTimes(1);
+        const args = tx.orderItem.updateMany.mock.calls[0][0] as {
+            where: Record<string, unknown>; data: { deliveredAt: Date; deliveredById: number };
+        };
+        expect(args.where).toEqual({ orderId: 41, deliveredAt: null, quantity: { gt: 0 } });
+        expect(args.data.deliveredById).toBe(8);
+        expect(args.data.deliveredAt).toBeInstanceOf(Date);
+        expect((updated as unknown as { deliveredAt: Date }).deliveredAt).toBe(args.data.deliveredAt);
     });
 
     const preparedOrder = {

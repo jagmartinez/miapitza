@@ -5,7 +5,7 @@ const authMock = jest.fn();
 jest.mock('../../middlewares/auth', () => ({ auth: (...a: unknown[]) => authMock(...a) }));
 
 const prisma = require('../../utils/prisma').default as typeof import('../../utils/prisma').default;
-const { idempotency, isSessionAuthPath, preAuthenticateIdempotentRequest } = require('../../middlewares/idempotency') as typeof import('../../middlewares/idempotency');
+const { idempotency, isSessionAuthPath, isCredentialBearingPath, preAuthenticateIdempotentRequest } = require('../../middlewares/idempotency') as typeof import('../../middlewares/idempotency');
 
 function mk(url: string): Request {
     return {
@@ -51,5 +51,31 @@ describe('session-issuing auth routes bypass idempotency', () => {
         expect(create).not.toHaveBeenCalled();
         expect(find).not.toHaveBeenCalled();
         expect(res.json).not.toHaveBeenCalled();
+    });
+});
+
+describe('credential-bearing routes bypass idempotency storage and replay', () => {
+    it.each([
+        '/api/orders/12/discount/authorize', '/api/v1/orders/12/discount/authorize/',
+        '/api/ORDERS/12/Discount/Authorize?x=1', '/api/auth/me/pin', '/api//auth/ME/pin/',
+    ])('%s is credential-bearing', (url) => { expect(isCredentialBearingPath(url)).toBe(true); });
+
+    it('ordinary routes are not credential-bearing', () => {
+        expect(isCredentialBearingPath('/api/orders/12/pricing')).toBe(false);
+        expect(isCredentialBearingPath('/api/orders/12/discount/supervisors')).toBe(false);
+    });
+
+    it.each(['/api/orders/12/discount/authorize', '/api/auth/me/pin'])('%s gets no stored row and no replay', async (url) => {
+        const create = jest.spyOn(prisma.idempotencyRecord, 'create');
+        const find = jest.spyOn(prisma.idempotencyRecord, 'findUnique');
+        create.mockClear(); find.mockClear();
+        const res = { status: jest.fn(), json: jest.fn(), on: jest.fn() } as unknown as Response;
+        const next = jest.fn() as unknown as NextFunction;
+        await idempotency(mk(url), res, next);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(next).toHaveBeenCalledWith();
+        expect(create).not.toHaveBeenCalled();
+        expect(find).not.toHaveBeenCalled();
+        expect(res.status).not.toHaveBeenCalled();
     });
 });

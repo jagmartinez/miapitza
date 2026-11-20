@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { LoginAttempt, PrismaClient } from '@prisma/client';
-import { GLOBAL_IP_KEY, LoginAttemptService, normalizeIpKey } from '../../services/login-attempt.service';
+import { GLOBAL_IP_KEY, LoginAttemptService, discountUserKey, normalizeIpKey } from '../../services/login-attempt.service';
 
 type Where = { userId: number; ipKey?: { in: string[] } };
 
@@ -167,5 +167,48 @@ describe('LoginAttemptService', () => {
         expect(normalizeIpKey('::ffff:10.0.0.1')).toBe('10.0.0.1');
         expect(normalizeIpKey(undefined)).toBe('unknown');
         expect(normalizeIpKey(GLOBAL_IP_KEY)).toBe('unknown');
+    });
+
+    describe('discount-PIN keys (M2, M3)', () => {
+        it('never touches the global star row of the supervisor, on failure or success', async () => {
+            const shared = createSharedDatabase();
+            const service = new LoginAttemptService(shared.db, { now: () => NOW });
+            await service.recordFailure(50, 'discount-auth:device:7');
+            expect(shared.getRow(50, GLOBAL_IP_KEY)).toBeNull();
+            expect(shared.getRow(50, discountUserKey(50))?.failedCount).toBe(1);
+            expect(shared.getRow(50, 'discount-auth:device:7')?.failedCount).toBe(1);
+
+            // A password-login counter for the same user is left exactly as it was.
+            await service.recordFailure(50, IP_A);
+            const globalBefore = shared.getRow(50, GLOBAL_IP_KEY)?.failedCount;
+            await service.recordSuccess(50, 'discount-auth:device:7');
+            expect(shared.getRow(50, GLOBAL_IP_KEY)?.failedCount).toBe(globalBefore);
+            expect(shared.getRow(50, 'discount-auth:device:7')).toBeNull();
+        });
+
+        it('locks a supervisor after 10 failures across devices for 15 minutes (generic lock)', async () => {
+            const shared = createSharedDatabase();
+            const service = new LoginAttemptService(shared.db, { now: () => NOW });
+            for (let i = 0; i < 10; i += 1) {
+                // 5 tablets x 2 guesses: no per-device lock (5) ever fires.
+                await service.recordFailure(50, `discount-auth:device:${(i % 5) + 1}`);
+            }
+            expect(shared.getRow(50, discountUserKey(50))?.lockedUntil).toEqual(new Date(NOW.getTime() + 15 * 60_000));
+            // Any other device is refused for this supervisor, and the password login is not.
+            await expect(service.assertAllowed(50, 'discount-auth:device:99')).rejects.toThrow('temporarily locked');
+            await expect(service.assertAllowed(50, IP_A)).resolves.toBeUndefined();
+        });
+
+        it('9 failures do not lock, and failures older than 15 minutes do not count', async () => {
+            const shared = createSharedDatabase();
+            let now = NOW;
+            const service = new LoginAttemptService(shared.db, { now: () => now });
+            for (let i = 0; i < 9; i += 1) await service.recordFailure(50, `discount-auth:device:${(i % 5) + 1}`);
+            await expect(service.assertAllowed(50, 'discount-auth:device:6')).resolves.toBeUndefined();
+            now = new Date(NOW.getTime() + 16 * 60_000);
+            await service.recordFailure(50, 'discount-auth:device:1');
+            expect(shared.getRow(50, discountUserKey(50))?.failedCount).toBe(1);
+            expect(shared.getRow(50, discountUserKey(50))?.lockedUntil).toBeNull();
+        });
     });
 });

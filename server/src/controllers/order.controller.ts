@@ -430,22 +430,19 @@ export class OrderController {
             const discountReason = parseDiscountReason(req.body?.discountReason);
 
             await OrderController.assertOrderBranch(req, id);
-            // Mobile flow only (discountReason present): a manual discount needs
-            // orders.discount.apply. The web call has no reason and is unchanged.
-            if (discountReason !== undefined && Number(discount) > 0 && !(await canApplyManualDiscount(req.user!))) {
-                return res.status(403).json({
-                    success: false,
-                    code: 'FORBIDDEN',
-                    message: 'No tienes permiso para realizar esta acción'
-                });
-            }
+            // Mobile flow only (discountReason present): without orders.discount.apply
+            // the user's own limit is 0, so any manual discount answers
+            // DISCOUNT_AUTH_REQUIRED and can be obtained from a supervisor.
+            // The web call has no reason and is unchanged.
+            const canApply = discountReason === undefined || !(Number(discount) > 0)
+                || await canApplyManualDiscount(req.user!);
             const order = await OrderService.updatePricing(id, companyId, {
                 discount: discount !== undefined ? Number(discount) : undefined,
                 discountCode: discountCode !== undefined ? String(discountCode || '') : undefined,
                 tax: tax !== undefined ? Number(tax) : undefined,
                 tipAmount: tipAmount !== undefined ? Number(tipAmount) : undefined,
                 discountReason
-            }, req.user!.userId, { role: req.user!.role, roles: req.user!.roles });
+            }, req.user!.userId, { role: req.user!.role, roles: req.user!.roles }, canApply ? undefined : { noApplyPermission: true });
 
             WebSocketService.broadcastOrderUpdate(id, 'PRICING_UPDATED', order, {
                 companyId,
@@ -506,14 +503,8 @@ export class OrderController {
             if (!Number.isInteger(supervisorUserId) || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) {
                 return res.status(401).json({ success: false, message: DISCOUNT_AUTH_ERROR });
             }
-            if (!(await canApplyManualDiscount(req.user!))) {
-                return res.status(403).json({
-                    success: false,
-                    code: 'FORBIDDEN',
-                    message: 'No tienes permiso para realizar esta acción'
-                });
-            }
-
+            // A requester without orders.discount.apply may still obtain a
+            // supervisor authorization (spec 7.3.0); orders.edit is enforced by the route.
             const existing = await OrderController.assertOrderBranch(req, id);
             const authorization = await DiscountAuthorizationService.verifySupervisor({
                 requester: req.user!,

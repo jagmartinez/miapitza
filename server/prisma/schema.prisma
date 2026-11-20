@@ -4125,6 +4125,7 @@ model Order {
   guests                   Int?
   discountReason           String?              @db.VarChar(120)
   discountAuthorizedById   Int?
+  discountAuthorizedPercent Decimal? @db.Decimal(5, 2)
 
   company           Company      @relation(fields: [companyId], references: [id])
   branch            Branch       @relation(fields: [branchId], references: [id])

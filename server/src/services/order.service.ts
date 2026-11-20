@@ -1828,7 +1828,8 @@ export class OrderService {
      * Re-validates a manual (non-promotion) discount against
      * maxManualDiscountPercent after a line void shrank the subtotal. The cap
      * applies when the discount's author (last PRICING_UPDATED, else the
-     * order creator) has a capped role; an excess is clamped to the cap over
+     * order creator) has a capped role, or, for a supervisor-authorized
+     * discount, min(authorizer limit, the percentage that was authorized); an excess is clamped to the cap over
      * the new subtotal and tax/tip/total are repriced. Mutates `pricing`.
      */
     private static async clampManualDiscountAfterVoid(
@@ -1842,9 +1843,12 @@ export class OrderService {
         // limit, not by the (lower) limit of the requester who asked for it.
         const stamped = await tx.order.findUnique({
             where: { id: order.id },
-            select: { discountAuthorizedById: true }
+            select: { discountAuthorizedById: true, discountAuthorizedPercent: true }
         });
         const authorizerId = stamped?.discountAuthorizedById ?? null;
+        const authorizedPercent = stamped?.discountAuthorizedPercent === null || stamped?.discountAuthorizedPercent === undefined
+            ? null
+            : Number(stamped.discountAuthorizedPercent);
         // The applier is the last PRICING_UPDATED that actually changed the
         // discount: tip-only edits also write PRICING_UPDATED and must not
         // transfer ownership of someone else's discount.
@@ -1871,11 +1875,16 @@ export class OrderService {
         // Same limit the discount was applied under: the authorizer's, else the
         // applier's (role limit under the company cap; MESERO = company cap).
         const authorRoles = [author.role, ...(author.userRoles ?? []).map((row) => row.role)].filter(Boolean);
-        const maxPercent = resolveLimit(
+        const roleLimit = resolveLimit(
             new Set(authorRoles.map((role) => role.name)),
             authorRoles.map((role) => role.maxDiscountPercent),
             await getCompanyDiscountCap(tx, companyId)
         );
+        // A supervisor approved a specific percentage, not their whole role limit:
+        // later shrinks may never push the discount past what they saw.
+        const maxPercent = authorizerId && authorizedPercent !== null && authorizedPercent >= 0
+            ? Math.min(roleLimit, authorizedPercent)
+            : roleLimit;
         if (maxPercent >= 100) return null;
         const maxDiscount = Math.floor(Math.max(0, pricing.subtotal) * maxPercent) / 100;
         if (pricing.discount <= maxDiscount) return null;
@@ -2660,12 +2669,21 @@ export class OrderService {
                 expectedBranchId: order.branchId
             });
 
+            // Order-level delivery is the source of truth: lines still waiting to be
+            // served are stamped now so the waiter app stops showing them as pending.
+            // (The reverse never holds: serving every line does not complete the order.)
+            const deliveredNow = new Date();
+            await tx.orderItem.updateMany({
+                where: { orderId: id, deliveredAt: null, quantity: { gt: 0 } },
+                data: { deliveredAt: deliveredNow, deliveredById }
+            });
+
             // Update order status
             const updatedOrder = await tx.order.update({
                 where: { id },
                 data: {
                     status: 'DELIVERED',
-                    deliveredAt: new Date(),
+                    deliveredAt: deliveredNow,
                     ...(isZeroTotal ? { financialStatus: 'PAID' as const, closedAt: order.closedAt ?? new Date() } : {})
                 }
             });
@@ -3094,6 +3112,8 @@ export class OrderService {
         userId: number,
         actor: { role?: string | null; roles?: string[] | null },
         options?: {
+            /** Requester lacks orders.discount.apply: their own manual-discount limit is 0. */
+            noApplyPermission?: boolean;
             /**
              * Supervisor-authorized manual discount: applied under the same lock and
              * transaction as the pricing update, stamped with the authorizer.
@@ -3136,6 +3156,8 @@ export class OrderService {
                     discountCode: true,
                     tax: true,
                     tipAmount: true,
+                    discountReason: true,
+                    discountAuthorizedById: true,
                     invoiceNumber: true,
                     preInvoicedAt: true,
                     payments: { where: { status: 'ACTIVE' }, select: { id: true } }
@@ -3185,10 +3207,18 @@ export class OrderService {
             const discountChanged = previousManual !== nextDiscount || (order.discountCode || null) !== nextCode;
             let applyAuthorizationStamp = false;
             let roleLimit: number | null = null;
+            // A stamped discount whose reason is rewritten is no longer what the
+            // supervisor approved: the stamp is dropped and the requester's own
+            // limit applies again.
+            const storedReason = order.discountReason ?? null;
+            const reasonChanged = discountReason !== undefined && !nextCode && nextDiscount > 0
+                && discountReason !== storedReason;
+            const reasonRewriteOnStamp = reasonChanged && !discountChanged && !authorization
+                && order.discountAuthorizedById !== null && order.discountAuthorizedById !== undefined;
             if (authorization && (nextCode || !(nextDiscount > 0))) {
                 throw new Error('El descuento debe ser mayor a cero');
             }
-            if (!nextCode && nextDiscount > 0 && (discountChanged || authorization)) {
+            if (!nextCode && nextDiscount > 0 && (discountChanged || authorization || reasonRewriteOnStamp)) {
                 if (authorization) {
                     // Re-validated under the order lock: supervisor still eligible and
                     // the final (clamped) discount fits their limit over this subtotal.
@@ -3196,7 +3226,7 @@ export class OrderService {
                     applyAuthorizationStamp = true;
                 } else if (discountReason !== undefined) {
                     // Mobile flow: over the actor's own limit => nothing applied, ask for a supervisor.
-                    const limit = await getManualDiscountLimit({
+                    const limit = options?.noApplyPermission ? 0 : await getManualDiscountLimit({
                         userId, companyId, role: actor?.role, roles: actor?.roles
                     }, tx);
                     if (nextDiscount > maxDiscountForLimit(subtotal, limit)) {
@@ -3244,6 +3274,7 @@ export class OrderService {
                 previousDiscount !== nextDiscount
                 || (order.discountCode || null) !== nextCode
                 || previousTip !== nextTip
+                || reasonChanged
             ) {
                 await tx.auditLog.create({
                     data: {
@@ -3260,7 +3291,9 @@ export class OrderService {
                             discountCode: nextCode,
                             manualDiscount: !nextCode && nextDiscount > 0,
                             ...(discountReason !== undefined && !nextCode && nextDiscount > 0 ? { discountReason } : {}),
+                            ...(reasonChanged ? { previousReason: storedReason } : {}),
                             ...(applyAuthorizationStamp ? { discountAuthorizedById: authorization!.supervisorUserId } : {}),
+                            ...(reasonRewriteOnStamp ? { clearedAuthorizerUserId: order.discountAuthorizedById } : {}),
                             previousTipAmount: previousTip,
                             tipAmount: nextTip,
                             requestedTipAmount: requestedTip
@@ -3272,15 +3305,25 @@ export class OrderService {
             // Reason/authorizer describe the manual discount that is now on the order:
             // they follow it (set with it, cleared when it changes or goes away).
             const manualNow = !nextCode && nextDiscount > 0;
-            const stampData: { discountReason?: string | null; discountAuthorizedById?: number | null } = {};
+            const stampData: {
+                discountReason?: string | null;
+                discountAuthorizedById?: number | null;
+                discountAuthorizedPercent?: number | null;
+            } = {};
             if (!manualNow) {
                 stampData.discountReason = null;
                 stampData.discountAuthorizedById = null;
+                stampData.discountAuthorizedPercent = null;
             } else if (discountChanged || discountReason !== undefined) {
                 if (discountReason !== undefined) stampData.discountReason = discountReason;
                 else stampData.discountReason = null;
-                if (applyAuthorizationStamp) stampData.discountAuthorizedById = authorization!.supervisorUserId;
-                else if (discountChanged) stampData.discountAuthorizedById = null;
+                if (applyAuthorizationStamp) {
+                    stampData.discountAuthorizedById = authorization!.supervisorUserId;
+                    stampData.discountAuthorizedPercent = discountPercentOf(nextDiscount, subtotal);
+                } else if (discountChanged || reasonRewriteOnStamp) {
+                    stampData.discountAuthorizedById = null;
+                    stampData.discountAuthorizedPercent = null;
+                }
             }
             if (applyAuthorizationStamp) {
                 await authorization!.onApplied(tx, {

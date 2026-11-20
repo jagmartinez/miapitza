@@ -40,7 +40,7 @@ import menuBrandRoutes from './routes/menu-brand.routes';
 import { apiNotFoundHandler, errorHandler } from './middlewares/errorHandler';
 import { idempotency, preAuthenticateIdempotentRequest } from './middlewares/idempotency';
 import { csrfProtection } from './middlewares/csrf';
-import { createDeviceAuthLimiter, createSessionAuthLimiter, isDeviceAuthPath, isSessionAuthPath } from './middlewares/device-rate-limit';
+import { createDeviceAuthLimiter, createSessionAuthLimiter, isDeviceAuthPath, isLenientSessionPath } from './middlewares/device-rate-limit';
 import { createApiRateLimiter, parseTrustProxy } from './middlewares/api-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger';
@@ -186,7 +186,7 @@ const authLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     // Device-token routes have their own per-device limiter below.
-    skip: (req) => isDeviceAuthPath(req.path) || isSessionAuthPath(req.path),
+    skip: (req) => isDeviceAuthPath(req.path) || isLenientSessionPath(req.path),
 });
 // Tablets share the restaurant NAT IP: limit per device token, with room for shift changes.
 const deviceAuthLimiter = createDeviceAuthLimiter(isProd ? 120 : 2000);
@@ -195,7 +195,7 @@ const deviceAuthOnly: express.RequestHandler = (req, res, next) =>
 // Logout / session check / session list: per session token, not the shared login bucket.
 const sessionAuthLimiter = createSessionAuthLimiter(isProd ? 600 : 5000);
 const sessionAuthOnly: express.RequestHandler = (req, res, next) =>
-    isSessionAuthPath(req.path) ? sessionAuthLimiter(req, res, next) : next();
+    isLenientSessionPath(req.path) ? sessionAuthLimiter(req, res, next) : next();
 const webhookLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: isProd ? 120 : 2000,

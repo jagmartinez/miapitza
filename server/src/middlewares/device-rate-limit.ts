@@ -23,7 +23,7 @@ export function isDeviceAuthPath(path: string): boolean {
  */
 const SESSION_PATH = /^\/(logout|me|me\/discount-limit|sessions(\/[^/]+)?)$/;
 
-export function isSessionAuthPath(path: string): boolean {
+export function isLenientSessionPath(path: string): boolean {
     return SESSION_PATH.test(normalizeAuthPath(path));
 }
 

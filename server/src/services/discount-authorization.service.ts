@@ -290,12 +290,38 @@ export class DiscountAuthorizationService {
             subtotal: number; discount: number; percent: number; previousDiscount: number;
         }) => Promise<void>;
     }> {
+        // Every reject path (early or after the PIN check) records the attempt the
+        // same way. The write is best effort and never alters the response; the PIN
+        // is never part of it. `deviceId` is null when the token did not resolve.
+        let resolvedDeviceId: number | null = null;
+        const auditRejection = async (): Promise<void> => {
+            try {
+                await AuditLogService.log({
+                    companyId: input.requester.companyId,
+                    userId: input.requester.userId,
+                    entityType: 'Order',
+                    entityId: input.orderId,
+                    action: 'DISCOUNT_AUTH_REJECTED',
+                    details: {
+                        requesterUserId: input.requester.userId,
+                        supervisorUserId: Number.isInteger(input.supervisorUserId) ? input.supervisorUserId : null,
+                        deviceId: resolvedDeviceId,
+                        orderId: input.orderId,
+                        requestedAmount: input.requestedDiscount,
+                    },
+                });
+            } catch (auditError) {
+                console.error('[DiscountAuth] Failed to audit a rejected authorization:', auditError instanceof Error ? auditError.message : 'unknown');
+            }
+        };
         const reject = async (): Promise<never> => {
             await bcrypt.compare(String(input.pin), DUMMY_PASSWORD_HASH);
+            await auditRejection();
             throw new DiscountAuthRejectedError();
         };
 
         const device = await resolveDevice(input.deviceToken, input.requester);
+        resolvedDeviceId = device?.id ?? null;
         if (!device || device.branchId !== input.orderBranchId) return reject();
         if (await deviceIsLocked(device.id)) return reject();
 
@@ -336,12 +362,14 @@ export class DiscountAuthorizationService {
         );
         if (!eligible || !pinMatches) {
             await loginAttemptService.recordFailure(supervisor.id, lockKey);
+            await auditRejection();
             throw new DiscountAuthRejectedError();
         }
         try {
             await loginAttemptService.recordSuccess(supervisor.id, lockKey);
         } catch (lockError) {
             if (lockError instanceof Error && LOCK_ERROR.test(lockError.message)) {
+                await auditRejection();
                 throw new DiscountAuthRejectedError();
             }
             throw lockError;
@@ -358,9 +386,17 @@ export class DiscountAuthorizationService {
                     where: { id: supervisorId, companyId: device.companyId },
                     select: SUPERVISOR_SELECT,
                 });
-                if (!isEligibleSupervisor(fresh, device, requesterUserId)) throw new DiscountAuthRejectedError();
+                // The transaction rolls back on these rejections, so the audit goes
+                // through the global client, not tx.
+                if (!isEligibleSupervisor(fresh, device, requesterUserId)) {
+                    await auditRejection();
+                    throw new DiscountAuthRejectedError();
+                }
                 const limit = await supervisorLimit(tx, fresh);
-                if (discount > maxDiscountForLimit(subtotal, limit)) throw new DiscountAuthRejectedError();
+                if (discount > maxDiscountForLimit(subtotal, limit)) {
+                    await auditRejection();
+                    throw new DiscountAuthRejectedError();
+                }
             },
             // Same transaction as the pricing update: who asked, who authorized, how much, why.
             onApplied: async (tx, info) => {

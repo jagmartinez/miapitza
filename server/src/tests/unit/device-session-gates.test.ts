@@ -10,7 +10,7 @@ import {
     deviceRateLimitKey,
     createSessionAuthLimiter,
     isDeviceAuthPath,
-    isSessionAuthPath,
+    isLenientSessionPath,
     sessionRateLimitKey,
 } from '../../middlewares/device-rate-limit';
 
@@ -124,10 +124,10 @@ describe('device auth rate limiting', () => {
 describe('session (non-credential) auth rate limiting', () => {
     it('routes only logout, /me and session management to the lenient limiter', () => {
         for (const p of ['/logout', '/LOGOUT/', '/me', '/Me/', '/sessions', '/sessions/abc', '/sessions/abc/', '/me?x=1']) {
-            expect(isSessionAuthPath(p)).toBe(true);
+            expect(isLenientSessionPath(p)).toBe(true);
         }
         for (const p of ['/login', '/me/pin', '/ME/PIN/', '/change-password', '/2fa/verify', '/pin-login', '/register', '/sessions/a/b', '/']) {
-            expect(isSessionAuthPath(p)).toBe(false);
+            expect(isLenientSessionPath(p)).toBe(false);
         }
     });
 
@@ -146,7 +146,7 @@ describe('session (non-credential) auth rate limiting', () => {
     it('does not throttle 21 logouts from one IP, and tablets with different sessions do not share a bucket', async () => {
         const app = express();
         app.use('/api/auth', (req, res, next) =>
-            isSessionAuthPath(req.path) ? createSessionAuthLimiter(100)(req, res, next) : next());
+            isLenientSessionPath(req.path) ? createSessionAuthLimiter(100)(req, res, next) : next());
         app.post('/api/auth/logout', (_req, res) => { res.json({ ok: true }); });
         for (let i = 0; i < 21; i += 1) {
             await request(app).post('/api/auth/logout').set('Authorization', `Bearer t-${i % 3}`).expect(200);
