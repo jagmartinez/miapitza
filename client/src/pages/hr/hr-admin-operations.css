@@ -292,11 +292,14 @@
   grid-template-columns: minmax(150px, 0.8fr) repeat(2, minmax(190px, 1.25fr)) auto;
 }
 
+/* Tabs get their own full-width row so they never need a horizontal
+   scrollbar; the date/employee filters and actions sit on the row below. */
 .hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
-  grid-template-columns: minmax(520px, 1.8fr) repeat(2, minmax(150px, 0.55fr)) minmax(250px, 0.9fr) auto;
+  grid-template-columns: repeat(2, minmax(150px, 0.55fr)) minmax(250px, 1fr) auto auto;
 }
 
 .hr-leave-management-page .hr-workforce-filters > .hr-admin-tab-toolbar {
+  grid-column: 1 / -1;
   min-width: 0;
   margin: 0;
   padding: 2px;
@@ -304,6 +307,35 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.leave-calendar-view-toggle {
+  display: inline-flex;
+  align-self: end;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.leave-calendar-view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.leave-calendar-view-toggle button.active {
+  background: var(--primary, #2563eb);
+  color: #fff;
 }
 
 .hr-attendance-management-page .hr-workforce-filters > .btn,

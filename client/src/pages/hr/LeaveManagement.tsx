@@ -21,6 +21,7 @@ import Sidebar from '../../components/Sidebar';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import LeaveRequestForm from '../../components/hr/LeaveRequestForm';
+import LeaveCalendarGrid from '../../components/hr/LeaveCalendarGrid';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
 import WorkforceStatusPill from '../../components/hr/WorkforceStatusPill';
@@ -122,6 +123,9 @@ export default function LeaveManagement() {
     reference: '',
   });
   const [activeTable, setActiveTable] = useState<LeaveTable>('REQUESTS');
+  // The Calendario tab can be read as a list or as an employee × day grid.
+  const [calendarView, setCalendarView] = useState<'grid' | 'list'>('grid');
+  const showCalendarGrid = activeTable === 'CALENDAR' && calendarView === 'grid';
   const [focusedRequestId, setFocusedRequestId] = useState<number | null>(null);
   const [tablePage, setTablePage] = useState(1);
 
@@ -367,6 +371,16 @@ export default function LeaveManagement() {
         <Button variant="ghost" onClick={() => void load()}>
           <RefreshCw size={16} /> Actualizar
         </Button>
+        {activeTable === 'CALENDAR' && (
+          <div className="leave-calendar-view-toggle" role="group" aria-label="Vista del calendario">
+            <button type="button" className={calendarView === 'grid' ? 'active' : ''} aria-pressed={calendarView === 'grid'} onClick={() => setCalendarView('grid')} title="Ver como calendario">
+              <CalendarDays size={16} /> Calendario
+            </button>
+            <button type="button" className={calendarView === 'list' ? 'active' : ''} aria-pressed={calendarView === 'list'} onClick={() => setCalendarView('list')} title="Ver como lista">
+              <ListChecks size={16} /> Lista
+            </button>
+          </div>
+        )}
       </section>
 
       {loading && <LoadingSpinner text="Cargando permisos y vacaciones…" />}
@@ -389,7 +403,15 @@ export default function LeaveManagement() {
               </table>
             )}
 
-            {activeTable === 'CALENDAR' && (
+            {showCalendarGrid && (
+              <LeaveCalendarGrid
+                entries={calendar}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onOpenRequest={(leaveRequestId) => { setFocusedRequestId(leaveRequestId); setActiveTable('REQUESTS'); }}
+              />
+            )}
+            {activeTable === 'CALENDAR' && calendarView === 'list' && (
               <table className="hr-admin-table inventory-table" aria-label={`Ausencias aprobadas entre ${dateLabel(dateFrom)} y ${dateLabel(dateTo)}`}>
                 <thead><tr><th scope="col">Fecha</th><th scope="col">Empleado</th><th scope="col">Tipo</th><th scope="col">Duración</th><th scope="col">Sucursal</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
                 <tbody>{calendar.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><strong>No hay ausencias aprobadas</strong><span>Amplía el rango de fechas o revisa las solicitudes pendientes.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('REQUESTS')}>Ver solicitudes</Button></div></td></tr> : pageSlice(calendar).map((entry) => <tr key={entry.id}><td><strong>{dateLabel(entry.date)}</strong></td><td>{entry.user?.name ?? `Usuario #${entry.userId}`}</td><td>{entry.leaveType?.name ?? `Tipo #${entry.leaveTypeId}`}</td><td>{fractionLabel(entry.fraction)}</td><td>{entry.branch?.name ?? 'Sin sucursal'}</td><td><WorkforceStatusPill status={entry.status} /></td><td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => { setFocusedRequestId(entry.leaveRequestId); setActiveTable('REQUESTS'); }} title="Ver solicitud" aria-label={`Ver solicitud de ${entry.user?.name ?? entry.userId}`}><Eye size={16} /></Button></div></td></tr>)}</tbody>
@@ -417,7 +439,7 @@ export default function LeaveManagement() {
               </table>
             )}
           </div>
-          <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE))} totalItems={activeTableCount} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />
+          {!showCalendarGrid && <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE))} totalItems={activeTableCount} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />}
         </section>
       )}
       <Sidebar
