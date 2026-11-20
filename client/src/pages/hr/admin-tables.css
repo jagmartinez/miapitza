@@ -171,25 +171,31 @@
   text-align: left;
 }
 
+/* Same look as the shared .catalog-table (components/CatalogView.css). */
 .hr-admin-table:not(.inventory-table) th,
 .hr-admin-table:not(.inventory-table) td {
-  padding: 13px 14px;
-  border-top: 1px solid var(--color-border);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
   text-align: left;
   vertical-align: middle;
 }
 
-.hr-admin-table:not(.inventory-table) th {
-  background: var(--color-background-secondary);
+.hr-admin-table:not(.inventory-table) thead th {
+  padding: 12px 14px;
+  background: var(--color-background);
   color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: 800;
-  letter-spacing: 0.025em;
-  text-transform: uppercase;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-.hr-admin-table tbody tr:not(:has(.hr-admin-empty)):hover,
+.hr-admin-table:not(.inventory-table) tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.hr-admin-table tbody tr:not(:has(.hr-admin-empty)):hover {
+  background: var(--color-background);
+}
+
 .hr-admin-table tbody tr.is-selected {
   background: rgba(59, 130, 246, 0.07);
 }
@@ -246,10 +252,6 @@
 .hr-admin-catalog-page .table-action-btn.btn.danger:hover:not(:disabled) {
   border-color: var(--color-danger);
   color: var(--color-danger);
-}
-
-.hr-admin-catalog-page .table-pagination {
-  border-top: 1px solid var(--color-border);
 }
 
 .hr-admin-cell-warning {

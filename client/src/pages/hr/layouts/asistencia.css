@@ -99,12 +99,6 @@
   outline-offset: -2px;
 }
 
-.hr-asis-page .hr-asis-pagination {
-  padding: .35rem .9rem;
-  border-top: 1px solid var(--hr-ws-border);
-  background: var(--hr-ws-muted);
-}
-
 .hr-asis-page .hr-asis-state {
   padding: 2rem 1rem;
   border-radius: 0;

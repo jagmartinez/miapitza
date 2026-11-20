@@ -109,8 +109,6 @@
 .nm-page .nm-chip.is-success { background: color-mix(in srgb, var(--color-success, #22c55e) 14%, transparent); color: var(--color-success, #16a34a); }
 
 .nm-page .nm-row-actions { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: .3rem; }
-.nm-page .nm-pagination { border-top: 1px solid var(--hr-ws-border); }
-.nm-page .nm-pagination .table-pagination { margin: 0; border: 0; border-radius: 0; }
 
 /* ---------- Detalle de corrida ---------- */
 .nm-page .nm-detail { min-width: 0; scroll-margin-top: 1rem; }

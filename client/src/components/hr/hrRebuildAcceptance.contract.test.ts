@@ -77,7 +77,9 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
       expect(source).toContain('role="tabpanel"');
       expect(source).toContain('scope="col"');
     });
-    expect(attendanceReview).toContain('inventory-table');
+    // Uses the shared table component (header, footer and pagination styling come from it).
+    expect(attendanceReview).toContain('<CatalogTable<HrAttendanceEvent>');
+    expect(attendanceReview).toContain('pagination={{ page, totalPages');
     expect(attendanceReview).not.toContain('hr-attendance-events');
   });
 

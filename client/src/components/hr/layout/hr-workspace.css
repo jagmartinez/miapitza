@@ -416,38 +416,49 @@
   padding: 0;
 }
 
-/* Tables inside sections share one density */
-.hr-ws-section table {
+/* Raw tables inside sections follow the shared .catalog-table look
+   (components/CatalogView.css). Prefer <CatalogTable flush> for new tables. */
+.hr-ws-section table:not(.catalog-table) {
   width: 100%;
   border-collapse: collapse;
+  font-size: var(--font-size-sm);
 }
 
-.hr-ws-section thead th {
-  padding: .65rem 1rem;
-  border-bottom: 1px solid var(--hr-ws-border);
-  background: var(--hr-ws-muted);
-  color: var(--hr-ws-text-2);
-  font-size: .66rem;
-  font-weight: 800;
-  letter-spacing: .06em;
+.hr-ws-section table:not(.catalog-table) thead th {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  font-weight: 600;
   text-align: left;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
-.hr-ws-section tbody :is(td, th) {
-  padding: .7rem 1rem;
-  border-bottom: 1px solid var(--hr-ws-border);
+.hr-ws-section table:not(.catalog-table) tbody :is(td, th) {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
 }
 
-.hr-ws-section tbody tr:last-child :is(td, th) {
+.hr-ws-section table:not(.catalog-table) tbody tr:last-child :is(td, th) {
   border-bottom: 0;
 }
 
-.hr-ws-section tbody tr:hover {
-  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+.hr-ws-section table:not(.catalog-table) tbody tr:hover {
+  background: var(--color-background);
+}
+
+/* Pagination sits flush at the bottom of a section card: one divider, no tint. */
+.hr-ws-section .table-pagination {
+  margin: 0;
+  padding: .85rem 1.5rem;
+  border-radius: 0;
+  background: transparent;
+}
+
+.hr-ws-section .catalog-table tbody td {
+  font-variant-numeric: tabular-nums;
 }
 
 .hr-ws-section tbody :is(td, th) small {

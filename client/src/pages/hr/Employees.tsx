@@ -441,16 +441,16 @@ export default function Employees() {
                 )}
 
                 {!loading && !error && employees.length > 0 && viewMode === 'table' && (
-                    <div className="hr-ws-table-scroll hr-pe-table">
-                        <CatalogTable<HrEmployee>
-                            rows={employees}
-                            rowKey={(employee) => employee.id}
-                            columns={columns}
-                            pageSize={Math.max(1, employees.length)}
-                            onRowClick={setPreview}
-                            resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
-                        />
-                    </div>
+                    <CatalogTable<HrEmployee>
+                        className="is-flush hr-pe-table"
+                        ariaLabel="Expedientes laborales"
+                        rows={employees}
+                        rowKey={(employee) => employee.id}
+                        columns={columns}
+                        onRowClick={setPreview}
+                        pagination={{ page, totalPages, totalItems, pageSize: PAGE_SIZE, onPageChange: setPage }}
+                        emptyLabel="Sin expedientes"
+                    />
                 )}
 
                 {!loading && !error && employees.length > 0 && viewMode === 'cards' && (
@@ -495,7 +495,7 @@ export default function Employees() {
                     </div>
                 )}
 
-                {!loading && !error && (
+                {!loading && !error && (viewMode === 'cards' || employees.length === 0) && (
                     <div className="hr-pe-pagination">
                         <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={PAGE_SIZE} onPageChange={setPage} alwaysShow emptyLabel="Sin expedientes" />
                     </div>

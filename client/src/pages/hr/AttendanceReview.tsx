@@ -3,7 +3,7 @@ import type { SingleValue } from 'react-select';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, Plus, RefreshCw, XCircle } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import Pagination from '../../components/Pagination';
+import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
@@ -203,6 +203,22 @@ export default function AttendanceReview() {
         { label: 'Rango consultado', value: rangeLabel, tone: 'accent' },
     ];
 
+    const eventColumns: CatalogColumn<HrAttendanceEvent>[] = [
+        { key: 'user', header: 'Empleado', render: (attendanceEvent) => <><strong>{attendanceEvent.user?.name ?? `Usuario #${attendanceEvent.userId}`}</strong><small>@{attendanceEvent.user?.username ?? attendanceEvent.userId}</small></> },
+        { key: 'action', header: 'Evento', render: (attendanceEvent) => <><strong>{ATTENDANCE_ACTION_LABELS[attendanceEvent.action]}</strong>{attendanceEvent.message && <small>{attendanceEvent.message}</small>}</> },
+        { key: 'branch', header: 'Sucursal', render: (attendanceEvent) => attendanceEvent.branch?.name ?? `Sucursal #${attendanceEvent.branchId ?? '—'}` },
+        { key: 'occurredAt', header: 'Fecha y hora', render: (attendanceEvent) => <time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time> },
+        { key: 'decision', header: 'Resultado', render: (attendanceEvent) => <><span className={`hr-asis-chip is-${attendanceEvent.decision.toLowerCase()}`}>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</span>{attendanceEvent.reviewedAt && <small>Revisado {displayDate(attendanceEvent.reviewedAt)}</small>}</> },
+        { key: 'evidence', header: 'Evidencia', render: (attendanceEvent) => <>{attendanceEvent.reasonCode ? <code>{attendanceEvent.reasonCode}</code> : 'Sin código'}{attendanceEvent.locationAccuracyM != null && <small>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</small>}</> },
+        {
+            key: 'actions',
+            header: 'Acción',
+            align: 'right',
+            className: 'hr-admin-actions-col',
+            render: (attendanceEvent) => <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openReview(attendanceEvent)} disabled={!online || attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} title={!online ? 'Conéctate para revisar' : attendanceEvent.reviewedAt ? 'Evento ya revisado' : 'Revisar evento'} aria-label={`Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`}><Eye size={16} /></Button></div>
+        }
+    ];
+
     return (
         <HrPage className="inventory-page hr-attendance-review-page hr-admin-catalog-page hr-operation-page hr-asis-page hr-asis-review">
             <div className="hr-asis-hero inventory-header-new">
@@ -255,29 +271,16 @@ export default function AttendanceReview() {
                 {loading && <div className="hr-asis-state"><LoadingSpinner text="Cargando eventos…" /></div>}
                 {!loading && error && <div className="state-placeholder hr-asis-state" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></div>}
                 {!loading && !error && (
-                    <>
-                        <div className="hr-ws-table-scroll">
-                            <table className="hr-admin-table inventory-table" aria-label="Eventos de asistencia">
-                                <thead><tr><th scope="col">Empleado</th><th scope="col">Evento</th><th scope="col">Sucursal</th><th scope="col">Fecha y hora</th><th scope="col">Resultado</th><th scope="col">Evidencia</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
-                                <tbody>
-                                    {events.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><ClipboardCheck size={34} /><strong>No hay eventos para los filtros seleccionados</strong><span>Amplía el rango o cambia los filtros para consultar otros marcajes.</span></div></td></tr> : events.map((attendanceEvent) => (
-                                        <tr key={attendanceEvent.id}>
-                                            <th scope="row"><strong>{attendanceEvent.user?.name ?? `Usuario #${attendanceEvent.userId}`}</strong><small>@{attendanceEvent.user?.username ?? attendanceEvent.userId}</small></th>
-                                            <td><strong>{ATTENDANCE_ACTION_LABELS[attendanceEvent.action]}</strong>{attendanceEvent.message && <small>{attendanceEvent.message}</small>}</td>
-                                            <td>{attendanceEvent.branch?.name ?? `Sucursal #${attendanceEvent.branchId ?? '—'}`}</td>
-                                            <td><time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time></td>
-                                            <td><span className={`hr-asis-chip is-${attendanceEvent.decision.toLowerCase()}`}>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</span>{attendanceEvent.reviewedAt && <small>Revisado {displayDate(attendanceEvent.reviewedAt)}</small>}</td>
-                                            <td>{attendanceEvent.reasonCode ? <code>{attendanceEvent.reasonCode}</code> : 'Sin código'}{attendanceEvent.locationAccuracyM != null && <small>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</small>}</td>
-                                            <td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openReview(attendanceEvent)} disabled={!online || attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} title={!online ? 'Conéctate para revisar' : attendanceEvent.reviewedAt ? 'Evento ya revisado' : 'Revisar evento'} aria-label={`Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`}><Eye size={16} /></Button></div></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="hr-asis-pagination">
-                            <Pagination page={page} totalPages={totalPages} totalItems={total} pageSize={25} onPageChange={setPage} alwaysShow emptyLabel="Sin eventos" />
-                        </div>
-                    </>
+                    <CatalogTable<HrAttendanceEvent>
+                        className="is-flush hr-asis-table"
+                        ariaLabel="Eventos de asistencia"
+                        rows={events}
+                        rowKey={(attendanceEvent) => attendanceEvent.id}
+                        columns={eventColumns}
+                        pagination={{ page, totalPages, totalItems: total, pageSize: 25, onPageChange: setPage }}
+                        emptyLabel="Sin eventos"
+                        emptyState={<div className="hr-admin-empty"><ClipboardCheck size={34} /><strong>No hay eventos para los filtros seleccionados</strong><span>Amplía el rango o cambia los filtros para consultar otros marcajes.</span></div>}
+                    />
                 )}
             </HrSection>
             <Sidebar isOpen={Boolean(selected)} onClose={() => !saving && setSelected(null)} title="Revisar incidencia" width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
