@@ -1,6 +1,6 @@
 # Punto de control — App Android
 
-> Leer esto primero para retomar. Actualizado: 2026-11-20 (Fase 2 cerrada).
+> Leer esto primero para retomar. Actualizado: 2026-11-20 (Fase 2b cerrada).
 
 ## Dónde estamos
 - Rama: `feat/app-android` (creada desde `codex/rh-nomina-estatutaria` @ 6d548af). No publicada (sin push).
@@ -50,8 +50,42 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - Diferidos relevantes para fases siguientes: imprimir/enviar factura y mosaico "Factura"/⋯ (Fase 2b); `maxDiscountPercent` solo configurable por SQL (falta UI admin); suscriptor de `storage-error` y aviso de listos tras reconexión (Fase 6); tests con BD real (al ensayar migraciones).
 - Uso semanal consumido por la Fase 2: ~5 puntos (39 % → 44 %).
 
+## Fase 2b (Caja) — ✅ código terminado y revisado (2026-11-20)
+- Plan: `docs/superpowers/plans/2026-11-21-app-android-fase-2b-caja.md`. Bitácora con decisiones R1–R14 y W1–W10: `.superpowers/sdd/2026-11-21-app-android-fase-2b-caja/progress.md` (no versionada).
+- Hecho:
+  - **Servidor:**
+    - errores tipados `CASH_*`;
+    - arqueo a ciegas aplicado en el servidor (solo con el turno abierto; incluye resumen, preview, count, detalle, reporte y el mensaje de tolerancia);
+    - `exchange_rate_usd`, `GET /cash-shifts/cash-settings`, fondo sugerido y encabezado del reporte;
+    - `salesByMethod`, y nota, descuentos y propinas en el reporte (cada uno se cuenta una sola vez);
+    - el resumen queda restringido a CASHIERS.
+  - **App:**
+    - abrir turno (también desde el cobro), turno activo y movimientos;
+    - arqueo a ciegas y cierre, con total exacto al centavo como el servidor y forzar cierre solo ADMIN;
+    - "Turnos abiertos" para supervisor;
+    - reporte, historial y ticket de 48 columnas;
+    - compartir el PDF de factura;
+    - bloqueo de 10 min mientras se cuenta.
+- Revisiones:
+  - refutador por tanda;
+  - finales: Opus backend, más Opus y Fable 5.2 en la app;
+  - una ola de correcciones, re-revisada y limpia.
+- Pruebas: servidor 200 suites / 1735 (herméticas, sin BD); cliente `tsc` limpio; app 67 archivos / 546; JS inicial 87 KB gzip.
+- Sin migraciones nuevas.
+- Diferidos (gate de dispositivo):
+  - revisar el diseño a 1280×800 y 1024×600;
+  - `npx cap sync android` y compartir por FileProvider;
+  - elegir y probar la impresora ESC/POS (hoy `print` es un stub con respaldo de compartir);
+  - turno completo en tablet real.
+- Diferidos de código:
+  - pagos de catering en `salesByMethod`;
+  - índice `(registeredById, createdAt)` en Payment;
+  - la hoja de compartir sigue abierta sobre el bloqueo;
+  - PDF del reporte de cierre.
+- Uso semanal consumido por la Fase 2b: ~2 puntos (44 % → 46 %).
+
 ## Siguiente
-- Fase 2b (Caja) — plan escrito: `docs/superpowers/plans/2026-11-21-app-android-fase-2b-caja.md` (2 backend + 6 app). Decisión del usuario 2026-11-21: **arqueo a ciegas** para CAJERO (no ve "debe haber" ni la diferencia; solo el resultado). Inventario: `.superpowers/sdd/2026-11-21-app-android-fase-2b-caja/api-inventory.md`.
+- Fase 3 (Cocina / KDS en tablet fija). Primero escribir su plan (ver "Reglas para la Fase 2": no desemparejar ante cualquier 401, evitar sesiones duplicadas).
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
