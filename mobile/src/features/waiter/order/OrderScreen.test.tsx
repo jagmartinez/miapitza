@@ -404,3 +404,19 @@ describe('OrderScreen fix round 2', () => {
 });
 
 const sendCalls = (api: { sendToKitchen: { mock: { calls: unknown[] } } }) => api.sendToKitchen.mock.calls.length;
+
+describe('ready badge in the order header (Fable I6)', () => {
+    it('shows how many other orders are ready, and leaves for the tables screen when tapped', async () => {
+        const { onBack } = setup({ handlers: { readyCount: 2 } });
+        const badge = await screen.findByRole('button', { name: 'Pedidos listos: 2' });
+        expect(badge).toHaveTextContent('2');
+        fireEvent.click(badge);
+        expect(onBack).toHaveBeenCalled();
+    });
+
+    it('is absent when nothing else is ready', async () => {
+        setup({ handlers: { readyCount: 0 } });
+        await screen.findByRole('region', { name: 'Ticket' });
+        expect(screen.queryByRole('button', { name: /Pedidos listos/ })).toBeNull();
+    });
+});

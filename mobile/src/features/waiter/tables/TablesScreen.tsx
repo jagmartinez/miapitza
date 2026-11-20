@@ -32,6 +32,9 @@ export interface TablesScreenProps {
     invalidate: () => Promise<void>;
     onOpenOrder: (orderId: OrderRef, intent?: OrderIntent, tableId?: number, tableNumber?: string) => void;
     onSwitchUser: () => void;
+    /** "Pedido listo" notices of this session (kept by WaiterHome, so they survive a visit to another order). */
+    ready?: ReadyNotice[];
+    onDismissReady?: (orderId: number) => void;
 }
 
 const LIVE_EVENTS = ['ORDER_UPDATE', 'TABLE_STATUS_CHANGED', 'ORDER_READY', 'KITCHEN_NOTIFICATION'] as const;
@@ -48,14 +51,15 @@ function LockIcon() {
     );
 }
 
-export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser }: TablesScreenProps) {
+const NO_NOTICES: ReadyNotice[] = [];
+
+export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser, ready = NO_NOTICES, onDismissReady }: TablesScreenProps) {
     const branchId = session.user.branchId;
     const [plan, setPlan] = useState<Plan | null>(null);
     const [orders, setOrders] = useState<ActiveOrder[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [areaId, setAreaId] = useState<number | null>(null);
     const [mineOnly, setMineOnly] = useState(false);
-    const [notice, setNotice] = useState<ReadyNotice | null>(null);
     const [now, setNow] = useState(() => Date.now());
     const [sheet, setSheet] = useState<{ kind: 'open'; table: PlanTable } | { kind: 'actions'; table: PlanTable; order: ActiveOrder } | null>(null);
     const [toast, setToast] = useState<string | null>(null);
@@ -113,20 +117,8 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 void load(true);
             }, REFETCH_DEBOUNCE_MS);
         };
-        // KITCHEN_NOTIFICATION only reaches the waiter who created the order. The banner is for a fully ready order (ORDER_READY),
-        // not for single ready items (ORDER_ITEM_READY) nor releases (ORDER_RELEASED).
-        const onKitchen = (payload: unknown) => {
-            schedule();
-            const p = (payload ?? {}) as { orderId?: unknown; tableNumber?: unknown; eventType?: unknown };
-            if (typeof p.orderId !== 'number' || p.eventType !== 'ORDER_READY') return;
-            setNotice({ orderId: p.orderId, tableNumber: p.tableNumber == null ? undefined : String(p.tableNumber) });
-            try {
-                navigator.vibrate?.([200, 100, 200]);
-            } catch {
-                // no vibrator: the banner is enough
-            }
-        };
-        const unsubs = LIVE_EVENTS.map((type) => realtime.subscribe(type, type === 'KITCHEN_NOTIFICATION' ? onKitchen : schedule));
+        // The "pedido listo" banner is fed by the session's inbox (readyInbox.ts); here a kitchen event only refreshes the plan.
+        const unsubs = LIVE_EVENTS.map((type) => realtime.subscribe(type, schedule));
         return () => {
             if (timer) clearTimeout(timer);
             unsubs.forEach((u) => u?.());
@@ -304,10 +296,16 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 </div>
             )}
 
-            <ReadyBanner notice={notice} onOpen={(orderId) => {
-                const o = orders.find((x) => x.id === orderId);
-                onOpenOrder(orderId, undefined, o?.tableId ?? o?.table?.id ?? undefined);
-            }} onDismiss={() => setNotice(null)} />
+            <ReadyBanner
+                notices={ready}
+                onOpen={(orderId) => {
+                    const o = orders.find((x) => x.id === orderId);
+                    const tableId = o?.tableId ?? o?.table?.id ?? undefined;
+                    const table = plan?.tables.find((t) => t.id === tableId);
+                    onOpenOrder(orderId, undefined, tableId, table?.number ?? ready.find((n) => n.orderId === orderId)?.tableNumber);
+                }}
+                onDismiss={(orderId) => onDismissReady?.(orderId)}
+            />
 
             {branchId == null && <p className="error pad">Tu usuario no tiene sucursal asignada.</p>}
             {error && (

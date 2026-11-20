@@ -221,3 +221,12 @@
     font-size: 1.5em;
     font-weight: 600;
 }
+
+.ready-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 4px 12px;
+    color: var(--text);
+}

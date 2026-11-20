@@ -80,18 +80,6 @@ describe('TablesScreen', () => {
         expect(within(tile(2)).getByText('Ana Perez')).toBeInTheDocument();
     });
 
-    it('ready banner appears on KITCHEN_NOTIFICATION and opens the order', async () => {
-        const vibrate = vi.fn();
-        Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true });
-        const { realtime, onOpenOrder } = setup();
-        await screen.findByTestId('tile-1');
-        act(() => realtime.emit('KITCHEN_NOTIFICATION', { orderId: 103, tableNumber: '3', eventType: 'ORDER_READY' }));
-        const banner = await screen.findByRole('button', { name: /Pedido listo · Mesa 3/ });
-        expect(vibrate).toHaveBeenCalled();
-        fireEvent.click(banner);
-        expect(onOpenOrder).toHaveBeenCalledWith(103, undefined, 3);
-    });
-
     it('ORDER_UPDATE triggers one debounced refetch', async () => {
         const { realtime, api, invalidate } = setup();
         await screen.findByTestId('tile-1');
@@ -187,11 +175,34 @@ describe('TablesScreen', () => {
         expect(first.api.activeOrders).toHaveBeenCalled();
     });
 
-    it('banner ignores partial item-ready and released notifications', async () => {
-        const { realtime } = setup();
+});
+
+describe('ready notices inbox on the tables screen (Fable I6)', () => {
+    it('shows every notice that was waiting when the waiter comes back, newest first, and opens the order', async () => {
+        const onOpenOrder = vi.fn();
+        const onDismissReady = vi.fn();
+        render(
+            <TablesScreen
+                session={userSession(['orders.view'])}
+                api={makeApi()}
+                realtime={makeRealtime()}
+                queue={null}
+                invalidate={vi.fn().mockResolvedValue(undefined)}
+                onOpenOrder={onOpenOrder}
+                onSwitchUser={vi.fn()}
+                ready={[
+                    { orderId: 104, tableNumber: '4' },
+                    { orderId: 103, tableNumber: '3' },
+                ]}
+                onDismissReady={onDismissReady}
+            />,
+        );
         await screen.findByTestId('tile-1');
-        act(() => realtime.emit('KITCHEN_NOTIFICATION', { orderId: 103, tableNumber: '3', eventType: 'ORDER_ITEM_READY' }));
-        act(() => realtime.emit('KITCHEN_NOTIFICATION', { orderId: 103, tableNumber: '3', eventType: 'ORDER_RELEASED' }));
-        expect(screen.queryByText(/Pedido listo/)).toBeNull();
+        const banners = screen.getAllByRole('button', { name: /Pedido listo/ });
+        expect(banners.map((b) => b.textContent)).toEqual(['Pedido listo · Mesa 4', 'Pedido listo · Mesa 3']);
+        fireEvent.click(banners[1]);
+        expect(onOpenOrder).toHaveBeenCalledWith(103, undefined, 3, '3');
+        fireEvent.click(screen.getAllByRole('button', { name: 'Descartar aviso' })[0]);
+        expect(onDismissReady).toHaveBeenCalledWith(104);
     });
 });

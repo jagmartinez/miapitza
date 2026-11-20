@@ -56,6 +56,8 @@ export interface OrderScreenProps {
     /** Label of the table ("5"): an order that only exists in the queue has no server order to read it from. */
     tableNumber?: string;
     intent?: OrderIntent;
+    /** Other orders of this session that are ready: a small badge in the header, tapping it goes back to the tables. */
+    readyCount?: number;
     invalidate?: () => Promise<void>;
     onBack: () => void;
     onPay?: () => void;
@@ -453,6 +455,12 @@ export function OrderScreen(props: OrderScreenProps) {
                 {isTemp(orderId) && <span className="muted">Sincronizando…</span>}
                 <input className="pos-search" type="search" aria-label="Buscar producto" placeholder="Buscar producto" value={search} onChange={(e) => setSearch(e.target.value)} />
                 <OfflineIndicator queue={queue} />
+                {(props.readyCount ?? 0) > 0 && (
+                    <button type="button" className="chip ready-chip" aria-label={`Pedidos listos: ${props.readyCount}`} onClick={onBack}>
+                        <span className="ready-dot" aria-hidden="true" />
+                        {props.readyCount}
+                    </button>
+                )}
                 <span className="avatar-disc small" title={user.name} aria-label={`Usuario ${user.name}`}>
                     {initials}
                 </span>

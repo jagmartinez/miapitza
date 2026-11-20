@@ -8,6 +8,7 @@ import { ownerKeyOf } from '../../data/types';
 
 
 import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
+import { useReadyInbox } from './readyInbox';
 
 type Route = { name: 'tables' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
 
@@ -20,6 +21,13 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
     const [data, setData] = useState<WaiterData | null>(null);
     const [failed, setFailed] = useState(false);
     const [route, setRoute] = useState<Route>({ name: 'tables' });
+    const inbox = useReadyInbox(services.realtime);
+    // Opening an order is seeing it: its "listo" notice is done.
+    const openedId = route.name === 'order' ? Number(route.orderId) : null;
+    const { dismiss } = inbox;
+    useEffect(() => {
+        if (openedId != null && Number.isFinite(openedId)) dismiss(openedId);
+    }, [openedId, dismiss]);
 
     // The data layer (Dexie) loads on first use of waiter mode, never in the PIN/kitchen bundle.
     useEffect(() => {
@@ -75,6 +83,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
                     tableId={route.tableId}
                     tableNumber={route.tableNumber}
                     intent={route.intent}
+                    readyCount={inbox.notices.filter((n) => n.orderId !== openedId).length}
                     invalidate={invalidate}
                     onBack={() => setRoute({ name: 'tables' })}
                 />
@@ -89,6 +98,8 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
             realtime={services.realtime}
             queue={data.queue}
             invalidate={invalidate}
+            ready={inbox.notices}
+            onDismissReady={inbox.dismiss}
             onOpenOrder={(orderId, intent, tableId, tableNumber) => setRoute({ name: 'order', orderId, intent, tableId, tableNumber })}
             onSwitchUser={onSwitchUser}
         />
