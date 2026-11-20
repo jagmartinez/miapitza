@@ -28,6 +28,11 @@ describe('discountMath (server rounding rule)', () => {
         }
     });
 
+    it('mirrors the server float floor on purpose (8.20 x 15 is one cent short there too)', () => {
+        // server maxDiscountForLimit: Math.floor(8.2 * 15) / 100 = 1.22, so asking for 1.23 would need a supervisor.
+        expect(percentToAmount(8.2, 15)).toBe(1.22);
+    });
+
     it('clamps the discount to the subtotal and never below zero', () => {
         expect(clampDiscount(500, 250.5)).toBe(250.5);
         expect(clampDiscount(-3, 250.5)).toBe(0);

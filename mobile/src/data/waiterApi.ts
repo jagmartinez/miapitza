@@ -287,7 +287,15 @@ export function createWaiterApi(deps: WaiterApiDeps) {
             // which must live nowhere but the caller's state. The route is never replayed server-side, so every attempt
             // gets a fresh key; it is never queued either.
             const owner = ownerKeyOf(await sessions.load());
-            const res = await http.request({ method: 'POST', url: `/orders/${id}/discount/authorize`, data: body, headers: { 'X-Idempotency-Key': newIdempotencyKey() } });
+            let res;
+            try {
+                res = await http.request({ method: 'POST', url: `/orders/${id}/discount/authorize`, data: body, headers: { 'X-Idempotency-Key': newIdempotencyKey() } });
+            } catch (error) {
+                // The axios error carries the request config, and with it the serialized body (the PIN).
+                const config = (error as { config?: { data?: unknown } } | null)?.config;
+                if (config) config.data = undefined;
+                throw error;
+            }
             if (owner) await cache.invalidate(owner, STALE_AFTER_MUTATION);
             return (res.data?.data ?? res.data) as Json;
         },

@@ -20,6 +20,9 @@ export interface TicketActions {
 export interface TicketPricing {
     subtotal: number;
     discount: number;
+    /** Server tax (IVA); null when the order does not carry one. */
+    tax: number | null;
+    tip: number;
     /** Reason chip (or "Cupón X"); null when there is no discount. */
     label: string | null;
 }
@@ -64,16 +67,29 @@ type FooterProps = Pick<TicketPanelProps, 'total' | 'pricing' | 'unsentTotal' | 
 export function TicketFooter({ total, pricing, unsentTotal, sendCount, sending, canEdit, actions, onSend }: FooterProps) {
     return (
         <footer className="ticket-foot">
-            {pricing && pricing.discount > 0 && (
+            {pricing && pricing.subtotal > 0 && (
                 <div className="ticket-pricing">
                     <div className="ticket-line">
                         <span className="muted">Subtotal</span>
                         <span>{money(pricing.subtotal)}</span>
                     </div>
+                    {pricing.discount > 0 && (
+                        <div className="ticket-line">
+                            <span className="ticket-chip">{pricing.label}</span>
+                            <span>{`− ${money(pricing.discount)}`}</span>
+                        </div>
+                    )}
+                    {/* IVA is the server field; an order without one shows what is left between subtotal, discount, tip and total. */}
                     <div className="ticket-line">
-                        <span className="ticket-chip">{pricing.label}</span>
-                        <span>{`− ${money(pricing.discount)}`}</span>
+                        <span className="muted">IVA</span>
+                        <span>{money(pricing.tax ?? Math.max(0, total - (pricing.subtotal - pricing.discount) - pricing.tip))}</span>
                     </div>
+                    {pricing.tip > 0 && (
+                        <div className="ticket-line">
+                            <span className="muted">Propina</span>
+                            <span>{money(pricing.tip)}</span>
+                        </div>
+                    )}
                 </div>
             )}
             <div className="ticket-total">

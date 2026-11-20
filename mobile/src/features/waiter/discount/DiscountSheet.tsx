@@ -84,9 +84,17 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
         );
     }, [api, canApply]);
 
+    const code = coupon.trim().toUpperCase();
     const amount = value == null ? 0 : mode === 'percent' ? percentToAmount(subtotal, value) : clampDiscount(value, subtotal);
     const percent = amountToPercent(amount, subtotal);
     const total = newTotal({ subtotal, discount: amount, taxRate, tip });
+    // The server keeps one or the other: a coupon clears the manual discount and a manual one clears the code.
+    const replaceWarning =
+        code && currentDiscount > 0 && !currentCode
+            ? 'Un cupón reemplaza el descuento manual actual.'
+            : amount > 0 && currentCode
+              ? `Un descuento manual reemplaza el cupón ${currentCode}.`
+              : null;
     const overLimit = limit != null && percent > limit;
 
     /** One server call at a time; a second tap while one is in flight is ignored. */
@@ -135,7 +143,6 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
             await api.pricing(orderId, { discount: 0, discountCode: null });
             await finish();
         });
-    const code = coupon.trim().toUpperCase();
     const validate = () => {
         if (!code) return;
         setCouponNote(null);
@@ -169,13 +176,15 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
     }
 
     const typed = keypad;
+    const maxTyped = mode === 'percent' ? 100 : subtotal;
     const pressKey = (k: string) =>
         setKeypad((cur) => {
             const text = cur ?? '';
             if (k === '<') return text.slice(0, -1);
             if (k === '.') return text.includes('.') || text === '' ? (text === '' ? '0.' : text) : `${text}.`;
             if (/\.\d{2}$/.test(text) || text.length >= 8) return text;
-            return text === '0' ? k : text + k;
+            const next = text === '0' ? k : text + k;
+            return Number(next) > maxTyped ? text : next; // never more than the subtotal (or 100 %)
         });
     const typedValue = typed ? Math.min(Number(typed) || 0, mode === 'percent' ? 100 : subtotal) : 0;
     const typedPercent = mode === 'percent' ? typedValue : amountToPercent(clampDiscount(typedValue, subtotal), subtotal);
@@ -204,6 +213,11 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                                 <span className="muted">Aplicado ahora</span>
                                 <strong>{currentCode ? `Cupón ${currentCode}` : `${money(currentDiscount)}${order?.discountReason ? ` · ${String(order.discountReason)}` : ''}`}</strong>
                             </div>
+                        )}
+                        {replaceWarning && (
+                            <p className="dsheet-note" role="status">
+                                {replaceWarning}
+                            </p>
                         )}
                         <h3 className="dsheet-h">Vigentes</h3>
                         <ul className="dsheet-promos">

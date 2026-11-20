@@ -13,7 +13,7 @@ const authRequired = (limitPercent: number, requestedPercent: number) =>
     Object.assign(new Error('403'), { response: { status: 403, data: { success: false, code: 'DISCOUNT_AUTH_REQUIRED', message: 'x', limitPercent, requestedPercent } } });
 const unauthorized = () => Object.assign(new Error('401'), { response: { status: 401, data: { success: false, message: 'Autorización inválida' } } });
 
-function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[] } = {}) {
+function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[]; orderId?: number | string } = {}) {
     const api = opts.api ?? makeApi({ orderDetail: vi.fn().mockResolvedValue(baseOrder()) });
     const session = userSession(opts.permissions ?? WITH_APPLY);
     render(
@@ -23,7 +23,7 @@ function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[] 
             drafts={makeDrafts()}
             realtime={makeRealtime()}
             queue={null}
-            orderId={102}
+            orderId={opts.orderId ?? 102}
             tableId={2}
             intent="view"
             invalidate={vi.fn().mockResolvedValue(undefined)}
@@ -176,13 +176,68 @@ describe('discount sheet', () => {
         await waitFor(() => expect(api.pricing).toHaveBeenCalledWith(102, { discount: 0, discountCode: null }));
     });
 
-    it('the Descuento button follows orders.discount.apply or orders.edit (supervisor request path)', async () => {
+    it('the Descuento button needs orders.edit (every discount route does); apply alone does not show it', async () => {
         setup({ permissions: EDIT_ONLY });
         expect(await screen.findByRole('button', { name: 'Descuento' })).toBeInTheDocument();
+        for (const permissions of [['orders.view', 'orders.discount.apply'], ['orders.view']]) {
+            cleanup();
+            setup({ permissions });
+            await screen.findByRole('region', { name: 'Productos' });
+            expect(screen.queryByRole('button', { name: 'Descuento' })).toBeNull();
+        }
+    });
+
+    it('an order that has not synced does not open the sheet and says why', async () => {
+        const { api } = setup({ orderId: 'order-123-abcd' });
+        fireEvent.click(await screen.findByRole('button', { name: 'Descuento' }));
+        expect(await screen.findByText('Sincronizando pedido… los descuentos requieren conexión.')).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(api.pricing).not.toHaveBeenCalled();
+    });
+
+    it('offline does not open the sheet and says Requiere conexión', async () => {
+        setup();
+        const button = await screen.findByRole('button', { name: 'Descuento' });
+        vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+        fireEvent.click(button);
+        expect(await screen.findByText('Requiere conexión para aplicar descuentos.')).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('warns before a coupon replaces a manual discount, and before a manual one replaces a coupon', async () => {
+        const manual = makeApi({ orderDetail: vi.fn().mockResolvedValue(baseOrder({ discount: '20.00', discountReason: 'Cortesía', total: '207.00', tax: '27.00' })) });
+        setup({ api: manual });
+        await openSheet();
+        fireEvent.change(screen.getByLabelText('Código de cupón'), { target: { value: 'PROMO10' } });
+        expect(screen.getByText('Un cupón reemplaza el descuento manual actual.')).toBeInTheDocument();
         cleanup();
-        setup({ permissions: ['orders.view'] });
-        await screen.findByRole('region', { name: 'Productos' });
-        expect(screen.queryByRole('button', { name: 'Descuento' })).toBeNull();
+        const withCode = makeApi({ orderDetail: vi.fn().mockResolvedValue(baseOrder({ discount: '20.00', discountCode: 'VIP5', total: '207.00', tax: '27.00' })) });
+        setup({ api: withCode });
+        await openSheet();
+        pick('10 %');
+        expect(screen.getByText('Un descuento manual reemplaza el cupón VIP5.')).toBeInTheDocument();
+    });
+
+    it('the keypad never accepts a value above the subtotal (amount) or 100 (percent)', async () => {
+        setup();
+        const sheet = await openSheet();
+        pick('Monto');
+        fireEvent.click(within(within(sheet).getByRole('group', { name: 'Valores rápidos' })).getByRole('button', { name: /^Otro/ }));
+        for (const k of ['3', '0', '0']) fireEvent.click(within(sheet).getByRole('button', { name: k }));
+        expect(within(sheet).getByText('30 C$')).toBeInTheDocument(); // 300 > subtotal 200: the last digit is refused
+        for (const k of ['0']) fireEvent.click(within(sheet).getByRole('button', { name: k }));
+        expect(within(sheet).getByText('30 C$')).toBeInTheDocument();
+    });
+
+    it('tells the waiter when the reload after a successful apply fails', async () => {
+        const detail = vi.fn().mockResolvedValueOnce(baseOrder()).mockRejectedValue(new Error('boom'));
+        const api = makeApi({ orderDetail: detail });
+        setup({ api });
+        await openSheet();
+        pick('10 %');
+        pick('Cortesía');
+        pick('Aplicar descuento');
+        expect(await screen.findByText('Descuento aplicado, pero no se pudo actualizar el pedido. Revisa el total.')).toBeInTheDocument();
     });
 
     it('without orders.discount.apply the limit shown is 0 and discountLimit is not asked', async () => {
@@ -192,14 +247,25 @@ describe('discount sheet', () => {
         expect(api.discountLimit).not.toHaveBeenCalled();
     });
 
-    it('the ticket footer shows subtotal, discount with its reason, and total', async () => {
+    it('the ticket footer adds up: Subtotal, discount with reason, IVA, Total', async () => {
         const api = makeApi({ orderDetail: vi.fn().mockResolvedValue(baseOrder({ discount: '20.00', discountReason: 'Cortesía', total: '207.00', tax: '27.00' })) });
         setup({ api });
         const ticket = await screen.findByRole('region', { name: 'Ticket' });
         await waitFor(() => expect(within(ticket).getByText('Subtotal')).toBeInTheDocument());
+        expect(within(ticket).getByText('C$ 200')).toBeInTheDocument();
         expect(within(ticket).getByText('Cortesía')).toBeInTheDocument();
         expect(within(ticket).getByText('− C$ 20')).toBeInTheDocument();
+        expect(within(ticket).getByText('IVA')).toBeInTheDocument();
+        expect(within(ticket).getByText('C$ 27')).toBeInTheDocument();
         expect(within(ticket).getByText('C$ 207')).toBeInTheDocument();
+    });
+
+    it('without a discount the footer still shows Subtotal and IVA so Total is explained', async () => {
+        setup();
+        const ticket = await screen.findByRole('region', { name: 'Ticket' });
+        await waitFor(() => expect(within(ticket).getByText('Subtotal')).toBeInTheDocument());
+        expect(within(ticket).getByText('IVA')).toBeInTheDocument();
+        expect(within(ticket).queryByText(/^−/)).toBeNull();
     });
 
     it('layout fits 1024×600 without overflow', async () => {

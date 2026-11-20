@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiErrorMessage } from '@web/utils/apiError';
-import { can, canAny } from '../../../core/permissions';
+import { can } from '../../../core/permissions';
 import type { Realtime } from '../../../core/realtime';
 import type { Session } from '../../../core/session';
 import type { Drafts } from '../../../data/drafts';
@@ -126,8 +126,8 @@ export function OrderScreen(props: OrderScreenProps) {
     }, [queue, props.orderId]);
 
     // ---- order ----
-    const loadOrder = useCallback(async () => {
-        if (isTemp(orderId)) return; // created offline and not synced yet: nothing on the server to read
+    const loadOrder = useCallback(async (): Promise<boolean | undefined> => {
+        if (isTemp(orderId)) return undefined; // created offline and not synced yet: nothing on the server to read
         const mine = ++seq.current;
         // The active list is cached (TTL) and carries modifiers; it is also the offline fallback for the order itself.
         const readActive = async (): Promise<Json[] | null> => {
@@ -154,6 +154,7 @@ export function OrderScreen(props: OrderScreenProps) {
             setSavedData(false);
             setNow(Date.now());
             setNotice(null);
+            return true;
         } catch (cause) {
             // Only the very first load may fall back to the saved active list; an order already on screen is never
             // replaced by an older snapshot (it would hide lines that were just added).
@@ -167,6 +168,7 @@ export function OrderScreen(props: OrderScreenProps) {
             } else {
                 setNotice(getApiErrorMessage(cause));
             }
+            return false;
         }
     }, [api, orderId, branchId]);
 
@@ -335,15 +337,24 @@ export function OrderScreen(props: OrderScreenProps) {
     const serverNote = (l: ServerLine, note: string) => void run(async () => void (await api.updateItem(l.id, { notes: note.trim() })), editConn);
     const serverRemove = (l: ServerLine) => void run(async () => void (await api.removeItem(l.id)), editConn);
 
+    /** Discounts need the live order: an unsynced temp order or no connection never opens the sheet. */
+    const openDiscount = () => {
+        if (isTemp(orderId)) setNotice('Sincronizando pedido… los descuentos requieren conexión.');
+        else if (!isOnline()) setNotice('Requiere conexión para aplicar descuentos.');
+        else setDiscountOpen(true);
+    };
+    const discountApplied = async () => {
+        if ((await loadOrder()) === false) setNotice('Descuento aplicado, pero no se pudo actualizar el pedido. Revisa el total.');
+    };
+
     const actions = {
         canPay: can(user, 'payments.process'),
         canSplit: can(user, 'bills.split'),
-        // Spec 7.3.0: a user without orders.discount.apply can still ask a supervisor to authorize (the server answers
-        // DISCOUNT_AUTH_REQUIRED), and every discount route requires orders.edit, so either permission shows the button.
-        canDiscount: canAny(user, ['orders.discount.apply', 'orders.edit']),
+        // Every discount route requires orders.edit; orders.discount.apply only decides direct vs supervisor-authorized.
+        canDiscount: can(user, 'orders.edit'),
         onPay,
         onSplit,
-        onDiscount: onDiscount ?? (() => setDiscountOpen(true)),
+        onDiscount: onDiscount ?? openDiscount,
         onMore,
     };
     const productCount = sumQuantity(serverLines) + draft.count;
@@ -352,6 +363,8 @@ export function OrderScreen(props: OrderScreenProps) {
     const pricing: TicketPricing = {
         subtotal: serverLines.reduce((n, l) => n + l.subtotal, 0),
         discount: orderDiscount,
+        tax: order?.tax != null ? Number(order.tax) || 0 : null,
+        tip: Number(order?.tipAmount) || 0,
         label: orderDiscount > 0 ? (order?.discountCode ? `Cupón ${String(order.discountCode)}` : String(order?.discountReason || 'Manual')) : null,
     };
     const elapsed = order?.createdAt ? `${minutesSince(order.createdAt, now)} min` : '';
@@ -444,7 +457,7 @@ export function OrderScreen(props: OrderScreenProps) {
                         lines={serverLines}
                         promotions={promos}
                         onClose={() => setDiscountOpen(false)}
-                        onApplied={loadOrder}
+                        onApplied={discountApplied}
                     />
                 </Suspense>
             )}
