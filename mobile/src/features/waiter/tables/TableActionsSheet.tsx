@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatCurrency } from '@web/utils/currency';
 import { can } from '../../../core/permissions';
 import type { LoginUser } from '../../../core/session';
@@ -28,10 +28,15 @@ export interface TableActionsSheetProps {
     loadDetail: (orderId: number) => Promise<unknown>;
     onClose: () => void;
     onAction: (action: SheetAction) => void;
+    /** Downloads and shares the invoice PDF of the order. Rejects when the download or the share fails. */
+    onInvoicePdf?: (order: ActiveOrder) => Promise<void>;
 }
 
-export function TableActionsSheet({ table, areaName, order, user, online, now, loadDetail, onClose, onAction }: TableActionsSheetProps) {
+export function TableActionsSheet({ table, areaName, order, user, online, now, loadDetail, onClose, onAction, onInvoicePdf }: TableActionsSheetProps) {
     const [paid, setPaid] = useState<number | null>(null);
+    const [invoiceBusy, setInvoiceBusy] = useState(false);
+    const [invoiceError, setInvoiceError] = useState<string | null>(null);
+    const invoiceRef = useRef(false);
     useEffect(() => {
         if (!online) return undefined;
         let alive = true;
@@ -60,6 +65,23 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
     const canPay = can(user, 'payments.process') && can(user, 'invoices.issue');
     const canTransfer = can(user, 'tables.transfer');
     const canGroup = can(user, 'tables.group.manage');
+    // The PDF route needs invoices.view (server invoice.routes); the tile is for whoever issues invoices, and only once the order has one.
+    const canInvoice = !!onInvoicePdf && can(user, 'invoices.issue') && can(user, 'invoices.view') && !!order.invoiceNumber && !order.pendingSync;
+
+    const openInvoice = async () => {
+        if (!onInvoicePdf || invoiceRef.current) return; // a double tap shares once
+        invoiceRef.current = true;
+        setInvoiceBusy(true);
+        setInvoiceError(null);
+        try {
+            await onInvoicePdf(order);
+        } catch {
+            setInvoiceError('No se pudo descargar la factura. Toca Factura para reintentar.');
+        } finally {
+            invoiceRef.current = false;
+            setInvoiceBusy(false);
+        }
+    };
 
     return (
         <Sheet label={`Acciones de la mesa ${table.number}`} onClose={onClose}>
@@ -94,7 +116,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
                     )}
                 </div>
             )}
-            {(canTransfer || canGroup) && (
+            {(canTransfer || canGroup || canInvoice) && (
                 <div className="actions-grid">
                     {canTransfer && (
                         <button type="button" className="btn action-tile" disabled={!online} onClick={() => onAction('transfer')}>
@@ -108,8 +130,18 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
                             {!online && <small className="muted">requiere conexión</small>}
                         </button>
                     )}
-                    {/* Factura (standalone pre-invoice) returns in phase 2b; a tile that does nothing is worse than none. */}
+                    {canInvoice && (
+                        <button type="button" className="btn action-tile" disabled={!online || invoiceBusy} onClick={() => void openInvoice()}>
+                            <span>Factura</span>
+                            {!online && <small className="muted">requiere conexión</small>}
+                        </button>
+                    )}
                 </div>
+            )}
+            {invoiceError && (
+                <p className="error" role="alert">
+                    {invoiceError}
+                </p>
             )}
         </Sheet>
     );

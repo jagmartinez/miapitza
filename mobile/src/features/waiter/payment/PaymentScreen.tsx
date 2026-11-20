@@ -20,7 +20,7 @@ import './payment.css';
 // "Abrir turno" from the payment: the cash chunk loads only when a cashier without a shift taps it.
 const OpenShiftFlow = lazy(() => import('../../cash/OpenShiftFlow'));
 
-export type PaymentApi = FlowApi & Pick<WaiterApi, 'orderDetail' | 'paymentMethods' | 'cashShiftStatus' | 'settings' | 'splitEvenly' | 'splitByItems' | 'splitByAmount'>;
+export type PaymentApi = FlowApi & Pick<WaiterApi, 'orderDetail' | 'paymentMethods' | 'cashShiftStatus' | 'settings' | 'splitEvenly' | 'splitByItems' | 'splitByAmount' | 'invoicePdf'>;
 export type PaymentMode = 'single' | 'mixed' | 'split';
 
 export interface PaymentScreenProps {
@@ -302,7 +302,11 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
             </main>
         );
     }
-    if (done) return <PaymentDone data={done} onFinish={onFinished} />;
+    if (done) {
+        // The PDF route needs invoices.view (server invoice.routes); without it, or without a fiscal invoice, there is nothing to share.
+        const invoice = done.invoiceNumber && !done.invoiceError && can(user, 'invoices.view') ? { load: () => api.invoicePdf(id), fileName: `factura-${done.invoiceNumber}.pdf` } : undefined;
+        return <PaymentDone data={done} onFinish={onFinished} invoice={invoice} />;
+    }
 
     const { order, lines, methods, shiftOk, tipRate } = loaded;
     const subtotal = lines.reduce((n, l) => n + l.subtotal, 0);

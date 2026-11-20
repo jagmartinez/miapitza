@@ -14,12 +14,13 @@ import { FloorPlan } from './FloorPlan';
 import { OpenTableSheet } from './OpenTableSheet';
 import { ReadyBanner, type ReadyNotice } from './ReadyBanner';
 import { TableActionsSheet, type SheetAction } from './TableActionsSheet';
+import { printOut, type PrintOut } from '../../print/printOut';
 import { useTablePicking } from './useTablePicking';
 import { initialsOf, normalizeOrders, normalizePlan, ordersByTable, tableState, type ActiveOrder, type Plan, type PlanTable, type TableState } from './tableState';
 import './tables.css';
 import './sheets.css';
 
-export type TablesApi = Pick<WaiterApi, 'floorPlan' | 'activeOrders' | 'orderDetail' | 'createOrder' | 'transfer' | 'groupTables'>;
+export type TablesApi = Pick<WaiterApi, 'floorPlan' | 'activeOrders' | 'orderDetail' | 'createOrder' | 'transfer' | 'groupTables' | 'invoicePdf'>;
 /** Where the order screen should land. */
 export type OrderIntent = 'view' | 'pay' | 'invoice';
 
@@ -37,6 +38,8 @@ export interface TablesScreenProps {
     /** "Pedido listo" notices of this session (kept by WaiterHome, so they survive a visit to another order). */
     ready?: ReadyNotice[];
     onDismissReady?: (orderId: number) => void;
+    /** Where the invoice PDF goes (the share sheet by default). */
+    printer?: Pick<PrintOut, 'sharePdf'>;
 }
 
 const LIVE_EVENTS = ['ORDER_UPDATE', 'TABLE_STATUS_CHANGED', 'ORDER_READY', 'KITCHEN_NOTIFICATION'] as const;
@@ -64,7 +67,7 @@ function CashIcon() {
 
 const NO_NOTICES: ReadyNotice[] = [];
 
-export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser, onOpenCash, ready = NO_NOTICES, onDismissReady }: TablesScreenProps) {
+export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser, onOpenCash, ready = NO_NOTICES, onDismissReady, printer = printOut }: TablesScreenProps) {
     const branchId = session.user.branchId;
     const [plan, setPlan] = useState<Plan | null>(null);
     const [orders, setOrders] = useState<ActiveOrder[]>([]);
@@ -372,6 +375,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                     loadDetail={api.orderDetail}
                     onClose={() => setSheet(null)}
                     onAction={(action) => runAction(action, sheet.table, sheet.order)}
+                    onInvoicePdf={async (order) => printer.sharePdf(await api.invoicePdf(Number(order.id)), `factura-${order.invoiceNumber}.pdf`)}
                 />
             )}
         </main>

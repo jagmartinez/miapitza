@@ -479,3 +479,14 @@
     text-align: center;
     color: var(--ready);
 }
+
+.pay-done-share {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.pay-done-share .btn {
+    min-width: 140px;
+    min-height: 56px;
+}

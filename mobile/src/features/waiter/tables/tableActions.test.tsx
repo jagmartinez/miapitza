@@ -1,7 +1,7 @@
 import { AxiosError } from 'axios';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { TablesScreen } from './TablesScreen';
-import { makeApi, makeRealtime, userSession, type FakeTablesApi } from './testkit';
+import { activeOrders, makeApi, makeRealtime, result, userSession, type FakeTablesApi } from './testkit';
 import { TableHasLocalOrderError } from '../../../data/waiterApi';
 
 const ALL = ['orders.view', 'orders.create', 'payments.process', 'invoices.issue', 'tables.transfer', 'tables.group.manage'];
@@ -315,13 +315,54 @@ describe('table actions', () => {
     });
 });
 
-describe('follow-up M7: Factura is hidden until phase 2b', () => {
-    it('the actions sheet has no Factura tile even for a user who may invoice', async () => {
-        setup();
-        await screen.findByTestId('tile-2');
-        await longPress(tile(2));
-        const sheet = await screen.findByRole('dialog');
-        expect(within(sheet).getByRole('button', { name: /Trasladar/ })).toBeInTheDocument(); // the sheet is open
-        expect(within(sheet).queryByRole('button', { name: 'Factura' })).toBeNull();
+describe('Factura tile', () => {
+    const INVOICED = (orders = activeOrders) => orders.map((o) => (o.id === 104 ? { ...o, invoiceNumber: 'F-7' } : o));
+    const sheetOf = async (tileId: number) => {
+        await screen.findByTestId(`tile-${tileId}`);
+        await longPress(tile(tileId));
+        return screen.findByRole('dialog');
+    };
+    const setupInvoiced = (permissions: string[], over: { invoicePdf?: ReturnType<typeof vi.fn> } = {}) => {
+        const sharePdf = vi.fn().mockResolvedValue(undefined);
+        const invoicePdf = over.invoicePdf ?? vi.fn().mockResolvedValue(new Blob(['%PDF']));
+        const api = makeApi({ activeOrders: vi.fn().mockResolvedValue(result(INVOICED())), invoicePdf } as never);
+        const props = { session: userSession(permissions), api, realtime: makeRealtime(), queue: null, invalidate: vi.fn().mockResolvedValue(undefined), onOpenOrder: vi.fn(), onSwitchUser: vi.fn(), printer: { sharePdf } };
+        render(<TablesScreen {...props} />);
+        return { sharePdf, invoicePdf };
+    };
+
+    it('Factura tile hidden without permission or invoice', async () => {
+        // an invoiced order, but the user may only issue (the PDF route needs invoices.view)
+        setupInvoiced(ALL);
+        expect(within(await sheetOf(4)).queryByRole('button', { name: 'Factura' })).toBeNull();
+        cleanup();
+        // may view and issue, but table 2's order has no invoice yet
+        setupInvoiced([...ALL, 'invoices.view']);
+        expect(within(await sheetOf(2)).queryByRole('button', { name: 'Factura' })).toBeNull();
+        cleanup();
+        // may view but not issue
+        setupInvoiced(['orders.view', 'tables.transfer', 'invoices.view']);
+        expect(within(await sheetOf(4)).queryByRole('button', { name: 'Factura' })).toBeNull();
+    });
+
+    it('opens the invoice PDF of the order from the tile', async () => {
+        const { sharePdf, invoicePdf } = setupInvoiced([...ALL, 'invoices.view']);
+        const sheet = await sheetOf(4);
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Factura' }));
+        await waitFor(() => expect(sharePdf).toHaveBeenCalledTimes(1));
+        expect(invoicePdf).toHaveBeenCalledWith(104);
+        expect(sharePdf.mock.calls[0][1]).toBe('factura-F-7.pdf');
+    });
+
+    it('pdf download failure shows a retry message', async () => {
+        const invoicePdf = vi.fn().mockRejectedValueOnce(new Error('Network Error')).mockResolvedValue(new Blob(['%PDF']));
+        const { sharePdf } = setupInvoiced([...ALL, 'invoices.view'], { invoicePdf });
+        const sheet = await sheetOf(4);
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Factura' }));
+        expect(await within(sheet).findByRole('alert')).toHaveTextContent('No se pudo descargar la factura');
+        expect(sharePdf).not.toHaveBeenCalled();
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Factura' })); // tapping again retries
+        await waitFor(() => expect(sharePdf).toHaveBeenCalledTimes(1));
+        expect(within(sheet).queryByRole('alert')).toBeNull();
     });
 });

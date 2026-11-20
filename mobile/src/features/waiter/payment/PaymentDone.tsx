@@ -1,3 +1,6 @@
+import { useRef, useState } from 'react';
+import { useOnline } from '../../../data/useOnline';
+import { printOut, type PrintOut } from '../../print/printOut';
 import { money } from '../order/orderModel';
 
 export interface DoneData {
@@ -9,7 +12,46 @@ export interface DoneData {
     change: number;
 }
 
-export function PaymentDone({ data, onFinish }: { data: DoneData; onFinish: () => void }) {
+/** How to get the fiscal invoice PDF of this payment (present only for a user who may view invoices). */
+export interface InvoiceSource {
+    load: () => Promise<Blob>;
+    fileName: string;
+}
+
+type Share = 'print' | 'send';
+
+export function PaymentDone({ data, onFinish, invoice, printer = printOut }: { data: DoneData; onFinish: () => void; invoice?: InvoiceSource; printer?: Pick<PrintOut, 'sharePdf'> }) {
+    const online = useOnline();
+    const [busy, setBusy] = useState<Share | null>(null);
+    const [failure, setFailure] = useState<{ text: string; retry: Share } | null>(null);
+    const busyRef = useRef(false);
+    const canShare = !!invoice && !!data.invoiceNumber && !data.invoiceError;
+
+    /** One action at a time: a double tap shares once. Download and share failures are told apart so the cashier knows what to retry. */
+    const share = async (kind: Share) => {
+        if (!invoice || busyRef.current) return;
+        busyRef.current = true;
+        setBusy(kind);
+        setFailure(null);
+        let blob: Blob;
+        try {
+            blob = await invoice.load();
+        } catch {
+            setFailure({ text: 'No se pudo descargar la factura. Revisa la conexión e inténtalo de nuevo.', retry: kind });
+            busyRef.current = false;
+            setBusy(null);
+            return;
+        }
+        try {
+            await printer.sharePdf(blob, invoice.fileName);
+        } catch {
+            setFailure({ text: 'No se pudo compartir la factura. Inténtalo de nuevo.', retry: kind });
+        } finally {
+            busyRef.current = false;
+            setBusy(null);
+        }
+    };
+
     return (
         <main className="pay-done" data-testid="payment-done" aria-label="Cobro confirmado">
             <div className="pay-done-check" aria-hidden="true">
@@ -29,6 +71,25 @@ export function PaymentDone({ data, onFinish }: { data: DoneData; onFinish: () =
                     <span className="muted">Cambio a entregar</span>
                     <strong>{money(data.change)}</strong>
                 </div>
+            )}
+            {canShare && (
+                <div className="pay-done-share">
+                    <button type="button" className="btn" disabled={busy !== null || !online} onClick={() => void share('print')}>
+                        Imprimir
+                    </button>
+                    <button type="button" className="btn" disabled={busy !== null || !online} onClick={() => void share('send')}>
+                        Enviar
+                    </button>
+                    {!online && <span className="muted">Requiere conexión</span>}
+                </div>
+            )}
+            {failure && (
+                <p className="error" role="alert">
+                    {failure.text}{' '}
+                    <button type="button" className="btn" disabled={busy !== null || !online} onClick={() => void share(failure.retry)}>
+                        Reintentar
+                    </button>
+                </p>
             )}
             <button type="button" className="btn btn-primary pay-charge" onClick={onFinish}>
                 Liberar mesa y volver

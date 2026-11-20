@@ -33,6 +33,8 @@ export interface ActiveOrder {
     tableId?: number | null;
     table?: { id: number } | null;
     status?: string;
+    /** Set once the fiscal invoice exists (the invoice PDF is fetched by the order id). */
+    invoiceNumber?: string | null;
     total?: number | string;
     guests?: number | null;
     createdAt?: string;

@@ -379,6 +379,18 @@ export function createWaiterApi(deps: WaiterApiDeps) {
             const id = await syncedOrderId(orderId);
             return mutate<Json>({ method: 'POST', url: `/invoices/${id}/preinvoice`, owner });
         },
+        /**
+         * The invoice PDF of an order (GET /invoices/:orderId/pdf: the id is the ORDER id; the server needs `invoices.view`).
+         * Online only, never queued; the answer is refused if the session changed while it downloaded.
+         */
+        async invoicePdf(orderId: OrderRef): Promise<Blob> {
+            if (!isOnline()) throw new Error('Requiere conexión');
+            const id = await syncedOrderId(orderId);
+            const owner = ownerKeyOf(await sessions.load());
+            const res = await http.get(`/invoices/${id}/pdf`, { responseType: 'blob' });
+            if (ownerKeyOf(await sessions.load()) !== owner) throw new SessionChangedError();
+            return res.data as Blob;
+        },
         validateCoupon: (body: { code: string; orderTotal: number; branchId?: number; items?: Json[] }) => mutate<Json>({ method: 'POST', url: '/promotions/validate', data: body }),
         async splitEvenly(orderId: OrderRef, numberOfPeople: number) {
             const id = await syncedOrderId(orderId);

@@ -95,10 +95,28 @@ describe('single payment', () => {
         expect(screen.getByText('Factura F-100')).toBeInTheDocument();
         expect(screen.getByText('Cambio a entregar').nextSibling).toHaveTextContent('C$ 20');
         expect(screen.getByText('Efectivo')).toBeInTheDocument();
-        // print / send have no endpoint the tablet can call: hidden
+        // this cashier lacks invoices.view (the PDF route's permission): print / send stay hidden
         expect(screen.queryByRole('button', { name: /Imprimir|Enviar/ })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Liberar mesa y volver' }));
         expect(onFinished).toHaveBeenCalledTimes(1);
+    });
+
+    it('with invoices.view the receipt downloads the invoice of the ORDER and shares it', async () => {
+        const share = vi.fn().mockResolvedValue(undefined);
+        vi.doMock('../../print/printOut', async (orig) => ({ ...(await orig<object>()), printOut: { print: vi.fn(), shareText: vi.fn(), sharePdf: share } }));
+        vi.resetModules();
+        const { default: Screen } = await import('./PaymentScreen');
+        const pdf = new Blob(['%PDF']);
+        const api = makeApi({ invoicePdf: vi.fn().mockResolvedValue(pdf) });
+        render(<Screen api={api as never} user={userSession([...CASHIER, 'invoices.view']).user} orderId={102} onClose={vi.fn()} onFinished={vi.fn()} />);
+        await screen.findByText('Cobrar · Mesa 2');
+        click('C$ 250');
+        fireEvent.click(chargeButton('C$ 230'));
+        await screen.findByText('Mesa 2 cobrada');
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await waitFor(() => expect(share).toHaveBeenCalledWith(pdf, 'factura-F-100.pdf'));
+        expect(api.invoicePdf).toHaveBeenCalledWith(102);
+        vi.doUnmock('../../print/printOut');
     });
 
     it('cash without an active shift is blocked with the message', async () => {
