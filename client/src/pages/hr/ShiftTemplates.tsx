@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Clock3, Plus, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
 import {
     ShiftTemplateCatalog,
     ShiftTemplateForm,
     type ShiftTemplateFormValues,
 } from '../../components/hr/ShiftTemplateCatalog';
+import { HrHero, HrPage, HrSection, HrTabs, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
 import { getScheduleErrorMessage, scheduleClient } from '../../components/hr/scheduleClient';
 import { ROLES, HR_OWNER } from '../../constants/roles';
 import { useConfirmDialog } from '../../context/ConfirmContext';
@@ -18,6 +18,7 @@ import { useAuth } from '../../hooks/useAuth';
 import type { HrShiftTemplate, HrShiftTemplateCreatePayload } from '../../types/hr-schedule';
 import { getUserRoleNames, hasPermission } from '../../utils/authz';
 import './shift-templates.css';
+import './layouts/horarios.css';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 type MutationKind = 'save' | 'status';
@@ -34,6 +35,9 @@ function payloadFor(
         color: values.color,
     };
 }
+
+// lucide 0.294 icons carry propTypes that do not match the kit's icon prop type.
+const HERO_ICON = Clock3 as unknown as NonNullable<ComponentProps<typeof HrHero>['icon']>;
 
 export default function ShiftTemplates() {
     const navigate = useNavigate();
@@ -178,14 +182,34 @@ export default function ShiftTemplates() {
         }
     };
 
+    const activeCount = templates.filter((template) => template.active !== false).length;
+    const inactiveCount = templates.length - activeCount;
+    const overnightCount = templates.filter((template) => template.crossesMidnight).length;
+    const companyWideCount = templates.filter((template) => template.branchId === null).length;
+    const ready = !loading && !loadError;
+    const heroFacts: HrFact[] = [
+        { label: 'Jornadas', value: ready ? templates.length : '—', hint: 'En el catálogo' },
+        { label: 'Activas', value: ready ? activeCount : '—', hint: 'Disponibles para asignar', tone: ready && activeCount > 0 ? 'success' : 'default' },
+        { label: 'Inactivas', value: ready ? inactiveCount : '—', hint: 'Solo histórico', tone: ready && inactiveCount > 0 ? 'warning' : 'default' },
+        { label: 'Cruzan medianoche', value: ready ? overnightCount : '—', hint: 'Terminan al día siguiente' },
+        { label: 'Todas las sucursales', value: ready ? companyWideCount : '—', hint: 'Sin sucursal fija', tone: 'accent' },
+    ];
+    const statusTabs: HrTabItem<StatusFilter>[] = [
+        { key: 'ALL', label: 'Todas', count: templates.length },
+        { key: 'ACTIVE', label: 'Activas', count: activeCount },
+        { key: 'INACTIVE', label: 'Inactivas', count: inactiveCount },
+    ];
+    const sectionTitle = statusFilter === 'ACTIVE' ? 'Jornadas activas' : statusFilter === 'INACTIVE' ? 'Jornadas inactivas' : 'Catálogo de jornadas';
+
     return (
-        <div className="page-wrapper hr-shift-templates-page">
-            <PageHeader
+        <HrPage className="hr-shift-templates-page hr-hz-page hr-hz-templates">
+            <HrHero
+                eyebrow="Recursos humanos"
+                icon={HERO_ICON}
                 title="Jornadas configuradas"
                 subtitle={`${templates.length} ${templates.length === 1 ? 'jornada reutilizable' : 'jornadas reutilizables'} para asignar en Horarios`}
-                icon={Clock3}
                 actions={(
-                    <div className="hr-template-page-actions">
+                    <>
                         <Button variant="ghost" onClick={() => navigate('/rh/horarios')} disabled={busy}>
                             <ArrowLeft size={17} aria-hidden="true" /> Volver a horarios
                         </Button>
@@ -193,34 +217,50 @@ export default function ShiftTemplates() {
                             <RefreshCw size={17} aria-hidden="true" /> Actualizar
                         </Button>
                         {canManage && <Button onClick={openCreate} disabled={loading || busy}><Plus size={17} aria-hidden="true" /> Nueva jornada</Button>}
-                    </div>
+                    </>
                 )}
+                facts={heroFacts}
             />
 
-            <div className="hr-template-status-filter" role="group" aria-label="Filtrar jornadas por estado">
-                <button type="button" aria-pressed={statusFilter === 'ALL'} onClick={() => setStatusFilter('ALL')} disabled={busy}>Todas</button>
-                <button type="button" aria-pressed={statusFilter === 'ACTIVE'} onClick={() => setStatusFilter('ACTIVE')} disabled={busy}>Activas</button>
-                <button type="button" aria-pressed={statusFilter === 'INACTIVE'} onClick={() => setStatusFilter('INACTIVE')} disabled={busy}>Inactivas</button>
+            <div className={`hr-hz-status-tabs${busy ? ' is-busy' : ''}`} aria-busy={busy || undefined}>
+                <HrTabs<StatusFilter>
+                    items={statusTabs}
+                    active={statusFilter}
+                    onChange={(key) => { if (!busy) setStatusFilter(key); }}
+                    ariaLabel="Filtrar jornadas por estado"
+                    idPrefix="hr-shift-templates"
+                />
             </div>
 
-            {loading && <LoadingSpinner text="Cargando jornadas configuradas…" />}
-            {!loading && loadError && (
-                <div className="state-placeholder" role="alert">
-                    <AlertTriangle size={42} aria-hidden="true" />
-                    <p className="state-error">{loadError}</p>
-                    <Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} aria-hidden="true" /> Reintentar</Button>
-                </div>
-            )}
-            {!loading && !loadError && (
-                <ShiftTemplateCatalog
-                    templates={visibleTemplates}
-                    canManage={canManage}
-                    disabled={busy}
-                    onCreate={openCreate}
-                    onEdit={openEdit}
-                    onToggleActive={(template) => void toggleActive(template)}
-                />
-            )}
+            <HrSection
+                id={`hr-shift-templates-panel-${statusFilter.toLowerCase()}`}
+                role="tabpanel"
+                aria-labelledby={`hr-shift-templates-tab-${statusFilter.toLowerCase()}`}
+                className="hr-hz-catalog"
+                eyebrow="Catálogo"
+                title={sectionTitle}
+                count={ready ? visibleTemplates.length : undefined}
+                description="Cada jornada define horario, descanso y color para asignarla desde Horarios."
+            >
+                {loading && <LoadingSpinner text="Cargando jornadas configuradas…" />}
+                {!loading && loadError && (
+                    <div className="state-placeholder" role="alert">
+                        <AlertTriangle size={42} aria-hidden="true" />
+                        <p className="state-error">{loadError}</p>
+                        <Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} aria-hidden="true" /> Reintentar</Button>
+                    </div>
+                )}
+                {!loading && !loadError && (
+                    <ShiftTemplateCatalog
+                        templates={visibleTemplates}
+                        canManage={canManage}
+                        disabled={busy}
+                        onCreate={openCreate}
+                        onEdit={openEdit}
+                        onToggleActive={(template) => void toggleActive(template)}
+                    />
+                )}
+            </HrSection>
 
             <Sidebar
                 isOpen={editorOpen}
@@ -238,6 +278,6 @@ export default function ShiftTemplates() {
                     onSubmit={saveTemplate}
                 />
             </Sidebar>
-        </div>
+        </HrPage>
     );
 }

@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import Pagination from '../../components/Pagination';
 import Sidebar from '../../components/Sidebar';
 import MyHrNav from '../../components/hr/MyHrNav';
@@ -29,6 +28,7 @@ import {
 } from '../../components/hr/benefitsClient';
 import { hrClient } from '../../components/hr/hrClient';
 import useBenefitsOnline from '../../components/hr/useBenefitsOnline';
+import { HrHero, HrPage, HrSection, HrTabs, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
 import { useAppToast } from '../../context/ToastContext';
 import type { HrNamedEntity } from '../../types/hr';
 import type {
@@ -43,6 +43,7 @@ import type {
 } from '../../types/hr-benefits';
 import './benefits.css';
 import './self-service.css';
+import './layouts/autoservicio.css';
 
 type Tab = 'TRAVEL' | 'LOAN' | 'DEDUCTION';
 type Selected =
@@ -237,78 +238,58 @@ export default function MyBenefits() {
     setTablePage(1);
   }, [tab]);
 
+  const ACTIVE_LOAN_STATUSES = ['APPROVED', 'DISBURSED', 'ACTIVE'];
+  const activeLoans = loans.filter((loan) => ACTIVE_LOAN_STATUSES.includes(loan.status)).length;
+  const openTravel = travel.filter((item) => !['SETTLED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(item.status)).length;
+  const activeDeductions = deductions.filter((item) => item.status === 'ACTIVE').length;
+  const ready = !loading && !error;
+  const tabLabel = tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones';
+  const facts: HrFact[] = [
+    { label: 'Préstamos activos', value: ready ? activeLoans : '—', hint: `${loans.length} préstamo${loans.length === 1 ? '' : 's'} en total`, tone: ready && activeLoans > 0 ? 'accent' : 'default' },
+    { label: 'Viáticos abiertos', value: ready ? openTravel : '—', hint: 'Sin liquidar, cancelar ni rechazar' },
+    { label: 'Deducciones vigentes', value: ready ? activeDeductions : '—', hint: 'Aplicadas por nómina' },
+    { label: 'Con siguiente paso', value: ready ? actionableCount : '—', hint: `${tabLabel} · acciones permitidas por el servidor`, tone: ready && actionableCount > 0 ? 'warning' : 'default' },
+    { label: 'Finalizados', value: ready ? closedCount : '—', hint: `${tabLabel} · incluye cancelados o rechazados` },
+  ];
+  const tabItems: HrTabItem<Tab>[] = [
+    { key: 'TRAVEL', label: 'Viáticos', count: travel.length, icon: Route },
+    { key: 'LOAN', label: 'Préstamos', count: loans.length, icon: Banknote },
+    { key: 'DEDUCTION', label: 'Deducciones', count: deductions.length, icon: FileMinus2 },
+  ];
+
   return (
-    <div className="page-wrapper hr-benefits-page hr-my-benefits-page my-hr-page">
-      <PageHeader
-        className="my-hr-page-header"
+    <HrPage className="hr-benefits-page hr-my-benefits-page my-hr-page ss-page ss-benefits">
+      <MyHrNav />
+      <HrHero
+        eyebrow="Mi RH"
+        icon={WalletCards}
         title="Mis viáticos y beneficios"
         subtitle="Consulta solicitudes, saldos, cuotas y deducciones con su estado oficial"
-        icon={WalletCards}
         actions={
-          <>
-            {tab !== 'DEDUCTION' && (
-              <Button onClick={() => setPanel(tab)} disabled={!online}>
-                <Plus size={17} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}
-              </Button>
-            )}
-            <MyHrNav />
-          </>
+          tab !== 'DEDUCTION' ? (
+            <Button onClick={() => setPanel(tab)} disabled={!online}>
+              <Plus size={17} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}
+            </Button>
+          ) : undefined
         }
+        facts={facts}
       />
       {!online && <BenefitsOnlineNotice online={false} />}
-      {!loading && !error && (
-        <section className="my-hr-summary-grid" aria-label="Resumen de mis beneficios">
-          <article><WalletCards size={19} aria-hidden="true" /><span>Registros visibles</span><strong>{items.length}</strong><small>{tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}</small></article>
-          <article className={actionableCount > 0 ? 'is-warning' : undefined}><RefreshCw size={19} aria-hidden="true" /><span>Con siguiente paso</span><strong>{actionableCount}</strong><small>Acciones permitidas por el servidor</small></article>
-          <article><FileMinus2 size={19} aria-hidden="true" /><span>Finalizados</span><strong>{closedCount}</strong><small>Incluye cancelados o rechazados</small></article>
-        </section>
-      )}
-      <div className="hr-benefits-toolbar self my-hr-toolbar">
-        <div className="hr-benefits-tabs" role="tablist" aria-label="Mis beneficios">
-          <button
-            type="button"
-            role="tab"
-            id="my-benefits-tab-travel"
-            aria-controls="my-benefits-panel-travel"
-            aria-selected={tab === 'TRAVEL'}
-            onClick={() => {
-              setTab('TRAVEL');
-              setSelected(null);
-            }}
-          >
-            <Route size={17} /> Viáticos <span>{travel.length}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="my-benefits-tab-loan"
-            aria-controls="my-benefits-panel-loan"
-            aria-selected={tab === 'LOAN'}
-            onClick={() => {
-              setTab('LOAN');
-              setSelected(null);
-            }}
-          >
-            <Banknote size={17} /> Préstamos <span>{loans.length}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="my-benefits-tab-deduction"
-            aria-controls="my-benefits-panel-deduction"
-            aria-selected={tab === 'DEDUCTION'}
-            onClick={() => {
-              setTab('DEDUCTION');
-              setSelected(null);
-            }}
-          >
-            <FileMinus2 size={17} /> Deducciones <span>{deductions.length}</span>
-          </button>
-        </div>
-        <Button variant="ghost" onClick={() => void load()} disabled={loading || !online}>
-          <RefreshCw size={16} /> Actualizar
-        </Button>
-      </div>
+      <HrTabs
+        items={tabItems}
+        active={tab}
+        onChange={(next) => {
+          setTab(next);
+          setSelected(null);
+        }}
+        ariaLabel="Mis beneficios"
+        idPrefix="my-benefits"
+        trailing={
+          <Button variant="ghost" onClick={() => void load()} disabled={loading || !online}>
+            <RefreshCw size={16} /> Actualizar
+          </Button>
+        }
+      />
       {loading && <LoadingSpinner text="Cargando tus beneficios…" />}
       {!loading && error && (
         <div className="state-placeholder" role="alert">
@@ -320,16 +301,15 @@ export default function MyBenefits() {
         </div>
       )}
       {!loading && !error && (
-        <div className="hr-benefits-layout" id={activePanelId} role="tabpanel" aria-labelledby={`my-benefits-tab-${tab.toLowerCase()}`} tabIndex={0}>
+        <div className={`ss-benefits-body${detailLoading || selected ? ' has-detail' : ''}`} id={activePanelId} role="tabpanel" aria-labelledby={`my-benefits-tab-${tab.toLowerCase()}`} tabIndex={0}>
+          <HrSection
+            flush
+            eyebrow={tab === 'TRAVEL' ? 'Movilidad y liquidaciones' : tab === 'LOAN' ? 'Financiamiento personal' : 'Descuentos programados'}
+            title={tab === 'TRAVEL' ? 'Mis viáticos' : tab === 'LOAN' ? 'Mis préstamos' : 'Mis deducciones'}
+            count={items.length}
+            description={tab === 'TRAVEL' ? 'Consulta destino, importe aprobado y etapa de liquidación.' : tab === 'LOAN' ? 'Revisa desembolsos, saldo vigente y estado de cada solicitud.' : 'Comprueba vigencia, importe aplicable y estado oficial.'}
+          >
           <section className="my-benefits-register" aria-label="Mis registros">
-            <header className="my-benefits-register-head">
-              <div>
-                <span>{tab === 'TRAVEL' ? 'Movilidad y liquidaciones' : tab === 'LOAN' ? 'Financiamiento personal' : 'Descuentos programados'}</span>
-                <h2>{tab === 'TRAVEL' ? 'Mis viáticos' : tab === 'LOAN' ? 'Mis préstamos' : 'Mis deducciones'}</h2>
-                <p>{tab === 'TRAVEL' ? 'Consulta destino, importe aprobado y etapa de liquidación.' : tab === 'LOAN' ? 'Revisa desembolsos, saldo vigente y estado de cada solicitud.' : 'Comprueba vigencia, importe aplicable y estado oficial.'}</p>
-              </div>
-              <span className="my-benefits-register-count">{items.length} registro{items.length === 1 ? '' : 's'}</span>
-            </header>
             <div className="my-benefits-table-wrap">
               <table className="inventory-table my-benefits-table">
                 <thead><tr><th scope="col">Código</th><th scope="col">Detalle</th><th scope="col">Actualizado</th><th scope="col" className="hr-amount-cell">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th><th scope="col">Estado</th><th scope="col" className="my-benefits-actions-col">Acción</th></tr></thead>
@@ -350,6 +330,7 @@ export default function MyBenefits() {
             </div>
             <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(items.length / PAGE_SIZE))} totalItems={items.length} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />
           </section>
+          </HrSection>
           {(detailLoading || selected) && <section className="hr-benefits-workspace" aria-live="polite">
             {detailLoading ? (
               <LoadingSpinner text="Abriendo detalle…" />
@@ -653,6 +634,6 @@ export default function MyBenefits() {
           />
         )}
       </Sidebar>
-    </div>
+    </HrPage>
   );
 }

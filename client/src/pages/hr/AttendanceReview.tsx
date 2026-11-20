@@ -3,11 +3,11 @@ import type { SingleValue } from 'react-select';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, Plus, RefreshCw, XCircle } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import Pagination from '../../components/Pagination';
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import { HrHero, HrPage, HrSection, HrTabs, HrToolbar, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
 import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
@@ -26,13 +26,27 @@ import './attendance.css';
 import './admin-tables.css';
 import './hr-admin-operations.css';
 import '../Inventory.css';
+import './layouts/asistencia.css';
 
 type Option = { value: string; label: string };
 type ReviewForm = { decision: HrAttendanceReviewDecision; reason: string };
+type ReviewTab = 'ALL' | HrAttendanceDecision;
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
 const ACTION_OPTIONS: Option[] = [{ value: '', label: 'Todas las acciones' }, ...Object.entries(ATTENDANCE_ACTION_LABELS).map(([value, label]) => ({ value, label }))];
 const DECISION_OPTIONS: Option[] = [{ value: '', label: 'Todos los resultados' }, ...Object.entries(ATTENDANCE_DECISION_LABELS).map(([value, label]) => ({ value, label }))];
+
+const REVIEW_TABS: HrTabItem<ReviewTab>[] = [
+    { key: 'REVIEW_REQUIRED', label: 'Por revisar', icon: AlertTriangle },
+    { key: 'REJECTED', label: 'Rechazados', icon: XCircle },
+    { key: 'ACCEPTED', label: 'Aceptados', icon: CheckCircle2 },
+    { key: 'ALL', label: 'Todos los resultados', icon: ClipboardCheck },
+];
+
+function shortDay(value: string): string {
+    const parsed = new Date(`${value}T12:00:00`);
+    return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'short' }).format(parsed);
+}
 
 function todayDate(): string {
     const now = new Date();
@@ -178,52 +192,94 @@ export default function AttendanceReview() {
         }
     };
 
+    const activeTab: ReviewTab = (decision || 'ALL') as ReviewTab;
+    const pendingOnPage = events.filter((item) => item.decision === 'REVIEW_REQUIRED' && !item.reviewedAt).length;
+    const rejectedOnPage = events.filter((item) => item.decision === 'REJECTED').length;
+    const rangeLabel = dateFrom === dateTo ? shortDay(dateFrom) : `${shortDay(dateFrom)} → ${shortDay(dateTo)}`;
+    const reviewFacts: HrFact[] = [
+        { label: 'Eventos en el filtro', value: loading ? '…' : total, hint: `Página ${page} de ${Math.max(1, totalPages)}` },
+        { label: 'Por revisar (página)', value: pendingOnPage, hint: 'Requieren decisión con razón', tone: pendingOnPage > 0 ? 'warning' : 'success' },
+        { label: 'Rechazados (página)', value: rejectedOnPage, hint: 'Pueden compensarse con marcaje manual', tone: rejectedOnPage > 0 ? 'danger' : 'default' },
+        { label: 'Rango consultado', value: rangeLabel, tone: 'accent' },
+    ];
+
     return (
-        <div className="page-wrapper inventory-page hr-attendance-review-page hr-admin-catalog-page hr-operation-page">
-            <PageHeader className="inventory-header-new hr-operation-header" title="Revisión de asistencia" subtitle="Resuelve incidencias y registra marcajes manuales sin perder trazabilidad" icon={ClipboardCheck} actions={<Button onClick={() => setManualOpen(true)} disabled={!online || Boolean(lookupsError)}><Plus size={18} /> Marcaje manual</Button>} />
+        <HrPage className="inventory-page hr-attendance-review-page hr-admin-catalog-page hr-operation-page hr-asis-page hr-asis-review">
+            <div className="hr-asis-hero inventory-header-new">
+                <HrHero
+                    eyebrow="Recursos humanos"
+                    icon={ClipboardCheck}
+                    title="Revisión de asistencia"
+                    subtitle="Resuelve incidencias y registra marcajes manuales sin perder trazabilidad"
+                    actions={<Button onClick={() => setManualOpen(true)} disabled={!online || Boolean(lookupsError)}><Plus size={18} /> Marcaje manual</Button>}
+                    facts={reviewFacts}
+                />
+            </div>
             <OnlineOnlyNotice online={online} />
             {lookupsError && (
-                <div className="hr-attendance-alert danger" role="alert">
+                <div className="hr-attendance-alert danger hr-asis-alert" role="alert">
                     <AlertTriangle size={18} aria-hidden="true" /><span>{lookupsError}</span>
                     <Button size="sm" variant="ghost" onClick={() => void loadLookups()}><RefreshCw size={15} /> Reintentar catálogos</Button>
                 </div>
             )}
 
-            <div className="filters-toolbar hr-attendance-filters inventory-filters-row hr-operation-toolbar">
-                <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-from">Desde</label><input id="attendance-from" className="filter-input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
-                <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-to">Hasta</label><input id="attendance-to" className="filter-input" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
-                <div className="filter-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isSearchable /></div>
-                <div className="filter-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isSearchable /></div>
-                <div className="filter-field"><Select<Option> label="Acción" options={ACTION_OPTIONS} value={ACTION_OPTIONS.find((option) => option.value === action)} onChange={(option: SingleValue<Option>) => setAction(option?.value ?? '')} /></div>
-                <div className="filter-field"><Select<Option> label="Resultado" options={DECISION_OPTIONS} value={DECISION_OPTIONS.find((option) => option.value === decision)} onChange={(option: SingleValue<Option>) => setDecision(option?.value ?? '')} /></div>
-            </div>
+            <HrTabs<ReviewTab>
+                items={REVIEW_TABS}
+                active={activeTab}
+                onChange={(key) => setDecision(key === 'ALL' ? '' : key)}
+                ariaLabel="Resultado del marcaje"
+                idPrefix="attendance-review"
+            />
 
-            {loading && <LoadingSpinner text="Cargando eventos…" />}
-            {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></div>}
-            {!loading && !error && (
-                <section className="pr-table-card" aria-label="Eventos de asistencia">
-                    <div className="hr-admin-table-wrap">
-                        <table className="hr-admin-table inventory-table" aria-label="Eventos de asistencia">
-                            <thead><tr><th scope="col">Empleado</th><th scope="col">Evento</th><th scope="col">Sucursal</th><th scope="col">Fecha y hora</th><th scope="col">Resultado</th><th scope="col">Evidencia</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
-                            <tbody>
-                                {events.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><ClipboardCheck size={34} /><strong>No hay eventos para los filtros seleccionados</strong><span>Amplía el rango o cambia los filtros para consultar otros marcajes.</span></div></td></tr> : events.map((attendanceEvent) => (
-                                    <tr key={attendanceEvent.id}>
-                                        <th scope="row"><strong>{attendanceEvent.user?.name ?? `Usuario #${attendanceEvent.userId}`}</strong><small>@{attendanceEvent.user?.username ?? attendanceEvent.userId}</small></th>
-                                        <td><strong>{ATTENDANCE_ACTION_LABELS[attendanceEvent.action]}</strong>{attendanceEvent.message && <small>{attendanceEvent.message}</small>}</td>
-                                        <td>{attendanceEvent.branch?.name ?? `Sucursal #${attendanceEvent.branchId ?? '—'}`}</td>
-                                        <td><time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time></td>
-                                        <td><strong>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</strong>{attendanceEvent.reviewedAt && <small>Revisado {displayDate(attendanceEvent.reviewedAt)}</small>}</td>
-                                        <td>{attendanceEvent.reasonCode ? <code>{attendanceEvent.reasonCode}</code> : 'Sin código'}{attendanceEvent.locationAccuracyM != null && <small>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</small>}</td>
-                                        <td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openReview(attendanceEvent)} disabled={!online || attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} title={!online ? 'Conéctate para revisar' : attendanceEvent.reviewedAt ? 'Evento ya revisado' : 'Revisar evento'} aria-label={`Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`}><Eye size={16} /></Button></div></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    <Pagination page={page} totalPages={totalPages} totalItems={total} pageSize={25} onPageChange={setPage} alwaysShow emptyLabel="Sin eventos" />
-                </section>
-            )}
+            <HrToolbar ariaLabel="Filtros de eventos de asistencia" className="hr-attendance-filters hr-operation-toolbar hr-asis-toolbar">
+                <label htmlFor="attendance-from">Desde<input id="attendance-from" className="filter-input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+                <label htmlFor="attendance-to">Hasta<input id="attendance-to" className="filter-input" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+                <div className="hr-ws-field is-wide"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isSearchable /></div>
+                <div className="hr-ws-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isSearchable /></div>
+                <div className="hr-ws-field"><Select<Option> label="Acción" options={ACTION_OPTIONS} value={ACTION_OPTIONS.find((option) => option.value === action)} onChange={(option: SingleValue<Option>) => setAction(option?.value ?? '')} /></div>
+                <div className="hr-ws-toolbar-actions">
+                    <Button variant="ghost" onClick={() => void loadEvents()} disabled={loading}><RefreshCw size={16} /> Actualizar</Button>
+                </div>
+            </HrToolbar>
 
+            <HrSection
+                flush
+                title="Eventos de asistencia"
+                description={DECISION_OPTIONS.find((option) => option.value === decision)?.label ?? 'Todos los resultados'}
+                count={loading || error ? undefined : total}
+                id={`attendance-review-panel-${activeTab.toLowerCase()}`}
+                role="tabpanel"
+                aria-labelledby={`attendance-review-tab-${activeTab.toLowerCase()}`}
+                className="hr-asis-table-section"
+            >
+                {loading && <div className="hr-asis-state"><LoadingSpinner text="Cargando eventos…" /></div>}
+                {!loading && error && <div className="state-placeholder hr-asis-state" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></div>}
+                {!loading && !error && (
+                    <>
+                        <div className="hr-ws-table-scroll">
+                            <table className="hr-admin-table inventory-table" aria-label="Eventos de asistencia">
+                                <thead><tr><th scope="col">Empleado</th><th scope="col">Evento</th><th scope="col">Sucursal</th><th scope="col">Fecha y hora</th><th scope="col">Resultado</th><th scope="col">Evidencia</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
+                                <tbody>
+                                    {events.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><ClipboardCheck size={34} /><strong>No hay eventos para los filtros seleccionados</strong><span>Amplía el rango o cambia los filtros para consultar otros marcajes.</span></div></td></tr> : events.map((attendanceEvent) => (
+                                        <tr key={attendanceEvent.id}>
+                                            <th scope="row"><strong>{attendanceEvent.user?.name ?? `Usuario #${attendanceEvent.userId}`}</strong><small>@{attendanceEvent.user?.username ?? attendanceEvent.userId}</small></th>
+                                            <td><strong>{ATTENDANCE_ACTION_LABELS[attendanceEvent.action]}</strong>{attendanceEvent.message && <small>{attendanceEvent.message}</small>}</td>
+                                            <td>{attendanceEvent.branch?.name ?? `Sucursal #${attendanceEvent.branchId ?? '—'}`}</td>
+                                            <td><time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time></td>
+                                            <td><span className={`hr-asis-chip is-${attendanceEvent.decision.toLowerCase()}`}>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</span>{attendanceEvent.reviewedAt && <small>Revisado {displayDate(attendanceEvent.reviewedAt)}</small>}</td>
+                                            <td>{attendanceEvent.reasonCode ? <code>{attendanceEvent.reasonCode}</code> : 'Sin código'}{attendanceEvent.locationAccuracyM != null && <small>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</small>}</td>
+                                            <td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openReview(attendanceEvent)} disabled={!online || attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} title={!online ? 'Conéctate para revisar' : attendanceEvent.reviewedAt ? 'Evento ya revisado' : 'Revisar evento'} aria-label={`Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`}><Eye size={16} /></Button></div></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="hr-asis-pagination">
+                            <Pagination page={page} totalPages={totalPages} totalItems={total} pageSize={25} onPageChange={setPage} alwaysShow emptyLabel="Sin eventos" />
+                        </div>
+                    </>
+                )}
+            </HrSection>
             <Sidebar isOpen={Boolean(selected)} onClose={() => !saving && setSelected(null)} title="Revisar incidencia" width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
                 {selected && (
                     <HrModalFormShell
@@ -261,6 +317,6 @@ export default function AttendanceReview() {
                     <label className="span-full" htmlFor="attendance-manual-reason">Razón del fallback<textarea id="attendance-manual-reason" rows={5} maxLength={500} value={manual.reason} onChange={(event) => setManual((current) => ({ ...current, reason: event.target.value }))} required /></label>
                 </HrModalFormShell>
             </Sidebar>
-        </div>
+        </HrPage>
     );
 }

@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Download, FileText, Gift, RefreshCw, WalletCards } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import MyHrNav from '../../components/hr/MyHrNav';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollReceiptBreakdown from '../../components/hr/PayrollReceiptBreakdown';
 import PayrollStatusPill from '../../components/hr/PayrollStatusPill';
 import usePayrollOnline from '../../components/hr/usePayrollOnline';
 import { getPayrollErrorMessage, payrollClient } from '../../components/hr/payrollClient';
+import { HrHero, HrPage, HrSection, HrSplit, HrToolbar, type HrFact } from '../../components/hr/layout/HrWorkspace';
 import { useAppToast } from '../../context/ToastContext';
 import type {
   HrPayrollReceiptDetail,
@@ -19,6 +19,7 @@ import type {
 } from '../../types/hr-payroll';
 import './payroll.css';
 import './self-service.css';
+import './layouts/autoservicio.css';
 
 const currentYear = new Date().getFullYear();
 
@@ -96,30 +97,51 @@ export default function MyPayroll() {
     }
   };
 
+
   const regularReceiptCount = receipts.filter((receipt) => receipt.runKind === 'REGULAR').length;
   const bonusReceiptCount = receipts.filter((receipt) => receipt.runKind === 'AGUINALDO').length;
+  const latestReceipt = [...receipts].sort((a, b) => b.payDate.localeCompare(a.payDate))[0] ?? null;
+  const ready = !loading && !error;
+
+  const facts: HrFact[] = [
+    {
+      label: 'Último pago',
+      value: ready ? (latestReceipt ? formatDate(latestReceipt.payDate) : 'Sin pagos') : '—',
+      hint: latestReceipt ? latestReceipt.periodLabel : 'En el año y tipo seleccionados',
+      tone: ready && latestReceipt ? 'accent' : 'default',
+    },
+    {
+      label: 'Neto del último recibo',
+      value: ready && latestReceipt ? formatHrMoney(latestReceipt.currency, latestReceipt.netPay) : '—',
+      hint: latestReceipt ? latestReceipt.runCode : 'Importe publicado por nómina',
+    },
+    {
+      label: 'Recibos visibles',
+      value: ready ? receipts.length : '—',
+      hint: 'Según el tipo y año seleccionados',
+    },
+  ];
 
   return (
-    <div className="page-wrapper hr-payroll-page hr-my-payroll-page my-hr-page">
-      <PageHeader
-        className="my-hr-page-header"
+    <HrPage className="hr-payroll-page hr-my-payroll-page my-hr-page ss-page ss-payroll">
+      <MyHrNav />
+      <HrHero
+        eyebrow="Mi RH"
+        icon={WalletCards}
         title="Mis recibos"
         subtitle="Consulta y descarga el desglose exacto publicado por nómina"
-        icon={WalletCards}
-        actions={<MyHrNav />}
+        facts={facts}
+        aside={ready ? (
+          <section className="my-hr-summary-grid" aria-label="Resumen de recibos publicados">
+            <article><FileText size={19} aria-hidden="true" /><span>Nómina ordinaria</span><strong>{regularReceiptCount}</strong><small>Colillas regulares publicadas</small></article>
+            <article><Gift size={19} aria-hidden="true" /><span>Aguinaldo</span><strong>{bonusReceiptCount}</strong><small>Recibos de aguinaldo publicados</small></article>
+          </section>
+        ) : undefined}
       />
 
       {!online && <PayrollOnlineNotice online={false} />}
 
-      {!loading && !error && (
-        <section className="my-hr-summary-grid" aria-label="Resumen de recibos publicados">
-          <article><WalletCards size={19} aria-hidden="true" /><span>Recibos visibles</span><strong>{receipts.length}</strong><small>Según el tipo y año seleccionados</small></article>
-          <article><FileText size={19} aria-hidden="true" /><span>Nómina ordinaria</span><strong>{regularReceiptCount}</strong><small>Colillas regulares publicadas</small></article>
-          <article><Gift size={19} aria-hidden="true" /><span>Aguinaldo</span><strong>{bonusReceiptCount}</strong><small>Recibos de aguinaldo publicados</small></article>
-        </section>
-      )}
-
-      <div className="hr-payroll-filterbar my-hr-toolbar" aria-label="Filtros de recibos">
+      <HrToolbar ariaLabel="Filtros de recibos">
         <label>
           Tipo
           <HrReactSelect
@@ -141,10 +163,12 @@ export default function MyPayroll() {
             onChange={(event) => setYear(event.target.value)}
           />
         </label>
-        <Button variant="ghost" onClick={() => void load()} disabled={loading}>
-          <RefreshCw size={16} aria-hidden="true" /> Actualizar
-        </Button>
-      </div>
+        <div className="hr-ws-toolbar-actions">
+          <Button variant="ghost" onClick={() => void load()} disabled={loading}>
+            <RefreshCw size={16} aria-hidden="true" /> Actualizar
+          </Button>
+        </div>
+      </HrToolbar>
 
       {loading && <LoadingSpinner text="Cargando tus recibos…" />}
 
@@ -158,91 +182,89 @@ export default function MyPayroll() {
         </div>
       )}
 
-      {!loading && !error && (
-        <div className="hr-my-payroll-layout">
-          <section className="hr-payroll-section" aria-labelledby="my-receipts-heading">
-            <div className="hr-payroll-section-heading">
-              <div>
-                <h2 id="my-receipts-heading">
-                  <FileText size={20} aria-hidden="true" /> Recibos publicados
-                </h2>
-                <p>
-                  El servidor limita esta lista a tu usuario y conserva recibos anulados por
-                  trazabilidad.
-                </p>
-              </div>
-              <span className="hr-payroll-count">{receipts.length}</span>
-            </div>
-
-            {receipts.length === 0 ? (
-              <div className="hr-payroll-empty">
-                <FileText size={34} aria-hidden="true" />
-                <p>No hay recibos publicados para los filtros seleccionados.</p>
-                {(kind || year !== String(currentYear)) && (
-                  <Button size="sm" variant="ghost" onClick={() => { setKind(''); setYear(String(currentYear)); }}>
-                    Ver recibos del año actual
-                  </Button>
+      {ready && (
+        <HrSplit
+          main={
+            <HrSection
+              eyebrow="Historial"
+              title={<span id="my-receipts-heading">Recibos publicados</span>}
+              count={receipts.length}
+              description="El servidor limita esta lista a tu usuario y conserva recibos anulados por trazabilidad."
+              aria-labelledby="my-receipts-heading"
+            >
+              {receipts.length === 0 ? (
+                <div className="ss-empty">
+                  <FileText size={34} aria-hidden="true" />
+                  <p>No hay recibos publicados para los filtros seleccionados.</p>
+                  {(kind || year !== String(currentYear)) && (
+                    <Button size="sm" variant="ghost" onClick={() => { setKind(''); setYear(String(currentYear)); }}>
+                      Ver recibos del año actual
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="hr-my-receipt-list ss-receipt-list">
+                  {receipts.map((receipt) => (
+                    <button
+                      key={receipt.id}
+                      type="button"
+                      className={selected?.id === receipt.id ? 'selected' : ''}
+                      onClick={() => void openReceipt(receipt)}
+                      disabled={detailLoading}
+                      aria-current={selected?.id === receipt.id ? 'true' : undefined}
+                    >
+                      <span className="hr-receipt-kind-icon" aria-hidden="true">
+                        {receipt.runKind === 'AGUINALDO' ? (
+                          <Gift size={19} />
+                        ) : (
+                          <FileText size={19} />
+                        )}
+                      </span>
+                      <span>
+                        <strong>{receipt.runCode}</strong>
+                        <small>
+                          {receipt.periodLabel} · pago {formatDate(receipt.payDate)}
+                        </small>
+                      </span>
+                      <span className="hr-my-receipt-amount">
+                        <strong>
+                          {formatHrMoney(receipt.currency, receipt.netPay)}
+                        </strong>
+                        <PayrollStatusPill status={receipt.status} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </HrSection>
+          }
+          aside={
+            <HrSection eyebrow="Desglose" title="Detalle del recibo">
+              <div aria-live="polite">
+                {detailLoading ? (
+                  <LoadingSpinner text="Abriendo desglose…" />
+                ) : selected ? (
+                  <PayrollReceiptBreakdown
+                    receipt={selected}
+                    online={online}
+                    downloading={downloading}
+                    onDownload={() => void downloadReceipt()}
+                  />
+                ) : (
+                  <div className="ss-empty">
+                    <Download size={40} aria-hidden="true" />
+                    <h2>Selecciona un recibo</h2>
+                    <p>
+                      Verás importes, componentes y trazabilidad exactamente como fueron publicados por
+                      el servidor.
+                    </p>
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="hr-my-receipt-list">
-                {receipts.map((receipt) => (
-                  <button
-                    key={receipt.id}
-                    type="button"
-                    className={selected?.id === receipt.id ? 'selected' : ''}
-                    onClick={() => void openReceipt(receipt)}
-                    disabled={detailLoading}
-                    aria-current={selected?.id === receipt.id ? 'true' : undefined}
-                  >
-                    <span className="hr-receipt-kind-icon" aria-hidden="true">
-                      {receipt.runKind === 'AGUINALDO' ? (
-                        <Gift size={19} />
-                      ) : (
-                        <FileText size={19} />
-                      )}
-                    </span>
-                    <span>
-                      <strong>{receipt.runCode}</strong>
-                      <small>
-                        {receipt.periodLabel} · pago {formatDate(receipt.payDate)}
-                      </small>
-                    </span>
-                    <span className="hr-my-receipt-amount">
-                      <strong>
-                        {formatHrMoney(receipt.currency, receipt.netPay)}
-                      </strong>
-                      <PayrollStatusPill status={receipt.status} />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="hr-payroll-section hr-my-receipt-workspace" aria-live="polite">
-            {detailLoading ? (
-              <LoadingSpinner text="Abriendo desglose…" />
-            ) : selected ? (
-              <PayrollReceiptBreakdown
-                receipt={selected}
-                online={online}
-                downloading={downloading}
-                onDownload={() => void downloadReceipt()}
-              />
-            ) : (
-              <div className="hr-payroll-empty-workspace">
-                <Download size={40} aria-hidden="true" />
-                <h2>Selecciona un recibo</h2>
-                <p>
-                  Verás importes, componentes y trazabilidad exactamente como fueron publicados por
-                  el servidor.
-                </p>
-              </div>
-            )}
-          </section>
-        </div>
+            </HrSection>
+          }
+        />
       )}
-    </div>
+    </HrPage>
   );
 }

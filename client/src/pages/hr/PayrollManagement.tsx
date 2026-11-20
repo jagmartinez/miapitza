@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
+import { HrHero, HrPage, HrSection, HrTabs, HrToolbar, type HrFact } from '../../components/hr/layout/HrWorkspace';
 import Pagination from '../../components/Pagination';
 import Sidebar from '../../components/Sidebar';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
@@ -41,6 +41,7 @@ import './payroll.css';
 import './payroll-operations.css';
 import './admin-tables.css';
 import '../Inventory.css';
+import './layouts/nomina.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
 const PAGE_SIZE = 12;
@@ -348,23 +349,51 @@ export default function PayrollManagement() {
   const activeRules = rules.filter((rule) => rule.status === 'ACTIVE');
   const operationReady = activeRules.length > 0 && (activeKind === 'AGUINALDO' || periods.some((period) => period.status !== 'VOID'));
 
+  const heroFacts = useMemo<HrFact[]>(() => {
+    const allRuns = [...regularRuns, ...aguinaldoRuns];
+    const runPayDate = (run: HrPayrollRun) => (run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) ?? null;
+    const openRuns = allRuns.filter((run) => run.status !== 'PAID' && run.status !== 'VOID');
+    let blocking = 0;
+    for (const run of openRuns) blocking += run.blockingAnomalyCount ?? 0;
+    const lastPaid = allRuns
+      .filter((run) => run.status === 'PAID')
+      .sort((left, right) => new Date(runPayDate(right) ?? right.createdAt).getTime() - new Date(runPayDate(left) ?? left.createdAt).getTime())[0];
+    const nextPayment = openRuns
+      .filter((run) => runPayDate(run))
+      .sort((left, right) => String(runPayDate(left)).localeCompare(String(runPayDate(right))))[0];
+    return [
+      { label: 'Corridas abiertas', value: loading ? '—' : openRuns.length, hint: 'Sin pagar ni anular', tone: openRuns.length > 0 ? 'accent' : 'default' },
+      {
+        label: 'Neto del último pago',
+        value: lastPaid?.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: lastPaid.totals.currency }).format(Number(lastPaid.totals.netPay)) : '—',
+        hint: lastPaid ? `${lastPaid.code} · ${formatDate(runPayDate(lastPaid))}` : 'Aún no hay corridas pagadas',
+        tone: lastPaid ? 'success' : 'default',
+      },
+      { label: 'Próximo pago', value: nextPayment ? formatDate(runPayDate(nextPayment)) : '—', hint: nextPayment ? `${nextPayment.code} · ${STATUS_LABELS[nextPayment.status]}` : 'Sin corridas pendientes' },
+      { label: 'Incidencias bloqueantes', value: loading ? '—' : blocking, hint: blocking > 0 ? 'Resuélvelas antes de aprobar' : 'Nada bloquea el flujo', tone: blocking > 0 ? 'danger' : 'default' },
+    ];
+  }, [aguinaldoRuns, loading, regularRuns]);
+
   return (
-    <div className="page-wrapper inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page">
-      <PageHeader className="inventory-header-new" title="Nómina y aguinaldo" subtitle="Calcula, revisa, aprueba, paga y entrega colillas desde un flujo guiado. Configuración legal: IR, INSS e INATEC." icon={Calculator}
-        actions={<Button variant="secondary" onClick={() => navigate('/rh/nomina/configuracion-legal')}><Scale size={17} /> Configurar IR, INSS e INATEC</Button>} />
+    <HrPage className="inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page inventory-header-new nm-page">
+      <HrHero
+        eyebrow="Recursos humanos"
+        icon={Calculator}
+        title="Nómina y aguinaldo"
+        subtitle="Calcula, revisa, aprueba, paga y entrega colillas desde un flujo guiado. Configuración legal: IR, INSS e INATEC."
+        actions={(
+          <>
+            <Button variant="secondary" onClick={() => navigate('/rh/nomina/configuracion-legal')}><Scale size={17} /> Configurar IR, INSS e INATEC</Button>
+            <Button onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!online || !operationReady}><Plus size={16} /> {activeKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'}</Button>
+          </>
+        )}
+        facts={heroFacts}
+      />
       <PayrollOnlineNotice online={online} />
 
-      <div className="payroll-operation-switcher inventory-filters-row">
-        <div className="payroll-operation-tabs inventory-status-filters" role="tablist" aria-label="Tipo de proceso">
-          <button type="button" role="tab" id="payroll-tab-regular" aria-controls="payroll-panel-regular" aria-selected={activeKind === 'REGULAR'} className={activeKind === 'REGULAR' ? 'active' : ''} onClick={() => { setActiveKind('REGULAR'); setSelected(null); }}><Receipt size={17} /> Nómina ordinaria <small>{regularRuns.length}</small></button>
-          <button type="button" role="tab" id="payroll-tab-aguinaldo" aria-controls="payroll-panel-aguinaldo" aria-selected={activeKind === 'AGUINALDO'} className={activeKind === 'AGUINALDO' ? 'active' : ''} onClick={() => { setActiveKind('AGUINALDO'); setSelected(null); }}><Gift size={17} /> Aguinaldo <small>{aguinaldoRuns.length}</small></button>
-        </div>
-        <Button onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!online || !operationReady}><Plus size={16} /> {activeKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'}</Button>
-      </div>
-
       {!operationReady && !loading && (
-        <div className="payroll-operation-alert" role="status">
-          <AlertTriangle size={20} />
+        <div className="nm-alert is-warning" role="status">
+          <AlertTriangle size={20} aria-hidden="true" />
           <span>{activeRules.length === 0 ? 'Para crear corridas necesitas una regla legal activa.' : 'Primero crea el periodo que deseas pagar.'}</span>
           {activeRules.length === 0
             ? <Button size="sm" variant="secondary" onClick={() => rules.length ? navigate(`/rh/nomina/configuracion-legal?ruleId=${rules[0].id}`) : setCreatePanel({ kind: 'rule' })}>{rules.length ? 'Configurar regla' : 'Crear regla base'}</Button>
@@ -372,51 +401,93 @@ export default function PayrollManagement() {
         </div>
       )}
 
+      <HrTabs<HrPayrollRunKind>
+        ariaLabel="Tipo de proceso"
+        idPrefix="payroll"
+        active={activeKind}
+        onChange={(kind) => {
+          if (kind === 'AGUINALDO') setActiveKind('AGUINALDO');
+          else setActiveKind('REGULAR');
+          setSelected(null);
+        }}
+        items={[
+          { key: 'REGULAR', label: 'Nómina ordinaria', count: regularRuns.length, icon: Receipt },
+          { key: 'AGUINALDO', label: 'Aguinaldo', count: aguinaldoRuns.length, icon: Gift },
+        ]}
+      />
+
+      <HrToolbar className="nm-toolbar" ariaLabel="Filtros de corridas">
+        <label className="is-wide" htmlFor="payroll-run-search">Buscar código o periodo
+          <span className="nm-search"><Search size={15} aria-hidden="true" /><input id="payroll-run-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Ej. 2026-Q1" /></span>
+        </label>
+        <label>Estado<HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos los estados</option>{(Object.keys(STATUS_LABELS) as HrPayrollRun['status'][]).map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}</HrReactSelect></label>
+        {activeKind === 'REGULAR' && <div className="hr-ws-toolbar-actions"><Button variant="secondary" onClick={() => setCreatePanel({ kind: 'period' })}><FilePlus2 size={15} /> Periodos</Button></div>}
+      </HrToolbar>
+
       {loading && <LoadingSpinner text="Cargando corridas…" />}
       {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={42} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}>Reintentar</Button></div>}
       {!loading && !error && (
         <>
-          <section className="payroll-run-register pr-table-card" role="tabpanel" id={`payroll-panel-${activeKind.toLowerCase()}`} aria-labelledby={`payroll-tab-${activeKind.toLowerCase()}`}>
-            <header className="payroll-run-register-header">
-              <div>
-                <h2 id="payroll-run-register-title">{activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}</h2>
-                <p>Consulta el periodo, los totales y el estado. Abre una fila para continuar el proceso.</p>
+          <HrSection
+            flush
+            className="nm-runs"
+            role="tabpanel"
+            id={`payroll-panel-${activeKind.toLowerCase()}`}
+            aria-labelledby={`payroll-tab-${activeKind.toLowerCase()}`}
+            eyebrow="Registro de corridas"
+            title={activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}
+            count={filteredRuns.length}
+            description="Consulta el periodo, los totales y el estado. Abre una fila para continuar el proceso."
+          >
+            {filteredRuns.length === 0 ? (
+              <div className="nm-empty">
+                <span className="nm-empty-icon" aria-hidden="true"><Receipt size={28} /></span>
+                <h3>No hay corridas que coincidan con los filtros.</h3>
+                <p>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</p>
+                {runs.length === 0 && <Button size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}
               </div>
-              <div className="payroll-run-register-tools">
-                <label htmlFor="payroll-run-search">Buscar código o periodo<div className="payroll-run-search"><Search size={15} aria-hidden="true" /><input id="payroll-run-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Ej. 2026-Q1" /></div></label>
-                <label>Estado<HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos los estados</option>{(Object.keys(STATUS_LABELS) as HrPayrollRun['status'][]).map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}</HrReactSelect></label>
-                {activeKind === 'REGULAR' && <Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'period' })}><FilePlus2 size={15} /> Periodos</Button>}
+            ) : (
+              <div className="hr-ws-table-scroll">
+                <table className="payroll-run-table inventory-table nm-runs-table">
+                  <thead><tr><th scope="col">Corrida</th><th scope="col">Periodo</th><th scope="col">Estado</th><th scope="col">Empleados</th><th scope="col" className="hr-amount-cell">Ingresos</th><th scope="col" className="hr-amount-cell">Neto a pagar</th><th scope="col">Incidencias</th><th scope="col">Fecha de pago</th><th scope="col">Acciones</th></tr></thead>
+                  <tbody>{pagedRuns.map((run) => {
+                    const isSelected = selected?.id === run.id && selected.kind === run.kind;
+                    return <tr key={`${run.kind}-${run.id}`} className={isSelected ? 'selected' : undefined} aria-current={isSelected ? 'true' : undefined}>
+                      <th scope="row"><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></th>
+                      <td>{runPeriodLabel(run)}</td>
+                      <td><PayrollStatusPill status={run.status} /></td>
+                      <td>{run.totals?.employeeCount ?? 0}</td>
+                      <td className="hr-amount-cell">{run.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: run.totals.currency }).format(Number(run.totals.grossIncome)) : '—'}</td>
+                      <td className="hr-amount-cell"><strong>{run.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: run.totals.currency }).format(Number(run.totals.netPay)) : '—'}</strong></td>
+                      <td>{run.blockingAnomalyCount ? <span className="nm-chip is-danger"><AlertTriangle size={13} aria-hidden="true" /> {run.blockingAnomalyCount} por resolver</span> : run.anomalyCount ? <span className="nm-chip">{run.anomalyCount} informativa(s)</span> : <span className="nm-chip is-success">Sin incidencias</span>}</td>
+                      <td>{formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate)}</td>
+                      <td><div className="nm-row-actions table-actions">
+                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void openWorkspace(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`} aria-controls="payroll-run-detail"><Eye size={16} /></Button>
+                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`}><FileSpreadsheet size={16} /></Button>
+                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`}><Download size={16} /></Button>
+                      </div></td>
+                    </tr>;
+                  })}</tbody>
+                </table>
               </div>
-            </header>
-            {filteredRuns.length === 0 ? <div className="payroll-operation-empty-list"><strong>No hay corridas que coincidan con los filtros.</strong><span>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</span>{runs.length === 0 && <Button size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}</div>
-              : <div className="payroll-run-table-wrap"><table className="payroll-run-table inventory-table">
-                <thead><tr><th scope="col">Corrida</th><th scope="col">Periodo</th><th scope="col">Estado</th><th scope="col">Empleados</th><th scope="col" className="hr-amount-cell">Ingresos</th><th scope="col" className="hr-amount-cell">Neto a pagar</th><th scope="col">Incidencias</th><th scope="col">Fecha de pago</th><th scope="col">Acciones</th></tr></thead>
-                <tbody>{pagedRuns.map((run) => {
-                  const isSelected = selected?.id === run.id && selected.kind === run.kind;
-                  return <tr key={`${run.kind}-${run.id}`} className={isSelected ? 'selected' : undefined} aria-current={isSelected ? 'true' : undefined}>
-                    <th scope="row"><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></th>
-                    <td>{runPeriodLabel(run)}</td>
-                    <td><PayrollStatusPill status={run.status} /></td>
-                    <td>{run.totals?.employeeCount ?? 0}</td>
-                    <td className="hr-amount-cell">{run.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: run.totals.currency }).format(Number(run.totals.grossIncome)) : '—'}</td>
-                    <td className="hr-amount-cell"><strong>{run.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: run.totals.currency }).format(Number(run.totals.netPay)) : '—'}</strong></td>
-                    <td>{run.blockingAnomalyCount ? <span className="payroll-run-blocker"><AlertTriangle size={14} /> {run.blockingAnomalyCount} por resolver</span> : run.anomalyCount ? `${run.anomalyCount} informativa(s)` : <span className="payroll-run-clear">Sin incidencias</span>}</td>
-                    <td>{formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate)}</td>
-                    <td><div className="payroll-run-actions table-actions">
-                      <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void openWorkspace(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`}><Eye size={16} /></Button>
-                      <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`}><FileSpreadsheet size={16} /></Button>
-                      <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`}><Download size={16} /></Button>
-                    </div></td>
-                  </tr>;
-                })}</tbody>
-              </table></div>}
-            <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(filteredRuns.length / PAGE_SIZE))} totalItems={filteredRuns.length} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin corridas" />
-          </section>
+            )}
+            <div className="nm-pagination">
+              <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(filteredRuns.length / PAGE_SIZE))} totalItems={filteredRuns.length} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin corridas" />
+            </div>
+          </HrSection>
 
-          <div className="payroll-operation-detail-area">
+          <div className="nm-detail" id="payroll-run-detail">
             {workspaceLoading ? <LoadingSpinner text="Abriendo la corrida…" /> : selected ? (
-            <PayrollOperationWorkspace run={selected} online={online} busy={saving || downloading} onAction={(action) => { transitionOperationKey.current = createPayrollIdempotencyKey(); setTransition({ run: selected, action }); }} onRefresh={() => void openWorkspace(selected)} onAddComponent={() => { componentOperationKey.current = createPayrollIdempotencyKey(); setCreatePanel({ kind: 'component' }); }} onExport={(format) => void exportRun(format)} onDownloadReceipt={(id) => void downloadReceipt(id)} onDownloadReceiptBatch={(ids) => void downloadReceiptBatch(ids)} />
-            ) : <div className="payroll-operation-placeholder"><div><Calculator size={44} /><h2>No hay una corrida abierta</h2><p>Crea una corrida o cambia los filtros para administrar sus pagos.</p></div></div>}
+              <PayrollOperationWorkspace run={selected} online={online} busy={saving || downloading} onAction={(action) => { transitionOperationKey.current = createPayrollIdempotencyKey(); setTransition({ run: selected, action }); }} onRefresh={() => void openWorkspace(selected)} onAddComponent={() => { componentOperationKey.current = createPayrollIdempotencyKey(); setCreatePanel({ kind: 'component' }); }} onExport={(format) => void exportRun(format)} onDownloadReceipt={(id) => void downloadReceipt(id)} onDownloadReceiptBatch={(ids) => void downloadReceiptBatch(ids)} />
+            ) : (
+              <HrSection className="nm-placeholder">
+                <div className="nm-empty">
+                  <span className="nm-empty-icon" aria-hidden="true"><Calculator size={30} /></span>
+                  <h2>No hay una corrida abierta</h2>
+                  <p>Crea una corrida o cambia los filtros para administrar sus pagos.</p>
+                </div>
+              </HrSection>
+            )}
           </div>
         </>
       )}
@@ -439,6 +510,6 @@ export default function PayrollManagement() {
       <Sidebar isOpen={Boolean(transition)} onClose={() => { if (!saving) { transitionOperationKey.current = null; setTransition(null); } }} title={transition ? ACTION_LABELS[transition.action] : 'Acción de nómina'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
         {transition && <PayrollTransitionForm run={transition.run} action={transition.action} online={online} saving={saving} onSubmit={saveTransition} onCancel={() => { transitionOperationKey.current = null; setTransition(null); }} />}
       </Sidebar>
-    </div>
+    </HrPage>
   );
 }

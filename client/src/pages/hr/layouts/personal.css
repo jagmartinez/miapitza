@@ -1,0 +1,827 @@
+/*
+ * Personal (RH) layouts: Centro de trabajo, Gestión de Personal y Expediente.
+ * Builds on the RH workspace kit (hr-workspace.css). Every rule is scoped to
+ * .hr-personal-page so legacy sheets loaded by other RH routes cannot leak in
+ * and these rules cannot leak out.
+ */
+
+.hr-personal-page {
+  --hr-p-soft: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  --hr-p-line: var(--color-border);
+  --hr-p-text-2: var(--color-neutral-500, var(--color-text-secondary));
+}
+
+/* ---------- Shared states ---------- */
+.hr-personal-page :is(.hr-pe-state, .hr-pd-state, .hr-hd-state) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  min-height: 220px;
+  padding: 2rem 1rem;
+  color: var(--hr-p-text-2);
+  text-align: center;
+}
+
+.hr-personal-page :is(.hr-pe-state, .hr-pd-state, .hr-hd-state) p {
+  margin: 0;
+  max-width: 52ch;
+}
+
+/* =========================================================
+   Gestión de Personal
+   ========================================================= */
+.hr-personal-page .hr-pe-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.hr-personal-page .hr-pe-search svg {
+  position: absolute;
+  left: .75rem;
+  color: var(--hr-p-text-2);
+  pointer-events: none;
+}
+
+.hr-personal-page .hr-pe-search input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 .85rem 0 2.3rem;
+  border: 1px solid var(--hr-p-line);
+  border-radius: .7rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+  font-size: .88rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.hr-personal-page .hr-pe-search input:focus {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+  outline-offset: 1px;
+  border-color: var(--color-primary);
+}
+
+.hr-personal-page .hr-pe-filter {
+  flex: 1 1 170px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.hr-personal-page .hr-pe-filter label {
+  color: var(--hr-p-text-2);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+/* Table inside a flush section: the section is the card. */
+.hr-personal-page .hr-pe-table .catalog-table-wrapper {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.hr-personal-page .hr-pe-table .catalog-table {
+  min-width: 1080px;
+}
+
+.hr-personal-page .hr-pe-results.is-flush .hr-pe-pagination {
+  padding: .75rem 1rem;
+  border-top: 1px solid var(--hr-p-line);
+}
+
+.hr-personal-page .hr-pe-results:not(.is-flush) .hr-pe-pagination {
+  margin-top: 1rem;
+}
+
+.hr-personal-page .hr-pe-pagination .table-pagination {
+  margin: 0;
+}
+
+/* Cards */
+.hr-personal-page .hr-pe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: .85rem;
+}
+
+.hr-personal-page .hr-pe-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--hr-p-line);
+  border-radius: .95rem;
+  background: var(--color-background);
+  overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.hr-personal-page .hr-pe-card:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--hr-p-line));
+  box-shadow: var(--shadow-sm);
+}
+
+.hr-personal-page .hr-pe-card.is-idle {
+  background: color-mix(in srgb, var(--color-background) 92%, var(--color-warning, #f59e0b) 8%);
+}
+
+.hr-personal-page .hr-pe-card-head {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .9rem .95rem .7rem;
+}
+
+.hr-personal-page .hr-pe-avatar,
+.hr-personal-page .hr-pd-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 32%, var(--hr-p-line));
+  border-radius: .8rem;
+  background: var(--hr-p-soft);
+  color: var(--color-primary);
+  font-size: .95rem;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.hr-personal-page .hr-pe-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hr-personal-page .hr-pe-card-title h3 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: .95rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hr-personal-page .hr-pe-card-title span {
+  display: block;
+  margin-top: 2px;
+  color: var(--hr-p-text-2);
+  font-size: .74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-personal-page .hr-pe-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .4rem .75rem;
+  margin: 0;
+  padding: 0 .95rem .8rem;
+  list-style: none;
+}
+
+.hr-personal-page .hr-pe-card-meta li {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--hr-p-text-2);
+  font-size: .78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hr-personal-page .hr-pe-card-meta svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-employee-card-compensation.hr-pe-card-money {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  margin: 0 .95rem .9rem;
+  padding: .65rem .75rem;
+  border: 1px dashed color-mix(in srgb, var(--color-primary) 35%, var(--hr-p-line));
+  border-radius: .75rem;
+  background: var(--hr-p-soft);
+}
+
+.hr-personal-page .hr-pe-card-money > svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-pe-card-money > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hr-personal-page .hr-pe-card-money span {
+  color: var(--hr-p-text-2);
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.hr-personal-page .hr-pe-card-money strong {
+  color: var(--color-text);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-personal-page .hr-pe-card-money small {
+  color: var(--hr-p-text-2);
+  font-size: .74rem;
+}
+
+.hr-personal-page .hr-pe-card-actions {
+  display: flex;
+  margin-top: auto;
+  border-top: 1px solid var(--hr-p-line);
+}
+
+.hr-personal-page .hr-pe-card-action {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  min-height: 42px;
+  border: 0;
+  background: transparent;
+  color: var(--hr-p-text-2);
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hr-personal-page .hr-pe-card-action + .hr-pe-card-action {
+  border-left: 1px solid var(--hr-p-line);
+}
+
+.hr-personal-page .hr-pe-card-action:hover {
+  background: var(--hr-p-soft);
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-pe-card-action.is-danger:hover {
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 10%, transparent);
+  color: var(--color-danger, #ef4444);
+}
+
+.hr-personal-page .hr-pe-card-action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* =========================================================
+   Expediente del colaborador
+   ========================================================= */
+.hr-personal-page .hr-pd-back {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 40px;
+  padding: 0 .9rem;
+  border: 1px solid var(--hr-p-line);
+  border-radius: .7rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+  font-size: .84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hr-personal-page .hr-pd-back:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-employee-profile-card.hr-pd-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: .75rem;
+  height: 100%;
+  padding: .85rem .95rem;
+  border: 1px solid var(--hr-p-line);
+  border-radius: .85rem;
+  background: var(--color-background);
+  box-shadow: none;
+}
+
+.hr-personal-page .hr-pd-profile-top {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.hr-personal-page .hr-pd-profile-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hr-personal-page .hr-pd-profile-id .hr-ws-eyebrow {
+  margin-bottom: 0;
+}
+
+.hr-personal-page .hr-pd-profile-id strong {
+  color: var(--color-text);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-personal-page .hr-pd-profile-id small {
+  color: var(--hr-p-text-2);
+  font-size: .74rem;
+}
+
+.hr-personal-page .hr-pd-contact {
+  display: grid;
+  gap: .4rem;
+  margin: 0;
+  padding: .65rem 0 0;
+  border-top: 1px solid var(--hr-p-line);
+  list-style: none;
+}
+
+.hr-personal-page .hr-pd-contact li {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+  color: var(--hr-p-text-2);
+  font-size: .8rem;
+}
+
+.hr-personal-page .hr-pd-contact li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hr-personal-page .hr-pd-contact svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-pd-tabs button > span {
+  display: inline;
+}
+
+.hr-personal-page .hr-pd-panel {
+  min-height: 320px;
+}
+
+.hr-personal-page .hr-pd-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .9rem;
+}
+
+.hr-personal-page .hr-pd-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--hr-p-line);
+  border-radius: .85rem;
+  background: var(--color-background);
+}
+
+.hr-personal-page .hr-pd-group:only-child,
+.hr-personal-page .hr-pd-group:nth-child(3):last-child {
+  grid-column: 1 / -1;
+}
+
+.hr-personal-page .hr-pd-group-head {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .7rem .85rem;
+  border-bottom: 1px solid var(--hr-p-line);
+}
+
+.hr-personal-page .hr-pd-group-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: .6rem;
+  background: var(--hr-p-soft);
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-pd-group-head h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: .9rem;
+  font-weight: 800;
+}
+
+.hr-personal-page .hr-pd-group-head p {
+  margin: 2px 0 0;
+  color: var(--hr-p-text-2);
+  font-size: .76rem;
+}
+
+.hr-personal-page .hr-pd-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0;
+  margin: 0;
+}
+
+.hr-personal-page .hr-pd-item {
+  min-width: 0;
+  padding: .65rem .85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--hr-p-line) 70%, transparent);
+}
+
+.hr-personal-page .hr-pd-item.is-wide {
+  grid-column: 1 / -1;
+}
+
+.hr-personal-page .hr-pd-item dt {
+  margin: 0 0 3px;
+  color: var(--hr-p-text-2);
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.hr-personal-page .hr-pd-item dd {
+  margin: 0;
+  color: var(--color-text);
+  font-size: .86rem;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.hr-personal-page .hr-pd-assignments {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: .75rem;
+}
+
+.hr-personal-page .hr-pd-assignments article {
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  padding: .8rem .9rem;
+  border: 1px solid var(--hr-p-line);
+  border-radius: .85rem;
+  background: var(--color-background);
+}
+
+.hr-personal-page .hr-pd-assignments article > svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-pd-assignments article div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hr-personal-page .hr-pd-assignments article span {
+  color: var(--hr-p-text-2);
+  font-size: .78rem;
+}
+
+.hr-personal-page .hr-panel-empty.hr-pd-empty {
+  min-height: 200px;
+  border: 1px dashed var(--hr-p-line);
+  border-radius: .85rem;
+}
+
+.hr-personal-page .hr-employee-facts.hr-pd-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+}
+
+.hr-personal-page .hr-pd-facts > div {
+  display: block;
+  padding: .6rem 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--hr-p-line) 70%, transparent);
+  border-radius: 0;
+  background: transparent;
+}
+
+.hr-personal-page .hr-pd-facts > div:first-child { padding-top: 0; }
+.hr-personal-page .hr-pd-facts > div:last-child { padding-bottom: 0; border-bottom: 0; }
+
+.hr-personal-page .hr-pd-facts dt {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--hr-p-text-2);
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.hr-personal-page .hr-pd-facts dt svg {
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-pd-facts dd {
+  margin: .2rem 0 0;
+  color: var(--color-text);
+  font-size: .88rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* Employment-record panel (contracts, compensation, documents) */
+.hr-personal-page .hr-pd-panel .hr-record-panel {
+  display: grid;
+  gap: .9rem;
+  padding: 0;
+}
+
+.hr-personal-page .hr-pd-panel .hr-record-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: .75rem;
+  padding: .9rem;
+  border: 1px solid var(--hr-p-line);
+  border-radius: .85rem;
+  background: var(--color-background);
+}
+
+.hr-personal-page .hr-pd-panel .hr-record-form :is(h3, .span-full) {
+  grid-column: 1 / -1;
+}
+
+.hr-personal-page .hr-pd-panel .hr-record-form h3 {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: 0 0 .1rem;
+  padding-bottom: .55rem;
+  border-bottom: 1px solid var(--hr-p-line);
+  color: var(--color-text);
+  font-size: .9rem;
+  font-weight: 800;
+}
+
+.hr-personal-page .hr-pd-panel .hr-record-form > button {
+  justify-self: start;
+  align-self: end;
+}
+
+.hr-personal-page .hr-pd-panel .hr-record-alert {
+  border-radius: .75rem;
+}
+
+.hr-personal-page .hr-pd-panel .hr-record-list {
+  display: grid;
+  gap: .5rem;
+}
+
+.hr-personal-page .hr-pd-panel .hr-record-list article {
+  border-radius: .75rem;
+  background: var(--color-background);
+}
+
+.hr-personal-page .hr-pd-panel .hr-record-list article > b {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--hr-p-soft);
+  color: var(--color-primary);
+  font-size: .7rem;
+  letter-spacing: .04em;
+}
+
+/* =========================================================
+   Centro de trabajo RH
+   ========================================================= */
+.hr-personal-page .hr-hd-section-icon {
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-hd-task-grid,
+.hr-personal-page .hr-hd-setup-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.hr-personal-page button.hr-ws-tile {
+  width: 100%;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hr-personal-page button.hr-ws-tile:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.hr-personal-page .hr-hd-task,
+.hr-personal-page .hr-hd-setup {
+  align-items: center;
+}
+
+.hr-personal-page .hr-hd-tile-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: .7rem;
+  background: var(--hr-p-soft);
+  color: var(--color-primary);
+}
+
+.hr-personal-page .hr-hd-tile-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hr-personal-page .hr-hd-tile-text small {
+  display: block;
+  margin-top: .15rem;
+  color: var(--hr-p-text-2);
+  font-size: .78rem;
+}
+
+.hr-personal-page .hr-hd-task > svg {
+  flex: 0 0 auto;
+  color: var(--hr-p-text-2);
+}
+
+.hr-personal-page .hr-hd-task-count {
+  min-width: 34px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--hr-p-line);
+  color: var(--color-text);
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.hr-personal-page .hr-hd-task.has-pending {
+  border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 45%, var(--hr-p-line));
+}
+
+.hr-personal-page .hr-hd-task.has-pending .hr-hd-task-count {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-warning, #f59e0b) 18%, transparent);
+  color: var(--color-warning, #b45309);
+}
+
+.hr-personal-page .hr-hd-setup.needs-setup {
+  border-color: color-mix(in srgb, var(--color-danger, #ef4444) 40%, var(--hr-p-line));
+}
+
+.hr-personal-page .hr-hd-setup.needs-setup .hr-hd-tile-icon {
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 12%, transparent);
+  color: var(--color-danger, #ef4444);
+}
+
+/* Payroll route stepper */
+.hr-personal-page .hr-hd-route {
+  position: relative;
+  display: grid;
+  gap: .45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hr-personal-page .hr-hd-route li {
+  position: relative;
+}
+
+.hr-personal-page .hr-hd-route li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(.75rem + 13px);
+  bottom: -.45rem;
+  width: 2px;
+  height: .45rem;
+  background: var(--hr-p-line);
+}
+
+.hr-personal-page .hr-hd-route button {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  width: 100%;
+  padding: .65rem .75rem;
+  border: 1px solid var(--hr-p-line);
+  border-radius: .8rem;
+  background: var(--color-background);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hr-personal-page .hr-hd-route button:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+}
+
+.hr-personal-page .hr-hd-route button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.hr-personal-page .hr-hd-route button > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hr-personal-page .hr-hd-route strong {
+  display: block;
+  font-size: .86rem;
+}
+
+.hr-personal-page .hr-hd-route small {
+  display: block;
+  margin-top: 1px;
+  color: var(--hr-p-text-2);
+  font-size: .76rem;
+}
+
+.hr-personal-page .hr-hd-route button > svg {
+  flex: 0 0 auto;
+  color: var(--hr-p-text-2);
+}
+
+.hr-personal-page .hr-hd-step {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--hr-p-line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--hr-p-text-2);
+  font-size: .78rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.hr-personal-page .hr-hd-route li.current button {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  background: var(--hr-p-soft);
+}
+
+.hr-personal-page .hr-hd-route li.current .hr-hd-step {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.hr-personal-page .hr-hd-route li.complete .hr-hd-step {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-success, #22c55e) 18%, transparent);
+  color: var(--color-success, #16a34a);
+}
+
+.hr-personal-page .hr-hd-route li.complete button > svg {
+  color: var(--color-success, #16a34a);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 900px) {
+  .hr-personal-page .hr-pd-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .hr-personal-page .hr-pe-card-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hr-personal-page .hr-pe-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

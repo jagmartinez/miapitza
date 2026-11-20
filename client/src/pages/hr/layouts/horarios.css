@@ -1,0 +1,204 @@
+/* Horarios + Jornadas configuradas — layout on top of the RH workspace kit. */
+
+/* ---------- Shared ---------- */
+.hr-hz-page .hr-ws-toolbar.filters-toolbar {
+  margin-bottom: 0;
+  padding: .8rem .9rem;
+  gap: .75rem;
+}
+
+.hr-hz-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: .22rem .6rem;
+  border-radius: 999px;
+  border: 1px solid var(--hr-ws-border);
+  background: var(--hr-ws-muted);
+  color: var(--hr-ws-text-2);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.hr-hz-badge.is-accent { border-color: color-mix(in srgb, var(--color-primary) 40%, transparent); background: color-mix(in srgb, var(--color-primary) 12%, var(--hr-ws-panel)); color: var(--color-primary); }
+.hr-hz-badge.is-success { border-color: color-mix(in srgb, var(--color-success, #22c55e) 40%, transparent); background: color-mix(in srgb, var(--color-success, #22c55e) 12%, var(--hr-ws-panel)); color: var(--color-success, #22c55e); }
+.hr-hz-badge.is-warning { border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--color-warning, #f59e0b) 12%, var(--hr-ws-panel)); color: var(--color-warning, #f59e0b); }
+.hr-hz-badge.is-danger { border-color: color-mix(in srgb, var(--color-danger, #ef4444) 40%, transparent); background: color-mix(in srgb, var(--color-danger, #ef4444) 12%, var(--hr-ws-panel)); color: var(--color-danger, #ef4444); }
+
+/* ---------- Horarios: week navigator in hero aside ---------- */
+.hr-hz-weeknav {
+  display: grid;
+  gap: .65rem;
+  height: 100%;
+  padding: .8rem .9rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--hr-ws-border));
+  border-radius: .85rem;
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-background));
+  box-sizing: border-box;
+}
+
+.hr-hz-weeknav-label {
+  display: grid;
+  gap: .1rem;
+  min-width: 0;
+}
+
+.hr-hz-weeknav-label span {
+  color: var(--hr-ws-text-2);
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.hr-hz-weeknav-label strong {
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-hz-weeknav-label small {
+  color: var(--hr-ws-text-2);
+  font-size: .74rem;
+}
+
+.hr-hz-weeknav-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.hr-hz-weeknav-controls .btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+/* ---------- Horarios: filters ---------- */
+.hr-hz-schedules .hr-schedule-filters .filter-field {
+  flex: 1 1 220px;
+  min-width: min(220px, 100%);
+  max-width: none;
+}
+
+.hr-hz-schedules .hr-schedule-filters .filter-field.is-wide {
+  flex: 2 1 280px;
+}
+
+.hr-hz-schedules .hr-schedule-filters .filter-actions {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* ---------- Horarios: notices ---------- */
+.hr-hz-notices {
+  display: grid;
+  gap: .5rem;
+}
+
+.hr-hz-notices .hr-schedule-alert,
+.hr-hz-notices .hr-schedule-context-note {
+  margin: 0;
+}
+
+.hr-hz-notices .hr-schedule-context-note {
+  padding: .55rem .8rem;
+  border: 1px dashed var(--hr-ws-border);
+  border-radius: var(--radius-md);
+  background: var(--hr-ws-panel);
+}
+
+/* ---------- Horarios: conflicts ---------- */
+.hr-hz-conflicts {
+  border-color: color-mix(in srgb, var(--color-danger, #ef4444) 40%, var(--hr-ws-border));
+  border-left: 4px solid var(--color-danger, #ef4444);
+}
+
+.hr-hz-conflicts .hr-ws-section-header h2 span {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--color-danger, #ef4444);
+}
+
+.hr-hz-conflicts ul {
+  display: grid;
+  gap: .4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hr-hz-conflicts li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .6rem;
+  padding: .5rem .7rem;
+  border-radius: .6rem;
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 7%, var(--color-background));
+}
+
+.hr-hz-conflicts li strong {
+  color: var(--color-danger, #ef4444);
+  font-size: .75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.hr-hz-conflicts li span {
+  color: var(--hr-ws-text-2);
+  font-size: .85rem;
+}
+
+/* ---------- Horarios: planner (grid may scroll on its own, page never) ---------- */
+.hr-hz-planner {
+  min-width: 0;
+}
+
+.hr-hz-matrix-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* ---------- Jornadas: status tabs + catalog ---------- */
+.hr-hz-status-tabs.is-busy .hr-ws-tabs button {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.hr-hz-catalog .hr-template-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr));
+  justify-content: stretch;
+}
+
+.hr-hz-catalog .hr-template-card {
+  box-shadow: none;
+}
+
+.hr-hz-catalog .hr-template-empty {
+  border-color: var(--hr-ws-border);
+  background: var(--color-background);
+}
+
+@media (max-width: 1100px) {
+  .hr-hz-weeknav { height: auto; }
+}
+
+@media (max-width: 640px) {
+  .hr-hz-schedules .hr-schedule-filters .filter-actions {
+    width: 100%;
+  }
+
+  .hr-hz-schedules .hr-schedule-filters .filter-actions .btn {
+    flex: 1 1 150px;
+  }
+}
+
+@media print {
+  .hr-hz-weeknav-controls,
+  .hr-ws-hero-actions,
+  .hr-hz-status-tabs {
+    display: none !important;
+  }
+}

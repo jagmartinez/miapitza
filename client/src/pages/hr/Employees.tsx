@@ -17,7 +17,6 @@ import {
 import Button from '../../components/Button';
 import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import Pagination from '../../components/Pagination';
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
@@ -39,7 +38,9 @@ import type {
 } from '../../types/hr';
 import { useDebounce } from '../../utils/useDebounce';
 import { formatHrMoney } from '../../utils/hrFormat';
+import { HrHero, HrPage, HrSection, HrTabs, HrToolbar, type HrFact, type HrTabItem } from '../../components/hr/layout/HrWorkspace';
 import './hr.css';
+import './layouts/personal.css';
 
 type Option = { value: string; label: string };
 
@@ -93,6 +94,10 @@ function payFrequencyText(value: HrPayFrequency): string {
         FORTNIGHTLY: 'Catorcenal',
         MONTHLY: 'Mensual',
     })[value];
+}
+
+function asCount(value: number): string {
+    return new Intl.NumberFormat('es-NI').format(value);
 }
 
 function identificationText(employee: HrEmployee): string {
@@ -172,6 +177,13 @@ export default function Employees() {
     const filteredPositions = useMemo(() => lookups.positions.filter((position) =>
         !departmentId || String(position.departmentId ?? '') === departmentId
     ), [departmentId, lookups.positions]);
+
+    const pageStats = useMemo(() => ({
+        active: employees.filter((employee) => employee.status === 'ACTIVE').length,
+        onLeave: employees.filter((employee) => employee.status === 'ON_LEAVE').length,
+        withoutCompensation: employees.filter((employee) => employee.compensation !== undefined && !currentCompensation(employee)).length,
+        withoutUser: employees.filter((employee) => !employee.user).length,
+    }), [employees]);
 
     const users: HrUserSummary[] = lookups.users ?? [];
 
@@ -307,38 +319,55 @@ export default function Employees() {
         },
     ];
 
+    const statusTabs: HrTabItem<HrEmploymentStatus | 'ALL'>[] = STATUS_OPTIONS.map((option) => ({
+        key: option.value,
+        label: option.label,
+        count: option.value === status && !loading && !error ? totalItems : undefined,
+    }));
+
+    const facts: HrFact[] = [
+        { label: 'Expedientes', value: loading ? '—' : asCount(totalItems), hint: 'según los filtros aplicados', tone: 'accent' },
+        { label: 'Activos', value: loading ? '—' : asCount(pageStats.active), hint: `de ${asCount(employees.length)} en esta página`, tone: 'success' },
+        { label: 'Con permiso', value: loading ? '—' : asCount(pageStats.onLeave), hint: 'ausencias vigentes en la página', tone: pageStats.onLeave > 0 ? 'warning' : 'default' },
+        { label: 'Sin compensación vigente', value: loading ? '—' : asCount(pageStats.withoutCompensation), hint: 'requieren versión salarial', tone: pageStats.withoutCompensation > 0 ? 'danger' : 'success' },
+        { label: 'Sin usuario vinculado', value: loading ? '—' : asCount(pageStats.withoutUser), hint: 'sin acceso al sistema', tone: pageStats.withoutUser > 0 ? 'warning' : 'default' },
+    ];
+
+    const activeFilterCount = [search.trim(), departmentId, jobPositionId, costCenterId, branchId].filter(Boolean).length + (status === 'ALL' ? 0 : 1);
+
     return (
-        <div className="page-wrapper hr-employees-page">
-            <PageHeader
+        <HrPage className="hr-employees-page hr-personal-page">
+            <HrHero
+                eyebrow="Recursos humanos"
+                icon={UsersRound}
                 title="Gestión de Personal"
                 subtitle="Expedientes, identificación autorizada y compensación vigente"
-                icon={UsersRound}
                 actions={
                     <>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
                         <Button onClick={openCreate}><Plus size={18} /> Nuevo empleado</Button>
                     </>
                 }
+                facts={facts}
             />
 
-            <div className="filters-toolbar">
-                <div className="filter-field filter-field-wide">
-                    <label className="filter-field-label" htmlFor="hr-employee-search"><Search size={12} /> Buscar</label>
-                    <div className="search-box">
+            <HrTabs<HrEmploymentStatus | 'ALL'>
+                items={statusTabs}
+                active={status}
+                onChange={setStatus}
+                ariaLabel="Estado del expediente"
+                idPrefix="hr-employees"
+            />
+
+            <HrToolbar ariaLabel="Filtros de personal" className="hr-pe-toolbar">
+                <label className="is-wide" htmlFor="hr-employee-search">
+                    Buscar
+                    <span className="hr-pe-search">
                         <Search size={16} aria-hidden="true" />
                         <input id="hr-employee-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre, código o usuario" />
-                    </div>
-                </div>
-                <div className="filter-field">
-                    <Select<Option>
-                        label="Estado"
-                        options={STATUS_OPTIONS}
-                        value={STATUS_OPTIONS.find((option) => option.value === status)}
-                        onChange={(option: SingleValue<Option>) => setStatus((option?.value ?? 'ALL') as HrEmploymentStatus | 'ALL')}
-                        isSearchable={false}
-                    />
-                </div>
-                <div className="filter-field">
+                    </span>
+                </label>
+                <div className="hr-ws-field hr-pe-filter">
                     <Select<Option>
                         label="Departamento"
                         options={[{ value: '', label: 'Todos' }, ...lookups.departments.map((item) => ({ value: String(item.id), label: item.name }))]}
@@ -347,7 +376,7 @@ export default function Employees() {
                         isSearchable
                     />
                 </div>
-                <div className="filter-field">
+                <div className="hr-ws-field hr-pe-filter">
                     <Select<Option>
                         label="Puesto"
                         options={[{ value: '', label: 'Todos' }, ...filteredPositions.map((item) => ({ value: String(item.id), label: item.name }))]}
@@ -356,7 +385,7 @@ export default function Employees() {
                         isSearchable
                     />
                 </div>
-                <div className="filter-field">
+                <div className="hr-ws-field hr-pe-filter">
                     <Select<Option>
                         label="Centro de costo"
                         options={[{ value: '', label: 'Todos' }, ...lookups.costCenters.map((item) => ({ value: String(item.id), label: item.name }))]}
@@ -365,7 +394,7 @@ export default function Employees() {
                         isSearchable
                     />
                 </div>
-                <div className="filter-field">
+                <div className="hr-ws-field hr-pe-filter">
                     <Select<Option>
                         label="Sucursal"
                         options={[{ value: '', label: 'Todas' }, ...(lookups.branches ?? []).map((item) => ({ value: String(item.id), label: item.name }))]}
@@ -376,84 +405,100 @@ export default function Employees() {
                         isSearchable
                     />
                 </div>
-                <div className="filter-spacer" />
-                <div className="filter-actions">
-                    <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>
+                <div className="hr-ws-toolbar-actions">
+                    <Button variant="ghost" onClick={clearFilters}>Limpiar{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</Button>
                 </div>
-            </div>
+            </HrToolbar>
 
-            {loading && <LoadingSpinner text="Cargando personal…" />}
+            <HrSection
+                id={`hr-employees-panel-${status.toLowerCase()}`}
+                role="tabpanel"
+                aria-labelledby={`hr-employees-tab-${status.toLowerCase()}`}
+                eyebrow="Plantilla"
+                title="Expedientes laborales"
+                count={loading || error ? undefined : totalItems}
+                description={viewMode === 'table' ? 'Vista tabular con identificación y compensación vigente.' : 'Fichas por colaborador con su compensación vigente.'}
+                flush={viewMode === 'table' && !loading && !error && employees.length > 0}
+                className="hr-pe-results"
+            >
+                {loading && <LoadingSpinner text="Cargando personal…" />}
 
-            {!loading && error && (
-                <div className="state-placeholder" role="alert">
-                    <UsersRound size={42} aria-hidden="true" />
-                    <p className="state-error">{error}</p>
-                    <Button variant="ghost" onClick={() => void loadEmployees()}><RefreshCw size={16} /> Reintentar</Button>
-                </div>
-            )}
+                {!loading && error && (
+                    <div className="hr-pe-state" role="alert">
+                        <UsersRound size={42} aria-hidden="true" />
+                        <p className="state-error">{error}</p>
+                        <Button variant="ghost" onClick={() => void loadEmployees()}><RefreshCw size={16} /> Reintentar</Button>
+                    </div>
+                )}
 
-            {!loading && !error && employees.length === 0 && (
-                <div className="state-placeholder">
-                    <UsersRound size={48} aria-hidden="true" />
-                    <p>No hay empleados que coincidan con los filtros.</p>
-                    <Button variant="ghost" onClick={clearFilters}>Limpiar filtros</Button>
-                </div>
-            )}
+                {!loading && !error && employees.length === 0 && (
+                    <div className="hr-pe-state">
+                        <UsersRound size={48} aria-hidden="true" />
+                        <p>No hay empleados que coincidan con los filtros.</p>
+                        <Button variant="ghost" onClick={clearFilters}>Limpiar filtros</Button>
+                    </div>
+                )}
 
-            {!loading && !error && employees.length > 0 && viewMode === 'table' && (
-                <CatalogTable<HrEmployee>
-                    rows={employees}
-                    rowKey={(employee) => employee.id}
-                    columns={columns}
-                    pageSize={Math.max(1, employees.length)}
-                    resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
-                />
-            )}
+                {!loading && !error && employees.length > 0 && viewMode === 'table' && (
+                    <div className="hr-ws-table-scroll hr-pe-table">
+                        <CatalogTable<HrEmployee>
+                            rows={employees}
+                            rowKey={(employee) => employee.id}
+                            columns={columns}
+                            pageSize={Math.max(1, employees.length)}
+                            resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
+                        />
+                    </div>
+                )}
 
-            {!loading && !error && employees.length > 0 && viewMode === 'cards' && (
-                <div className="entity-grid hr-employee-grid">
-                    {employees.map((employee) => (
-                        <article key={employee.id} className={`entity-card entity-card-accent hr-employee-card ${employee.status === 'ACTIVE' ? 'entity-accent-success' : 'entity-accent-warning'}`}>
-                            <div className="entity-card-body">
-                                <div className="hr-employee-card-heading">
-                                    <div className="hr-employee-avatar" aria-hidden="true">{initials(employee)}</div>
-                                    <div>
-                                        <h3 className="entity-card-title">{employee.legalName}</h3>
-                                        <span className="entity-card-tag">{employee.employeeCode}</span>
+                {!loading && !error && employees.length > 0 && viewMode === 'cards' && (
+                    <div className="hr-pe-grid">
+                        {employees.map((employee) => {
+                            const compensation = currentCompensation(employee);
+                            return (
+                                <article key={employee.id} className={`hr-pe-card ${employee.status === 'ACTIVE' ? 'is-active' : 'is-idle'}`}>
+                                    <header className="hr-pe-card-head">
+                                        <div className="hr-pe-avatar" aria-hidden="true">{initials(employee)}</div>
+                                        <div className="hr-pe-card-title">
+                                            <h3>{employee.legalName}</h3>
+                                            <span>{employee.employeeCode}</span>
+                                        </div>
+                                        <HrStatusPill status={employee.status} />
+                                    </header>
+                                    <ul className="hr-pe-card-meta">
+                                        <li><Briefcase size={15} aria-hidden="true" /> {employee.jobPosition?.name ?? 'Sin puesto'}</li>
+                                        <li><Building2 size={15} aria-hidden="true" /> {primaryBranch(employee)?.name ?? 'Sin sucursal'}</li>
+                                        <li><UsersRound size={15} aria-hidden="true" /> {employee.user ? `@${employee.user.username}` : 'Sin usuario'}</li>
+                                        <li><BadgeCheck size={15} aria-hidden="true" /> {identificationText(employee)}</li>
+                                    </ul>
+                                    <div className="hr-employee-card-compensation hr-pe-card-money">
+                                        <WalletCards size={17} aria-hidden="true" />
+                                        <div>
+                                            <span>Compensación vigente</span>
+                                            {employee.compensation === undefined
+                                                ? <strong>Acceso restringido</strong>
+                                                : compensation
+                                                    ? <><strong className="hr-money">{formatHrMoney(compensation.currency, compensation.amount)}</strong><small>{compensation.compensationType === 'SALARY' ? 'Salario' : 'Por hora'} · {payFrequencyText(compensation.payFrequency)}</small></>
+                                                    : <strong>Sin compensación vigente</strong>}
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="hr-card-status"><HrStatusPill status={employee.status} /></div>
-                                <div className="entity-card-meta">
-                                    <span className="entity-card-meta-item"><Briefcase size={15} /> {employee.jobPosition?.name ?? 'Sin puesto'}</span>
-                                    <span className="entity-card-meta-item"><Building2 size={15} /> {primaryBranch(employee)?.name ?? 'Sin sucursal'}</span>
-                                    <span className="entity-card-meta-item"><UsersRound size={15} /> {employee.user ? `@${employee.user.username}` : 'Sin usuario'}</span>
-                                    <span className="entity-card-meta-item"><BadgeCheck size={15} /> {identificationText(employee)}</span>
-                                </div>
-                                <div className="hr-employee-card-compensation">
-                                    <WalletCards size={17} aria-hidden="true" />
-                                    <div>
-                                        <span>Compensación vigente</span>
-                                        {employee.compensation === undefined
-                                            ? <strong>Acceso restringido</strong>
-                                            : currentCompensation(employee)
-                                                ? <><strong>{formatHrMoney(currentCompensation(employee)!.currency, currentCompensation(employee)!.amount)}</strong><small>{currentCompensation(employee)!.compensationType === 'SALARY' ? 'Salario' : 'Por hora'} · {payFrequencyText(currentCompensation(employee)!.payFrequency)}</small></>
-                                                : <strong>Sin compensación vigente</strong>}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="entity-card-actions">
-                                <button className="entity-card-action view" type="button" aria-label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)}><Eye size={18} /><span>Ver</span></button>
-                                <button className="entity-card-action edit" type="button" aria-label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)}><Edit2 size={18} /><span>Editar</span></button>
-                                {employee.status === 'ACTIVE' && <button className="entity-card-action delete" type="button" aria-label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)}><UserMinus size={18} /><span>Desactivar</span></button>}
-                            </div>
-                        </article>
-                    ))}
-                </div>
-            )}
+                                    <footer className="hr-pe-card-actions">
+                                        <button className="hr-pe-card-action" type="button" aria-label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)}><Eye size={16} /><span>Ver</span></button>
+                                        <button className="hr-pe-card-action" type="button" aria-label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)}><Edit2 size={16} /><span>Editar</span></button>
+                                        {employee.status === 'ACTIVE' && <button className="hr-pe-card-action is-danger" type="button" aria-label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)}><UserMinus size={16} /><span>Desactivar</span></button>}
+                                    </footer>
+                                </article>
+                            );
+                        })}
+                    </div>
+                )}
 
-            {!loading && !error && totalPages > 1 && (
-                <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={25} onPageChange={setPage} />
-            )}
+                {!loading && !error && totalPages > 1 && (
+                    <div className="hr-pe-pagination">
+                        <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={25} onPageChange={setPage} />
+                    </div>
+                )}
+            </HrSection>
 
             <Sidebar
                 isOpen={editorOpen}
@@ -472,6 +517,6 @@ export default function Employees() {
                     onSubmit={saveEmployee}
                 />
             </Sidebar>
-        </div>
+        </HrPage>
     );
 }

@@ -16,8 +16,8 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import MyHrNav from '../../components/hr/MyHrNav';
+import { HrHero, HrPage, HrSection, type HrFact } from '../../components/hr/layout/HrWorkspace';
 import { benefitsClient } from '../../components/hr/benefitsClient';
 import { payrollClient } from '../../components/hr/payrollClient';
 import { scheduleClient } from '../../components/hr/scheduleClient';
@@ -31,6 +31,7 @@ import type { HrScheduleShift } from '../../types/hr-schedule';
 import type { HrMyWorkforce } from '../../types/hr-workforce';
 import { formatHrMoney, formatHrNumber } from '../../utils/hrFormat';
 import './hr.css';
+import './layouts/mi-rh.css';
 
 interface PortalSummary {
   nextShift: HrScheduleShift | null;
@@ -128,8 +129,37 @@ export default function MyHrLanding() {
     ].filter((item) => PENDING_WORKFLOW.has(item.status)).length;
   }, [summary.workforce]);
 
+  const approvedOvertimeMinutes = useMemo(() => {
+    const workforce = summary.workforce;
+    if (!workforce) return null;
+    return workforce.overtimeRequests
+      .filter((item) => item.status === 'APPROVED')
+      .reduce((total, item) => total + (item.approvedMinutes ?? 0), 0);
+  }, [summary.workforce]);
+
   const vacation = selectVacationBalance(summary.workforce?.vacationBalances);
   const activeBenefits = [...summary.travel, ...summary.loans].filter((item) => ACTIVE_BENEFIT.has(item.status)).length;
+  const employeeCode = user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? null;
+
+  const facts: HrFact[] = [
+    {
+      label: 'Saldo de vacaciones',
+      value: loading ? '…' : vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()}` : 'Sin saldo',
+      hint: 'Disponible para solicitar',
+      tone: vacation ? 'success' : 'default',
+    },
+    {
+      label: 'Solicitudes en espera',
+      value: loading ? '…' : pendingRequests ?? '—',
+      hint: 'Vacaciones, permisos y horas extra',
+      tone: pendingRequests ? 'warning' : 'default',
+    },
+    {
+      label: 'Horas extra aprobadas',
+      value: loading ? '…' : approvedOvertimeMinutes != null ? `${formatHrNumber(approvedOvertimeMinutes)} min` : '—',
+      hint: 'Registradas hoy',
+    },
+  ];
 
   const actions = [
     { to: '/rh/mi-portal/horario', icon: CalendarClock, title: 'Horario y turnos', text: 'Consulta tu calendario semanal y confirma los horarios publicados.' },
@@ -141,30 +171,31 @@ export default function MyHrLanding() {
   ];
 
   return (
-    <div className="page-wrapper hr-my-landing-page">
-      <PageHeader title="Mi portal RH" subtitle="Tu jornada, solicitudes y pagos en un solo lugar" icon={UserRound} />
-      <MyHrNav />
+    <HrPage className="hr-my-landing-page mi-rh-page">
+      <HrHero
+        eyebrow="Mi RH"
+        icon={UserRound}
+        title="Mi portal RH"
+        subtitle={<><strong className="mi-rh-greeting">Hola, {user?.name ?? 'colaborador'}</strong> · Tu jornada, solicitudes y pagos en un solo lugar</>}
+        badges={
+          <>
+            <span className="mi-rh-badge is-accent">EXPEDIENTE PERSONAL</span>
+            {employeeCode && <span className="mi-rh-badge">Código {employeeCode}</span>}
+            <span className="mi-rh-badge"><MapPin size={13} aria-hidden="true" /> {user?.branch?.name ?? 'Sucursal no asignada'}</span>
+          </>
+        }
+        actions={<Link to="/profile" className="mi-rh-profile-link">Ver perfil de cuenta <ChevronRight size={17} aria-hidden="true" /></Link>}
+        facts={facts}
+      />
 
-      <section className="hr-my-welcome" aria-labelledby="my-hr-welcome-title">
-        <div>
-          <span>EXPEDIENTE PERSONAL</span>
-          <h2 id="my-hr-welcome-title">Hola, {user?.name ?? 'colaborador'}</h2>
-          <p>
-            {user?.employee?.employeeCode || user?.employee?.employeeNumber
-              ? `Código ${user.employee.employeeCode ?? user.employee.employeeNumber} · `
-              : ''}
-            {user?.branch?.name ?? 'Sucursal no asignada'}
-          </p>
-        </div>
-        <Link to="/profile">Ver perfil de cuenta <ChevronRight size={17} aria-hidden="true" /></Link>
-      </section>
+      <MyHrNav />
 
       {loading ? (
         <LoadingSpinner text="Preparando tu resumen RH…" />
       ) : (
         <>
           {summary.unavailableSections > 0 && (
-            <div className="hr-inline-alert warning hr-my-summary-warning" role="status">
+            <div className="hr-inline-alert warning mi-rh-warning" role="status">
               <AlertTriangle size={18} aria-hidden="true" />
               <span>
                 {summary.unavailableSections === 5
@@ -177,55 +208,68 @@ export default function MyHrLanding() {
             </div>
           )}
 
-          <section className="hr-my-summary-grid" aria-label="Resumen personal de recursos humanos">
-            <button type="button" onClick={() => navigate('/rh/mi-portal/horario')}>
-              <CalendarClock size={20} aria-hidden="true" />
-              <span>Próximo turno</span>
-              <strong>{!summary.scheduleAvailable ? 'No disponible' : summary.nextShift ? `${shortDate(summary.nextShift.date)} · ${summary.nextShift.startTime}` : 'Sin turno publicado'}</strong>
-              <small>{summary.nextShift?.branch?.name ?? 'Consulta tu calendario'}</small>
-            </button>
-            <button type="button" onClick={() => navigate('/rh/mi-portal/gestion')}>
-              <Clock3 size={20} aria-hidden="true" />
-              <span>Solicitudes abiertas</span>
-              <strong>{pendingRequests ?? '—'}</strong>
-              <small>{vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()} disponibles` : 'Vacaciones, permisos y horas extra'}</small>
-            </button>
-            <button type="button" onClick={() => navigate('/rh/mi-portal/nomina')}>
-              <FileText size={20} aria-hidden="true" />
-              <span>Último recibo</span>
-              <strong>{!summary.payrollAvailable ? 'No disponible' : summary.latestReceipt ? formatHrMoney(summary.latestReceipt.currency, summary.latestReceipt.netPay) : 'Sin recibos publicados'}</strong>
-              <small>{summary.latestReceipt?.periodLabel ?? 'Consulta tus colillas de pago'}</small>
-            </button>
-            <button type="button" onClick={() => navigate('/rh/mi-portal/prestaciones')}>
-              <WalletCards size={20} aria-hidden="true" />
-              <span>Beneficios en curso</span>
-              <strong>{summary.benefitsComplete ? activeBenefits : '—'}</strong>
-              <small>Viáticos y préstamos activos o en revisión</small>
-            </button>
-          </section>
+          <HrSection
+            className="mi-rh-summary"
+            eyebrow="Resumen"
+            title="Tu semana en RH"
+            aria-label="Resumen personal de recursos humanos"
+          >
+            <div className="hr-ws-grid mi-rh-summary-grid">
+              <button type="button" className="hr-ws-tile mi-rh-stat" onClick={() => navigate('/rh/mi-portal/horario')}>
+                <CalendarClock size={20} aria-hidden="true" />
+                <span className="mi-rh-stat-body">
+                  <span className="mi-rh-stat-label">Próximo turno</span>
+                  <strong>{!summary.scheduleAvailable ? 'No disponible' : summary.nextShift ? `${shortDate(summary.nextShift.date)} · ${summary.nextShift.startTime}` : 'Sin turno publicado'}</strong>
+                  <small>{summary.nextShift?.branch?.name ?? 'Consulta tu calendario'}</small>
+                </span>
+              </button>
+              <button type="button" className="hr-ws-tile mi-rh-stat" onClick={() => navigate('/rh/mi-portal/gestion')}>
+                <Clock3 size={20} aria-hidden="true" />
+                <span className="mi-rh-stat-body">
+                  <span className="mi-rh-stat-label">Solicitudes abiertas</span>
+                  <strong>{pendingRequests ?? '—'}</strong>
+                  <small>{vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()} disponibles` : 'Vacaciones, permisos y horas extra'}</small>
+                </span>
+              </button>
+              <button type="button" className="hr-ws-tile mi-rh-stat" onClick={() => navigate('/rh/mi-portal/nomina')}>
+                <FileText size={20} aria-hidden="true" />
+                <span className="mi-rh-stat-body">
+                  <span className="mi-rh-stat-label">Último recibo</span>
+                  <strong>{!summary.payrollAvailable ? 'No disponible' : summary.latestReceipt ? formatHrMoney(summary.latestReceipt.currency, summary.latestReceipt.netPay) : 'Sin recibos publicados'}</strong>
+                  <small>{summary.latestReceipt?.periodLabel ?? 'Consulta tus colillas de pago'}</small>
+                </span>
+              </button>
+              <button type="button" className="hr-ws-tile mi-rh-stat" onClick={() => navigate('/rh/mi-portal/prestaciones')}>
+                <WalletCards size={20} aria-hidden="true" />
+                <span className="mi-rh-stat-body">
+                  <span className="mi-rh-stat-label">Beneficios en curso</span>
+                  <strong>{summary.benefitsComplete ? activeBenefits : '—'}</strong>
+                  <small>Viáticos y préstamos activos o en revisión</small>
+                </span>
+              </button>
+            </div>
+          </HrSection>
         </>
       )}
 
-      <section className="hr-landing-panel">
-        <div className="hr-panel-header">
-          <div>
-            <h2>¿Qué necesitas hacer?</h2>
-            <p>Selecciona una opción para consultar información o iniciar una solicitud.</p>
-          </div>
-        </div>
-        <div className="hr-self-action-grid">
+      <HrSection
+        className="mi-rh-actions"
+        title="¿Qué necesitas hacer?"
+        description="Selecciona una opción para consultar información o iniciar una solicitud."
+      >
+        <div className="hr-ws-grid mi-rh-action-grid">
           {actions.map((action) => {
             const Icon = action.icon;
             return (
-              <button key={action.to} type="button" className="hr-self-action" onClick={() => navigate(action.to)}>
-                <Icon size={24} aria-hidden="true" />
-                <span><strong>{action.title}</strong><small>{action.text}</small></span>
-                <ChevronRight size={18} className="hr-self-action-chevron" aria-hidden="true" />
+              <button key={action.to} type="button" className="hr-ws-tile mi-rh-action" onClick={() => navigate(action.to)}>
+                <span className="mi-rh-action-icon" aria-hidden="true"><Icon size={20} aria-hidden="true" /></span>
+                <span className="mi-rh-action-body"><strong>{action.title}</strong><small>{action.text}</small></span>
+                <ChevronRight size={18} className="mi-rh-action-chevron" aria-hidden="true" />
               </button>
             );
           })}
         </div>
-      </section>
-    </div>
+      </HrSection>
+    </HrPage>
   );
 }

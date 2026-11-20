@@ -12,11 +12,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import Button from '../../components/Button';
-import PageHeader from '../../components/PageHeader';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Pagination from '../../components/Pagination';
 import Sidebar from '../../components/Sidebar';
 import HrReactSelect from '../../components/hr/HrReactSelect';
+import { HrHero, HrPage, HrSection, HrTabs, HrToolbar } from '../../components/hr/layout/HrWorkspace';
 import { benefitsGovernanceClient } from '../../components/hr/benefitsGovernanceClient';
 import { getBenefitsErrorMessage } from '../../components/hr/benefitsClient';
 import { hrClient } from '../../components/hr/hrClient';
@@ -34,6 +34,7 @@ import type {
   TravelPolicyCategory,
 } from '../../types/hr-benefits-governance';
 import './benefits-governance.css';
+import './layouts/prestaciones.css';
 
 type Tab = 'SETTLEMENTS' | 'POLICIES';
 const today = new Date().toISOString().slice(0, 10);
@@ -404,40 +405,32 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
     }));
 
   if (loading) return <LoadingSpinner />;
-  return (
-    <div className={`benefits-governance-page${embedded ? ' is-embedded' : ''}`}>
-      {!embedded && (
-        <PageHeader
-          title="Liquidaciones y políticas"
-          subtitle="Administra cierres laborales, viáticos y préstamos con versiones, soportes y trazabilidad."
-          icon={Gavel}
-          actions={
-            <Button variant="secondary" onClick={() => void load()}>
-              <RefreshCw size={16} /> Actualizar
-            </Button>
-          }
-        />
-      )}
-      <nav className="governance-tabs" aria-label="Secciones" role="tablist">
-        <button
-          role="tab"
-          aria-selected={tab === 'SETTLEMENTS'}
-          className={tab === 'SETTLEMENTS' ? 'active' : ''}
-          onClick={() => setTab('SETTLEMENTS')}
-        >
-          <BadgeDollarSign size={17} /> Liquidaciones finales
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === 'POLICIES'}
-          className={tab === 'POLICIES' ? 'active' : ''}
-          onClick={() => setTab('POLICIES')}
-        >
-          <ShieldCheck size={17} /> Políticas de viáticos y préstamos
-        </button>
-      </nav>
+  const content = (
+    <>
+      <HrTabs<Tab>
+        items={[
+          {
+            key: 'SETTLEMENTS',
+            label: 'Liquidaciones finales',
+            count: pagination.total,
+            icon: BadgeDollarSign,
+          },
+          {
+            key: 'POLICIES',
+            label: 'Políticas de viáticos y préstamos',
+            count: policyPagination.total,
+            icon: ShieldCheck,
+          },
+        ]}
+        active={tab}
+        onChange={setTab}
+        ariaLabel="Secciones"
+        idPrefix="governance"
+      />
 
       <section
+        id={`governance-panel-${tab.toLowerCase()}`}
+        className="bnx-gov-panel"
         role="tabpanel"
         aria-label={
           tab === 'SETTLEMENTS' ? 'Liquidaciones finales' : 'Políticas de viáticos y préstamos'
@@ -445,13 +438,11 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
       >
         {tab === 'SETTLEMENTS' ? (
           <>
-            <div className="governance-toolbar">
-              <div>
-                <h2>Liquidaciones de empleados</h2>
-                <p>Cada fila conserva cálculo, aprobaciones, pago y constancia PDF.</p>
-              </div>
-              <div className="governance-toolbar-actions">
+            <HrToolbar className="bnx-toolbar" ariaLabel="Filtros de liquidaciones">
+              <label className="is-wide">
+                <span>Buscar</span>
                 <input
+                  type="search"
                   aria-label="Buscar liquidación"
                   placeholder="Buscar código o empleado"
                   value={search}
@@ -460,31 +451,33 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     setPage(1);
                   }}
                 />
-                <label>
-                  <span>Estado</span>
-                  <HrReactSelect
-                    aria-label="Filtrar liquidaciones por estado"
-                    value={settlementStatus}
-                    onChange={(event) => {
-                      setSettlementStatus(event.target.value);
-                      setPage(1);
-                    }}
-                  >
-                    <option value="">Todos</option>
-                    {Object.entries(statusLabel)
-                      .filter(([value]) => !['ACTIVE', 'RETIRED'].includes(value))
-                      .map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                  </HrReactSelect>
-                </label>
+              </label>
+              <label>
+                <span>Estado</span>
+                <HrReactSelect
+                  aria-label="Filtrar liquidaciones por estado"
+                  value={settlementStatus}
+                  onChange={(event) => {
+                    setSettlementStatus(event.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Todos</option>
+                  {Object.entries(statusLabel)
+                    .filter(([value]) => !['ACTIVE', 'RETIRED'].includes(value))
+                    .map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                </HrReactSelect>
+              </label>
+              <div className="hr-ws-toolbar-actions">
                 <Button onClick={() => setShowSettlement(true)}>
                   <Plus size={17} /> Nueva liquidación
                 </Button>
               </div>
-            </div>
+            </HrToolbar>
             <Sidebar
               isOpen={showSettlement}
               onClose={() => setShowSettlement(false)}
@@ -749,7 +742,15 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 )}
               </section>
             </Sidebar>
-            <div className="governance-table-wrap pr-table-card">
+            <HrSection
+              flush
+              className="pr-table-card bnx-board"
+              eyebrow="Cierres laborales"
+              title="Liquidaciones de empleados"
+              count={pagination.total}
+              description="Cada fila conserva cálculo, aprobaciones, pago y constancia PDF."
+            >
+              <div className="hr-ws-table-scroll">
               <table className="hr-admin-table inventory-table">
                 <thead>
                   <tr>
@@ -828,6 +829,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   )}
                 </tbody>
               </table>
+              </div>
               <Pagination
                 page={pagination.page}
                 totalPages={pagination.totalPages}
@@ -837,37 +839,33 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 alwaysShow
                 emptyLabel="Sin liquidaciones"
               />
-            </div>
+            </HrSection>
           </>
         ) : (
           <>
-            <div className="governance-toolbar">
-              <div>
-                <h2>Políticas versionadas</h2>
-                <p>Las corridas congelan la versión vigente. Una persona crea y otra activa.</p>
-              </div>
-              <div className="governance-toolbar-actions">
-                <label>
-                  <span>Estado</span>
-                  <HrReactSelect
-                    aria-label="Filtrar políticas por estado"
-                    value={policyStatus}
-                    onChange={(event) => {
-                      setPolicyStatus(event.target.value);
-                      setPolicyPage(1);
-                    }}
-                  >
-                    <option value="">Todos</option>
-                    <option value="DRAFT">Borrador</option>
-                    <option value="ACTIVE">Activa</option>
-                    <option value="RETIRED">Retirada</option>
-                  </HrReactSelect>
-                </label>
+            <HrToolbar className="bnx-toolbar" ariaLabel="Filtros de políticas">
+              <label>
+                <span>Estado</span>
+                <HrReactSelect
+                  aria-label="Filtrar políticas por estado"
+                  value={policyStatus}
+                  onChange={(event) => {
+                    setPolicyStatus(event.target.value);
+                    setPolicyPage(1);
+                  }}
+                >
+                  <option value="">Todos</option>
+                  <option value="DRAFT">Borrador</option>
+                  <option value="ACTIVE">Activa</option>
+                  <option value="RETIRED">Retirada</option>
+                </HrReactSelect>
+              </label>
+              <div className="hr-ws-toolbar-actions">
                 <Button onClick={() => openPolicyEditor()}>
                   <Plus size={17} /> Nueva versión
                 </Button>
               </div>
-            </div>
+            </HrToolbar>
             <Sidebar
               isOpen={showPolicy}
               onClose={() => {
@@ -1137,7 +1135,15 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 </div>
               </section>
             </Sidebar>
-            <div className="governance-table-wrap pr-table-card">
+            <HrSection
+              flush
+              className="pr-table-card bnx-board"
+              eyebrow="Reglas vigentes"
+              title="Políticas versionadas"
+              count={policyPagination.total}
+              description="Las corridas congelan la versión vigente. Una persona crea y otra activa."
+            >
+              <div className="hr-ws-table-scroll">
               <table className="hr-admin-table inventory-table">
                 <thead>
                   <tr>
@@ -1230,6 +1236,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   )}
                 </tbody>
               </table>
+              </div>
               <Pagination
                 page={policyPagination.page}
                 totalPages={policyPagination.totalPages}
@@ -1239,7 +1246,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 alwaysShow
                 emptyLabel="Sin políticas"
               />
-            </div>
+            </HrSection>
           </>
         )}
       </section>
@@ -1717,6 +1724,45 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
           </div>
         )}
       </Sidebar>
-    </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="benefits-governance-page is-embedded bnx-gov">{content}</div>;
+  }
+
+  const activePolicy = policies.find((row) => row.status === 'ACTIVE');
+  return (
+    <HrPage className="benefits-governance-page bnx-gov prestaciones-page">
+      <HrHero
+        eyebrow="Recursos humanos"
+        icon={Gavel}
+        title="Liquidaciones y políticas"
+        subtitle="Administra cierres laborales, viáticos y préstamos con versiones, soportes y trazabilidad."
+        actions={
+          <Button variant="secondary" onClick={() => void load()}>
+            <RefreshCw size={16} /> Actualizar
+          </Button>
+        }
+        facts={[
+          { label: 'Liquidaciones', value: pagination.total, hint: 'Según filtro actual' },
+          {
+            label: 'Borradores en página',
+            value: settlements.filter((row) => row.status === 'DRAFT').length,
+            tone: 'warning',
+          },
+          { label: 'Políticas', value: policyPagination.total },
+          {
+            label: 'Política activa',
+            value: activePolicy ? `v${activePolicy.version}` : '—',
+            hint: activePolicy
+              ? `Desde ${activePolicy.effectiveFrom.slice(0, 10)}`
+              : 'Sin versión publicada',
+            tone: activePolicy ? 'success' : 'danger',
+          },
+        ]}
+      />
+      {content}
+    </HrPage>
   );
 }

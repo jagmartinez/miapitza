@@ -13,12 +13,12 @@ import {
 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import Pagination from '../../components/Pagination';
 import Sidebar from '../../components/Sidebar';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import { HrHero, HrPage, HrSection, HrToolbar, type HrFact } from '../../components/hr/layout/HrWorkspace';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import OvertimeRequestForm from '../../components/hr/OvertimeRequestForm';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -46,6 +46,7 @@ import './attendance.css';
 import './admin-tables.css';
 import './hr-admin-operations.css';
 import '../Inventory.css';
+import './layouts/asistencia.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
   departments: [],
@@ -275,28 +276,74 @@ export default function AttendanceManagement() {
   const pageSlice = <T,>(items: T[]) => items.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
   useEffect(() => { setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE)))); }, [activeTableCount]);
 
+  const openIncidents = incidents.filter((item) => item.status === 'OPEN').length;
+  const pendingCorrections = corrections.filter((item) => item.status === 'PENDING').length;
+  const pendingOvertime = overtime.filter((item) => item.status === 'PENDING').length;
+  const lateDays = summaries.filter((item) => item.lateMinutes > 0 || item.earlyDepartureMinutes > 0).length;
+  const closedPeriods = periods.filter((item) => item.status === 'CLOSED').length;
+  const managementFacts: HrFact[] = loading || error ? [] : [
+    { label: 'Jornadas del día', value: summaries.length, hint: dateLabel(date), tone: 'accent' },
+    { label: 'Tardanzas o salidas antes', value: lateDays, hint: 'Según cálculo del servidor', tone: lateDays > 0 ? 'warning' : 'success' },
+    { label: 'Incidencias abiertas', value: openIncidents, tone: openIncidents > 0 ? 'danger' : 'success' },
+    { label: 'Decisiones pendientes', value: pendingCorrections + pendingOvertime, hint: `${pendingCorrections} correcciones · ${pendingOvertime} horas extra`, tone: pendingCorrections + pendingOvertime > 0 ? 'warning' : 'default' },
+    { label: 'Periodos cerrados', value: `${closedPeriods} / ${periods.length}` },
+  ];
+  const openPeriodPanel = () => {
+    setPeriodForm({ dateFrom: date, dateTo: date, reason: '' });
+    setCreatePanel({ kind: 'period' });
+  };
+  const tableMeta: Record<AttendanceTable, { title: string; description: string }> = {
+    DAY: { title: 'Jornadas', description: `Minutos registrados el ${dateLabel(date)}; el servidor calcula tardanzas y extras.` },
+    INCIDENTS: { title: 'Incidencias', description: 'Marcajes fuera de regla que necesitan una corrección compensatoria.' },
+    CORRECTIONS: { title: 'Correcciones', description: 'Ajustes solicitados que esperan una decisión con razón.' },
+    OVERTIME: { title: 'Horas extra', description: 'Solicitudes de tiempo adicional por aprobar o rechazar.' },
+    PERIODS: { title: 'Periodos', description: 'Cierra el periodo cuando no queden pendientes para alimentar la nómina.' },
+  };
+
   return (
-    <div className="page-wrapper inventory-page hr-workforce-page hr-attendance-management-page hr-admin-catalog-page hr-operation-page">
-      <PageHeader
-        className="inventory-header-new hr-operation-header"
-        title="Control diario de asistencia"
-        subtitle="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
-        icon={CalendarClock}
-        actions={
-          <Button
-            onClick={() => {
-              setPeriodForm({ dateFrom: date, dateTo: date, reason: '' });
-              setCreatePanel({ kind: 'period' });
-            }}
-            disabled={!online}
-          >
-            <Plus size={17} /> Crear periodo
-          </Button>
-        }
-      />
+    <HrPage className="inventory-page hr-workforce-page hr-attendance-management-page hr-admin-catalog-page hr-operation-page hr-asis-page hr-asis-management">
+      <div className="hr-asis-hero inventory-header-new">
+        <HrHero
+          eyebrow="Recursos humanos"
+          icon={CalendarClock}
+          title="Control diario de asistencia"
+          subtitle="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
+          actions={
+            <Button onClick={openPeriodPanel} disabled={!online}>
+              <Plus size={17} /> Crear periodo
+            </Button>
+          }
+          facts={managementFacts}
+        />
+      </div>
       <OnlineOnlyNotice online={online} />
 
-      <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros del resumen diario">
+      {!loading && !error && <nav className="hr-ws-tabs-bar hr-asis-tabs-bar" aria-label="Bandejas de asistencia">
+        <div className="hr-ws-tabs filters-toolbar hr-admin-tab-toolbar" role="tablist" aria-label="Bandejas de asistencia">
+          {([
+            ['DAY', 'Jornadas', summaries.length],
+            ['INCIDENTS', 'Incidencias', openIncidents],
+            ['CORRECTIONS', 'Correcciones', pendingCorrections],
+            ['OVERTIME', 'Horas extra', pendingOvertime],
+            ['PERIODS', 'Periodos', periods.length],
+          ] as Array<[AttendanceTable, string, number]>).map(([value, label, count]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              id={`attendance-tab-${value.toLowerCase()}`}
+              aria-controls={`attendance-panel-${value.toLowerCase()}`}
+              aria-selected={activeTable === value}
+              className={activeTable === value ? 'active' : undefined}
+              onClick={() => setActiveTable(value)}
+            >
+              {label} <small>{count}</small>
+            </button>
+          ))}
+        </div>
+      </nav>}
+
+      <HrToolbar ariaLabel="Filtros del resumen diario" className="hr-operation-toolbar hr-asis-toolbar">
         <label>
           Fecha
           <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
@@ -312,7 +359,7 @@ export default function AttendanceManagement() {
             ))}
           </HrReactSelect>
         </label>
-        <label>
+        <label className="is-wide">
           Empleado
           <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)}>
             <option value="">Todos</option>
@@ -323,32 +370,13 @@ export default function AttendanceManagement() {
             ))}
           </HrReactSelect>
         </label>
-        <Button variant="ghost" onClick={() => void load()}>
-          <RefreshCw size={16} /> Actualizar
-        </Button>
-      </section>
+        <div className="hr-ws-toolbar-actions">
+          <Button variant="ghost" onClick={() => void load()}>
+            <RefreshCw size={16} /> Actualizar
+          </Button>
+        </div>
+      </HrToolbar>
 
-      {!loading && !error && <div className="filters-toolbar hr-admin-tab-toolbar" role="tablist" aria-label="Bandejas de asistencia">
-        {([
-          ['DAY', 'Jornadas', summaries.length],
-          ['INCIDENTS', 'Incidencias', incidents.filter((item) => item.status === 'OPEN').length],
-          ['CORRECTIONS', 'Correcciones', corrections.filter((item) => item.status === 'PENDING').length],
-          ['OVERTIME', 'Horas extra', overtime.filter((item) => item.status === 'PENDING').length],
-          ['PERIODS', 'Periodos', periods.length],
-        ] as Array<[AttendanceTable, string, number]>).map(([value, label, count]) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            id={`attendance-tab-${value.toLowerCase()}`}
-            aria-controls={`attendance-panel-${value.toLowerCase()}`}
-            aria-selected={activeTable === value}
-            onClick={() => setActiveTable(value)}
-          >
-            {label} <span>{count}</span>
-          </button>
-        ))}
-      </div>}
 
       {loading && <LoadingSpinner text="Cargando control diario…" />}
       {!loading && error && (
@@ -361,9 +389,19 @@ export default function AttendanceManagement() {
         </div>
       )}
       {!loading && !error && (
-        <section className="pr-table-card" aria-label="Administración diaria de asistencia">
+        <HrSection
+          flush
+          title={tableMeta[activeTable].title}
+          description={tableMeta[activeTable].description}
+          count={activeTableCount}
+          aria-label="Administración diaria de asistencia"
+          className="hr-asis-table-section"
+          actions={activeTable === 'PERIODS' ? (
+            <Button size="sm" variant="ghost" onClick={openPeriodPanel} disabled={!online}><Plus size={15} /> Nuevo periodo</Button>
+          ) : undefined}
+        >
           <div
-            className="hr-admin-table-wrap"
+            className="hr-ws-table-scroll"
             role="tabpanel"
             id={`attendance-panel-${activeTable.toLowerCase()}`}
             aria-labelledby={`attendance-tab-${activeTable.toLowerCase()}`}
@@ -431,8 +469,8 @@ export default function AttendanceManagement() {
               </>
             )}
           </div>
-          <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE))} totalItems={activeTableCount} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />
-        </section>
+          <div className="hr-asis-pagination"><Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE))} totalItems={activeTableCount} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" /></div>
+        </HrSection>
       )}
       <Sidebar
         isOpen={Boolean(createPanel)}
@@ -619,6 +657,6 @@ export default function AttendanceManagement() {
           </label>
         </HrModalFormShell>
       </Sidebar>
-    </div>
+    </HrPage>
   );
 }

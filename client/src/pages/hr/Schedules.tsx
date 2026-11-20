@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SingleValue } from 'react-select';
 import { useNavigate } from 'react-router-dom';
 import {
     CalendarDays,
+    Clock3,
     ChevronLeft,
     ChevronRight,
     Ban,
@@ -13,11 +14,11 @@ import {
 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
+import { HrHero, HrPage, HrSection, HrToolbar, type HrFact } from '../../components/hr/layout/HrWorkspace';
 import {
     addDaysDateOnly,
     existingShiftApiInput,
@@ -45,6 +46,7 @@ import type {
 } from '../../types/hr-schedule';
 import { getUserRoleNames, hasPermission } from '../../utils/authz';
 import './schedule.css';
+import './layouts/horarios.css';
 
 type Option = { value: string; label: string };
 type MutationKind = 'save' | 'delete' | 'publish' | 'copy' | 'cancel';
@@ -55,6 +57,16 @@ const weekFormatter = new Intl.DateTimeFormat('es-NI', { day: 'numeric', month: 
 function weekLabel(weekStart: string): string {
     const end = addDaysDateOnly(weekStart, 6);
     return `${weekFormatter.format(new Date(`${weekStart}T00:00:00Z`))} – ${weekFormatter.format(new Date(`${end}T00:00:00Z`))}`;
+}
+
+function scheduleStatusMeta(status: HrWeeklySchedule['status'] | undefined): { label: string; hint: string; tone: NonNullable<HrFact['tone']> } {
+    switch (status) {
+        case 'DRAFT': return { label: 'Borrador', hint: 'Pendiente de publicar', tone: 'accent' };
+        case 'PUBLISHED': return { label: 'Publicado', hint: 'Visible para el personal', tone: 'success' };
+        case 'CANCELLED': return { label: 'Cancelado', hint: 'Solo histórico', tone: 'danger' };
+        case 'SUPERSEDED': return { label: 'Sustituido', hint: 'Versión histórica', tone: 'warning' };
+        default: return { label: 'Sin horario', hint: 'Aún no hay borrador', tone: 'default' };
+    }
 }
 
 function filteredSchedules(schedules: HrWeeklySchedule[], branchId: string, userId: string, jobPositionId: string): HrWeeklySchedule[] {
@@ -68,6 +80,9 @@ function filteredSchedules(schedules: HrWeeklySchedule[], branchId: string, user
         ),
     }));
 }
+
+// lucide 0.294 icons carry propTypes that do not match the kit's icon prop type.
+const HERO_ICON = CalendarDays as unknown as NonNullable<ComponentProps<typeof HrHero>['icon']>;
 
 export default function Schedules() {
     const navigate = useNavigate();
@@ -459,26 +474,65 @@ export default function Schedules() {
     const userOptions: Option[] = [{ value: '', label: 'Todos los usuarios' }, ...(lookups.users ?? []).map((user) => ({ value: String(user.id), label: `${user.name} · @${user.username}` }))];
     const positionOptions: Option[] = [{ value: '', label: 'Todos los puestos' }, ...lookups.positions.map((position) => ({ value: String(position.id), label: position.name }))];
 
+    const statusMeta = scheduleStatusMeta(primarySchedule?.status);
+    const visibleShiftCount = visibleSchedules.reduce((total, schedule) => total + schedule.shifts.length, 0);
+    const ready = !loading && !error;
+    const heroFacts: HrFact[] = [
+        { label: 'Estado de la semana', value: ready ? statusMeta.label : '—', hint: fromCache ? 'Copia sin conexión' : statusMeta.hint, tone: ready ? statusMeta.tone : 'default' },
+        { label: 'Turnos visibles', value: ready ? visibleShiftCount : '—', hint: hasActiveFilters ? 'Con filtros aplicados' : 'Semana completa' },
+        { label: 'Trabajadores', value: ready ? visibleWorkers.length : '—', hint: 'Activos y autorizados' },
+        { label: 'Conflictos', value: conflicts.length, hint: conflicts.length > 0 ? 'Revisar antes de publicar' : 'Sin pendientes', tone: conflicts.length > 0 ? 'danger' : 'success' },
+        { label: 'Feriados', value: ready ? holidays.length : '—', hint: 'En esta semana', tone: ready && holidays.length > 0 ? 'warning' : 'default' },
+    ];
+    const hasNotices = Boolean(
+        lookupsError ||
+        fromCache ||
+        loadWarnings.length > 0 ||
+        (hasActiveFilters && primarySchedule) ||
+        (ready && (primarySchedule?.status === 'CANCELLED' || primarySchedule?.status === 'SUPERSEDED' || historicalSchedules.length > 1))
+    );
+
     return (
-        <div className="page-wrapper hr-schedules-page">
-            <PageHeader
+        <HrPage className="hr-schedules-page hr-hz-page hr-hz-schedules">
+            <HrHero
+                eyebrow="Recursos humanos"
+                icon={HERO_ICON}
                 title="Horarios semanales"
                 subtitle="Planificación por usuario, puesto y sucursal"
-                icon={CalendarDays}
+                badges={(
+                    <>
+                        <span className={`hr-hz-badge is-${ready ? statusMeta.tone : 'default'}`}>{ready ? statusMeta.label : 'Cargando…'}</span>
+                        {fromCache && <span className="hr-hz-badge is-warning">Sin conexión</span>}
+                        {hasActiveFilters && <span className="hr-hz-badge is-accent">Filtros activos</span>}
+                    </>
+                )}
+                actions={(
+                    <Button variant="ghost" onClick={configureTemplatesFromShift} disabled={mutationBusy || anyEditorOpen}>
+                        <Clock3 size={17} aria-hidden="true" /> Jornadas configuradas
+                    </Button>
+                )}
+                aside={(
+                    <section className="hr-hz-weeknav" aria-label="Navegación semanal">
+                        <div className="hr-hz-weeknav-label">
+                            <span>Semana</span>
+                            <strong>{weekLabel(weekStart)}</strong>
+                            <small>{weekStart === currentWeek ? 'Semana en curso' : 'Otra semana'}</small>
+                        </div>
+                        <div className="hr-hz-weeknav-controls">
+                            <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
+                            <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || mutationBusy || anyEditorOpen}>Hoy</Button>
+                            <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana siguiente">Siguiente <ChevronRight size={18} aria-hidden="true" /></Button>
+                        </div>
+                    </section>
+                )}
+                facts={heroFacts}
             />
 
-            <section className="hr-week-navigation" aria-label="Navegación semanal">
-                <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
-                <div><span>Semana</span><strong>{weekLabel(weekStart)}</strong></div>
-                <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || mutationBusy || anyEditorOpen}>Hoy</Button>
-                <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana siguiente">Siguiente <ChevronRight size={18} aria-hidden="true" /></Button>
-            </section>
-
-            <div className="filters-toolbar hr-schedule-filters">
-                <div className="filter-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
-                <div className="filter-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
-                <div className="filter-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
-                <div className="filter-actions">
+            <HrToolbar className="filters-toolbar hr-schedule-filters hr-hz-filters" ariaLabel="Filtros y acciones de la semana">
+                <div className="filter-field hr-ws-field is-wide"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
+                <div className="filter-field hr-ws-field is-wide"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
+                <div className="filter-field hr-ws-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy || anyEditorOpen} isSearchable /></div>
+                <div className="filter-actions hr-ws-toolbar-actions">
                     <Button variant="ghost" disabled={mutationBusy || anyEditorOpen} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
                     {!loading && !error && canManageSchedule && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
                     {!loading && !error && canPublishSchedule && primarySchedule?.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
@@ -488,76 +542,96 @@ export default function Schedules() {
                         </Button>
                     )}
                 </div>
-            </div>
+            </HrToolbar>
 
-            {lookupsError && (
-                <div className="hr-schedule-alert danger" role="alert">
-                    <AlertTriangle size={18} aria-hidden="true" /><span>{lookupsError}</span>
-                    <Button size="sm" variant="ghost" onClick={() => void loadLookups()}><RefreshCw size={15} /> Reintentar catálogos</Button>
+            {hasNotices && (
+                <div className="hr-hz-notices">
+                    {lookupsError && (
+                        <div className="hr-schedule-alert danger" role="alert">
+                            <AlertTriangle size={18} aria-hidden="true" /><span>{lookupsError}</span>
+                            <Button size="sm" variant="ghost" onClick={() => void loadLookups()}><RefreshCw size={15} /> Reintentar catálogos</Button>
+                        </div>
+                    )}
+
+                    {fromCache && (
+                        <div className="hr-schedule-alert warning" role="alert">
+                            Mostrando una copia guardada sin conexión. La edición, publicación, cancelación y copia permanecerán bloqueadas hasta recuperar conexión.
+                        </div>
+                    )}
+                    {!loading && !error && primarySchedule?.status === 'CANCELLED' && (
+                        <div className="hr-schedule-alert danger" role="status">
+                            Esta versión está cancelada y sus turnos se conservan solo como histórico; puede crear un nuevo borrador para reemplazarla.
+                        </div>
+                    )}
+
+                    {!loading && !error && primarySchedule?.status === 'SUPERSEDED' && (
+                        <p className="hr-schedule-context-note" role="status">
+                            Mostrando una versión histórica sustituida por una publicación posterior; sus turnos ya no aplican a marcaje.
+                        </p>
+                    )}
+                    {!loading && !error && historicalSchedules.length > 1 && (
+                        <p className="hr-schedule-context-note" role="status">
+                            Esta semana conserva {historicalSchedules.length} versiones canceladas o sustituidas en el historial de auditoría.
+                        </p>
+                    )}
+
+                    {loadWarnings.length > 0 && (
+                        <div className="hr-schedule-alert warning" role="alert">
+                            <span>{loadWarnings.join(' ')}</span>
+                            <Button size="sm" variant="ghost" disabled={mutationBusy} onClick={() => void loadWeek()}><RefreshCw size={15} aria-hidden="true" /> Reintentar auxiliares</Button>
+                        </div>
+                    )}
+
+                    {hasActiveFilters && primarySchedule && (
+                        <p className="hr-schedule-context-note" role="status">
+                            Limpia los filtros para revisar el horario completo antes de publicarlo o copiarlo.
+                        </p>
+                    )}
                 </div>
-            )}
-
-            {fromCache && (
-                <div className="hr-schedule-alert warning" role="alert">
-                    Mostrando una copia guardada sin conexión. La edición, publicación, cancelación y copia permanecerán bloqueadas hasta recuperar conexión.
-                </div>
-            )}
-            {!loading && !error && primarySchedule?.status === 'CANCELLED' && (
-                <div className="hr-schedule-alert danger" role="status">
-                    Esta versión está cancelada y sus turnos se conservan solo como histórico; puede crear un nuevo borrador para reemplazarla.
-                </div>
-            )}
-
-            {!loading && !error && primarySchedule?.status === 'SUPERSEDED' && (
-                <p className="hr-schedule-context-note" role="status">
-                    Mostrando una versión histórica sustituida por una publicación posterior; sus turnos ya no aplican a marcaje.
-                </p>
-            )}
-            {!loading && !error && historicalSchedules.length > 1 && (
-                <p className="hr-schedule-context-note" role="status">
-                    Esta semana conserva {historicalSchedules.length} versiones canceladas o sustituidas en el historial de auditoría.
-                </p>
-            )}
-
-            {loadWarnings.length > 0 && (
-                <div className="hr-schedule-alert warning" role="alert">
-                    <span>{loadWarnings.join(' ')}</span>
-                    <Button size="sm" variant="ghost" disabled={mutationBusy} onClick={() => void loadWeek()}><RefreshCw size={15} aria-hidden="true" /> Reintentar auxiliares</Button>
-                </div>
-            )}
-
-            {hasActiveFilters && primarySchedule && (
-                <p className="hr-schedule-context-note" role="status">
-                    Limpia los filtros para revisar el horario completo antes de publicarlo o copiarlo.
-                </p>
             )}
 
             {conflicts.length > 0 && (
-                <section className="hr-schedule-conflicts" role="alert" aria-labelledby="hr-schedule-conflicts-title">
-                    <h2 id="hr-schedule-conflicts-title"><AlertTriangle size={19} aria-hidden="true" /> Conflictos por resolver</h2>
+                <HrSection
+                    className="hr-hz-conflicts"
+                    role="alert"
+                    aria-labelledby="hr-schedule-conflicts-title"
+                    eyebrow="Bloquean la publicación"
+                    title={<span id="hr-schedule-conflicts-title"><AlertTriangle size={19} aria-hidden="true" /> Conflictos por resolver</span>}
+                    count={conflicts.length}
+                >
                     <ul>{conflicts.map((conflict, index) => <li key={`${conflict.code}-${conflict.shiftId ?? index}`}><strong>{conflict.code}</strong><span>{conflict.message}</span></li>)}</ul>
-                </section>
+                </HrSection>
             )}
 
-            {loading && <LoadingSpinner text="Cargando horarios…" />}
-            {!loading && error && (
-                <div className="state-placeholder" role="alert"><CalendarDays size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></div>
-            )}
-            {!loading && !error && visibleWorkers.length === 0 && !hasShifts && (
-                <div className="state-placeholder"><CalendarDays size={44} aria-hidden="true" /><p>No hay trabajadores activos autorizados para esta semana y filtros.</p></div>
-            )}
-            {!loading && !error && (visibleWorkers.length > 0 || hasShifts) && (
-                <ScheduleWeekView
-                    weekStart={weekStart}
-                    schedules={visibleSchedules}
-                    holidays={holidays}
-                    workers={visibleWorkers}
-                    readOnly={mutationBusy || fromCache || !canManageSchedule}
-                    onCreate={openCreateForCell}
-                    onEdit={openEdit}
-                    onDelete={(shift, schedule) => void deleteShift(shift, schedule)}
-                />
-            )}
+            <HrSection
+                className="hr-hz-planner"
+                eyebrow="Planificación"
+                title="Turnos de la semana"
+                count={ready ? visibleShiftCount : undefined}
+                description={`${weekLabel(weekStart)} · ${canManageSchedule && !fromCache ? 'Selecciona una celda vacía para asignar una jornada.' : 'Vista de consulta.'}`}
+            >
+                {loading && <LoadingSpinner text="Cargando horarios…" />}
+                {!loading && error && (
+                    <div className="state-placeholder" role="alert"><CalendarDays size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></div>
+                )}
+                {!loading && !error && visibleWorkers.length === 0 && !hasShifts && (
+                    <div className="state-placeholder"><CalendarDays size={44} aria-hidden="true" /><p>No hay trabajadores activos autorizados para esta semana y filtros.</p></div>
+                )}
+                {!loading && !error && (visibleWorkers.length > 0 || hasShifts) && (
+                    <div className="hr-hz-matrix-scroll">
+                        <ScheduleWeekView
+                            weekStart={weekStart}
+                            schedules={visibleSchedules}
+                            holidays={holidays}
+                            workers={visibleWorkers}
+                            readOnly={mutationBusy || fromCache || !canManageSchedule}
+                            onCreate={openCreateForCell}
+                            onEdit={openEdit}
+                            onDelete={(shift, schedule) => void deleteShift(shift, schedule)}
+                        />
+                    </div>
+                )}
+            </HrSection>
 
             <Sidebar isOpen={editorOpen} onClose={closeEditor} title={editingShift ? 'Editar turno' : newShiftDefaults ? 'Asignar jornada' : 'Nuevo turno'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
                 <ScheduleShiftForm
@@ -577,7 +651,6 @@ export default function Schedules() {
                     onSubmit={saveShift}
                 />
             </Sidebar>
-
-        </div>
+        </HrPage>
     );
 }
