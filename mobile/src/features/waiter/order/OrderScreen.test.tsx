@@ -168,7 +168,7 @@ describe('OrderScreen', () => {
 
     it('gates Cobrar, Dividir and Descuento by their permissions and calls the handlers', async () => {
         const handlers = { onPay: vi.fn(), onSplit: vi.fn(), onDiscount: vi.fn() };
-        setup({ permissions: ['orders.view', 'orders.edit', 'payments.process', 'bills.split'], handlers });
+        setup({ permissions: ['orders.view', 'orders.edit', 'payments.process', 'invoices.issue', 'bills.split'], handlers });
         fireEvent.click(await screen.findByRole('button', { name: 'Cobrar' }));
         fireEvent.click(screen.getByRole('button', { name: 'Dividir' }));
         // orders.edit alone shows Descuento: the waiter can ask a supervisor to authorize (spec 7.3.0)

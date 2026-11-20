@@ -77,6 +77,10 @@ type Spec = {
     config?: AxiosRequestConfig;
     /** Changes orders or tables: drop the owner's cached active orders and floor plan once applied. */
     invalidates?: boolean;
+    /** Caller-owned idempotency key (one per payment leg): used as is, never taken from or stored in the retry map. */
+    key?: string;
+    /** Resolve to the whole response body instead of its `data` (a payment answers with the fiscal invoice beside it). */
+    raw?: boolean;
 };
 
 const MAX_ATTEMPTS_KEPT = 200;
@@ -94,8 +98,8 @@ export function createWaiterApi(deps: WaiterApiDeps) {
         const owner = ownerKeyOf(await sessions.load());
         // Scoped by owner so one user's pending retry key is never picked up by another.
         const fingerprint = `${owner ?? '-'} ${spec.method} ${spec.url} ${JSON.stringify(spec.data ?? null)}`;
-        const attempt = getIdempotentAttempt(attempts.get(fingerprint) ?? null, fingerprint);
-        attempts.set(fingerprint, attempt);
+        const attempt = spec.key ? { fingerprint, key: spec.key } : getIdempotentAttempt(attempts.get(fingerprint) ?? null, fingerprint);
+        if (!spec.key) attempts.set(fingerprint, attempt);
         if (attempts.size > MAX_ATTEMPTS_KEPT) attempts.delete(attempts.keys().next().value as string);
 
         if (spec.queue && (spec.queue.forceQueue || shouldQueueOfflineMutation(spec.method, isOnline(), false, true))) {
@@ -123,7 +127,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
             });
             attempts.delete(fingerprint);
             if (spec.invalidates && owner) await cache.invalidate(owner, STALE_AFTER_MUTATION);
-            return (res.data?.data ?? res.data) as T;
+            return (spec.raw ? res.data : (res.data?.data ?? res.data)) as T;
         } catch (error) {
             // Only an ambiguous failure (network, 5xx, 408/409/429) may have been applied: keep its key.
             if (!isAmbiguousMutationFailure(error)) attempts.delete(fingerprint);
@@ -193,6 +197,9 @@ export function createWaiterApi(deps: WaiterApiDeps) {
         supervisors: () => get<Json[]>('/orders/discount/supervisors'),
         discountLimit: () => get<{ limitPercent: number }>('/auth/me/discount-limit'),
         paymentMethods: () => get<Json[]>('/payments/methods'),
+        /** `remaining` is what is still owed after active payments and credit notes: the authority for the next leg. */
+        paymentSummary: (orderId: number) => get<Json>(`/payments/order/${orderId}/summary`),
+        settings: () => get<Json>('/settings'),
         cashShiftStatus: () => get<Json>('/cash-shifts/active-status'),
         kitchenNotifications: (params: { includeAttended?: boolean; limit?: number } = {}) => get<Json[]>('/kitchen-notifications', params),
 
@@ -253,6 +260,21 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 },
             });
         },
+        /**
+         * One payment leg, online only. Unlike createPayment it is never queued (a payment is taken with the server's answer
+         * in hand: invoice, change, table released) and the caller owns the key, one per leg, kept across retries of that leg.
+         */
+        async payLeg(body: { orderId: OrderRef; paymentMethodId: number; amount: number; reference?: string; payerName?: string }, idempotencyKey: string) {
+            const id = await syncedOrderId(body.orderId);
+            return mutate<{ data: Json; fiscalInvoice?: Json | null; fiscalInvoiceError?: string | null }>({
+                method: 'POST',
+                url: '/payments',
+                data: { ...body, orderId: id },
+                invalidates: true,
+                key: idempotencyKey,
+                raw: true,
+            }) as Promise<{ data: Json; fiscalInvoice?: Json | null; fiscalInvoiceError?: string | null }>;
+        },
         /** Guests can be set on an order that is still only queued; it is applied after the create. */
         async setGuests(orderId: OrderRef, guests: number) {
             const ref = await orderRef(orderId);
@@ -298,6 +320,10 @@ export function createWaiterApi(deps: WaiterApiDeps) {
             }
             if (owner) await cache.invalidate(owner, STALE_AFTER_MUTATION);
             return (res.data?.data ?? res.data) as Json;
+        },
+        async updateFiscalCustomer(orderId: OrderRef, body: { customerName?: string; customerTaxId?: string; customerTaxIdType?: string; customerFiscalAddress?: string; customerEmail?: string; customerPhone?: string }) {
+            const id = await syncedOrderId(orderId);
+            return mutate<Json>({ method: 'PATCH', url: `/orders/${id}/fiscal-customer`, data: body, invalidates: true });
         },
         async preinvoice(orderId: OrderRef) {
             const id = await syncedOrderId(orderId);

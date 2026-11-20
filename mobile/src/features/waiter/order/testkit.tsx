@@ -8,7 +8,7 @@ import type { OrderApi } from './OrderScreen';
 export const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 export const result = <T,>(data: T) => ({ data, source: 'network' as const, refresh: Promise.resolve() });
 
-export const ALL_PERMISSIONS = ['orders.view', 'orders.create', 'orders.edit', 'orders.deliver', 'payments.process', 'bills.split', 'orders.discount.apply'];
+export const ALL_PERMISSIONS = ['orders.view', 'orders.create', 'orders.edit', 'orders.deliver', 'payments.process', 'invoices.issue', 'bills.split', 'orders.discount.apply'];
 
 export function userSession(permissions: string[] = ALL_PERMISSIONS, id = 7): Session {
     return { ...baseSession, user: { ...baseSession.user, id, permissions } };
@@ -76,6 +76,16 @@ export function makeApi(over: Partial<Record<keyof OrderApi, unknown>> = {}) {
         supervisors: vi.fn().mockResolvedValue([{ id: 31, name: 'Marta Lopez', initials: 'ML', color: null }, { id: 32, name: 'Raul Diaz', initials: 'RD', color: null }]),
         discountLimit: vi.fn().mockResolvedValue({ limitPercent: 10 }),
         validateCoupon: vi.fn().mockResolvedValue({ valid: true, discount: 20, message: 'Cupón aplicado' }),
+        paymentMethods: vi.fn().mockResolvedValue([]),
+        paymentSummary: vi.fn().mockResolvedValue({ remaining: 0 }),
+        cashShiftStatus: vi.fn().mockResolvedValue({ hasActiveShift: false }),
+        settings: vi.fn().mockResolvedValue({}),
+        updateFiscalCustomer: vi.fn().mockResolvedValue({}),
+        preinvoice: vi.fn().mockResolvedValue({}),
+        payLeg: vi.fn().mockResolvedValue({ data: {}, fiscalInvoice: null, fiscalInvoiceError: null }),
+        splitEvenly: vi.fn().mockResolvedValue({ splits: [] }),
+        splitByItems: vi.fn().mockResolvedValue({ splits: [] }),
+        splitByAmount: vi.fn().mockResolvedValue({ valid: true, splits: [] }),
         ...over,
     } as unknown as { [K in keyof OrderApi]: OrderApi[K] & ReturnType<typeof vi.fn> };
 }

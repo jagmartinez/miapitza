@@ -1,0 +1,481 @@
+/* Cobro: dark, flat, tokens only. Full-screen landscape, three columns (spec 7.3.1). */
+.pay {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.pay-bar-top {
+    flex: none;
+    box-sizing: border-box;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+
+.pay-bar-top .btn {
+    min-height: 44px;
+}
+
+.pay-title {
+    font-size: 18px;
+    white-space: nowrap;
+}
+
+.pay-modes {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+}
+
+.pay-modes .btn,
+.pay-seg .btn {
+    white-space: nowrap;
+}
+
+.pay .btn[aria-pressed='true'] {
+    border-color: var(--text);
+}
+
+.pay-notice {
+    flex: none;
+    margin: 0;
+    padding: 8px 16px;
+}
+
+.pay-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(300px, 34%) 1fr minmax(260px, 30%);
+    grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.pay-body[data-mode='split'] {
+    grid-template-columns: minmax(280px, 28%) minmax(240px, 26%) 1fr;
+}
+
+.pay-col {
+    min-height: 0;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-right: 1px solid var(--border);
+}
+
+.pay-wide {
+    grid-column: 2 / 4;
+}
+
+.pay-lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.pay-lines li,
+.pay-totals div {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-totals {
+    margin: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+}
+
+.pay-totals dt {
+    color: var(--muted);
+}
+
+.pay-totals dd {
+    margin: 0;
+}
+
+.pay-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.pay-total strong {
+    font-size: 36px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-customer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.pay-customer > div {
+    display: flex;
+    flex-direction: column;
+}
+
+.pay-note {
+    margin: 0;
+    font-size: 13px;
+}
+
+.pay-methods {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.pay-method {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.pay-quick {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.pay-quick .btn {
+    min-height: 52px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-readout {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pay-readout > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.pay-readout strong {
+    font-size: 32px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-readout .pay-change strong,
+.pay-change {
+    color: var(--ready);
+}
+
+.pay-keys {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.pay-keys .btn {
+    min-height: 56px;
+    font-size: 22px;
+}
+
+.pay-blocked {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--alert);
+    border-radius: 8px;
+}
+
+.pay-blocked strong {
+    color: var(--alert);
+    font-size: 20px;
+}
+
+.pay-foot {
+    grid-column: 1 / -1;
+    box-sizing: border-box;
+    min-height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
+    padding: 0 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+}
+
+.pay-foot-split {
+    justify-content: space-between;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-charge {
+    min-height: 56px;
+    min-width: 280px;
+    font-size: 20px;
+}
+
+.pay-leg {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.pay-leg[data-selected='true'] {
+    border-color: var(--text);
+}
+
+.pay-leg-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.pay-leg-method {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pay-leg select,
+.pay-person select {
+    min-height: 48px;
+    font-size: 16px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.pay-leg-amount {
+    min-width: 120px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-ref,
+.pay-person input {
+    min-height: 48px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    font-size: 16px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.pay-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--surface-2);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.pay-bar-fill {
+    height: 100%;
+    background: var(--text);
+}
+
+.pay-missing {
+    color: var(--ready);
+}
+
+.pay-paid {
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.pay-seg {
+    display: flex;
+    gap: 8px;
+}
+
+.pay-seg .btn {
+    flex: 1;
+    padding: 0 8px;
+}
+
+.pay-h {
+    margin: 0 0 4px;
+    font-size: 16px;
+    color: var(--muted);
+}
+
+.pay-unassigned ul,
+.pay-mine {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.pay-line {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-people {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    align-content: start;
+    border-right: 0;
+}
+
+.pay-person {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.pay-person[data-paid='true'] {
+    opacity: 0.7;
+}
+
+.pay-person-head {
+    display: flex;
+    gap: 8px;
+}
+
+.pay-person-head input {
+    flex: 1;
+    min-width: 0;
+}
+
+.pay-mine li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+.pay-person-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.pay-person-total strong {
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--scrim);
+}
+
+.pay-modal {
+    width: min(480px, 92vw);
+    max-height: 92vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+.pay-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.pay-done {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.pay-done h1 {
+    margin: 0;
+    font-size: 28px;
+}
+
+.pay-done p {
+    margin: 0;
+}
+
+.pay-done-check {
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    border: 2px solid var(--text);
+    border-radius: 50%;
+}
+
+.pay-done-change {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: var(--ready);
+}
+
+.pay-done-change strong {
+    font-size: 56px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-done-notice {
+    max-width: 520px;
+    text-align: center;
+    color: var(--ready);
+}

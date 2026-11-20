@@ -9,6 +9,7 @@ import { OfflineIndicator } from '../../../data/OfflineIndicator';
 import { ownerKeyOf } from '../../../data/types';
 import { isOnline } from '../../../data/useOnline';
 import type { OrderRef, WaiterApi } from '../../../data/waiterApi';
+import type { PaymentApi } from '../payment/PaymentScreen';
 import type { OrderIntent } from '../tables/TablesScreen';
 import { CategoryRail } from './CategoryRail';
 import { FullTicketScreen } from './FullTicketScreen';
@@ -37,7 +38,8 @@ import '../tables/sheets.css';
 export type OrderApi = Pick<
     WaiterApi,
     'menu' | 'menuItem' | 'categories' | 'topSellers' | 'promotions' | 'orderDetail' | 'activeOrders' | 'addItem' | 'sendToKitchen' | 'createOrder' | 'updateItem' | 'removeItem' | 'deliverItems' | 'pricing' | 'authorizeDiscount' | 'supervisors' | 'discountLimit' | 'validateCoupon'
->;
+> &
+    PaymentApi;
 
 export interface OrderScreenProps {
     session: Session;
@@ -67,6 +69,9 @@ const isTemp = (id: OrderRef) => typeof id === 'string' && !/^\d+$/.test(id);
 
 // Discount UI (sheet, keypad, supervisor screen) is only needed when the button is tapped.
 const DiscountSheet = lazy(() => import('../discount/DiscountSheet').then((m) => ({ default: m.DiscountSheet })));
+
+// Payment (three modes, keypad, split cards) is only needed when the cashier taps Cobrar.
+const PaymentScreen = lazy(() => import('../payment/PaymentScreen'));
 
 type SheetState = { product: Product; groups: ModifierGroup[] } | null;
 
@@ -101,6 +106,7 @@ export function OrderScreen(props: OrderScreenProps) {
     const [busy, setBusy] = useState(false);
     const [full, setFull] = useState(false);
     const [discountOpen, setDiscountOpen] = useState(false);
+    const [payment, setPayment] = useState<'single' | 'split' | null>(null);
 
     // An order created offline carries a temp id until its create syncs; then the real order takes over.
     const [resolvedId, setResolvedId] = useState<number | null>(null);
@@ -296,13 +302,40 @@ export function OrderScreen(props: OrderScreenProps) {
         setSheet(null);
     };
 
-    // intent 'pay': go straight to the payment once the order is on screen
-    useEffect(() => {
-        if (intent === 'pay' && order && !payHandled.current && onPay && can(user, 'payments.process')) {
-            payHandled.current = true;
-            onPay();
+    /**
+     * Payment is taken by the cashier (payments.process + invoices.issue; a waiter never sees Cobrar) and needs the live,
+     * synced order: no connection, an order still in the offline queue, unsent products or an empty order never open it.
+     */
+    const canPay = can(user, 'payments.process') && can(user, 'invoices.issue');
+    const openPayment = (mode: 'single' | 'split') => {
+        if (!canPay) return;
+        if (isTemp(orderId)) setNotice('Sincronizando pedido… cobrar requiere conexión.');
+        else if (!isOnline()) setNotice('Cobrar requiere conexión.');
+        else if (draft.count > 0 || unsentOnServer.length > 0) setNotice('Envía a cocina los productos nuevos antes de cobrar.');
+        else if (serverLines.length === 0) setNotice('No hay productos para cobrar.');
+        else {
+            setNotice(null);
+            setPayment(mode);
         }
-    }, [intent, order, onPay, user]);
+    };
+    const paymentClosed = () => {
+        setPayment(null);
+        void loadOrder(); // legs confirmed before leaving show in the ticket
+    };
+    const paymentFinished = async () => {
+        await props.invalidate?.(); // the server already freed the table on full payment: only the saved lists are stale
+        onBack();
+    };
+
+    // intent 'pay': go straight to the payment once the order and the draft are on screen
+    useEffect(() => {
+        if (intent === 'pay' && order && draft.loaded && !payHandled.current && canPay) {
+            payHandled.current = true;
+            if (onPay) onPay();
+            else openPayment('single');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when the order first shows
+    }, [intent, order, draft.loaded, canPay]);
 
     /** One server mutation at a time (deliver, edit an unsent server line): a double tap never repeats it. */
     const run = async (action: () => Promise<string | void>, needsConnection: string) => {
@@ -348,12 +381,12 @@ export function OrderScreen(props: OrderScreenProps) {
     };
 
     const actions = {
-        canPay: can(user, 'payments.process'),
-        canSplit: can(user, 'bills.split'),
+        canPay,
+        canSplit: canPay && can(user, 'bills.split'), // Dividir ends in payments the waiter cannot take
         // Every discount route requires orders.edit; orders.discount.apply only decides direct vs supervisor-authorized.
         canDiscount: can(user, 'orders.edit'),
-        onPay,
-        onSplit,
+        onPay: onPay ?? (() => openPayment('single')),
+        onSplit: onSplit ?? (() => openPayment('split')),
         onDiscount: onDiscount ?? openDiscount,
         onMore,
     };
@@ -459,6 +492,11 @@ export function OrderScreen(props: OrderScreenProps) {
                         onClose={() => setDiscountOpen(false)}
                         onApplied={discountApplied}
                     />
+                </Suspense>
+            )}
+            {payment && (
+                <Suspense fallback={<main className="pay" data-testid="payment-screen"><p className="muted pay-notice">Cargando cobro…</p></main>}>
+                    <PaymentScreen api={api} user={user} orderId={orderId} initialMode={payment} onClose={paymentClosed} onFinished={paymentFinished} />
                 </Suspense>
             )}
             {sheet && <ModifierSheet product={sheet.product} groups={sheet.groups} onConfirm={confirmSheet} onClose={() => setSheet(null)} />}
