@@ -7,6 +7,7 @@
     --muted: #8C8D90;
     --ready: #D4A84B;
     --alert: #C96B66;
+    --scrim: rgba(0, 0, 0, 0.55);
 }
 
 html, body, #root {

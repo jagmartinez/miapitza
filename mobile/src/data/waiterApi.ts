@@ -180,6 +180,8 @@ export function createWaiterApi(deps: WaiterApiDeps) {
         activeOrders: (branchId: number) => cached<Json[]>('/orders/active', { branchId }, TTL.orders, false),
         menu: (branchId: number, onRefresh?: (d: Json[]) => void) =>
             cached<Json[]>('/menu-items', { branchId, active: true, effectivePricing: true }, TTL.menu, true, onRefresh),
+        /** Live order detail (payments included; /orders/active has none). Never cached. */
+        orderDetail: (id: number) => get<Json>(`/orders/${id}`),
         menuItem: (id: number) => cached<Json>(`/menu-items/${id}`, undefined, TTL.menu, false),
         categories: () => cached<Json[]>('/categories', undefined, TTL.categories, false),
         topSellers: (branchId: number, opts: { days?: number; limit?: number } = {}) => cached<Json[]>('/menu-items/top', { branchId, ...opts }, TTL.default, false),

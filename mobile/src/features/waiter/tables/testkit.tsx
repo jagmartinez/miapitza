@@ -23,16 +23,17 @@ export const planData = {
         { ...tableBase, id: 2, number: '2', floorAreaId: 1, mapX: 240, mapY: 40, operationalState: 'OPEN_ORDER', status: 'OCCUPIED' },
         { ...tableBase, id: 3, number: '3', floorAreaId: 1, mapX: 440, mapY: 40, operationalState: 'READY', status: 'OCCUPIED' },
         { ...tableBase, id: 4, number: '4', floorAreaId: 1, mapX: 640, mapY: 40, operationalState: 'INVOICED', status: 'OCCUPIED' },
+        { ...tableBase, id: 7, number: '7', floorAreaId: 1, mapX: 840, mapY: 40, operationalState: 'RESERVED', status: 'RESERVED' },
         { ...tableBase, id: 5, number: '5', floorAreaId: 2, mapX: 40, mapY: 240, operationalState: 'AVAILABLE' },
         { ...tableBase, id: 6, number: '6', floorAreaId: 2, mapX: 240, mapY: 240, operationalState: 'PREPARING', status: 'OCCUPIED' },
     ],
 };
 
 export const activeOrders = [
-    { id: 102, tableId: 2, status: 'OPEN', total: '350.00', guests: 3, createdAt: minutesAgo(25), user: { id: 7, name: 'Ana Perez' }, items: [{ quantity: 2, sentAt: null, status: 'PENDING' }, { quantity: 1, sentAt: minutesAgo(10), status: 'IN_PROGRESS' }], payments: [] },
-    { id: 103, tableId: 3, status: 'READY', total: '120.00', guests: 2, createdAt: minutesAgo(40), user: { id: 9, name: 'Luis Gomez Hernandez De La Cruz Muy Largo' }, items: [], payments: [] },
-    { id: 104, tableId: 4, status: 'READY', total: '500.00', guests: 4, createdAt: minutesAgo(70), user: { id: 7, name: 'Ana Perez' }, items: [], payments: [{ amount: '100.00' }] },
-    { id: 106, tableId: 6, status: 'IN_PREPARATION', total: '80.00', guests: 1, createdAt: minutesAgo(5), user: { id: 9, name: 'Luis Gomez' }, items: [], payments: [] },
+    { id: 102, tableId: 2, status: 'OPEN', total: '350.00', guests: 3, createdAt: minutesAgo(25), user: { id: 7, name: 'Ana Perez' }, items: [{ quantity: 2, sentAt: null, status: 'PENDING' }, { quantity: 1, sentAt: minutesAgo(10), status: 'IN_PROGRESS' }] },
+    { id: 103, tableId: 3, status: 'READY', total: '120.00', guests: 2, createdAt: minutesAgo(40), user: { id: 9, name: 'Luis Gomez Hernandez De La Cruz Muy Largo' }, items: [] },
+    { id: 104, tableId: 4, status: 'READY', total: '500.00', guests: 4, createdAt: minutesAgo(70), user: { id: 7, name: 'Ana Perez' }, items: [] },
+    { id: 106, tableId: 6, status: 'IN_PREPARATION', total: '80.00', guests: 1, createdAt: minutesAgo(5), user: { id: 9, name: 'Luis Gomez' }, items: [] },
 ];
 
 export const result = <T,>(data: T) => ({ data, source: 'network' as const, refresh: Promise.resolve() });
@@ -50,6 +51,8 @@ export function makeApi(over: Partial<TablesApi> = {}): FakeTablesApi {
         createOrder: vi.fn().mockResolvedValue({ id: 555 }),
         transfer: vi.fn().mockResolvedValue({ mode: 'FULL' }),
         groupTables: vi.fn().mockResolvedValue({ id: 1 }),
+        // GET /orders/:id returns every payment, whatever its status.
+        orderDetail: vi.fn().mockImplementation(async (id: number) => ({ id, payments: id === 104 ? [{ amount: '100.00', status: 'ACTIVE' }, { amount: '50.00', status: 'REVERSED' }] : [] })),
         ...over,
     } as unknown as FakeTablesApi;
 }

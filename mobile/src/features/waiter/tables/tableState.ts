@@ -35,7 +35,6 @@ export interface ActiveOrder {
     createdAt?: string;
     user?: { id: number; name: string } | null;
     items?: { quantity: number; sentAt?: string | null; status?: string; voidedQuantity?: number }[];
-    payments?: { amount: number | string }[];
 }
 
 /** The four border states of a table on the floor plan. */

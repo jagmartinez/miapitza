@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { formatCurrency } from '@web/utils/currency';
 import { can } from '../../../core/permissions';
 import type { LoginUser } from '../../../core/session';
@@ -9,9 +10,11 @@ export type SheetAction = 'view' | 'pay' | 'invoice' | 'transfer' | 'group';
 /** Sum of a decimal-ish field over a list; strings from the API are decimals. */
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-export function unpaidTotal(order: ActiveOrder): number {
-    const paid = (order.payments ?? []).reduce((sum, p) => sum + num(p.amount), 0);
-    return Math.max(0, num(order.total) - paid);
+/** Sum of ACTIVE payments of a GET /orders/:id payload (it lists reversed ones too). */
+export function paidAmount(detail: unknown): number {
+    const payments = (detail as { payments?: { amount?: unknown; status?: string }[] } | null)?.payments;
+    if (!Array.isArray(payments)) return 0;
+    return payments.filter((p) => !p.status || p.status === 'ACTIVE').reduce((sum, p) => sum + num(p.amount), 0);
 }
 
 export interface TableActionsSheetProps {
@@ -21,11 +24,27 @@ export interface TableActionsSheetProps {
     user: LoginUser;
     online: boolean;
     now: number;
+    /** GET /orders/:id: /orders/active carries no payments, so what is already paid is read on demand. */
+    loadDetail: (orderId: number) => Promise<unknown>;
     onClose: () => void;
     onAction: (action: SheetAction) => void;
 }
 
-export function TableActionsSheet({ table, areaName, order, user, online, now, onClose, onAction }: TableActionsSheetProps) {
+export function TableActionsSheet({ table, areaName, order, user, online, now, loadDetail, onClose, onAction }: TableActionsSheetProps) {
+    const [paid, setPaid] = useState<number | null>(null);
+    useEffect(() => {
+        if (!online) return undefined;
+        let alive = true;
+        loadDetail(order.id).then(
+            (detail) => alive && setPaid(paidAmount(detail)),
+            () => undefined, // unknown stays as a dash
+        );
+        return () => {
+            alive = false;
+        };
+    }, [online, order.id, loadDetail]);
+    const unpaid = paid === null ? null : Math.max(0, num(order.total) - paid);
+
     const items = (order.items ?? []).filter((i) => !i.voidedQuantity || i.voidedQuantity < i.quantity);
     const products = items.reduce((sum, i) => sum + num(i.quantity) - num(i.voidedQuantity), 0);
     const inKitchen = items.filter((i) => i.sentAt && i.status !== 'DONE').reduce((sum, i) => sum + num(i.quantity), 0);
@@ -52,7 +71,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, o
                 </div>
                 <div className="actions-total">
                     <span className="muted">Sin cobrar</span>
-                    <strong>{formatCurrency(unpaidTotal(order))}</strong>
+                    <strong>{unpaid === null ? '—' : formatCurrency(unpaid)}</strong>
                 </div>
             </div>
             <div className="info-chips">

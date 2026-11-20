@@ -131,16 +131,23 @@ describe('table actions', () => {
         expect(onOpenOrder).not.toHaveBeenCalled(); // the release after a long press is not a tap
         expect(within(sheet).getByText('Mesa 2 · Salón')).toBeInTheDocument();
         expect(within(sheet).getByText('Ana Perez')).toBeInTheDocument();
-        expect(within(sheet).getByText('C$ 350.00')).toBeInTheDocument();
+        expect(await within(sheet).findByText('C$ 350.00')).toBeInTheDocument();
         for (const chip of ['3 pers', '25 min', '3 productos', '1 en cocina']) expect(within(sheet).getByText(chip)).toBeInTheDocument();
     });
 
     it('subtracts payments from the unpaid total', async () => {
-        setup();
+        let release: (v: unknown) => void = () => undefined;
+        const slow = new Promise((resolve) => {
+            release = resolve;
+        });
+        setup({ api: makeApi({ orderDetail: vi.fn().mockReturnValue(slow) }) });
         await screen.findByTestId('tile-4');
         await longPress(tile(4));
         const sheet = await screen.findByRole('dialog');
-        expect(within(sheet).getByText('C$ 400.00')).toBeInTheDocument();
+        expect(within(sheet).getByText('—')).toBeInTheDocument(); // while the paid amount loads
+        // /orders/active has no payments: the paid amount comes from the order detail (ACTIVE payments only)
+        release({ id: 104, payments: [{ amount: '100.00', status: 'ACTIVE' }, { amount: '50.00', status: 'REVERSED' }] });
+        expect(await within(sheet).findByText('C$ 400.00')).toBeInTheDocument();
     });
 
     it('actions sheet hides buttons without permission', async () => {
@@ -175,7 +182,7 @@ describe('table actions', () => {
         fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Trasladar/ }));
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(screen.getByText(/Elige la mesa destino/)).toBeInTheDocument();
-        fireEvent.click(tile(3)); // occupied: not a valid destination
+        fireEvent.click(tile(7)); // reserved: the server rejects it, so it is not offered
         expect(api.transfer).not.toHaveBeenCalled();
         fireEvent.click(tile(1));
         await waitFor(() => expect(api.transfer).toHaveBeenCalledWith({ sourceTableId: 2, destinationTableId: 1, orderId: 102 }));
@@ -225,5 +232,74 @@ describe('table actions', () => {
         fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Trasladar/ }));
         fireEvent.click(tile(1));
         expect(await screen.findByText(/requiere conexión/)).toBeInTheDocument();
+    });
+    it('offline shows a dash instead of a total it cannot know', async () => {
+        const { api } = setup();
+        await screen.findByTestId('tile-4');
+        setOnline(false);
+        await longPress(tile(4));
+        const sheet = await screen.findByRole('dialog');
+        expect(within(sheet).getByText('—')).toBeInTheDocument();
+        expect(api.orderDetail).not.toHaveBeenCalled();
+    });
+
+    it('a failed paid-amount lookup keeps the dash', async () => {
+        const api = makeApi({ orderDetail: vi.fn().mockRejectedValue(new Error('x')) });
+        setup({ api });
+        await screen.findByTestId('tile-4');
+        await longPress(tile(4));
+        const sheet = await screen.findByRole('dialog');
+        await waitFor(() => expect(api.orderDetail).toHaveBeenCalledWith(104));
+        expect(within(sheet).getByText('—')).toBeInTheDocument();
+    });
+
+    it('destination mode ignores Mis mesas so free tables can be picked', async () => {
+        const { api } = setup();
+        await screen.findByTestId('tile-2');
+        fireEvent.click(screen.getByRole('button', { name: 'Mis mesas' }));
+        expect(screen.queryByTestId('tile-1')).toBeNull();
+        await longPress(tile(2));
+        fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Trasladar/ }));
+        fireEvent.click(await screen.findByTestId('tile-1'));
+        await waitFor(() => expect(api.transfer).toHaveBeenCalledWith({ sourceTableId: 2, destinationTableId: 1, orderId: 102 }));
+    });
+
+    it('transfer also accepts an occupied destination, like the server', async () => {
+        const { api } = setup();
+        await screen.findByTestId('tile-2');
+        await longPress(tile(2));
+        fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Trasladar/ }));
+        fireEvent.click(tile(3));
+        await waitFor(() => expect(api.transfer).toHaveBeenCalledWith({ sourceTableId: 2, destinationTableId: 3, orderId: 102 }));
+    });
+
+    it('Unir only offers ungrouped, available tables', async () => {
+        const { api } = setup();
+        await screen.findByTestId('tile-2');
+        await longPress(tile(2));
+        fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Unir/ }));
+        fireEvent.click(tile(7)); // reserved
+        expect(api.groupTables).not.toHaveBeenCalled();
+    });
+
+    it('a press shorter than 500 ms is a tap, not a long press', async () => {
+        const { onOpenOrder } = setup();
+        await screen.findByTestId('tile-2');
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        try {
+            fireEvent.pointerDown(tile(2));
+            await act(async () => {
+                vi.advanceTimersByTime(499);
+            });
+            fireEvent.pointerUp(tile(2));
+            fireEvent.click(tile(2));
+            await act(async () => {
+                vi.advanceTimersByTime(1000);
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(onOpenOrder).toHaveBeenCalledWith(102);
     });
 });

@@ -5,7 +5,7 @@ import type { Realtime } from '../../../core/realtime';
 import type { Session } from '../../../core/session';
 import type { OfflineQueue } from '../../../data/offlineQueue';
 import { OfflineIndicator } from '../../../data/OfflineIndicator';
-import { useOnline } from '../../../data/useOnline';
+import { isOnline, useOnline } from '../../../data/useOnline';
 import type { OrderRef, WaiterApi } from '../../../data/waiterApi';
 import { FloorPlan } from './FloorPlan';
 import { OpenTableSheet } from './OpenTableSheet';
@@ -16,7 +16,7 @@ import { initialsOf, normalizeOrders, normalizePlan, ordersByTable, tableState, 
 import './tables.css';
 import './sheets.css';
 
-export type TablesApi = Pick<WaiterApi, 'floorPlan' | 'activeOrders' | 'createOrder' | 'transfer' | 'groupTables'>;
+export type TablesApi = Pick<WaiterApi, 'floorPlan' | 'activeOrders' | 'orderDetail' | 'createOrder' | 'transfer' | 'groupTables'>;
 /** Where the order screen should land. */
 export type OrderIntent = 'view' | 'pay' | 'invoice';
 
@@ -62,8 +62,8 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
     const seq = useRef(0);
 
     const load = useCallback(
-        async (fresh: boolean) => {
-            if (branchId == null) return;
+        async (fresh: boolean): Promise<boolean> => {
+            if (branchId == null) return false;
             const mine = ++seq.current;
             try {
                 if (fresh) await invalidate();
@@ -73,13 +73,15 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                     }),
                     api.activeOrders(branchId),
                 ]);
-                if (!alive.current || mine !== seq.current) return;
+                if (!alive.current || mine !== seq.current) return false;
                 setPlan(normalizePlan(planRes.data));
                 setOrders(normalizeOrders(ordersRes.data));
                 setError(null);
                 setNow(Date.now());
+                return true;
             } catch (cause) {
                 if (alive.current && mine === seq.current) setError(getApiErrorMessage(cause));
+                return false;
             }
         },
         [api, branchId, invalidate],
@@ -87,7 +89,10 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
 
     useEffect(() => {
         alive.current = true;
-        void load(false);
+        // Paint from the cache, then always confirm with the network (the 60 s TTL must not hide changes).
+        void load(false).then((ok) => {
+            if (ok && alive.current && isOnline()) void load(true);
+        });
         return () => {
             alive.current = false;
         };
@@ -103,11 +108,12 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 void load(true);
             }, REFETCH_DEBOUNCE_MS);
         };
-        // KITCHEN_NOTIFICATION only reaches the waiter who created the order: that is who gets the banner.
+        // KITCHEN_NOTIFICATION only reaches the waiter who created the order. The banner is for a fully ready order (ORDER_READY),
+        // not for single ready items (ORDER_ITEM_READY) nor releases (ORDER_RELEASED).
         const onKitchen = (payload: unknown) => {
             schedule();
             const p = (payload ?? {}) as { orderId?: unknown; tableNumber?: unknown; eventType?: unknown };
-            if (typeof p.orderId !== 'number' || p.eventType === 'ORDER_RELEASED') return;
+            if (typeof p.orderId !== 'number' || p.eventType !== 'ORDER_READY') return;
             setNotice({ orderId: p.orderId, tableNumber: p.tableNumber == null ? undefined : String(p.tableNumber) });
             try {
                 navigator.vibrate?.([200, 100, 200]);
@@ -146,12 +152,10 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
     const branchName = plan?.tables.find((t) => t.branch?.name)?.branch?.name ?? 'Sucursal';
 
     const areaNameOf = (table: PlanTable) => plan?.areas.find((x) => x.id === table.floorAreaId)?.name ?? 'Sin área';
-    const stateOf = (table: PlanTable): TableState => tableState(table, byTable.get(table.id));
 
     const picking = useTablePicking({
         api,
         online,
-        stateOf,
         onDone: (message) => {
             setToast(message);
             void load(false);
@@ -266,7 +270,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                         areaId={currentTab.id === NO_AREA ? null : currentTab.id}
                         orders={byTable}
                         now={now}
-                        onlyUserId={mineOnly ? session.user.id : null}
+                        onlyUserId={mineOnly && !picking.mode ? session.user.id : null}
                         onTap={handleTap}
                         canPick={picking.mode ? picking.canPick : undefined}
                         onLongPress={handleLongPress}
@@ -292,6 +296,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                     user={session.user}
                     online={online}
                     now={now}
+                    loadDetail={api.orderDetail}
                     onClose={() => setSheet(null)}
                     onAction={(action) => runAction(action, sheet.table, sheet.order)}
                 />

@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { getApiErrorMessage } from '@web/utils/apiError';
 import type { TablesApi } from './TablesScreen';
-import type { ActiveOrder, PlanTable, TableState } from './tableState';
+import type { ActiveOrder, PlanTable } from './tableState';
 
 export type PickMode = 'transfer' | 'group';
 
@@ -22,7 +22,6 @@ interface Source {
 export function useTablePicking(opts: {
     api: Pick<TablesApi, 'transfer' | 'groupTables'>;
     online: boolean;
-    stateOf: (table: PlanTable) => TableState;
     onDone: (message: string) => void;
 }) {
     const [mode, setMode] = useState<PickMode | null>(null);
@@ -40,6 +39,11 @@ export function useTablePicking(opts: {
     }, []);
 
     const begin = useCallback((next: PickMode, table: PlanTable, order: ActiveOrder) => {
+        if (table.activeTableGroupId) {
+            // The server refuses to move or join between a group and a loose table.
+            setError('Esta mesa está unida; sepárala antes de trasladar o unir');
+            return;
+        }
         if (!onlineRef.current) {
             setError(OFFLINE_TEXT[next]);
             return;
@@ -49,8 +53,9 @@ export function useTablePicking(opts: {
         setError(null);
     }, []);
 
-    /** Free tables that are not already part of a group; never the source itself. */
-    const canPick = (table: PlanTable) => !!source && table.id !== source.table.id && !table.activeTableGroupId && opts.stateOf(table) === 'free';
+    /** Server rules (transfer and group): another table, not reserved or out of service, not in a group. Occupied is allowed. */
+    const canPick = (table: PlanTable) =>
+        !!source && table.id !== source.table.id && !table.activeTableGroupId && table.status !== 'RESERVED' && table.status !== 'OUT_OF_SERVICE';
 
     const choose = async (table: PlanTable) => {
         if (!mode || !source || inFlight.current || !canPick(table)) return;
