@@ -30,6 +30,7 @@ export const createOrder: ValidationSchema = {
         customerFiscalAddress: { type: 'string', max: 1000 },
         customerEmail: { type: 'string', max: 191 },
         customerPhone: { type: 'string', max: 50 },
+        guests: { type: 'number', min: 1, max: 99, integer: true },
     },
 };
 
@@ -50,6 +51,31 @@ export const addOrderItem: ValidationSchema = {
     body: {
         menuItemId: { type: 'number', required: true, min: 1 },
         quantity: { type: 'number', required: true, min: 1, integer: true },
+    },
+};
+
+export const updateOrderItem: ValidationSchema = {
+    params: { itemId: { type: 'number', required: true, min: 1 } },
+    body: {
+        quantity: { type: 'number', min: 1, integer: true },
+        notes: { type: 'string', max: 200 },
+    },
+};
+
+export const updateOrderGuests: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        guests: { type: 'number', required: true, min: 1, max: 99, integer: true },
+    },
+};
+
+export const deliverOrderItems: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        itemIds: {
+            type: 'array', required: true, min: 1, max: 100,
+            items: { type: 'number', required: true, min: 1, integer: true },
+        },
     },
 };
 

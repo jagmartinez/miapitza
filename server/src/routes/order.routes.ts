@@ -28,7 +28,11 @@ router.get('/:id', requirePermission('orders.view', ...ORDER_READ_FALLBACK_ROLES
 router.post('/', requirePermission('orders.create', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.createOrder), OrderController.create);
 
 router.post('/:id/items', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.addOrderItem), OrderController.addItem);
+// Static `/items/...` paths stay ahead of the `/:id/...` routes below.
+router.patch('/items/:itemId', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.updateOrderItem), OrderController.updateItem);
 router.delete('/items/:itemId', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), OrderController.removeItem);
+router.post('/:id/items/deliver', requirePermission('orders.deliver', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.deliverOrderItems), OrderController.deliverItems);
+router.patch('/:id/guests', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.updateOrderGuests), OrderController.updateGuests);
 
 // Voiding a line already sent to kitchen posts waste and reprices the account:
 // a supervisor action (configurable through the orders.items.void grant).

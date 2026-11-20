@@ -630,7 +630,8 @@ export class OrderService {
                                 name: true,
                                 price: true
                             }
-                        }
+                        },
+                        modifiers: true
                     }
                 },
                 payments: {
@@ -720,6 +721,8 @@ export class OrderService {
         customerEmail?: string;
         customerPhone?: string;
         orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
+        /** Party size (1..99); optional, waiter mode. */
+        guests?: number;
         items?: Array<{
             menuItemId: number;
             quantity: number;
@@ -730,6 +733,7 @@ export class OrderService {
     }) {
         if (!Number.isInteger(data.branchId) || data.branchId <= 0) throw new Error('Sucursal inválida');
         const fiscalCustomer = this.normalizeFiscalCustomer(data);
+        const guests = data.guests === undefined || data.guests === null ? undefined : this.assertGuests(data.guests);
         for (const item of data.items || []) {
             if (!Number.isInteger(item.quantity) || item.quantity <= 0) throw new Error('La cantidad debe ser un entero mayor a 0');
         }
@@ -774,6 +778,11 @@ export class OrderService {
                 });
 
                 if (existingOrder) {
+                    // A reused account keeps its party size unless the caller sends one.
+                    if (guests !== undefined) {
+                        await tx.order.update({ where: { id: existingOrder.id }, data: { guests } });
+                        existingOrder.guests = guests;
+                    }
                     // Merge items into existing order
                     if (data.items && data.items.length > 0) {
                         if (existingOrder.invoiceNumber || existingOrder.preInvoicedAt) {
@@ -907,6 +916,7 @@ export class OrderService {
                     tableId: data.tableId,
                     userId: data.userId,
                     ...fiscalCustomer,
+                    ...(guests !== undefined ? { guests } : {}),
                     orderType: data.orderType,
                     total: 0,
                     status: 'OPEN'
@@ -1180,7 +1190,189 @@ export class OrderService {
                 await this.syncOrderKitchenCompatibility(tx, item.orderId);
             }
 
-            return { success: true };
+            return { success: true, orderId: item.orderId };
+        });
+    }
+
+    /** Party size must be a whole number between 1 and 99. */
+    private static assertGuests(value: unknown): number {
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 99) {
+            throw new Error('El número de personas debe ser un entero entre 1 y 99');
+        }
+        return value;
+    }
+
+    /** PATCH /orders/:id/guests - party size of an open account. */
+    static async setGuests(orderId: number, companyId: number, guests: number) {
+        const value = this.assertGuests(guests);
+        return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                select: { id: true, status: true, branchId: true }
+            });
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.status === 'CANCELLED') {
+                throw new Error('No se pueden cambiar las personas de una orden cancelada');
+            }
+            return await tx.order.update({
+                where: { id: orderId },
+                data: { guests: value },
+                select: { id: true, guests: true }
+            });
+        });
+    }
+
+    /**
+     * PATCH /orders/items/:itemId - change quantity and/or notes of a line that
+     * was NOT sent to the kitchen yet. Same blocking rules as `addItem`. The line
+     * keeps the unit price it was added with (base + modifiers), so a quantity
+     * edit never silently picks up a later price change; the order discount,
+     * tax and total are repriced exactly as after `addItem`/`removeItem`.
+     */
+    static async updateItem(
+        itemId: number,
+        companyId: number,
+        branchId: number | undefined,
+        data: { quantity?: number; notes?: string | null }
+    ) {
+        const hasQuantity = data.quantity !== undefined;
+        const hasNotes = data.notes !== undefined;
+        if (!hasQuantity && !hasNotes) {
+            throw new Error('Indique la cantidad o las notas a modificar');
+        }
+        if (hasQuantity && (typeof data.quantity !== 'number' || !Number.isInteger(data.quantity) || data.quantity < 1)) {
+            throw new Error('La cantidad debe ser un entero mayor a 0');
+        }
+        if (hasNotes && data.notes !== null && (typeof data.notes !== 'string' || data.notes.length > 200)) {
+            throw new Error('Las notas no pueden superar 200 caracteres');
+        }
+
+        return await prisma.$transaction(async (tx) => {
+            const target = await tx.orderItem.findFirst({
+                where: { id: itemId, order: { companyId, ...(branchId !== undefined ? { branchId } : {}) } },
+                select: { orderId: true }
+            });
+            if (!target) throw new Error('Línea de la orden no encontrada');
+
+            // Serialize with payments, cancellation, pricing and kitchen sends.
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${target.orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const item = await tx.orderItem.findUnique({
+                where: { id: itemId },
+                include: {
+                    order: {
+                        include: { payments: { where: { status: 'ACTIVE' }, select: { id: true } } }
+                    }
+                }
+            });
+            if (!item || item.order.companyId !== companyId) {
+                throw new Error('Línea de la orden no encontrada');
+            }
+            if (branchId !== undefined && item.order.branchId !== branchId) {
+                throw new Error('Línea de la orden no encontrada');
+            }
+
+            if (item.order.status === 'CANCELLED' || item.order.status === 'DELIVERED') {
+                throw new Error('No se pueden modificar artículos de órdenes pagadas, entregadas o canceladas');
+            }
+            if (item.order.invoiceNumber || item.order.preInvoicedAt) {
+                throw new Error('No se puede modificar una orden con prefactura o factura emitida');
+            }
+            if (item.order.payments.length > 0) {
+                throw new Error('No se puede modificar una orden con pagos activos; revierta los pagos primero');
+            }
+            // Re-checked under the lock: a concurrent send-to-kitchen wins.
+            if (item.sentAt !== null) {
+                throw new Error('El artículo ya enviado a cocina no se puede editar; use una anulación');
+            }
+            if (item.voidedAt) {
+                throw new Error('La línea fue anulada y no se puede editar');
+            }
+
+            const lineData: Prisma.OrderItemUpdateInput = {};
+            if (hasQuantity) {
+                lineData.quantity = data.quantity;
+                lineData.subtotal = Number(item.price) * (data.quantity as number);
+            }
+            if (hasNotes) {
+                lineData.notes = data.notes && data.notes.trim() ? data.notes.trim() : null;
+            }
+            const updated = await tx.orderItem.update({
+                where: { id: itemId },
+                data: lineData,
+                include: { menuItem: true, modifiers: true }
+            });
+
+            const newSubtotal = await this.getOrderItemsSubtotal(tx, item.orderId);
+            const repricedDiscount = await this.repriceStoredDiscount(
+                tx, companyId, item.orderId, newSubtotal, item.order.discount, item.order.discountCode
+            );
+            const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
+            const newTotal = this.calculateFinalTotal(
+                newSubtotal,
+                repricedDiscount,
+                repricedTax,
+                Number(item.order.tipAmount || 0)
+            );
+            await tx.order.update({
+                where: { id: item.orderId },
+                data: { total: newTotal, discount: repricedDiscount, tax: repricedTax }
+            });
+
+            return updated;
+        });
+    }
+
+    /**
+     * POST /orders/:id/items/deliver - the waiter hands lines to the guests.
+     * Only lines the kitchen finished (DONE), not voided and not yet delivered
+     * are stamped; everything else is reported in `skipped`. Replaying the same
+     * request writes nothing (already delivered lines land in `skipped`).
+     */
+    static async deliverItems(orderId: number, companyId: number, userId: number, itemIds: number[]) {
+        if (
+            !Array.isArray(itemIds)
+            || itemIds.length < 1
+            || itemIds.length > 100
+            || itemIds.some((id) => !Number.isInteger(id) || id < 1)
+        ) {
+            throw new Error('Indique entre 1 y 100 líneas a entregar');
+        }
+        const ids = Array.from(new Set(itemIds));
+
+        return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                select: { id: true, status: true }
+            });
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.status === 'CANCELLED') {
+                throw new Error('No se pueden entregar líneas de una orden cancelada');
+            }
+
+            const lines = await tx.orderItem.findMany({
+                where: { id: { in: ids }, orderId },
+                select: { id: true, status: true, voidedAt: true, quantity: true, deliveredAt: true }
+            });
+            const deliverable = new Set(
+                lines
+                    .filter((l) => l.status === 'DONE' && !l.voidedAt && l.quantity > 0 && !l.deliveredAt)
+                    .map((l) => l.id)
+            );
+            const toDeliver = ids.filter((id) => deliverable.has(id));
+            if (toDeliver.length > 0) {
+                // The where repeats the eligibility guards so a concurrent
+                // void/delivery can never be overwritten.
+                await tx.orderItem.updateMany({
+                    where: { id: { in: toDeliver }, orderId, status: 'DONE', voidedAt: null, deliveredAt: null },
+                    data: { deliveredAt: new Date(), deliveredById: userId }
+                });
+            }
+            return {
+                delivered: toDeliver,
+                skipped: ids.filter((id) => !deliverable.has(id))
+            };
         });
     }
 

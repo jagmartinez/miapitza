@@ -14,6 +14,23 @@ export class OrderController {
         return order;
     }
 
+    /**
+     * Branch-scoped ORDER_UPDATE with the fresh full order. Best effort: the
+     * mutation is already committed, so a failed read/emit must not turn a
+     * successful request into an error the client would retry.
+     */
+    private static async emitOrderUpdate(orderId: number, status: string, companyId: number) {
+        try {
+            const order = await OrderService.getById(orderId, companyId);
+            WebSocketService.broadcastOrderUpdate(orderId, status, order, {
+                companyId,
+                branchId: order.branchId
+            });
+        } catch (error) {
+            console.error(`[OrderController] ORDER_UPDATE ${status} for order ${orderId} not emitted:`, error);
+        }
+    }
+
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
@@ -190,6 +207,7 @@ export class OrderController {
             const companyId = req.user!.companyId;
             await OrderController.assertOrderBranch(req, orderId);
             const item = await OrderService.addItem(orderId, companyId, req.body);
+            await OrderController.emitOrderUpdate(orderId, 'ITEMS_CHANGED', companyId);
             res.status(201).json({
                 success: true,
                 message: 'Artículo agregado exitosamente',
@@ -205,16 +223,79 @@ export class OrderController {
         try {
             const itemId = parseInt(req.params.itemId);
             const companyId = req.user!.companyId;
-            await OrderService.removeItem(
+            const removed = await OrderService.removeItem(
                 itemId,
                 companyId,
                 req.user!.role === 'SUPERADMIN' ? undefined : req.user!.branchId
             );
+            await OrderController.emitOrderUpdate(removed.orderId, 'ITEMS_CHANGED', companyId);
             res.json({
                 success: true,
                 message: 'Artículo eliminado exitosamente'
             });
         } catch (error) {
+            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
+    /** PATCH /orders/items/:itemId - quantity/notes of a line not yet sent to the kitchen. */
+    static async updateItem(req: Request, res: Response, next: NextFunction) {
+        try {
+            const itemId = Number(req.params.itemId);
+            const companyId = req.user!.companyId;
+            // Pins non-company-wide users to their branch (throws without one);
+            // company-wide admins get no branch filter.
+            const branchId = resolveBranchScope(req.user!);
+            const { quantity, notes } = req.body ?? {};
+            const item = await OrderService.updateItem(itemId, companyId, branchId, { quantity, notes });
+            await OrderController.emitOrderUpdate(item.orderId, 'ITEMS_CHANGED', companyId);
+            res.json({
+                success: true,
+                message: 'Artículo actualizado exitosamente',
+                data: item
+            });
+        } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
+    /** PATCH /orders/:id/guests */
+    static async updateGuests(req: Request, res: Response, next: NextFunction) {
+        try {
+            const orderId = Number(req.params.id);
+            const companyId = req.user!.companyId;
+            await OrderController.assertOrderBranch(req, orderId);
+            const order = await OrderService.setGuests(orderId, companyId, req.body?.guests);
+            await OrderController.emitOrderUpdate(orderId, 'GUESTS_CHANGED', companyId);
+            res.json({
+                success: true,
+                message: 'Personas actualizadas',
+                data: order
+            });
+        } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
+    /** POST /orders/:id/items/deliver - hand finished lines to the guests (idempotent). */
+    static async deliverItems(req: Request, res: Response, next: NextFunction) {
+        try {
+            const orderId = Number(req.params.id);
+            const companyId = req.user!.companyId;
+            await OrderController.assertOrderBranch(req, orderId);
+            const result = await OrderService.deliverItems(orderId, companyId, req.user!.userId, req.body?.itemIds);
+            if (result.delivered.length > 0) {
+                await OrderController.emitOrderUpdate(orderId, 'ITEMS_DELIVERED', companyId);
+            }
+            res.json({
+                success: true,
+                message: result.delivered.length > 0 ? 'Líneas entregadas' : 'No había líneas por entregar',
+                data: result
+            });
+        } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -362,6 +443,8 @@ export class OrderController {
                     branchId: order?.branchId || req.user?.branchId,
                     roles: ['COCINA', 'CHEF', 'ADMIN', 'SUPERADMIN']
                 });
+                // Waiters do not receive the kitchen-only event above.
+                await OrderController.emitOrderUpdate(id, 'SENT_TO_KITCHEN', companyId);
             }
 
             res.json({

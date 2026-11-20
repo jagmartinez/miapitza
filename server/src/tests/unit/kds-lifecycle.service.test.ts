@@ -257,7 +257,7 @@ describe('persistent KDS batches', () => {
         jest.spyOn(prisma, '$transaction')
             .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
-        await expect(OrderService.removeItem(13, 1)).resolves.toEqual({ success: true });
+        await expect(OrderService.removeItem(13, 1)).resolves.toEqual({ success: true, orderId: 41 });
 
         expect(tx.order.update).toHaveBeenLastCalledWith(expect.objectContaining({
             where: { id: 41 },
