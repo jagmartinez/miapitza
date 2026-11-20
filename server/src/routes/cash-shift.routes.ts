@@ -3,12 +3,15 @@ import { CashShiftController } from '../controllers/cash-shift.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
+import { CASHIERS } from '../constants/roles';
 
 const router = Router();
 
 router.use(authMiddleware);
 
 router.get('/active-status', CashShiftController.getActiveStatus);
+router.get('/suggested-float', requireRole(...CASHIERS), CashShiftController.getSuggestedFloat);
+router.get('/cash-settings', requireRole(...CASHIERS), CashShiftController.getCashSettings);
 router.get('/', CashShiftController.getAll);
 router.get('/:id', validate(s.idParam), CashShiftController.getById);
 router.get('/:id/summary', validate(s.idParam), CashShiftController.getSummary);

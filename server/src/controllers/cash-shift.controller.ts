@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../utils/prisma';
 import { CashShiftService } from '../services/cash-shift.service';
+import { SettingService } from '../services/setting.service';
 import { getErrorMessage } from '../utils/error';
 import { CashError } from '../services/cash-errors';
 import { redactBlindSummary } from '../services/cash-blind';
@@ -199,6 +200,37 @@ export class CashShiftController {
             });
         } catch (error: unknown) {
             next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getSuggestedFloat(req: Request, res: Response, next: NextFunction) {
+        try {
+            const cashRegisterId = parseInt(String(req.query.cashRegisterId ?? ''), 10);
+            if (!Number.isInteger(cashRegisterId) || cashRegisterId < 1) {
+                return next({ statusCode: 400, message: 'cashRegisterId es requerido' });
+            }
+            const companyId = req.user!.companyId;
+            const register = await prisma.cashRegister.findFirst({
+                where: { id: cashRegisterId, companyId },
+                select: { id: true, branchId: true }
+            });
+            if (!register) return next({ statusCode: 404, message: 'Caja registradora no encontrada' });
+            assertBranchAccess(req.user!, register.branchId);
+            const data = await CashShiftService.getSuggestedFloat(companyId, register.branchId, register.id);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            next(error instanceof Error && 'statusCode' in error
+                ? error
+                : { statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getCashSettings(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await SettingService.getCashSettings(req.user!.companyId);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
 

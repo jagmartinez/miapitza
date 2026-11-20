@@ -236,6 +236,24 @@ export class CashShiftService {
         });
     }
 
+    /** endAmount of the last CLOSED shift of a register (company + branch scoped), or null. */
+    static async getSuggestedFloat(companyId: number, branchId: number, cashRegisterId: number) {
+        const last = await prisma.cashShift.findFirst({
+            where: {
+                companyId,
+                cashRegisterId,
+                endDate: { not: null },
+                endAmount: { not: null },
+                cashRegister: { branchId }
+            },
+            orderBy: { endDate: 'desc' },
+            select: { id: true, endAmount: true }
+        });
+        return last && last.endAmount !== null
+            ? { suggested: Number(last.endAmount), fromShiftId: last.id }
+            : { suggested: null, fromShiftId: null };
+    }
+
     static async getActiveShiftByUser(userId: number, companyId: number) {
         return await prisma.cashShift.findFirst({
             where: {

@@ -456,9 +456,36 @@ export class CashArqueoService {
     static async generateShiftReport(shiftId: number, companyId: number) {
         const details = await this.getShiftDetails(shiftId, companyId);
         const currencySymbol = await SettingService.getCurrencySymbol(companyId);
+        // Same sources as the invoice header (invoice.service: branch + branch.company).
+        const owner = await prisma.cashShift.findFirst({
+            where: { id: shiftId, companyId },
+            select: {
+                cashRegister: {
+                    select: {
+                        branch: {
+                            select: {
+                                name: true,
+                                address: true,
+                                phone: true,
+                                company: { select: { name: true, ruc: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        const branch = owner?.cashRegister.branch;
+        const header = {
+            companyName: branch?.company.name ?? '',
+            ruc: branch?.company.ruc ?? null,
+            branchName: branch?.name ?? '',
+            ...(branch?.address ? { branchAddress: branch.address } : {}),
+            ...(branch?.phone ? { branchPhone: branch.phone } : {})
+        };
 
         return {
             ...details,
+            header,
             report: {
                 title: 'REPORTE DE CIERRE DE CAJA',
                 generatedAt: new Date().toISOString(),

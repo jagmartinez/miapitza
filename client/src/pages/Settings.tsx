@@ -48,6 +48,7 @@ export default function Settings() {
         taxRate: '',
         tipRate: '',
         cash_reconciliation_tolerance: '1',
+        exchange_rate_usd: '36.5',
         tipEnabled: 'false',
         currency_symbol: DEFAULT_CURRENCY_SYMBOL,
 
@@ -92,6 +93,7 @@ export default function Settings() {
                 taxRate: settings.tax_rate || settings.taxRate || '',
                 tipRate: settings.tipRate || '',
                 cash_reconciliation_tolerance: settings.cash_reconciliation_tolerance || '1',
+                exchange_rate_usd: settings.exchange_rate_usd || '36.5',
                 tipEnabled: settings.tipEnabled || 'false',
                 currency_symbol: settings.currency_symbol || settings.currency || DEFAULT_CURRENCY_SYMBOL,
                 nif: settings.nif || '',
@@ -297,6 +299,15 @@ export default function Settings() {
                                     value={formData.cash_reconciliation_tolerance}
                                     onChange={(e) => setFormData({ ...formData, cash_reconciliation_tolerance: e.target.value })}
                                     placeholder="1.00"
+                                />
+                                <Input
+                                    label="Tipo de cambio US$"
+                                    type="number"
+                                    min="0.0001"
+                                    step="0.01"
+                                    value={formData.exchange_rate_usd}
+                                    onChange={(e) => setFormData({ ...formData, exchange_rate_usd: e.target.value })}
+                                    placeholder="36.50"
                                 />
                                 <Input
                                     label="Símbolo de Moneda"
