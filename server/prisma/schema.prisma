@@ -155,6 +155,7 @@ model Company {
   employmentSettlements           HrEmploymentSettlement[]
   employmentSettlementLines       HrEmploymentSettlementLine[]
   kitchenNotifications            KitchenNotification[]
+  operationalDevices              OperationalDevice[]
 }
 
 enum CostingMethod {
@@ -229,6 +230,7 @@ model Branch {
   leaveRequests                   LeaveRequest[]
   payrollSnapshots                PayrollSnapshotLine[]
   kitchenNotifications            KitchenNotification[]
+  operationalDevices              OperationalDevice[]
   travelRequests                  HrTravelRequest[]
   inventoryWarehouseRoutes        InventoryWarehouseRoute[]
   promotionBranches               PromotionBranch[]
@@ -410,6 +412,9 @@ model User {
   /// Last TOTP time step accepted for this user. Shared by every replica so a
   /// code cannot be replayed within its validity window.
   twoFactorLastTimeStep  Int?
+  /// bcrypt hash of the shared-tablet PIN. Never returned by any API.
+  pinHash                String?         @db.VarChar(100)
+  pinUpdatedAt           DateTime?
   roleId                 Int
   branchId               Int? // Primary branch
   status                 UserStatus      @default(ACTIVE)
@@ -439,6 +444,9 @@ model User {
   kitchenBatchStarts                KitchenBatch[]                     @relation("KitchenBatchStartedBy")
   kitchenBatchReleases              KitchenBatch[]                     @relation("KitchenBatchReleasedBy")
   kitchenNotifications              KitchenNotification[]              @relation("KitchenNotificationRecipient")
+  kitchenOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceKitchenUser")
+  createdOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceCreatedBy")
+  revokedOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceRevokedBy")
   cashShifts                        CashShift[]                        @relation("CashShiftOpenedBy")
   cashShiftsClosed                  CashShift[]                        @relation("CashShiftClosedBy")
   movements                         InventoryMovement[]
@@ -5218,4 +5226,45 @@ model ProductionOrderItem {
 
   @@index([productionOrderId])
   @@index([componentProductId])
+}
+
+enum OperationalDeviceType {
+  SERVICE_TABLET
+  KITCHEN_TABLET
+}
+
+enum OperationalDeviceStatus {
+  ACTIVE
+  REVOKED
+}
+
+/// Shared tablet registered by an administrator. The raw device token is shown
+/// once at registration; only its sha256 hex digest is stored.
+model OperationalDevice {
+  id            Int                     @id @default(autoincrement())
+  companyId     Int
+  branchId      Int
+  type          OperationalDeviceType
+  name          String                  @db.VarChar(100)
+  tokenHash     String                  @unique @db.VarChar(64)
+  status        OperationalDeviceStatus @default(ACTIVE)
+  kitchenUserId Int?
+  createdById   Int
+  revokedById   Int?
+  revokedAt     DateTime?
+  lastSeenAt    DateTime?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch      Branch  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  kitchenUser User?   @relation("OperationalDeviceKitchenUser", fields: [kitchenUserId], references: [id], onDelete: SetNull)
+  createdBy   User    @relation("OperationalDeviceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  revokedBy   User?   @relation("OperationalDeviceRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, branchId, status])
+  @@index([kitchenUserId])
+  @@index([createdById])
+  @@index([revokedById])
+  @@index([branchId])
 }

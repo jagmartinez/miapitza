@@ -106,6 +106,7 @@ async function main() {
         'tables.group.manage',
     ];
     const kdsPermissions = ['kds.view', 'kds.manage'];
+    const devicePermissions = ['devices.manage'];
     const operationalPermissions = [
         'orders.view',
         'orders.create',
@@ -125,6 +126,7 @@ async function main() {
         ...basePermissions,
         ...tablePermissions,
         ...kdsPermissions,
+        ...devicePermissions,
         ...operationalPermissions,
         ...hrPermissions,
     ];
@@ -146,7 +148,7 @@ async function main() {
         SUPERADMIN: permissions,
         // Branch administrators receive only non-sensitive HR visibility by
         // default. Employee mutation/read and geofence mutation remain explicit.
-        ADMIN: [...basePermissions, ...tablePermissions, ...kdsPermissions, ...operationalPermissions, 'hr.dashboard.read', 'hr.catalog.read', 'hr.geofence.read', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
+        ADMIN: [...basePermissions, ...tablePermissions, ...kdsPermissions, ...devicePermissions, ...operationalPermissions, 'hr.dashboard.read', 'hr.catalog.read', 'hr.geofence.read', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Cashier: manage orders + read-only menu/reports
         CAJERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports', 'tables.map.view', 'tables.consolidate', 'orders.view', 'orders.create', 'orders.deliver', 'invoices.issue', 'invoices.view', 'payments.process', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Waiter: take and edit orders
