@@ -185,6 +185,10 @@ export interface ShiftReport {
         notes?: string | null;
         [extra: string]: unknown;
     };
+    /** Sales of the shift by payment method (shift window and branch) and the discounts and tips of the orders paid in it. */
+    salesByMethod?: { cash: number; card: number; transfer: number; paymentCount: number };
+    discounts?: number;
+    tips?: number;
     header?: { companyName: string; ruc?: string | null; branchName: string; branchAddress?: string; branchPhone?: string };
     amounts: Record<string, number | null | undefined>;
     movements: { in: unknown[]; out: unknown[] };

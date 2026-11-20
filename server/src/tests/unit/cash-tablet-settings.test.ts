@@ -116,10 +116,11 @@ describe('suggested float', () => {
 describe('report header', () => {
     it('report header carries company RUC and branch', async () => {
         jest.spyOn(prisma.cashShift, 'findFirst').mockImplementation((async (args: any) => {
-            if (args?.select?.cashRegister?.select?.branchId) return { cashRegister: { branchId: 1 } };
             if (args?.select?.cashRegister?.select?.branch) {
                 return {
+                    userId: 7, startDate: new Date(), endDate: new Date(),
                     cashRegister: {
+                        branchId: 1,
                         branch: {
                             name: 'Sucursal Centro', address: 'Km 4 Carretera', phone: '2222-0000',
                             company: { name: 'Mi Pitza S.A.', ruc: 'J0310000000001' },
@@ -127,6 +128,7 @@ describe('report header', () => {
                     },
                 };
             }
+            if (args?.select?.cashRegister?.select?.branchId) return { cashRegister: { branchId: 1 } };
             return {
                 id: 5, startAmount: 50, endAmount: 50, endDate: new Date(), startDate: new Date(),
                 forceClosed: false, closingExchangeRate: null, closedBy: null, movements: [],
@@ -134,6 +136,7 @@ describe('report header', () => {
             };
         }) as never);
         jest.spyOn(prisma.cashCount, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(SettingService, 'getCurrencySymbol').mockResolvedValue('C$' as never);
         const res = await request(app).get('/cash-arqueo/5/report').set('x-test-user', as(cajero)).expect(200);
         expect(res.body.data.header).toEqual({

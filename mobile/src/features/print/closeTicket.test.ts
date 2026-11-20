@@ -1,7 +1,7 @@
 import { closeTicket, TICKET_WIDTH, ticketText } from './closeTicket';
-import { reportOf, SALES } from './reportFixture';
+import { reportOf } from './reportFixture';
 
-const opts = { printedAt: new Date(2026, 10, 21, 9, 5), printedBy: 'Carla Cajera', sales: SALES };
+const opts = { printedAt: new Date(2026, 10, 21, 9, 5), printedBy: 'Carla Cajera' };
 
 describe('closeTicket', () => {
     it('every ticket line is at most 48 chars', () => {
@@ -46,6 +46,14 @@ describe('closeTicket', () => {
         expect(text).toContain('-'.repeat(48));
         expect(text).toContain('_'.repeat(20));
         expect(text.trimEnd().split('\n').pop()).toBe('Impreso 21/11/2026 09:05 · Carla Cajera');
+    });
+
+    it('prints Descuentos, Propinas and the note from the report', () => {
+        const text = closeTicket(reportOf(), opts);
+        expect(text).toMatch(/Descuentos +C\$ 12\.25/);
+        expect(text).toMatch(/Propinas +C\$ 8\.50/);
+        expect(text).toContain('Nota: Sobro un billete de 5 en la caja.');
+        expect(text).toMatch(/TOTAL VENTAS +C\$ 2,000\.00/);
     });
 
     it('keeps only printable ASCII plus the Spanish letters (policy)', () => {

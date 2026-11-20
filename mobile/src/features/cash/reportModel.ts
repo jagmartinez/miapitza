@@ -26,6 +26,8 @@ export interface ReportView {
     usdInNio: number;
     notes: string;
     sales: SalesByMethod | null;
+    discounts: number | null;
+    tips: number | null;
     salesTotal: number | null;
 }
 
@@ -36,7 +38,8 @@ const byDenom = (rows: CountLine[] | undefined) =>
     (rows ?? []).filter((r) => n(r.count) > 0).map((r) => ({ denomination: n(r.denomination), count: n(r.count) })).sort((a, b) => b.denomination - a.denomination);
 
 /** One reading of the server report, shared by the screen and the ticket so both always agree. Amounts are the server's; nothing is recomputed except the denomination subtotals. */
-export function reportView(report: ShiftReport, sales: SalesByMethod | null = null): ReportView {
+export function reportView(report: ShiftReport): ReportView {
+    const sales = report.salesByMethod ?? null;
     const a = report.amounts ?? {};
     const bills = byDenom(report.counts?.bills);
     const coins = byDenom(report.counts?.coins);
@@ -73,6 +76,8 @@ export function reportView(report: ShiftReport, sales: SalesByMethod | null = nu
         usdInNio,
         notes: typeof report.shift.notes === 'string' ? report.shift.notes.trim() : '',
         sales,
+        discounts: typeof report.discounts === 'number' ? report.discounts : null,
+        tips: typeof report.tips === 'number' ? report.tips : null,
         salesTotal: sales ? (cents(sales.cash) + cents(sales.card) + cents(sales.transfer)) / 100 : null,
     };
 }

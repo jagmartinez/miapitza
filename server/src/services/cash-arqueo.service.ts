@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SettingService } from './setting.service';
 import { CashError } from './cash-errors';
+import { CashShiftService } from './cash-shift.service';
 import {
     CashMovementReportService,
     summarizeCashMovements
@@ -173,7 +174,8 @@ export class CashArqueoService {
                 closingExchangeRate: shift.closingExchangeRate !== null
                     ? Number(shift.closingExchangeRate)
                     : null,
-                status: shift.endDate ? 'CERRADO' : 'ABIERTO'
+                status: shift.endDate ? 'CERRADO' : 'ABIERTO',
+                notes: shift.notes
             },
             amounts: {
                 startAmount: Number(shift.startAmount),
@@ -465,8 +467,12 @@ export class CashArqueoService {
         const owner = await prisma.cashShift.findFirst({
             where: { id: shiftId, companyId },
             select: {
+                userId: true,
+                startDate: true,
+                endDate: true,
                 cashRegister: {
                     select: {
+                        branchId: true,
                         branch: {
                             select: {
                                 name: true,
@@ -488,9 +494,15 @@ export class CashArqueoService {
             ...(branch?.phone ? { branchPhone: branch.phone } : {})
         };
 
+        // Same window and scope as the shift summary. A shift that vanished between the two reads has no sales to count.
+        const breakdown = owner
+            ? await CashShiftService.salesBreakdown(owner, companyId, details.amounts.totalSalesCash)
+            : { salesByMethod: { cash: details.amounts.totalSalesCash, card: 0, transfer: 0, paymentCount: 0 }, discounts: 0, tips: 0 };
+
         return {
             ...details,
             header,
+            ...breakdown,
             report: {
                 title: 'REPORTE DE CIERRE DE CAJA',
                 generatedAt: new Date().toISOString(),

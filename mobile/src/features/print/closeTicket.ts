@@ -1,5 +1,5 @@
 import type { ShiftReport } from '../../data/cashTypes';
-import { reportView, type SalesByMethod } from '../cash/reportModel';
+import { reportView } from '../cash/reportModel';
 
 /** 80 mm thermal paper, monospaced font: 48 columns. */
 export const TICKET_WIDTH = 48;
@@ -87,15 +87,11 @@ export interface TicketOptions {
     printedAt?: Date;
     /** Who prints it (footer). */
     printedBy?: string;
-    /** Sales of the shift by payment method (from the shift summary: the report itself does not carry them). */
-    sales?: SalesByMethod | null;
-    discounts?: number | null;
-    tips?: number | null;
 }
 
 /** The closing ticket (spec 7.3.2b) as plain text: pure, every line at most 48 characters. */
 export function closeTicket(report: ShiftReport, opts: TicketOptions = {}): string {
-    const v = reportView(report, opts.sales ?? null);
+    const v = reportView(report);
     const h = report.header;
     const out: string[] = [];
     const add = (...lines: string[]) => out.push(...lines);
@@ -113,8 +109,8 @@ export function closeTicket(report: ShiftReport, opts: TicketOptions = {}): stri
     if (v.sales) {
         add(row('  Efectivo', nio(v.sales.cash)), row('  Tarjeta', nio(v.sales.card)), row('  Transferencia', nio(v.sales.transfer)), row('TOTAL VENTAS', nio(v.salesTotal ?? 0)), row('  Cobros', String(v.sales.paymentCount)));
     } else add(row('  Efectivo', nio(v.cashSales)));
-    if (opts.discounts != null) add(row('  Descuentos', nio(opts.discounts)));
-    if (opts.tips != null) add(row('  Propinas', nio(opts.tips)));
+    if (v.discounts != null) add(row('  Descuentos', nio(v.discounts)));
+    if (v.tips != null) add(row('  Propinas', nio(v.tips)));
 
     add(RULE, 'EFECTIVO C$', row('  Fondo inicial', nio(v.startAmount)), row('  Ventas en efectivo', nio(v.cashSales)), row('  Entradas', nio(v.moneyIn)), row('  Salidas', `-${nio(v.moneyOut)}`));
     if (v.refunds > 0) add(row('  Devoluciones', `-${nio(v.refunds)}`));

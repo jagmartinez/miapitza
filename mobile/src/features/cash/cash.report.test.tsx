@@ -1,22 +1,20 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { PrintOut } from '../print/printOut';
 import { PrinterUnavailable } from '../print/printOut';
-import { reportOf, SALES } from '../print/reportFixture';
+import { reportOf } from '../print/reportFixture';
 import { CloseReportScreen } from './CloseReportScreen';
 import { ShiftHistoryScreen } from './ShiftHistoryScreen';
 import { CashHome } from './CashHome';
-import { cashSession, makeCash, summaryOf } from './testkit';
+import { cashSession, makeCash } from './testkit';
 
 afterEach(cleanup);
-
-const closedSummary = summaryOf({ expectedBalance: 2420.5, salesByMethod: SALES });
 
 function printer(over: Partial<PrintOut> = {}): PrintOut & { [K in keyof PrintOut]: ReturnType<typeof vi.fn> } {
     return { print: vi.fn().mockRejectedValue(new PrinterUnavailable()), shareText: vi.fn().mockResolvedValue(undefined), sharePdf: vi.fn(), ...over } as never;
 }
 
 function setup(over: { role?: 'CAJERO' | 'ADMIN'; printer?: ReturnType<typeof printer>; report?: ReturnType<typeof reportOf> } = {}) {
-    const api = makeCash({ report: vi.fn().mockResolvedValue(over.report ?? reportOf()), summary: vi.fn().mockResolvedValue(closedSummary) });
+    const api = makeCash({ report: vi.fn().mockResolvedValue(over.report ?? reportOf()) });
     const out = over.printer ?? printer();
     const onDone = vi.fn();
     render(<CloseReportScreen api={api} session={cashSession(over.role ?? 'CAJERO')} shiftId={42} onDone={onDone} printer={out} />);
@@ -35,7 +33,13 @@ describe('CloseReportScreen', () => {
         expect(card('Diferencia')).toHaveTextContent('+C$ 5');
         expect(screen.getByTestId('result-tag')).toHaveTextContent('Sobrante C$ 5');
         // three cards + the closing note, for the cashier too
-        expect(screen.getByRole('region', { name: 'Ventas por método' })).toHaveTextContent('C$ 600');
+        expect(api.summary).not.toHaveBeenCalled(); // everything comes with the report
+        const sales = screen.getByRole('region', { name: 'Ventas por método' });
+        expect(sales).toHaveTextContent('C$ 600');
+        expect(sales).toHaveTextContent('Descuentos');
+        expect(sales).toHaveTextContent('C$ 12.25');
+        expect(sales).toHaveTextContent('Propinas');
+        expect(sales).toHaveTextContent('C$ 8.50');
         expect(screen.getByRole('region', { name: 'Efectivo' })).toHaveTextContent('Debe haber');
         expect(screen.getByRole('region', { name: 'Arqueo' })).toHaveTextContent('Nota: Sobro un billete de 5 en la caja.');
         expect(screen.queryByText(/ciega/i)).toBeNull();
@@ -82,7 +86,7 @@ describe('CloseReportScreen', () => {
     });
 
     it('Listo goes back and a load failure offers retry', async () => {
-        const api = makeCash({ report: vi.fn().mockRejectedValueOnce(new Error('Sin red')).mockResolvedValue(reportOf()), summary: vi.fn().mockResolvedValue(closedSummary) });
+        const api = makeCash({ report: vi.fn().mockRejectedValueOnce(new Error('Sin red')).mockResolvedValue(reportOf()) });
         const onDone = vi.fn();
         render(<CloseReportScreen api={api} session={cashSession()} shiftId={42} onDone={onDone} printer={printer()} />);
         expect(await screen.findByRole('alert')).toHaveTextContent('Sin red');

@@ -5,11 +5,11 @@ import type { Session } from '../../core/session';
 import { closeTicket } from '../print/closeTicket';
 import { printOrShare, printOut as defaultPrintOut, type PrintOut } from '../print/printOut';
 import { money } from '../waiter/order/orderModel';
-import { reportView, type ReportView, type SalesByMethod } from './reportModel';
+import { reportView, type ReportView } from './reportModel';
 import './cash.css';
 
 export interface CloseReportProps {
-    api: Pick<CashApi, 'report' | 'summary'>;
+    api: Pick<CashApi, 'report'>;
     session: Session;
     shiftId: number;
     /** After a close: "Listo" goes back to the tables. */
@@ -51,7 +51,6 @@ function Line({ label, value, strong = false }: { label: string; value: string; 
  */
 export function CloseReportScreen({ api, session, shiftId, onDone, onBack, printer = defaultPrintOut }: CloseReportProps) {
     const [report, setReport] = useState<ShiftReport | null>(null);
-    const [sales, setSales] = useState<SalesByMethod | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [tick, setTick] = useState(0);
     const [showDenoms, setShowDenoms] = useState(false);
@@ -62,13 +61,8 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
     useEffect(() => {
         let live = true;
         setError(null);
-        // Sales by method live in the shift summary (not blind data); without them the figure shows a dash, the report still opens.
-        Promise.all([api.report(shiftId), api.summary(shiftId).then((s) => s.summary.salesByMethod ?? null, () => null)]).then(
-            ([r, by]) => {
-                if (!live) return;
-                setReport(r);
-                setSales(by);
-            },
+        api.report(shiftId).then(
+            (r) => live && setReport(r),
             (cause) => live && setError(cause instanceof Error ? cause.message : 'No se pudo cargar el reporte.'),
         );
         return () => {
@@ -76,7 +70,7 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
         };
     }, [api, shiftId, tick]);
 
-    const v = report ? reportView(report, sales) : null;
+    const v = report ? reportView(report) : null;
     const tag = v ? tagOf(v) : null;
 
     const run = async (kind: 'print' | 'share') => {
@@ -85,7 +79,7 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
         setBusy(kind);
         setNotice(null);
         try {
-            const text = closeTicket(report, { printedAt: new Date(), printedBy: session.user.name, sales });
+            const text = closeTicket(report, { printedAt: new Date(), printedBy: session.user.name });
             if (kind === 'share') {
                 await printer.shareText(text);
             } else {
@@ -166,6 +160,8 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
                                 <Line label="Efectivo" value={v.sales ? money(v.sales.cash) : money(v.cashSales)} />
                                 <Line label="Tarjeta" value={v.sales ? money(v.sales.card) : '—'} />
                                 <Line label="Transferencia" value={v.sales ? money(v.sales.transfer) : '—'} />
+                                {v.discounts != null && <Line label="Descuentos" value={money(v.discounts)} />}
+                                {v.tips != null && <Line label="Propinas" value={money(v.tips)} />}
                                 <Line label={v.sales ? `Total · ${v.sales.paymentCount} ${v.sales.paymentCount === 1 ? 'cobro' : 'cobros'}` : 'Total'} value={dash(v.salesTotal)} strong />
                             </dl>
                         </section>

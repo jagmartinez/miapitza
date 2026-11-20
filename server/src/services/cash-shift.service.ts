@@ -438,6 +438,51 @@ export class CashShiftService {
         throw new Error('El libro de caja es inmutable; registre un movimiento compensatorio en lugar de eliminarlo');
     }
 
+    /**
+     * Sales of a shift by payment method, plus the discounts and tips of the orders paid in it. Payments carry no shift id,
+     * so they are matched by the shift's cashier and window [start, end) (an open shift runs to now), scoped to the shift's
+     * branch and company. Cash uses the same net figure as the drawer; OTHER methods count with transfers. Not blind data:
+     * every role gets it. Each order counts once for discounts and tips, even when its bill was split in several payments.
+     */
+    static async salesBreakdown(
+        shift: { userId: number; startDate: Date; endDate: Date | null; cashRegister: { branchId: number } },
+        companyId: number,
+        cashSales: number
+    ) {
+        const payments = await prisma.payment.findMany({
+            where: {
+                registeredById: shift.userId,
+                status: 'ACTIVE',
+                createdAt: { gte: shift.startDate, ...(shift.endDate ? { lt: shift.endDate } : { lte: new Date() }) },
+                order: { companyId, branchId: shift.cashRegister.branchId }
+            },
+            select: { orderId: true, methodType: true, amount: true, order: { select: { discount: true, tipAmount: true } } }
+        });
+        const sumOf = (...types: string[]) =>
+            payments.filter((p) => types.includes(p.methodType)).reduce((n, p) => n + Math.round(Number(p.amount) * 100), 0) / 100;
+        const orders = new Map<number, { discount: number; tip: number }>();
+        for (const p of payments) {
+            if (!orders.has(p.orderId)) {
+                orders.set(p.orderId, {
+                    discount: Math.round(Number(p.order?.discount ?? 0) * 100),
+                    tip: Math.round(Number(p.order?.tipAmount ?? 0) * 100)
+                });
+            }
+        }
+        const totalOf = (key: 'discount' | 'tip') => [...orders.values()].reduce((n, o) => n + o[key], 0) / 100;
+        return {
+            salesByMethod: {
+                cash: cashSales,
+                card: sumOf('CARD'),
+                transfer: sumOf('BANK_TRANSFER', 'OTHER'),
+                // distinct orders paid: the legs of a split bill count once
+                paymentCount: orders.size
+            },
+            discounts: totalOf('discount'),
+            tips: totalOf('tip')
+        };
+    }
+
     // Get shift summary
     static async getShiftSummary(shiftId: number, companyId: number) {
         const shift = await prisma.cashShift.findFirst({
@@ -468,27 +513,7 @@ export class CashShiftService {
             ? (Math.round(actualBalance * 100) - expectedBalanceCents) / 100
             : null;
 
-        // Sales by payment method for the shift's cashier and window (payments carry no shift id; cash uses the same
-        // net figure as the drawer). OTHER methods count with transfers. Not blind data: every role gets it.
-        // Window is [start, end): an open shift runs to now. Scoped to the shift's branch and company.
-        const payments = await prisma.payment.findMany({
-            where: {
-                registeredById: shift.userId,
-                status: 'ACTIVE',
-                createdAt: { gte: shift.startDate, ...(shift.endDate ? { lt: shift.endDate } : { lte: new Date() }) },
-                order: { companyId, branchId: shift.cashRegister.branchId }
-            },
-            select: { orderId: true, methodType: true, amount: true }
-        });
-        const sumOf = (...types: string[]) =>
-            payments.filter((p) => types.includes(p.methodType)).reduce((n, p) => n + Math.round(Number(p.amount) * 100), 0) / 100;
-        const salesByMethod = {
-            cash: movementSummary.totalSalesCash,
-            card: sumOf('CARD'),
-            transfer: sumOf('BANK_TRANSFER', 'OTHER'),
-            // distinct orders paid: the legs of a split bill count once
-            paymentCount: new Set(payments.map((p) => p.orderId)).size
-        };
+        const { salesByMethod } = await CashShiftService.salesBreakdown(shift, companyId, movementSummary.totalSalesCash);
 
         return {
             shift,
