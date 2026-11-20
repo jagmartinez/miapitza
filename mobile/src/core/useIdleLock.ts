@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchmove'] as const;
 
-/** Calls onLock after `ms` without a pointerdown/keydown. Any input restarts the countdown. */
+/** Calls onLock after `ms` without input (pointerdown, keydown, scroll, touchmove). Any of them restarts the countdown. */
 export function useIdleLock(onLock: () => void, ms = 120_000): void {
     const lockRef = useRef(onLock);
     lockRef.current = onLock;

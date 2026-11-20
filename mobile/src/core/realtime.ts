@@ -82,6 +82,8 @@ export function createRealtime(opts: RealtimeOptions) {
         ws = socket;
         // Token this socket authenticated with; lets a 4001 tell "old session" from "bad session".
         let usedToken: string | null = null;
+        // Subscribers only hear from a socket the server has authenticated.
+        let connected = false;
 
         socket.onopen = () => {
             if (mine !== generation) return;
@@ -112,9 +114,11 @@ export function createRealtime(opts: RealtimeOptions) {
             }
             if (!message || typeof message.type !== 'string') return;
             if (message.type === 'CONNECTED') {
+                connected = true;
                 delay = MIN_DELAY_MS; // authenticated: the connection is healthy
                 setStatus('online');
             }
+            if (!connected) return;
             for (const fn of [...(subscribers.get(message.type) ?? [])]) fn(message.payload);
         };
 

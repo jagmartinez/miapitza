@@ -213,3 +213,39 @@ describe('realtime', () => {
         rt.close();
     });
 });
+
+describe('realtime subscriber gating', () => {
+    it('delivers messages only after CONNECTED on the current socket', async () => {
+        const rt = make();
+        const got: unknown[] = [];
+        rt.subscribe('ORDER_UPDATED', (p) => got.push(p));
+        rt.connect();
+        const ws = FakeWS.instances[0];
+        ws.open();
+        await flush();
+        ws.serverSend({ type: 'ORDER_UPDATED', payload: 'early' });
+        expect(got).toEqual([]);
+        ws.serverSend({ type: 'CONNECTED', payload: {} });
+        ws.serverSend({ type: 'ORDER_UPDATED', payload: 'late' });
+        expect(got).toEqual(['late']);
+        rt.close();
+    });
+
+    it('a reconnect must be re-authenticated before subscribers hear anything again', async () => {
+        const rt = make();
+        const got: unknown[] = [];
+        rt.subscribe('ORDER_UPDATED', (p) => got.push(p));
+        rt.connect();
+        const first = FakeWS.instances[0];
+        first.open();
+        await flush();
+        first.serverSend({ type: 'CONNECTED' });
+        rt.reconnect();
+        const second = FakeWS.instances[1];
+        second.open();
+        await flush();
+        second.serverSend({ type: 'ORDER_UPDATED', payload: 'unauthenticated' });
+        expect(got).toEqual([]);
+        rt.close();
+    });
+});
