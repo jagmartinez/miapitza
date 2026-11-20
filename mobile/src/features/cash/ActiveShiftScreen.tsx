@@ -29,7 +29,23 @@ const timeOf = (iso: string) => {
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' });
 };
-const pct = (part: number, total: number) => (total > 0 ? `${Math.round((part / total) * 100)}%` : '—');
+/** Largest-remainder rounding: the shown percentages always add up to 100. */
+function percents(parts: number[]): string[] {
+    const total = parts.reduce((n, p) => n + p, 0);
+    if (total <= 0) return parts.map(() => '—');
+    const raw = parts.map((p) => (p / total) * 100);
+    const out = raw.map(Math.floor);
+    let left = 100 - out.reduce((n, p) => n + p, 0);
+    raw.map((r, i) => ({ i, f: r - Math.floor(r) }))
+        .sort((a, b) => b.f - a.f || a.i - b.i)
+        .forEach(({ i }) => {
+            if (left > 0) {
+                out[i] += 1;
+                left -= 1;
+            }
+        });
+    return out.map((p) => `${p}%`);
+}
 
 /** Cash the sale itself brought in is already in the sales cards: the list shows what the cashier moved by hand. */
 const isManual = (m: CashMovementRow) => !/PAY-/.test(String(m.reference ?? ''));
@@ -78,6 +94,7 @@ export function ActiveShiftScreen({ api, session, shift, requiresClose = false, 
     const s = data?.summary;
     const by = s?.salesByMethod;
     const sales = by ? by.cash + by.card + by.transfer : null;
+    const [pCash, pCard, pTransfer] = by ? percents([by.cash, by.card, by.transfer]) : ['—', '—', '—'];
     const movements = (data?.shift.movements ?? []).filter(isManual);
     const who = (data?.shift.user ?? shift.user)?.name;
     const register = data?.shift.cashRegister?.name ?? shift.cashRegister?.name ?? 'Caja';
@@ -126,10 +143,10 @@ export function ActiveShiftScreen({ api, session, shift, requiresClose = false, 
             <div className="cash-active-body">
                 <section className="cash-left">
                     <div className="cash-cards" role="group" aria-label="Resumen de ventas">
-                        <Card title="Ventas" amount={sales != null ? money(sales) : '—'} note={by ? `${by.paymentCount} cobros` : ' '} />
-                        <Card title="Efectivo" amount={by ? money(by.cash) : s ? money(num(s.totalSalesCash)) : '—'} note={by && sales != null ? pct(by.cash, sales) : '—'} />
-                        <Card title="Tarjeta" amount={by ? money(by.card) : '—'} note={by && sales != null ? pct(by.card, sales) : '—'} />
-                        <Card title="Transferencia" amount={by ? money(by.transfer) : '—'} note={by && sales != null ? pct(by.transfer, sales) : '—'} />
+                        <Card title="Ventas" amount={sales != null ? money(sales) : '—'} note={by ? `${by.paymentCount} ${by.paymentCount === 1 ? 'cobro' : 'cobros'}` : ' '} />
+                        <Card title="Efectivo" amount={by ? money(by.cash) : s ? money(num(s.totalSalesCash)) : '—'} note={pCash} />
+                        <Card title="Tarjeta" amount={by ? money(by.card) : '—'} note={pCard} />
+                        <Card title="Transferencia" amount={by ? money(by.transfer) : '—'} note={pTransfer} />
                     </div>
                     <h2 className="cash-h">Movimientos de efectivo</h2>
                     <ul className="cash-moves" aria-label="Movimientos de efectivo">

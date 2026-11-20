@@ -36,6 +36,8 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
     const [registers, setRegisters] = useState<CashRegisterRow[] | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [registerId, setRegisterId] = useState<number | null>(null);
+    /** Registers the server told us are taken (by whom), until a reload says otherwise. */
+    const [taken, setTaken] = useState<Record<number, string>>({});
     const [typed, setTyped] = useState('');
     const [suggested, setSuggested] = useState<number | null>(null);
     const [counting, setCounting] = useState(false);
@@ -45,6 +47,7 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
     const pendingRef = useRef(false);
     const actionId = useRef<string | null>(null);
     const alive = useRef(true);
+    const autoPicked = useRef(false);
 
     useEffect(() => {
         alive.current = true;
@@ -59,7 +62,12 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
             if (!alive.current) return;
             setRegisters(rows);
             setLoadError(null);
-            setRegisterId((cur) => cur ?? (rows.filter((r) => !r.activeShift).length === 1 ? rows.find((r) => !r.activeShift)!.id : null));
+            // The only free register is picked for the cashier once, on the first load.
+            if (!autoPicked.current) {
+                autoPicked.current = true;
+                const free = rows.filter((r) => !r.activeShift);
+                if (free.length === 1) setRegisterId(free[0].id);
+            }
         } catch (cause) {
             if (alive.current) setLoadError(openErrorMessage(cause));
         }
@@ -119,7 +127,11 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
             // A definitive answer ends the action; only an unknown outcome may be retried with the same id.
             if (cause instanceof CashError) {
                 actionId.current = null;
-                if (cause.code === 'CASH_REGISTER_OCCUPIED') void loadRegisters();
+                if (cause.code === 'CASH_REGISTER_OCCUPIED') {
+                    setTaken((t) => ({ ...t, [registerId]: cause.occupiedBy?.name ?? 'otro usuario' }));
+                    setRegisterId(null);
+                    void loadRegisters();
+                }
             }
             setFailed(!(cause instanceof CashError));
             setError(openErrorMessage(cause));
@@ -135,7 +147,7 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
         <main className="cash" data-testid="open-shift">
             <header className="cash-bar">
                 {onBack && (
-                    <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
+                    <button type="button" className="btn" aria-label="Volver" disabled={pending} onClick={onBack}>
                         ←
                     </button>
                 )}
@@ -160,9 +172,9 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
                     {!registers && !loadError && <p className="muted">Cargando cajas…</p>}
                     <div className="cash-registers">
                         {registers?.map((r) => {
-                            const who = r.activeShift ? (r.activeShift.user?.name ?? 'otro usuario') : null;
+                            const who = r.activeShift ? (r.activeShift.user?.name ?? 'otro usuario') : (taken[r.id] ?? null);
                             return (
-                                <button key={r.id} type="button" className="btn cash-register" aria-pressed={registerId === r.id} disabled={!!r.activeShift} onClick={() => choose(r.id)}>
+                                <button key={r.id} type="button" className="btn cash-register" aria-pressed={registerId === r.id} disabled={!!who} onClick={() => choose(r.id)}>
                                     <strong>{r.name}</strong>
                                     <span className="muted">{who ? `En uso · ${who}` : 'Libre'}</span>
                                 </button>

@@ -470,24 +470,24 @@ export class CashShiftService {
 
         // Sales by payment method for the shift's cashier and window (payments carry no shift id; cash uses the same
         // net figure as the drawer). OTHER methods count with transfers. Not blind data: every role gets it.
-        const grouped = await prisma.payment.groupBy({
-            by: ['methodType'],
+        // Window is [start, end): an open shift runs to now. Scoped to the shift's branch and company.
+        const payments = await prisma.payment.findMany({
             where: {
                 registeredById: shift.userId,
                 status: 'ACTIVE',
-                createdAt: { gte: shift.startDate, lte: shift.endDate ?? new Date() },
-                order: { companyId }
+                createdAt: { gte: shift.startDate, ...(shift.endDate ? { lt: shift.endDate } : { lte: new Date() }) },
+                order: { companyId, branchId: shift.cashRegister.branchId }
             },
-            _sum: { amount: true },
-            _count: { _all: true }
+            select: { orderId: true, methodType: true, amount: true }
         });
         const sumOf = (...types: string[]) =>
-            grouped.filter((g) => types.includes(g.methodType)).reduce((n, g) => n + Math.round(Number(g._sum.amount ?? 0) * 100), 0) / 100;
+            payments.filter((p) => types.includes(p.methodType)).reduce((n, p) => n + Math.round(Number(p.amount) * 100), 0) / 100;
         const salesByMethod = {
             cash: movementSummary.totalSalesCash,
             card: sumOf('CARD'),
             transfer: sumOf('BANK_TRANSFER', 'OTHER'),
-            paymentCount: grouped.reduce((n, g) => n + g._count._all, 0)
+            // distinct orders paid: the legs of a split bill count once
+            paymentCount: new Set(payments.map((p) => p.orderId)).size
         };
 
         return {

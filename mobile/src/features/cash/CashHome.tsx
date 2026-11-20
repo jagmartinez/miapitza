@@ -46,7 +46,7 @@ export function CashHome({ session, api, onBack, onCount }: CashHomeProps) {
         );
     }
     if (cash.shift && cash.status.hasActiveShift) {
-        return <ActiveShiftScreen api={api} session={session} shift={cash.shift} requiresClose={cash.status.requiresClose} closeMessage={cash.status.message} addMovement={cash.addMovement} onBack={onBack} onCount={onCount} />;
+        return <ActiveShiftScreen key={ownerKeyOf(session) ?? ''} api={api} session={session} shift={cash.shift} requiresClose={cash.status.requiresClose} closeMessage={cash.status.message} addMovement={cash.addMovement} onBack={onBack} onCount={onCount} />;
     }
-    return <OpenShiftScreen api={api} openShift={cash.openShift} onOpened={() => undefined} onBack={onBack} />;
+    return <OpenShiftScreen key={ownerKeyOf(session) ?? ''} api={api} openShift={cash.openShift} onOpened={() => void cash.refresh()} onBack={onBack} />;
 }

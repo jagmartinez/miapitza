@@ -13,7 +13,7 @@ describe('CashShiftService.getShiftSummary fiscal cash counterflows', () => {
             id: 7,
             startAmount: 50,
             endAmount: 145.35,
-            cashRegister: { id: 1, name: 'Caja' },
+            cashRegister: { id: 1, name: 'Caja', branchId: 5 },
             user: { id: 3, name: 'Ana' },
             movements: [
                 { type: 'IN', amount: 100, reference: 'PAY-10' },
@@ -27,7 +27,7 @@ describe('CashShiftService.getShiftSummary fiscal cash counterflows', () => {
             ]
         } as never);
 
-        jest.spyOn(prisma.payment, 'groupBy').mockResolvedValue([] as never);
+        jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([] as never);
         const result = await CashShiftService.getShiftSummary(7, 2);
 
         expect(result.summary).toMatchObject({
@@ -51,21 +51,38 @@ describe('CashShiftService.getShiftSummary fiscal cash counterflows', () => {
             endDate: null,
             startAmount: 50,
             endAmount: null,
-            cashRegister: { id: 1, name: 'Caja' },
+            cashRegister: { id: 1, name: 'Caja', branchId: 5 },
             user: { id: 3, name: 'Ana' },
             movements: [{ type: 'IN', amount: 100, reference: 'PAY-10' }, { type: 'OUT', amount: 20, reference: 'REV-PAY-11' }]
         } as never);
-        const groupBy = jest.spyOn(prisma.payment, 'groupBy').mockResolvedValue([
-            { methodType: 'CASH', _sum: { amount: 120 }, _count: { _all: 2 } },
-            { methodType: 'CARD', _sum: { amount: 60.5 }, _count: { _all: 3 } },
-            { methodType: 'BANK_TRANSFER', _sum: { amount: 20 }, _count: { _all: 1 } },
-            { methodType: 'OTHER', _sum: { amount: 5 }, _count: { _all: 1 } }
+        const findMany = jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([
+            { orderId: 1, methodType: 'CASH', amount: 120 },
+            { orderId: 2, methodType: 'CARD', amount: 30.25 },
+            { orderId: 2, methodType: 'CARD', amount: 30.25 }, // split bill: second leg of order 2
+            { orderId: 3, methodType: 'BANK_TRANSFER', amount: 20 },
+            { orderId: 4, methodType: 'OTHER', amount: 5 }
         ] as never);
 
         const result = await CashShiftService.getShiftSummary(8, 2);
 
-        expect(result.summary.salesByMethod).toEqual({ cash: 80, card: 60.5, transfer: 25, paymentCount: 7 });
-        const where = (groupBy.mock.calls[0][0] as { where: Record<string, unknown> }).where;
-        expect(where).toMatchObject({ registeredById: 3, status: 'ACTIVE', order: { companyId: 2 } });
+        expect(result.summary.salesByMethod).toEqual({ cash: 80, card: 60.5, transfer: 25, paymentCount: 4 });
+        const where = (findMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+        expect(where).toMatchObject({
+            registeredById: 3,
+            status: 'ACTIVE',
+            createdAt: { gte: new Date('2026-11-20T14:00:00Z'), lte: expect.any(Date) },
+            order: { companyId: 2, branchId: 5 }
+        });
+    });
+
+    it('a closed shift window is exclusive at the end', async () => {
+        jest.spyOn(prisma.cashShift, 'findFirst').mockResolvedValue({
+            id: 9, userId: 3, startDate: new Date('2026-11-20T14:00:00Z'), endDate: new Date('2026-11-20T22:00:00Z'), startAmount: 0, endAmount: 0,
+            cashRegister: { id: 1, name: 'Caja', branchId: 5 }, user: { id: 3, name: 'Ana' }, movements: []
+        } as never);
+        const findMany = jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([] as never);
+        await CashShiftService.getShiftSummary(9, 2);
+        const createdAt = (findMany.mock.calls[0][0] as { where: { createdAt: Record<string, unknown> } }).where.createdAt;
+        expect(createdAt).toEqual({ gte: new Date('2026-11-20T14:00:00Z'), lt: new Date('2026-11-20T22:00:00Z') });
     });
 });

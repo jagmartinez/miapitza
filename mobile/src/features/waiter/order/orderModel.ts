@@ -1,4 +1,4 @@
-import { formatCurrency } from '@web/utils/currency';
+import { formatCurrencyGrouped } from '@web/utils/currency';
 import { isCategoryVisibleInMenu } from '@web/utils/categoryVisibility';
 import type { PromotionRulesView } from '@web/utils/promotionRules';
 
@@ -7,7 +7,7 @@ import type { PromotionRulesView } from '@web/utils/promotionRules';
 type Json = Record<string, any>;
 
 /** "C$ 640" (whole amounts drop the cents). */
-export const money = (amount: unknown) => formatCurrency(amount).replace(/\.00$/, '');
+export const money = (amount: unknown) => formatCurrencyGrouped(amount).replace(/\.00$/, '');
 
 export interface Product {
     id: number;

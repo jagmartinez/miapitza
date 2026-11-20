@@ -37,7 +37,7 @@ describe('ActiveShiftScreen', () => {
         setup();
         const cards = await screen.findByRole('group', { name: 'Resumen de ventas' });
         const card = (title: string) => within(cards).getByText(title).closest('[data-card]') as HTMLElement;
-        expect(card('Ventas')).toHaveTextContent('C$ 2000');
+        expect(card('Ventas')).toHaveTextContent('C$ 2,000');
         expect(card('Ventas')).toHaveTextContent('14 cobros');
         expect(card('Efectivo')).toHaveTextContent('60%');
         expect(card('Tarjeta')).toHaveTextContent('30%');
@@ -48,23 +48,33 @@ describe('ActiveShiftScreen', () => {
         }
     });
 
+    it('percentages add up to 100 and one payment reads "1 cobro"', async () => {
+        const odd = summaryOf({ salesByMethod: { cash: 100, card: 100, transfer: 100, paymentCount: 1 } });
+        setup({ summary: odd });
+        const cards = await screen.findByRole('group', { name: 'Resumen de ventas' });
+        expect(cards).toHaveTextContent('1 cobro');
+        expect(cards).not.toHaveTextContent('1 cobros');
+        const pcts = [...cards.querySelectorAll('[data-card]')].slice(1).map((c) => Number(c.lastElementChild!.textContent!.replace('%', '')));
+        expect(pcts.reduce((n, p) => n + p, 0)).toBe(100);
+    });
+
     it('CAJERO never sees debe haber; ADMIN does', async () => {
         // Even if a leaky response carried the expected amount, a CAJERO never renders it.
         setup({ role: 'CAJERO', summary: FULL });
         await screen.findByText('Efectivo en caja');
         expect(screen.queryByText(/Debe haber/i)).toBeNull();
-        expect(screen.queryByText('C$ 1700')).toBeNull();
+        expect(screen.queryByText('C$ 1,700')).toBeNull();
         expect(screen.getByText('Fondo inicial')).toBeInTheDocument(); // the amounts the server does send stay
         cleanup();
         setup({ role: 'ADMIN', summary: FULL });
         expect(await screen.findByText('Debe haber')).toBeInTheDocument();
-        expect(screen.getByText('C$ 1700')).toBeInTheDocument();
+        expect(screen.getByText('C$ 1,700')).toBeInTheDocument();
     });
 
     it('a blind response for ADMIN shows a dash, never a computed total', async () => {
         setup({ role: 'SUPERADMIN', summary: BLIND });
         expect(await screen.findByText('Debe haber')).toBeInTheDocument();
-        expect(screen.queryByText('C$ 1700')).toBeNull();
+        expect(screen.queryByText('C$ 1,700')).toBeNull();
         expect(screen.getByTestId('expected')).toHaveTextContent('—');
     });
 
