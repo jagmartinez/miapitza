@@ -29,8 +29,16 @@ export function Router({ services }: { services: Services }) {
     useEffect(() => {
         let alive = true;
         void (async () => {
-            const type = await sessions.deviceType();
-            let stored = await sessions.load();
+            // Unreadable storage must land on setup, never on a blank screen.
+            let type: DeviceType | null = null;
+            let stored: Session | null = null;
+            try {
+                type = await sessions.deviceType();
+                stored = await sessions.load();
+            } catch {
+                type = null;
+                stored = null;
+            }
             if (type === 'SERVICE_TABLET' || type === 'KITCHEN_TABLET') {
                 // Shared devices always start from the PIN screen / a fresh device login.
                 // Best effort: revoke the abandoned session server-side too.
@@ -39,7 +47,11 @@ export function Router({ services }: { services: Services }) {
                         .post('/auth/logout', undefined, { headers: { Authorization: `Bearer ${stored.token}` } })
                         .catch(() => undefined);
                 }
-                await sessions.clear();
+                try {
+                    await sessions.clear();
+                } catch {
+                    // The in-memory session is gone; the PIN screen is shown regardless.
+                }
                 stored = null;
             }
             if (!alive) return;
@@ -68,8 +80,12 @@ export function Router({ services }: { services: Services }) {
 
     const revoke = useCallback(async () => {
         realtime.close();
-        await sessions.clear();
-        await sessions.clearDevice();
+        try {
+            await sessions.clear();
+            await sessions.clearDevice();
+        } catch {
+            // Unpairing must reach setup even if storage throws.
+        }
         setSession(null);
         setDeviceType(null);
     }, [realtime, sessions]);
@@ -88,14 +104,10 @@ export function Router({ services }: { services: Services }) {
         return () => kitchen.stop();
     }, [mode, services.http, sessions, realtime, handleRevoked]);
 
-    const switchUser = useCallback(async () => {
-        try {
-            await pinApi.logout(); // closes realtime first, then revokes
-        } catch {
-            // A storage failure must never leave the tablet unlocked.
-        } finally {
-            setSession(null);
-        }
+    const switchUser = useCallback(() => {
+        // Lock now; logout closes realtime, drops the session and revokes in the background.
+        void pinApi.logout().catch(() => undefined);
+        setSession(null);
     }, [pinApi]);
 
     if (mode === null) return null;
@@ -105,7 +117,7 @@ export function Router({ services }: { services: Services }) {
             return <DeviceSetupScreen api={deviceApi} onDone={setDeviceType} />;
         case 'waiter':
             return session ? (
-                <WaiterSession session={session} onSwitchUser={() => void switchUser()} />
+                <WaiterSession session={session} onSwitchUser={switchUser} />
             ) : (
                 <PinScreen api={pinApi} onLoggedIn={setSession} onRevoked={handleRevoked} />
             );
@@ -115,7 +127,10 @@ export function Router({ services }: { services: Services }) {
             return session ? (
                 <AccountHome
                     session={session}
-                    onLogout={() => void accountApi.logout().catch(() => undefined).finally(() => setSession(null))}
+                    onLogout={() => {
+                        void accountApi.logout().catch(() => undefined);
+                        setSession(null);
+                    }}
                 />
             ) : (
                 <LoginScreen api={accountApi} onLoggedIn={setSession} />

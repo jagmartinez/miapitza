@@ -1,5 +1,6 @@
 import type { AxiosInstance } from 'axios';
 import type { createRealtime } from '../../core/realtime';
+import { lockAndRevoke } from '../../core/revoke';
 import type { Session, SessionStore } from '../../core/session';
 
 export type AccountLoginResult = { status: 'ok'; session: Session } | { status: '2fa' };
@@ -27,14 +28,7 @@ export function createAccountApi(deps: { http: AxiosInstance; sessions: SessionS
             return { status: 'ok', session };
         },
         async logout() {
-            realtime.close();
-            try {
-                await http.post('/auth/logout');
-            } catch {
-                // Offline or already revoked: drop the local session anyway.
-            } finally {
-                await sessions.clear();
-            }
+            await lockAndRevoke({ http, sessions, realtime });
         },
     };
 }

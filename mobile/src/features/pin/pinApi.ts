@@ -1,6 +1,7 @@
 import type { AxiosInstance } from 'axios';
 import type { Session, SessionStore } from '../../core/session';
 import type { createRealtime } from '../../core/realtime';
+import { lockAndRevoke } from '../../core/revoke';
 
 /** What the server exposes for the shared tablet: no PIN length, no credentials. */
 export interface RosterUser {
@@ -38,16 +39,7 @@ export function createPinApi(deps: { http: AxiosInstance; sessions: SessionStore
         },
 
         async logout() {
-            // Close first: revoking the session while the socket is open makes the server
-            // push a 4001 that a late reconnect could attribute to the next user.
-            realtime.close();
-            try {
-                await http.post('/auth/logout');
-            } catch {
-                // Offline or already revoked: the local session must go regardless.
-            } finally {
-                await sessions.clear();
-            }
+            await lockAndRevoke({ http, sessions, realtime });
         },
     };
 }

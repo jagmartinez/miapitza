@@ -38,10 +38,22 @@ describe('pinApi', () => {
         expect(realtime.reconnect).not.toHaveBeenCalled();
     });
 
+    it('logout resolves and clears the session even if the server call never returns', async () => {
+        const { pin, realtime, sessions, calls } = setup(() => new Promise(() => {}));
+        await sessions.save(session);
+        await pin.logout(); // would hang forever if it waited on the network
+        expect(realtime.close).toHaveBeenCalled();
+        expect(await sessions.load()).toBeNull();
+        await vi.waitFor(() => expect(calls).toHaveLength(1));
+        expect(calls[0].headers.get('Authorization')).toBe('Bearer tok-1');
+        expect(calls[0].timeout).toBe(5000);
+    });
+
     it('logout closes realtime BEFORE revoking the session, then clears it', async () => {
         const { pin, log, sessions, calls } = setup();
         await sessions.save(session);
         await pin.logout();
+        await vi.waitFor(() => expect(calls).toHaveLength(1));
         expect(log).toEqual(['realtime.close', 'POST /auth/logout']);
         expect(calls[0].headers.get('Authorization')).toBe('Bearer tok-1');
         expect(await sessions.load()).toBeNull();
