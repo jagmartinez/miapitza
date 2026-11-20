@@ -96,6 +96,15 @@ export class SessionService {
         });
     }
 
+    /** Device tag (`op-device:<id>`) or user-agent label of the session owning this token. */
+    static async deviceOf(token: string, db: SessionClient = prisma): Promise<string | null> {
+        const session = await db.userSession.findUnique({
+            where: { tokenHash: hashToken(token) },
+            select: { device: true },
+        });
+        return session?.device ?? null;
+    }
+
     /** Revoke every active session tagged with an operational-device tag (e.g. `op-device:7`). */
     static async revokeByDevice(tag: string, db: SessionClient = prisma): Promise<number> {
         const result = await db.userSession.updateMany({

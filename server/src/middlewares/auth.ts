@@ -178,6 +178,15 @@ export const auth = async (
                     >= expiryDays * 24 * 60 * 60 * 1000;
             }
         }
+        // Sessions opened from a registered tablet authenticate with device token
+        // (+ PIN), not the password, so the password gate does not apply to them.
+        // Setting a PIN stays gated even there.
+        if (passwordChangeRequired && req.originalUrl.split('?')[0] !== '/api/auth/me/pin') {
+            const sessionDevice = await SessionService.deviceOf(token);
+            if (typeof sessionDevice === 'string' && sessionDevice.startsWith('op-device:')) {
+                passwordChangeRequired = false;
+            }
+        }
         if (passwordChangeRequired && !passwordChangeAllowedPaths.has(req.originalUrl.split('?')[0])) {
             return res.status(403).json({
                 success: false,

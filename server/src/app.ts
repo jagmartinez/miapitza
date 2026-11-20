@@ -40,6 +40,7 @@ import menuBrandRoutes from './routes/menu-brand.routes';
 import { apiNotFoundHandler, errorHandler } from './middlewares/errorHandler';
 import { idempotency, preAuthenticateIdempotentRequest } from './middlewares/idempotency';
 import { csrfProtection } from './middlewares/csrf';
+import { createDeviceAuthLimiter, isDeviceAuthPath } from './middlewares/device-rate-limit';
 import { createApiRateLimiter, parseTrustProxy } from './middlewares/api-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger';
@@ -183,8 +184,14 @@ const authLimiter = rateLimit({
     max: isProd ? 20 : 1000,
     message: { success: false, code: 'RATE_LIMITED', message: 'Demasiados intentos. Espera unos minutos e intenta de nuevo.' },
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    // Device-token routes have their own per-device limiter below.
+    skip: (req) => isDeviceAuthPath(req.path),
 });
+// Tablets share the restaurant NAT IP: limit per device token, with room for shift changes.
+const deviceAuthLimiter = createDeviceAuthLimiter(isProd ? 120 : 2000);
+const deviceAuthOnly: express.RequestHandler = (req, res, next) =>
+    isDeviceAuthPath(req.path) ? deviceAuthLimiter(req, res, next) : next();
 const webhookLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: isProd ? 120 : 2000,
@@ -194,7 +201,7 @@ const webhookLimiter = rateLimit({
 });
 
 // Routes
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', deviceAuthOnly, authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/tables', tableRoutes);
