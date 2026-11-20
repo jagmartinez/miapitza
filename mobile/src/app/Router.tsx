@@ -14,9 +14,9 @@ import { PinScreen } from '../features/pin/PinScreen';
 import { WaiterHome } from '../features/waiter/WaiterHome';
 
 /** Locks the waiter tablet back to the PIN screen after 2 minutes without touch. */
-function WaiterSession({ session, onSwitchUser }: { session: Session; onSwitchUser: () => void }) {
+function WaiterSession({ session, services, onSwitchUser }: { session: Session; services: Services; onSwitchUser: () => void }) {
     useIdleLock(onSwitchUser);
-    return <WaiterHome session={session} onSwitchUser={onSwitchUser} />;
+    return <WaiterHome session={session} services={services} onSwitchUser={onSwitchUser} />;
 }
 
 export function Router({ services }: { services: Services }) {
@@ -117,7 +117,7 @@ export function Router({ services }: { services: Services }) {
             return <DeviceSetupScreen api={deviceApi} onDone={setDeviceType} />;
         case 'waiter':
             return session ? (
-                <WaiterSession session={session} onSwitchUser={switchUser} />
+                <WaiterSession session={session} services={services} onSwitchUser={switchUser} />
             ) : (
                 <PinScreen api={pinApi} onLoggedIn={setSession} onRevoked={handleRevoked} />
             );

@@ -1,13 +1,74 @@
+import { useCallback, useEffect, useState } from 'react';
+import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
+import { loadWaiterData } from '../../data/loadWaiterData';
+import type { WaiterData } from '../../data/waiterData';
+import type { OrderRef } from '../../data/waiterApi';
+import { ownerKeyOf } from '../../data/types';
+import { PosScreen } from './pos/PosScreen';
+import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
 
-export function WaiterHome({ session, onSwitchUser }: { session: Session; onSwitchUser: () => void }) {
+type Route = { name: 'tables' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent };
+
+const STALE_URLS = ['/orders/active', '/tables/plan'];
+
+export function WaiterHome({ session, services, onSwitchUser }: { session: Session; services: Pick<Services, 'http' | 'sessions' | 'realtime'>; onSwitchUser: () => void }) {
+    const [data, setData] = useState<WaiterData | null>(null);
+    const [failed, setFailed] = useState(false);
+    const [route, setRoute] = useState<Route>({ name: 'tables' });
+
+    // The data layer (Dexie) loads on first use of waiter mode, never in the PIN/kitchen bundle.
+    useEffect(() => {
+        let alive = true;
+        loadWaiterData(services).then(
+            (d) => alive && setData(d),
+            () => alive && setFailed(true),
+        );
+        return () => {
+            alive = false;
+        };
+    }, [services]);
+
+    // Replay offline work while this waiter's screen is up; a new user (PIN switch) replays their own queue.
+    const userId = session.user.id;
+    useEffect(() => {
+        if (!data) return undefined;
+        const stop = data.queue.start();
+        return stop;
+    }, [data]);
+    useEffect(() => {
+        if (data) data.queue.notifySessionChanged();
+    }, [data, userId]);
+
+    const owner = ownerKeyOf(session);
+    const invalidate = useCallback(async () => {
+        if (data && owner) await data.cache.invalidate(owner, STALE_URLS);
+    }, [data, owner]);
+
+    if (!data) {
+        return (
+            <main className="screen">
+                <p className={failed ? 'error' : 'muted'}>{failed ? 'No se pudo preparar el modo mesero.' : 'Cargando…'}</p>
+                <button type="button" className="btn" aria-label="Cambiar usuario" onClick={onSwitchUser}>
+                    Cambiar usuario
+                </button>
+            </main>
+        );
+    }
+
+    if (route.name === 'order') {
+        return <PosScreen orderId={route.orderId} intent={route.intent} onBack={() => setRoute({ name: 'tables' })} />;
+    }
+
     return (
-        <main>
-            <header className="top-bar">
-                <span>{session.user.name}</span>
-                <button type="button" className="btn" onClick={onSwitchUser}>Cambiar usuario</button>
-            </header>
-            <p className="muted" style={{ padding: 16 }}>Servicio (próximamente)</p>
-        </main>
+        <TablesScreen
+            session={session}
+            api={data.api}
+            realtime={services.realtime}
+            queue={data.queue}
+            invalidate={invalidate}
+            onOpenOrder={(orderId, intent) => setRoute({ name: 'order', orderId, intent })}
+            onSwitchUser={onSwitchUser}
+        />
     );
 }

@@ -175,3 +175,5 @@ export function createRealtime(opts: RealtimeOptions) {
         },
     };
 }
+
+export type Realtime = ReturnType<typeof createRealtime>;
