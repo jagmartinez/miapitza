@@ -70,23 +70,36 @@ describe('W6 no leaving during a close', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Volver' }));
         expect(onBack).not.toHaveBeenCalled();
     });
+    const shiftOf = (userId: number, name: string, endDate: string | null) => ({ ...FULL, shift: { ...FULL.shift, id: 90, userId, user: { id: userId, name }, endDate } });
     it('back in Caja after an unknown close whose shift is now closed, the report is offered', async () => {
-        const api = makeCash();
+        const api = makeCash({ summary: vi.fn().mockResolvedValue(shiftOf(5, 'Carla Cajera', '2026-11-21T00:10:00.000Z')) });
         const onReport = vi.fn();
         const onAttemptSeen = vi.fn();
-        render(<CashHome session={cashSession()} api={api} onBack={vi.fn()} onCount={vi.fn()} closeAttempt={42} onReport={onReport} onAttemptSeen={onAttemptSeen} />);
+        render(<CashHome session={cashSession()} api={api} onBack={vi.fn()} onCount={vi.fn()} closeAttempt={90} onReport={onReport} onAttemptSeen={onAttemptSeen} />);
         expect(await screen.findByText('Tu turno se cerró')).toBeInTheDocument();
         click('Ver reporte');
-        expect(onReport).toHaveBeenCalledWith(42);
+        expect(onReport).toHaveBeenCalledWith(90);
         expect(onAttemptSeen).toHaveBeenCalled();
     });
     it('if the shift is still open the attempt is simply cleared', async () => {
-        const api = makeCash({ activeStatus: vi.fn().mockResolvedValue({ hasActiveShift: true, shift: { id: 42, cashRegisterId: 1, userId: 5, startDate: '2026-11-20T14:00:00.000Z', endDate: null, startAmount: 500 }, requiresClose: false, message: null }) });
+        const api = makeCash({ summary: vi.fn().mockResolvedValue(shiftOf(5, 'Carla Cajera', null)) });
         const onAttemptSeen = vi.fn();
-        render(<CashHome session={cashSession()} api={api} onBack={vi.fn()} onCount={vi.fn()} closeAttempt={42} onReport={vi.fn()} onAttemptSeen={onAttemptSeen} />);
-        await screen.findByTestId('active-shift');
+        render(<CashHome session={cashSession()} api={api} onBack={vi.fn()} onCount={vi.fn()} closeAttempt={90} onReport={vi.fn()} onAttemptSeen={onAttemptSeen} />);
+        await waitFor(() => expect(onAttemptSeen).toHaveBeenCalled());
+        expect(screen.queryByText(/se cerró/)).toBeNull();
+    });
+    it('an ADMIN whose close of another user shift did not happen sees nothing', async () => {
+        const api = makeCash({ summary: vi.fn().mockResolvedValue(shiftOf(9, 'Luis Gomez', null)) });
+        const onAttemptSeen = vi.fn();
+        render(<CashHome session={cashSession('ADMIN')} api={api} onBack={vi.fn()} onCount={vi.fn()} closeAttempt={90} onReport={vi.fn()} onAttemptSeen={onAttemptSeen} />);
+        await waitFor(() => expect(onAttemptSeen).toHaveBeenCalled());
+        expect(screen.queryByText(/se cerró/)).toBeNull();
+    });
+    it('an ADMIN whose close of another user shift went through is told whose shift closed', async () => {
+        const api = makeCash({ summary: vi.fn().mockResolvedValue(shiftOf(9, 'Luis Gomez', '2026-11-21T00:10:00.000Z')) });
+        render(<CashHome session={cashSession('ADMIN')} api={api} onBack={vi.fn()} onCount={vi.fn()} closeAttempt={90} onReport={vi.fn()} onAttemptSeen={vi.fn()} />);
+        expect(await screen.findByText('El turno de Luis Gomez se cerró')).toBeInTheDocument();
         expect(screen.queryByText('Tu turno se cerró')).toBeNull();
-        expect(onAttemptSeen).toHaveBeenCalled();
     });
 });
 

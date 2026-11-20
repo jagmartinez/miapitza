@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { CashApi } from '../../data/cashApi';
 import type { Session } from '../../core/session';
 import { isCashAdmin } from '../../core/permissions';
@@ -33,20 +33,38 @@ export interface CashHomeProps {
 export function CashHome({ session, api, onBack, onCount, onHistory, onOpenShifts, closeAttempt = null, onReport, onAttemptSeen }: CashHomeProps) {
     const cash = useCashShift(api, ownerKeyOf(session));
     const supervise = isCashAdmin(session.user) ? onOpenShifts : undefined;
-    // After a close whose outcome the cashier did not see: once the status is fresh, either the shift is gone (offer its report) or it is still open (forget it).
-    const stillOpen = !!cash.status && cash.status.hasActiveShift && cash.shift?.id === closeAttempt;
-    const settled = closeAttempt != null && !cash.loading && !!cash.status;
+    // After a close whose outcome the cashier did not see: look the attempted shift up by its own id (it may be someone else's, closed by a supervisor).
+    const [outcome, setOutcome] = useState<{ id: number; closed: boolean; own: boolean; name: string } | null>(null);
     useEffect(() => {
-        if (settled && stillOpen) onAttemptSeen?.();
-    }, [settled, stillOpen, onAttemptSeen]);
-    if (settled && !stillOpen && onReport) {
+        if (closeAttempt == null) {
+            setOutcome(null);
+            return undefined;
+        }
+        let live = true;
+        api.summary(closeAttempt).then(
+            (d) => {
+                if (!live) return;
+                const closed = !!d.shift.endDate;
+                const who = d.shift.user;
+                const own = (who?.id ?? d.shift.userId) === session.user.id;
+                if (closed) setOutcome({ id: closeAttempt, closed, own, name: who?.name ?? '' });
+                else onAttemptSeen?.(); // still open: nothing to say
+            },
+            () => live && onAttemptSeen?.(),
+        );
+        return () => {
+            live = false;
+        };
+    }, [api, closeAttempt, session.user.id, onAttemptSeen]);
+    const closedOutcome = outcome && outcome.id === closeAttempt && outcome.closed ? outcome : null;
+    if (closedOutcome && onReport) {
         return (
             <main className="cash" data-testid="cash-closed-notice">
                 <header className="cash-bar">
                     <strong className="cash-title">Caja</strong>
                 </header>
                 <div className="cash-notice" role="status">
-                    <h2 className="cash-h">Tu turno se cerró</h2>
+                    <h2 className="cash-h">{closedOutcome.own || !closedOutcome.name ? 'Tu turno se cerró' : `El turno de ${closedOutcome.name} se cerró`}</h2>
                     <p className="muted">El cierre se registró. Puedes ver o imprimir el reporte.</p>
                     <div className="cash-sheet-actions">
                         <button type="button" className="btn" onClick={() => onAttemptSeen?.()}>
@@ -57,7 +75,7 @@ export function CashHome({ session, api, onBack, onCount, onHistory, onOpenShift
                             className="btn btn-primary"
                             onClick={() => {
                                 onAttemptSeen?.();
-                                onReport(closeAttempt);
+                                onReport(closedOutcome.id);
                             }}
                         >
                             Ver reporte
