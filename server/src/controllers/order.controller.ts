@@ -250,7 +250,8 @@ export class OrderController {
             const removed = await OrderService.removeItem(
                 itemId,
                 companyId,
-                req.user!.role === 'SUPERADMIN' ? undefined : req.user!.branchId
+                req.user!.role === 'SUPERADMIN' ? undefined : req.user!.branchId,
+                req.user!.userId
             );
             await OrderController.emitOrderUpdate(removed.orderId, 'ITEMS_CHANGED', companyId);
             res.json({
@@ -271,7 +272,7 @@ export class OrderController {
             // company-wide admins get no branch filter.
             const branchId = resolveBranchScope(req.user!);
             const { quantity, notes } = req.body ?? {};
-            const item = await OrderService.updateItem(itemId, companyId, branchId, { quantity, notes });
+            const item = await OrderService.updateItem(itemId, companyId, branchId, { quantity, notes }, req.user!.userId);
             await OrderController.emitOrderUpdate(item.orderId, 'ITEMS_CHANGED', companyId);
             res.json({
                 success: true,

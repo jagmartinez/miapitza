@@ -179,13 +179,12 @@ describe('OrderService.updatePricing manual discount limits', () => {
         expect(tx.order.update).not.toHaveBeenCalled();
     });
 
-    it('web pricing call without discountReason still works and reads no new tables', async () => {
+    it('web pricing call without discountReason still works for a role with no limit', async () => {
         const tx = pricingTx({ cap: '10' });
-        const { user: _user, ...txWithoutUser } = tx;
-        useTx(txWithoutUser);
+        useTx(tx);
 
         await OrderService.updatePricing(41, 5, { discount: 5 }, 22, { role: 'CAJERO', roles: ['CAJERO'] });
-        expect(txWithoutUser.order.update).toHaveBeenCalledWith(expect.objectContaining({
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ discount: 5, discountReason: null, discountAuthorizedById: null }),
         }));
     });
@@ -791,5 +790,154 @@ describe('supervisor PINs', () => {
         const find = jest.spyOn(prisma.user, 'findMany').mockResolvedValue([] as never);
         await AuthService.deviceRoster('tok');
         expect(JSON.stringify(find.mock.calls[0][0])).toContain('notIn');
+    });
+});
+
+// ---------------------------------------------------------------- fix round 1
+
+describe('reason-less PATCH /pricing enforces a role maxDiscountPercent', () => {
+    const cajero = { role: 'CAJERO', roles: ['CAJERO'] };
+
+    it('CAJERO with a 5% limit sending 8% with no reason gets DISCOUNT_AUTH_REQUIRED', async () => {
+        const tx = pricingTx({ roleLimit: 5 });
+        useTx(tx);
+        const error = await OrderService.updatePricing(41, 5, { discount: 8 }, 22, cajero).catch((e) => e);
+        expect(error).toBeInstanceOf(DiscountAuthRequiredError);
+        expect(error).toMatchObject({ statusCode: 403, code: 'DISCOUNT_AUTH_REQUIRED', limitPercent: 5, requestedPercent: 8 });
+        expect(tx.order.update).not.toHaveBeenCalled();
+    });
+
+    it('the same CAJERO sending 5% is applied', async () => {
+        const tx = pricingTx({ roleLimit: 5 });
+        useTx(tx);
+        await OrderService.updatePricing(41, 5, { discount: 5 }, 22, cajero);
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ discount: 5 }),
+        }));
+    });
+
+    it('a role with a null limit keeps the legacy behaviour (uncapped CAJERO, capped MESERO text)', async () => {
+        const open = pricingTx({ cap: '10', roleLimit: null });
+        useTx(open);
+        await OrderService.updatePricing(41, 5, { discount: 60 }, 22, cajero);
+        expect(open.order.update).toHaveBeenCalled();
+
+        jest.restoreAllMocks();
+        const capped = pricingTx({ cap: '10', roleLimit: null });
+        useTx(capped);
+        await expect(OrderService.updatePricing(41, 5, { discount: 20 }, 21, mesero))
+            .rejects.toThrow(/El descuento manual excede el máximo permitido para su rol/);
+    });
+
+    it('the role limit is a ceiling under the company cap on the reason-less path too', async () => {
+        const tx = pricingTx({ cap: '3', roleLimit: 50 });
+        useTx(tx);
+        await expect(OrderService.updatePricing(41, 5, { discount: 4 }, 22, cajero))
+            .rejects.toMatchObject({ code: 'DISCOUNT_AUTH_REQUIRED', limitPercent: 3 });
+    });
+});
+
+describe('removing or shrinking unsent lines re-caps the manual discount', () => {
+    type Role = { name: string; maxDiscountPercent: number | null };
+    function lineTx(o: {
+        discount: number; remaining: number; author: Role; authorizerId?: number | null;
+        lastPricingUser?: number | null; cap?: string | null;
+    }) {
+        const item = {
+            id: 10, orderId: 41, menuItemId: 3, quantity: 4, price: 25, sentAt: null, voidedAt: null,
+            order: {
+                id: 41, userId: 21, companyId: 5, branchId: 1, status: 'OPEN', invoiceNumber: null, preInvoicedAt: null,
+                payments: [], discount: o.discount, discountCode: null, tipAmount: 0,
+            },
+        };
+        return {
+            $queryRaw: jest.fn(async () => []),
+            orderItem: {
+                findFirst: jest.fn(async (_a: unknown) => ({ orderId: 41 })),
+                findUnique: jest.fn(async (_a: unknown) => item),
+                delete: jest.fn(async (_a: unknown) => ({})),
+                update: jest.fn(async (_a: unknown) => ({ id: 10, orderId: 41 })),
+                findMany: jest.fn(async (_a: unknown) => [{ subtotal: o.remaining }]),
+            },
+            kitchenBatch: { count: jest.fn(async () => 0) },
+            order: {
+                findUnique: jest.fn(async (_a: unknown) => ({ discountAuthorizedById: o.authorizerId ?? null })),
+                update: jest.fn(async (args: unknown) => args),
+            },
+            user: { findFirst: jest.fn(async (_a: unknown) => ({ role: o.author, userRoles: [] })) },
+            setting: {
+                findMany: jest.fn(async () => [{ name: '5_tax_rate', value: '15' }]),
+                findUnique: jest.fn(async (args: { where: { companyId_name: { name: string } } }) =>
+                    args.where.companyId_name.name.endsWith('_maxManualDiscountPercent') && o.cap != null ? { value: o.cap } : null),
+            },
+            auditLog: {
+                findFirst: jest.fn(async (_a: unknown) => (o.lastPricingUser === null ? null : { userId: o.lastPricingUser ?? 21 })),
+                create: jest.fn(async (_args: unknown) => ({})),
+            },
+        };
+    }
+    const orderUpdate = (tx: ReturnType<typeof lineTx>) =>
+        (tx.order.update.mock.calls[0][0] as { data: Record<string, number> }).data;
+    const clampAudit = (tx: ReturnType<typeof lineTx>) => tx.auditLog.create.mock.calls
+        .map((c) => (c[0] as { data: { action: string; details: Record<string, unknown>; userId: number } }).data)
+        .find((d) => d.action === 'MANUAL_DISCOUNT_CLAMPED');
+    const actions = [
+        ['removeItem', (actor?: number) => OrderService.removeItem(10, 5, 1, actor)],
+        ['updateItem quantity decrease', (actor?: number) => OrderService.updateItem(10, 5, 1, { quantity: 2 }, actor)],
+    ] as const;
+
+    it.each(actions)('%s: a MESERO own-limit discount is re-capped to the cap over the new subtotal', async (_n, run) => {
+        const tx = lineTx({ discount: 10, remaining: 50, author: { name: 'MESERO', maxDiscountPercent: null }, cap: '10' });
+        useTx(tx);
+
+        await run(21);
+
+        expect(orderUpdate(tx).discount).toBe(5); // 10% of 50, not 20%
+        const audit = clampAudit(tx)!;
+        expect(audit.details).toMatchObject({ previousDiscount: 10, discount: 5, maxPercent: 10, limitOwnerUserId: 21 });
+        expect(audit.userId).toBe(21);
+    });
+
+    it.each(actions)('%s: a supervisor-authorized discount is re-capped to the AUTHORIZER limit', async (_n, run) => {
+        const tx = lineTx({
+            discount: 30, remaining: 50, author: { name: 'CAJERO', maxDiscountPercent: 30 }, authorizerId: 50,
+        });
+        useTx(tx);
+
+        await run(21);
+
+        expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 50, companyId: 5 } }));
+        expect(orderUpdate(tx).discount).toBe(15);
+        expect(clampAudit(tx)!.details).toMatchObject({ maxPercent: 30, limitOwnerUserId: 50 });
+    });
+
+    it.each(actions)('%s: an authorized discount by an ADMIN authorizer is not clamped', async (_n, run) => {
+        const tx = lineTx({
+            discount: 30, remaining: 50, author: { name: 'ADMIN', maxDiscountPercent: null }, authorizerId: 50, cap: '10',
+        });
+        useTx(tx);
+        await run(21);
+        expect(orderUpdate(tx).discount).toBe(30);
+        expect(clampAudit(tx)).toBeUndefined();
+    });
+
+    it.each(actions)('%s: an untracked applier falls back to the acting user\'s limit', async (_n, run) => {
+        const tx = lineTx({
+            discount: 10, remaining: 50, author: { name: 'CAJERO', maxDiscountPercent: 4 }, lastPricingUser: null,
+        });
+        useTx(tx);
+
+        await run(22);
+
+        expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 22, companyId: 5 } }));
+        expect(orderUpdate(tx).discount).toBe(2);
+    });
+
+    it.each(actions)('%s: a discount within the limit is left alone and nothing is audited', async (_n, run) => {
+        const tx = lineTx({ discount: 4, remaining: 50, author: { name: 'MESERO', maxDiscountPercent: null }, cap: '10' });
+        useTx(tx);
+        await run(21);
+        expect(orderUpdate(tx).discount).toBe(4);
+        expect(clampAudit(tx)).toBeUndefined();
     });
 });

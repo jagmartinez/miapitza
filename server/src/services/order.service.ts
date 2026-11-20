@@ -19,7 +19,10 @@ import {
     MAX_DISCOUNT_REASON,
     MIN_DISCOUNT_REASON,
     discountPercentOf,
+    getConfiguredDiscountLimit,
     getManualDiscountLimit,
+    getCompanyDiscountCap,
+    resolveLimit,
     maxDiscountForLimit
 } from './discount-authorization.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
@@ -1131,7 +1134,7 @@ export class OrderService {
         });
     }
 
-    static async removeItem(itemId: number, companyId: number, branchId?: number) {
+    static async removeItem(itemId: number, companyId: number, branchId?: number, actorUserId?: number) {
         return await prisma.$transaction(async (tx) => {
             const target = await tx.orderItem.findFirst({
                 where: { id: itemId, order: { companyId, ...(branchId !== undefined ? { branchId } : {}) } },
@@ -1178,17 +1181,13 @@ export class OrderService {
             const repricedDiscount = await this.repriceStoredDiscount(
                 tx, companyId, item.orderId, newSubtotal, item.order.discount, item.order.discountCode
             );
-            const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
-            const newTotal = this.calculateFinalTotal(
-                newSubtotal,
-                repricedDiscount,
-                repricedTax,
-                Number(item.order.tipAmount || 0)
+            const priced = await this.repriceAfterLineShrink(
+                tx, companyId, item.order, newSubtotal, repricedDiscount, actorUserId
             );
 
             await tx.order.update({
                 where: { id: item.orderId },
-                data: { total: newTotal, discount: repricedDiscount, tax: repricedTax }
+                data: { total: priced.total, discount: priced.discount, tax: priced.tax, ...(priced.tipAmount !== undefined ? { tipAmount: priced.tipAmount } : {}) }
             });
             // Removing the only unsent draft line after a released wave must
             // restore the kitchen-derived status (READY), otherwise the order
@@ -1242,7 +1241,8 @@ export class OrderService {
         itemId: number,
         companyId: number,
         branchId: number | undefined,
-        data: { quantity?: number; notes?: string | null }
+        data: { quantity?: number; notes?: string | null },
+        actorUserId?: number
     ) {
         const hasQuantity = data.quantity !== undefined;
         const hasNotes = data.notes !== undefined;
@@ -1333,16 +1333,12 @@ export class OrderService {
             const repricedDiscount = await this.repriceStoredDiscount(
                 tx, companyId, item.orderId, newSubtotal, item.order.discount, item.order.discountCode
             );
-            const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
-            const newTotal = this.calculateFinalTotal(
-                newSubtotal,
-                repricedDiscount,
-                repricedTax,
-                Number(item.order.tipAmount || 0)
+            const priced = await this.repriceAfterLineShrink(
+                tx, companyId, item.order, newSubtotal, repricedDiscount, actorUserId
             );
             await tx.order.update({
                 where: { id: item.orderId },
-                data: { total: newTotal, discount: repricedDiscount, tax: repricedTax }
+                data: { total: priced.total, discount: priced.discount, tax: priced.tax, ...(priced.tipAmount !== undefined ? { tipAmount: priced.tipAmount } : {}) }
             });
 
             return updated;
@@ -1857,16 +1853,21 @@ export class OrderService {
         const authorUserId = authorizerId ?? lastPricing?.userId ?? order.userId;
         const author = await tx.user.findFirst({
             where: { id: authorUserId, companyId },
-            select: { role: { select: { name: true } }, userRoles: { select: { role: { select: { name: true } } } } }
+            select: {
+                role: { select: { name: true, maxDiscountPercent: true } },
+                userRoles: { select: { role: { select: { name: true, maxDiscountPercent: true } } } }
+            }
         });
-        const authorActor = author ? {
-            role: author.role?.name ?? null,
-            roles: (author.userRoles ?? []).map((row) => row.role.name)
-        } : null;
-        if (!authorActor || (!authorizerId && !this.isManualDiscountCappedRole(authorActor))) return null;
-        const maxPercent = authorizerId
-            ? await getManualDiscountLimit({ userId: authorUserId, companyId, ...authorActor }, tx)
-            : await this.getMaxManualDiscountPercent(tx, companyId);
+        if (!author) return null;
+        // Same limit the discount was applied under: the authorizer's, else the
+        // applier's (role limit under the company cap; MESERO = company cap).
+        const authorRoles = [author.role, ...(author.userRoles ?? []).map((row) => row.role)].filter(Boolean);
+        const maxPercent = resolveLimit(
+            new Set(authorRoles.map((role) => role.name)),
+            authorRoles.map((role) => role.maxDiscountPercent),
+            await getCompanyDiscountCap(tx, companyId)
+        );
+        if (maxPercent >= 100) return null;
         const maxDiscount = Math.floor(Math.max(0, pricing.subtotal) * maxPercent) / 100;
         if (pricing.discount <= maxDiscount) return null;
         const previousDiscount = pricing.discount;
@@ -1877,6 +1878,62 @@ export class OrderService {
         pricing.tipAmount = Math.min(storedTip, maxTip);
         pricing.total = this.calculateFinalTotal(pricing.subtotal, maxDiscount, pricing.tax, pricing.tipAmount);
         return { previousDiscount, discount: maxDiscount, maxPercent, authorUserId };
+    }
+
+    /**
+     * Tax/total after unsent lines were removed or shrunk. A manual discount is
+     * re-capped to the percent limit it was granted under (authorizer's, else the
+     * applier's, else the acting user's) so shrinking the subtotal cannot push
+     * the effective percent past it. The clamp is audited like the void path.
+     */
+    private static async repriceAfterLineShrink(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        order: { id: number; userId: number; discount: Prisma.Decimal | number | null; discountCode: string | null; tipAmount: Prisma.Decimal | number | null },
+        subtotal: number,
+        discount: number,
+        actorUserId?: number
+    ): Promise<{ discount: number; tax: number; total: number; tipAmount?: number }> {
+        const pricing = {
+            subtotal,
+            discount,
+            discountCode: order.discountCode,
+            tax: await this.repriceTax(tx, companyId, subtotal, discount),
+            tipAmount: Number(order.tipAmount || 0),
+            total: 0
+        };
+        pricing.total = this.calculateFinalTotal(subtotal, discount, pricing.tax, pricing.tipAmount);
+        const originalTip = pricing.tipAmount;
+        const clamped = await this.clampManualDiscountAfterVoid(
+            tx, companyId,
+            { id: order.id, userId: actorUserId ?? order.userId, tipAmount: order.tipAmount },
+            pricing
+        );
+        if (clamped) {
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'MANUAL_DISCOUNT_CLAMPED',
+                    userId: actorUserId ?? order.userId,
+                    details: {
+                        reason: 'LINE_CHANGE',
+                        subtotal,
+                        previousDiscount: clamped.previousDiscount,
+                        discount: clamped.discount,
+                        maxPercent: clamped.maxPercent,
+                        limitOwnerUserId: clamped.authorUserId
+                    }
+                }
+            });
+        }
+        return {
+            discount: pricing.discount,
+            tax: pricing.tax,
+            total: pricing.total,
+            ...(pricing.tipAmount !== originalTip ? { tipAmount: pricing.tipAmount } : {})
+        };
     }
 
     static async updateStatus(
@@ -3117,6 +3174,7 @@ export class OrderService {
             const previousManual = Math.round(Number(order.discount || 0) * 100) / 100;
             const discountChanged = previousManual !== nextDiscount || (order.discountCode || null) !== nextCode;
             let applyAuthorizationStamp = false;
+            let roleLimit: number | null = null;
             if (authorization && (nextCode || !(nextDiscount > 0))) {
                 throw new Error('El descuento debe ser mayor a cero');
             }
@@ -3133,6 +3191,17 @@ export class OrderService {
                     }, tx);
                     if (nextDiscount > maxDiscountForLimit(subtotal, limit)) {
                         throw new DiscountAuthRequiredError(limit, discountPercentOf(nextDiscount, subtotal));
+                    }
+                } else if (
+                    // A role's own maxDiscountPercent binds the web call too; roles
+                    // without one fall through to the legacy rule below.
+                    actor
+                    && (roleLimit = await getConfiguredDiscountLimit({
+                        userId, companyId, role: actor.role, roles: actor.roles
+                    }, tx)) !== null
+                ) {
+                    if (nextDiscount > maxDiscountForLimit(subtotal, roleLimit)) {
+                        throw new DiscountAuthRequiredError(roleLimit, discountPercentOf(nextDiscount, subtotal));
                     }
                 } else if (this.isManualDiscountCappedRole(actor)) {
                     // Legacy web flow (no discountReason): unchanged behaviour.

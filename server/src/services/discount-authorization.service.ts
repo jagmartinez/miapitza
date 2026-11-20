@@ -91,7 +91,23 @@ export async function getCompanyDiscountCap(db: Pick<Db, 'setting'>, companyId: 
 export async function getManualDiscountLimit(user: LimitSubject, db: Db = prisma): Promise<number> {
     const roleNames = new Set([user.role, ...(user.roles ?? [])].filter((name): name is string => !!name));
     if (roleNames.has('SUPERADMIN') || roleNames.has('ADMIN')) return 100;
+    return (await loadLimit(user, roleNames, db)).limit;
+}
 
+/**
+ * The limit coming from a role's own maxDiscountPercent (capped by the company
+ * cap), or null when the user is an admin or none of their roles has one. Lets
+ * the reason-less web path enforce role limits without changing anything for
+ * roles that have none.
+ */
+export async function getConfiguredDiscountLimit(user: LimitSubject, db: Db = prisma): Promise<number | null> {
+    const roleNames = new Set([user.role, ...(user.roles ?? [])].filter((name): name is string => !!name));
+    if (roleNames.has('SUPERADMIN') || roleNames.has('ADMIN')) return null;
+    const { limit, configured } = await loadLimit(user, roleNames, db);
+    return configured ? limit : null;
+}
+
+async function loadLimit(user: LimitSubject, roleNames: Set<string>, db: Db): Promise<{ limit: number; configured: boolean }> {
     const record = await db.user.findUnique({
         where: { id: user.userId },
         select: {
@@ -99,14 +115,15 @@ export async function getManualDiscountLimit(user: LimitSubject, db: Db = prisma
             userRoles: { select: { role: { select: { maxDiscountPercent: true } } } },
         },
     });
-    return resolveLimit(
-        roleNames,
-        [record?.role, ...(record?.userRoles ?? []).map((entry) => entry.role)].map((role) => role?.maxDiscountPercent),
-        await getCompanyDiscountCap(db, user.companyId),
-    );
+    const roleLimits = [record?.role, ...(record?.userRoles ?? []).map((entry) => entry.role)]
+        .map((role) => role?.maxDiscountPercent);
+    return {
+        limit: resolveLimit(roleNames, roleLimits, await getCompanyDiscountCap(db, user.companyId)),
+        configured: roleLimits.some((value) => value !== null && value !== undefined),
+    };
 }
 
-function resolveLimit(roleNames: Set<string>, roleLimits: Array<number | null | undefined>, companyCap: number): number {
+export function resolveLimit(roleNames: Set<string>, roleLimits: Array<number | null | undefined>, companyCap: number): number {
     if (roleNames.has('SUPERADMIN') || roleNames.has('ADMIN')) return 100;
     const configured = roleLimits
         .filter((value): value is number => value !== null && value !== undefined)

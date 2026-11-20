@@ -193,6 +193,7 @@ describe('manual discount cap for waiters', () => {
                         : null
                 )),
             },
+            user: { findUnique: jest.fn(async () => ({ role: { maxDiscountPercent: null }, userRoles: [] })) },
             auditLog: { create: jest.fn(async (_args: unknown) => ({})) },
         };
     }
