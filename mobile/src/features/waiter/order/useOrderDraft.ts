@@ -154,12 +154,15 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
     const latest = useRef({ orderId, guests, serverUnsent, tableId, ownerKey });
     latest.current = { orderId, guests, serverUnsent, tableId, ownerKey };
     const adopted = useRef<string | null>(null);
+    /** Scope a draft was carried from (table) -> to (order): a send that started in the old one still settles in the new one. */
+    const carriedTo = useRef(new Map<string, string>());
 
     useEffect(() => {
         const prev = live.current;
         // The order opened offline just became the real one: its lines move from the table fallback to the order, intact.
         if (scope != null && ownerKey != null && ref != null && typeof ref === 'object' && 'orderId' in ref && tableId != null && prev.scope === scopeOf(ownerKey, { tableId }) && prev.lines.length > 0) {
             live.current = { scope, lines: prev.lines };
+            carriedTo.current.set(prev.scope!, scope);
             setState(live.current);
             const carried = toStored(prev.lines);
             writes.current = writes.current
@@ -310,7 +313,8 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
 
     /** The sent quantity leaves the draft; whatever was added meanwhile stays. */
     const subtractSent = (start: string, sent: DraftTicketLine) => {
-        if (live.current.scope !== start) return;
+        const now = live.current.scope;
+        if (now !== start && carriedTo.current.get(start) !== now) return;
         commit(
             live.current.lines.flatMap((l) => {
                 if (l.key !== sent.key) return [l];

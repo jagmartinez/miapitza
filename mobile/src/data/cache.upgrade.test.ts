@@ -88,3 +88,18 @@ describe('Dexie upgrades never lose queued work', () => {
         latest.close();
     });
 });
+
+describe('v5 upgrade only rekeys legacy rows', () => {
+    it('a row already in the new format keeps its id', async () => {
+        const name = nameOf();
+        const v4 = new MobileDB(name, { upTo: 4 });
+        await v4.open();
+        const row = (id: string, tableId: number): DraftRow => ({ id, ownerKey: OWNER, tableId, data: { items: [] }, updatedAt: Date.now() });
+        await v4.drafts.bulkAdd([row(`${OWNER}:o:12`, 3), row(`${OWNER}:4`, 4)]);
+        v4.close();
+        const latest = new MobileDB(name);
+        await latest.open();
+        expect((await latest.drafts.toArray()).map((r) => r.id).sort()).toEqual([`${OWNER}:o:12`, `${OWNER}:t:4`]);
+        latest.close();
+    });
+});

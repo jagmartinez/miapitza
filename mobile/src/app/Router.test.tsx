@@ -111,3 +111,24 @@ describe('Router lock and storage resilience', () => {
         expect(await screen.findByText('¿Qué es este dispositivo?')).toBeInTheDocument();
     });
 });
+
+describe('follow-up M7: a revoked device wipes the local database', () => {
+    it('a revoked roster clears queue and drafts of every owner and lands on device setup', async () => {
+        const { services, sessions } = build();
+        const { loadWaiterData } = await import('../data/loadWaiterData');
+        const { MobileDB } = await import('../data/cache');
+        const data = await loadWaiterData(services);
+        await data.db.syncQueue.add({ url: '/orders/1/items', method: 'POST', data: {}, timestamp: 1, operationType: 'ADD_ORDER_ITEM', status: 'pending', retryCount: 0, ownerKey: '1:99' });
+        await data.db.drafts.put({ id: '1:99:o:5', ownerKey: '1:99', tableId: 2, orderId: 5, data: { items: [] }, updatedAt: Date.now() });
+        (services.pinApi.roster as ReturnType<typeof vi.fn>).mockRejectedValue(Object.assign(new Error('401'), { response: { status: 401 } }));
+        await sessions.saveDeviceType('SERVICE_TABLET');
+        render(<Router services={services} />);
+        expect(await screen.findByText('¿Qué es este dispositivo?')).toBeInTheDocument();
+        await waitFor(async () => {
+            const fresh = new MobileDB();
+            expect(await fresh.syncQueue.count()).toBe(0);
+            expect(await fresh.drafts.count()).toBe(0);
+            fresh.close();
+        });
+    });
+});

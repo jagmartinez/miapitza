@@ -60,7 +60,6 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
     const canPay = can(user, 'payments.process') && can(user, 'invoices.issue');
     const canTransfer = can(user, 'tables.transfer');
     const canGroup = can(user, 'tables.group.manage');
-    const canInvoice = can(user, 'invoices.issue');
 
     return (
         <Sheet label={`Acciones de la mesa ${table.number}`} onClose={onClose}>
@@ -95,7 +94,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
                     )}
                 </div>
             )}
-            {(canTransfer || canGroup || canInvoice) && (
+            {(canTransfer || canGroup) && (
                 <div className="actions-grid">
                     {canTransfer && (
                         <button type="button" className="btn action-tile" disabled={!online} onClick={() => onAction('transfer')}>
@@ -109,11 +108,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
                             {!online && <small className="muted">requiere conexión</small>}
                         </button>
                     )}
-                    {canInvoice && (
-                        <button type="button" className="btn action-tile" onClick={() => onAction('invoice')}>
-                            <span>Factura</span>
-                        </button>
-                    )}
+                    {/* Factura (standalone pre-invoice) returns in phase 2b; a tile that does nothing is worse than none. */}
                 </div>
             )}
         </Sheet>

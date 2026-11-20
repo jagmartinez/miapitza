@@ -161,3 +161,44 @@ describe('final review: queued state the screens show (Opus I3, Fable I5)', () =
         expect(await queue.queuedLines(77)).toHaveLength(1);
     });
 });
+
+describe('follow-up N1/M3: a synced create takes its draft along; a stale processing row is not replayed', () => {
+    const lines = { items: [{ menuItemId: 1, quantity: 3 }] };
+
+    it('N1: the draft written for an offline order moves to the real order when the create syncs, even if the screen was left', async () => {
+        const { queue, db, reply, seen } = await setup();
+        const { createDrafts } = await import('./drafts');
+        const drafts = createDrafts(db);
+        const tempId = `order-${Date.now() - 5000}-aaaaaaaa`;
+        await queue.enqueue({ ...create, entityTempId: tempId, data: { tableId: 5, guests: 2 } });
+        await drafts.set('1:1', { tableId: 5 }, lines); // written while offline, then the waiter left the screen
+        reply((req) => (req.url === '/orders' ? { data: { success: true, data: { id: 9 } } } : {}));
+        await queue.process();
+        expect(seen.map((s) => s.url)).toEqual(['/orders']);
+        expect((await drafts.get('1:1', { orderId: 9 }))?.items[0].quantity).toBe(3);
+        expect(await drafts.get('1:1', { tableId: 5 })).toBeNull();
+    });
+
+    it('N1: a leftover table draft older than the queued create is not carried', async () => {
+        const { queue, db, reply } = await setup();
+        const { createDrafts } = await import('./drafts');
+        const drafts = createDrafts(db);
+        await drafts.set('1:1', { tableId: 5 }, lines);
+        await new Promise((r) => setTimeout(r, 5));
+        const tempId = `order-${Date.now()}-bbbbbbbb`;
+        await queue.enqueue({ ...create, entityTempId: tempId, data: { tableId: 5 } });
+        reply((req) => (req.url === '/orders' ? { data: { success: true, data: { id: 10 } } } : {}));
+        await queue.process();
+        expect(await drafts.get('1:1', { orderId: 10 })).toBeNull();
+    });
+
+    it('M3: an item left processing and older than 12 h is failed, not reset to pending and replayed', async () => {
+        const { queue, db, advance, seen } = await setup();
+        const item = await queue.enqueue({ ...add, idempotencyKey: 'k-proc' });
+        await db.syncQueue.update(item.id!, { status: 'processing' });
+        advance(STALE_AFTER_MS + 10);
+        await queue.process();
+        expect(seen).toHaveLength(0);
+        expect((await queue.listFailed()).map((r) => r.idempotencyKey)).toEqual(['k-proc']);
+    });
+});

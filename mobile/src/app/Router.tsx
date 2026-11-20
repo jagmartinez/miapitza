@@ -12,7 +12,7 @@ import { DeviceSetupScreen } from '../features/device/DeviceSetupScreen';
 import { KitchenHome } from '../features/kitchen/KitchenHome';
 import { PinScreen } from '../features/pin/PinScreen';
 import { WaiterHome } from '../features/waiter/WaiterHome';
-import { loadWaiterData } from '../data/loadWaiterData';
+import { loadWaiterData, wipeWaiterData } from '../data/loadWaiterData';
 
 /** Locks the waiter tablet back to the PIN screen after 2 minutes without touch. */
 function WaiterSession({ session, services, onSwitchUser }: { session: Session; services: Services; onSwitchUser: () => void }) {
@@ -89,9 +89,14 @@ export function Router({ services }: { services: Services }) {
         } catch {
             // Unpairing must reach setup even if storage throws.
         }
+        try {
+            await wipeWaiterData(services);
+        } catch {
+            // Best effort: the local database is also unreachable without a paired device.
+        }
         setSession(null);
         setDeviceType(null);
-    }, [realtime, sessions]);
+    }, [realtime, sessions, services]);
     const handleRevoked = useCallback(() => void revoke(), [revoke]);
 
     useEffect(() => {

@@ -314,3 +314,14 @@ describe('table actions', () => {
         expect(onOpenOrder).toHaveBeenCalledWith(102, undefined, 2, '2');
     });
 });
+
+describe('follow-up M7: Factura is hidden until phase 2b', () => {
+    it('the actions sheet has no Factura tile even for a user who may invoice', async () => {
+        setup();
+        await screen.findByTestId('tile-2');
+        await longPress(tile(2));
+        const sheet = await screen.findByRole('dialog');
+        expect(within(sheet).getByRole('button', { name: /Trasladar/ })).toBeInTheDocument(); // the sheet is open
+        expect(within(sheet).queryByRole('button', { name: 'Factura' })).toBeNull();
+    });
+});

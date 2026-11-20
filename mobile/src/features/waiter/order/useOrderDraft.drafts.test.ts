@@ -67,3 +67,36 @@ describe('drafts follow the order, not the table (Fable I7, ruling d)', () => {
         expect(hook.result.current.lines).toHaveLength(0);
     });
 });
+
+describe('follow-up M2: the create syncs while a send is in flight', () => {
+    it('lines already sent leave the draft even though the scope flipped from table to order', async () => {
+        const drafts = newDrafts();
+        const cola: Product = { id: 2, name: 'Cola', price: 30, categoryId: 1, modifierGroups: 0 };
+        const holder: { flip: () => void } = { flip: () => undefined };
+        let calls = 0;
+        const slowApi = {
+            addItem: vi.fn(async () => {
+                calls += 1;
+                if (calls === 1) {
+                    holder.flip();
+                    await new Promise((r) => setTimeout(r, 30));
+                }
+                return { id: 1 };
+            }),
+            sendToKitchen: vi.fn().mockResolvedValue({}),
+            createOrder: vi.fn(),
+        } as unknown as DraftApi;
+        const hook = renderHook((p: { orderId: number | string }) => useOrderDraft({ drafts, api: slowApi, ownerKey: '1:7', tableId: 3, orderId: p.orderId }), {
+            initialProps: { orderId: 'order-1700-abcd1234' as number | string },
+        });
+        holder.flip = () => act(() => hook.rerender({ orderId: 900 }));
+        await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+        act(() => hook.result.current.add(pizza));
+        act(() => hook.result.current.add(cola));
+        // not inside act(): a nested act would defer the scope flip until the send is over
+        await hook.result.current.send();
+        await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+        expect(hook.result.current.lines).toHaveLength(0);
+        await waitFor(async () => expect(await drafts.get('1:7', { orderId: 900 })).toBeNull());
+    });
+});

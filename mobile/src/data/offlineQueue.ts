@@ -93,7 +93,8 @@ export function createOfflineQueue(deps: QueueDeps) {
         }
     }
 
-    const isStale = (r: SyncItem) => r.status !== 'failed' && r.status !== 'processing' && !r.approvedStale && now() - r.timestamp > STALE_AFTER_MS;
+    // A row left 'processing' by a kill is as expired as any other: it must not be reset to pending and replayed.
+    const isStale = (r: SyncItem) => r.status !== 'failed' && !r.approvedStale && now() - r.timestamp > STALE_AFTER_MS;
 
     /** Marks the owner's items that waited past the service window as failed (never replayed by itself). */
     async function sweepStale(ownerKey: string): Promise<void> {
@@ -168,9 +169,10 @@ export function createOfflineQueue(deps: QueueDeps) {
      * queued dependent. A crash can never leave dependents pointing at a deleted parent.
      */
     async function applySynced(item: SyncItem, ownerKey: string, realId: number | string | undefined): Promise<void> {
-        await db.transaction('rw', db.syncQueue, db.tempIds, async () => {
+        await db.transaction('rw', db.syncQueue, db.tempIds, db.drafts, async () => {
             await db.syncQueue.delete(item.id!);
             if (item.operationType !== 'CREATE_ORDER' || !item.entityTempId || realId === undefined) return;
+            await moveDraftToOrder(item, ownerKey, realId);
             await db.tempIds.put({ id: `${ownerKey}|${item.entityTempId}`, ownerKey, tempId: item.entityTempId, realId, timestamp: now() });
             const map = new Map<string, number | string>([[item.entityTempId, realId]]);
             const rows = await db.syncQueue.where('ownerKey').equals(ownerKey).filter((r) => r.status !== 'failed').toArray();
@@ -181,6 +183,22 @@ export function createOfflineQueue(deps: QueueDeps) {
                 }
             }
         });
+    }
+
+    /**
+     * The unsent lines a waiter wrote on the table while its order only lived in the queue follow it to the real order, so
+     * leaving the screen before the sync never loses them. Only a draft written after the temp order was created is its own.
+     */
+    async function moveDraftToOrder(item: SyncItem, ownerKey: string, realId: number | string): Promise<void> {
+        const tableId = Number((item.data as { tableId?: unknown } | null)?.tableId);
+        if (!Number.isFinite(tableId) || !/^\d+$/.test(String(realId))) return;
+        const from = `${ownerKey}:t:${tableId}`;
+        const row = await db.drafts.get(from);
+        const createdAt = Number(/^order-(\d+)-/.exec(item.entityTempId ?? '')?.[1]);
+        if (!row || (Number.isFinite(createdAt) && row.updatedAt < createdAt)) return;
+        const to = `${ownerKey}:o:${realId}`;
+        if (!(await db.drafts.get(to))) await db.drafts.put({ ...row, id: to, tableId, orderId: Number(realId) });
+        await db.drafts.delete(from);
     }
 
     /** Returns the owner the run started with (null when nothing could run). */

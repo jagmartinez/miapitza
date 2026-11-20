@@ -29,7 +29,7 @@ const MOBILE_SCHEMA: { stores: Record<string, string>; upgrade?: (tx: Transactio
             const table = tx.table('drafts');
             const cutoff = Date.now() - DRAFT_MAX_AGE_MS;
             for (const row of (await table.toArray()) as DraftRow[]) {
-                if (/:[to]:d+$/.test(row.id)) continue; // already in the new format
+                if (/:[to]:\d+$/.test(row.id)) continue; // already in the new format
                 await table.delete(row.id);
                 if (row.updatedAt < cutoff || !row.ownerKey || typeof row.tableId !== 'number') continue;
                 await table.put({ ...row, id: `${row.ownerKey}:t:${row.tableId}`, orderId: null });
