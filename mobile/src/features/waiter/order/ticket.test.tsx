@@ -37,7 +37,7 @@ describe('long ticket', () => {
         const drafts = makeDrafts();
         await drafts.set(
             '1:7',
-            2,
+            { orderId: 102 },
             seed(Array.from({ length: 40 }, (_, i) => ({ menuItemId: 100 + i, quantity: 1, name: `Plato ${i}`, unitPrice: 10 + i }))),
         );
         setup({ drafts });
@@ -59,7 +59,7 @@ describe('long ticket', () => {
 
     it('only one row expanded at a time', async () => {
         const drafts = makeDrafts();
-        await drafts.set('1:7', 2, seed([{ menuItemId: 1, quantity: 1, name: 'Pizza', unitPrice: 100 }, { menuItemId: 2, quantity: 2, name: 'Cola', unitPrice: 30 }]));
+        await drafts.set('1:7', { orderId: 102 }, seed([{ menuItemId: 1, quantity: 1, name: 'Pizza', unitPrice: 100 }, { menuItemId: 2, quantity: 2, name: 'Cola', unitPrice: 30 }]));
         setup({ drafts });
         const first = await within(ticket()).findByRole('button', { name: /Pizza/ });
         fireEvent.click(first);
@@ -152,7 +152,7 @@ describe('full ticket', () => {
             orderOf([ready(5, 1, 'Pizza'), serverItem(6, 2, 'Cola', { quantity: 2, status: 'IN_PROGRESS' }), ready(7, 4, 'Ensalada', { deliveredAt: minutesAgo(1) }), serverItem(8, 2, 'Agua', { sentAt: null })]),
         );
         const drafts = makeDrafts();
-        await drafts.set('1:7', 2, seed([{ menuItemId: 1, quantity: 1, name: 'Pan', unitPrice: 20 }]));
+        await drafts.set('1:7', { orderId: 102 }, seed([{ menuItemId: 1, quantity: 1, name: 'Pan', unitPrice: 20 }]));
         const view = setup({ api, drafts });
         fireEvent.click(await within(ticket()).findByRole('button', { name: /Enviado · 4/ }));
         const full = await screen.findByRole('region', { name: 'Ticket completo' });
@@ -197,7 +197,7 @@ describe('full ticket', () => {
 describe('ticket fix round 1', () => {
     it('I6: expanding the last visible row scrolls it into view', async () => {
         const drafts = makeDrafts();
-        await drafts.set('1:7', 2, seed(Array.from({ length: 12 }, (_, i) => ({ menuItemId: 100 + i, quantity: 1, name: `Plato ${i}`, unitPrice: 10 }))));
+        await drafts.set('1:7', { orderId: 102 }, seed(Array.from({ length: 12 }, (_, i) => ({ menuItemId: 100 + i, quantity: 1, name: `Plato ${i}`, unitPrice: 10 }))));
         setup({ drafts });
         const list = await within(ticket()).findByTestId('ticket-list');
         const row = await within(ticket()).findByRole('button', { name: /Plato 7/ });

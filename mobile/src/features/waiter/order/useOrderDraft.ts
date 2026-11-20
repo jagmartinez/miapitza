@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getApiErrorMessage } from '@web/utils/apiError';
 import { newIdempotencyKey } from '@web/utils/idempotency';
-import type { Drafts } from '../../../data/drafts';
+import type { DraftRef, Drafts } from '../../../data/drafts';
 import type { DraftData } from '../../../data/types';
 import { isQueuedOffline, type NewOrderLine, type OrderRef, type WaiterApi } from '../../../data/waiterApi';
 import type { Product } from './orderModel';
@@ -32,7 +32,7 @@ export interface AddOptions {
 }
 
 export interface UseOrderDraftOptions {
-    drafts: Pick<Drafts, 'get' | 'set' | 'clear'>;
+    drafts: Pick<Drafts, 'get' | 'set' | 'clear' | 'adopt'>;
     api: DraftApi;
     /** `companyId:userId`: a draft belongs to its waiter. */
     ownerKey: string | null;
@@ -40,6 +40,8 @@ export interface UseOrderDraftOptions {
     /** The server order (or the temp id of one created offline); null when the table has none yet. */
     orderId: OrderRef | null;
     guests?: number;
+    /** When the order was opened (ms). undefined = not known yet; null = unknown. Only a draft written after it can be that order's. */
+    orderCreatedAt?: number | null;
     /** Lines the server holds that were never sent to the kitchen. */
     serverUnsent?: number;
     onSent?: (orderId: OrderRef) => void;
@@ -103,13 +105,35 @@ export const toOrderLine = (l: DraftTicketLine): NewOrderLine => ({
     ...(l.modifierIds.length ? { modifierIds: l.modifierIds } : {}),
 });
 
+const realOrderId = (orderId: OrderRef | null): number | null => (typeof orderId === 'number' ? orderId : typeof orderId === 'string' && /^\d+$/.test(orderId) ? Number(orderId) : null);
+
+/** A draft belongs to its order once the server has one; until then (no order, or one that only lives in the queue) to the table. */
+function draftRefOf(orderId: OrderRef | null, tableId: number | null): DraftRef | null {
+    const order = realOrderId(orderId);
+    if (order != null) return { orderId: order };
+    return tableId != null ? { tableId } : null;
+}
+
+const scopeOf = (ownerKey: string | null, ref: DraftRef | null): string | null => {
+    if (ownerKey == null || ref == null) return null;
+    if (typeof ref === 'number') return `${ownerKey}|t${ref}`;
+    return 'orderId' in ref ? `${ownerKey}|o${ref.orderId}` : `${ownerKey}|t${ref.tableId}`;
+};
+
+/** An order created offline has its creation time in its temp id (`order-<ms>-<suffix>`). */
+const tempCreatedAt = (orderId: OrderRef | null): number | undefined => {
+    const ms = typeof orderId === 'string' ? Number(/^order-(\d+)-/.exec(orderId)?.[1]) : NaN;
+    return Number.isFinite(ms) ? ms : undefined;
+};
+
 /**
- * "Nuevo · sin enviar" lines of one waiter on one table, persisted per `ownerKey + tableId`.
- * Switching user (or table) swaps to that scope's own draft; nothing is carried over.
+ * "Nuevo · sin enviar" lines of one waiter, persisted per owner and ORDER (per table only while the table has no server
+ * order), and dropped after 24 h. Switching user or order swaps to that scope's own draft; nothing is carried over.
  */
 export function useOrderDraft(opts: UseOrderDraftOptions) {
-    const { drafts, api, ownerKey, tableId, orderId, guests, serverUnsent = 0, onSent, onChanged } = opts;
-    const scope = ownerKey != null && tableId != null ? `${ownerKey}|${tableId}` : null;
+    const { drafts, api, ownerKey, tableId, orderId, orderCreatedAt, guests, serverUnsent = 0, onSent, onChanged } = opts;
+    const ref = draftRefOf(orderId, tableId);
+    const scope = scopeOf(ownerKey, ref);
 
     const [state, setState] = useState<{ scope: string | null; lines: DraftTicketLine[] }>({ scope: null, lines: [] });
     const [sending, setSending] = useState(false);
@@ -129,17 +153,33 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
     const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const latest = useRef({ orderId, guests, serverUnsent, tableId, ownerKey });
     latest.current = { orderId, guests, serverUnsent, tableId, ownerKey };
+    const adopted = useRef<string | null>(null);
 
     useEffect(() => {
+        const prev = live.current;
+        // The order opened offline just became the real one: its lines move from the table fallback to the order, intact.
+        if (scope != null && ownerKey != null && ref != null && typeof ref === 'object' && 'orderId' in ref && tableId != null && prev.scope === scopeOf(ownerKey, { tableId }) && prev.lines.length > 0) {
+            live.current = { scope, lines: prev.lines };
+            setState(live.current);
+            const carried = toStored(prev.lines);
+            writes.current = writes.current
+                .then(() => drafts.set(ownerKey, ref, carried, tableId))
+                .then(() => drafts.clear(ownerKey, { tableId }))
+                .catch(() => setError('No se pudo guardar el borrador en este equipo.'));
+            adopted.current = scope;
+            return undefined;
+        }
         live.current = { scope: null, lines: [] };
         setState({ scope: null, lines: [] });
         setError(null);
         created.current = null;
         nonce.current = null;
         setCreatedUnits(0);
-        if (scope == null || ownerKey == null || tableId == null) return undefined;
+        if (scope == null || ownerKey == null || ref == null) return undefined;
         let alive = true;
-        drafts.get(ownerKey, tableId).then(
+        // An order that only lives in the queue is new: a leftover table draft older than it is not its draft.
+        const notBefore = typeof ref === 'object' && 'tableId' in ref ? tempCreatedAt(latest.current.orderId) : undefined;
+        drafts.get(ownerKey, ref, notBefore !== undefined ? { notBefore } : {}).then(
             (data) => {
                 if (!alive) return;
                 live.current = { scope, lines: fromStored(data) };
@@ -157,6 +197,30 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [scope, drafts]);
 
+    // A draft written for this table after this order was opened (e.g. one saved before drafts followed orders) is its draft.
+    useEffect(() => {
+        if (scope == null || ownerKey == null || tableId == null || ref == null || !('orderId' in (ref as object)) || typeof orderCreatedAt !== 'number') return;
+        if (state.scope !== scope || adopted.current === scope) return;
+        adopted.current = scope;
+        if (live.current.lines.length > 0) return;
+        const order = (ref as { orderId: number }).orderId;
+        void drafts.adopt(ownerKey, tableId, order, orderCreatedAt).then(
+            (data) => {
+                if (!data || scopeRef.current !== scope || live.current.scope !== scope) return;
+                const merged = [...live.current.lines];
+                for (const l of fromStored(data)) {
+                    const at = merged.findIndex((m) => m.key === l.key);
+                    if (at >= 0) merged[at] = { ...merged[at], quantity: merged[at].quantity + l.quantity };
+                    else merged.push(l);
+                }
+                live.current = { scope, lines: merged };
+                setState(live.current);
+            },
+            () => undefined,
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scope, orderCreatedAt, state.scope]);
+
     useEffect(
         () => () => {
             if (highlightTimer.current) clearTimeout(highlightTimer.current);
@@ -170,13 +234,14 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
     const commit = useCallback(
         (next: DraftTicketLine[]) => {
             const current = scopeRef.current;
-            const { ownerKey: owner, tableId: table } = latest.current;
-            if (current == null || owner == null || table == null || live.current.scope !== current) return;
+            const { ownerKey: owner, tableId: table, orderId: order } = latest.current;
+            const target = draftRefOf(order, table);
+            if (current == null || owner == null || target == null || live.current.scope !== current) return;
             live.current = { scope: current, lines: next };
             setState(live.current);
             // Writes are serialised so an older snapshot never lands after a newer one.
             writes.current = writes.current
-                .then(() => (next.length ? drafts.set(owner, table, toStored(next)) : drafts.clear(owner, table)))
+                .then(() => (next.length ? drafts.set(owner, target, toStored(next), table ?? undefined) : drafts.clear(owner, target)))
                 .catch(() => setError('No se pudo guardar el borrador en este equipo.'));
         },
         [drafts],

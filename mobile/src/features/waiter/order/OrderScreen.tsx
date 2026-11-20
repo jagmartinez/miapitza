@@ -282,6 +282,8 @@ export function OrderScreen(props: OrderScreenProps) {
         ownerKey,
         tableId,
         orderId,
+        // the draft belongs to this order only if it was written after the order opened
+        orderCreatedAt: order?.createdAt ? Date.parse(String(order.createdAt)) || null : undefined,
         guests: typeof order?.guests === 'number' ? order.guests : undefined,
         serverUnsent: sumQuantity(unsentOnServer),
         onSent: () => void loadOrder(),

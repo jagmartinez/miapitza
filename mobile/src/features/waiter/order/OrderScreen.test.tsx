@@ -74,7 +74,7 @@ describe('OrderScreen', () => {
         expect(within(screen.getByRole('region', { name: 'Productos' })).getByRole('button', { name: /^Pizza Margarita/ })).toHaveTextContent('×1');
         fireEvent.click(within(screen.getByRole('region', { name: 'Productos' })).getByRole('button', { name: /^Pizza Margarita/ }));
         await waitFor(() => expect(within(screen.getByRole('region', { name: 'Productos' })).getByRole('button', { name: /^Pizza Margarita/ })).toHaveTextContent('×2'));
-        await waitFor(async () => expect((await drafts.get('1:7', 2))?.items[0].quantity).toBe(2));
+        await waitFor(async () => expect((await drafts.get('1:7', { orderId: 102 }))?.items[0].quantity).toBe(2));
         expect(screen.getByRole('button', { name: 'Enviar a cocina · 2' })).toBeEnabled();
     });
 
@@ -137,7 +137,7 @@ describe('OrderScreen', () => {
         await waitFor(() => expect(api.sendToKitchen).toHaveBeenCalledTimes(1));
         expect(api.addItem).toHaveBeenCalledTimes(1);
         expect(api.addItem.mock.calls[0][0]).toBe(102);
-        await waitFor(async () => expect(await drafts.get('1:7', 2)).toBeNull());
+        await waitFor(async () => expect(await drafts.get('1:7', { orderId: 102 })).toBeNull());
         expect(screen.queryByRole('button', { name: /Enviar a cocina/ })).toBeDisabled();
     });
 
@@ -205,7 +205,7 @@ describe('OrderScreen', () => {
         const first = setup();
         fireEvent.click(await product('Pizza Margarita'));
         await screen.findByTestId('draft-1||');
-        await waitFor(async () => expect(await first.drafts.get('1:7', 2)).not.toBeNull());
+        await waitFor(async () => expect(await first.drafts.get('1:7', { orderId: 102 })).not.toBeNull());
         cleanup();
         setup({ drafts: first.drafts, userId: 8 });
         await screen.findByRole('region', { name: 'Productos' });

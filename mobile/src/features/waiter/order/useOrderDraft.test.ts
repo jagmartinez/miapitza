@@ -157,21 +157,21 @@ describe('useOrderDraft', () => {
         const { result, rerender, drafts } = setup();
         await waitFor(() => expect(result.current.loaded).toBe(true));
         act(() => result.current.add(pizza));
-        await waitFor(async () => expect((await drafts.get('1:7', 3))?.items).toHaveLength(1));
+        await waitFor(async () => expect((await drafts.get('1:7', { orderId: 55 }))?.items).toHaveLength(1));
 
         rerender({ ownerKey: '1:8', tableId: 3 });
         await waitFor(() => expect(result.current.loaded).toBe(true));
         expect(result.current.lines).toHaveLength(0);
         act(() => result.current.add(cola));
-        await waitFor(async () => expect((await drafts.get('1:8', 3))?.items).toHaveLength(1));
-        expect((await drafts.get('1:7', 3))?.items.map((i) => i.menuItemId)).toEqual([1]);
+        await waitFor(async () => expect((await drafts.get('1:8', { orderId: 55 }))?.items).toHaveLength(1));
+        expect((await drafts.get('1:7', { orderId: 55 }))?.items.map((i) => i.menuItemId)).toEqual([1]);
 
         rerender({ ownerKey: '1:7', tableId: 3 });
         await waitFor(() => expect(result.current.lines.map((l) => l.menuItemId)).toEqual([1]));
-        // another table of the same user is a different draft
+        // the draft follows the ORDER: the same order is the same draft whatever table the screen was told about
         rerender({ ownerKey: '1:7', tableId: 4 });
         await waitFor(() => expect(result.current.loaded).toBe(true));
-        expect(result.current.lines).toHaveLength(0);
+        expect(result.current.lines.map((l) => l.menuItemId)).toEqual([1]);
     });
 });
 

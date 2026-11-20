@@ -1,8 +1,45 @@
-import Dexie, { type Table } from 'dexie';
+import Dexie, { type Table, type Transaction } from 'dexie';
 import { reportStorage, toStorageError } from './storage';
 import type { CacheEntry, DraftRow, PlanRow, SyncItem, TempIdRow } from './types';
 
 /** Local store of the waiter app. Holds no tokens: owners are identified by `companyId:userId`. */
+/** Drafts older than this are dropped by the v5 upgrade (same rule as the drafts store). */
+const DRAFT_MAX_AGE_MS = 24 * 60 * 60_000;
+
+/**
+ * Every schema version, in order: the single source of truth for the app and for the upgrade test that walks v1 -> latest.
+ * An upgrade must never touch `syncQueue` rows (queued offline work); new versions only add tables or indexes.
+ */
+const MOBILE_SCHEMA: { stores: Record<string, string>; upgrade?: (tx: Transaction) => void | PromiseLike<unknown> }[] = [
+    {
+        stores: {
+            caches: 'id, ownerKey, url, timestamp',
+            syncQueue: '++id, ownerKey, status, timestamp, entityTempId, dependencyKey',
+            drafts: 'id, userId',
+        },
+    },
+    // Drafts were keyed by userId only; they are keyed by owner now. Unreleased data, so drop it.
+    { stores: { drafts: 'id, ownerKey' }, upgrade: (tx) => tx.table('drafts').clear() },
+    { stores: { tempIds: 'id, ownerKey, timestamp' } },
+    { stores: { paymentPlans: 'id, ownerKey, timestamp' } },
+    // Drafts follow the order (24 h expiry): rows keyed by table become the table fallback, expired ones are dropped.
+    {
+        stores: { drafts: 'id, ownerKey, updatedAt' },
+        upgrade: async (tx) => {
+            const table = tx.table('drafts');
+            const cutoff = Date.now() - DRAFT_MAX_AGE_MS;
+            for (const row of (await table.toArray()) as DraftRow[]) {
+                if (/:[to]:d+$/.test(row.id)) continue; // already in the new format
+                await table.delete(row.id);
+                if (row.updatedAt < cutoff || !row.ownerKey || typeof row.tableId !== 'number') continue;
+                await table.put({ ...row, id: `${row.ownerKey}:t:${row.tableId}`, orderId: null });
+            }
+        },
+    },
+];
+
+export const MOBILE_DB_VERSION = MOBILE_SCHEMA.length;
+
 export class MobileDB extends Dexie {
     caches!: Table<CacheEntry, string>;
     syncQueue!: Table<SyncItem, number>;
@@ -10,19 +47,13 @@ export class MobileDB extends Dexie {
     tempIds!: Table<TempIdRow, string>;
     paymentPlans!: Table<PlanRow, string>;
 
-    constructor(name = 'MobileDB') {
+    /** `upTo` opens an older schema (tests that walk the upgrades); the app always opens the latest. */
+    constructor(name = 'MobileDB', opts: { upTo?: number } = {}) {
         super(name);
-        this.version(1).stores({
-            caches: 'id, ownerKey, url, timestamp',
-            syncQueue: '++id, ownerKey, status, timestamp, entityTempId, dependencyKey',
-            drafts: 'id, userId',
+        MOBILE_SCHEMA.slice(0, opts.upTo ?? MOBILE_SCHEMA.length).forEach((step, i) => {
+            const version = this.version(i + 1).stores(step.stores);
+            if (step.upgrade) version.upgrade(step.upgrade);
         });
-        // Drafts were keyed by userId only; they are keyed by owner now. Unreleased data, so drop it.
-        this.version(2)
-            .stores({ drafts: 'id, ownerKey' })
-            .upgrade((tx) => tx.table('drafts').clear());
-        this.version(3).stores({ tempIds: 'id, ownerKey, timestamp' });
-        this.version(4).stores({ paymentPlans: 'id, ownerKey, timestamp' });
     }
 }
 

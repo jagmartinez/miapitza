@@ -60,10 +60,11 @@ export interface TempIdRow {
 }
 
 export interface DraftRow {
-    /** `${companyId}:${userId}:${tableId}` */
+    /** `${ownerKey}:o:${orderId}` once the order exists, `${ownerKey}:t:${tableId}` for a table with no order yet. */
     id: string;
     ownerKey: string;
-    tableId: number;
+    tableId: number | null;
+    orderId?: number | null;
     data: DraftData;
     updatedAt: number;
 }
