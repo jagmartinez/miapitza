@@ -135,3 +135,29 @@ describe('final review: list, retry and discard (ruling c)', () => {
         expect((await db.syncQueue.toArray()).map((r) => r.status)).toEqual(['failed']);
     });
 });
+
+describe('final review: queued state the screens show (Opus I3, Fable I5)', () => {
+    it('pendingCreates lists the owner\'s unsynced creates with their table', async () => {
+        const { queue, sessions } = await setup(1);
+        await queue.enqueue({ ...create, entityTempId: 'order-1-aaaaaaaa', data: { tableId: 3, guests: 2 } });
+        await sessions.save(sessionFor(2));
+        await queue.enqueue({ ...create, entityTempId: 'order-2-bbbbbbbb', data: { tableId: 4 } });
+        expect(await queue.pendingCreates()).toMatchObject([{ tempId: 'order-2-bbbbbbbb', tableId: 4 }]);
+        await sessions.save(sessionFor(1));
+        expect(await queue.pendingCreates()).toMatchObject([{ tempId: 'order-1-aaaaaaaa', tableId: 3, guests: 2 }]);
+    });
+
+    it('queuedLines returns the owner\'s queued lines of one order, by temp id and, after the create synced, by real id', async () => {
+        const { queue, reply } = await setup();
+        reply((req) => (req.url === '/orders' ? { data: { success: true, data: { id: 9 } } } : { network: true }));
+        await queue.enqueue({ ...create, entityTempId: 'order-1-aaaaaaaa' });
+        await queue.enqueue({ ...add, url: '/orders/order-1-aaaaaaaa/items', data: { menuItemId: 4, quantity: 2, notes: 'sin hielo' }, dependencyKey: 'order-1-aaaaaaaa', meta: { name: 'Cola', unitPrice: 30, modifierNames: ['grande'] } });
+        await queue.enqueue({ ...add, url: '/orders/77/items', meta: { name: 'Otra' } });
+        expect(await queue.queuedLines('order-1-aaaaaaaa')).toMatchObject([{ menuItemId: 4, quantity: 2, notes: 'sin hielo', name: 'Cola', unitPrice: 30, modifierNames: ['grande'], status: 'blocked' }].map((l) => ({ ...l, status: expect.any(String) })));
+        await queue.process(); // the create syncs, the line then fails on the network and stays queued under the real id
+        const lines = await queue.queuedLines(9);
+        expect(lines).toHaveLength(1);
+        expect(lines[0].name).toBe('Cola');
+        expect(await queue.queuedLines(77)).toHaveLength(1);
+    });
+});

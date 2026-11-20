@@ -9,7 +9,7 @@ import { ownerKeyOf } from '../../data/types';
 
 import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
 
-type Route = { name: 'tables' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number };
+type Route = { name: 'tables' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
 
 // The order screen is the biggest waiter chunk: it loads when the first order opens.
 const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ default: m.OrderScreen })));
@@ -73,6 +73,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
                     queue={data.queue}
                     orderId={route.orderId}
                     tableId={route.tableId}
+                    tableNumber={route.tableNumber}
                     intent={route.intent}
                     invalidate={invalidate}
                     onBack={() => setRoute({ name: 'tables' })}
@@ -88,7 +89,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
             realtime={services.realtime}
             queue={data.queue}
             invalidate={invalidate}
-            onOpenOrder={(orderId, intent, tableId) => setRoute({ name: 'order', orderId, intent, tableId })}
+            onOpenOrder={(orderId, intent, tableId, tableNumber) => setRoute({ name: 'order', orderId, intent, tableId, tableNumber })}
             onSwitchUser={onSwitchUser}
         />
     );

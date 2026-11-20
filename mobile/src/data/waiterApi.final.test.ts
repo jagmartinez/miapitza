@@ -119,3 +119,30 @@ describe('final review: a retry key belongs to one action (Fable I1)', () => {
         expect(seen[2].key).not.toBe(seen[0].key);
     });
 });
+
+describe('final review: a table with a local order cannot get a second one (Opus I3)', () => {
+    it('createOrder refuses a table that already has a queued create, naming the temp order to open instead', async () => {
+        const { api, db, setOnline } = await setup();
+        setOnline(false);
+        const first = (await api.createOrder({ tableId: 5, guests: 2 })) as { entityTempId: string };
+        await expect(api.createOrder({ tableId: 5, guests: 4 })).rejects.toMatchObject({ name: 'TableHasLocalOrderError', tempId: first.entityTempId });
+        expect(await db.syncQueue.count()).toBe(1);
+        await api.createOrder({ tableId: 6 }); // another table is fine
+        expect(await db.syncQueue.count()).toBe(2);
+    });
+
+    it('once the create synced, or if it failed, the table is not held any more', async () => {
+        const { api, queue, db, setOnline, reply } = await setup();
+        setOnline(false);
+        await api.createOrder({ tableId: 5 });
+        setOnline(true);
+        reply((req) => (req.url === '/orders' ? { data: { success: true, data: { id: 9 } } } : {}));
+        await queue.process();
+        expect(await db.syncQueue.count()).toBe(0);
+        setOnline(false);
+        await expect(api.createOrder({ tableId: 5 })).resolves.toMatchObject({ _offline: true });
+        const [row] = await db.syncQueue.toArray();
+        await db.syncQueue.update(row.id!, { status: 'failed' });
+        await expect(api.createOrder({ tableId: 5 })).resolves.toMatchObject({ _offline: true });
+    });
+});

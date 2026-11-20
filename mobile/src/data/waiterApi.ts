@@ -73,6 +73,14 @@ export class OrderNotSyncedError extends Error {
     }
 }
 
+/** The table already has an order that only exists in this device's queue: open that one, never create a second. */
+export class TableHasLocalOrderError extends Error {
+    constructor(readonly tempId: string) {
+        super('Esta mesa ya tiene un pedido sin sincronizar en este equipo');
+        this.name = 'TableHasLocalOrderError';
+    }
+}
+
 export function isQueuedOffline(value: unknown): value is QueuedOffline {
     return !!value && typeof value === 'object' && (value as QueuedOffline)._offline === true;
 }
@@ -241,7 +249,11 @@ export function createWaiterApi(deps: WaiterApiDeps) {
         kitchenNotifications: (params: { includeAttended?: boolean; limit?: number } = {}) => get<Json[]>('/kitchen-notifications', params),
 
         // ---- mutations (queueable offline, same four as the web) ----
-        createOrder(body: CreateOrderBody, opts: { owner?: string; actionId?: string; meta?: SyncMeta } = {}) {
+        async createOrder(body: CreateOrderBody, opts: { owner?: string; actionId?: string; meta?: SyncMeta } = {}) {
+            if (body.tableId != null) {
+                const held = (await queue.pendingCreates()).find((c) => c.tableId === body.tableId);
+                if (held) throw new TableHasLocalOrderError(held.tempId);
+            }
             return mutate<Json>({
                 method: 'POST',
                 url: '/orders',

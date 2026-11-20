@@ -31,6 +31,7 @@ describe('Router', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Ana Perez/ }));
         for (const d of ['1', '2', '3', '4']) fireEvent.click(screen.getByRole('button', { name: d }));
         fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+        await screen.findByRole('button', { name: 'Mis mesas' }); // the tables screen, not the loading placeholder (its button is replaced)
         fireEvent.click(await screen.findByRole('button', { name: 'Cambiar usuario' }));
         expect(await screen.findByText('Elige tu usuario')).toBeInTheDocument();
     });
@@ -65,6 +66,7 @@ describe('Router lock and storage resilience', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Ana Perez/ }));
         for (const d of ['1', '2', '3', '4']) fireEvent.click(screen.getByRole('button', { name: d }));
         fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+        await screen.findByRole('button', { name: 'Mis mesas' }); // the tables screen, not the loading placeholder (its button is replaced)
         fireEvent.click(await screen.findByRole('button', { name: 'Cambiar usuario' }));
         expect(await screen.findByText('Elige tu usuario')).toBeInTheDocument();
     });

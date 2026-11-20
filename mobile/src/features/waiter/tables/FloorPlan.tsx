@@ -21,7 +21,7 @@ export function tileLines(label: string, state: TableState, order: ActiveOrder |
     if (state === 'free' || !order) return [label, 'Libre'];
     const mins = formatElapsed(elapsedMinutes(order.createdAt, now));
     const guests = order.guests ? `${order.guests} pers` : '';
-    const status = state === 'ready' ? 'Listo' : state === 'due' ? 'Por cobrar' : '';
+    const status = order.pendingSync ? 'Sin sincronizar' : state === 'ready' ? 'Listo' : state === 'due' ? 'Por cobrar' : '';
     const second = [status || guests, mins].filter(Boolean).join(' · ');
     const lines = [label, second];
     if (waiter) lines.push(waiter);

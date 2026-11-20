@@ -27,6 +27,27 @@ export interface QueueDeps {
     now?: () => number;
 }
 
+/** An order created offline whose create has not synced yet. */
+export interface PendingCreate {
+    tempId: string;
+    tableId: number | null;
+    guests: number | null;
+    timestamp: number;
+}
+
+/** A product line queued offline for an order: it is not on the server yet but the ticket must show it. */
+export interface QueuedLine {
+    id: number;
+    menuItemId: number;
+    quantity: number;
+    notes: string;
+    name: string;
+    unitPrice: number;
+    modifierNames: string[];
+    status: SyncItem['status'];
+    lastError: string | null;
+}
+
 export interface QueueSnapshot {
     pending: number;
     failed: number;
@@ -420,6 +441,51 @@ export function createOfflineQueue(deps: QueueDeps) {
                 else slot.pending += 1;
             }
             return out;
+        },
+
+        /** The owner's creates still waiting to sync: the floor plan shows those tables as occupied by the temp order. */
+        async pendingCreates(): Promise<PendingCreate[]> {
+            const owner = await currentOwner();
+            if (!owner) return [];
+            const rows = await db.syncQueue
+                .where('ownerKey')
+                .equals(owner)
+                .filter((r) => r.operationType === 'CREATE_ORDER' && r.status !== 'failed' && !!r.entityTempId)
+                .toArray();
+            return rows
+                .sort((a, b) => a.timestamp - b.timestamp)
+                .map((r) => {
+                    const data = (r.data ?? {}) as { tableId?: unknown; guests?: unknown };
+                    return { tempId: r.entityTempId!, tableId: Number.isFinite(Number(data.tableId)) && data.tableId != null ? Number(data.tableId) : null, guests: Number(data.guests) > 0 ? Number(data.guests) : null, timestamp: r.timestamp };
+                });
+        },
+
+        /** The owner's product lines queued for this order (its temp id, or its real id once the create synced). */
+        async queuedLines(orderRef: string | number): Promise<QueuedLine[]> {
+            const owner = await currentOwner();
+            if (!owner) return [];
+            const url = `/orders/${orderRef}/items`;
+            const rows = await db.syncQueue
+                .where('ownerKey')
+                .equals(owner)
+                .filter((r) => r.operationType === 'ADD_ORDER_ITEM' && r.url.split('?')[0] === url)
+                .toArray();
+            return rows
+                .sort((a, b) => a.timestamp - b.timestamp || a.id! - b.id!)
+                .map((r) => {
+                    const d = (r.data ?? {}) as { menuItemId?: unknown; quantity?: unknown; notes?: unknown };
+                    return {
+                        id: r.id!,
+                        menuItemId: Number(d.menuItemId) || 0,
+                        quantity: Number(d.quantity) || 1,
+                        notes: typeof d.notes === 'string' ? d.notes : '',
+                        name: r.meta?.name ?? 'Producto',
+                        unitPrice: r.meta?.unitPrice ?? 0,
+                        modifierNames: r.meta?.modifierNames ?? [],
+                        status: r.status,
+                        lastError: r.lastError ?? null,
+                    };
+                });
         },
 
         async listFailed(): Promise<SyncItem[]> {

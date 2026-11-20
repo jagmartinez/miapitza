@@ -5,8 +5,11 @@ import type { Realtime } from '../../../core/realtime';
 import type { Session } from '../../../core/session';
 import type { OfflineQueue } from '../../../data/offlineQueue';
 import { OfflineIndicator } from '../../../data/OfflineIndicator';
+import type { PendingCreate } from '../../../data/offlineQueue';
+import { ownerKeyOf } from '../../../data/types';
 import { isOnline, useOnline } from '../../../data/useOnline';
-import type { OrderRef, WaiterApi } from '../../../data/waiterApi';
+import { TableHasLocalOrderError, type OrderRef, type WaiterApi } from '../../../data/waiterApi';
+import { newIdempotencyKey } from '@web/utils/idempotency';
 import { FloorPlan } from './FloorPlan';
 import { OpenTableSheet } from './OpenTableSheet';
 import { ReadyBanner, type ReadyNotice } from './ReadyBanner';
@@ -27,7 +30,7 @@ export interface TablesScreenProps {
     queue: OfflineQueue | null;
     /** Drops the cached plan and active orders so the next read hits the server. */
     invalidate: () => Promise<void>;
-    onOpenOrder: (orderId: OrderRef, intent?: OrderIntent, tableId?: number) => void;
+    onOpenOrder: (orderId: OrderRef, intent?: OrderIntent, tableId?: number, tableNumber?: string) => void;
     onSwitchUser: () => void;
 }
 
@@ -56,7 +59,9 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
     const [now, setNow] = useState(() => Date.now());
     const [sheet, setSheet] = useState<{ kind: 'open'; table: PlanTable } | { kind: 'actions'; table: PlanTable; order: ActiveOrder } | null>(null);
     const [toast, setToast] = useState<string | null>(null);
+    const [queued, setQueued] = useState<PendingCreate[]>([]);
     const online = useOnline();
+    const openAction = useRef<string | null>(null); // one id per "open table" attempt: a retry reuses its key, a later open never does
 
     const alive = useRef(true);
     const seq = useRef(0);
@@ -133,7 +138,40 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
         return () => clearInterval(id);
     }, []);
 
-    const byTable = useMemo(() => ordersByTable(orders), [orders]);
+    // Orders this waiter opened offline: the queue is the only place that knows about them until they sync.
+    useEffect(() => {
+        if (!queue) return undefined;
+        let live = true;
+        const refresh = () => {
+            queue.pendingCreates?.().then(
+                (list) => live && setQueued(list),
+                () => undefined,
+            );
+        };
+        refresh();
+        const off = queue.subscribe(refresh);
+        const offSynced = queue.onSynced?.((item) => {
+            refresh();
+            if (item.operationType === 'CREATE_ORDER') void load(true); // the real order replaces the stand-in
+        });
+        return () => {
+            live = false;
+            off();
+            offSynced?.();
+        };
+    }, [queue, load]);
+
+    const merged = useMemo(() => {
+        const real = ordersByTable(orders);
+        if (queued.length === 0) return real;
+        const map = new Map(real);
+        for (const c of queued) {
+            if (c.tableId == null || map.has(c.tableId)) continue; // the server order, once it exists, wins
+            map.set(c.tableId, { id: c.tempId, pendingSync: true, tableId: c.tableId, status: 'OPEN', total: 0, guests: c.guests, createdAt: new Date(c.timestamp).toISOString(), user: { id: session.user.id, name: session.user.name }, items: [] });
+        }
+        return map;
+    }, [orders, queued, session.user.id, session.user.name]);
+    const byTable = merged;
 
     // Tabs: the plan's areas, plus "Sin área" when some table has none.
     const tabs = useMemo(() => {
@@ -167,28 +205,43 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
             void picking.choose(table);
             return;
         }
-        if (order) onOpenOrder(order.id, undefined, table.id);
-        else if (state === 'free') setSheet({ kind: 'open', table });
+        if (order) onOpenOrder(order.id, undefined, table.id, table.number);
+        else if (state === 'free') {
+            openAction.current = null; // a fresh open: never the key of an earlier attempt
+            setSheet({ kind: 'open', table });
+        }
         else void load(true); // the plan says occupied but we hold no order: our data is stale
     };
 
     const handleLongPress = (table: PlanTable, order: ActiveOrder | undefined) => {
-        if (picking.mode || !order) return;
+        if (picking.mode || !order || order.pendingSync) return; // a stand-in has no server order to act on yet
         setSheet({ kind: 'actions', table, order });
     };
 
     const openTable = async (table: PlanTable, guests: number) => {
-        const created = (await api.createOrder({ tableId: table.id, guests, orderType: 'DINE_IN' })) as { id?: number; _offline?: boolean; entityTempId?: string | null };
-        // Created offline: it only exists in the queue until it syncs, so the order screen opens on its temp id.
-        const id = created._offline ? created.entityTempId : created.id;
+        openAction.current ??= newIdempotencyKey();
+        let id: OrderRef | null | undefined;
+        try {
+            const created = (await api.createOrder(
+                { tableId: table.id, guests, orderType: 'DINE_IN' },
+                { owner: ownerKeyOf(session) ?? undefined, actionId: openAction.current, meta: { label: `Abrir mesa ${table.number}` } },
+            )) as { id?: number; _offline?: boolean; entityTempId?: string | null };
+            // Created offline: it only exists in the queue until it syncs, so the order screen opens on its temp id.
+            id = created._offline ? created.entityTempId : created.id;
+        } catch (cause) {
+            // This device already holds an order for the table (opened offline): go to it, never create a second one.
+            if (!(cause instanceof TableHasLocalOrderError)) throw cause;
+            id = cause.tempId;
+        }
         if (id == null) throw new Error('No se pudo abrir la mesa.');
+        openAction.current = null;
         setSheet(null);
-        onOpenOrder(id, undefined, table.id);
+        onOpenOrder(id, undefined, table.id, table.number);
     };
 
     const runAction = (action: SheetAction, table: PlanTable, order: ActiveOrder) => {
         setSheet(null);
-        if (action === 'view' || action === 'pay' || action === 'invoice') onOpenOrder(order.id, action, table.id);
+        if (action === 'view' || action === 'pay' || action === 'invoice') onOpenOrder(order.id, action, table.id, table.number);
         else picking.begin(action, table, order);
     };
 
@@ -287,7 +340,10 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                     table={sheet.table}
                     areaName={areaNameOf(sheet.table)}
                     canOpen={can(session.user, 'orders.create')}
-                    onClose={() => setSheet(null)}
+                    onClose={() => {
+                        openAction.current = null;
+                        setSheet(null);
+                    }}
                     onOpen={(guests) => openTable(sheet.table, guests)}
                 />
             )}

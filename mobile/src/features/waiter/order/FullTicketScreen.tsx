@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { TicketList, type ListRow } from './TicketList';
 import { money, sumQuantity, type LineState, type ServerLine } from './orderModel';
 import { STATE_LABEL, type TicketActions } from './TicketPanel';
+import type { QueuedLine } from '../../../data/offlineQueue';
 import type { DraftTicketLine } from './useOrderDraft';
 
 type Filter = 'all' | LineState;
@@ -29,6 +30,8 @@ export interface FullTicketProps {
     title: string;
     drafts: DraftTicketLine[];
     serverLines: ServerLine[];
+    /** Lines sent while offline, not on the server yet. */
+    queued?: QueuedLine[];
     canEdit: boolean;
     canDeliver: boolean;
     busy: boolean;
@@ -45,15 +48,16 @@ const subOf = (modifiers: string[], notes: string) => [...modifiers, notes].filt
 const STATE_TEXT: Record<LineState, string> = { new: 'Nuevo', ...STATE_LABEL };
 
 /** Landscape, two panels: filters (with counts) and Dividir/Cobrar on the left; fixed-column list and footer on the right. */
-export function FullTicketScreen({ title, drafts, serverLines, canEdit, canDeliver, busy, sendCount, sending, error, actions, onDeliver, onSend, onBack }: FullTicketProps) {
+export function FullTicketScreen({ title, drafts, serverLines, queued = [], canEdit, canDeliver, busy, sendCount, sending, error, actions, onDeliver, onSend, onBack }: FullTicketProps) {
     const [filter, setFilter] = useState<Filter>('all');
 
     const all = useMemo<FullRow[]>(
         () => [
             ...drafts.map((l): FullRow => ({ key: `d:${l.key}`, quantity: l.quantity, name: l.name, sub: subOf(l.modifierNames, l.notes), state: 'new', price: l.unitPrice * l.quantity })),
+            ...queued.map((l): FullRow => ({ key: `q:${l.id}`, quantity: l.quantity, name: l.name, sub: [subOf(l.modifierNames, l.notes), l.status === 'failed' ? 'No se pudo sincronizar' : 'Pendiente de sincronizar'].filter(Boolean).join(' · '), state: 'new', price: l.unitPrice * l.quantity })),
             ...serverLines.map((l): FullRow => ({ key: `s:${l.id}`, quantity: l.quantity, name: l.name, sub: subOf(l.modifiers, l.notes), state: l.state, price: l.subtotal, itemId: l.id })),
         ],
-        [drafts, serverLines],
+        [drafts, serverLines, queued],
     );
     const counts = useMemo(() => {
         const c: Record<Filter, number> = { all: sumQuantity(all), new: 0, preparing: 0, ready: 0, delivered: 0 };

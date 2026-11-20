@@ -5,7 +5,7 @@ import type { Realtime } from '../../../core/realtime';
 import type { Session } from '../../../core/session';
 import type { Drafts } from '../../../data/drafts';
 import type { PaymentPlans } from '../../../data/paymentPlans';
-import type { OfflineQueue } from '../../../data/offlineQueue';
+import type { OfflineQueue, QueuedLine } from '../../../data/offlineQueue';
 import { OfflineIndicator } from '../../../data/OfflineIndicator';
 import { ownerKeyOf } from '../../../data/types';
 import { isOnline } from '../../../data/useOnline';
@@ -53,6 +53,8 @@ export interface OrderScreenProps {
     orderId: OrderRef;
     /** Needed for an order that exists only in the offline queue; otherwise read from the order. */
     tableId?: number;
+    /** Label of the table ("5"): an order that only exists in the queue has no server order to read it from. */
+    tableNumber?: string;
     intent?: OrderIntent;
     invalidate?: () => Promise<void>;
     onBack: () => void;
@@ -98,6 +100,7 @@ export function OrderScreen(props: OrderScreenProps) {
     const [notice, setNotice] = useState<string | null>(null);
     // The order on screen came from the saved active list, not from the server.
     const [savedData, setSavedData] = useState(false);
+    const [queuedLines, setQueuedLines] = useState<QueuedLine[]>([]);
     const orderLoaded = useRef(false);
 
     const alive = useRef(true);
@@ -133,6 +136,29 @@ export function OrderScreen(props: OrderScreenProps) {
             off();
         };
     }, [queue, props.orderId]);
+
+    // Lines sent while offline are not on the server yet: the ticket still has to show them.
+    useEffect(() => {
+        if (!queue?.queuedLines) return undefined;
+        let live = true;
+        const refresh = () => {
+            queue.queuedLines(orderId).then(
+                (lines) => live && setQueuedLines(lines),
+                () => undefined,
+            );
+        };
+        refresh();
+        const off = queue.subscribe(refresh);
+        const offSynced = queue.onSynced?.((item) => {
+            refresh();
+            if (item.operationType !== 'CREATE_ORDER') void loadOrderRef.current();
+        });
+        return () => {
+            live = false;
+            off();
+            offSynced?.();
+        };
+    }, [queue, orderId]);
 
     // ---- order ----
     const loadOrder = useCallback(async (): Promise<boolean | undefined> => {
@@ -180,6 +206,9 @@ export function OrderScreen(props: OrderScreenProps) {
             return false;
         }
     }, [api, orderId, branchId]);
+
+    const loadOrderRef = useRef(loadOrder);
+    loadOrderRef.current = loadOrder;
 
     useEffect(() => {
         alive.current = true;
@@ -393,7 +422,7 @@ export function OrderScreen(props: OrderScreenProps) {
         onDiscount: onDiscount ?? openDiscount,
         onMore,
     };
-    const productCount = sumQuantity(serverLines) + draft.count;
+    const productCount = sumQuantity(serverLines) + draft.count + queuedLines.reduce((n, l) => n + l.quantity, 0);
     const sentTotal = Number(order?.total) || 0;
     const orderDiscount = Number(order?.discount) || 0;
     const pricing: TicketPricing = {
@@ -404,7 +433,7 @@ export function OrderScreen(props: OrderScreenProps) {
         label: orderDiscount > 0 ? (order?.discountCode ? `Cupón ${String(order.discountCode)}` : String(order?.discountReason || 'Manual')) : null,
     };
     const elapsed = order?.createdAt ? `${minutesSince(order.createdAt, now)} min` : '';
-    const tableLabel = order?.table?.number ? `Mesa ${order.table.number}` : 'Mesa';
+    const tableLabel = order?.table?.number ? `Mesa ${order.table.number}` : props.tableNumber ? `Mesa ${props.tableNumber}` : 'Mesa';
     const guests = typeof order?.guests === 'number' ? order.guests : null;
     const initials = user.name
         .split(/\s+/)
@@ -443,6 +472,7 @@ export function OrderScreen(props: OrderScreenProps) {
                     drafts={draft.lines}
                     highlightKey={draft.highlightKey}
                     serverLines={serverLines}
+                    queued={queuedLines}
                     now={now}
                     total={sentTotal}
                     pricing={pricing}
@@ -470,6 +500,7 @@ export function OrderScreen(props: OrderScreenProps) {
                     title={`${tableLabel}${guests != null ? ` · ${guests} pers` : ''}`}
                     drafts={draft.lines}
                     serverLines={serverLines}
+                    queued={queuedLines}
                     canEdit={canEdit}
                     canDeliver={canDeliver}
                     busy={busy}

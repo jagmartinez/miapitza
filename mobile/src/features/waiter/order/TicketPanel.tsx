@@ -4,6 +4,7 @@ import { ReadyCard } from './ReadyCard';
 import { TicketList, type ListRow } from './TicketList';
 import { EXPANDED_HEIGHT, ROW_HEIGHT, TicketRow } from './TicketRow';
 import { money, sumQuantity, type LineState, type ServerLine } from './orderModel';
+import type { QueuedLine } from '../../../data/offlineQueue';
 import type { DraftTicketLine } from './useOrderDraft';
 
 export interface TicketActions {
@@ -34,6 +35,8 @@ export interface TicketPanelProps {
     highlightKey: string | null;
     /** Everything the server holds for the order (unsent and sent). */
     serverLines: ServerLine[];
+    /** Lines sent while offline: queued on this device, not on the server yet. */
+    queued?: QueuedLine[];
     now: number;
     /** Server order total (taxes and discounts included). */
     total: number;
@@ -58,6 +61,36 @@ export interface TicketPanelProps {
     onSend: () => void;
     onOpenFull: () => void;
 }
+
+const NOT_SYNCED = 'No se pudo sincronizar';
+
+/** Rows of the queued lines: plain (the queue list is where they are retried or discarded). */
+export function queuedRows(queued: QueuedLine[]): ListRow[] {
+    if (queued.length === 0) return [];
+    return [
+        { key: 'h-queued', height: 32, node: <h3 className="ticket-section">Pendiente de sincronizar</h3> },
+        ...queued.map(
+            (l): ListRow => ({
+                key: `q:${l.id}`,
+                height: ROW_HEIGHT,
+                node: (
+                    <TicketRow
+                        data={{ key: `q:${l.id}`, quantity: l.quantity, name: l.name, sub: [...l.modifierNames, l.notes, l.status === 'failed' ? NOT_SYNCED : ''].filter(Boolean).join(' · '), price: l.unitPrice * l.quantity }}
+                        testId={`queued-${l.id}`}
+                        expanded={false}
+                        editable={false}
+                        onToggle={() => undefined}
+                        onQuantity={() => undefined}
+                        onNote={() => undefined}
+                        onRemove={() => undefined}
+                    />
+                ),
+            }),
+        ),
+    ];
+}
+
+const EMPTY_QUEUED: QueuedLine[] = [];
 
 export const STATE_LABEL: Record<Exclude<LineState, 'new'>, string> = { ready: 'Listo', preparing: 'En preparación', delivered: 'Entregado' };
 
@@ -151,6 +184,7 @@ const subOf = (modifiers: string[], notes: string) => [...modifiers, notes].filt
 
 export function TicketPanel(props: TicketPanelProps) {
     const { title, subtitle, drafts, highlightKey, serverLines, now, error, canEdit, canDeliver, busy, sending } = props;
+    const queued = props.queued ?? EMPTY_QUEUED;
     const [expanded, setExpanded] = useState<string | null>(null); // one row open at a time
     const [noteFor, setNoteFor] = useState<NoteTarget | null>(null);
     // Where the list should scroll: an expanded row, or the line just added (a counter, so the same key can repeat).
@@ -227,6 +261,7 @@ export function TicketPanel(props: TicketPanelProps) {
                 ),
             });
         }
+        out.push(...queuedRows(queued));
         if (sent.length > 0) {
             const by = (s: LineState) => sumQuantity(sent.filter((l) => l.state === s));
             const parts = (['ready', 'preparing', 'delivered'] as const).map((s) => ({ s, n: by(s) })).filter((p) => p.n > 0);
@@ -252,7 +287,7 @@ export function TicketPanel(props: TicketPanelProps) {
         }
         return out;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [drafts, unsent, sent, expanded, highlightKey, canEdit, sending, busy, props.onOpenFull]);
+    }, [drafts, unsent, sent, queued, expanded, highlightKey, canEdit, sending, busy, props.onOpenFull]);
 
     const saveNote = (text: string) => {
         if (!noteFor) return;

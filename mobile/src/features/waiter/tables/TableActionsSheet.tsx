@@ -35,7 +35,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
     useEffect(() => {
         if (!online) return undefined;
         let alive = true;
-        loadDetail(order.id).then(
+        loadDetail(Number(order.id)).then(
             (detail) => alive && setPaid(paidAmount(detail)),
             () => undefined, // unknown stays as a dash
         );

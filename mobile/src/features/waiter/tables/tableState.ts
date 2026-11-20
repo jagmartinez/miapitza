@@ -26,7 +26,10 @@ export interface Plan {
     tables: PlanTable[];
 }
 export interface ActiveOrder {
-    id: number;
+    /** A server id, or the temp id of an order that only exists in the offline queue. */
+    id: number | string;
+    /** Opened offline and not synced yet (a local stand-in, not a server order). */
+    pendingSync?: boolean;
     tableId?: number | null;
     table?: { id: number } | null;
     status?: string;
@@ -43,8 +46,14 @@ export type TableState = 'free' | 'occupied' | 'ready' | 'due';
 /** Operational state of the plan -> border state. Reserved/disabled tables read as free (server rejects opening them). */
 export function tableState(
     table: { operationalState?: string; status?: string },
-    order?: { status?: string } | undefined,
+    order?: { status?: string; pendingSync?: boolean } | undefined,
 ): TableState {
+    const state = serverTableState(table, order);
+    // The plan (cached or live) still says free while this device holds the table's order in its queue.
+    return state === 'free' && order?.pendingSync ? 'occupied' : state;
+}
+
+function serverTableState(table: { operationalState?: string; status?: string }, order?: { status?: string } | undefined): TableState {
     switch (table.operationalState) {
         case 'READY':
         case 'PARTIALLY_READY':
