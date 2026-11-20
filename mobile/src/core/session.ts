@@ -64,6 +64,10 @@ export function nativeSecureStore(): SecureStore {
 
 const SESSION_KEY = 'session';
 const DEVICE_TOKEN_KEY = 'deviceToken';
+const DEVICE_TYPE_KEY = 'deviceType';
+
+export type DeviceType = 'SERVICE_TABLET' | 'KITCHEN_TABLET' | 'PERSONAL';
+const DEVICE_TYPES: readonly string[] = ['SERVICE_TABLET', 'KITCHEN_TABLET', 'PERSONAL'];
 
 export function createSessionStore(store: SecureStore) {
     return {
@@ -89,6 +93,18 @@ export function createSessionStore(store: SecureStore) {
         },
         async saveDeviceToken(token: string): Promise<void> {
             await store.set(DEVICE_TOKEN_KEY, token);
+        },
+        async deviceType(): Promise<DeviceType | null> {
+            const value = await store.get(DEVICE_TYPE_KEY);
+            return value && DEVICE_TYPES.includes(value) ? (value as DeviceType) : null;
+        },
+        async saveDeviceType(type: DeviceType): Promise<void> {
+            await store.set(DEVICE_TYPE_KEY, type);
+        },
+        /** Unpairs the device (revoked or reset): token and type go together. */
+        async clearDevice(): Promise<void> {
+            await store.remove(DEVICE_TOKEN_KEY);
+            await store.remove(DEVICE_TYPE_KEY);
         },
     };
 }
