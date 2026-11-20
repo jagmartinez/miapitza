@@ -4,7 +4,7 @@ import { shouldQueueOfflineMutation } from '@web/services/offlinePolicy';
 import type { SessionStore } from '../core/session';
 import { TTL, type Cache, type CacheResult } from './cache';
 import type { OfflineQueue } from './offlineQueue';
-import { ownerKeyOf, type QueuedOffline, type SyncOperationType } from './types';
+import { isTempOrderId, ownerKeyOf, type QueuedOffline, type SyncOperationType } from './types';
 
 export interface WaiterApiDeps {
     http: AxiosInstance;
@@ -147,6 +147,8 @@ export function createWaiterApi(deps: WaiterApiDeps) {
      */
     async function orderRef(orderId: OrderRef): Promise<{ id: OrderRef; pendingTemp: string | null }> {
         if (typeof orderId !== 'string') return { id: orderId, pendingTemp: null };
+        if (/^\d+$/.test(orderId)) return { id: Number(orderId), pendingTemp: null }; // a route param, not a temp id
+        if (!isTempOrderId(orderId)) throw new Error('Id de pedido inválido');
         const real = await queue.resolveTemp(orderId);
         return real !== null ? { id: real, pendingTemp: null } : { id: orderId, pendingTemp: orderId };
     }
@@ -197,7 +199,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 url: '/orders',
                 data: body,
                 invalidates: true,
-                queue: { operationType: 'CREATE_ORDER', entityTempId: `order-${Date.now()}-${newIdempotencyKey().slice(0, 8)}` },
+                queue: { operationType: 'CREATE_ORDER', entityTempId: `order-${Date.now()}-${newIdempotencyKey().replace(/[^A-Za-z0-9]/g, '').slice(0, 8)}` },
             });
         },
         /** `orderId` may be the temp id of an offline-created order: the call waits behind its create. */

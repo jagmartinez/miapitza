@@ -103,11 +103,6 @@ export function createOfflineQueue(deps: QueueDeps) {
         }, Math.max(0, at - now()));
     }
 
-    async function loadTempMap(ownerKey: string): Promise<Map<string, number | string>> {
-        const rows = await db.tempIds.where('ownerKey').equals(ownerKey).toArray();
-        return new Map(rows.map((r) => [r.tempId, r.realId]));
-    }
-
     /** Replaces known temp ids, matching whole path segments and exact values only (never substrings). */
     function applyTempMap(map: Map<string, number | string>, url: string, data: unknown, dependencyKey: string | null | undefined) {
         if (map.size === 0) return { url, data, dependencyKey: dependencyKey ?? null };
@@ -251,10 +246,18 @@ export function createOfflineQueue(deps: QueueDeps) {
                 }
                 continue;
             }
+            const realId = res.data?.data?.id ?? res.data?.id;
+            if (item.operationType === 'CREATE_ORDER' && item.entityTempId && (realId === undefined || realId === null || realId === '')) {
+                // Applied server-side but we cannot link what depends on it: fail loudly, never map to undefined.
+                const message = 'La respuesta del servidor no incluyó el id del pedido';
+                await db.syncQueue.update(item.id!, { status: 'failed', lastError: message, nextAttemptAt: null });
+                await failDependents(ownerKey, item.entityTempId, message);
+                continue;
+            }
             // The server applied it. Bookkeeping failures are storage problems, not network errors:
             // the item stays queued and its idempotency key makes the resend safe.
             try {
-                await applySynced(item, ownerKey, res.data?.data?.id ?? res.data?.id);
+                await applySynced(item, ownerKey, realId);
             } catch (cause) {
                 reportStorage(toStorageError('queue', 'apply', cause));
                 await db.syncQueue.update(item.id!, { status: 'pending' }).catch(() => undefined);
@@ -280,24 +283,26 @@ export function createOfflineQueue(deps: QueueDeps) {
         const run: Promise<void> = (async () => {
             try {
                 for (;;) {
-                    let again = true;
-                    while (again) {
-                        dirty = false;
-                        const started = await runItems();
-                        again = dirty || (started !== null && (await currentOwner()) !== started);
+                    try {
+                        let again = true;
+                        while (again) {
+                            dirty = false;
+                            const started = await runItems();
+                            again = dirty || (started !== null && (await currentOwner()) !== started);
+                        }
+                        await refreshCounts();
+                        const owner = await currentOwner();
+                        if (owner) await schedule(owner);
+                    } catch (cause) {
+                        reportStorage(toStorageError('queue', 'run', cause)); // never an unhandled rejection
                     }
-                    await refreshCounts();
-                    const owner = await currentOwner();
-                    if (owner) await schedule(owner);
-                    // Anything requested during the bookkeeping above runs now. No await between this
-                    // check and clearing `running`, so a later process() always starts a fresh run.
+                    // Anything requested meanwhile (even while the pass above failed) runs now. No await
+                    // between this check and clearing `running`, so a later process() starts a fresh run.
                     if (!dirty) {
                         running = null;
                         return;
                     }
                 }
-            } catch (cause) {
-                reportStorage(toStorageError('queue', 'run', cause)); // never an unhandled rejection
             } finally {
                 if (running === self.run) running = null;
             }
@@ -311,25 +316,41 @@ export function createOfflineQueue(deps: QueueDeps) {
         async enqueue(input: EnqueueInput): Promise<SyncItem> {
             const ownerKey = await currentOwner();
             if (!ownerKey) throw new Error('No hay sesión para encolar la operación');
-            // A create that already synced: use the real id straight away.
-            const known = await guarded('queue', 'enqueue', () => loadTempMap(ownerKey));
-            const resolved = applyTempMap(known, input.url, input.data, input.dependencyKey);
-            const item: SyncItem = {
-                url: resolved.url,
-                method: input.method,
-                data: resolved.data,
-                operationType: input.operationType,
-                dependencyKey: resolved.dependencyKey,
-                entityTempId: input.entityTempId ?? null,
-                idempotencyKey: input.idempotencyKey || newIdempotencyKey(),
-                timestamp: nextTimestamp(),
-                status: 'pending',
-                retryCount: 0,
-                lastError: null,
-                nextAttemptAt: null,
-                ownerKey,
-            };
-            item.id = await guarded('queue', 'enqueue', () => db.syncQueue.add(item));
+            // One transaction over both tables (the same ones applySynced locks): a create that syncs
+            // concurrently either finished before we read the id map or rewrites our row after we insert.
+            const item = await guarded('queue', 'enqueue', () =>
+                db.transaction('rw', db.tempIds, db.syncQueue, async () => {
+                    const rows = await db.tempIds.where('ownerKey').equals(ownerKey).toArray();
+                    const known = new Map<string, number | string>(rows.filter((r) => !r.discarded).map((r) => [r.tempId, r.realId]));
+                    const dead = new Set(rows.filter((r) => r.discarded).map((r) => r.tempId));
+                    const resolved = applyTempMap(known, input.url, input.data, input.dependencyKey);
+                    const dep = resolved.dependencyKey;
+                    // A parent that was discarded or already failed can never run: neither can this.
+                    const deadParent =
+                        (dep && dead.has(dep)) ||
+                        resolved.url.split('?')[0].split('/').some((seg) => dead.has(seg)) ||
+                        (dep
+                            ? (await db.syncQueue.where('ownerKey').equals(ownerKey).filter((c) => c.entityTempId === dep && c.status === 'failed').count()) > 0
+                            : false);
+                    const row: SyncItem = {
+                        url: resolved.url,
+                        method: input.method,
+                        data: resolved.data,
+                        operationType: input.operationType,
+                        dependencyKey: dep,
+                        entityTempId: input.entityTempId ?? null,
+                        idempotencyKey: input.idempotencyKey || newIdempotencyKey(),
+                        timestamp: nextTimestamp(),
+                        status: deadParent ? 'failed' : 'pending',
+                        retryCount: 0,
+                        lastError: deadParent ? `Dependencia fallida (${dep ?? 'pedido'}): la operación previa fue descartada o falló` : null,
+                        nextAttemptAt: null,
+                        ownerKey,
+                    };
+                    row.id = await db.syncQueue.add(row);
+                    return row;
+                }),
+            );
             if (running) dirty = true; // a run in flight took its snapshot before this row existed
             await refreshCounts();
             return item;
@@ -341,7 +362,8 @@ export function createOfflineQueue(deps: QueueDeps) {
         async resolveTemp(tempId: string): Promise<number | string | null> {
             const owner = await currentOwner();
             if (!owner) return null;
-            return (await db.tempIds.get(`${owner}|${tempId}`))?.realId ?? null;
+            const row = await db.tempIds.get(`${owner}|${tempId}`);
+            return row && !row.discarded ? row.realId : null;
         },
 
         /** Replays the current owner's pending items (call after login / PIN switch). */
@@ -393,7 +415,10 @@ export function createOfflineQueue(deps: QueueDeps) {
             if (!owner || !row || row.ownerKey !== owner) return;
             await db.syncQueue.delete(id);
             // Same rule as a permanent failure: what depended on it can no longer run.
-            if (row.entityTempId) await failDependents(owner, row.entityTempId, 'operación descartada');
+            if (row.entityTempId) {
+                await db.tempIds.put({ id: `${owner}|${row.entityTempId}`, ownerKey: owner, tempId: row.entityTempId, realId: '', discarded: true, timestamp: now() });
+                await failDependents(owner, row.entityTempId, 'operación descartada');
+            }
             await refreshCounts();
         },
 

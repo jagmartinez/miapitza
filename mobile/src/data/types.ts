@@ -41,6 +41,8 @@ export interface TempIdRow {
     ownerKey: string;
     tempId: string;
     realId: number | string;
+    /** Tombstone: the operation behind this temp id was discarded; late dependents must fail. */
+    discarded?: boolean;
     timestamp: number;
 }
 
@@ -72,6 +74,10 @@ export interface QueuedOffline {
     entityTempId: string | null;
     queueId: number;
 }
+
+/** Format of the ids the app invents for orders created offline (`order-<ms>-<suffix>`). */
+const TEMP_ORDER_ID = /^order-\d+-[A-Za-z0-9]{4,}$/;
+export const isTempOrderId = (value: unknown): value is string => typeof value === 'string' && TEMP_ORDER_ID.test(value);
 
 export function ownerKeyOf(session: Session | null): string | null {
     if (!session) return null;
