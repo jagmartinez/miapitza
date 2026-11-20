@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SessionService } from './session.service';
 import { TwoFactorService } from './twoFactor.service';
-import { ROLES } from '../constants/roles';
+import { ROLES, PIN_ROLES } from '../constants/roles';
 import {
     assertStrongPassword,
     BCRYPT_ROUNDS
@@ -11,6 +12,9 @@ import {
 import { collectPermissionNames } from '../utils/permission-names';
 import { AuditLogService } from './audit-log.service';
 import { loginAttemptService } from './login-attempt.service';
+import { OperationalDeviceService, deviceSessionTag } from './operational-device.service';
+import { PinService } from './pin.service';
+import type { AuditAction } from './audit-log.service';
 
 export { BCRYPT_ROUNDS, PASSWORD_REGEX } from '../utils/password-policy';
 
@@ -38,6 +42,100 @@ if (cleanupTimer.unref) cleanupTimer.unref();
 /** Expose for graceful shutdown */
 export function stopAuthCleanup(): void {
     clearInterval(cleanupTimer);
+}
+
+const LOGIN_USER_INCLUDE = {
+    role: {
+        select: {
+            id: true,
+            name: true,
+            permissions: { select: { name: true } },
+        },
+    },
+    userRoles: {
+        select: {
+            role: {
+                select: {
+                    id: true,
+                    name: true,
+                    permissions: { select: { name: true } },
+                },
+            },
+        },
+    },
+    company: { select: { id: true, name: true, ruc: true, active: true } },
+    branch: { select: { status: true } },
+    allowedBranches: { select: { branchId: true } },
+    employee: { select: { id: true } },
+} satisfies Prisma.UserInclude;
+
+export type LoginUserRecord = Prisma.UserGetPayload<{ include: typeof LOGIN_USER_INCLUDE }>;
+
+export interface IssueSessionOptions {
+    ip?: string;
+    userAgent?: string;
+    idleTimeoutMinutes: number;
+    deviceTag?: string;
+    auditAction: Extract<AuditAction, 'LOGIN' | 'PIN_LOGIN' | 'DEVICE_LOGIN'>;
+    /** Runs first inside the session transaction; throw to abort issuing the session. */
+    guard?: (tx: Prisma.TransactionClient) => Promise<void>;
+}
+
+export type LoginResult = Awaited<ReturnType<typeof AuthService.issueSession>>;
+
+const GENERIC_AUTH_ERROR = 'Credenciales inválidas';
+
+const PIN_USER_LOCK_ERROR = /temporarily locked/i;
+const DEVICE_PIN_MAX_FAILURES = 20;
+const DEVICE_PIN_WINDOW_MS = 15 * 60 * 1000;
+// A per-user row resets to 0 when it locks (after this many failures), so a
+// row that is locked inside the window still stands for this many guesses.
+const USER_LOCK_THRESHOLD = 5;
+const PIN_SESSION_IDLE_MINUTES = 15;
+const PIN_ROLES_LIST: string[] = [...PIN_ROLES];
+
+const deviceLockKey = (deviceId: number) => `device:${deviceId}`;
+
+async function deviceIsPinLocked(deviceId: number): Promise<boolean> {
+    const since = new Date(Date.now() - DEVICE_PIN_WINDOW_MS);
+    const rows = await prisma.loginAttempt.findMany({
+        where: { ipKey: deviceLockKey(deviceId), lastAttemptAt: { gte: since } },
+        select: { failedCount: true, lockedUntil: true },
+    });
+    const failures = rows.reduce(
+        (sum, row) => sum + row.failedCount + (row.lockedUntil ? USER_LOCK_THRESHOLD : 0),
+        0,
+    );
+    return failures >= DEVICE_PIN_MAX_FAILURES;
+}
+
+function initialsOf(name: string): string {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const letters = parts.length > 1 ? [parts[0], parts[parts.length - 1]] : parts;
+    return letters.map((part) => part[0]!.toUpperCase()).join('').slice(0, 2);
+}
+
+async function assertDeviceStillActive(tx: Prisma.TransactionClient, deviceId: number): Promise<void> {
+    if (!(await OperationalDeviceService.isActiveForUpdate(tx, deviceId))) {
+        throw new Error(GENERIC_AUTH_ERROR);
+    }
+}
+
+function isUserEligibleContext(user: LoginUserRecord, device: { companyId: number }): boolean {
+    if (user.status !== 'ACTIVE' || !user.companyId || user.companyId !== device.companyId) return false;
+    if (!user.company?.active) return false;
+    if (user.branchId && user.branch?.status !== 'ACTIVE') return false;
+    return true;
+}
+
+function roleNamesOf(user: LoginUserRecord): string[] {
+    return Array.from(new Set([user.role.name, ...user.userRoles.map((entry) => entry.role.name)]));
+}
+
+/** Pinned users must be in the device branch; tenant-wide users need an explicit grant. */
+function hasBranchAccess(user: LoginUserRecord, branchId: number): boolean {
+    if (user.branchId) return user.branchId === branchId;
+    return user.allowedBranches.some((entry) => entry.branchId === branchId);
 }
 
 export class AuthService {
@@ -113,30 +211,7 @@ export class AuthService {
     static async login(username: string, password: string, twoFactorCode?: string, ip?: string, userAgent?: string) {
         const user = await prisma.user.findUnique({
             where: { username },
-            include: {
-                role: {
-                    select: {
-                        id: true,
-                        name: true,
-                        permissions: { select: { name: true } },
-                    },
-                },
-                userRoles: {
-                    select: {
-                        role: {
-                            select: {
-                                id: true,
-                                name: true,
-                                permissions: { select: { name: true } },
-                            },
-                        },
-                    },
-                },
-                company: { select: { id: true, name: true, ruc: true, active: true } },
-                branch: { select: { status: true } },
-                allowedBranches: { select: { branchId: true } },
-                employee: { select: { id: true } }
-            }
+            include: LOGIN_USER_INCLUDE,
         });
 
         if (!user) {
@@ -212,19 +287,6 @@ export class AuthService {
             throw lockError;
         }
 
-        // Check password expiry
-        let passwordExpired = false;
-        if (user.passwordChangedAt && user.companyId) {
-            const expirySetting = await prisma.setting.findFirst({
-                where: { companyId: user.companyId, name: `${user.companyId}_password_expiry_days` }
-            });
-            const expiryDays = expirySetting ? parseInt(expirySetting.value) : 90;
-            if (expiryDays > 0) {
-                const daysSinceChange = (Date.now() - new Date(user.passwordChangedAt).getTime()) / (1000 * 60 * 60 * 24);
-                passwordExpired = daysSinceChange >= expiryDays;
-            }
-        }
-
         // Read session timeout
         let sessionTimeoutMinutes = 30;
         if (user.companyId) {
@@ -238,6 +300,33 @@ export class AuthService {
                 }
             }
         }
+
+        return AuthService.issueSession(user, {
+            ip,
+            userAgent,
+            idleTimeoutMinutes: sessionTimeoutMinutes,
+            auditAction: 'LOGIN',
+        });
+    }
+
+    /**
+     * Signs the JWT, tracks the session and audits it. Shared by password,
+     * PIN and device logins; the caller has already authenticated the user.
+     */
+    static async issueSession(user: LoginUserRecord, opts: IssueSessionOptions) {
+        // Check password expiry
+        let passwordExpired = false;
+        if (user.passwordChangedAt && user.companyId) {
+            const expirySetting = await prisma.setting.findFirst({
+                where: { companyId: user.companyId, name: `${user.companyId}_password_expiry_days` }
+            });
+            const expiryDays = expirySetting ? parseInt(expirySetting.value) : 90;
+            if (expiryDays > 0) {
+                const daysSinceChange = (Date.now() - new Date(user.passwordChangedAt).getTime()) / (1000 * 60 * 60 * 24);
+                passwordExpired = daysSinceChange >= expiryDays;
+            }
+        }
+        const sessionTimeoutMinutes = opts.idleTimeoutMinutes;
 
         const JWT_SECRET = process.env.JWT_SECRET;
         if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is not configured');
@@ -257,26 +346,28 @@ export class AuthService {
 
         // Track session — failure means token cannot be validated later
         if (!user.companyId) {
-            throw new Error('Credenciales inválidas');
+            throw new Error(GENERIC_AUTH_ERROR);
         }
         await prisma.$transaction(async (tx) => {
+            if (opts.guard) await opts.guard(tx);
             const session = await SessionService.create(
                 user.id,
                 token,
-                ip,
-                userAgent,
+                opts.ip,
+                opts.userAgent,
                 sessionTimeoutMinutes,
                 tx,
+                opts.deviceTag,
             );
             await AuditLogService.log({
                 companyId: user.companyId!,
                 userId: user.id,
                 entityType: 'UserSession',
                 entityId: user.id,
-                action: 'LOGIN',
+                action: opts.auditAction,
                 details: {
                     sessionId: session.id,
-                    ipAddress: ip || null,
+                    ipAddress: opts.ip || null,
                     device: session.device,
                 },
             }, tx);
@@ -296,6 +387,115 @@ export class AuthService {
             passwordExpired,
             sessionTimeoutMinutes,
         };
+    }
+
+    /**
+     * Quick PIN sign-in on a shared service tablet. Every failure surfaces the
+     * same generic error so nothing (device state, lockout, user existence,
+     * eligibility) can be probed.
+     */
+    static async pinLogin(input: {
+        deviceToken: string;
+        userId: number;
+        pin: string;
+        ip?: string;
+        userAgent?: string;
+    }): Promise<LoginResult> {
+        const device = await OperationalDeviceService.resolveActive(input.deviceToken);
+        if (!device || device.type !== 'SERVICE_TABLET') throw new Error(GENERIC_AUTH_ERROR);
+
+        if (await deviceIsPinLocked(device.id)) {
+            console.warn('[AUTH] PIN login blocked by device lockout', { deviceId: device.id });
+            await bcrypt.compare(String(input.pin), DUMMY_PASSWORD_HASH);
+            throw new Error(GENERIC_AUTH_ERROR);
+        }
+
+        const user = Number.isInteger(input.userId)
+            ? await prisma.user.findUnique({ where: { id: input.userId }, include: LOGIN_USER_INCLUDE })
+            : null;
+        if (!user) {
+            await bcrypt.compare(String(input.pin), DUMMY_PASSWORD_HASH);
+            throw new Error(GENERIC_AUTH_ERROR);
+        }
+
+        const lockKey = deviceLockKey(device.id);
+        try {
+            await loginAttemptService.assertAllowed(user.id, lockKey);
+        } catch (lockError) {
+            console.warn('[AUTH] PIN login blocked by active lockout', { userId: user.id, deviceId: device.id });
+            await bcrypt.compare(String(input.pin), DUMMY_PASSWORD_HASH);
+            if (lockError instanceof Error && PIN_USER_LOCK_ERROR.test(lockError.message)) {
+                throw new Error(GENERIC_AUTH_ERROR);
+            }
+            throw lockError;
+        }
+
+        const eligible = isUserEligibleContext(user, device)
+            && hasBranchAccess(user, device.branchId)
+            && PinService.rolesAllowPin(roleNamesOf(user))
+            && !!user.pinHash;
+        // Always run one bcrypt comparison so timing does not reveal eligibility.
+        const pinMatches = await bcrypt.compare(
+            String(input.pin),
+            eligible ? user.pinHash! : DUMMY_PASSWORD_HASH,
+        );
+        if (!eligible || !pinMatches) {
+            await loginAttemptService.recordFailure(user.id, lockKey);
+            throw new Error(GENERIC_AUTH_ERROR);
+        }
+
+        try {
+            await loginAttemptService.recordSuccess(user.id, lockKey);
+        } catch (lockError) {
+            if (lockError instanceof Error && PIN_USER_LOCK_ERROR.test(lockError.message)) {
+                throw new Error(GENERIC_AUTH_ERROR);
+            }
+            throw lockError;
+        }
+
+        return AuthService.issueSession(user, {
+            ip: input.ip,
+            userAgent: input.userAgent,
+            idleTimeoutMinutes: PIN_SESSION_IDLE_MINUTES,
+            deviceTag: deviceSessionTag(device.id),
+            auditAction: 'PIN_LOGIN',
+            // Closes the revoke-vs-login race: the device must still be ACTIVE
+            // inside the transaction that creates the session.
+            guard: (tx) => assertDeviceStillActive(tx, device.id),
+        });
+    }
+
+    /**
+     * Sign-in roster for a service tablet. Exposes only what the picker needs:
+     * no PIN length or any PIN-derived data.
+     */
+    static async deviceRoster(deviceToken: string): Promise<Array<{
+        id: number; name: string; initials: string; color: string | null;
+    }>> {
+        const device = await OperationalDeviceService.resolveActive(deviceToken);
+        if (!device || device.type !== 'SERVICE_TABLET') throw new Error(GENERIC_AUTH_ERROR);
+
+        const users = await prisma.user.findMany({
+            where: {
+                companyId: device.companyId,
+                status: 'ACTIVE',
+                pinHash: { not: null },
+                role: { name: { in: PIN_ROLES_LIST } },
+                userRoles: { none: { role: { name: { notIn: PIN_ROLES_LIST } } } },
+                OR: [
+                    { branchId: device.branchId },
+                    { branchId: null, allowedBranches: { some: { branchId: device.branchId } } },
+                ],
+            },
+            select: { id: true, name: true, color: true },
+            orderBy: { name: 'asc' },
+        });
+        return users.map((user) => ({
+            id: user.id,
+            name: user.name,
+            initials: initialsOf(user.name),
+            color: user.color ?? null,
+        }));
     }
 
     static async changePassword(userId: number, oldPassword: string, newPassword: string) {

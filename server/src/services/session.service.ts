@@ -24,6 +24,7 @@ export class SessionService {
         userAgent?: string,
         idleTimeoutMinutes = 30,
         db: SessionClient = prisma,
+        deviceTag?: string,
     ) {
         // Keep session lifetime aligned with the JWT expiry (8h) issued in AuthService.login.
         const expiresAt = new Date();
@@ -38,7 +39,8 @@ export class SessionService {
                 tokenHash: hashToken(token),
                 ipAddress: ip || null,
                 userAgent: userAgent || null,
-                device: parseDevice(userAgent || ''),
+                // An operational-device tag lets revoking the device revoke its sessions.
+                device: deviceTag ?? parseDevice(userAgent || ''),
                 lastActivityAt: new Date(),
                 idleTimeoutMinutes: normalizedIdleTimeout,
                 expiresAt,

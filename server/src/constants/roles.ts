@@ -46,3 +46,12 @@ export const INVENTORY: RoleName[] = [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.BODEG
 
 /** Menu / recipe management. */
 export const MENU_MANAGEMENT: RoleName[] = [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CHEF];
+
+/**
+ * Roles allowed to sign in with a quick PIN on a shared service tablet.
+ * Never includes ADMIN/SUPERADMIN: a 4-6 digit PIN is not a strong credential.
+ */
+export const PIN_ROLES: RoleName[] = [ROLES.MESERO, ROLES.CAJERO, ROLES.HOST, ROLES.BODEGA, ROLES.CHEF];
+
+/** Roles a fixed kitchen-tablet account may hold. */
+export const KITCHEN_DEVICE_ROLES: RoleName[] = [ROLES.COCINA, ROLES.CHEF];

@@ -1,0 +1,76 @@
+import bcrypt from 'bcryptjs';
+import prisma from '../utils/prisma';
+import { PIN_ROLES } from '../constants/roles';
+import { BCRYPT_ROUNDS } from '../utils/password-policy';
+import { AuditLogService } from './audit-log.service';
+
+export class PinError extends Error {
+    constructor(message: string, public statusCode = 400) {
+        super(message);
+        this.name = 'PinError';
+    }
+}
+
+const PIN_PATTERN = /^\d{4,6}$/;
+
+function isRun(digits: number[], step: 1 | -1): boolean {
+    return digits.every((digit, index) => index === 0 || digit - digits[index - 1] === step);
+}
+
+export class PinService {
+    /** 4-6 digits, not a repeated digit, not an ascending/descending run. */
+    static validateFormat(pin: string): void {
+        if (typeof pin !== 'string' || !PIN_PATTERN.test(pin)) {
+            throw new PinError('El PIN debe tener entre 4 y 6 dígitos');
+        }
+        const digits = pin.split('').map(Number);
+        if (digits.every((digit) => digit === digits[0])) {
+            throw new PinError('El PIN es demasiado fácil de adivinar');
+        }
+        if (isRun(digits, 1) || isRun(digits, -1)) {
+            throw new PinError('El PIN es demasiado fácil de adivinar');
+        }
+    }
+
+    /** True when every role the user holds may use a PIN (no elevated role mixed in). */
+    static rolesAllowPin(roleNames: string[]): boolean {
+        return roleNames.length > 0 && roleNames.every((name) => (PIN_ROLES as string[]).includes(name));
+    }
+
+    static async setPin(userId: number, pin: string): Promise<void> {
+        PinService.validateFormat(pin);
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                companyId: true,
+                status: true,
+                role: { select: { name: true } },
+                userRoles: { select: { role: { select: { name: true } } } },
+            },
+        });
+        if (!user || user.status !== 'ACTIVE' || !user.companyId) {
+            throw new PinError('Usuario no encontrado', 404);
+        }
+        const roleNames = [user.role.name, ...user.userRoles.map((entry) => entry.role.name)];
+        if (!PinService.rolesAllowPin(roleNames)) {
+            throw new PinError('Tu rol no puede usar PIN de acceso rápido', 403);
+        }
+
+        const pinHash = await bcrypt.hash(pin, BCRYPT_ROUNDS);
+        await prisma.$transaction(async (tx) => {
+            await tx.user.update({
+                where: { id: user.id },
+                data: { pinHash, pinUpdatedAt: new Date() },
+            });
+            await AuditLogService.log({
+                companyId: user.companyId!,
+                userId: user.id,
+                entityType: 'User',
+                entityId: user.id,
+                action: 'PIN_CHANGE',
+            }, tx);
+        });
+    }
+}

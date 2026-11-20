@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { OperationalDevice, OperationalDeviceType } from '@prisma/client';
+import type { OperationalDevice, OperationalDeviceType, Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { AuditLogService } from './audit-log.service';
 import { SessionService } from './session.service';
@@ -113,6 +113,19 @@ export class OperationalDeviceService {
             where: { id: device.id },
             data: { lastSeenAt: new Date() },
         });
+    }
+
+    /**
+     * Locks the device row (SELECT ... FOR UPDATE) inside the caller's
+     * transaction and reports whether it is still ACTIVE. `revoke` updates the
+     * same row before sweeping sessions, so a login that holds this lock either
+     * commits its session before the sweep or sees REVOKED and aborts.
+     */
+    static async isActiveForUpdate(tx: Prisma.TransactionClient, deviceId: number): Promise<boolean> {
+        const rows = await tx.$queryRaw<Array<{ status: string }>>`
+            SELECT status FROM \`OperationalDevice\` WHERE id = ${deviceId} FOR UPDATE
+        `;
+        return rows.length === 1 && rows[0].status === 'ACTIVE';
     }
 
     static async list(actor: DeviceActor, branchId?: number): Promise<OperationalDevice[]> {

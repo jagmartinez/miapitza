@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { createHash } from 'node:crypto';
 import { AuthService } from '../services/auth.service';
+import { PinService, PinError } from '../services/pin.service';
 import { SessionService } from '../services/session.service';
 import { TwoFactorService } from '../services/twoFactor.service';
 import { AuditLogService } from '../services/audit-log.service';
@@ -157,6 +158,72 @@ export class AuthController {
                 });
             }
             next({ statusCode: 401, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
+    private static deviceTokenOf(req: Request): string {
+        const header = req.headers['x-device-token'];
+        return typeof header === 'string' ? header : '';
+    }
+
+    /** Shared failure mapping for device/PIN endpoints. Never logs tokens or PINs. */
+    private static handleDeviceAuthError(label: string, error: unknown, req: Request, next: NextFunction) {
+        const msg = error instanceof Error ? error.message : String(error);
+        const dbDown = /prisma|ECONNREFUSED|P1001|P1017|can.t reach database/i.test(msg);
+        console.warn(`[AUTH] ${label} rejected`, {
+            ipAddress: req.ip || null,
+            reason: msg.includes('JWT_SECRET')
+                ? 'CONFIGURATION'
+                : dbDown ? 'DATABASE_UNAVAILABLE' : 'AUTHENTICATION_FAILED',
+        });
+        if (msg.includes('JWT_SECRET')) {
+            return next({ statusCode: 503, message: 'Servicio no disponible: configuración del servidor incompleta' });
+        }
+        if (dbDown) {
+            return next({ statusCode: 503, message: 'No se pudo conectar a la base de datos.' });
+        }
+        // Every authentication failure is the same generic 401.
+        return next({ statusCode: 401, message: 'Credenciales inválidas' });
+    }
+
+    static async deviceRoster(req: Request, res: Response, next: NextFunction) {
+        try {
+            const roster = await AuthService.deviceRoster(AuthController.deviceTokenOf(req));
+            res.json({ success: true, data: roster });
+        } catch (error) {
+            AuthController.handleDeviceAuthError('Device roster', error, req, next);
+        }
+    }
+
+    static async pinLogin(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId, pin } = req.body;
+            if (!Number.isInteger(userId) || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) {
+                return next({ statusCode: 401, message: 'Credenciales inválidas' });
+            }
+            const result = await AuthService.pinLogin({
+                deviceToken: AuthController.deviceTokenOf(req),
+                userId,
+                pin,
+                ip: req.ip || (req.headers['x-forwarded-for'] as string) || '',
+                userAgent: req.headers['user-agent'] || '',
+            });
+            res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
+        } catch (error) {
+            AuthController.handleDeviceAuthError('PIN login', error, req, next);
+        }
+    }
+
+    static async setMyPin(req: Request, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) return next({ statusCode: 401, message: 'No autenticado' });
+            await PinService.setPin(req.user.userId, req.body?.pin);
+            res.json({ success: true, message: 'PIN actualizado' });
+        } catch (error) {
+            if (error instanceof PinError) {
+                return next({ statusCode: error.statusCode, message: error.message });
+            }
+            next(error);
         }
     }
 

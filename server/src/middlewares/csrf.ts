@@ -11,6 +11,7 @@ function generateToken(): string {
 
 function isCsrfExemptPath(path: string): boolean {
     return path === '/auth/login'
+        || path === '/auth/pin-login'
         || /^\/pedidosya\/webhook\/[^/]+\/?$/.test(path)
         || /^\/delivery\/webhook\/[^/]+\/?$/.test(path);
 }
