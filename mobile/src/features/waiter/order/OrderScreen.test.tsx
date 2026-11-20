@@ -306,3 +306,99 @@ describe('OrderScreen fix round 1', () => {
         expect(await screen.findByText('1 no estaban listos.')).toBeInTheDocument();
     });
 });
+
+describe('OrderScreen fix round 2', () => {
+    it('N1: while a send is in flight the grid ignores taps and the rows are locked', async () => {
+        const api = makeApi();
+        let release: () => void = () => undefined;
+        api.addItem.mockImplementation(() => new Promise((resolve) => (release = () => resolve({ id: 1 }))));
+        setup({ api });
+        const pizza = await product('Pizza Margarita');
+        fireEvent.click(pizza);
+        fireEvent.click(await screen.findByRole('button', { name: 'Enviar a cocina · 1' }));
+        await waitFor(() => expect(api.addItem).toHaveBeenCalledTimes(1));
+        expect(await screen.findByText('Enviando…')).toBeInTheDocument();
+        expect(pizza).toBeDisabled();
+        const row = within(ticket()).getByTestId('draft-1||');
+        expect(within(row).queryByRole('button', { name: /Pizza/ })).toBeNull(); // no expandable edit face while sending
+        await act(async () => {
+            release();
+        });
+        await waitFor(() => expect(screen.queryByText('Enviando…')).toBeNull());
+        expect(pizza).toBeEnabled();
+    });
+
+    it('N2: an order already on screen is kept when a later reload fails; the cache never overwrites it', async () => {
+        const api = makeApi();
+        const loaded = orderOf([serverItem(1, 4, 'Ensalada', { sentAt: null, status: 'PENDING' })]);
+        api.orderDetail.mockResolvedValueOnce(loaded).mockRejectedValue(new Error('Network Error'));
+        api.activeOrders.mockResolvedValue(result([orderOf([])])); // older snapshot: no lines
+        const { realtime } = setup({ api });
+        await within(ticket()).findByTestId('unsent-1');
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        try {
+            act(() => realtime.emit('ORDER_UPDATE', { orderId: 102 }));
+            await act(async () => {
+                vi.advanceTimersByTime(300);
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+        await waitFor(() => expect(api.orderDetail).toHaveBeenCalledTimes(2));
+        expect(await screen.findByRole('alert')).toBeInTheDocument(); // the network notice
+        expect(within(ticket()).getByTestId('unsent-1')).toBeInTheDocument(); // not overwritten
+        expect(screen.queryByText('Sin conexión · datos guardados')).toBeNull();
+    });
+
+    it('N2: the first load from the cached active list says the data is saved', async () => {
+        const api = makeApi();
+        api.orderDetail.mockRejectedValue(new Error('Network Error'));
+        api.activeOrders.mockResolvedValue(result([orderOf([serverItem(1, 4, 'Ensalada', { status: 'IN_PROGRESS' })])]));
+        setup({ api });
+        expect(await screen.findByText('Sin conexión · datos guardados')).toBeInTheDocument();
+        expect(screen.queryByRole('alert')).toBeNull();
+        await within(ticket()).findByRole('button', { name: /Enviado · 1/ });
+    });
+
+    it('N5: a line failing at k > 1 leaves the sent ones as Nuevo on the server and the rest in the draft', async () => {
+        const api = makeApi();
+        api.addItem.mockResolvedValueOnce({ id: 1 }).mockRejectedValueOnce({ response: { status: 400, data: { message: 'Producto agotado' } } });
+        api.orderDetail
+            .mockResolvedValueOnce(orderOf([]))
+            .mockResolvedValue(orderOf([serverItem(11, 1, 'Pizza Margarita', { sentAt: null, status: 'PENDING' })]));
+        setup({ api });
+        fireEvent.click(await product('Pizza Margarita'));
+        fireEvent.click(await within(screen.getByRole('region', { name: 'Productos' })).findByRole('button', { name: /^Hamburguesa/ }));
+        // Hamburguesa needs a modifier: pick one
+        const sheet = await screen.findByRole('dialog', { name: 'Hamburguesa' });
+        fireEvent.click(within(sheet).getByRole('button', { name: /Término medio/ }));
+        fireEvent.click(within(sheet).getByRole('button', { name: /Agregar/ }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Enviar a cocina · 2' }));
+        expect(await screen.findByText('Producto agotado')).toBeInTheDocument();
+        expect(sendCalls(api)).toBe(0);
+        expect(await within(ticket()).findByTestId('unsent-11')).toBeInTheDocument();
+        expect(within(ticket()).getByText('Hamburguesa')).toBeInTheDocument(); // still a draft
+        expect(screen.getByRole('button', { name: 'Enviar a cocina · 2' })).toBeEnabled();
+    });
+
+    it('N5: unmounting while resolveTemp is pending does not update state or fetch', async () => {
+        const api = makeApi();
+        let finish: (v: number | null) => void = () => undefined;
+        const snap = { pending: 0, failed: 0 };
+        const noop = () => undefined;
+        const off = vi.fn();
+        const queue = { getSnapshot: () => snap, subscribe: () => noop, resolveTemp: vi.fn(() => new Promise<number | null>((r) => (finish = r))), onSynced: vi.fn(() => off) };
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        setup({ api, queue, orderId: 'order-1700-abcd1234' });
+        await screen.findByText('Sincronizando…');
+        cleanup();
+        expect(off).toHaveBeenCalled();
+        await act(async () => {
+            finish(777);
+        });
+        expect(api.orderDetail).not.toHaveBeenCalled();
+        expect(errors).not.toHaveBeenCalled();
+    });
+});
+
+const sendCalls = (api: { sendToKitchen: { mock: { calls: unknown[] } } }) => api.sendToKitchen.mock.calls.length;

@@ -85,6 +85,9 @@ export function OrderScreen(props: OrderScreenProps) {
     const [sheet, setSheet] = useState<SheetState>(null);
     const [now, setNow] = useState(() => Date.now());
     const [notice, setNotice] = useState<string | null>(null);
+    // The order on screen came from the saved active list, not from the server.
+    const [savedData, setSavedData] = useState(false);
+    const orderLoaded = useRef(false);
 
     const alive = useRef(true);
     const seq = useRef(0);
@@ -141,17 +144,22 @@ export function OrderScreen(props: OrderScreenProps) {
                 lines = lines.map((l) => (l.modifiers.length === 0 && names.get(l.id)?.length ? { ...l, modifiers: names.get(l.id)! } : l));
             }
             if (!alive.current || mine !== seq.current) return;
+            orderLoaded.current = true;
             setOrder(detail);
             setServerLines(lines);
+            setSavedData(false);
             setNow(Date.now());
             setNotice(null);
         } catch (cause) {
-            const fallback = (await readActive())?.find((o) => o.id === Number(orderId));
+            // Only the very first load may fall back to the saved active list; an order already on screen is never
+            // replaced by an older snapshot (it would hide lines that were just added).
+            const fallback = orderLoaded.current ? undefined : (await readActive())?.find((o) => o.id === Number(orderId));
             if (!alive.current || mine !== seq.current) return;
             if (fallback) {
-                // No connection to the detail: work from the last active list (adding and sending queue offline).
+                orderLoaded.current = true;
                 setOrder(fallback);
                 setServerLines(normalizeServerLines(fallback));
+                setSavedData(true);
             } else {
                 setNotice(getApiErrorMessage(cause));
             }
@@ -359,6 +367,7 @@ export function OrderScreen(props: OrderScreenProps) {
                     {initials}
                 </span>
             </header>
+            {savedData && !notice && <p className="muted pos-notice">Sin conexión · datos guardados</p>}
             {(menuError || notice) && (
                 <p className="error pos-notice" role="alert">
                     {menuError ?? notice}
@@ -366,7 +375,7 @@ export function OrderScreen(props: OrderScreenProps) {
             )}
             <div className="pos-body">
                 <CategoryRail entries={rail} selected={current} onSelect={(id) => { setSelected(id); setSearch(''); }} />
-                <ProductGrid products={shown} quantities={quantities} promos={promoMap} disabled={!canEdit || !draft.loaded} busyId={loadingId} onTap={(p) => void tap(p)} onHold={(p) => void hold(p)} />
+                <ProductGrid products={shown} quantities={quantities} promos={promoMap} disabled={!canEdit || !draft.loaded || draft.sending} busyId={loadingId} onTap={(p) => void tap(p)} onHold={(p) => void hold(p)} />
                 <TicketPanel
                     title="Ticket"
                     subtitle={`${tableLabel}${guests != null ? ` · ${guests} pers` : ''} · ${productCount} productos`}

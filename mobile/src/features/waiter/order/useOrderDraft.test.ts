@@ -202,44 +202,81 @@ describe('useOrderDraft fix round 1', () => {
         expect(onChanged).toHaveBeenCalledTimes(1);
     });
 
-    it('I1: edits made while a send is in flight survive (the sent quantity is subtracted)', async () => {
+    /** Starts a send of 1 x pizza (x2 when `twice`) and holds addItem open. */
+    async function sendInFlight(twice = false) {
         const gate: { release: () => void } = { release: () => undefined };
         const api = makeApi({ addItem: vi.fn().mockImplementation(() => new Promise((resolve) => (gate.release = () => resolve({ id: 1 })))) });
-        const { result } = setup({ api });
-        await waitFor(() => expect(result.current.loaded).toBe(true));
-        act(() => result.current.add(pizza));
+        const view = setup({ api });
+        await waitFor(() => expect(view.result.current.loaded).toBe(true));
+        act(() => view.result.current.add(pizza));
+        if (twice) act(() => view.result.current.add(pizza));
         let p!: Promise<unknown>;
         act(() => {
-            p = result.current.send();
+            p = view.result.current.send();
         });
         await waitFor(() => expect(api.addItem).toHaveBeenCalledTimes(1));
-        act(() => result.current.add(pizza)); // second unit while the first is going out
-        await act(async () => {
-            gate.release();
-            await p;
-        });
+        const finish = () =>
+            act(async () => {
+                gate.release();
+                await p;
+            });
+        return { ...view, api, finish };
+    }
+
+    it('N1: adding while a send is in flight is ignored (no swallowed or duplicated unit)', async () => {
+        const { result, api, finish } = await sendInFlight();
+        act(() => result.current.add(pizza));
+        expect(result.current.lines[0].quantity).toBe(1);
+        await finish();
         expect(api.addItem.mock.calls[0][1]).toEqual({ menuItemId: 1, quantity: 1 });
-        expect(result.current.lines.map((l) => [l.menuItemId, l.quantity])).toEqual([[1, 1]]);
+        expect(result.current.lines).toHaveLength(0);
+    });
+
+    it('N1: a note edit during a send does not duplicate the line', async () => {
+        const { result, finish } = await sendInFlight();
+        const key = result.current.lines[0].key;
+        act(() => {
+            result.current.setNote(key, 'sin cebolla');
+        });
+        expect(result.current.lines[0].notes).toBe('');
+        await finish();
+        expect(result.current.lines).toHaveLength(0);
+    });
+
+    it('N1: a decrement or a removal during a send is ignored, not half applied', async () => {
+        const { result, api, finish } = await sendInFlight(true);
+        const key = result.current.lines[0].key;
+        act(() => result.current.setQuantity(key, 1));
+        act(() => result.current.remove(key));
+        expect(result.current.lines[0].quantity).toBe(2);
+        await finish();
+        expect(api.addItem.mock.calls[0][1]).toEqual({ menuItemId: 1, quantity: 2 });
+        expect(result.current.lines).toHaveLength(0);
+    });
+
+    it('N1: remove then re-add during a send cannot swallow the new unit', async () => {
+        const { result, finish } = await sendInFlight(true);
+        const key = result.current.lines[0].key;
+        act(() => result.current.remove(key));
+        act(() => result.current.add(pizza));
+        expect(result.current.lines[0].quantity).toBe(2);
+        await finish();
+        expect(result.current.lines).toHaveLength(0);
+        // once the send is over, edits work again
+        act(() => result.current.add(cola));
+        expect(result.current.lines).toHaveLength(1);
     });
 
     it('I1: create-with-lines removes only the lines that were sent', async () => {
-        const gate: { release: () => void } = { release: () => undefined };
-        const api = makeApi({ createOrder: vi.fn().mockImplementation(() => new Promise((resolve) => (gate.release = () => resolve({ id: 900 })))) });
+        const api = makeApi({ createOrder: vi.fn().mockResolvedValue({ id: 900 }) });
         const { result } = setup({ api, orderId: null });
         await waitFor(() => expect(result.current.loaded).toBe(true));
         act(() => result.current.add(pizza));
-        let p!: Promise<unknown>;
-        act(() => {
-            p = result.current.send();
-        });
-        await waitFor(() => expect(api.createOrder).toHaveBeenCalledTimes(1));
-        act(() => result.current.add(cola));
-        act(() => result.current.add(pizza));
         await act(async () => {
-            gate.release();
-            await p;
+            await result.current.send();
         });
-        expect(result.current.lines.map((l) => [l.menuItemId, l.quantity])).toEqual([[1, 1], [2, 1]]);
+        expect(result.current.lines).toHaveLength(0);
+        expect(api.createOrder).toHaveBeenCalledWith({ tableId: 3, orderType: 'DINE_IN', items: [{ menuItemId: 1, quantity: 1 }] });
     });
 
     it('Minor 1: after create then a failed send, a retry reuses the created order', async () => {

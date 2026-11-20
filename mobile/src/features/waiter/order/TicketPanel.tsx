@@ -59,6 +59,7 @@ export function TicketFooter({ total, unsentTotal, sendCount, sending, canEdit, 
                 <span className="muted">Total</span>
                 <strong>{money(total)}</strong>
             </div>
+            {sending && <span className="ticket-unsent muted" role="status">Enviando…</span>}
             {unsentTotal > 0 && <span className="ticket-unsent muted">{`+ ${money(unsentTotal)} sin enviar`}</span>}
             {canEdit && (
                 <button type="button" className="btn btn-primary ticket-send" disabled={sendCount === 0 || sending} onClick={onSend}>
@@ -112,7 +113,7 @@ export function NoteSheet({ initial, onSave, onClose }: { initial: string; onSav
 const subOf = (modifiers: string[], notes: string) => [...modifiers, notes].filter(Boolean).join(' · ');
 
 export function TicketPanel(props: TicketPanelProps) {
-    const { title, subtitle, drafts, highlightKey, serverLines, now, error, canEdit, canDeliver, busy } = props;
+    const { title, subtitle, drafts, highlightKey, serverLines, now, error, canEdit, canDeliver, busy, sending } = props;
     const [expanded, setExpanded] = useState<string | null>(null); // one row open at a time
     const [noteFor, setNoteFor] = useState<NoteTarget | null>(null);
     // Where the list should scroll: an expanded row, or the line just added (a counter, so the same key can repeat).
@@ -137,7 +138,7 @@ export function TicketPanel(props: TicketPanelProps) {
         }
         for (const l of drafts) {
             const key = `d:${l.key}`;
-            const open = canEdit && expanded === key;
+            const open = canEdit && !sending && expanded === key;
             out.push({
                 key,
                 height: open ? EXPANDED_HEIGHT : ROW_HEIGHT,
@@ -147,7 +148,7 @@ export function TicketPanel(props: TicketPanelProps) {
                         testId={`draft-${l.key}`}
                         expanded={open}
                         highlighted={highlightKey === l.key}
-                        editable={canEdit}
+                        editable={canEdit && !sending}
                         onToggle={() => toggle(key)}
                         onQuantity={(q) => {
                             if (q <= 0) setExpanded(null);
@@ -214,7 +215,7 @@ export function TicketPanel(props: TicketPanelProps) {
         }
         return out;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [drafts, unsent, sent, expanded, highlightKey, canEdit, busy, props.onOpenFull]);
+    }, [drafts, unsent, sent, expanded, highlightKey, canEdit, sending, busy, props.onOpenFull]);
 
     const saveNote = (text: string) => {
         if (!noteFor) return;

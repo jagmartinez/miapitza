@@ -185,7 +185,8 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
 
     const add = useCallback(
         (product: Pick<Product, 'id' | 'name' | 'price'>, extra: AddOptions = {}) => {
-            if (live.current.scope == null || live.current.scope !== scopeRef.current) return;
+            // Edits are locked while a send is in flight: the snapshot being sent must match what the draft holds afterwards.
+            if (sendingRef.current || live.current.scope == null || live.current.scope !== scopeRef.current) return;
             const notes = normNote(extra.notes);
             const modifierIds = extra.modifierIds ?? [];
             const key = lineKey(product.id, modifierIds, notes);
@@ -202,6 +203,7 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
 
     const setQuantity = useCallback(
         (key: string, quantity: number) => {
+            if (sendingRef.current) return;
             const current = live.current.lines;
             commit(quantity <= 0 ? current.filter((l) => l.key !== key) : current.map((l) => (l.key === key ? { ...l, quantity: Math.floor(quantity) } : l)));
         },
@@ -211,6 +213,7 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
     /** Changing the note can make the line identical to another one: they merge. */
     const setNote = useCallback(
         (key: string, note: string) => {
+            if (sendingRef.current) return;
             const current = live.current.lines;
             const target = current.find((l) => l.key === key);
             if (!target) return;
@@ -226,7 +229,13 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
         [commit],
     );
 
-    const remove = useCallback((key: string) => commit(live.current.lines.filter((l) => l.key !== key)), [commit]);
+    const remove = useCallback(
+        (key: string) => {
+            if (sendingRef.current) return;
+            commit(live.current.lines.filter((l) => l.key !== key));
+        },
+        [commit],
+    );
 
     /** The sent quantity leaves the draft; whatever was added meanwhile stays. */
     const subtractSent = (start: string, sent: DraftTicketLine) => {
