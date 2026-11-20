@@ -149,6 +149,8 @@ export function collectEnvironmentErrors(env: NodeJS.ProcessEnv): string[] {
             errors.push('CLIENT_URL is required in production.');
         } else {
             for (const origin of clientOrigins.split(',').map(value => value.trim()).filter(Boolean)) {
+                // The iOS Capacitor webview origin is not http(s); allow exactly this one.
+                if (origin === 'capacitor://localhost') continue;
                 try {
                     const parsed = new URL(origin);
                     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== origin) {

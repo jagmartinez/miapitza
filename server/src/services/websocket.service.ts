@@ -33,6 +33,7 @@ interface BroadcastCriteria {
 export class WebSocketService {
     private static wss: WebSocketServer | null = null;
     private static clients: Map<string, WebSocketClient> = new Map();
+    static readonly AUTH_TIMEOUT_MS = 5000;
 
     /**
      * Same allowlist as the HTTP CORS policy. Only an explicit development or
@@ -68,71 +69,119 @@ export class WebSocketService {
             if (this.wss === initializedServer) this.wss = null;
         });
 
-        this.wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
-            const client = ws as WebSocketClient;
-            const token = this.extractTokenFromCookieHeader(req.headers.cookie);
-            const allowUnauthenticated = process.env.WS_ALLOW_UNAUTHENTICATED === 'true' && process.env.NODE_ENV !== 'production';
-            client.authenticated = false;
-            client.authTimeout = null;
-
-            if (token && process.env.JWT_SECRET) {
-                if (!await this.authenticateClient(client, token)) {
-                    ws.close(4001, 'Authentication failed');
-                    return;
-                }
-            } else if (allowUnauthenticated) {
-                client.authenticated = true;
-                client.roles = [];
-            } else {
-                client.close(4001, 'Authentication required');
-                return;
-            }
-
-            client.id = this.generateClientId();
-            client.isAlive = true;
-
-            this.clients.set(client.id, client);
-
-            this.sendToClient(client.id, {
-                type: 'CONNECTED',
-                payload: { clientId: client.id, timestamp: new Date() }
-            });
-
-            client.on('message', (data: Buffer) => {
-                try {
-                    const message: unknown = JSON.parse(data.toString());
-                    void this.handleMessage(client.id, message);
-                } catch (error) {
-                    console.error('Error parsing WebSocket message:', error);
-                }
-            });
-
-            client.on('pong', () => {
-                client.isAlive = true;
-            });
-
-            client.on('close', () => {
-                if (client.authTimeout) {
-                    clearTimeout(client.authTimeout);
-                    client.authTimeout = null;
-                }
-                this.clients.delete(client.id);
-            });
-
-            client.on('error', (error) => {
-                console.error(`WebSocket error for client ${client.id}:`, error);
-            });
+        this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+            void this.handleConnection(ws, req);
         });
 
         this.startHeartbeat();
     }
 
-    private static async handleMessage(clientId: string, raw: unknown): Promise<void> {
-        const client = this.clients.get(clientId);
-        if (!client) {
-            return;
+    /**
+     * Cookie clients authenticate during the upgrade. Cookieless clients (the
+     * Capacitor app) must send {"type":"AUTH","payload":{"token":"<jwt>"}} as
+     * their first message within AUTH_TIMEOUT_MS. A socket is only registered
+     * in `clients` (and so only eligible for broadcasts or CONNECTED) once it
+     * has authenticated.
+     */
+    private static async handleConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
+        const client = ws as WebSocketClient;
+        const cookieToken = this.extractTokenFromCookieHeader(req.headers.cookie);
+        const allowUnauthenticated = process.env.WS_ALLOW_UNAUTHENTICATED === 'true' && process.env.NODE_ENV !== 'production';
+        client.authenticated = false;
+        client.authTimeout = null;
+        client.id = this.generateClientId();
+        client.isAlive = true;
+
+        client.on('pong', () => {
+            client.isAlive = true;
+        });
+
+        client.on('close', () => {
+            if (client.authTimeout) {
+                clearTimeout(client.authTimeout);
+                client.authTimeout = null;
+            }
+            if (this.clients.get(client.id) === client) this.clients.delete(client.id);
+        });
+
+        client.on('error', (error) => {
+            console.error(`WebSocket error for client ${client.id}:`, error);
+        });
+
+        if (cookieToken && process.env.JWT_SECRET) {
+            if (!await this.authenticateClient(client, cookieToken)) {
+                client.close(4001, 'Authentication failed');
+                return;
+            }
+            this.registerAuthenticatedClient(client);
+        } else if (allowUnauthenticated) {
+            client.authenticated = true;
+            client.roles = [];
+            this.registerAuthenticatedClient(client);
+        } else {
+            // Cookieless client: wait for an AUTH message, never past the deadline.
+            client.authTimeout = setTimeout(() => {
+                client.authTimeout = null;
+                if (!client.authenticated) client.close(4001, 'Authentication timeout');
+            }, this.AUTH_TIMEOUT_MS);
         }
 
+        let authAttempted = false;
+        client.on('message', (data: Buffer) => {
+            let message: unknown;
+            try {
+                message = JSON.parse(data.toString());
+            } catch {
+                // Never log the parse error or payload: it may echo a bearer token.
+                console.error('[WS] Ignored malformed message');
+                if (!client.authenticated) client.close(4001, 'Authentication required');
+                return;
+            }
+
+            if (client.authenticated) {
+                void this.handleMessage(client, message);
+                return;
+            }
+
+            // Anything but exactly one well-formed AUTH before authentication is fatal.
+            const token = this.extractAuthToken(message);
+            if (authAttempted || !token) {
+                client.close(4001, 'Authentication required');
+                return;
+            }
+            authAttempted = true;
+            void this.authenticateClient(client, token).then((ok) => {
+                if (!ok || client.readyState !== WebSocket.OPEN) {
+                    client.close(4001, 'Authentication failed');
+                    return;
+                }
+                this.registerAuthenticatedClient(client);
+            }).catch(() => {
+                client.close(4001, 'Authentication failed');
+            });
+        });
+    }
+
+    private static registerAuthenticatedClient(client: WebSocketClient): void {
+        this.clients.set(client.id, client);
+        this.sendToClient(client.id, {
+            type: 'CONNECTED',
+            payload: { clientId: client.id, timestamp: new Date() }
+        });
+    }
+
+    private static extractAuthToken(raw: unknown): string | null {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+        const message = raw as { type?: unknown; payload?: unknown };
+        if (message.type !== 'AUTH') return null;
+        const payload = message.payload;
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+        const token = (payload as { token?: unknown }).token;
+        if (typeof token !== 'string' || token.length === 0 || token.length > 4096) return null;
+        return token;
+    }
+
+    private static async handleMessage(client: WebSocketClient, raw: unknown): Promise<void> {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
             return;
         }
@@ -142,14 +191,13 @@ export class WebSocketService {
             return;
         }
 
-        if (!client.authenticated) {
-            client.close(4001, 'Authentication required');
-            return;
-        }
-
         switch (msgType) {
             case 'PING':
-                this.sendToClient(clientId, { type: 'PONG', payload: { timestamp: new Date() } });
+                this.sendToClient(client.id, { type: 'PONG', payload: { timestamp: new Date() } });
+                break;
+
+            case 'AUTH':
+                // Already authenticated: a socket's identity never changes.
                 break;
 
             case 'SUBSCRIBE':

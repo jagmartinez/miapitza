@@ -26,6 +26,18 @@ describe('production environment validation', () => {
         expect(collectEnvironmentErrors(validProductionEnv)).toEqual([]);
     });
 
+    it('accepts Capacitor webview origins in CLIENT_URL but rejects other custom schemes', () => {
+        const base = 'https://restaurant.example.com';
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            CLIENT_URL: `${base},https://localhost,capacitor://localhost`,
+        })).toEqual([]);
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            CLIENT_URL: `${base},capacitor://evil`,
+        })).toContain('CLIENT_URL contains an invalid origin: capacitor://evil');
+    });
+
     it('requires an explicit tenancy mode in production', () => {
         const env = { ...validProductionEnv };
         delete env.PLATFORM_TENANCY_MODE;
