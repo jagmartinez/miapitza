@@ -184,18 +184,18 @@ describe('pending attempts and resume', () => {
         expect(api2.payLeg.mock.calls[0][1]).toBe(payLeg.mock.calls[0][1]);
     });
 
-    it('matches attempted legs with the server payments by payer, amount and method, each payment once', () => {
+    it('matches a leg only on the persisted idempotency key, never on payer, amount and method', () => {
         const legs = {
             a: { key: 'k1', fingerprint: 'f', spec: { paymentMethodId: 1, amount: 115, payerName: 'Ana' } },
             b: { key: 'k2', fingerprint: 'f', spec: { paymentMethodId: 1, amount: 115, payerName: 'Beto' } },
             c: { key: 'k3', fingerprint: 'f', spec: { paymentMethodId: 2, amount: 10 } },
         };
         const payments = [
-            { amount: '115.00', status: 'ACTIVE', paymentMethodId: 1, payerName: ' ana ' },
-            { amount: '115.00', status: 'REVERSED', paymentMethodId: 1, payerName: 'Beto' },
-            { amount: '10.00', status: 'ACTIVE', paymentMethodId: 2, payerName: null },
+            { amount: '115.00', status: 'ACTIVE', paymentMethodId: 1, payerName: ' ana ' }, // looks like a, but carries no key
+            { amount: '115.00', status: 'REVERSED', paymentMethodId: 1, payerName: 'Beto', idempotencyKey: 'k2' }, // reversed: not paid
+            { amount: '10.00', status: 'ACTIVE', paymentMethodId: 2, payerName: null, idempotencyKey: 'k3' },
         ];
-        expect(matchPaidLegs(legs, payments)).toEqual(['a', 'c']);
+        expect(matchPaidLegs(legs, payments)).toEqual(['c']);
     });
 });
 

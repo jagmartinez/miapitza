@@ -81,24 +81,17 @@ export interface FlowOptions {
     persist?: (state: FlowState) => Promise<void> | void;
 }
 
-const centsOf = (v: unknown) => Math.round(Number(v) * 100);
-const payerKey = (name: unknown) => (typeof name === 'string' ? name.trim().toLocaleLowerCase('es-NI') : '');
-
 /**
- * Which attempted legs the server already has: an ACTIVE payment with the same payer, amount (cents) and method, each
- * payment used once. This is how a leg whose answer was lost shows as paid on re-entry without sending it again.
+ * Which attempted legs the server provably has: an ACTIVE payment that carries the leg's own idempotency key. Payer, amount
+ * and method are NOT evidence (an earlier payment or a discarded plan can look identical), so anything else stays pending
+ * and is replayed with its key: the server answers with the stored receipt or applies it once. The server's remaining
+ * balance, not this matcher, decides whether the order is paid.
  */
 export function matchPaidLegs(legs: Record<string, PlanLeg>, payments: Json[]): string[] {
-    const free = payments.filter((p) => !p.status || p.status === 'ACTIVE');
-    const out: string[] = [];
-    for (const [id, leg] of Object.entries(legs)) {
-        const at = free.findIndex((p) => centsOf(p.amount) === centsOf(leg.spec.amount) && Number(p.paymentMethodId) === leg.spec.paymentMethodId && payerKey(p.payerName) === payerKey(leg.spec.payerName));
-        if (at >= 0) {
-            free.splice(at, 1);
-            out.push(id);
-        }
-    }
-    return out;
+    const active = payments.filter((p) => !p.status || p.status === 'ACTIVE');
+    return Object.entries(legs)
+        .filter(([, leg]) => active.some((p) => typeof p.idempotencyKey === 'string' && p.idempotencyKey === leg.key))
+        .map(([id]) => id);
 }
 
 /** `total` in `count` legs, in cents; the last legs take the odd cents (100.00 / 3 = 33.33, 33.33, 33.34). */

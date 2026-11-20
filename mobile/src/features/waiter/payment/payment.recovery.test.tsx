@@ -77,8 +77,13 @@ describe('resuming a plan (I2)', () => {
         w.mount();
         expect(await screen.findByText(/Cobro en curso retomado/)).toBeInTheDocument();
         const p1 = await screen.findByRole('article', { name: 'Persona 1' });
-        expect(within(p1).getByText('Pagado')).toBeInTheDocument(); // derived from the server's payments (payerName + amount)
-        expect(screen.queryByRole('button', { name: 'Cobrar a Persona 1' })).toBeNull();
+        // Not guessed from payer + amount: the leg stays pending and replays with its own key (the server returns the stored receipt).
+        expect(within(p1).queryByText('Pagado')).toBeNull();
+        const firstKey = w.api.payLeg.mock.calls[0][1];
+        fireEvent.click(screen.getByRole('button', { name: 'Cobrar a Persona 1' }));
+        await within(p1).findByText('Pagado');
+        expect(w.api.payLeg.mock.calls[1][1]).toBe(firstKey);
+        expect(w.state.payments).toHaveLength(1); // charged once
         const calls = w.api.payLeg.mock.calls.length;
         fireEvent.click(screen.getByRole('button', { name: 'Cobrar a Persona 2' }));
         expect(await screen.findByText('Mesa 2 cobrada')).toBeInTheDocument();
@@ -213,5 +218,45 @@ describe('mixed: cash received and rounding', () => {
         click('+ Persona');
         click('Quitar a Persona 4');
         await waitFor(() => expect(screen.getByRole('button', { name: 'Cobrar a Persona 1' })).toBeEnabled());
+    });
+});
+
+describe('final review I1: an unrelated payment never marks a leg as paid', () => {
+    const lines = [
+        { id: 1, name: 'Pizza Margarita', price: 100 },
+        { id: 2, name: 'Cola', price: 200 },
+    ];
+    const seedPending = async (w: ReturnType<typeof world>) =>
+        w.plans.save(OWNER, {
+            orderId: 102,
+            mode: 'single',
+            payable: 100,
+            plan: { methodId: 1, typed: '', reference: '' },
+            allIds: ['single'],
+            changeOf: { single: 0 },
+            methodOf: { single: 'Efectivo' },
+            legs: { single: { key: 'k-single', fingerprint: 'f', spec: { paymentMethodId: 1, amount: 100 } } },
+            confirmed: [],
+        });
+
+    it('an earlier payment with the same amount and method does not turn the pending leg into "Mesa cobrada"', async () => {
+        const w = world({ lines, taxRate: 0 });
+        w.state.payments.push({ id: 1, amount: '100.00', status: 'ACTIVE', paymentMethodId: 1, payerName: null }); // e.g. paid on the web earlier
+        await seedPending(w);
+        w.mount();
+        await screen.findByText(/Cobro en curso retomado/);
+        expect(screen.queryByText('Mesa 2 cobrada')).toBeNull();
+        expect(w.remainingCents()).toBe(20000); // C$ 200 still owed
+        expect(w.api.payLeg).not.toHaveBeenCalled();
+        expect(await w.plans.load(OWNER, 102)).not.toBeNull(); // the leg keeps its key
+    });
+
+    it('when the server really owes nothing, the plan is complete and shows the receipt', async () => {
+        const w = world({ lines, taxRate: 0 });
+        w.state.payments.push({ id: 1, amount: '300.00', status: 'ACTIVE', paymentMethodId: 1, payerName: null });
+        await seedPending(w);
+        w.mount();
+        expect(await screen.findByText('Mesa 2 cobrada')).toBeInTheDocument();
+        expect(await w.plans.load(OWNER, 102)).toBeNull();
     });
 });

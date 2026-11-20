@@ -130,11 +130,19 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
             setPayable(data.remaining);
             if (row) {
                 metaRef.current = { mode: row.mode, payable: row.payable, plan: row.plan, allIds: row.allIds, changeOf: row.changeOf, methodOf: row.methodOf };
-                // legs sent before whose answer was lost: the server's payments say which of them it applied
+                // Legs sent before whose answer was lost: only payments that carry the leg's own key prove it was applied.
+                // Everything else stays pending and replays with its key.
                 await flow.markConfirmed(matchPaidLegs(row.legs, (data.order.payments as Json[]) ?? []));
-                if (row.allIds.every((leg) => flow.isConfirmed(leg))) {
+                const settled = moneyToCents(data.remaining) === 0; // the server owes nothing: the order IS paid
+                const planDone = row.allIds.every((leg) => flow.isConfirmed(leg));
+                if (settled || planDone) {
                     await plans!.clear(ownerKey!, id);
-                    setDone(receiptOf(data.order, null, row));
+                    if (settled) setDone(receiptOf(data.order, null, row));
+                    else {
+                        // every leg of the plan is confirmed but the server still owes: that plan is over, start from what is left
+                        flowRef.current = createPaymentFlow({ api, orderId: id, preinvoiced, persist });
+                        metaRef.current = null;
+                    }
                 } else {
                     setMode(row.mode);
                     setPayable(row.payable);

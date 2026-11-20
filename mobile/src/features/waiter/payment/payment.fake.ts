@@ -30,6 +30,8 @@ export function makeServer(opts: { lines?: { id: number; name: string; price: nu
         preinvoiced: false,
         customers: [] as unknown[],
         loseNext: 0,
+        /** The request never reaches the server (Wi-Fi drop): nothing is applied and no answer arrives. */
+        dropNext: 0,
         tip: 0,
     };
     const paidCents = () => state.payments.reduce((n, p) => n + cents(p.amount), 0);
@@ -54,6 +56,10 @@ export function makeServer(opts: { lines?: { id: number; name: string; price: nu
         preinvoice: vi.fn(async () => void (state.preinvoiced = true)),
         payLeg: vi.fn(async (body: { amount: number; paymentMethodId: number; payerName?: string }, key: string) => {
             const serialized = JSON.stringify(body);
+            if (state.dropNext > 0) {
+                state.dropNext--;
+                throw networkError();
+            }
             const prior = state.applied.get(key);
             if (prior) {
                 if (prior.body !== serialized) throw httpError(422, 'La llave de idempotencia ya se usó con otros datos');
