@@ -51,7 +51,7 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - Uso semanal consumido por la Fase 2: ~5 puntos (39 % → 44 %).
 
 ## Siguiente
-- Fase 2b (Caja: apertura, movimientos, arqueo C$/US$, cierre, ticket 80 mm) — falta escribir su plan.
+- Fase 2b (Caja) — plan escrito: `docs/superpowers/plans/2026-11-21-app-android-fase-2b-caja.md` (2 backend + 6 app). Decisión del usuario 2026-11-21: **arqueo a ciegas** para CAJERO (no ve "debe haber" ni la diferencia; solo el resultado). Inventario: `.superpowers/sdd/2026-11-21-app-android-fase-2b-caja/api-inventory.md`.
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
