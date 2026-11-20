@@ -14,11 +14,13 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  TrendingUp,
   UserRound,
   UsersRound,
   X,
 } from 'lucide-react';
 import Button from '../Button';
+import Pagination from '../Pagination';
 import { HrSection, HrSplit } from './layout/HrWorkspace';
 import { formatHrMoney } from '../../utils/hrFormat';
 import type {
@@ -54,6 +56,8 @@ const ACTION_HELP: Partial<Record<HrPayrollAction, string>> = {
   APPROVE: 'Confirma los importes que serán pagados a los empleados.',
   MARK_PAID: 'Registra el pago y publica las colillas para cada empleado.',
 };
+
+const EMPLOYEE_PAGE_SIZE = 10;
 
 function moneyNumber(value?: string | null): number | null {
   if (value == null || value.trim() === '') return null;
@@ -114,6 +118,8 @@ interface PayrollOperationWorkspaceProps {
   onExport: (format: 'csv' | 'xlsx') => void;
   onDownloadReceipt: (receiptId: number) => void;
   onDownloadReceiptBatch: (receiptIds: number[]) => void;
+  /** Previous comparable run (same kind, not voided) used for the net-pay variance indicator. */
+  previous?: { code: string; netPay?: string | null } | null;
 }
 
 export default function PayrollOperationWorkspace({
@@ -126,9 +132,11 @@ export default function PayrollOperationWorkspace({
   onExport,
   onDownloadReceipt,
   onDownloadReceiptBatch,
+  previous,
 }: PayrollOperationWorkspaceProps) {
   const [query, setQuery] = useState('');
   const [onlyIncidents, setOnlyIncidents] = useState(false);
+  const [employeePage, setEmployeePage] = useState(1);
   const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
   const currency = run.totals?.currency ?? 'NIO';
   const currentStep = run.status === 'VOID' ? -1 : FLOW.findIndex((step) => step.status === run.status);
@@ -169,10 +177,40 @@ export default function PayrollOperationWorkspace({
     };
   }), [run]);
 
+  const indicators = useMemo(() => {
+    const headcount = run.totals?.employeeCount ?? run.snapshot.length;
+    const gross = moneyNumber(run.totals?.grossIncome);
+    const net = moneyNumber(run.totals?.netPay);
+    const deductions = moneyNumber(run.totals?.totalDeductions);
+    const employer = moneyNumber(run.totals?.employerContributions) ?? 0;
+    const previousNet = moneyNumber(previous?.netPay);
+    let inssWithheld = 0;
+    let incomeTax = 0;
+    let overtimeMinutes = 0;
+    for (const row of rows) {
+      inssWithheld += row.inss ?? 0;
+      incomeTax += row.incomeTax ?? 0;
+      overtimeMinutes += row.overtimeMinutes ?? 0;
+    }
+    return {
+      headcount,
+      avgNet: net !== null && headcount > 0 ? net / headcount : null,
+      companyCost: gross !== null ? gross + employer : null,
+      deductionRate: gross && deductions !== null ? (deductions / gross) * 100 : null,
+      variance: net !== null && previousNet ? ((net - previousNet) / previousNet) * 100 : null,
+      inss: inssWithheld,
+      incomeTax,
+      overtimeHours: overtimeMinutes / 60,
+    };
+  }, [previous?.netPay, rows, run.snapshot.length, run.totals]);
+
   const filteredRows = rows.filter((row) => {
     const matchesQuery = row.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
     return matchesQuery && (!onlyIncidents || row.anomalies.length > 0);
   });
+  const employeePages = Math.max(1, Math.ceil(filteredRows.length / EMPLOYEE_PAGE_SIZE));
+  const safeEmployeePage = Math.min(employeePage, employeePages);
+  const pagedRows = filteredRows.slice((safeEmployeePage - 1) * EMPLOYEE_PAGE_SIZE, safeEmployeePage * EMPLOYEE_PAGE_SIZE);
   const receiptIds = run.receipts.filter((receipt) => receipt.status === 'PUBLISHED').map((receipt) => receipt.id);
 
   const kindLabel = run.kind === 'AGUINALDO' ? 'Aguinaldo' : 'Nómina ordinaria';
@@ -199,7 +237,6 @@ export default function PayrollOperationWorkspace({
       aria-labelledby="payroll-employees-title"
       eyebrow="Resultados"
       title={<span id="payroll-employees-title">Pago por colaborador</span>}
-      count={rows.length}
       description="Abre una fila para revisar el detalle de ingresos, deducciones, horas extra e incidencias."
       actions={run.status === 'CALCULATED' && <Button size="sm" variant="secondary" onClick={onAddComponent} disabled={!online || busy}><Plus size={15} /> Agregar ingreso o deducción</Button>}
     >
@@ -213,20 +250,20 @@ export default function PayrollOperationWorkspace({
               type="search"
               placeholder="Nombre del colaborador"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => { setQuery(event.target.value); setEmployeePage(1); }}
               autoComplete="off"
             />
-            {query && <button type="button" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15} /></button>}
+            {query && <button type="button" onClick={() => { setQuery(''); setEmployeePage(1); }} aria-label="Limpiar búsqueda"><X size={15} /></button>}
           </div>
         </div>
-        <label className="nm-check"><input type="checkbox" checked={onlyIncidents} onChange={(event) => setOnlyIncidents(event.target.checked)} /> Solo con incidencias</label>
+        <label className="nm-check"><input type="checkbox" checked={onlyIncidents} onChange={(event) => { setOnlyIncidents(event.target.checked); setEmployeePage(1); }} /> Solo con incidencias</label>
         <small className="nm-employee-count" aria-live="polite">{filteredRows.length} de {rows.length} colaborador(es)</small>
       </div>
       <div className="hr-ws-table-scroll">
         <table className="payroll-operation-table nm-employee-table">
           <thead><tr><th scope="col">Colaborador</th><th scope="col">Ingresos</th><th scope="col">INSS laboral</th><th scope="col">IR laboral</th><th scope="col">Deducciones</th><th scope="col">Neto</th><th scope="col">Incidencias</th><th scope="col"><span className="sr-only">Acciones</span></th></tr></thead>
           <tbody>
-            {filteredRows.map((row) => {
+            {pagedRows.map((row) => {
               const expanded = expandedUserId === row.userId;
               return (
                 <FragmentRow key={row.userId}>
@@ -284,6 +321,11 @@ export default function PayrollOperationWorkspace({
         </table>
       </div>
       {filteredRows.length === 0 && <p className="nm-no-results">No hay colaboradores que coincidan con los filtros.</p>}
+      {filteredRows.length > 0 && (
+        <div className="nm-pagination">
+          <Pagination page={safeEmployeePage} totalPages={employeePages} totalItems={filteredRows.length} pageSize={EMPLOYEE_PAGE_SIZE} onPageChange={setEmployeePage} alwaysShow emptyLabel="Sin colaboradores" />
+        </div>
+      )}
     </HrSection>
   );
 
@@ -298,13 +340,32 @@ export default function PayrollOperationWorkspace({
           : `${run.period?.code ?? `Periodo #${run.periodId ?? '—'}`} · ${formatDate(run.period?.dateFrom)} al ${formatDate(run.period?.dateTo)} · pago ${formatDate(run.period?.payDate)}.`}
         actions={<Button size="sm" variant="ghost" onClick={onRefresh} disabled={busy} aria-label="Actualizar corrida"><RefreshCw size={16} /> Actualizar</Button>}
       >
-        <dl className="hr-ws-facts nm-run-kpis" aria-label="Resumen total de la nómina">
-          <div><dt>Colaboradores</dt><dd>{run.totals?.employeeCount ?? run.snapshot.length}</dd></div>
-          <div><dt>Ingresos brutos</dt><dd>{formatRunTotal(currency, run.totals?.grossIncome)}</dd></div>
-          <div><dt>Deducciones</dt><dd>{formatRunTotal(currency, run.totals?.totalDeductions)}</dd></div>
-          <div><dt>Aportes patronales</dt><dd>{formatRunTotal(currency, run.totals?.employerContributions)}</dd></div>
-          <div className="is-accent"><dt>Neto a pagar</dt><dd>{formatRunTotal(currency, run.totals?.netPay)}</dd></div>
-        </dl>
+        <div className="nm-indicators" aria-label="Indicadores de la corrida">
+          <article className="nm-indicator is-primary">
+            <span className="nm-indicator-icon" aria-hidden="true"><CircleDollarSign size={20} /></span>
+            <span className="nm-indicator-label">Neto a pagar</span>
+            <strong className="nm-indicator-value">{formatRunTotal(currency, run.totals?.netPay)}</strong>
+            <small>{indicators.avgNet === null ? 'Promedio pendiente de cálculo' : `Promedio ${formatHrMoney(currency, indicators.avgNet)} por colaborador · ${indicators.headcount} en planilla`}</small>
+          </article>
+          <article className="nm-indicator">
+            <span className="nm-indicator-icon" aria-hidden="true"><Receipt size={20} /></span>
+            <span className="nm-indicator-label">Costo total para la empresa</span>
+            <strong className="nm-indicator-value">{indicators.companyCost === null ? 'Pendiente de cálculo' : formatHrMoney(currency, indicators.companyCost)}</strong>
+            <small>Bruto {formatRunTotal(currency, run.totals?.grossIncome)} + aportes patronales {formatRunTotal(currency, run.totals?.employerContributions)}</small>
+          </article>
+          <article className="nm-indicator">
+            <span className="nm-indicator-icon" aria-hidden="true"><ShieldCheck size={20} /></span>
+            <span className="nm-indicator-label">Retenciones al colaborador</span>
+            <strong className="nm-indicator-value">{formatRunTotal(currency, run.totals?.totalDeductions)}</strong>
+            <small>INSS {formatHrMoney(currency, indicators.inss)} · IR {formatHrMoney(currency, indicators.incomeTax)}{indicators.deductionRate !== null ? ` · ${indicators.deductionRate.toFixed(1)} % del bruto` : ''}</small>
+          </article>
+          <article className={`nm-indicator${indicators.variance === null ? '' : indicators.variance > 0 ? ' is-up' : indicators.variance < 0 ? ' is-down' : ''}`}>
+            <span className="nm-indicator-icon" aria-hidden="true"><TrendingUp size={20} /></span>
+            <span className="nm-indicator-label">Variación vs. corrida anterior</span>
+            <strong className="nm-indicator-value">{indicators.variance === null ? '—' : `${indicators.variance > 0 ? '+' : ''}${indicators.variance.toFixed(1)} %`}</strong>
+            <small>{previous ? `${previous.code}: neto ${formatRunTotal(currency, previous.netPay)}` : 'No hay una corrida anterior para comparar'}{indicators.overtimeHours > 0 ? ` · ${indicators.overtimeHours.toFixed(1)} h extra aprobadas` : ''}</small>
+          </article>
+        </div>
 
         {run.status === 'VOID' ? (
           <div className="nm-alert is-danger" role="alert">

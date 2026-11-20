@@ -120,11 +120,63 @@
 .nm-page .nm-run-code { font-size: 1.2rem; font-weight: 850; letter-spacing: -.01em; }
 .nm-page .nm-run-overview .hr-ws-section-body { display: flex; flex-direction: column; gap: 1rem; }
 
-.nm-page .hr-ws-facts.nm-run-kpis {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  padding-top: 0;
-  border-top: 0;
+/* Run detail: its own view, reached from the register. */
+.nm-page .nm-detail-view { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.nm-page .nm-detail-bar {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
 }
+.nm-page .nm-detail-crumb { color: var(--hr-ws-text-2); font-size: .85rem; font-weight: 600; }
+.nm-page .nm-runs-table tbody tr.nm-run-row { cursor: pointer; }
+
+/* Indicator cards: money and signals, never bare counts. */
+.nm-page .nm-indicators {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .85rem;
+}
+.nm-page .nm-indicator {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'icon label' 'value value' 'foot foot';
+  align-items: center;
+  gap: .35rem .6rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--hr-ws-border);
+  border-radius: var(--hr-ws-radius);
+  background: var(--hr-ws-panel);
+  min-width: 0;
+}
+.nm-page .nm-indicator-icon {
+  grid-area: icon;
+  display: inline-grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: .65rem;
+  background: var(--hr-ws-muted);
+  color: var(--color-primary);
+}
+.nm-page .nm-indicator-label { grid-area: label; color: var(--hr-ws-text-2); font-size: .8rem; font-weight: 700; }
+.nm-page .nm-indicator-value {
+  grid-area: value;
+  margin-top: .35rem;
+  font-size: 1.55rem;
+  font-weight: 850;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.nm-page .nm-indicator small { grid-area: foot; color: var(--hr-ws-text-2); font-size: .78rem; line-height: 1.4; }
+.nm-page .nm-indicator.is-primary {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--hr-ws-border));
+  background: color-mix(in srgb, var(--hr-ws-panel) 90%, var(--color-primary) 10%);
+}
+.nm-page .nm-indicator.is-primary .nm-indicator-icon { background: var(--color-primary); color: #fff; }
+.nm-page .nm-indicator.is-up .nm-indicator-value { color: var(--color-warning, #b45309); }
+.nm-page .nm-indicator.is-down .nm-indicator-value { color: var(--color-success, #15803d); }
 
 /* Stepper horizontal tipo "carril" */
 .nm-page .nm-stepper {
@@ -238,8 +290,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: .85rem 1.1rem;
+  padding: 1.1rem 1.5rem;
   list-style: none;
+  cursor: pointer;
 }
 .nm-page .nm-audit > summary::-webkit-details-marker { display: none; }
 .nm-page .nm-audit > summary > svg { flex: 0 0 auto; color: var(--hr-ws-text-2); transition: transform 150ms ease; }
@@ -252,7 +305,8 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: .75rem;
-  padding: 0 1.1rem 1rem;
+  padding: 1.25rem 1.5rem 1.25rem;
+  border-top: 1px solid var(--hr-ws-border);
 }
 
 .nm-page .nm-audit-grid > div {
@@ -266,7 +320,59 @@
 }
 .nm-page .nm-audit-grid strong { margin-bottom: .15rem; font-size: .74rem; letter-spacing: .04em; text-transform: uppercase; color: var(--hr-ws-text-2); }
 
-.nm-page .nm-audit-reconciliation { margin: 0 1.1rem 1rem; padding: .65rem .85rem; border: 1px solid var(--hr-ws-border); border-radius: .7rem; }
+.nm-page .nm-audit-reconciliation {
+  margin: 0 1.5rem 1.5rem;
+  border: 1px solid var(--hr-ws-border);
+  border-radius: .8rem;
+  background: var(--color-background);
+}
+.nm-page .nm-audit-reconciliation > summary {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .9rem 1.1rem;
+  font-size: .88rem;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+}
+.nm-page .nm-audit-reconciliation > summary::-webkit-details-marker { display: none; }
+.nm-page .nm-audit-reconciliation > summary::before {
+  content: '';
+  width: .45rem;
+  height: .45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 150ms ease;
+  opacity: .7;
+}
+.nm-page .nm-audit-reconciliation[open] > summary { border-bottom: 1px solid var(--hr-ws-border); }
+.nm-page .nm-audit-reconciliation[open] > summary::before { transform: rotate(45deg); }
+
+/* Flatten the panel inside the disclosure: no card-in-card. */
+.nm-page .nm-audit-reconciliation .hr-payroll-reconciliation {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  margin: 0;
+  padding: 1.25rem 1.1rem 1.35rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.nm-page .nm-audit-reconciliation .hr-payroll-subheading { margin: 0; }
+.nm-page .nm-audit-reconciliation .hr-payroll-reconciliation h3 { font-size: 1rem; font-weight: 800; }
+.nm-page .nm-audit-reconciliation .hr-payroll-reconciliation h3 svg { color: var(--color-primary); }
+.nm-page .nm-audit-reconciliation .hr-payroll-reconciliation p { font-size: .82rem; color: var(--hr-ws-text-2); }
+.nm-page .nm-audit-reconciliation .hr-payroll-reconciliation form {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: .9rem 1rem;
+  align-items: end;
+}
+.nm-page .nm-audit-reconciliation .hr-payroll-reconciliation form label { font-size: .78rem; }
+.nm-page .nm-audit-reconciliation .hr-payroll-reconciliation form > button { justify-self: start; }
 .nm-page .nm-audit-reconciliation > summary { font-size: .84rem; font-weight: 700; }
 
 /* ---------- Configuración legal ---------- */
@@ -367,3 +473,5 @@
   .nm-page .nm-employee-count { margin-left: 0; padding-bottom: 0; }
   .nm-legal .nm-legal-summary { grid-template-columns: minmax(0, 1fr); }
 }
+.nm-page .nm-audit-reconciliation .hr-payroll-subheading,
+.nm-page .nm-audit-reconciliation .hr-payroll-subheading > div { display: grid; gap: .3rem; }

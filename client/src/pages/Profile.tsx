@@ -16,7 +16,7 @@ import {
     ShoppingBag, CreditCard, Star, Languages,
     Moon, Sun, Bell, Settings,
     Briefcase as BriefcaseBusiness, CalendarClock, ChevronRight, Fingerprint, MapPin, FileText, WalletCards,
-    Building2, BadgeCheck, KeyRound, CircleUserRound, AlertCircle,
+    Building2, BadgeCheck, KeyRound, CircleUserRound, AlertCircle, Mail,
     type LucideIcon
 } from 'lucide-react';
 import type { User as AppUser } from '../types';
@@ -25,7 +25,7 @@ import { workforceClient } from '../components/hr/workforceClient';
 import { selectVacationBalance } from '../components/hr/vacationBalance';
 import type { HrMyWorkforce } from '../types/hr-workforce';
 import { formatHrNumber } from '../utils/hrFormat';
-import { HrHero, HrPage, HrSection, HrTabs, type HrFact } from '../components/hr/layout/HrWorkspace';
+import { HrPage, HrSection, type HrFact } from '../components/hr/layout/HrWorkspace';
 import './Profile.css';
 
 function axiosErr(err: unknown, fallback: string): string {
@@ -236,47 +236,91 @@ export default function Profile() {
         return ProfileAvatarInitials;
     }, [initials, roleLower]);
 
-    return (
-        <HrPage className="profile-page">
-            <HrHero
-                icon={ProfileAvatar}
-                eyebrow={<span className="profile-eyebrow"><CircleUserRound size={13} aria-hidden="true" /> Centro de cuenta</span>}
-                title={<><span className="sr-only">Mi perfil: </span><span id="profile-overview-title">{user?.name}</span></>}
-                subtitle={<span className="profile-user-email">{user?.email || 'Correo no disponible'} · @{user?.username}</span>}
-                badges={
-                    <>
-                        <span className="profile-badge is-role"><BadgeCheck size={14} aria-hidden="true" /> {user?.role?.name ?? 'Sin rol'}</span>
-                        <span className="profile-badge"><Building2 size={14} aria-hidden="true" /> {fullUserData?.company?.name || user?.company?.name || 'Empresa no disponible'}</span>
-                        <span className="profile-badge"><MapPin size={14} aria-hidden="true" /> {branchName || 'Sin sucursal asignada'}</span>
-                        <span className={`profile-badge ${hasEmployeeContext ? 'is-linked' : 'is-pending'}`}><BriefcaseBusiness size={14} aria-hidden="true" /> {hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}</span>
-                    </>
-                }
-                aside={
-                    <div className="profile-security-card">
-                        <span className="profile-security-icon" aria-hidden="true"><KeyRound size={20} /></span>
-                        <div><strong>Seguridad de la cuenta</strong><small>Contraseña, sesiones y verificación en dos pasos</small></div>
-                        <button type="button" onClick={() => selectTab('security')}>Revisar <ChevronRight size={16} aria-hidden="true" /></button>
-                    </div>
-                }
-                facts={heroFacts}
-            />
+    const tabGroups: { label: string; ids: ProfileTab[] }[] = [
+        { label: 'Cuenta', ids: ['info', 'settings'] },
+        { label: 'Trabajo', ids: ['hr', 'stats', 'permissions'] },
+        { label: 'Seguridad', ids: ['security', 'sessions', '2fa'] },
+    ];
+    const TAB_HELP: Record<ProfileTab, string> = {
+        info: 'Datos personales y de contacto que ve tu equipo.',
+        hr: 'Tu expediente laboral, marcajes, saldos y solicitudes.',
+        stats: 'Ventas y actividad registradas con tu usuario.',
+        permissions: 'Lo que tu rol te permite hacer en el sistema.',
+        settings: 'Idioma, moneda y tema de la interfaz.',
+        security: 'Cambia tu contraseña y revisa su vigencia.',
+        sessions: 'Dispositivos con sesión abierta en tu cuenta.',
+        '2fa': 'Agrega un segundo paso al iniciar sesión.',
+    };
+    const activeTabMeta = tabs.find(t => t.id === activeTab) ?? tabs[0];
+    const ActiveTabIcon = activeTabMeta.icon;
 
+    return (
+        <HrPage className="profile-page profile-v3">
             {profileLoadWarning && <div className="profile-load-warning" role="status"><AlertCircle size={18} aria-hidden="true" /><span>{profileLoadWarning}</span></div>}
 
-            <div className="profile-workspace" role="group" aria-label="Secciones de mi perfil">
-                <HrTabs<ProfileTab>
-                    items={tabs.map(t => ({ key: t.id, label: t.label, icon: t.icon }))}
-                    active={activeTab}
-                    onChange={selectTab}
-                    ariaLabel="Secciones de mi perfil"
-                    idPrefix="profile"
-                />
+            <div className="profile-shell">
+                <aside className="profile-identity" aria-labelledby="profile-overview-title">
+                    <section className="profile-id-card">
+                        <div className="profile-id-cover" aria-hidden="true" />
+                        <ProfileAvatar />
+                        <h1 id="profile-overview-title"><span className="sr-only">Mi perfil: </span>{user?.name}</h1>
+                        <p className="profile-user-email">@{user?.username}</p>
+                        <div className="profile-id-badges">
+                            <span className="profile-badge is-role"><BadgeCheck size={14} aria-hidden="true" /> {user?.role?.name ?? 'Sin rol'}</span>
+                            <span className={`profile-badge ${hasEmployeeContext ? 'is-linked' : 'is-pending'}`} title={hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}><BriefcaseBusiness size={14} aria-hidden="true" /> {hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}</span>
+                        </div>
+                        <ul className="profile-id-meta">
+                            <li><Building2 size={15} aria-hidden="true" /><span>{fullUserData?.company?.name || user?.company?.name || 'Empresa no disponible'}</span></li>
+                            <li><MapPin size={15} aria-hidden="true" /><span>{branchName || 'Sin sucursal asignada'}</span></li>
+                            <li><Mail size={15} aria-hidden="true" /><span>{user?.email || 'Correo no disponible'}</span></li>
+                        </ul>
+                        <dl className="profile-id-facts">
+                            {heroFacts.map(fact => (
+                                <div key={fact.label} className={fact.tone === 'success' ? 'is-success' : undefined}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>
+                            ))}
+                        </dl>
+                    </section>
+
+                    <nav className="profile-nav" aria-label="Secciones de mi perfil">
+                        {tabGroups.map(group => (
+                            <div key={group.label} className="profile-nav-group">
+                                <span className="profile-nav-label">{group.label}</span>
+                                {group.ids.map(id => {
+                                    const tab = tabs.find(t => t.id === id);
+                                    if (!tab) return null;
+                                    const Icon = tab.icon;
+                                    return (
+                                        <button key={id} type="button" id={`profile-tab-${id}`} aria-controls={`profile-panel-${id}`} aria-current={activeTab === id ? 'page' : undefined} className={activeTab === id ? 'active' : undefined} onClick={() => selectTab(id)}>
+                                            <Icon size={17} aria-hidden="true" /><span>{tab.label}</span><ChevronRight size={15} aria-hidden="true" className="profile-nav-caret" />
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        ))}
+                    </nav>
+
+                    <div className="profile-security-card">
+                        <span className="profile-security-icon" aria-hidden="true"><KeyRound size={20} /></span>
+                        <div><strong>Seguridad de la cuenta</strong><small>{passwordInfo?.daysUntilExpiry != null ? `Tu contraseña vence en ${passwordInfo.daysUntilExpiry} día(s)` : 'Contraseña, sesiones y verificación en dos pasos'}</small></div>
+                        <button type="button" onClick={() => selectTab('security')}>Revisar <ChevronRight size={16} aria-hidden="true" /></button>
+                    </div>
+                </aside>
+
+                <div className="profile-content">
+                    <header className="profile-content-head">
+                        <span className="profile-content-icon" aria-hidden="true"><ActiveTabIcon size={22} /></span>
+                        <div>
+                            <span className="profile-eyebrow"><CircleUserRound size={13} aria-hidden="true" /> Centro de cuenta</span>
+                            <h2 id={`profile-heading-${activeTab}`}>{activeTabMeta.label}</h2>
+                            <p>{TAB_HELP[activeTab]}</p>
+                        </div>
+                    </header>
 
                 <div
                     className="profile-panel"
                     id={`profile-panel-${activeTab}`}
-                    role="tabpanel"
-                    aria-labelledby={`profile-tab-${activeTab}`}
+                    role="region"
+                    aria-labelledby={`profile-heading-${activeTab}`}
                 >
 
                     {/* INFO */}
@@ -567,6 +611,7 @@ export default function Profile() {
                     {/* 2FA */}
                     {activeTab === '2fa' && <TwoFactorSection />}
 
+                </div>
                 </div>
             </div>
         </HrPage>

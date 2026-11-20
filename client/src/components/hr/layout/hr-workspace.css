@@ -7,7 +7,7 @@
   --hr-ws-text-2: var(--color-neutral-500);
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
   width: 100%;
   max-width: 1480px;
   min-width: 0;
@@ -42,8 +42,8 @@
 .hr-ws-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: .85rem 1rem;
-  padding: 1rem 1.1rem;
+  gap: 1.1rem 1.25rem;
+  padding: 1.5rem 1.75rem;
   border: 1px solid var(--hr-ws-border);
   border-radius: var(--hr-ws-radius);
   background: var(--hr-ws-panel);
@@ -375,7 +375,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: .75rem;
-  padding: .9rem 1.1rem;
+  padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--hr-ws-border);
 }
 
@@ -409,7 +409,7 @@
 }
 
 .hr-ws-section-body {
-  padding: 1rem 1.1rem;
+  padding: 1.25rem 1.5rem;
 }
 
 .hr-ws-section.is-flush .hr-ws-section-body {
@@ -458,6 +458,9 @@
 }
 
 .hr-ws-table-scroll {
+  /* position: relative keeps absolutely positioned children (e.g. .sr-only labels)
+     inside the scroller, so wide tables never widen the whole page. */
+  position: relative;
   overflow-x: auto;
 }
 
@@ -519,4 +522,19 @@ button.hr-ws-tile:hover {
   .hr-ws-hero-actions { width: 100%; justify-content: stretch; margin-left: 0; }
   .hr-ws-hero-actions > * { flex: 1 1 auto; }
   .hr-ws-hero-icon { display: none; }
+}
+
+/* Generous, uniform cell padding. Scoped to the workspace page so it wins over
+   legacy .inventory-table / admin-table density rules. */
+.hr-ws-page .hr-ws-section table thead th {
+  padding: .85rem 1.15rem;
+}
+.hr-ws-page .hr-ws-section table tbody :is(td, th) {
+  padding: 1rem 1.15rem;
+}
+.hr-ws-page .hr-ws-section table :is(thead, tbody) tr > :first-child {
+  padding-left: 1.5rem;
+}
+.hr-ws-page .hr-ws-section table :is(thead, tbody) tr > :last-child {
+  padding-right: 1.5rem;
 }
