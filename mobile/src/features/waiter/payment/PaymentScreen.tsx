@@ -38,6 +38,8 @@ export interface PaymentScreenProps {
     onFinished: () => void;
     /** Loads the cash data layer. With it, a cashier without an open shift can open one here and come back to the payment. */
     loadCash?: () => Promise<CashApi>;
+    /** Opens Caja, to close the shift that blocks cash. */
+    onOpenCash?: () => void;
 }
 
 interface Loaded {
@@ -45,6 +47,8 @@ interface Loaded {
     lines: ServerLine[];
     methods: Method[];
     shiftOk: boolean;
+    /** Why a cashier who has a shift cannot take cash with it (null: no problem, or no shift at all). */
+    shiftBlock: { kind: 'close' | 'branch' | 'unknown'; text: string } | null;
     tipRate: number | null;
     remaining: number;
 }
@@ -57,12 +61,19 @@ const MODES: { id: PaymentMode; label: string }[] = [
 
 const num = (v: unknown) => Number(v) || 0;
 const round2 = (n: number) => Math.round(n * 100) / 100;
+/** A cashier whose shift exists but cannot take cash here must hear why: opening another shift would only be refused (ALREADY_OPEN). */
+function shiftBlockOf(status: Json | null): Loaded['shiftBlock'] {
+    if (status === null) return { kind: 'unknown', text: 'No se pudo verificar tu turno de caja. Revisa la conexión e inténtalo de nuevo.' };
+    if (status.hasActiveShift !== true) return null; // no shift: "Abrir turno" is the right path
+    if (status.requiresClose === true) return { kind: 'close', text: typeof status.message === 'string' && status.message ? status.message : 'Tienes un turno abierto de otro día: ciérralo para cobrar en efectivo.' };
+    return { kind: 'branch', text: 'Tu turno abierto es de otra sucursal: ciérralo en Caja y abre uno en esta sucursal para cobrar en efectivo.' };
+}
 const NOT_SYNCED = 'El pedido aún se está sincronizando; cobrar requiere conexión.';
 
 type Meta = Pick<ChargeMeta, 'allIds' | 'changeOf' | 'methodOf' | 'plan'> & { mode: PaymentMode; payable: number };
 
 /** The cashier's payment screen (spec 7.3.1). Only the cashier (payments.process + invoices.issue) gets here. */
-export default function PaymentScreen({ api, user, orderId, initialMode = 'single', plans, ownerKey = null, onClose, onFinished, loadCash }: PaymentScreenProps) {
+export default function PaymentScreen({ api, user, orderId, initialMode = 'single', plans, ownerKey = null, onClose, onFinished, loadCash, onOpenCash }: PaymentScreenProps) {
     const canSplit = can(user, 'bills.split');
     const [loaded, setLoaded] = useState<Loaded | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -101,7 +112,8 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         const branchId = typeof order.branchId === 'number' ? order.branchId : (order.branch?.id ?? user.branchId);
         const tipEnabled = settings?.tipEnabled === true || settings?.tipEnabled === 'true';
         const tipRate = tipEnabled ? num(settings?.tipRate) : null;
-        return { order, lines: normalizeServerLines(order), methods, shiftOk: hasUsableCashShift(shift, branchId), tipRate, remaining: num((summary as Json).remaining) };
+        const shiftOk = hasUsableCashShift(shift, branchId);
+        return { order, lines: normalizeServerLines(order), methods, shiftOk, shiftBlock: shiftOk ? null : shiftBlockOf(shift), tipRate, remaining: num((summary as Json).remaining) };
     }, [api, id, user.branchId]);
 
     /** Every key change goes to the store together with the mode screen's own state, before the request leaves. */
@@ -308,10 +320,12 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         return <PaymentDone data={done} onFinish={onFinished} invoice={invoice} />;
     }
 
-    const { order, lines, methods, shiftOk, tipRate } = loaded;
+    const { order, lines, methods, shiftOk, shiftBlock, tipRate } = loaded;
     const subtotal = lines.reduce((n, l) => n + l.subtotal, 0);
     const tableLabel = order.table?.number ? `Mesa ${order.table.number}` : 'Mesa';
-    const ctx: ModeCtx = { methods, shiftOk, payable, charge, busy, locked: attempted, restored: resumed?.mode === mode ? resumed.plan : null, paid, pending, orderId: id, api, lines, onError: setError, onOpenShift: loadCash && isCashier(user) ? () => setOpeningShift(true) : undefined };
+    const ctx: ModeCtx = { methods, shiftOk, payable, charge, busy, locked: attempted, restored: resumed?.mode === mode ? resumed.plan : null, paid, pending, orderId: id, api, lines, onError: setError, onOpenShift: loadCash && isCashier(user) && !shiftBlock ? () => setOpeningShift(true) : undefined,
+        shiftIssue: shiftBlock && isCashier(user) ? (shiftBlock.kind === 'unknown' ? { text: shiftBlock.text, actionLabel: 'Reintentar', onAction: () => void refresh().catch(() => undefined) } : { text: shiftBlock.text, ...(onOpenCash ? { actionLabel: 'Ir a Caja', onAction: onOpenCash } : {}) }) : null,
+    };
     const customerName = customer?.customerName || (typeof order.customerName === 'string' && order.customerName ? order.customerName : 'Consumidor final');
     const locked = attempted || busy;
 

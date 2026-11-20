@@ -36,6 +36,12 @@ const num = (value: number) => {
     const [whole, dec] = Math.abs(v).toFixed(2).split('.');
     return `${sign}${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${dec}`;
 };
+/** Exchange rate: at least 2 decimals, up to the 4 the keypad allows (so US$ x TC multiplies out on paper). */
+const rate4 = (v: number) => {
+    if (!Number.isFinite(v)) return '0.00';
+    const t = v.toFixed(4).replace(/0{1,2}$/, '');
+    return t.length - t.indexOf('.') - 1 < 2 ? v.toFixed(2) : t;
+};
 const nio = (v: number) => `C$ ${num(v)}`;
 const usd = (v: number) => `US$ ${num(v)}`;
 const whole = (v: number) => (Number.isInteger(v) ? num(v).slice(0, -3) : Number.isFinite(v) ? String(v) : '0');
@@ -119,7 +125,7 @@ export function closeTicket(report: ShiftReport, opts: TicketOptions = {}): stri
     add(row('DEBE HABER', v.expected != null ? nio(v.expected) : '-'));
 
     add(RULE, 'ARQUEO');
-    if (v.rate != null) add(row('  Tipo de cambio', `C$ ${num(v.rate)} x US$`));
+    if (v.rate != null) add(row('  Tipo de cambio', `C$ ${rate4(v.rate)} x US$`));
     if (v.bills.length || v.coins.length) {
         add('Córdobas');
         [...v.bills, ...v.coins].forEach((r) => add(row(`  ${whole(r.denomination)} x ${r.count}`, num(r.denomination * r.count))));
@@ -128,7 +134,7 @@ export function closeTicket(report: ShiftReport, opts: TicketOptions = {}): stri
     if (v.usdBills.length) {
         add('Dólares');
         v.usdBills.forEach((r) => add(row(`  US$ ${whole(r.denomination)} x ${r.count}`, usd(r.denomination * r.count))));
-        add(row('  Total US$', usd(v.usd)), row(`  Equivale en C$${v.rate != null ? ` (TC ${num(v.rate)})` : ''}`, nio(v.usdInNio)));
+        add(row('  Total US$', usd(v.usd)), row(`  Equivale en C$${v.rate != null ? ` (TC ${rate4(v.rate)})` : ''}`, nio(v.usdInNio)));
     }
     add(row('CONTADO', v.counted != null ? nio(v.counted) : '-'));
     if (v.difference != null && v.status) {

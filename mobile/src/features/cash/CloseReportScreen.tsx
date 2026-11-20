@@ -5,6 +5,7 @@ import type { Session } from '../../core/session';
 import { closeTicket } from '../print/closeTicket';
 import { printOrShare, printOut as defaultPrintOut, type PrintOut } from '../print/printOut';
 import { money } from '../waiter/order/orderModel';
+import { cashErrorText, isRetryable } from './cashErrors';
 import { reportView, type ReportView } from './reportModel';
 import './cash.css';
 
@@ -52,6 +53,7 @@ function Line({ label, value, strong = false }: { label: string; value: string; 
 export function CloseReportScreen({ api, session, shiftId, onDone, onBack, printer = defaultPrintOut }: CloseReportProps) {
     const [report, setReport] = useState<ShiftReport | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [errorRetry, setErrorRetry] = useState(false);
     const [tick, setTick] = useState(0);
     const [showDenoms, setShowDenoms] = useState(false);
     const [busy, setBusy] = useState<'print' | 'share' | null>(null);
@@ -63,7 +65,11 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
         setError(null);
         api.report(shiftId).then(
             (r) => live && setReport(r),
-            (cause) => live && setError(cause instanceof Error ? cause.message : 'No se pudo cargar el reporte.'),
+            (cause) => {
+                if (!live) return;
+                setError(cashErrorText(cause, 'No se pudo cargar el reporte.'));
+                setErrorRetry(isRetryable(cause));
+            },
         );
         return () => {
             live = false;
@@ -87,7 +93,7 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
                 if (how === 'shared') setNotice({ text: 'No hay impresora conectada: se abrió el menú para compartir.', error: false });
             }
         } catch (cause) {
-            setNotice({ text: cause instanceof Error && cause.message ? cause.message : 'No se pudo imprimir el ticket.', error: true });
+            setNotice({ text: cashErrorText(cause, 'No se pudo imprimir el ticket.'), error: true });
         } finally {
             busyRef.current = false;
             setBusy(null);
@@ -121,9 +127,11 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
             {error && (
                 <p className="error cash-notice" role="alert">
                     {error}{' '}
-                    <button type="button" className="btn" onClick={() => setTick((t) => t + 1)}>
-                        Reintentar
-                    </button>
+                    {errorRetry && (
+                        <button type="button" className="btn" onClick={() => setTick((t) => t + 1)}>
+                            Reintentar
+                        </button>
+                    )}
                 </p>
             )}
             {!v && !error && <p className="muted cash-notice">Cargando reporte…</p>}

@@ -5,14 +5,15 @@ import type { CashApi } from '../../data/cashApi';
 import { loadCashApi } from '../../data/loadCashApi';
 import { CashHome, type CountMode } from './CashHome';
 import { CloseReportScreen } from './CloseReportScreen';
+import { OpenShiftsScreen } from './OpenShiftsScreen';
 import { ShiftHistoryScreen } from './ShiftHistoryScreen';
 
 /** Lazy entry of the caja: loads the cash data layer, then shows the open-shift / active-shift screens. */
-export default function CashEntry({ session, services, onBack, onCount }: { session: Session; services: Pick<Services, 'http' | 'sessions'>; onBack: () => void; onCount: (shiftId: number, mode: CountMode) => void }) {
+export default function CashEntry({ session, services, onBack, onCount, closeAttempt = null, onAttemptSeen }: { session: Session; services: Pick<Services, 'http' | 'sessions'>; onBack: () => void; onCount: (shiftId: number, mode: CountMode) => void; closeAttempt?: number | null; onAttemptSeen?: () => void }) {
     const [api, setApi] = useState<CashApi | null>(null);
     const [failed, setFailed] = useState(false);
     /** Local sub-views of the caja: the history list and one report opened from it. */
-    const [view, setView] = useState<{ name: 'home' } | { name: 'history' } | { name: 'report'; shiftId: number }>({ name: 'home' });
+    const [view, setView] = useState<{ name: 'home' } | { name: 'history' } | { name: 'openShifts' } | { name: 'report'; shiftId: number; from: 'history' | 'home' }>({ name: 'home' });
     useEffect(() => {
         let alive = true;
         loadCashApi(services).then(
@@ -37,7 +38,8 @@ export default function CashEntry({ session, services, onBack, onCount }: { sess
             </main>
         );
     }
-    if (view.name === 'history') return <ShiftHistoryScreen api={api} onBack={() => setView({ name: 'home' })} onOpen={(shiftId) => setView({ name: 'report', shiftId })} />;
-    if (view.name === 'report') return <CloseReportScreen api={api} session={session} shiftId={view.shiftId} onBack={() => setView({ name: 'history' })} />;
-    return <CashHome session={session} api={api} onBack={onBack} onCount={onCount} onHistory={() => setView({ name: 'history' })} />;
+    if (view.name === 'openShifts') return <OpenShiftsScreen api={api} onBack={() => setView({ name: 'home' })} onCount={onCount} />;
+    if (view.name === 'history') return <ShiftHistoryScreen api={api} onBack={() => setView({ name: 'home' })} onOpen={(shiftId) => setView({ name: 'report', shiftId, from: 'history' })} />;
+    if (view.name === 'report') return <CloseReportScreen api={api} session={session} shiftId={view.shiftId} onBack={() => setView(view.from === 'home' ? { name: 'home' } : { name: 'history' })} />;
+    return <CashHome session={session} api={api} onBack={onBack} onCount={onCount} onHistory={() => setView({ name: 'history' })} onOpenShifts={() => setView({ name: 'openShifts' })} closeAttempt={closeAttempt} onReport={(shiftId) => setView({ name: 'report', shiftId, from: 'home' })} onAttemptSeen={onAttemptSeen} />;
 }

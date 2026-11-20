@@ -5,6 +5,7 @@ import type { Session } from '../../core/session';
 import { isCashAdmin } from '../../core/permissions';
 import { useOnline } from '../../data/useOnline';
 import { money } from '../waiter/order/orderModel';
+import { cashErrorText, isRetryable } from './cashErrors';
 import { expectedFromSummary } from './cashMath';
 import type { CountMode } from './CashHome';
 import { MovementSheet } from './MovementSheet';
@@ -23,6 +24,8 @@ export interface ActiveShiftProps {
     /** "Arqueo parcial" / "Cerrar turno": the count screen takes it from here. */
     onCount: (shiftId: number, mode: CountMode) => void;
     onHistory?: () => void;
+    /** "Turnos abiertos" (ADMIN / SUPERADMIN only: the caller passes it just for them). */
+    onSupervise?: () => void;
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
@@ -62,11 +65,12 @@ function Card({ title, amount, note }: { title: string; amount: string; note: st
 }
 
 /** Active shift (spec 7.3.2b). The count is blind: "Debe haber" is rendered for ADMIN / SUPERADMIN only, from the server value. */
-export function ActiveShiftScreen({ api, session, shift, requiresClose = false, closeMessage = null, addMovement, onBack, onCount, onHistory }: ActiveShiftProps) {
+export function ActiveShiftScreen({ api, session, shift, requiresClose = false, closeMessage = null, addMovement, onBack, onCount, onHistory, onSupervise }: ActiveShiftProps) {
     const online = useOnline();
     const admin = isCashAdmin(session.user);
     const [data, setData] = useState<ShiftSummary | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [loadRetry, setLoadRetry] = useState(false);
     const [tick, setTick] = useState(0);
     const [sheet, setSheet] = useState<'IN' | 'OUT' | null>(null);
 
@@ -78,7 +82,11 @@ export function ActiveShiftScreen({ api, session, shift, requiresClose = false, 
                 setData(d);
                 setLoadError(null);
             },
-            (cause) => live && setLoadError(cause instanceof Error ? cause.message : 'No se pudo cargar el resumen.'),
+            (cause) => {
+                if (!live) return;
+                setLoadError(cashErrorText(cause, 'No se pudo cargar el resumen.'));
+                setLoadRetry(isRetryable(cause));
+            },
         );
         return () => {
             live = false;
@@ -127,6 +135,11 @@ export function ActiveShiftScreen({ api, session, shift, requiresClose = false, 
                 <button type="button" className="btn" disabled={!online} onClick={() => onCount(shift.id, 'partial')}>
                     Arqueo parcial
                 </button>
+                {onSupervise && (
+                    <button type="button" className="btn" aria-label="Turnos abiertos" onClick={onSupervise}>
+                        Turnos abiertos
+                    </button>
+                )}
                 {onHistory && (
                     <button type="button" className="btn" aria-label="Historial de turnos" onClick={onHistory}>
                         Historial
@@ -136,7 +149,7 @@ export function ActiveShiftScreen({ api, session, shift, requiresClose = false, 
             {(requiresClose || loadError) && (
                 <p className={requiresClose ? 'cash-notice cash-warn' : 'error cash-notice'} role={loadError ? 'alert' : 'status'}>
                     {requiresClose ? (closeMessage ?? 'Este turno es de un día anterior: ciérralo antes de cobrar en efectivo.') : loadError}
-                    {loadError && (
+                    {loadError && loadRetry && (
                         <>
                             {' '}
                             <button type="button" className="btn" onClick={reload}>

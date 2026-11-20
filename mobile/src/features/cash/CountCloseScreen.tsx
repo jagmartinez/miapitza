@@ -1,26 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CashApi } from '../../data/cashApi';
 import { CashError } from '../../data/cashApi';
-import type { ClosePayload, ClosePreview, CountResult, ShiftSummary } from '../../data/cashTypes';
+import type { ClosePayload, ClosePreview, ShiftSummary } from '../../data/cashTypes';
 import type { Session } from '../../core/session';
+import { useExtendedIdleLock } from '../../core/IdleLockBoundary';
 import { isCashAdmin } from '../../core/permissions';
 import { ownerKeyOf } from '../../data/types';
 import { useOnline } from '../../data/useOnline';
 import { money } from '../waiter/order/orderModel';
 import { Keypad } from '../waiter/payment/controls';
-import { DENOMINATIONS, buildClosePayload, buildCountBody, countedTotals, emptyBreakdown, expectedFromSummary, type Breakdown } from './cashMath';
+import { cashErrorText, isRetryable } from './cashErrors';
+import { DENOMINATIONS, buildClosePayload, countedTotals, emptyBreakdown, expectedFromSummary, type Breakdown } from './cashMath';
 import type { CountMode } from './CashHome';
 import { DenominationColumn, type DenomRow } from './DenominationColumn';
+import '../waiter/tables/sheets.css';
 import './cash.css';
 
 export interface CountCloseProps {
-    api: Pick<CashApi, 'summary' | 'settings' | 'count' | 'previewClose' | 'close'>;
+    api: Pick<CashApi, 'summary' | 'settings' | 'previewClose' | 'close'>;
     session: Session;
     shiftId: number;
     mode: CountMode;
     onBack: () => void;
     /** The shift is closed (or was already closed by this user): go to the close report. */
     onClosed: (shiftId: number) => void;
+    /** A close is about to be sent: if the cashier lands back in Caja before knowing the outcome, Caja checks the shift. */
+    onCloseAttempt?: (shiftId: number) => void;
 }
 
 type Group = keyof Breakdown;
@@ -35,7 +40,7 @@ const newId = () => crypto.randomUUID();
 
 /** A failed send that may or may not have reached the server: "Reintentar" resends exactly this with the same action id. */
 interface Retry {
-    op: 'close' | 'count';
+    op: 'close';
     payload: ClosePayload;
     id: string;
 }
@@ -49,7 +54,7 @@ export function CountCloseScreen(props: CountCloseProps) {
     return <CountClose key={ownerKeyOf(props.session) ?? ''} {...props} />;
 }
 
-function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountCloseProps) {
+function CountClose({ api, session, shiftId, mode, onBack, onClosed, onCloseAttempt }: CountCloseProps) {
     const online = useOnline();
     const admin = isCashAdmin(session.user);
     const [breakdown, setBreakdown] = useState<Breakdown>(emptyBreakdown);
@@ -58,8 +63,8 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
     const [sel, setSel] = useState<Target | null>(null);
     const [summary, setSummary] = useState<ShiftSummary | null>(null);
     const [validated, setValidated] = useState<{ key: string; result: ClosePreview } | null>(null);
-    const [saved, setSaved] = useState<CountResult | null>(null);
-    const [pending, setPending] = useState<'validate' | 'count' | 'close' | null>(null);
+    const [pending, setPending] = useState<'validate' | 'close' | null>(null);
+    const [confirmLeave, setConfirmLeave] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [retry, setRetry] = useState<Retry | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -99,11 +104,13 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
     const exceeds = result?.exceedsTolerance === true;
     const hasNote = notes.trim() !== '';
     const can = online && rateOk && pending === null;
+    // A count with entries is work in progress: leaving asks first, and the idle lock waits longer (it still locks and clears).
+    const hasEntries = totals.totalC > 0 || totals.usd > 0;
+    useExtendedIdleLock(hasEntries);
 
     const edited = () => {
         setError(null);
         setRetry(null);
-        setSaved(null);
     };
 
     const key = (k: string) => {
@@ -136,13 +143,10 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
     };
 
     const fail = (cause: unknown, again: Retry | null) => {
-        if (cause instanceof CashError) {
-            setError(cause.code === 'CASH_DIFF_EXCEEDS_TOLERANCE' ? SUPERVISOR : cause.message || 'No se pudo completar.');
-            setRetry(null); // a definitive answer ends the action
-        } else {
-            setError(cause instanceof Error && cause.message ? `${cause.message}. Puedes reintentar.` : 'No se pudo completar. Puedes reintentar.');
-            setRetry(again);
-        }
+        if (cause instanceof CashError && cause.code === 'CASH_DIFF_EXCEEDS_TOLERANCE') setError(SUPERVISOR);
+        else setError(cashErrorText(cause, 'No se pudo completar.'));
+        // A definitive answer ends the action; only an unknown outcome (network, timeout, 5xx) may be retried with the same id.
+        setRetry(isRetryable(cause) ? again : null);
     };
 
     const validate = async () => {
@@ -163,40 +167,33 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
         }
     };
 
-    const send = async (op: 'close' | 'count', payload: ClosePayload, id: string) => {
+    const send = async (payload: ClosePayload, id: string) => {
         if (busy.current) return;
         busy.current = true;
-        setPending(op);
+        setPending('close');
         setError(null);
         setRetry(null);
+        onCloseAttempt?.(shiftId);
         try {
-            if (op === 'count') {
-                const { endAmount: _e, notes: _n, forceClose: _f, ...body } = payload;
-                void _e;
-                void _n;
-                void _f;
-                const r = await api.count(shiftId, body, { actionId: id });
-                if (alive.current) setSaved(r);
-            } else {
-                await api.close(shiftId, payload, { actionId: id }); // { alreadyClosed: true } is a success too
-                if (alive.current) onClosed(shiftId);
-            }
+            await api.close(shiftId, payload, { actionId: id }); // { alreadyClosed: true } is a success too
+            if (alive.current) onClosed(shiftId);
         } catch (cause) {
-            if (alive.current) fail(cause, { op, payload, id });
+            if (alive.current) fail(cause, { op: 'close', payload, id });
         } finally {
             busy.current = false;
             if (alive.current) setPending(null);
         }
     };
 
-    const saveCount = () => {
-        if (!can) return;
-        setSaved(null);
-        void send('count', { ...buildCountBody(breakdown, rate), endAmount: totals.totalC / 100 }, newId());
-    };
     const close = (force: boolean) => {
         if (!can || !result) return;
-        void send('close', buildClosePayload(breakdown, rate, notes, force), newId());
+        void send(buildClosePayload(breakdown, rate, notes, force), newId());
+    };
+
+    const leave = () => {
+        if (pending !== null) return;
+        if (hasEntries) setConfirmLeave(true);
+        else onBack();
     };
 
     const row = (group: Group, denom: number, kind: string, currency: string): DenomRow => {
@@ -215,13 +212,12 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
     const difference = admin && result && typeof result.difference === 'number' ? result.difference : null;
     const register = summary?.shift.cashRegister?.name ?? 'Caja';
     const cashier = summary?.shift.user?.name ?? session.user.name;
-    const status = result?.status ?? saved?.status;
-    const title = mode === 'close' ? 'Cerrar turno' : 'Arqueo parcial';
+        const title = mode === 'close' ? 'Cerrar turno' : 'Arqueo parcial';
 
     return (
         <main className="cash" data-testid="cash-count" data-mode={mode}>
             <header className="cash-bar">
-                <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
+                <button type="button" className="btn" aria-label="Volver" disabled={pending !== null} onClick={leave}>
                     ←
                 </button>
                 <div className="cash-head">
@@ -300,14 +296,14 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
                             {result.status ? STATUS_LABEL[result.status] : 'Validado'}
                         </p>
                     )}
-                    {saved && (
-                        <p className="muted" data-testid="count-saved">
-                            {`Arqueo guardado${status ? ` · ${STATUS_LABEL[status]}` : ''}`}
-                            {admin && typeof saved.difference === 'number' ? ` · ${signed(saved.difference)}` : ''}
-                        </p>
-                    )}
+                    {mode === 'partial' && <p className="muted">Verificación — no se registra</p>}
                     {noteRequired && <span className="muted">La nota es obligatoria.</span>}
-                    <textarea className="cash-notes" aria-label="Nota" placeholder="Nota del cierre" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+                    <textarea className="cash-notes" aria-label="Nota" placeholder="Nota del cierre" rows={2} value={notes} onChange={(e) => {
+                            // A new note is a new close: the failed one (and its id) is dropped.
+                            setNotes(e.target.value);
+                            edited();
+                        }}
+                    />
                     {exceeds && !admin && <p className="error">{SUPERVISOR}</p>}
                     {error && (
                         <p className="error" role="alert">
@@ -319,15 +315,12 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
             </div>
                 <footer className="cash-count-foot" aria-label="Acciones del arqueo">
                     {retry && (
-                        <button type="button" className="btn" disabled={!online || pending !== null} onClick={() => void send(retry.op, retry.payload, retry.id)}>
+                        <button type="button" className="btn" disabled={!online || pending !== null} onClick={() => void send(retry.payload, retry.id)}>
                             Reintentar
                         </button>
                     )}
                     <button type="button" className="btn" disabled={!can} onClick={() => void validate()}>
                         {pending === 'validate' ? 'Validando…' : 'Validar'}
-                    </button>
-                    <button type="button" className="btn" disabled={!can} onClick={saveCount}>
-                        {pending === 'count' ? 'Guardando…' : 'Guardar arqueo'}
                     </button>
                     {mode === 'close' &&
                         (exceeds && admin ? (
@@ -340,6 +333,22 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed }: CountClos
                             </button>
                         ))}
                 </footer>
+            {confirmLeave && (
+                <div className="sheet-backdrop">
+                    <div className="sheet cash-confirm" role="alertdialog" aria-modal="true" aria-label="Descartar conteo">
+                        <h2 className="sheet-title">¿Descartar el conteo?</h2>
+                        <p className="muted">Lo que contaste se perderá.</p>
+                        <div className="cash-sheet-actions">
+                            <button type="button" className="btn" onClick={() => setConfirmLeave(false)}>
+                                Seguir contando
+                            </button>
+                            <button type="button" className="btn btn-primary" onClick={onBack}>
+                                Descartar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </main>
     );
 }

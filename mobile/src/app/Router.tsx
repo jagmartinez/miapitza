@@ -5,7 +5,7 @@ import { resolveMode } from '../core/mode';
 import { applyOrientation } from '../core/orientation';
 import type { Services } from '../core/services';
 import type { DeviceType, Session } from '../core/session';
-import { useIdleLock } from '../core/useIdleLock';
+import { IdleLockBoundary } from '../core/IdleLockBoundary';
 import { AccountHome } from '../features/account/AccountHome';
 import { LoginScreen } from '../features/account/LoginScreen';
 import { DeviceSetupScreen } from '../features/device/DeviceSetupScreen';
@@ -14,10 +14,13 @@ import { PinScreen } from '../features/pin/PinScreen';
 import { WaiterHome } from '../features/waiter/WaiterHome';
 import { loadWaiterData, wipeWaiterData } from '../data/loadWaiterData';
 
-/** Locks the waiter tablet back to the PIN screen after 2 minutes without touch. */
+/** Locks the waiter tablet back to the PIN screen after 2 minutes without touch (10 while a cash count has entries). */
 function WaiterSession({ session, services, onSwitchUser }: { session: Session; services: Services; onSwitchUser: () => void }) {
-    useIdleLock(onSwitchUser);
-    return <WaiterHome session={session} services={services} onSwitchUser={onSwitchUser} />;
+    return (
+        <IdleLockBoundary onLock={onSwitchUser}>
+            <WaiterHome session={session} services={services} onSwitchUser={onSwitchUser} />
+        </IdleLockBoundary>
+    );
 }
 
 export function Router({ services }: { services: Services }) {

@@ -43,9 +43,14 @@ export function SinglePayment({ ctx }: { ctx: ModeCtx }) {
             <section className="pay-col pay-right" aria-label="Recibido">
                 {blocked ? (
                     <div className="pay-blocked" role="alert">
-                        <strong>Abre tu turno de caja</strong>
-                        <span className="muted">Necesitas un turno de caja abierto hoy para cobrar en efectivo. Elige otro método o abre tu turno.</span>
-                        {ctx.onOpenShift && (
+                        <strong>{ctx.shiftIssue ? 'No puedes cobrar en efectivo' : 'Abre tu turno de caja'}</strong>
+                        <span className="muted">{ctx.shiftIssue ? ctx.shiftIssue.text : 'Necesitas un turno de caja abierto hoy para cobrar en efectivo. Elige otro método o abre tu turno.'}</span>
+                        {ctx.shiftIssue?.onAction && (
+                            <button type="button" className="btn btn-primary" disabled={busy} onClick={ctx.shiftIssue.onAction}>
+                                {ctx.shiftIssue.actionLabel}
+                            </button>
+                        )}
+                        {!ctx.shiftIssue && ctx.onOpenShift && (
                             <button type="button" className="btn btn-primary" disabled={busy} onClick={ctx.onOpenShift}>
                                 Abrir turno
                             </button>

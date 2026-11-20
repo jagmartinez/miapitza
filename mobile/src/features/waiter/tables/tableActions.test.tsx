@@ -142,7 +142,7 @@ describe('table actions', () => {
         expect(onOpenOrder).not.toHaveBeenCalled(); // the release after a long press is not a tap
         expect(within(sheet).getByText('Mesa 2 · Salón')).toBeInTheDocument();
         expect(within(sheet).getByText('Ana Perez')).toBeInTheDocument();
-        expect(await within(sheet).findByText('C$ 350.00')).toBeInTheDocument();
+        expect(await within(sheet).findByText('C$ 350')).toBeInTheDocument();
         for (const chip of ['3 pers', '25 min', '3 productos', '1 en cocina']) expect(within(sheet).getByText(chip)).toBeInTheDocument();
     });
 
@@ -158,7 +158,7 @@ describe('table actions', () => {
         expect(within(sheet).getByText('—')).toBeInTheDocument(); // while the paid amount loads
         // /orders/active has no payments: the paid amount comes from the order detail (ACTIVE payments only)
         release({ id: 104, payments: [{ amount: '100.00', status: 'ACTIVE' }, { amount: '50.00', status: 'REVERSED' }] });
-        expect(await within(sheet).findByText('C$ 400.00')).toBeInTheDocument();
+        expect(await within(sheet).findByText('C$ 400')).toBeInTheDocument();
     });
 
     it('actions sheet hides buttons without permission', async () => {

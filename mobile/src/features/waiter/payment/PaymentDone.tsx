@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { getApiErrorMessage } from '@web/utils/apiError';
+import { isAmbiguousMutationFailure } from '@web/utils/idempotency';
 import { useOnline } from '../../../data/useOnline';
 import { printOut, type PrintOut } from '../../print/printOut';
 import { money } from '../order/orderModel';
@@ -23,7 +25,7 @@ type Share = 'print' | 'send';
 export function PaymentDone({ data, onFinish, invoice, printer = printOut }: { data: DoneData; onFinish: () => void; invoice?: InvoiceSource; printer?: Pick<PrintOut, 'sharePdf'> }) {
     const online = useOnline();
     const [busy, setBusy] = useState<Share | null>(null);
-    const [failure, setFailure] = useState<{ text: string; retry: Share } | null>(null);
+    const [failure, setFailure] = useState<{ text: string; retry: Share | null } | null>(null);
     const busyRef = useRef(false);
     const canShare = !!invoice && !!data.invoiceNumber && !data.invoiceError;
 
@@ -36,8 +38,10 @@ export function PaymentDone({ data, onFinish, invoice, printer = printOut }: { d
         let blob: Blob;
         try {
             blob = await invoice.load();
-        } catch {
-            setFailure({ text: 'No se pudo descargar la factura. Revisa la conexión e inténtalo de nuevo.', retry: kind });
+        } catch (cause) {
+            // Network / timeout / 5xx: try again. A definitive answer (403, 404...) says why in Spanish and offers nothing to retry.
+            const again = isAmbiguousMutationFailure(cause);
+            setFailure({ text: again ? 'No se pudo descargar la factura. Revisa la conexión e inténtalo de nuevo.' : `No se pudo descargar la factura. ${getApiErrorMessage(cause)}`, retry: again ? kind : null });
             busyRef.current = false;
             setBusy(null);
             return;
@@ -86,9 +90,11 @@ export function PaymentDone({ data, onFinish, invoice, printer = printOut }: { d
             {failure && (
                 <p className="error" role="alert">
                     {failure.text}{' '}
-                    <button type="button" className="btn" disabled={busy !== null || !online} onClick={() => void share(failure.retry)}>
-                        Reintentar
-                    </button>
+                    {failure.retry && (
+                        <button type="button" className="btn" disabled={busy !== null || !online} onClick={() => void share(failure.retry!)}>
+                            Reintentar
+                        </button>
+                    )}
                 </p>
             )}
             <button type="button" className="btn btn-primary pay-charge" onClick={onFinish}>

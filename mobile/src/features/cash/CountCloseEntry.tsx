@@ -7,7 +7,7 @@ import { CountCloseScreen } from './CountCloseScreen';
 import type { CountMode } from './CashHome';
 
 /** Lazy entry of the count / close screen: loads the cash data layer, then shows the screen. */
-export default function CountCloseEntry({ session, services, shiftId, mode, onBack, onClosed }: { session: Session; services: Pick<Services, 'http' | 'sessions'>; shiftId: number; mode: CountMode; onBack: () => void; onClosed: (shiftId: number) => void }) {
+export default function CountCloseEntry({ session, services, shiftId, mode, onBack, onClosed, onCloseAttempt }: { session: Session; services: Pick<Services, 'http' | 'sessions'>; shiftId: number; mode: CountMode; onBack: () => void; onClosed: (shiftId: number) => void; onCloseAttempt?: (shiftId: number) => void }) {
     const [api, setApi] = useState<CashApi | null>(null);
     const [failed, setFailed] = useState(false);
     useEffect(() => {
@@ -34,5 +34,5 @@ export default function CountCloseEntry({ session, services, shiftId, mode, onBa
             </main>
         );
     }
-    return <CountCloseScreen api={api} session={session} shiftId={shiftId} mode={mode} onBack={onBack} onClosed={onClosed} />;
+    return <CountCloseScreen api={api} session={session} shiftId={shiftId} mode={mode} onBack={onBack} onClosed={onClosed} onCloseAttempt={onCloseAttempt} />;
 }

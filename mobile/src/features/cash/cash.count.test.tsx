@@ -259,27 +259,14 @@ describe('CountCloseScreen', () => {
         await ready();
         enter('Billete C$ 100', '2');
         expect(screen.getByRole('status')).toHaveTextContent('Requiere conexión');
-        for (const name of ['Validar', 'Guardar arqueo', 'Cerrar turno']) expect(screen.getByRole('button', { name })).toBeDisabled();
-    });
-
-    it('Guardar arqueo sends a partial count and shows only the label to a CAJERO', async () => {
-        const { api } = setup({ role: 'CAJERO', mode: 'partial' });
-        await ready();
-        enter('Billete C$ 100', '2');
-        expect(screen.queryByRole('button', { name: 'Cerrar turno' })).toBeNull();
-        click('Guardar arqueo');
-        const saved = await screen.findByTestId('count-saved');
-        expect(saved).toHaveTextContent('Arqueo guardado');
-        expect(saved).toHaveTextContent('Faltante');
-        expect(within(saved).queryByText(/1,/)).toBeNull();
-        expect(api.count.mock.calls[0][1]).toEqual({ bills: [{ denomination: 100, count: 2 }], coins: [], usdBills: [] });
+        for (const name of ['Validar', 'Cerrar turno']) expect(screen.getByRole('button', { name })).toBeDisabled();
     });
 
     it('the action buttons sit in a footer outside the scrolling columns', async () => {
         setup({ role: 'ADMIN' });
         await ready();
         const foot = screen.getByRole('contentinfo', { name: 'Acciones del arqueo' });
-        for (const name of ['Validar', 'Guardar arqueo', 'Cerrar turno']) expect(within(foot).getByRole('button', { name })).toBeInTheDocument();
+        for (const name of ['Validar', 'Cerrar turno']) expect(within(foot).getByRole('button', { name })).toBeInTheDocument();
         expect(foot.closest('.cash-count-body')).toBeNull();
         expect(foot.closest('.cash-dcol')).toBeNull();
         expect(foot.closest('.cash-count-panel')).toBeNull();

@@ -4,6 +4,7 @@ import { CashError, type CashRegisterRow } from '../../data/cashTypes';
 import { useOnline } from '../../data/useOnline';
 import { money } from '../waiter/order/orderModel';
 import { Keypad, parseTyped, typeKey } from '../waiter/payment/controls';
+import { cashErrorText, isRetryable } from './cashErrors';
 import { OpeningCount } from './OpeningCount';
 import '../waiter/payment/payment.css';
 import './cash.css';
@@ -20,6 +21,8 @@ export interface OpenShiftProps {
     title?: string;
     /** "Historial de turnos" (the standalone caja only). */
     onHistory?: () => void;
+    /** "Turnos abiertos" (ADMIN / SUPERADMIN only: the caller passes it just for them). */
+    onSupervise?: () => void;
 }
 
 /** Why an open failed, in words for the cashier. */
@@ -29,14 +32,15 @@ export function openErrorMessage(error: unknown): string {
         if (error.code === 'CASH_OFFLINE') return OFFLINE_TEXT;
         return error.message;
     }
-    return error instanceof Error && error.message ? error.message : 'No se pudo abrir el turno.';
+    return cashErrorText(error, 'No se pudo abrir el turno.');
 }
 
 /** "Abrir turno" (spec 7.3.2b): register, opening float, open. Cash calls are online only. */
-export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abrir turno', onHistory }: OpenShiftProps) {
+export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abrir turno', onHistory, onSupervise }: OpenShiftProps) {
     const online = useOnline();
     const [registers, setRegisters] = useState<CashRegisterRow[] | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [loadRetry, setLoadRetry] = useState(false);
     const [registerId, setRegisterId] = useState<number | null>(null);
     /** Registers the server told us are taken (by whom), until a reload says otherwise. */
     const [taken, setTaken] = useState<Record<number, string>>({});
@@ -71,7 +75,10 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
                 if (free.length === 1) setRegisterId(free[0].id);
             }
         } catch (cause) {
-            if (alive.current) setLoadError(openErrorMessage(cause));
+            if (alive.current) {
+                setLoadError(openErrorMessage(cause));
+                setLoadRetry(isRetryable(cause));
+            }
         }
     }, [api]);
     useEffect(() => {
@@ -126,16 +133,16 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
                 onOpened();
                 return;
             }
-            // A definitive answer ends the action; only an unknown outcome may be retried with the same id.
+            // A definitive answer ends the action; only an unknown outcome (network, timeout, 5xx) may be retried with the same id.
+            if (!isRetryable(cause)) actionId.current = null;
             if (cause instanceof CashError) {
-                actionId.current = null;
                 if (cause.code === 'CASH_REGISTER_OCCUPIED') {
                     setTaken((t) => ({ ...t, [registerId]: cause.occupiedBy?.name ?? 'otro usuario' }));
                     setRegisterId(null);
                     void loadRegisters();
                 }
             }
-            setFailed(!(cause instanceof CashError));
+            setFailed(isRetryable(cause));
             setError(openErrorMessage(cause));
         } finally {
             pendingRef.current = false;
@@ -159,9 +166,18 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
                         {OFFLINE_TEXT}
                     </span>
                 )}
-                {onHistory && (
+                {(onHistory || onSupervise) && (
                     <>
                         <span className="grow" />
+                        {onSupervise && (
+                            <button type="button" className="btn" aria-label="Turnos abiertos" disabled={pending} onClick={onSupervise}>
+                                Turnos abiertos
+                            </button>
+                        )}
+                    </>
+                )}
+                {onHistory && (
+                    <>
                         <button type="button" className="btn" aria-label="Historial de turnos" disabled={pending} onClick={onHistory}>
                             Historial
                         </button>
@@ -174,9 +190,11 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
                     {loadError && (
                         <p className="error" role="alert">
                             {loadError}{' '}
-                            <button type="button" className="btn" onClick={() => void loadRegisters()}>
-                                Reintentar
-                            </button>
+                            {loadRetry && (
+                                <button type="button" className="btn" onClick={() => void loadRegisters()}>
+                                    Reintentar
+                                </button>
+                            )}
                         </p>
                     )}
                     {!registers && !loadError && <p className="muted">Cargando cajas…</p>}

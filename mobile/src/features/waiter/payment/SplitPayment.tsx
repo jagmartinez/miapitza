@@ -265,10 +265,15 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
                                     </select>
                                     {cashBlocked && (
                                         <p className="error" role="alert">
-                                            Abre tu turno de caja para cobrar en efectivo.
+                                            {ctx.shiftIssue ? ctx.shiftIssue.text : 'Abre tu turno de caja para cobrar en efectivo.'}
                                         </p>
                                     )}
-                                    {cashBlocked && ctx.onOpenShift && (
+                                    {cashBlocked && ctx.shiftIssue?.onAction && (
+                                        <button type="button" className="btn" disabled={busy} onClick={ctx.shiftIssue.onAction}>
+                                            {ctx.shiftIssue.actionLabel}
+                                        </button>
+                                    )}
+                                    {cashBlocked && !ctx.shiftIssue && ctx.onOpenShift && (
                                         <button type="button" className="btn" disabled={busy} onClick={ctx.onOpenShift}>
                                             Abrir turno
                                         </button>

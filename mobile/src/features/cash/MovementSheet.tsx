@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { ActionOpts } from '../../data/cashApi';
-import { CashError, type MovementInput } from '../../data/cashTypes';
+import type { MovementInput } from '../../data/cashTypes';
+import { cashErrorText, isRetryable } from './cashErrors';
 import { useOnline } from '../../data/useOnline';
 import { money } from '../waiter/order/orderModel';
 import { Keypad, parseTyped, typeKey } from '../waiter/payment/controls';
@@ -62,9 +63,10 @@ export function MovementSheet({ shiftId, type: initialType, addMovement, onClose
             actionId.current = null;
             onSaved();
         } catch (cause) {
-            if (cause instanceof CashError) actionId.current = null; // a definitive answer ends the action
-            setFailed(!(cause instanceof CashError));
-            setError(cause instanceof Error && cause.message ? cause.message : 'No se pudo registrar el movimiento.');
+            const again = isRetryable(cause);
+            if (!again) actionId.current = null; // a definitive answer ends the action
+            setFailed(again);
+            setError(cashErrorText(cause, 'No se pudo registrar el movimiento.'));
         } finally {
             pendingRef.current = false;
             setPending(false);

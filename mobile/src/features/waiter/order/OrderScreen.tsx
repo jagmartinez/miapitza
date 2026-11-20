@@ -51,6 +51,8 @@ export interface OrderScreenProps {
     plans?: PaymentPlans;
     /** Loads the cash data layer: lets a cashier without a shift open one from the payment screen. */
     loadCash?: () => Promise<CashApi>;
+    /** Opens Caja (to close a shift from another day / branch that blocks cash here). */
+    onOpenCash?: () => void;
     realtime: Pick<Realtime, 'subscribe'>;
     queue: OfflineQueue | null;
     orderId: OrderRef;
@@ -543,7 +545,7 @@ export function OrderScreen(props: OrderScreenProps) {
             )}
             {payment && (
                 <Suspense fallback={<main className="pay" data-testid="payment-screen"><p className="muted pay-notice">Cargando cobro…</p></main>}>
-                    <PaymentScreen api={api} user={user} orderId={orderId} plans={props.plans} loadCash={props.loadCash} ownerKey={ownerKey} initialMode={payment} onClose={paymentClosed} onFinished={paymentFinished} />
+                    <PaymentScreen api={api} user={user} orderId={orderId} plans={props.plans} loadCash={props.loadCash} onOpenCash={props.onOpenCash} ownerKey={ownerKey} initialMode={payment} onClose={paymentClosed} onFinished={paymentFinished} />
                 </Suspense>
             )}
             {sheet && <ModifierSheet product={sheet.product} groups={sheet.groups} onConfirm={confirmSheet} onClose={() => setSheet(null)} />}

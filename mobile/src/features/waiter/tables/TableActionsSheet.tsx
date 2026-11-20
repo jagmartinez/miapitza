@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatCurrency } from '@web/utils/currency';
+import { getApiErrorMessage } from '@web/utils/apiError';
+import { isAmbiguousMutationFailure } from '@web/utils/idempotency';
 import { can } from '../../../core/permissions';
 import type { LoginUser } from '../../../core/session';
+import { money } from '../order/orderModel';
 import { Sheet } from './Sheet';
 import { elapsedMinutes, formatElapsed, type ActiveOrder, type PlanTable } from './tableState';
 
@@ -75,8 +77,9 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
         setInvoiceError(null);
         try {
             await onInvoicePdf(order);
-        } catch {
-            setInvoiceError('No se pudo abrir la factura. Toca Factura para reintentar.');
+        } catch (cause) {
+            // Ambiguous (network, timeout, 5xx): tapping Factura again is the retry. A definitive answer says why.
+            setInvoiceError(isAmbiguousMutationFailure(cause) ? 'No se pudo abrir la factura. Toca Factura para reintentar.' : `No se pudo abrir la factura. ${getApiErrorMessage(cause)}`);
         } finally {
             invoiceRef.current = false;
             setInvoiceBusy(false);
@@ -92,7 +95,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
                 </div>
                 <div className="actions-total">
                     <span className="muted">Sin cobrar</span>
-                    <strong>{unpaid === null ? '—' : formatCurrency(unpaid)}</strong>
+                    <strong>{unpaid === null ? '—' : money(unpaid)}</strong>
                 </div>
             </div>
             <div className="info-chips">

@@ -136,11 +136,12 @@ export function createCashApi(deps: CashApiDeps) {
         suggestedFloat: (registerId: number) => get<SuggestedFloat>('/cash-shifts/suggested-float', { cashRegisterId: registerId }),
         summary: (shiftId: number) => get<ShiftSummary>(`/cash-shifts/${shiftId}/summary`),
         report: (shiftId: number) => get<ShiftReport>(`/cash-arqueo/${shiftId}/report`),
+        /** `from` / `to` are real instants (ISO, UTC): the caller converts the local day bounds. */
         history: (q: HistoryQuery = {}) =>
             get<CashShiftInfo[]>('/cash-shifts', {
                 ...(q.registerId != null ? { cashRegisterId: q.registerId } : {}),
                 ...(q.from ? { startDate: q.from } : {}),
-                ...(q.to ? { endDate: q.to.length === 10 ? `${q.to}T23:59:59.999Z` : q.to } : {}),
+                ...(q.to ? { endDate: q.to } : {}),
             }),
         /** Exchange rate and tolerance (never GET /settings: unseeded keys are missing there). */
         settings: () => get<CashSettings>('/cash-shifts/cash-settings'),

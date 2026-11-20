@@ -114,16 +114,16 @@ describe('ShiftHistoryScreen', () => {
         const open = { ...closed(50, '2026-11-20T10:00:00.000Z'), endDate: null };
         const api = makeCash({ history: vi.fn().mockResolvedValue([closed(40, '2026-11-19T22:00:00.000Z'), open, closed(41, '2026-11-20T22:00:00.000Z')]) });
         const onOpen = vi.fn();
-        render(<ShiftHistoryScreen api={api} onOpen={onOpen} onBack={vi.fn()} now={() => new Date(2026, 10, 21)} />);
+        render(<ShiftHistoryScreen api={api} onOpen={onOpen} onBack={vi.fn()} now={() => new Date(2026, 10, 21)} tzOffset={360} />);
         const list = await screen.findByRole('list', { name: 'Turnos cerrados' });
         const rows = within(list).getAllByRole('button');
         expect(rows).toHaveLength(2); // the open shift is not history
         expect(rows[0]).toHaveTextContent('Turno #41'); // newest first
-        expect(api.history).toHaveBeenCalledWith({ from: '2026-10-22', to: '2026-11-21' });
+        expect(api.history).toHaveBeenCalledWith({ from: '2026-10-22T06:00:00.000Z', to: '2026-11-22T05:59:59.999Z' });
         fireEvent.click(rows[1]);
         expect(onOpen).toHaveBeenCalledWith(40);
         fireEvent.click(screen.getByRole('button', { name: '7 días' }));
-        await waitFor(() => expect(api.history).toHaveBeenLastCalledWith({ from: '2026-11-14', to: '2026-11-21' }));
+        await waitFor(() => expect(api.history).toHaveBeenLastCalledWith({ from: '2026-11-14T06:00:00.000Z', to: '2026-11-22T05:59:59.999Z' }));
     });
 
     it('is reachable from the caja', async () => {

@@ -28,6 +28,8 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
     const [data, setData] = useState<WaiterData | null>(null);
     const [failed, setFailed] = useState(false);
     const [route, setRoute] = useState<Route>({ name: 'tables' });
+    // A close that was sent but whose outcome the cashier may not have seen: Caja checks it when she comes back.
+    const [closeAttempt, setCloseAttempt] = useState<number | null>(null);
     const inbox = useReadyInbox(services.realtime);
     // Opening an order is seeing it: its "listo" notice is done.
     const openedId = route.name === 'order' ? Number(route.orderId) : null;
@@ -79,14 +81,14 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
     if (route.name === 'cash') {
         return (
             <Suspense fallback={loadingFallback}>
-                <CashEntry session={session} services={services} onBack={() => setRoute({ name: 'tables' })} onCount={(shiftId, mode) => setRoute({ name: 'cashCount', shiftId, mode })} />
+                <CashEntry session={session} services={services} onBack={() => setRoute({ name: 'tables' })} onCount={(shiftId, mode) => setRoute({ name: 'cashCount', shiftId, mode })} closeAttempt={closeAttempt} onAttemptSeen={() => setCloseAttempt(null)} />
             </Suspense>
         );
     }
     if (route.name === 'cashCount') {
         return (
             <Suspense fallback={loadingFallback}>
-                <CountCloseEntry key={owner ?? ''} session={session} services={services} shiftId={route.shiftId} mode={route.mode} onBack={() => setRoute({ name: 'cash' })} onClosed={(shiftId) => setRoute({ name: 'cashReport', shiftId })} />
+                <CountCloseEntry key={owner ?? ''} session={session} services={services} shiftId={route.shiftId} mode={route.mode} onBack={() => setRoute({ name: 'cash' })} onCloseAttempt={setCloseAttempt} onClosed={(shiftId) => { setCloseAttempt(null); setRoute({ name: 'cashReport', shiftId }); }} />
             </Suspense>
         );
     }
@@ -117,6 +119,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
                     readyCount={inbox.notices.filter((n) => n.orderId !== openedId).length}
                     invalidate={invalidate}
                     loadCash={loadCash}
+                    onOpenCash={() => setRoute({ name: 'cash' })}
                     onBack={() => setRoute({ name: 'tables' })}
                 />
             </Suspense>

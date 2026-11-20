@@ -22,16 +22,16 @@ function makeApi(cashShiftStatus: ReturnType<typeof vi.fn>) {
     } as unknown as PaymentApi;
 }
 
-function setup(role: 'CAJERO' | 'MESERO', withLoader = true) {
+function setup(role: 'CAJERO' | 'MESERO', withLoader = true, initial: Record<string, unknown> | 'fail' = NO_SHIFT, onOpenCash?: () => void) {
     const user = userSession(PERMS).user;
     const cash = makeCash();
-    const status = vi.fn().mockResolvedValue(NO_SHIFT);
+    const status = initial === 'fail' ? vi.fn().mockRejectedValue(new Error('sin red')) : vi.fn().mockResolvedValue(initial);
     cash.openShift.mockImplementation(async () => {
         status.mockResolvedValue(MY_SHIFT);
         return OPENED;
     });
     const loadCash = vi.fn().mockResolvedValue(cash);
-    render(<PaymentScreen api={makeApi(status)} user={{ ...user, role: { id: 2, name: role }, roles: [role] }} orderId={102} onClose={vi.fn()} onFinished={vi.fn()} loadCash={withLoader ? loadCash : undefined} />);
+    render(<PaymentScreen api={makeApi(status)} user={{ ...user, role: { id: 2, name: role }, roles: [role] }} orderId={102} onClose={vi.fn()} onFinished={vi.fn()} loadCash={withLoader ? loadCash : undefined} onOpenCash={onOpenCash} />);
     return { cash, status };
 }
 
@@ -62,5 +62,38 @@ describe('payment without a cash shift', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Efectivo' }));
         expect(await screen.findByText('Abre tu turno de caja')).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Abrir turno' })).toBeNull();
+    });
+});
+
+describe('payment with a shift that cannot take cash (W5)', () => {
+    const pickCash = async () => {
+        await screen.findByText('Cobrar · Mesa 2');
+        fireEvent.click(screen.getByRole('button', { name: 'Efectivo' }));
+    };
+
+    it('a shift from another day shows the real reason and a way to Caja, never Abrir turno', async () => {
+        const onOpenCash = vi.fn();
+        setup('CAJERO', true, { hasActiveShift: true, requiresClose: true, message: 'Tienes un turno abierto de otro día: ciérralo', shift: { cashRegister: { branch: { id: 1 } } } }, onOpenCash);
+        await pickCash();
+        expect(await screen.findByText('Tienes un turno abierto de otro día: ciérralo')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Abrir turno' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Ir a Caja' }));
+        expect(onOpenCash).toHaveBeenCalledTimes(1);
+    });
+
+    it('a shift of another branch says so', async () => {
+        setup('CAJERO', true, { hasActiveShift: true, requiresClose: false, shift: { cashRegister: { branch: { id: 9 } } } }, vi.fn());
+        await pickCash();
+        expect(await screen.findByText(/otra sucursal/)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Abrir turno' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Ir a Caja' })).toBeInTheDocument();
+    });
+
+    it('an unreadable status offers Reintentar instead of Abrir turno', async () => {
+        setup('CAJERO', true, 'fail');
+        await pickCash();
+        expect(await screen.findByText(/No se pudo verificar tu turno/)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Abrir turno' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
     });
 });

@@ -272,4 +272,6 @@ export interface ModeCtx {
     onError: (message: string | null) => void;
     /** Opens the cash-shift flow (only offered to cash roles when cash is blocked by a missing shift). */
     onOpenShift?: () => void;
+    /** Why cash is blocked although the cashier HAS a shift (another day, another branch, unreadable): never "open a shift". */
+    shiftIssue?: { text: string; actionLabel?: string; onAction?: () => void } | null;
 }
