@@ -54,8 +54,13 @@ export interface QueueOptions {
     forceQueue?: boolean;
 }
 
-/** Temp ids are strings (`order-...`); a queued dependent waits for that create. */
-const tempDependency = (orderId: OrderRef): string | undefined => (typeof orderId === 'string' ? orderId : undefined);
+/** The order exists only in the offline queue; this operation cannot wait for it. */
+export class OrderNotSyncedError extends Error {
+    constructor(readonly tempId: string) {
+        super('El pedido aún no se sincroniza; esta operación requiere conexión');
+        this.name = 'OrderNotSyncedError';
+    }
+}
 
 export function isQueuedOffline(value: unknown): value is QueuedOffline {
     return !!value && typeof value === 'object' && (value as QueuedOffline)._offline === true;
@@ -135,6 +140,24 @@ export function createWaiterApi(deps: WaiterApiDeps) {
         return key;
     }
 
+    /**
+     * Single entry point for every call that takes an order id. A number is used as is. A temp id
+     * (order created offline) resolves to the real id once its create synced; until then
+     * `pendingTemp` is set and queueable calls wait behind the create.
+     */
+    async function orderRef(orderId: OrderRef): Promise<{ id: OrderRef; pendingTemp: string | null }> {
+        if (typeof orderId !== 'string') return { id: orderId, pendingTemp: null };
+        const real = await queue.resolveTemp(orderId);
+        return real !== null ? { id: real, pendingTemp: null } : { id: orderId, pendingTemp: orderId };
+    }
+
+    /** For operations that need a server id right now (pricing, PIN authorization, transfers, billing). */
+    async function syncedOrderId(orderId: OrderRef): Promise<number | string> {
+        const ref = await orderRef(orderId);
+        if (ref.pendingTemp) throw new OrderNotSyncedError(ref.pendingTemp);
+        return ref.id;
+    }
+
     async function cached<T>(url: string, params: Record<string, unknown> | undefined, ttlMs: number, swr: boolean, onRefresh?: (d: T) => void): Promise<CacheResult<T>> {
         const owner = await ownerKey();
         return cache.read<T>({
@@ -177,61 +200,100 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 queue: { operationType: 'CREATE_ORDER', entityTempId: `order-${Date.now()}-${newIdempotencyKey().slice(0, 8)}` },
             });
         },
-        /** `orderId` may be the temp id of an offline-created order: the item is queued behind it and its URL resolved on replay. */
-        addItem(orderId: OrderRef, body: NewOrderLine, opts: QueueOptions = {}) {
+        /** `orderId` may be the temp id of an offline-created order: the call waits behind its create. */
+        async addItem(orderId: OrderRef, body: NewOrderLine, opts: QueueOptions = {}) {
+            const ref = await orderRef(orderId);
             return mutate<Json>({
                 method: 'POST',
-                url: `/orders/${orderId}/items`,
+                url: `/orders/${ref.id}/items`,
                 data: body,
                 invalidates: true,
                 queue: {
                     operationType: 'ADD_ORDER_ITEM',
                     entityTempId: opts.entityTempId,
-                    dependencyKey: opts.dependencyKey ?? tempDependency(orderId),
-                    forceQueue: opts.forceQueue || typeof orderId === 'string',
+                    dependencyKey: opts.dependencyKey ?? ref.pendingTemp ?? undefined,
+                    forceQueue: opts.forceQueue || !!ref.pendingTemp,
                 },
             });
         },
-        sendToKitchen(orderId: OrderRef, opts: QueueOptions = {}) {
+        async sendToKitchen(orderId: OrderRef, opts: QueueOptions = {}) {
+            const ref = await orderRef(orderId);
             return mutate<Json>({
                 method: 'POST',
-                url: `/orders/${orderId}/send-to-kitchen`,
+                url: `/orders/${ref.id}/send-to-kitchen`,
                 invalidates: true,
                 queue: {
                     operationType: 'SEND_TO_KITCHEN',
                     entityTempId: opts.entityTempId,
-                    dependencyKey: opts.dependencyKey ?? tempDependency(orderId),
-                    forceQueue: opts.forceQueue || typeof orderId === 'string',
+                    dependencyKey: opts.dependencyKey ?? ref.pendingTemp ?? undefined,
+                    forceQueue: opts.forceQueue || !!ref.pendingTemp,
                 },
             });
         },
-        createPayment(body: { orderId: OrderRef; paymentMethodId: number; amount: number; reference?: string; payerName?: string }, opts: { legId?: string } = {}) {
+        async createPayment(body: { orderId: OrderRef; paymentMethodId: number; amount: number; reference?: string; payerName?: string }, opts: { legId?: string } = {}) {
+            const ref = await orderRef(body.orderId);
             return mutate<Json>({
                 method: 'POST',
                 url: '/payments',
-                data: body,
+                data: { ...body, orderId: ref.id },
                 invalidates: true,
-                queue: { operationType: 'CREATE_PAYMENT', entityTempId: `payment-${body.orderId}-${opts.legId ?? newIdempotencyKey().slice(0, 8)}` },
+                queue: {
+                    operationType: 'CREATE_PAYMENT',
+                    entityTempId: `payment-${ref.id}-${opts.legId ?? newIdempotencyKey().slice(0, 8)}`,
+                    dependencyKey: ref.pendingTemp ?? undefined,
+                    forceQueue: !!ref.pendingTemp,
+                },
+            });
+        },
+        /** Guests can be set on an order that is still only queued; it is applied after the create. */
+        async setGuests(orderId: OrderRef, guests: number) {
+            const ref = await orderRef(orderId);
+            return mutate<Json>({
+                method: 'PATCH',
+                url: `/orders/${ref.id}/guests`,
+                data: { guests },
+                invalidates: true,
+                queue: ref.pendingTemp ? { operationType: 'GENERIC_MUTATION', dependencyKey: ref.pendingTemp, forceQueue: true } : undefined,
             });
         },
 
         // ---- mutations (online only) ----
         updateItem: (itemId: number, body: { quantity?: number; notes?: string }) => mutate<Json>({ method: 'PATCH', url: `/orders/items/${itemId}`, data: body, invalidates: true }),
         removeItem: (itemId: number) => mutate<Json>({ method: 'DELETE', url: `/orders/items/${itemId}`, invalidates: true }),
-        deliverItems: (orderId: number, itemIds: number[]) =>
-            mutate<{ delivered: number[]; skipped: number[]; alreadyDelivered: number[] }>({ method: 'POST', url: `/orders/${orderId}/items/deliver`, data: { itemIds }, invalidates: true }),
-        setGuests: (orderId: number, guests: number) => mutate<Json>({ method: 'PATCH', url: `/orders/${orderId}/guests`, data: { guests }, invalidates: true }),
-        transfer: (body: { sourceTableId: number; destinationTableId: number; orderId: number; items?: { orderItemId: number; quantity: number }[]; reason?: string }) =>
-            mutate<Json>({ method: 'POST', url: '/tables/transfer', data: body, invalidates: true }),
+        async deliverItems(orderId: OrderRef, itemIds: number[]) {
+            const id = await syncedOrderId(orderId);
+            return mutate<{ delivered: number[]; skipped: number[]; alreadyDelivered: number[] }>({ method: 'POST', url: `/orders/${id}/items/deliver`, data: { itemIds }, invalidates: true });
+        },
+        async transfer(body: { sourceTableId: number; destinationTableId: number; orderId: OrderRef; items?: { orderItemId: number; quantity: number }[]; reason?: string }) {
+            const orderId = await syncedOrderId(body.orderId);
+            return mutate<Json>({ method: 'POST', url: '/tables/transfer', data: { ...body, orderId }, invalidates: true });
+        },
         groupTables: (body: { primaryTableId: number; memberTableIds: number[]; reason?: string }) => mutate<Json>({ method: 'POST', url: '/tables/groups', data: body, invalidates: true }),
-        pricing: (orderId: number, body: PricingBody) => mutate<Json>({ method: 'PATCH', url: `/orders/${orderId}/pricing`, data: body, invalidates: true }),
-        authorizeDiscount: (orderId: number, body: AuthorizeDiscountBody) => mutate<Json>({ method: 'POST', url: `/orders/${orderId}/discount/authorize`, data: body, invalidates: true }),
-        preinvoice: (orderId: number) => mutate<Json>({ method: 'POST', url: `/invoices/${orderId}/preinvoice` }),
+        async pricing(orderId: OrderRef, body: PricingBody) {
+            const id = await syncedOrderId(orderId);
+            return mutate<Json>({ method: 'PATCH', url: `/orders/${id}/pricing`, data: body, invalidates: true });
+        },
+        async authorizeDiscount(orderId: OrderRef, body: AuthorizeDiscountBody) {
+            const id = await syncedOrderId(orderId);
+            return mutate<Json>({ method: 'POST', url: `/orders/${id}/discount/authorize`, data: body, invalidates: true });
+        },
+        async preinvoice(orderId: OrderRef) {
+            const id = await syncedOrderId(orderId);
+            return mutate<Json>({ method: 'POST', url: `/invoices/${id}/preinvoice` });
+        },
         validateCoupon: (body: { code: string; orderTotal: number; branchId?: number; items?: Json[] }) => mutate<Json>({ method: 'POST', url: '/promotions/validate', data: body }),
-        splitEvenly: (orderId: number, numberOfPeople: number) => mutate<Json>({ method: 'POST', url: `/split-bill/${orderId}/evenly`, data: { numberOfPeople } }),
-        splitByItems: (orderId: number, itemAssignments: Json[]) => mutate<Json>({ method: 'POST', url: `/split-bill/${orderId}/by-items`, data: { itemAssignments } }),
-        splitByAmount: (orderId: number, customSplits: { personName: string; amount: number }[]) =>
-            mutate<Json>({ method: 'POST', url: `/split-bill/${orderId}/by-amount`, data: { customSplits } }),
+        async splitEvenly(orderId: OrderRef, numberOfPeople: number) {
+            const id = await syncedOrderId(orderId);
+            return mutate<Json>({ method: 'POST', url: `/split-bill/${id}/evenly`, data: { numberOfPeople } });
+        },
+        async splitByItems(orderId: OrderRef, itemAssignments: Json[]) {
+            const id = await syncedOrderId(orderId);
+            return mutate<Json>({ method: 'POST', url: `/split-bill/${id}/by-items`, data: { itemAssignments } });
+        },
+        async splitByAmount(orderId: OrderRef, customSplits: { personName: string; amount: number }[]) {
+            const id = await syncedOrderId(orderId);
+            return mutate<Json>({ method: 'POST', url: `/split-bill/${id}/by-amount`, data: { customSplits } });
+        },
         markNotificationSeen: (id: number) => mutate<Json>({ method: 'PATCH', url: `/kitchen-notifications/${id}/seen` }),
     };
 }

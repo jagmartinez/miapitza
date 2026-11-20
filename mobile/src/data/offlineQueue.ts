@@ -41,6 +41,7 @@ export function createOfflineQueue(deps: QueueDeps) {
     let dirty = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let detach: (() => void) | null = null;
+    let stopped = false;
 
     const currentOwner = async () => ownerKeyOf(await sessions.load());
 
@@ -88,7 +89,7 @@ export function createOfflineQueue(deps: QueueDeps) {
             clearTimeout(timer);
             timer = null;
         }
-        if (!isOnline()) return;
+        if (stopped || !isOnline()) return;
         const rows = await db.syncQueue
             .where('ownerKey')
             .equals(ownerKey)
@@ -102,27 +103,50 @@ export function createOfflineQueue(deps: QueueDeps) {
         }, Math.max(0, at - now()));
     }
 
-    /** After a create is synced, queued dependents learn the real id (URL, body and dependencyKey). */
-    async function resolveTempId(ownerKey: string, tempId: string, realId: number | string): Promise<void> {
+    async function loadTempMap(ownerKey: string): Promise<Map<string, number | string>> {
+        const rows = await db.tempIds.where('ownerKey').equals(ownerKey).toArray();
+        return new Map(rows.map((r) => [r.tempId, r.realId]));
+    }
+
+    /** Replaces known temp ids, matching whole path segments and exact values only (never substrings). */
+    function applyTempMap(map: Map<string, number | string>, url: string, data: unknown, dependencyKey: string | null | undefined) {
+        if (map.size === 0) return { url, data, dependencyKey: dependencyKey ?? null };
         const swap = (v: unknown): unknown => {
-            if (v === tempId) return realId;
+            if (typeof v === 'string') return map.has(v) ? map.get(v) : v;
             if (Array.isArray(v)) return v.map(swap);
             if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, swap(x)]));
             return v;
         };
-        const rows = await db.syncQueue
-            .where('ownerKey')
-            .equals(ownerKey)
-            .filter((r) => r.status !== 'failed')
-            .toArray();
-        for (const r of rows) {
-            const url = r.url.split(`/orders/${tempId}`).join(`/orders/${realId}`);
-            const data = swap(r.data);
-            const clearDep = r.dependencyKey === tempId;
-            if (url !== r.url || JSON.stringify(data) !== JSON.stringify(r.data) || clearDep) {
-                await db.syncQueue.update(r.id!, { url, data, ...(clearDep ? { dependencyKey: null } : {}) });
+        const [path, ...query] = url.split('?');
+        const newPath = path
+            .split('/')
+            .map((seg) => (map.has(seg) ? String(map.get(seg)) : seg))
+            .join('/');
+        return {
+            url: [newPath, ...query].join('?'),
+            data: swap(data),
+            dependencyKey: dependencyKey && map.has(dependencyKey) ? null : dependencyKey ?? null,
+        };
+    }
+
+    /**
+     * Atomically: remove the applied item and, for a create, persist temp->real and rewrite every
+     * queued dependent. A crash can never leave dependents pointing at a deleted parent.
+     */
+    async function applySynced(item: SyncItem, ownerKey: string, realId: number | string | undefined): Promise<void> {
+        await db.transaction('rw', db.syncQueue, db.tempIds, async () => {
+            await db.syncQueue.delete(item.id!);
+            if (item.operationType !== 'CREATE_ORDER' || !item.entityTempId || realId === undefined) return;
+            await db.tempIds.put({ id: `${ownerKey}|${item.entityTempId}`, ownerKey, tempId: item.entityTempId, realId, timestamp: now() });
+            const map = new Map<string, number | string>([[item.entityTempId, realId]]);
+            const rows = await db.syncQueue.where('ownerKey').equals(ownerKey).filter((r) => r.status !== 'failed').toArray();
+            for (const r of rows) {
+                const next = applyTempMap(map, r.url, r.data, r.dependencyKey);
+                if (next.url !== r.url || next.dependencyKey !== (r.dependencyKey ?? null) || JSON.stringify(next.data) !== JSON.stringify(r.data)) {
+                    await db.syncQueue.update(r.id!, { url: next.url, data: next.data, dependencyKey: next.dependencyKey });
+                }
             }
-        }
+        });
     }
 
     /** Returns the owner the run started with (null when nothing could run). */
@@ -182,28 +206,25 @@ export function createOfflineQueue(deps: QueueDeps) {
                 await db.syncQueue.update(item.id!, { status: 'pending' });
                 return ownerKey;
             }
+            let res: { data?: { data?: { id?: number | string }; id?: number | string } };
             try {
-                const res = await http.request({
+                res = await http.request({
                     url: item.url,
                     method: item.method,
                     data: item.data,
                     headers: { Authorization: `Bearer ${session.token}`, 'X-Idempotency-Key': item.idempotencyKey || newIdempotencyKey() },
                 });
-                await db.syncQueue.delete(item.id!);
-                if (item.operationType === 'CREATE_ORDER' && item.entityTempId) {
-                    const realId = res.data?.data?.id ?? res.data?.id;
-                    if (realId !== undefined && realId !== null) await resolveTempId(ownerKey, item.entityTempId, realId);
-                }
-                for (const fn of [...syncedListeners]) fn(item);
             } catch (error: unknown) {
                 const err = error as { response?: { status?: number; data?: { message?: string; code?: unknown } }; message?: string };
                 const status = err?.response?.status;
                 if (status === 401) {
                     // Session ended. Not the item's fault: keep it untouched for the owner's next session.
                     await db.syncQueue.update(item.id!, { status: 'pending' });
-                    // The request carried an explicit token, so the http layer did not track it: expire here.
                     const cur = await sessions.load();
-                    if (cur?.token === session.token) {
+                    if (cur && cur.token !== session.token) {
+                        dirty = true; // re-login of the same owner mid-request: resume with the new token
+                    } else if (cur && !/\/discount\//.test(item.url)) {
+                        // The request carried an explicit token, so the http layer did not track it: expire here.
                         try {
                             await sessions.clear();
                         } finally {
@@ -228,6 +249,23 @@ export function createOfflineQueue(deps: QueueDeps) {
                 } else {
                     await db.syncQueue.update(item.id!, { retryCount, status: 'pending', lastError, nextAttemptAt: now() + backoffMs(retryCount) });
                 }
+                continue;
+            }
+            // The server applied it. Bookkeeping failures are storage problems, not network errors:
+            // the item stays queued and its idempotency key makes the resend safe.
+            try {
+                await applySynced(item, ownerKey, res.data?.data?.id ?? res.data?.id);
+            } catch (cause) {
+                reportStorage(toStorageError('queue', 'apply', cause));
+                await db.syncQueue.update(item.id!, { status: 'pending' }).catch(() => undefined);
+                return ownerKey;
+            }
+            for (const fn of [...syncedListeners]) {
+                try {
+                    fn(item);
+                } catch {
+                    // A listener must not break replay.
+                }
             }
         }
         return ownerKey;
@@ -238,25 +276,34 @@ export function createOfflineQueue(deps: QueueDeps) {
             dirty = true; // picked up by the loop below once the current pass ends
             return running;
         }
-        const run = (async () => {
+        const self: { run?: Promise<void> } = {};
+        const run: Promise<void> = (async () => {
             try {
-                let again = true;
-                while (again) {
-                    dirty = false;
-                    const started = await runItems();
-                    again = dirty || (started !== null && (await currentOwner()) !== started);
+                for (;;) {
+                    let again = true;
+                    while (again) {
+                        dirty = false;
+                        const started = await runItems();
+                        again = dirty || (started !== null && (await currentOwner()) !== started);
+                    }
+                    await refreshCounts();
+                    const owner = await currentOwner();
+                    if (owner) await schedule(owner);
+                    // Anything requested during the bookkeeping above runs now. No await between this
+                    // check and clearing `running`, so a later process() always starts a fresh run.
+                    if (!dirty) {
+                        running = null;
+                        return;
+                    }
                 }
+            } catch (cause) {
+                reportStorage(toStorageError('queue', 'run', cause)); // never an unhandled rejection
             } finally {
-                await refreshCounts();
-                const owner = await currentOwner();
-                if (owner) await schedule(owner);
+                if (running === self.run) running = null;
             }
         })();
+        self.run = run;
         running = run;
-        const clear = () => {
-            if (running === run) running = null;
-        };
-        void run.then(clear, clear);
         return run;
     }
 
@@ -264,12 +311,15 @@ export function createOfflineQueue(deps: QueueDeps) {
         async enqueue(input: EnqueueInput): Promise<SyncItem> {
             const ownerKey = await currentOwner();
             if (!ownerKey) throw new Error('No hay sesión para encolar la operación');
+            // A create that already synced: use the real id straight away.
+            const known = await guarded('queue', 'enqueue', () => loadTempMap(ownerKey));
+            const resolved = applyTempMap(known, input.url, input.data, input.dependencyKey);
             const item: SyncItem = {
-                url: input.url,
+                url: resolved.url,
                 method: input.method,
-                data: input.data,
+                data: resolved.data,
                 operationType: input.operationType,
-                dependencyKey: input.dependencyKey ?? null,
+                dependencyKey: resolved.dependencyKey,
                 entityTempId: input.entityTempId ?? null,
                 idempotencyKey: input.idempotencyKey || newIdempotencyKey(),
                 timestamp: nextTimestamp(),
@@ -286,6 +336,13 @@ export function createOfflineQueue(deps: QueueDeps) {
         },
 
         process,
+
+        /** Real id of an offline-created order whose create already synced (null while unknown). */
+        async resolveTemp(tempId: string): Promise<number | string | null> {
+            const owner = await currentOwner();
+            if (!owner) return null;
+            return (await db.tempIds.get(`${owner}|${tempId}`))?.realId ?? null;
+        },
 
         /** Replays the current owner's pending items (call after login / PIN switch). */
         notifySessionChanged(): void {
@@ -360,6 +417,7 @@ export function createOfflineQueue(deps: QueueDeps) {
         /** Replays on connectivity regained; returns a stop function. */
         start(): () => void {
             if (detach) return detach;
+            stopped = false;
             const onOnline = () => {
                 // Connectivity is back: items paused by a network error need not wait for their backoff.
                 void db.syncQueue
@@ -373,6 +431,7 @@ export function createOfflineQueue(deps: QueueDeps) {
             void process();
             detach = () => {
                 window.removeEventListener('online', onOnline);
+                stopped = true;
                 if (timer) clearTimeout(timer);
                 timer = null;
                 detach = null;

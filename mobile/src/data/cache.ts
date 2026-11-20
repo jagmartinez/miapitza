@@ -1,12 +1,13 @@
 import Dexie, { type Table } from 'dexie';
 import { reportStorage, toStorageError } from './storage';
-import type { CacheEntry, DraftRow, SyncItem } from './types';
+import type { CacheEntry, DraftRow, SyncItem, TempIdRow } from './types';
 
 /** Local store of the waiter app. Holds no tokens: owners are identified by `companyId:userId`. */
 export class MobileDB extends Dexie {
     caches!: Table<CacheEntry, string>;
     syncQueue!: Table<SyncItem, number>;
     drafts!: Table<DraftRow, string>;
+    tempIds!: Table<TempIdRow, string>;
 
     constructor(name = 'MobileDB') {
         super(name);
@@ -19,6 +20,7 @@ export class MobileDB extends Dexie {
         this.version(2)
             .stores({ drafts: 'id, ownerKey' })
             .upgrade((tx) => tx.table('drafts').clear());
+        this.version(3).stores({ tempIds: 'id, ownerKey, timestamp' });
     }
 }
 
@@ -75,6 +77,8 @@ export function cacheKey(ownerKey: string, url: string, params?: Record<string, 
 
 export function createCache(db: MobileDB, now: () => number = Date.now) {
     const inflight = new Map<string, Promise<unknown>>();
+    // Bumped by invalidate(): a fetch that began before a mutation must not store its pre-mutation data.
+    const generation = new Map<string, number>();
 
     async function load(id: string): Promise<CacheEntry | undefined> {
         try {
@@ -100,9 +104,10 @@ export function createCache(db: MobileDB, now: () => number = Date.now) {
         const running = inflight.get(id) as Promise<T> | undefined;
         if (running) return running;
         const p = (async () => {
+            const gen = generation.get(o.ownerKey) ?? 0;
             const data = await o.fetch();
             if (o.isCurrent && !(await o.isCurrent())) throw new StaleOwnerError();
-            await store(id, o as ReadOptions<unknown>, data);
+            if ((generation.get(o.ownerKey) ?? 0) === gen) await store(id, o as ReadOptions<unknown>, data);
             return data;
         })().finally(() => {
             inflight.delete(id);
@@ -139,6 +144,7 @@ export function createCache(db: MobileDB, now: () => number = Date.now) {
 
         /** Drops an owner's cached responses whose url starts with any prefix (after own mutations). */
         async invalidate(ownerKey: string, urlPrefixes: string[]): Promise<void> {
+            generation.set(ownerKey, (generation.get(ownerKey) ?? 0) + 1);
             try {
                 await db.caches
                     .where('ownerKey')
@@ -154,6 +160,7 @@ export function createCache(db: MobileDB, now: () => number = Date.now) {
         async purgeExpired(maxAgeMs: number = MAX_CACHE_AGE_MS): Promise<void> {
             try {
                 await db.caches.where('timestamp').below(now() - maxAgeMs).delete();
+                await db.tempIds.where('timestamp').below(now() - maxAgeMs).delete();
             } catch (cause) {
                 reportStorage(toStorageError('cache', 'purge', cause));
             }

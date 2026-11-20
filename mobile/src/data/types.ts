@@ -34,6 +34,16 @@ export interface CacheEntry {
     timestamp: number;
 }
 
+/** Offline-created order: temp id -> real id once its create synced. Kept 24 h. */
+export interface TempIdRow {
+    /** `${ownerKey}|${tempId}` */
+    id: string;
+    ownerKey: string;
+    tempId: string;
+    realId: number | string;
+    timestamp: number;
+}
+
 export interface DraftRow {
     /** `${companyId}:${userId}:${tableId}` */
     id: string;
