@@ -123,7 +123,7 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
             const row = plans && ownerKey ? await plans.load(ownerKey, id) : null;
             if (!alive.current) return;
             const preinvoiced = !!(data.order.preInvoicedAt || data.order.invoiceNumber);
-            const flow = createPaymentFlow({ api, orderId: id, preinvoiced, resume: row ? { legs: row.legs, confirmed: row.confirmed } : undefined, persist });
+            const flow = createPaymentFlow({ api, orderId: id, ownerKey, preinvoiced, resume: row ? { legs: row.legs, confirmed: row.confirmed } : undefined, persist });
             flowRef.current = flow;
             initialTip.current = num(data.order.tipAmount);
             setFrozen(preinvoiced);
@@ -140,7 +140,7 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
                     if (settled) setDone(receiptOf(data.order, null, row));
                     else {
                         // every leg of the plan is confirmed but the server still owes: that plan is over, start from what is left
-                        flowRef.current = createPaymentFlow({ api, orderId: id, preinvoiced, persist });
+                        flowRef.current = createPaymentFlow({ api, orderId: id, ownerKey, preinvoiced, persist });
                         metaRef.current = null;
                     }
                 } else {
@@ -246,7 +246,7 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         void exclusive(async () => {
             if (plans && ownerKey) await plans.clear(ownerKey, id);
             const old = flowRef.current;
-            flowRef.current = createPaymentFlow({ api, orderId: id, preinvoiced: old?.isPrepared() ?? false, persist });
+            flowRef.current = createPaymentFlow({ api, orderId: id, ownerKey, preinvoiced: old?.isPrepared() ?? false, persist });
             metaRef.current = null;
             setPaid([]);
             setPending([]);

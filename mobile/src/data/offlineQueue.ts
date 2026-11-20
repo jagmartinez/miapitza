@@ -4,13 +4,16 @@ import { appEvents } from '../core/events';
 import type { SessionStore } from '../core/session';
 import type { MobileDB } from './cache';
 import { guarded, reportStorage, toStorageError } from './storage';
-import { isPermanentSyncFailure, ownerKeyOf, type SyncItem } from './types';
+import { isPermanentSyncFailure, ownerKeyOf, SessionChangedError, type SyncItem } from './types';
 
 export const MAX_RETRIES = 5;
 export const backoffMs = (retryCount: number) => Math.min(1000 * Math.pow(2, retryCount), 30_000);
 
 export type EnqueueInput = Pick<SyncItem, 'url' | 'method' | 'data' | 'operationType'> &
-    Partial<Pick<SyncItem, 'dependencyKey' | 'entityTempId' | 'idempotencyKey'>>;
+    Partial<Pick<SyncItem, 'dependencyKey' | 'entityTempId' | 'idempotencyKey'>> & {
+        /** The owner the action started under: refused (SessionChangedError) when the session is no longer theirs. */
+        ownerKey?: string;
+    };
 
 export interface QueueDeps {
     db: MobileDB;
@@ -316,6 +319,7 @@ export function createOfflineQueue(deps: QueueDeps) {
         async enqueue(input: EnqueueInput): Promise<SyncItem> {
             const ownerKey = await currentOwner();
             if (!ownerKey) throw new Error('No hay sesión para encolar la operación');
+            if (input.ownerKey !== undefined && input.ownerKey !== ownerKey) throw new SessionChangedError();
             // One transaction over both tables (the same ones applySynced locks): a create that syncs
             // concurrently either finished before we read the id map or rewrites our row after we insert.
             const item = await guarded('queue', 'enqueue', () =>

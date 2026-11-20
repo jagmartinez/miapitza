@@ -73,6 +73,8 @@ export interface FlowState {
 export interface FlowOptions {
     api: FlowApi;
     orderId: OrderRef;
+    /** `companyId:userId` the plan started under: once the session is anyone else's every call is refused. */
+    ownerKey?: string | null;
     /** The order already carries a pre-invoice (a payment was attempted before): tip, customer and pre-invoice are frozen. */
     preinvoiced?: boolean;
     /** A plan saved by an earlier screen: its attempted legs keep their keys and its confirmed legs are never sent again. */
@@ -103,7 +105,9 @@ export const evenLegAmounts = (total: number, count: number): number[] => splitT
  * retries (and across screens, through `persist`/`resume`) and gets a fresh one only after a definitive rejection or when
  * its data changed (same key + different data is an error server-side).
  */
-export function createPaymentFlow({ api, orderId, preinvoiced = false, resume, persist }: FlowOptions) {
+export function createPaymentFlow({ api, orderId, ownerKey, preinvoiced = false, resume, persist }: FlowOptions) {
+    /** Passed on only when there is one, so a plan without an owner calls the api exactly as before. */
+    const owner: [string] | [] = ownerKey ? [ownerKey] : [];
     const done = { preinvoice: preinvoiced };
     /** The customer the server holds from OUR last successful PATCH; a different one is sent again before the pre-invoice. */
     let customerSent: string | null = null;
@@ -131,7 +135,7 @@ export function createPaymentFlow({ api, orderId, preinvoiced = false, resume, p
     async function setTip(tipAmount: number): Promise<void> {
         if (done.preinvoice) throw new Error('La cuenta ya fue prefacturada; la propina no puede cambiar.');
         if (tipApplied === tipAmount) return;
-        await api.pricing(orderId, { tipAmount });
+        await api.pricing(orderId, { tipAmount }, ...owner);
         tipApplied = tipAmount;
     }
 
@@ -140,10 +144,10 @@ export function createPaymentFlow({ api, orderId, preinvoiced = false, resume, p
         if (done.preinvoice) return;
         const wanted = input.customer ? JSON.stringify(input.customer) : null;
         if (input.customer && wanted !== customerSent) {
-            await api.updateFiscalCustomer(orderId, input.customer);
+            await api.updateFiscalCustomer(orderId, input.customer, ...owner);
             customerSent = wanted;
         }
-        await api.preinvoice(orderId);
+        await api.preinvoice(orderId, ...owner);
         done.preinvoice = true;
     }
 
@@ -163,7 +167,7 @@ export function createPaymentFlow({ api, orderId, preinvoiced = false, resume, p
         const promise = (async () => {
             await save(); // the key is stored before the request leaves
             try {
-                const res = await api.payLeg(body, attempt.key);
+                const res = await api.payLeg(body, attempt.key, ...owner);
                 confirmed.push(leg.id);
                 attempts.delete(leg.id);
                 await save();

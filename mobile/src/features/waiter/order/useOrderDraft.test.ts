@@ -86,7 +86,7 @@ describe('useOrderDraft', () => {
         expect(api.sendToKitchen).toHaveBeenCalledTimes(1);
         expect(api.sendToKitchen.mock.invocationCallOrder[0]).toBeGreaterThan(api.addItem.mock.invocationCallOrder[1]);
         // everything applied online: nothing to wait behind
-        expect(api.sendToKitchen.mock.calls[0][1]).toEqual({ dependencyKey: undefined, forceQueue: false, nonce: expect.any(String) });
+        expect(api.sendToKitchen.mock.calls[0][1]).toEqual({ dependencyKey: undefined, forceQueue: false, nonce: expect.any(String), owner: '1:7' });
         expect(result.current.lines).toHaveLength(0);
         expect(onSent).toHaveBeenCalledTimes(1);
         expect(result.current.sending).toBe(false);
@@ -126,7 +126,7 @@ describe('useOrderDraft', () => {
         const group = api.addItem.mock.calls[0][2].entityTempId;
         expect(group).toBeTruthy();
         expect(api.addItem.mock.calls[1][2].entityTempId).toBe(group);
-        expect(api.sendToKitchen.mock.calls[0][1]).toEqual({ dependencyKey: group, forceQueue: true, nonce: expect.any(String) });
+        expect(api.sendToKitchen.mock.calls[0][1]).toEqual({ dependencyKey: group, forceQueue: true, nonce: expect.any(String), owner: '1:7' });
     });
 
     it('lines the server already holds unsent are sent without adding again', async () => {
@@ -148,7 +148,7 @@ describe('useOrderDraft', () => {
         await act(async () => {
             await result.current.send();
         });
-        expect(api.createOrder).toHaveBeenCalledWith({ tableId: 3, orderType: 'DINE_IN', items: [{ menuItemId: 1, quantity: 2 }] });
+        expect(api.createOrder).toHaveBeenCalledWith({ tableId: 3, orderType: 'DINE_IN', items: [{ menuItemId: 1, quantity: 2 }] }, { owner: '1:7', actionId: expect.any(String) });
         expect(api.addItem).not.toHaveBeenCalled();
         expect(api.sendToKitchen.mock.calls[0][0]).toBe(900);
     });
@@ -276,7 +276,7 @@ describe('useOrderDraft fix round 1', () => {
             await result.current.send();
         });
         expect(result.current.lines).toHaveLength(0);
-        expect(api.createOrder).toHaveBeenCalledWith({ tableId: 3, orderType: 'DINE_IN', items: [{ menuItemId: 1, quantity: 1 }] });
+        expect(api.createOrder).toHaveBeenCalledWith({ tableId: 3, orderType: 'DINE_IN', items: [{ menuItemId: 1, quantity: 1 }] }, { owner: '1:7', actionId: expect.any(String) });
     });
 
     it('Minor 1: after create then a failed send, a retry reuses the created order', async () => {

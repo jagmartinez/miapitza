@@ -212,3 +212,26 @@ describe('rounding in cents', () => {
         expect(sum(parts)).toBe(5);
     });
 });
+
+describe('final review: a plan belongs to the session that started it (I2)', () => {
+    it('every call carries the owner the plan started under', async () => {
+        const api = makeFlowApi();
+        const flow = createPaymentFlow({ api, orderId: 5, ownerKey: '1:7' });
+        await flow.setTip(10);
+        await flow.prepare({ customer: { customerName: 'Ana' } });
+        await flow.pay([leg('a', 100)]);
+        expect(api.pricing).toHaveBeenCalledWith(5, { tipAmount: 10 }, '1:7');
+        expect(api.updateFiscalCustomer).toHaveBeenCalledWith(5, { customerName: 'Ana' }, '1:7');
+        expect(api.preinvoice).toHaveBeenCalledWith(5, '1:7');
+        expect(api.payLeg).toHaveBeenCalledWith(expect.objectContaining({ amount: 100 }), expect.any(String), '1:7');
+    });
+
+    it('a lock between two legs stops the plan: the second leg is never sent, the first stays confirmed', async () => {
+        const changed = Object.assign(new Error('x'), { name: 'SessionChangedError' });
+        const payLeg = vi.fn().mockResolvedValueOnce(ok()).mockRejectedValue(changed);
+        const flow = createPaymentFlow({ api: makeFlowApi({ payLeg }), orderId: 5, ownerKey: '1:7' });
+        await expect(flow.pay([leg('a', 100), leg('b', 100), leg('c', 30)])).rejects.toBeInstanceOf(LegError);
+        expect(payLeg).toHaveBeenCalledTimes(2);
+        expect(flow.confirmedIds()).toEqual(['a']);
+    });
+});

@@ -4,7 +4,10 @@ import { shouldQueueOfflineMutation } from '@web/services/offlinePolicy';
 import type { SessionStore } from '../core/session';
 import { TTL, type Cache, type CacheResult } from './cache';
 import type { OfflineQueue } from './offlineQueue';
-import { isTempOrderId, ownerKeyOf, type QueuedOffline, type SyncOperationType } from './types';
+import { appEvents } from '../core/events';
+import { isTempOrderId, ownerKeyOf, SessionChangedError, type QueuedOffline, type SyncOperationType } from './types';
+
+export { SessionChangedError };
 
 export interface WaiterApiDeps {
     http: AxiosInstance;
@@ -54,6 +57,10 @@ export interface QueueOptions {
     forceQueue?: boolean;
     /** Per-batch nonce sent in the body: a new batch is never answered by the replay of an older one. */
     nonce?: string;
+    /** The owner (`companyId:userId`) the action started under: once the session is anyone else's the call is refused. */
+    owner?: string;
+    /** Identity of the user action (one per draft line, one per "open table"): a retry reuses its key, a new action never does. */
+    actionId?: string;
 }
 
 /** The order exists only in the offline queue; this operation cannot wait for it. */
@@ -81,6 +88,12 @@ type Spec = {
     key?: string;
     /** Resolve to the whole response body instead of its `data` (a payment answers with the fiscal invoice beside it). */
     raw?: boolean;
+    /** The owner the action started under (see QueueOptions.owner). */
+    owner?: string;
+    /** Part of the retry-key fingerprint, never of the body. */
+    actionId?: string;
+    /** Once applied, forget the retained keys of this order's other attempts (the batch went to the kitchen: the round is closed). */
+    closesOrder?: string;
 };
 
 const MAX_ATTEMPTS_KEPT = 200;
@@ -95,9 +108,13 @@ export function createWaiterApi(deps: WaiterApiDeps) {
     queue.onSynced((item) => void cache.invalidate(item.ownerKey, STALE_AFTER_MUTATION));
 
     async function mutate<T>(spec: Spec): Promise<T | QueuedOffline> {
-        const owner = ownerKeyOf(await sessions.load());
+        const session = await sessions.load();
+        const owner = ownerKeyOf(session);
+        // Work that one user started never continues under another session (lock, PIN switch).
+        if (spec.owner !== undefined && spec.owner !== owner) throw new SessionChangedError();
         // Scoped by owner so one user's pending retry key is never picked up by another.
-        const fingerprint = `${owner ?? '-'} ${spec.method} ${spec.url} ${JSON.stringify(spec.data ?? null)}`;
+        const prefix = `${owner ?? '-'} ${spec.method} ${spec.url} `;
+        const fingerprint = `${prefix}${spec.actionId ?? ''} ${JSON.stringify(spec.data ?? null)}`;
         const attempt = spec.key ? { fingerprint, key: spec.key } : getIdempotentAttempt(attempts.get(fingerprint) ?? null, fingerprint);
         if (!spec.key) attempts.set(fingerprint, attempt);
         if (attempts.size > MAX_ATTEMPTS_KEPT) attempts.delete(attempts.keys().next().value as string);
@@ -111,6 +128,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 entityTempId: spec.queue.entityTempId,
                 dependencyKey: spec.queue.dependencyKey,
                 idempotencyKey: attempt.key,
+                ownerKey: spec.owner,
             });
             attempts.delete(fingerprint);
             if (isOnline()) void queue.process();
@@ -123,15 +141,31 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 method: spec.method,
                 url: spec.url,
                 data: spec.data,
-                headers: { ...(spec.config?.headers as object | undefined), 'X-Idempotency-Key': attempt.key },
+                // The token of the session the call started with: a switch while it is in flight cannot re-bind it.
+                headers: { ...(spec.config?.headers as object | undefined), ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}), 'X-Idempotency-Key': attempt.key },
             });
             attempts.delete(fingerprint);
+            // An applied call settles the earlier attempts at the same route (e.g. quantity 2, then 3: a later "2" is a new action).
+            for (const k of [...attempts.keys()]) if (k.startsWith(prefix)) attempts.delete(k);
+            if (spec.closesOrder) for (const k of [...attempts.keys()]) if (k.startsWith(`${owner ?? '-'} `) && k.includes(` /orders/${spec.closesOrder}/`)) attempts.delete(k);
             if (spec.invalidates && owner) await cache.invalidate(owner, STALE_AFTER_MUTATION);
             return (spec.raw ? res.data : (res.data?.data ?? res.data)) as T;
         } catch (error) {
+            if (session?.token && (error as { response?: { status?: number } } | null)?.response?.status === 401) await expireIfCurrent(session.token);
             // Only an ambiguous failure (network, 5xx, 408/409/429) may have been applied: keep its key.
             if (!isAmbiguousMutationFailure(error)) attempts.delete(fingerprint);
             throw error;
+        }
+    }
+
+    /** The request carried an explicit token, so the http layer did not track it: a 401 ends the session here. */
+    async function expireIfCurrent(token: string): Promise<void> {
+        const cur = await sessions.load();
+        if (!cur || cur.token !== token) return;
+        try {
+            await sessions.clear();
+        } finally {
+            appEvents.emit('session-expired');
         }
     }
 
@@ -204,11 +238,13 @@ export function createWaiterApi(deps: WaiterApiDeps) {
         kitchenNotifications: (params: { includeAttended?: boolean; limit?: number } = {}) => get<Json[]>('/kitchen-notifications', params),
 
         // ---- mutations (queueable offline, same four as the web) ----
-        createOrder(body: CreateOrderBody) {
+        createOrder(body: CreateOrderBody, opts: { owner?: string; actionId?: string } = {}) {
             return mutate<Json>({
                 method: 'POST',
                 url: '/orders',
                 data: body,
+                owner: opts.owner,
+                actionId: opts.actionId,
                 invalidates: true,
                 queue: { operationType: 'CREATE_ORDER', entityTempId: `order-${Date.now()}-${newIdempotencyKey().replace(/[^A-Za-z0-9]/g, '').slice(0, 8)}` },
             });
@@ -220,6 +256,8 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 method: 'POST',
                 url: `/orders/${ref.id}/items`,
                 data: body,
+                owner: opts.owner,
+                actionId: opts.actionId,
                 invalidates: true,
                 queue: {
                     operationType: 'ADD_ORDER_ITEM',
@@ -236,6 +274,8 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 url: `/orders/${ref.id}/send-to-kitchen`,
                 // The server ignores unknown body fields; the nonce only changes the idempotency fingerprint.
                 data: opts.nonce ? { batchNonce: opts.nonce } : undefined,
+                owner: opts.owner,
+                closesOrder: String(ref.id),
                 invalidates: true,
                 queue: {
                     operationType: 'SEND_TO_KITCHEN',
@@ -264,7 +304,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
          * One payment leg, online only. Unlike createPayment it is never queued (a payment is taken with the server's answer
          * in hand: invoice, change, table released) and the caller owns the key, one per leg, kept across retries of that leg.
          */
-        async payLeg(body: { orderId: OrderRef; paymentMethodId: number; amount: number; reference?: string; payerName?: string }, idempotencyKey: string) {
+        async payLeg(body: { orderId: OrderRef; paymentMethodId: number; amount: number; reference?: string; payerName?: string }, idempotencyKey: string, owner?: string) {
             const id = await syncedOrderId(body.orderId);
             return mutate<{ data: Json; fiscalInvoice?: Json | null; fiscalInvoiceError?: string | null }>({
                 method: 'POST',
@@ -272,6 +312,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 data: { ...body, orderId: id },
                 invalidates: true,
                 key: idempotencyKey,
+                owner,
                 raw: true,
             }) as Promise<{ data: Json; fiscalInvoice?: Json | null; fiscalInvoiceError?: string | null }>;
         },
@@ -299,9 +340,9 @@ export function createWaiterApi(deps: WaiterApiDeps) {
             return mutate<Json>({ method: 'POST', url: '/tables/transfer', data: { ...body, orderId }, invalidates: true });
         },
         groupTables: (body: { primaryTableId: number; memberTableIds: number[]; reason?: string }) => mutate<Json>({ method: 'POST', url: '/tables/groups', data: body, invalidates: true }),
-        async pricing(orderId: OrderRef, body: PricingBody) {
+        async pricing(orderId: OrderRef, body: PricingBody, owner?: string) {
             const id = await syncedOrderId(orderId);
-            return mutate<Json>({ method: 'PATCH', url: `/orders/${id}/pricing`, data: body, invalidates: true });
+            return mutate<Json>({ method: 'PATCH', url: `/orders/${id}/pricing`, data: body, owner, invalidates: true });
         },
         async authorizeDiscount(orderId: OrderRef, body: AuthorizeDiscountBody) {
             const id = await syncedOrderId(orderId);
@@ -321,13 +362,13 @@ export function createWaiterApi(deps: WaiterApiDeps) {
             if (owner) await cache.invalidate(owner, STALE_AFTER_MUTATION);
             return (res.data?.data ?? res.data) as Json;
         },
-        async updateFiscalCustomer(orderId: OrderRef, body: { customerName?: string; customerTaxId?: string; customerTaxIdType?: string; customerFiscalAddress?: string; customerEmail?: string; customerPhone?: string }) {
+        async updateFiscalCustomer(orderId: OrderRef, body: { customerName?: string; customerTaxId?: string; customerTaxIdType?: string; customerFiscalAddress?: string; customerEmail?: string; customerPhone?: string }, owner?: string) {
             const id = await syncedOrderId(orderId);
-            return mutate<Json>({ method: 'PATCH', url: `/orders/${id}/fiscal-customer`, data: body, invalidates: true });
+            return mutate<Json>({ method: 'PATCH', url: `/orders/${id}/fiscal-customer`, data: body, owner, invalidates: true });
         },
-        async preinvoice(orderId: OrderRef) {
+        async preinvoice(orderId: OrderRef, owner?: string) {
             const id = await syncedOrderId(orderId);
-            return mutate<Json>({ method: 'POST', url: `/invoices/${id}/preinvoice` });
+            return mutate<Json>({ method: 'POST', url: `/invoices/${id}/preinvoice`, owner });
         },
         validateCoupon: (body: { code: string; orderTotal: number; branchId?: number; items?: Json[] }) => mutate<Json>({ method: 'POST', url: '/promotions/validate', data: body }),
         async splitEvenly(orderId: OrderRef, numberOfPeople: number) {

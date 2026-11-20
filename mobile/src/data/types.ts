@@ -79,6 +79,14 @@ export interface QueuedOffline {
 const TEMP_ORDER_ID = /^order-\d+-[A-Za-z0-9]{4,}$/;
 export const isTempOrderId = (value: unknown): value is string => typeof value === 'string' && TEMP_ORDER_ID.test(value);
 
+/** The session that started an action is no longer the active one (the screen locked, or another user logged in). */
+export class SessionChangedError extends Error {
+    constructor() {
+        super('La sesión cambió; la acción se canceló');
+        this.name = 'SessionChangedError';
+    }
+}
+
 export function ownerKeyOf(session: Session | null): string | null {
     if (!session) return null;
     return `${session.user.companyId ?? 0}:${session.user.id}`;

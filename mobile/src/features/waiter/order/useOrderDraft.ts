@@ -11,6 +11,8 @@ export type DraftApi = Pick<WaiterApi, 'addItem' | 'sendToKitchen' | 'createOrde
 /** A local "Nuevo" line: not on the server yet. Equal product + modifiers + note share one line. */
 export interface DraftTicketLine {
     key: string;
+    /** Identity of this line as a user action: its retry key never serves another line (new line = new uid). */
+    uid: string;
     menuItemId: number;
     name: string;
     /** Unit price already including modifiers. */
@@ -62,7 +64,10 @@ interface StoredLine {
     name?: string;
     unitPrice?: number;
     modifierNames?: string[];
+    uid?: string;
 }
+
+const newUid = () => newIdempotencyKey().replace(/[^A-Za-z0-9]/g, '').slice(0, 16);
 
 function fromStored(data: DraftData | null): DraftTicketLine[] {
     const out: DraftTicketLine[] = [];
@@ -72,6 +77,7 @@ function fromStored(data: DraftData | null): DraftTicketLine[] {
         const modifierIds = Array.isArray(raw.modifierIds) ? raw.modifierIds : [];
         out.push({
             key: lineKey(raw.menuItemId, modifierIds, notes),
+            uid: typeof raw.uid === 'string' && raw.uid ? raw.uid : newUid(),
             menuItemId: raw.menuItemId,
             name: raw.name ?? 'Producto',
             unitPrice: Number(raw.unitPrice) || 0,
@@ -86,7 +92,7 @@ function fromStored(data: DraftData | null): DraftTicketLine[] {
 
 const toStored = (lines: DraftTicketLine[]): DraftData => ({
     items: lines.map(
-        (l): StoredLine => ({ menuItemId: l.menuItemId, quantity: l.quantity, notes: l.notes || undefined, modifierIds: l.modifierIds, name: l.name, unitPrice: l.unitPrice, modifierNames: l.modifierNames }),
+        (l): StoredLine => ({ menuItemId: l.menuItemId, quantity: l.quantity, notes: l.notes || undefined, modifierIds: l.modifierIds, name: l.name, unitPrice: l.unitPrice, modifierNames: l.modifierNames, uid: l.uid }),
     ),
 });
 
@@ -194,7 +200,7 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
             const found = current.find((l) => l.key === key);
             const next = found
                 ? current.map((l) => (l.key === key ? { ...l, quantity: l.quantity + 1 } : l))
-                : [...current, { key, menuItemId: product.id, name: product.name, unitPrice: product.price + (extra.modifierTotal ?? 0), quantity: 1, notes, modifierIds, modifierNames: extra.modifierNames ?? [] }];
+                : [...current, { key, uid: newUid(), menuItemId: product.id, name: product.name, unitPrice: product.price + (extra.modifierTotal ?? 0), quantity: 1, notes, modifierIds, modifierNames: extra.modifierNames ?? [] }];
             commit(next);
             flash(key);
         },
@@ -261,6 +267,7 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
         setSending(true);
         setError(null);
         // Every line of this send queues under one group, and the kitchen batch waits behind that group.
+        const owner = latest.current.ownerKey ?? undefined; // the session this send belongs to: it never continues under another
         const group = `kitchen-${newIdempotencyKey().replace(/[^A-Za-z0-9]/g, '').slice(0, 12)}`;
         // One nonce per batch: kept while a send keeps failing (so the retry reuses its idempotency key), renewed after a success.
         nonce.current ??= newIdempotencyKey();
@@ -271,7 +278,7 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
             if (target == null) {
                 // The table has no order on the server: create it with every line (web contract), then send.
                 const { tableId: table, guests: people } = latest.current;
-                const res = (await api.createOrder({ tableId: table ?? undefined, orderType: 'DINE_IN', ...(people ? { guests: people } : {}), items: pending.map(toOrderLine) })) as { id?: number; entityTempId?: string | null };
+                const res = (await api.createOrder({ tableId: table ?? undefined, orderType: 'DINE_IN', ...(people ? { guests: people } : {}), items: pending.map(toOrderLine) }, { owner, actionId: group })) as { id?: number; entityTempId?: string | null };
                 target = isQueuedOffline(res) ? res.entityTempId : (res.id ?? null);
                 if (target == null) throw new Error('No se pudo crear el pedido.');
                 touched = true;
@@ -281,20 +288,22 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
                 pending.forEach((l) => subtractSent(start, l));
             } else {
                 for (const line of pending) {
-                    const res = await api.addItem(target, toOrderLine(line), { entityTempId: group });
+                    const res = await api.addItem(target, toOrderLine(line), { entityTempId: group, owner, actionId: line.uid });
                     touched = true;
                     anyQueued = anyQueued || isQueuedOffline(res);
                     // Applied (or safely queued): that quantity is no longer a draft, so a retry never repeats it.
                     subtractSent(start, line);
                 }
             }
-            await api.sendToKitchen(target, { dependencyKey: anyQueued ? group : undefined, forceQueue: anyQueued, nonce: nonce.current });
+            await api.sendToKitchen(target, { dependencyKey: anyQueued ? group : undefined, forceQueue: anyQueued, nonce: nonce.current, owner });
             nonce.current = null;
             created.current = null;
             setCreatedUnits(0);
             onSent?.(target);
             return 'sent';
         } catch (cause) {
+            // Locked or switched user: the screen is gone and what was left stays in A's draft; B must not see an error for it.
+            if (cause instanceof Error && cause.name === 'SessionChangedError') return 'failed';
             setError(getApiErrorMessage(cause));
             if (touched) onChanged?.();
             return 'failed';
