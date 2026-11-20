@@ -214,6 +214,19 @@ export class AuthController {
         }
     }
 
+    static async deviceLogin(req: Request, res: Response, next: NextFunction) {
+        try {
+            const result = await AuthService.deviceLogin({
+                deviceToken: AuthController.deviceTokenOf(req),
+                ip: req.ip || (req.headers['x-forwarded-for'] as string) || '',
+                userAgent: req.headers['user-agent'] || '',
+            });
+            res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
+        } catch (error) {
+            AuthController.handleDeviceAuthError('Device login', error, req, next);
+        }
+    }
+
     static async setMyPin(req: Request, res: Response, next: NextFunction) {
         try {
             if (!req.user) return next({ statusCode: 401, message: 'No autenticado' });

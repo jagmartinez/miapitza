@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SessionService } from './session.service';
 import { TwoFactorService } from './twoFactor.service';
-import { ROLES, PIN_ROLES } from '../constants/roles';
+import { ROLES, KITCHEN_DEVICE_ROLES, PIN_ROLES } from '../constants/roles';
 import {
     assertStrongPassword,
     BCRYPT_ROUNDS
@@ -92,6 +92,7 @@ const DEVICE_PIN_WINDOW_MS = 15 * 60 * 1000;
 // row that is locked inside the window still stands for this many guesses.
 const USER_LOCK_THRESHOLD = 5;
 const PIN_SESSION_IDLE_MINUTES = 15;
+const KITCHEN_SESSION_IDLE_MINUTES = 24 * 60;
 const PIN_ROLES_LIST: string[] = [...PIN_ROLES];
 
 const deviceLockKey = (deviceId: number) => `device:${deviceId}`;
@@ -461,6 +462,42 @@ export class AuthService {
             auditAction: 'PIN_LOGIN',
             // Closes the revoke-vs-login race: the device must still be ACTIVE
             // inside the transaction that creates the session.
+            guard: (tx) => assertDeviceStillActive(tx, device.id),
+        });
+    }
+
+    /** Fixed kitchen tablet: the device token alone opens the branch kitchen account. */
+    static async deviceLogin(input: {
+        deviceToken: string;
+        ip?: string;
+        userAgent?: string;
+    }): Promise<LoginResult> {
+        const device = await OperationalDeviceService.resolveActive(input.deviceToken);
+        if (!device || device.type !== 'KITCHEN_TABLET' || !device.kitchenUserId) {
+            throw new Error(GENERIC_AUTH_ERROR);
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: device.kitchenUserId },
+            include: LOGIN_USER_INCLUDE,
+        });
+        const roleNames = user ? roleNamesOf(user) : [];
+        if (
+            !user
+            || !isUserEligibleContext(user, device)
+            || user.branchId !== device.branchId
+            || !roleNames.includes(ROLES.COCINA)
+            || !roleNames.every((name) => (KITCHEN_DEVICE_ROLES as string[]).includes(name))
+        ) {
+            throw new Error(GENERIC_AUTH_ERROR);
+        }
+
+        return AuthService.issueSession(user, {
+            ip: input.ip,
+            userAgent: input.userAgent,
+            idleTimeoutMinutes: KITCHEN_SESSION_IDLE_MINUTES,
+            deviceTag: deviceSessionTag(device.id),
+            auditAction: 'DEVICE_LOGIN',
             guard: (tx) => assertDeviceStillActive(tx, device.id),
         });
     }

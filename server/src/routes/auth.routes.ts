@@ -46,6 +46,9 @@ router.post('/pin-login',
     AuthController.pinLogin
 );
 
+// Fixed kitchen tablet: the X-Device-Token header alone, no body.
+router.post('/device-login', AuthController.deviceLogin);
+
 // Set/replace the caller's own quick-login PIN
 router.put('/me/pin',
     authMiddleware,
