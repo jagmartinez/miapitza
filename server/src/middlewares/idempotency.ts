@@ -49,7 +49,11 @@ export function resolveIdempotencyNamespace(req: Request): string {
             permissions: [...req.user.permissions].sort(),
             accountType: req.user.accountType ?? null,
         });
-        return credentialNamespace('s', `${token}\0${authorizationContext}`);
+        // Identity, not session: shared tablets swap users by PIN (new token per
+        // login) and the kitchen tablet silently re-logs in, so an offline retry
+        // after re-login must still replay. Rejected/revoked tokens never get here:
+        // preAuthenticateIdempotentRequest runs auth() before any replay.
+        return credentialNamespace('s', `${req.user.companyId}:${req.user.userId}\0${authorizationContext}`);
     }
     if (token) return credentialNamespace('t', token);
     // API-key auth runs on the route after this global middleware. Hash the
