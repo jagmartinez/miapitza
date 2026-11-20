@@ -1,6 +1,6 @@
 # Punto de control — App Android
 
-> Leer esto primero para retomar. Actualizado: 2026-11-20.
+> Leer esto primero para retomar. Actualizado: 2026-11-20 (Fase 2 cerrada).
 
 ## Dónde estamos
 - Rama: `feat/app-android` (creada desde `codex/rh-nomina-estatutaria` @ 6d548af). No publicada (sin push).
@@ -40,10 +40,18 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - Ensayar la migración `20261120_operational_devices_pin` contra MySQL (`db:rehearse-migrations`) — nunca se ejecutó.
 - En la tablet: comprobar que el bloqueo de 2 min funcione tras despertar la pantalla.
 
-## Fase 2 (Modo Mesero) — plan escrito 2026-11-20
-- Plan: `docs/superpowers/plans/2026-11-20-app-android-fase-2-mesero.md` (12 tareas: 5 backend, 7 app). Pendiente de aprobación del usuario antes de ejecutar.
-- Decisiones del usuario: cobra el **cajero con su PIN**; Fase 2 = **cupón + descuento manual con PIN de supervisor**; promociones automáticas en una fase propia.
-- Inventario de API: `.superpowers/sdd/2026-11-20-app-android-fase-2-mesero/api-inventory.md` (no versionado).
+## Fase 2 (Modo Mesero) — ✅ código terminado y revisado (2026-11-20)
+- Plan: `docs/superpowers/plans/2026-11-20-app-android-fase-2-mesero.md` (12 tareas: 5 backend, 7 app). Bitácora con todas las decisiones: `.superpowers/sdd/2026-11-20-app-android-fase-2-mesero/progress.md` (no versionada).
+- Decisiones del usuario: cobra el **cajero con su PIN**; Fase 2 = **cupón + descuento manual con PIN de supervisor**; promociones automáticas en una fase propia. Revisión final de la app: Opus + **Fable 5.2 como segunda opinión** (repetir así en fases siguientes).
+- Revisiones: refutador por tanda; revisión final backend (opus) + ola de correcciones; revisión final app (opus + fable) + ola + seguimiento. Todo cerrado; menores diferidos en la bitácora.
+- Pruebas: servidor 197 suites / 1700; app 53 archivos / 421; `tsc` limpio; JS inicial 84 KB gzip (límite 250).
+- Migraciones nuevas sin ensayar en MySQL: `20261121_waiter_mode`, `20261122_discount_authorized_percent` (bloquean `Order`/`OrderItem` al aplicarse → desplegar fuera de horario).
+- Pendiente del gate (al final, cuando se instale Android Studio): prueba punta a punta en tablet real (abrir mesa, modificador, enviar, KDS listo, entregar, descuento autorizado, cajero cobra dividido; repetir con Wi-Fi apagado) y revisar diseño a 1280×800 y 1024×600.
+- Diferidos relevantes para fases siguientes: imprimir/enviar factura y mosaico "Factura"/⋯ (Fase 2b); `maxDiscountPercent` solo configurable por SQL (falta UI admin); suscriptor de `storage-error` y aviso de listos tras reconexión (Fase 6); tests con BD real (al ensayar migraciones).
+- Uso semanal consumido por la Fase 2: ~5 puntos (39 % → 44 %).
+
+## Siguiente
+- Fase 2b (Caja: apertura, movimientos, arqueo C$/US$, cierre, ticket 80 mm) — falta escribir su plan.
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
