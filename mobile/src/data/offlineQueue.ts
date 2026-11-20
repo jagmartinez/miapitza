@@ -7,10 +7,13 @@ import { guarded, reportStorage, toStorageError } from './storage';
 import { isPermanentSyncFailure, ownerKeyOf, SessionChangedError, type SyncItem } from './types';
 
 export const MAX_RETRIES = 5;
+/** Queued work older than this is not replayed on its own: it becomes failed, for its owner to review. */
+export const STALE_AFTER_MS = 12 * 60 * 60_000;
+const STALE_MESSAGE = 'Quedó pendiente más de 12 h: revísalo antes de reenviarlo';
 export const backoffMs = (retryCount: number) => Math.min(1000 * Math.pow(2, retryCount), 30_000);
 
 export type EnqueueInput = Pick<SyncItem, 'url' | 'method' | 'data' | 'operationType'> &
-    Partial<Pick<SyncItem, 'dependencyKey' | 'entityTempId' | 'idempotencyKey'>> & {
+    Partial<Pick<SyncItem, 'dependencyKey' | 'entityTempId' | 'idempotencyKey' | 'meta'>> & {
         /** The owner the action started under: refused (SessionChangedError) when the session is no longer theirs. */
         ownerKey?: string;
     };
@@ -67,6 +70,18 @@ export function createOfflineQueue(deps: QueueDeps) {
             snapshot = next;
             for (const fn of [...listeners]) fn();
         }
+    }
+
+    const isStale = (r: SyncItem) => r.status !== 'failed' && r.status !== 'processing' && !r.approvedStale && now() - r.timestamp > STALE_AFTER_MS;
+
+    /** Marks the owner's items that waited past the service window as failed (never replayed by itself). */
+    async function sweepStale(ownerKey: string): Promise<void> {
+        const rows = await db.syncQueue.where('ownerKey').equals(ownerKey).filter(isStale).toArray();
+        for (const r of rows) {
+            await db.syncQueue.update(r.id!, { status: 'failed', nextAttemptAt: null, lastError: STALE_MESSAGE });
+            if (r.entityTempId) await failDependents(ownerKey, r.entityTempId, STALE_MESSAGE);
+        }
+        if (rows.length > 0) await refreshCounts();
     }
 
     async function failDependents(ownerKey: string, dependencyKey: string, cause: string, visited = new Set<string>()): Promise<void> {
@@ -149,9 +164,10 @@ export function createOfflineQueue(deps: QueueDeps) {
 
     /** Returns the owner the run started with (null when nothing could run). */
     async function runItems(): Promise<string | null> {
-        if (!isOnline()) return null;
         const ownerKey = await currentOwner();
         if (!ownerKey) return null;
+        await sweepStale(ownerKey); // also offline: the list and the counters must not call a stale item pending
+        if (!isOnline()) return null;
 
         // A previous run killed mid-request left items 'processing'; their key makes the resend safe.
         await db.syncQueue
@@ -345,6 +361,7 @@ export function createOfflineQueue(deps: QueueDeps) {
                         entityTempId: input.entityTempId ?? null,
                         idempotencyKey: input.idempotencyKey || newIdempotencyKey(),
                         timestamp: nextTimestamp(),
+                        meta: input.meta,
                         status: deadParent ? 'failed' : 'pending',
                         retryCount: 0,
                         lastError: deadParent ? `Dependencia fallida (${dep ?? 'pedido'}): la operación previa fue descartada o falló` : null,
@@ -383,6 +400,28 @@ export function createOfflineQueue(deps: QueueDeps) {
             return db.syncQueue.where('ownerKey').equals(owner).filter((r) => r.status !== 'failed').count();
         },
 
+        /** The owner's items still on this device (pending, blocked, failed), oldest first: what the offline indicator lists. */
+        async listItems(): Promise<SyncItem[]> {
+            const owner = await currentOwner();
+            if (!owner) return [];
+            await sweepStale(owner);
+            const rows = await db.syncQueue.where('ownerKey').equals(owner).toArray();
+            return rows.sort((a, b) => a.timestamp - b.timestamp || a.id! - b.id!);
+        },
+
+        /** Every user's queued work by user id (for the PIN screen: "Ana · 3 pendientes"). Stale items count as failed. */
+        async pendingByUser(): Promise<Record<number, { pending: number; failed: number }>> {
+            const out: Record<number, { pending: number; failed: number }> = {};
+            for (const r of await db.syncQueue.toArray()) {
+                const userId = Number(r.ownerKey.split(':')[1]);
+                if (!Number.isFinite(userId)) continue;
+                const slot = (out[userId] ??= { pending: 0, failed: 0 });
+                if (r.status === 'failed' || isStale(r)) slot.failed += 1;
+                else slot.pending += 1;
+            }
+            return out;
+        },
+
         async listFailed(): Promise<SyncItem[]> {
             const owner = await currentOwner();
             if (!owner) return [];
@@ -393,8 +432,15 @@ export function createOfflineQueue(deps: QueueDeps) {
         async retry(id: number): Promise<void> {
             const owner = await currentOwner();
             const row = await db.syncQueue.get(id);
-            if (!owner || !row || row.ownerKey !== owner || row.status !== 'failed') return;
-            const reset = { status: 'pending' as const, retryCount: 0, networkFailures: 0, nextAttemptAt: null, lastError: null };
+            if (!owner || !row || row.ownerKey !== owner || row.status === 'processing') return;
+            if (row.status !== 'failed') {
+                // Waiting (backoff or behind its parent): try now instead of when the timer says.
+                await db.syncQueue.update(id, { nextAttemptAt: null, networkFailures: 0 });
+                void process();
+                return;
+            }
+            // The owner looked at it and chose to send it: that review also lifts the 12 h rule for it and its dependents.
+            const reset = { status: 'pending' as const, retryCount: 0, networkFailures: 0, nextAttemptAt: null, lastError: null, approvedStale: true };
             await db.syncQueue.update(id, reset);
             if (row.entityTempId) {
                 const seen = new Set<string>();
@@ -416,7 +462,7 @@ export function createOfflineQueue(deps: QueueDeps) {
         async discard(id: number): Promise<void> {
             const owner = await currentOwner();
             const row = await db.syncQueue.get(id);
-            if (!owner || !row || row.ownerKey !== owner) return;
+            if (!owner || !row || row.ownerKey !== owner || row.status === 'processing') return;
             await db.syncQueue.delete(id);
             // Same rule as a permanent failure: what depended on it can no longer run.
             if (row.entityTempId) {

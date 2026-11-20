@@ -12,6 +12,7 @@ import { DeviceSetupScreen } from '../features/device/DeviceSetupScreen';
 import { KitchenHome } from '../features/kitchen/KitchenHome';
 import { PinScreen } from '../features/pin/PinScreen';
 import { WaiterHome } from '../features/waiter/WaiterHome';
+import { loadWaiterData } from '../data/loadWaiterData';
 
 /** Locks the waiter tablet back to the PIN screen after 2 minutes without touch. */
 function WaiterSession({ session, services, onSwitchUser }: { session: Session; services: Services; onSwitchUser: () => void }) {
@@ -25,6 +26,8 @@ export function Router({ services }: { services: Services }) {
     const [deviceType, setDeviceType] = useState<DeviceType | null | undefined>(undefined);
     const [session, setSession] = useState<Session | null>(null);
     const mode = deviceType === undefined ? null : resolveMode(deviceType);
+    // Queued offline work per user, so the PIN screen can call its author back (ruling a). Loads the data layer lazily.
+    const loadPending = useCallback(async () => (await loadWaiterData(services)).queue.pendingByUser(), [services]);
 
     useEffect(() => {
         let alive = true;
@@ -119,7 +122,7 @@ export function Router({ services }: { services: Services }) {
             return session ? (
                 <WaiterSession session={session} services={services} onSwitchUser={switchUser} />
             ) : (
-                <PinScreen api={pinApi} onLoggedIn={setSession} onRevoked={handleRevoked} />
+                <PinScreen api={pinApi} onLoggedIn={setSession} onRevoked={handleRevoked} loadPending={loadPending} />
             );
         case 'kitchen':
             return session ? <KitchenHome session={session} /> : <main className="screen"><p className="muted">Conectando…</p></main>;

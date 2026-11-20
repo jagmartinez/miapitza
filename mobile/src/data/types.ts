@@ -23,6 +23,19 @@ export interface SyncItem {
     networkFailures?: number;
     /** `${companyId}:${userId}`. Never a token. */
     ownerKey: string;
+    /** The owner reviewed this item after it went stale (Reintentar): the 12 h rule no longer applies to it. */
+    approvedStale?: boolean;
+    /** What the waiter would recognise: shown in the pending list and, for lines, in the ticket. No ids, no secrets. */
+    meta?: SyncMeta;
+}
+
+export interface SyncMeta {
+    /** One line for the pending list, e.g. "2 × Coca" or "Abrir mesa 5". */
+    label?: string;
+    /** Product name / unit price (modifiers included) / modifier names of a queued line. */
+    name?: string;
+    unitPrice?: number;
+    modifierNames?: string[];
 }
 
 export interface CacheEntry {

@@ -173,3 +173,9 @@
         grid-template-columns: 1fr;
     }
 }
+
+.avatar-pending {
+    font-size: 11px;
+    color: var(--ready);
+    text-align: center;
+}

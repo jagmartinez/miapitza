@@ -12,9 +12,18 @@ interface Props {
     onLoggedIn: (session: Session) => void;
     /** The server rejected the device token itself: the device was revoked. */
     onRevoked: () => void;
+    /** Queued offline work of every user on this tablet, by user id: shown under each avatar so its author logs in and reviews it. */
+    loadPending?: () => Promise<Record<number, { pending: number; failed: number }>>;
 }
 
-export function PinScreen({ api, onLoggedIn, onRevoked }: Props) {
+const pendingText = ({ pending, failed }: { pending: number; failed: number }): string | null => {
+    const waiting = pending > 0 ? `${pending} ${pending === 1 ? 'pendiente' : 'pendientes'}` : null;
+    const broken = failed > 0 ? `${failed} con error` : null;
+    return [waiting, broken].filter(Boolean).join(' · ') || null;
+};
+
+export function PinScreen({ api, onLoggedIn, onRevoked, loadPending }: Props) {
+    const [pendingBy, setPendingBy] = useState<Record<number, { pending: number; failed: number }>>({});
     const [roster, setRoster] = useState<RosterUser[] | null>(null);
     const [loadFailed, setLoadFailed] = useState(false);
     const [selected, setSelected] = useState<RosterUser | null>(null);
@@ -39,6 +48,19 @@ export function PinScreen({ api, onLoggedIn, onRevoked }: Props) {
     }, [api, onRevoked]);
 
     useEffect(() => loadRoster(), [loadRoster]);
+
+    useEffect(() => {
+        if (!loadPending) return undefined;
+        let alive = true;
+        // Informational only: a failing lookup never blocks signing in.
+        loadPending().then(
+            (by) => alive && setPendingBy(by),
+            () => undefined,
+        );
+        return () => {
+            alive = false;
+        };
+    }, [loadPending]);
 
     function press(digit: string) {
         if (busy) return;
@@ -87,6 +109,7 @@ export function PinScreen({ api, onLoggedIn, onRevoked }: Props) {
                     >
                         <span className="avatar-disc" style={u.color ? { background: u.color } : undefined}>{u.initials}</span>
                         <span>{u.name.split(' ')[0]}</span>
+                        {pendingBy[u.id] && pendingText(pendingBy[u.id]) && <span className="avatar-pending">{pendingText(pendingBy[u.id])}</span>}
                     </button>
                 ))}
             </section>

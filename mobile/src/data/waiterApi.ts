@@ -5,7 +5,7 @@ import type { SessionStore } from '../core/session';
 import { TTL, type Cache, type CacheResult } from './cache';
 import type { OfflineQueue } from './offlineQueue';
 import { appEvents } from '../core/events';
-import { isTempOrderId, ownerKeyOf, SessionChangedError, type QueuedOffline, type SyncOperationType } from './types';
+import { isTempOrderId, ownerKeyOf, SessionChangedError, type QueuedOffline, type SyncMeta, type SyncOperationType } from './types';
 
 export { SessionChangedError };
 
@@ -61,6 +61,8 @@ export interface QueueOptions {
     owner?: string;
     /** Identity of the user action (one per draft line, one per "open table"): a retry reuses its key, a new action never does. */
     actionId?: string;
+    /** What the pending list and the ticket show for this item if it is queued. */
+    meta?: SyncMeta;
 }
 
 /** The order exists only in the offline queue; this operation cannot wait for it. */
@@ -80,7 +82,7 @@ type Spec = {
     url: string;
     data?: unknown;
     /** Present only for the four operations the web also queues. */
-    queue?: { operationType: SyncOperationType; entityTempId?: string; dependencyKey?: string; forceQueue?: boolean };
+    queue?: { operationType: SyncOperationType; entityTempId?: string; dependencyKey?: string; forceQueue?: boolean; meta?: SyncMeta };
     config?: AxiosRequestConfig;
     /** Changes orders or tables: drop the owner's cached active orders and floor plan once applied. */
     invalidates?: boolean;
@@ -128,6 +130,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 entityTempId: spec.queue.entityTempId,
                 dependencyKey: spec.queue.dependencyKey,
                 idempotencyKey: attempt.key,
+                meta: spec.queue.meta,
                 ownerKey: spec.owner,
             });
             attempts.delete(fingerprint);
@@ -238,7 +241,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
         kitchenNotifications: (params: { includeAttended?: boolean; limit?: number } = {}) => get<Json[]>('/kitchen-notifications', params),
 
         // ---- mutations (queueable offline, same four as the web) ----
-        createOrder(body: CreateOrderBody, opts: { owner?: string; actionId?: string } = {}) {
+        createOrder(body: CreateOrderBody, opts: { owner?: string; actionId?: string; meta?: SyncMeta } = {}) {
             return mutate<Json>({
                 method: 'POST',
                 url: '/orders',
@@ -246,7 +249,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 owner: opts.owner,
                 actionId: opts.actionId,
                 invalidates: true,
-                queue: { operationType: 'CREATE_ORDER', entityTempId: `order-${Date.now()}-${newIdempotencyKey().replace(/[^A-Za-z0-9]/g, '').slice(0, 8)}` },
+                queue: { operationType: 'CREATE_ORDER', meta: opts.meta, entityTempId: `order-${Date.now()}-${newIdempotencyKey().replace(/[^A-Za-z0-9]/g, '').slice(0, 8)}` },
             });
         },
         /** `orderId` may be the temp id of an offline-created order: the call waits behind its create. */
@@ -261,6 +264,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 invalidates: true,
                 queue: {
                     operationType: 'ADD_ORDER_ITEM',
+                    meta: opts.meta,
                     entityTempId: opts.entityTempId,
                     dependencyKey: opts.dependencyKey ?? ref.pendingTemp ?? undefined,
                     forceQueue: opts.forceQueue || !!ref.pendingTemp,
@@ -279,6 +283,7 @@ export function createWaiterApi(deps: WaiterApiDeps) {
                 invalidates: true,
                 queue: {
                     operationType: 'SEND_TO_KITCHEN',
+                    meta: { label: 'Enviar a cocina' },
                     entityTempId: opts.entityTempId,
                     dependencyKey: opts.dependencyKey ?? ref.pendingTemp ?? undefined,
                     forceQueue: opts.forceQueue || !!ref.pendingTemp,

@@ -288,7 +288,7 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
                 pending.forEach((l) => subtractSent(start, l));
             } else {
                 for (const line of pending) {
-                    const res = await api.addItem(target, toOrderLine(line), { entityTempId: group, owner, actionId: line.uid });
+                    const res = await api.addItem(target, toOrderLine(line), { entityTempId: group, owner, actionId: line.uid, meta: { label: `${line.quantity} × ${line.name}`, name: line.name, unitPrice: line.unitPrice, modifierNames: line.modifierNames } });
                     touched = true;
                     anyQueued = anyQueued || isQueuedOffline(res);
                     // Applied (or safely queued): that quantity is no longer a draft, so a retry never repeats it.

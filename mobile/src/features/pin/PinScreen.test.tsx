@@ -92,3 +92,24 @@ describe('PinScreen', () => {
         expect(onRevoked).not.toHaveBeenCalled();
     });
 });
+
+describe('PinScreen pending offline work (ruling a)', () => {
+    it('shows "N pendientes" under the user who owns queued work, and nothing for the others', async () => {
+        const loadPending = vi.fn().mockResolvedValue({ 1: { pending: 3, failed: 0 } });
+        render(<PinScreen api={makeApi()} onLoggedIn={vi.fn()} onRevoked={vi.fn()} loadPending={loadPending} />);
+        await screen.findByText('AP');
+        expect(await screen.findByText('3 pendientes')).toBeInTheDocument();
+        expect(screen.queryAllByText(/pendientes/)).toHaveLength(1);
+    });
+
+    it('failed (or stale) items are called out too, so their author reviews them', async () => {
+        render(<PinScreen api={makeApi()} onLoggedIn={vi.fn()} onRevoked={vi.fn()} loadPending={vi.fn().mockResolvedValue({ 2: { pending: 1, failed: 2 } })} />);
+        await screen.findByText('LG');
+        expect(await screen.findByText('1 pendiente · 2 con error')).toBeInTheDocument();
+    });
+
+    it('a failing lookup never blocks the PIN screen', async () => {
+        render(<PinScreen api={makeApi()} onLoggedIn={vi.fn()} onRevoked={vi.fn()} loadPending={vi.fn().mockRejectedValue(new Error('db'))} />);
+        expect(await screen.findByText('AP')).toBeInTheDocument();
+    });
+});
