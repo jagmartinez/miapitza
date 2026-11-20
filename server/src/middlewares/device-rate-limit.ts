@@ -21,7 +21,7 @@ export function isDeviceAuthPath(path: string): boolean {
  * so they must not drain the strict per-IP login bucket shared by the NAT.
  * Credential-checking paths (/login, /me/pin, /change-password, /2fa/*) stay strict.
  */
-const SESSION_PATH = /^\/(logout|me|sessions(\/[^/]+)?)$/;
+const SESSION_PATH = /^\/(logout|me|me\/discount-limit|sessions(\/[^/]+)?)$/;
 
 export function isSessionAuthPath(path: string): boolean {
     return SESSION_PATH.test(normalizeAuthPath(path));

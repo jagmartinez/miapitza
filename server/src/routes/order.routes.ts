@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { OrderController } from '../controllers/order.controller';
 import { authMiddleware, requirePermission } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
+import { createDeviceAuthLimiter } from '../middlewares/device-rate-limit';
 import * as s from '../middlewares/validate-schemas';
 
 const router = Router();
@@ -19,11 +20,17 @@ const ORDER_READ_FALLBACK_ROLES = [
 
 router.use(authMiddleware);
 
+// These two routes are authenticated by a bearer session AND a tablet X-Device-Token.
+// Tablets of one restaurant share a NAT IP, so they get the per-device limiter that
+// the /api/auth device routes use (sha256 of the token, never the token itself).
+const deviceLimiter = createDeviceAuthLimiter(process.env.NODE_ENV === 'production' ? 120 : 2000);
+
 router.get('/', requirePermission('orders.view', ...ORDER_READ_FALLBACK_ROLES), OrderController.getAll);
 router.get('/active', requirePermission('orders.view', ...ORDER_READ_FALLBACK_ROLES), OrderController.getActive);
 router.get('/kitchen/config', requirePermission('kds.view', 'SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF'), OrderController.getKitchenConfig);
 router.get('/kitchen/queue', requirePermission('kds.view', 'SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF'), OrderController.getKitchenQueue);
 router.get('/kitchen/history', requirePermission('kds.view', 'SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF'), OrderController.getKitchenHistory);
+router.get('/discount/supervisors', deviceLimiter, requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), OrderController.listDiscountSupervisors);
 router.get('/:id', requirePermission('orders.view', ...ORDER_READ_FALLBACK_ROLES), validate(s.idParam), OrderController.getById);
 router.post('/', requirePermission('orders.create', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.createOrder), OrderController.create);
 
@@ -40,6 +47,7 @@ router.post('/:id/items/:itemId/void', requirePermission('orders.items.void', 'S
 
 router.post('/:id/send-to-kitchen', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO'), validate(s.idParam), OrderController.sendToKitchen);
 router.patch('/:id/status', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.updateOrderStatus), OrderController.updateStatus);
+router.post('/:id/discount/authorize', deviceLimiter, requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.idParam), OrderController.authorizeDiscount);
 router.patch('/:id/pricing', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.idParam), OrderController.updatePricing);
 router.patch('/:id/fiscal-customer', requirePermission('invoices.issue', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.updateFiscalCustomer), OrderController.updateFiscalCustomer);
 router.post('/:id/complete', requirePermission('orders.deliver', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.idParam), OrderController.complete);

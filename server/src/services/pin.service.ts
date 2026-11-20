@@ -4,6 +4,8 @@ import { PIN_ROLES } from '../constants/roles';
 import { BCRYPT_ROUNDS } from '../utils/password-policy';
 import { AuditLogService } from './audit-log.service';
 import { loginAttemptService } from './login-attempt.service';
+import { collectPermissionNames } from '../utils/permission-names';
+import { DISCOUNT_AUTHORIZE_PERMISSION } from './discount-authorization.service';
 
 export class PinError extends Error {
     constructor(message: string, public statusCode = 400) {
@@ -61,8 +63,8 @@ export class PinService {
                 password: true,
                 companyId: true,
                 status: true,
-                role: { select: { name: true } },
-                userRoles: { select: { role: { select: { name: true } } } },
+                role: { select: { name: true, permissions: { select: { name: true } } } },
+                userRoles: { select: { role: { select: { name: true, permissions: { select: { name: true } } } } } },
             },
         });
         if (!user || user.status !== 'ACTIVE' || !user.companyId) {
@@ -75,7 +77,13 @@ export class PinService {
         await loginAttemptService.recordSuccess(user.id, ip);
         PinService.validateFormat(pin);
         const roleNames = [user.role.name, ...user.userRoles.map((entry) => entry.role.name)];
-        if (!PinService.rolesAllowPin(roleNames)) {
+        // A discount supervisor may hold a PIN to authorize discounts on a tablet.
+        // That PIN never opens a session: pin-login still requires roles within PIN_ROLES.
+        const canAuthorizeDiscounts = collectPermissionNames([
+            user.role,
+            ...user.userRoles.map((entry) => entry.role),
+        ]).includes(DISCOUNT_AUTHORIZE_PERMISSION);
+        if (!PinService.rolesAllowPin(roleNames) && !canAuthorizeDiscounts) {
             throw new PinError('Tu rol no puede usar PIN de acceso rápido', 403);
         }
 

@@ -58,6 +58,7 @@ router.put('/me/pin',
 
 // Verify current session (used by client on app load)
 router.get('/me', authMiddleware, AuthController.me);
+router.get('/me/discount-limit', authMiddleware, AuthController.myDiscountLimit);
 
 // Change password (any authenticated user)
 router.post('/change-password',

@@ -5,6 +5,30 @@ import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../uti
 import { parseQueryDateFrom, parseQueryDateTo } from '../utils/date-range';
 import { SettingService } from '../services/setting.service';
 import { KitchenNotificationService } from '../services/kitchen-notification.service';
+import {
+    DISCOUNT_AUTH_ERROR,
+    DiscountAuthRejectedError,
+    DiscountAuthRequiredError,
+    DiscountAuthorizationService,
+    MAX_DISCOUNT_REASON,
+    MIN_DISCOUNT_REASON,
+    canApplyManualDiscount
+} from '../services/discount-authorization.service';
+
+function deviceTokenOf(req: Request): string {
+    const header = req.headers['x-device-token'];
+    return typeof header === 'string' ? header : '';
+}
+
+/** undefined when absent; throws a 400-style Error when present but invalid. */
+function parseDiscountReason(value: unknown): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    const reason = typeof value === 'string' ? value.trim() : '';
+    if (reason.length < MIN_DISCOUNT_REASON || reason.length > MAX_DISCOUNT_REASON) {
+        throw new Error(`El motivo del descuento debe tener entre ${MIN_DISCOUNT_REASON} y ${MAX_DISCOUNT_REASON} caracteres`);
+    }
+    return reason;
+}
 
 export class OrderController {
     /** Load an order and assert the caller's branch may access it. */
@@ -402,13 +426,24 @@ export class OrderController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const { discount, discountCode, tax, tipAmount } = req.body;
+            const discountReason = parseDiscountReason(req.body?.discountReason);
 
             await OrderController.assertOrderBranch(req, id);
+            // Mobile flow only (discountReason present): a manual discount needs
+            // orders.discount.apply. The web call has no reason and is unchanged.
+            if (discountReason !== undefined && Number(discount) > 0 && !(await canApplyManualDiscount(req.user!))) {
+                return res.status(403).json({
+                    success: false,
+                    code: 'FORBIDDEN',
+                    message: 'No tienes permiso para realizar esta acción'
+                });
+            }
             const order = await OrderService.updatePricing(id, companyId, {
                 discount: discount !== undefined ? Number(discount) : undefined,
                 discountCode: discountCode !== undefined ? String(discountCode || '') : undefined,
                 tax: tax !== undefined ? Number(tax) : undefined,
-                tipAmount: tipAmount !== undefined ? Number(tipAmount) : undefined
+                tipAmount: tipAmount !== undefined ? Number(tipAmount) : undefined,
+                discountReason
             }, req.user!.userId, { role: req.user!.role, roles: req.user!.roles });
 
             WebSocketService.broadcastOrderUpdate(id, 'PRICING_UPDATED', order, {
@@ -423,6 +458,88 @@ export class OrderController {
             });
         } catch (error) {
             if (error instanceof BranchScopeError) return next(error);
+            if (error instanceof DiscountAuthRequiredError) {
+                return res.status(403).json({
+                    success: false,
+                    code: error.code,
+                    message: error.message,
+                    limitPercent: error.limitPercent,
+                    requestedPercent: error.requestedPercent
+                });
+            }
+            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
+    /**
+     * GET /orders/discount/supervisors -- supervisors that can authorize a
+     * discount on this tablet's branch (X-Device-Token).
+     */
+    static async listDiscountSupervisors(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await DiscountAuthorizationService.listSupervisors(deviceTokenOf(req), req.user!);
+            res.json({ success: true, data });
+        } catch (error) {
+            if (error instanceof DiscountAuthRejectedError) {
+                return res.status(401).json({ success: false, message: DISCOUNT_AUTH_ERROR });
+            }
+            next({ statusCode: 500, message: 'Error al consultar supervisores' });
+        }
+    }
+
+    /**
+     * POST /orders/:id/discount/authorize -- a supervisor's PIN authorizes a
+     * manual discount above the requester's limit. Applies discount, reason and
+     * authorizer in one transaction. Creates no session. Never logs the PIN.
+     */
+    static async authorizeDiscount(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            const { supervisorUserId, pin, discount } = req.body ?? {};
+            const discountReason = parseDiscountReason(req.body?.discountReason);
+            if (discountReason === undefined || typeof discount !== 'number' || !Number.isFinite(discount) || discount <= 0) {
+                return next({ statusCode: 400, message: 'Descuento y motivo son requeridos' });
+            }
+            // Malformed credentials are indistinguishable from wrong ones.
+            if (!Number.isInteger(supervisorUserId) || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) {
+                return res.status(401).json({ success: false, message: DISCOUNT_AUTH_ERROR });
+            }
+            if (!(await canApplyManualDiscount(req.user!))) {
+                return res.status(403).json({
+                    success: false,
+                    code: 'FORBIDDEN',
+                    message: 'No tienes permiso para realizar esta acción'
+                });
+            }
+
+            const existing = await OrderController.assertOrderBranch(req, id);
+            const authorization = await DiscountAuthorizationService.verifySupervisor({
+                requester: req.user!,
+                deviceToken: deviceTokenOf(req),
+                supervisorUserId,
+                pin,
+                orderBranchId: existing.branchId,
+                orderId: id,
+                requestedDiscount: discount,
+                reason: discountReason
+            });
+            const order = await OrderService.updatePricing(id, companyId, {
+                discount,
+                discountReason
+            }, req.user!.userId, { role: req.user!.role, roles: req.user!.roles }, { authorization });
+
+            WebSocketService.broadcastOrderUpdate(id, 'PRICING_UPDATED', order, {
+                companyId,
+                branchId: order.branchId
+            });
+
+            res.json({ success: true, message: 'Descuento autorizado', data: order });
+        } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
+            if (error instanceof DiscountAuthRejectedError) {
+                return res.status(401).json({ success: false, message: DISCOUNT_AUTH_ERROR });
+            }
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }

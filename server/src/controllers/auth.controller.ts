@@ -5,6 +5,7 @@ import { PinService, PinError } from '../services/pin.service';
 import { SessionService } from '../services/session.service';
 import { TwoFactorService } from '../services/twoFactor.service';
 import { AuditLogService } from '../services/audit-log.service';
+import { getManualDiscountLimit } from '../services/discount-authorization.service';
 import prisma from '../utils/prisma';
 import {
     isPlatformOperator,
@@ -43,6 +44,17 @@ export class AuthController {
             });
         } catch {
             next({ statusCode: 401, message: 'Sesión inválida' });
+        }
+    }
+
+    /** GET /auth/me/discount-limit -- the caller's own manual-discount limit (% of subtotal). */
+    static async myDiscountLimit(req: Request, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) return next({ statusCode: 401, message: 'No autenticado' });
+            const limitPercent = await getManualDiscountLimit(req.user);
+            res.json({ success: true, data: { limitPercent } });
+        } catch (error) {
+            next(error);
         }
     }
 
