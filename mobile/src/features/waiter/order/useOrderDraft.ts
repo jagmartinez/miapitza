@@ -41,6 +41,8 @@ export interface UseOrderDraftOptions {
     /** Lines the server holds that were never sent to the kitchen. */
     serverUnsent?: number;
     onSent?: (orderId: OrderRef) => void;
+    /** Something reached the server (or the queue) even though the send failed: reload the order. */
+    onChanged?: () => void;
 }
 
 export type SendOutcome = 'sent' | 'nothing' | 'busy' | 'failed';
@@ -100,13 +102,17 @@ export const toOrderLine = (l: DraftTicketLine): NewOrderLine => ({
  * Switching user (or table) swaps to that scope's own draft; nothing is carried over.
  */
 export function useOrderDraft(opts: UseOrderDraftOptions) {
-    const { drafts, api, ownerKey, tableId, orderId, guests, serverUnsent = 0, onSent } = opts;
+    const { drafts, api, ownerKey, tableId, orderId, guests, serverUnsent = 0, onSent, onChanged } = opts;
     const scope = ownerKey != null && tableId != null ? `${ownerKey}|${tableId}` : null;
 
     const [state, setState] = useState<{ scope: string | null; lines: DraftTicketLine[] }>({ scope: null, lines: [] });
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [highlightKey, setHighlightKey] = useState<string | null>(null);
+    const [highlightSeq, setHighlightSeq] = useState(0);
+    const [createdUnits, setCreatedUnits] = useState(0);
+    const created = useRef<{ scope: string; id: OrderRef; units: number } | null>(null);
+    const nonce = useRef<string | null>(null);
 
     // Always the lines of `scope.current`; mutations compute from here so two taps in a row never lose one.
     const live = useRef<{ scope: string | null; lines: DraftTicketLine[] }>({ scope: null, lines: [] });
@@ -122,6 +128,9 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
         live.current = { scope: null, lines: [] };
         setState({ scope: null, lines: [] });
         setError(null);
+        created.current = null;
+        nonce.current = null;
+        setCreatedUnits(0);
         if (scope == null || ownerKey == null || tableId == null) return undefined;
         let alive = true;
         drafts.get(ownerKey, tableId).then(
@@ -169,6 +178,7 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
 
     const flash = (key: string) => {
         setHighlightKey(key);
+        setHighlightSeq((n) => n + 1);
         if (highlightTimer.current) clearTimeout(highlightTimer.current);
         highlightTimer.current = setTimeout(() => setHighlightKey(null), 1200);
     };
@@ -218,50 +228,75 @@ export function useOrderDraft(opts: UseOrderDraftOptions) {
 
     const remove = useCallback((key: string) => commit(live.current.lines.filter((l) => l.key !== key)), [commit]);
 
+    /** The sent quantity leaves the draft; whatever was added meanwhile stays. */
+    const subtractSent = (start: string, sent: DraftTicketLine) => {
+        if (live.current.scope !== start) return;
+        commit(
+            live.current.lines.flatMap((l) => {
+                if (l.key !== sent.key) return [l];
+                const rest = l.quantity - sent.quantity;
+                return rest > 0 ? [{ ...l, quantity: rest }] : [];
+            }),
+        );
+    };
+
     const send = useCallback(async (): Promise<SendOutcome> => {
         if (sendingRef.current) return 'busy';
         const start = scopeRef.current;
         if (start == null || live.current.scope !== start) return 'nothing';
         const pending = live.current.lines;
-        if (pending.length === 0 && latest.current.serverUnsent === 0) return 'nothing';
+        if (created.current?.scope !== start) created.current = null;
+        const known = created.current;
+        if (pending.length === 0 && latest.current.serverUnsent === 0 && !known) return 'nothing';
         sendingRef.current = true;
         setSending(true);
         setError(null);
         // Every line of this send queues under one group, and the kitchen batch waits behind that group.
         const group = `kitchen-${newIdempotencyKey().replace(/[^A-Za-z0-9]/g, '').slice(0, 12)}`;
+        // One nonce per batch: kept while a send keeps failing (so the retry reuses its idempotency key), renewed after a success.
+        nonce.current ??= newIdempotencyKey();
+        let touched = false; // something reached the server (or the queue): the screen must reload even on failure
         try {
-            let target: OrderRef | null = latest.current.orderId;
+            let target: OrderRef | null = latest.current.orderId ?? known?.id ?? null;
             let anyQueued = false;
             if (target == null) {
                 // The table has no order on the server: create it with every line (web contract), then send.
                 const { tableId: table, guests: people } = latest.current;
-                const created = (await api.createOrder({ tableId: table ?? undefined, orderType: 'DINE_IN', ...(people ? { guests: people } : {}), items: pending.map(toOrderLine) })) as { id?: number; entityTempId?: string | null };
-                target = isQueuedOffline(created) ? created.entityTempId : (created.id ?? null);
+                const res = (await api.createOrder({ tableId: table ?? undefined, orderType: 'DINE_IN', ...(people ? { guests: people } : {}), items: pending.map(toOrderLine) })) as { id?: number; entityTempId?: string | null };
+                target = isQueuedOffline(res) ? res.entityTempId : (res.id ?? null);
                 if (target == null) throw new Error('No se pudo crear el pedido.');
-                anyQueued = isQueuedOffline(created);
-                if (live.current.scope === start) commit([]);
+                touched = true;
+                anyQueued = isQueuedOffline(res);
+                created.current = { scope: start, id: target, units: pending.reduce((n, l) => n + l.quantity, 0) };
+                setCreatedUnits(created.current.units);
+                pending.forEach((l) => subtractSent(start, l));
             } else {
                 for (const line of pending) {
                     const res = await api.addItem(target, toOrderLine(line), { entityTempId: group });
+                    touched = true;
                     anyQueued = anyQueued || isQueuedOffline(res);
-                    // Applied (or safely queued): this line is no longer a draft, so a retry never repeats it.
-                    if (live.current.scope === start) commit(live.current.lines.filter((l) => l.key !== line.key));
+                    // Applied (or safely queued): that quantity is no longer a draft, so a retry never repeats it.
+                    subtractSent(start, line);
                 }
             }
-            await api.sendToKitchen(target, { dependencyKey: anyQueued ? group : undefined, forceQueue: anyQueued });
+            await api.sendToKitchen(target, { dependencyKey: anyQueued ? group : undefined, forceQueue: anyQueued, nonce: nonce.current });
+            nonce.current = null;
+            created.current = null;
+            setCreatedUnits(0);
             onSent?.(target);
             return 'sent';
         } catch (cause) {
             setError(getApiErrorMessage(cause));
+            if (touched) onChanged?.();
             return 'failed';
         } finally {
             sendingRef.current = false;
             setSending(false);
         }
-    }, [api, commit, onSent]);
+    }, [api, commit, onSent, onChanged]);
 
     const total = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
     const count = lines.reduce((n, l) => n + l.quantity, 0);
 
-    return { lines, loaded, total, count, sendCount: count + serverUnsent, add, setQuantity, setNote, remove, send, sending, error, clearError: () => setError(null), highlightKey };
+    return { lines, loaded, total, count, sendCount: count + serverUnsent + createdUnits, add, setQuantity, setNote, remove, send, sending, error, clearError: () => setError(null), highlightKey, highlightSeq };
 }

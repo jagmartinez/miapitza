@@ -68,7 +68,7 @@ const isTemp = (id: OrderRef) => typeof id === 'string' && !/^\d+$/.test(id);
 type SheetState = { product: Product; groups: ModifierGroup[] } | null;
 
 export function OrderScreen(props: OrderScreenProps) {
-    const { session, api, drafts, realtime, queue, orderId, intent, onBack, onPay, onSplit, onDiscount, onMore } = props;
+    const { session, api, drafts, realtime, queue, intent, onBack, onPay, onSplit, onDiscount, onMore } = props;
     const user = session.user;
     const branchId = user.branchId;
     const ownerKey = ownerKeyOf(session);
@@ -90,30 +90,55 @@ export function OrderScreen(props: OrderScreenProps) {
     const seq = useRef(0);
     const payHandled = useRef(false);
     const busyRef = useRef(false);
+    const loadingIds = useRef(new Set<number>());
+    const [loadingId, setLoadingId] = useState<number | null>(null);
     const [busy, setBusy] = useState(false);
     const [full, setFull] = useState(false);
 
+    // An order created offline carries a temp id until its create syncs; then the real order takes over.
+    const [resolvedId, setResolvedId] = useState<number | null>(null);
+    const orderId: OrderRef = resolvedId ?? props.orderId;
     const tableId = props.tableId ?? (typeof order?.tableId === 'number' ? order.tableId : (order?.table?.id ?? null));
     const canEdit = can(user, 'orders.edit');
     const canDeliver = can(user, 'orders.deliver');
 
+    useEffect(() => {
+        const temp = props.orderId;
+        if (!queue || !isTemp(temp)) return undefined;
+        let live = true;
+        const check = async () => {
+            const real = await queue.resolveTemp(String(temp));
+            if (live && real != null && /^\d+$/.test(String(real))) setResolvedId(Number(real));
+        };
+        void check();
+        const off = queue.onSynced(() => void check());
+        return () => {
+            live = false;
+            off();
+        };
+    }, [queue, props.orderId]);
+
     // ---- order ----
     const loadOrder = useCallback(async () => {
-        if (isTemp(orderId)) return; // created offline: nothing on the server to read yet
+        if (isTemp(orderId)) return; // created offline and not synced yet: nothing on the server to read
         const mine = ++seq.current;
+        // The active list is cached (TTL) and carries modifiers; it is also the offline fallback for the order itself.
+        const readActive = async (): Promise<Json[] | null> => {
+            if (branchId == null) return null;
+            try {
+                return (await api.activeOrders(branchId)).data as Json[];
+            } catch {
+                return null;
+            }
+        };
         try {
             const detail = await api.orderDetail(Number(orderId));
             let lines = normalizeServerLines(detail);
-            // GET /orders/:id omits modifiers; the active list carries them.
-            if (branchId != null) {
-                try {
-                    const active = await api.activeOrders(branchId);
-                    const mine2 = (active.data as Json[]).find((o) => o.id === detail.id);
-                    const names = new Map<number, string[]>(normalizeServerLines(mine2).map((l) => [l.id, l.modifiers]));
-                    lines = lines.map((l) => (l.modifiers.length === 0 && names.get(l.id)?.length ? { ...l, modifiers: names.get(l.id)! } : l));
-                } catch {
-                    // modifiers are decoration; the order itself loaded
-                }
+            // GET /orders/:id omits modifiers.
+            if (lines.length > 0) {
+                const active = await readActive();
+                const names = new Map<number, string[]>(normalizeServerLines(active?.find((o) => o.id === detail.id)).map((l) => [l.id, l.modifiers]));
+                lines = lines.map((l) => (l.modifiers.length === 0 && names.get(l.id)?.length ? { ...l, modifiers: names.get(l.id)! } : l));
             }
             if (!alive.current || mine !== seq.current) return;
             setOrder(detail);
@@ -121,7 +146,15 @@ export function OrderScreen(props: OrderScreenProps) {
             setNow(Date.now());
             setNotice(null);
         } catch (cause) {
-            if (alive.current && mine === seq.current) setNotice(getApiErrorMessage(cause));
+            const fallback = (await readActive())?.find((o) => o.id === Number(orderId));
+            if (!alive.current || mine !== seq.current) return;
+            if (fallback) {
+                // No connection to the detail: work from the last active list (adding and sending queue offline).
+                setOrder(fallback);
+                setServerLines(normalizeServerLines(fallback));
+            } else {
+                setNotice(getApiErrorMessage(cause));
+            }
         }
     }, [api, orderId, branchId]);
 
@@ -176,7 +209,7 @@ export function OrderScreen(props: OrderScreenProps) {
         };
     }, [api, branchId]);
 
-    const promoMap = useMemo(() => promoLabels(promos, products), [promos, products]);
+    const promoMap = useMemo(() => promoLabels(promos, products, branchId), [promos, products, branchId]);
     const promoIds = useMemo(() => new Set(promoMap.keys()), [promoMap]);
     const rail = useMemo(() => buildRail({ categories, products, topIds, promoIds }), [categories, products, topIds, promoIds]);
     const current = rail.find((r) => r.id === selected)?.id ?? rail[0]?.id ?? null;
@@ -198,6 +231,7 @@ export function OrderScreen(props: OrderScreenProps) {
         guests: typeof order?.guests === 'number' ? order.guests : undefined,
         serverUnsent: sumQuantity(unsentOnServer),
         onSent: () => void loadOrder(),
+        onChanged: () => void loadOrder(), // a failed send may have left lines on the server
     });
 
     const quantities = useMemo(() => {
@@ -208,26 +242,41 @@ export function OrderScreen(props: OrderScreenProps) {
     }, [draft.lines, serverLines]);
 
     // ---- product actions ----
-    const groupsFor = async (product: Product): Promise<ModifierGroup[]> => {
+    /** null = the groups could not be loaded: a product that may require a modifier is never added blind. */
+    const groupsFor = async (product: Product): Promise<ModifierGroup[] | null> => {
         if (product.modifierGroups === 0) return [];
         try {
             return normalizeModifierGroups((await api.menuItem(product.id)).data);
         } catch (cause) {
-            setNotice(getApiErrorMessage(cause));
-            return [];
+            setNotice(`No se pudieron cargar las opciones de ${product.name}. ${getApiErrorMessage(cause)}`);
+            return null;
         }
     };
 
+    /** One lookup per product at a time: a double tap neither refetches nor stacks two sheets. */
+    const withGroups = async (product: Product, then: (groups: ModifierGroup[]) => void) => {
+        if (!draft.loaded || loadingIds.current.has(product.id)) return;
+        loadingIds.current.add(product.id);
+        setLoadingId(product.id);
+        try {
+            const groups = await groupsFor(product);
+            if (groups) then(groups);
+        } finally {
+            loadingIds.current.delete(product.id);
+            setLoadingId(null);
+        }
+    };
     const tap = async (product: Product) => {
-        if (!draft.loaded) return;
-        const groups = await groupsFor(product);
-        if (groups.some((g) => g.minSelect >= 1)) setSheet({ product, groups });
-        else draft.add(product);
+        if (product.modifierGroups === 0) {
+            if (draft.loaded) draft.add(product);
+            return;
+        }
+        await withGroups(product, (groups) => {
+            if (groups.some((g) => g.minSelect >= 1)) setSheet({ product, groups });
+            else draft.add(product);
+        });
     };
-    const hold = async (product: Product) => {
-        if (!draft.loaded) return;
-        setSheet({ product, groups: await groupsFor(product) });
-    };
+    const hold = (product: Product) => withGroups(product, (groups) => setSheet({ product, groups }));
     const confirmSheet = (choice: ModifierChoice) => {
         if (sheet) draft.add(sheet.product, choice);
         setSheet(null);
@@ -242,7 +291,7 @@ export function OrderScreen(props: OrderScreenProps) {
     }, [intent, order, onPay, user]);
 
     /** One server mutation at a time (deliver, edit an unsent server line): a double tap never repeats it. */
-    const run = async (action: () => Promise<unknown>, needsConnection: string) => {
+    const run = async (action: () => Promise<string | void>, needsConnection: string) => {
         if (busyRef.current) return;
         if (!isOnline()) {
             setNotice(needsConnection);
@@ -252,8 +301,9 @@ export function OrderScreen(props: OrderScreenProps) {
         setBusy(true);
         setNotice(null);
         try {
-            await action();
+            const message = await action();
             await loadOrder();
+            if (message) setNotice(message);
         } catch (cause) {
             const notSynced = cause instanceof Error && cause.name === 'OrderNotSyncedError';
             setNotice(notSynced ? `${needsConnection} El pedido aún se está sincronizando.` : getApiErrorMessage(cause));
@@ -262,11 +312,16 @@ export function OrderScreen(props: OrderScreenProps) {
             setBusy(false);
         }
     };
-    const deliver = (ids: number[]) => void run(() => api.deliverItems(orderId, ids), 'Entregar requiere conexión.');
+    const deliver = (ids: number[]) =>
+        void run(async () => {
+            const res = await api.deliverItems(orderId, ids);
+            const skipped = (res as { skipped?: number[] } | null)?.skipped?.length ?? 0;
+            return skipped > 0 ? `${skipped} no estaban listos.` : undefined;
+        }, 'Entregar requiere conexión.');
     const editConn = 'Editar el pedido requiere conexión.';
-    const serverQuantity = (l: ServerLine, q: number) => void run(() => (q <= 0 ? api.removeItem(l.id) : api.updateItem(l.id, { quantity: q })), editConn);
-    const serverNote = (l: ServerLine, note: string) => void run(() => api.updateItem(l.id, { notes: note.trim() }), editConn);
-    const serverRemove = (l: ServerLine) => void run(() => api.removeItem(l.id), editConn);
+    const serverQuantity = (l: ServerLine, q: number) => void run(async () => void (await (q <= 0 ? api.removeItem(l.id) : api.updateItem(l.id, { quantity: q }))), editConn);
+    const serverNote = (l: ServerLine, note: string) => void run(async () => void (await api.updateItem(l.id, { notes: note.trim() })), editConn);
+    const serverRemove = (l: ServerLine) => void run(async () => void (await api.removeItem(l.id)), editConn);
 
     const actions = {
         canPay: can(user, 'payments.process'),
@@ -311,7 +366,7 @@ export function OrderScreen(props: OrderScreenProps) {
             )}
             <div className="pos-body">
                 <CategoryRail entries={rail} selected={current} onSelect={(id) => { setSelected(id); setSearch(''); }} />
-                <ProductGrid products={shown} quantities={quantities} promos={promoMap} disabled={!canEdit || !draft.loaded} onTap={(p) => void tap(p)} onHold={(p) => void hold(p)} />
+                <ProductGrid products={shown} quantities={quantities} promos={promoMap} disabled={!canEdit || !draft.loaded} busyId={loadingId} onTap={(p) => void tap(p)} onHold={(p) => void hold(p)} />
                 <TicketPanel
                     title="Ticket"
                     subtitle={`${tableLabel}${guests != null ? ` · ${guests} pers` : ''} · ${productCount} productos`}
@@ -319,7 +374,9 @@ export function OrderScreen(props: OrderScreenProps) {
                     highlightKey={draft.highlightKey}
                     serverLines={serverLines}
                     now={now}
-                    total={sentTotal + draft.total}
+                    total={sentTotal}
+                    unsentTotal={draft.total}
+                    highlightSeq={draft.highlightSeq}
                     sendCount={draft.sendCount}
                     sending={draft.sending}
                     error={draft.error}

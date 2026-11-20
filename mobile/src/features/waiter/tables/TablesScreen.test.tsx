@@ -89,7 +89,7 @@ describe('TablesScreen', () => {
         const banner = await screen.findByRole('button', { name: /Pedido listo · Mesa 3/ });
         expect(vibrate).toHaveBeenCalled();
         fireEvent.click(banner);
-        expect(onOpenOrder).toHaveBeenCalledWith(103);
+        expect(onOpenOrder).toHaveBeenCalledWith(103, undefined, 3);
     });
 
     it('ORDER_UPDATE triggers one debounced refetch', async () => {

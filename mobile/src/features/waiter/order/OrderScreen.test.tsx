@@ -1,8 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { OrderScreen } from './OrderScreen';
-import { makeApi, makeDrafts, makeRealtime, orderOf, serverItem, userSession, ALL_PERMISSIONS } from './testkit';
+import { makeApi, makeDrafts, makeRealtime, minutesAgo, orderOf, result, serverItem, userSession, ALL_PERMISSIONS } from './testkit';
 
-function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[]; orderId?: number | string; handlers?: Record<string, unknown>; drafts?: ReturnType<typeof makeDrafts>; userId?: number } = {}) {
+function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[]; orderId?: number | string; handlers?: Record<string, unknown>; drafts?: ReturnType<typeof makeDrafts>; userId?: number; tableId?: number | null; queue?: unknown } = {}) {
     const api = opts.api ?? makeApi();
     const drafts = opts.drafts ?? makeDrafts();
     const realtime = makeRealtime();
@@ -11,9 +11,9 @@ function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[];
         api,
         drafts,
         realtime,
-        queue: null,
+        queue: (opts.queue ?? null) as never,
         orderId: opts.orderId ?? 102,
-        tableId: 2,
+        tableId: opts.tableId === null ? undefined : (opts.tableId ?? 2),
         intent: 'view' as const,
         invalidate: vi.fn().mockResolvedValue(undefined),
         onBack: vi.fn(),
@@ -58,7 +58,8 @@ describe('OrderScreen', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Promos' }));
         const grid = screen.getByRole('region', { name: 'Productos' });
         expect(within(grid).getAllByRole('button')).toHaveLength(1);
-        expect(within(grid).getByText('2x1')).toBeInTheDocument();
+        expect(within(grid).getByText('Promo')).toBeInTheDocument();
+        expect(within(grid).queryByText('2x1')).toBeNull(); // no magnitude: the discount is applied by code, not automatically
     });
 
     it('tap adds one and highlights the line', async () => {
@@ -207,5 +208,101 @@ describe('OrderScreen', () => {
         setup({ drafts: first.drafts, userId: 8 });
         await screen.findByRole('region', { name: 'Productos' });
         expect(screen.queryByTestId('draft-1||')).toBeNull();
+    });
+});
+
+describe('OrderScreen fix round 1', () => {
+    it('C1: a failed kitchen send shows the lines that reached the server as Nuevo, with their count', async () => {
+        const api = makeApi();
+        api.sendToKitchen.mockRejectedValue({ response: { status: 500, data: { message: 'Cocina no responde' } } });
+        // after the lines were added, the server holds them unsent
+        api.orderDetail
+            .mockResolvedValueOnce(orderOf([]))
+            .mockResolvedValue(orderOf([serverItem(11, 1, 'Pizza Margarita', { sentAt: null, status: 'PENDING', quantity: 1 })]));
+        setup({ api });
+        fireEvent.click(await product('Pizza Margarita'));
+        fireEvent.click(await screen.findByRole('button', { name: 'Enviar a cocina · 1' }));
+        expect(await screen.findByText('Cocina no responde')).toBeInTheDocument();
+        expect(await within(ticket()).findByTestId('unsent-11')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Enviar a cocina · 1' })).toBeEnabled();
+        // retry sends the batch without adding the line again
+        api.sendToKitchen.mockResolvedValue({});
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar a cocina · 1' }));
+        await waitFor(() => expect(api.sendToKitchen).toHaveBeenCalledTimes(2));
+        expect(api.addItem).toHaveBeenCalledTimes(1);
+    });
+
+    it('I2: a required-modifier product is not added when its modifiers cannot be loaded', async () => {
+        const api = makeApi();
+        api.menuItem.mockRejectedValue(new Error('Network Error'));
+        setup({ api });
+        fireEvent.click(await product('Hamburguesa'));
+        await waitFor(() => expect(api.menuItem).toHaveBeenCalled());
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        expect(within(ticket()).queryByText('Hamburguesa')).toBeNull();
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('Minor 9: a double tap on a product with modifiers loads and opens one sheet', async () => {
+        const { api } = setup();
+        const burger = await product('Hamburguesa');
+        fireEvent.click(burger);
+        fireEvent.click(burger);
+        await screen.findByRole('dialog', { name: 'Hamburguesa' });
+        expect(api.menuItem).toHaveBeenCalledTimes(1);
+        expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    });
+
+    it('I3: with the detail request failing, the order renders from the cached active list and sending still works', async () => {
+        const api = makeApi();
+        api.orderDetail.mockRejectedValue(new Error('Network Error'));
+        api.activeOrders.mockResolvedValue(result([orderOf([serverItem(1, 4, 'Ensalada', { status: 'IN_PROGRESS' })])]));
+        setup({ api, tableId: null });
+        fireEvent.click(await product('Pizza Margarita'));
+        fireEvent.click(await screen.findByRole('button', { name: 'Enviar a cocina · 1' }));
+        await waitFor(() => expect(api.sendToKitchen).toHaveBeenCalledTimes(1));
+        expect(await within(ticket()).findByRole('button', { name: /Enviado · 1/ })).toBeInTheDocument();
+    });
+
+    it('I4: the footer total is the server total, with unsent lines on a separate line', async () => {
+        const api = makeApi();
+        api.orderDetail.mockResolvedValue(orderOf([serverItem(1, 4, 'Ensalada')], { total: '236.00' }));
+        setup({ api });
+        const foot = ticket().querySelector('footer') as HTMLElement;
+        await waitFor(() => expect(foot).toHaveTextContent('C$ 236'));
+        expect(foot.querySelector('.ticket-unsent')).toBeNull();
+        fireEvent.click(await product('Pizza Margarita'));
+        await waitFor(() => expect(foot.querySelector('.ticket-unsent')).toHaveTextContent('+ C$ 100 sin enviar'));
+        expect(foot.querySelector('.ticket-total strong')).toHaveTextContent('C$ 236');
+    });
+
+    it('I5: a temp order becomes the real one once its create syncs', async () => {
+        const api = makeApi();
+        const snap = { pending: 0, failed: 0 };
+        const noop = () => undefined;
+        const listeners = new Set<(item: unknown) => void>();
+        let real: number | null = null;
+        const queue = { getSnapshot: () => snap, subscribe: () => noop, resolveTemp: vi.fn(async () => real), onSynced: vi.fn((fn: (item: unknown) => void) => (listeners.add(fn), () => listeners.delete(fn))) };
+        api.orderDetail.mockResolvedValue(orderOf([serverItem(1, 4, 'Ensalada')], { id: 777 }));
+        setup({ api, queue, orderId: 'order-1700-abcd1234' });
+        await screen.findByText('Sincronizando…');
+        expect(api.orderDetail).not.toHaveBeenCalled();
+        real = 777;
+        await act(async () => {
+            listeners.forEach((fn) => fn({ operationType: 'CREATE_ORDER', entityTempId: 'order-1700-abcd1234' }));
+        });
+        await waitFor(() => expect(api.orderDetail).toHaveBeenCalledWith(777));
+        expect(screen.queryByText('Sincronizando…')).toBeNull();
+        await within(ticket()).findByRole('button', { name: /Enviado · 1/ });
+    });
+
+    it('Minor 2: tells the waiter when delivered lines were skipped', async () => {
+        const api = makeApi();
+        api.orderDetail.mockResolvedValue(orderOf([serverItem(5, 1, 'Pizza', { status: 'DONE', finishedAt: minutesAgo(2) }), serverItem(6, 2, 'Cola', { status: 'DONE', finishedAt: minutesAgo(2) })]));
+        api.deliverItems.mockResolvedValue({ delivered: [5], skipped: [6], alreadyDelivered: [] });
+        setup({ api });
+        const card = await screen.findByRole('region', { name: 'Listo para entregar' });
+        fireEvent.click(within(card).getByRole('button', { name: 'Entregar todo · 2' }));
+        expect(await screen.findByText('1 no estaban listos.')).toBeInTheDocument();
     });
 });

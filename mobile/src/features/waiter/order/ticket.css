@@ -279,3 +279,9 @@
     min-height: 56px;
     padding: 0 22px;
 }
+
+.ticket-unsent {
+    align-self: flex-end;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+}

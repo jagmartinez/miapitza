@@ -52,6 +52,8 @@ export interface QueueOptions {
     entityTempId?: string;
     dependencyKey?: string;
     forceQueue?: boolean;
+    /** Per-batch nonce sent in the body: a new batch is never answered by the replay of an older one. */
+    nonce?: string;
 }
 
 /** The order exists only in the offline queue; this operation cannot wait for it. */
@@ -225,6 +227,8 @@ export function createWaiterApi(deps: WaiterApiDeps) {
             return mutate<Json>({
                 method: 'POST',
                 url: `/orders/${ref.id}/send-to-kitchen`,
+                // The server ignores unknown body fields; the nonce only changes the idempotency fingerprint.
+                data: opts.nonce ? { batchNonce: opts.nonce } : undefined,
                 invalidates: true,
                 queue: {
                     operationType: 'SEND_TO_KITCHEN',

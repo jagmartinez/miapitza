@@ -14,7 +14,7 @@ const OVERSCAN_PX = 120;
  * Windowed list without a library: only rows intersecting the viewport (plus a small overscan) are mounted.
  * Rows are absolutely placed by cumulative height, so 40+ lines cost the same as 10.
  */
-export function TicketList({ rows, scrollToKey, className, testId = 'ticket-list' }: { rows: ListRow[]; scrollToKey?: string | null; className?: string; testId?: string }) {
+export function TicketList({ rows, scrollTarget, className, testId = 'ticket-list' }: { rows: ListRow[]; scrollTarget?: { key: string | null; n: number } | null; className?: string; testId?: string }) {
     const ref = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [viewport, setViewport] = useState(FALLBACK_VIEWPORT);
@@ -37,10 +37,10 @@ export function TicketList({ rows, scrollToKey, className, testId = 'ticket-list
         total += row.height;
     }
 
-    // Bring a freshly added line into view.
+    // Bring a freshly added line, or the row just expanded (taller now), fully into view.
     useEffect(() => {
-        if (!scrollToKey || !ref.current) return;
-        const i = rows.findIndex((r) => r.key === scrollToKey);
+        if (!scrollTarget?.key || !ref.current) return;
+        const i = rows.findIndex((r) => r.key === scrollTarget.key);
         if (i < 0) return;
         const el = ref.current;
         const top = offsets[i];
@@ -50,7 +50,7 @@ export function TicketList({ rows, scrollToKey, className, testId = 'ticket-list
         else if (bottom > el.scrollTop + view) el.scrollTop = bottom - view;
         setScrollTop(el.scrollTop);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [scrollToKey]);
+    }, [scrollTarget?.n]);
 
     const from = scrollTop - OVERSCAN_PX;
     const to = scrollTop + viewport + OVERSCAN_PX;

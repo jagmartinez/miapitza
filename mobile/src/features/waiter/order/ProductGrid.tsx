@@ -9,12 +9,14 @@ export interface ProductGridProps {
     quantities: Map<number, number>;
     promos: Map<number, string>;
     disabled?: boolean;
+    /** Product whose modifier groups are loading. */
+    busyId?: number | null;
     onTap: (product: Product) => void;
     /** Press and hold: note / modifiers. */
     onHold: (product: Product) => void;
 }
 
-function ProductTile({ product, qty, promo, disabled, onTap, onHold }: { product: Product; qty: number; promo?: string; disabled?: boolean; onTap: () => void; onHold: () => void }) {
+function ProductTile({ product, qty, promo, disabled, busy, onTap, onHold }: { product: Product; qty: number; promo?: string; disabled?: boolean; busy?: boolean; onTap: () => void; onHold: () => void }) {
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const fired = useRef(false);
     const clear = () => {
@@ -33,6 +35,7 @@ function ProductTile({ product, qty, promo, disabled, onTap, onHold }: { product
             data-product-id={product.id}
             data-in-ticket={qty > 0 ? 'true' : undefined}
             disabled={disabled}
+            aria-busy={busy || undefined}
             onPointerDown={() => {
                 fired.current = false;
                 clear();
@@ -64,12 +67,12 @@ function ProductTile({ product, qty, promo, disabled, onTap, onHold }: { product
     );
 }
 
-export function ProductGrid({ products, quantities, promos, disabled, onTap, onHold }: ProductGridProps) {
+export function ProductGrid({ products, quantities, promos, disabled, busyId, onTap, onHold }: ProductGridProps) {
     return (
         <section className="products" aria-label="Productos">
             {products.length === 0 && <p className="muted products-empty">Sin productos.</p>}
             {products.map((p) => (
-                <ProductTile key={p.id} product={p} qty={quantities.get(p.id) ?? 0} promo={promos.get(p.id)} disabled={disabled} onTap={() => onTap(p)} onHold={() => onHold(p)} />
+                <ProductTile key={p.id} product={p} qty={quantities.get(p.id) ?? 0} promo={promos.get(p.id)} disabled={disabled} busy={busyId === p.id} onTap={() => onTap(p)} onHold={() => onHold(p)} />
             ))}
         </section>
     );

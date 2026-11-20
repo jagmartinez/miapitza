@@ -193,3 +193,26 @@ describe('full ticket', () => {
         expect(screen.queryByRole('region', { name: 'Ticket completo' })).toBeNull();
     });
 });
+
+describe('ticket fix round 1', () => {
+    it('I6: expanding the last visible row scrolls it into view', async () => {
+        const drafts = makeDrafts();
+        await drafts.set('1:7', 2, seed(Array.from({ length: 12 }, (_, i) => ({ menuItemId: 100 + i, quantity: 1, name: `Plato ${i}`, unitPrice: 10 }))));
+        setup({ drafts });
+        const list = await within(ticket()).findByTestId('ticket-list');
+        const row = await within(ticket()).findByRole('button', { name: /Plato 7/ });
+        expect(list.scrollTop).toBe(0);
+        fireEvent.click(row);
+        await waitFor(() => expect(list.scrollTop).toBeGreaterThan(0));
+        expect(within(ticket()).getByRole('button', { name: 'Quitar' })).toBeInTheDocument();
+    });
+
+    it('Minor 10: 40 server lines mount only a window and keep the footer', async () => {
+        const api = makeApi();
+        api.orderDetail.mockResolvedValue(orderOf(Array.from({ length: 40 }, (_, i) => serverItem(200 + i, 1, `Linea ${i}`, { sentAt: null, status: 'PENDING' }))));
+        setup({ api });
+        await within(ticket()).findByText('Linea 0');
+        expect(within(ticket()).getAllByTestId(/^unsent-/).length).toBeLessThan(20);
+        expect(within(ticket()).getByRole('button', { name: 'Enviar a cocina · 40' })).toBeVisible();
+    });
+});

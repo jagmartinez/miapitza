@@ -1,5 +1,6 @@
 import { formatCurrency } from '@web/utils/currency';
 import { isCategoryVisibleInMenu } from '@web/utils/categoryVisibility';
+import type { PromotionRulesView } from '@web/utils/promotionRules';
 
 /** Loosely typed server payloads; this file narrows what the order screen uses. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,38 +91,34 @@ export function productsFor(entry: RailEntry['id'], products: Product[], topIds:
     return products.filter((p) => p.categoryId === entry);
 }
 
-function promoBadge(promo: Json): string | null {
-    switch (promo.type) {
-        case 'BUY_X_GET_Y':
-            return promo.buyQuantity && promo.payQuantity ? `${promo.buyQuantity}x${promo.payQuantity}` : null;
-        case 'COMBO':
-            return 'Combo';
-        case 'PERCENTAGE':
-            return promo.scope === 'ITEMS' ? `−${Number(promo.value)} %` : null;
-        case 'FIXED_AMOUNT':
-            return promo.scope === 'ITEMS' ? `−${money(promo.value)}` : null;
-        default:
-            return null;
-    }
+/** Item-scoped (or combo / N x M) promotions mark products; order-wide ones have no product to mark. */
+function marksProducts(promo: PromotionRulesView): boolean {
+    if (promo.type === 'COMBO') return (promo.comboItems?.length ?? 0) > 0;
+    if (promo.type === 'BUY_X_GET_Y') return !!promo.buyQuantity && !!promo.payQuantity;
+    return promo.scope === 'ITEMS';
 }
 
-/** One short badge per product with an item-scoped promotion in force (2x1, Combo, -20 %). */
-export function promoLabels(promotions: unknown, products: Product[]): Map<number, string> {
+/**
+ * Products with a promotion in force get a neutral "Promo" tag. The magnitude (2x1, -20 %) is never shown: the server
+ * applies promotions by code, so the tile must not promise an automatic discount.
+ * `promotionRules` has no eligibility helper; its view type is used and the branch and schedule flags are read here.
+ */
+export function promoLabels(promotions: unknown, products: Product[], branchId?: number | null): Map<number, string> {
     const labels = new Map<number, string>();
     if (!Array.isArray(promotions)) return labels;
-    for (const promo of promotions as Json[]) {
-        if (!promo || promo.scheduleActiveNow === false || promo.active === false) continue;
-        const label = promoBadge(promo);
-        if (!label) continue;
+    for (const promo of promotions as Array<PromotionRulesView & { active?: boolean }>) {
+        if (!promo || promo.active === false || promo.scheduleActiveNow === false) continue;
+        if (promo.allBranches === false && branchId != null && !(promo.branchIds ?? []).includes(branchId)) continue;
+        if (!marksProducts(promo)) continue;
         const targetItems = new Set<number>(promo.targetMenuItemIds ?? []);
         const targetCategories = new Set<number>(promo.targetCategoryIds ?? []);
-        const comboItems = new Set<number>((promo.comboItems ?? []).map((c: Json) => c.menuItemId));
+        const comboItems = new Set<number>((promo.comboItems ?? []).map((c) => c.menuItemId));
         for (const product of products) {
             const hit =
                 promo.type === 'COMBO'
                     ? comboItems.has(product.id)
-                    : promo.scope === 'ITEMS' && (targetItems.has(product.id) || (product.categoryId != null && targetCategories.has(product.categoryId)));
-            if (hit && !labels.has(product.id)) labels.set(product.id, label);
+                    : targetItems.has(product.id) || (product.categoryId != null && targetCategories.has(product.categoryId));
+            if (hit) labels.set(product.id, 'Promo');
         }
     }
     return labels;

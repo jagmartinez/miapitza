@@ -59,7 +59,7 @@ describe('open table', () => {
         fireEvent.click(within(sheet).getByRole('button', { name: '3' }));
         fireEvent.click(open);
         await waitFor(() => expect(api.createOrder).toHaveBeenCalledWith({ tableId: 1, guests: 3, orderType: 'DINE_IN' }));
-        await waitFor(() => expect(onOpenOrder).toHaveBeenCalledWith(555));
+        await waitFor(() => expect(onOpenOrder).toHaveBeenCalledWith(555, undefined, 1));
     });
 
     it('an order created offline opens with its temp id', async () => {
@@ -118,7 +118,7 @@ describe('open table', () => {
         const { onOpenOrder } = setup();
         await screen.findByTestId('tile-2');
         fireEvent.click(tile(2));
-        expect(onOpenOrder).toHaveBeenCalledWith(102);
+        expect(onOpenOrder).toHaveBeenCalledWith(102, undefined, 2);
     });
 });
 
@@ -172,7 +172,7 @@ describe('table actions', () => {
         await screen.findByTestId('tile-2');
         await longPress(tile(2));
         fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cobrar' }));
-        expect(onOpenOrder).toHaveBeenCalledWith(102, 'pay');
+        expect(onOpenOrder).toHaveBeenCalledWith(102, 'pay', 2);
     });
 
     it('transfer completes by tapping a destination table', async () => {
@@ -300,6 +300,6 @@ describe('table actions', () => {
             vi.useRealTimers();
         }
         expect(screen.queryByRole('dialog')).toBeNull();
-        expect(onOpenOrder).toHaveBeenCalledWith(102);
+        expect(onOpenOrder).toHaveBeenCalledWith(102, undefined, 2);
     });
 });

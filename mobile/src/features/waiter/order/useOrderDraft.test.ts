@@ -21,12 +21,13 @@ function setup(over: { api?: ReturnType<typeof makeApi>; ownerKey?: string | nul
     const drafts = createDrafts(new MobileDB(`draft-${++n}-${Date.now()}`));
     const api = over.api ?? makeApi();
     const onSent = vi.fn();
+    const onChanged = vi.fn();
     const hook = renderHook(
         (p: { ownerKey: string | null; tableId: number | null }) =>
-            useOrderDraft({ drafts, api, ownerKey: p.ownerKey, tableId: p.tableId, orderId: over.orderId === undefined ? 55 : over.orderId, serverUnsent: over.serverUnsent, onSent }),
+            useOrderDraft({ drafts, api, ownerKey: p.ownerKey, tableId: p.tableId, orderId: over.orderId === undefined ? 55 : over.orderId, serverUnsent: over.serverUnsent, onSent, onChanged }),
         { initialProps: { ownerKey: over.ownerKey === undefined ? '1:7' : over.ownerKey, tableId: over.tableId === undefined ? 3 : over.tableId } },
     );
-    return { drafts, api, onSent, ...hook };
+    return { drafts, api, onSent, onChanged, ...hook };
 }
 
 describe('useOrderDraft', () => {
@@ -85,7 +86,7 @@ describe('useOrderDraft', () => {
         expect(api.sendToKitchen).toHaveBeenCalledTimes(1);
         expect(api.sendToKitchen.mock.invocationCallOrder[0]).toBeGreaterThan(api.addItem.mock.invocationCallOrder[1]);
         // everything applied online: nothing to wait behind
-        expect(api.sendToKitchen.mock.calls[0][1]).toEqual({ dependencyKey: undefined, forceQueue: false });
+        expect(api.sendToKitchen.mock.calls[0][1]).toEqual({ dependencyKey: undefined, forceQueue: false, nonce: expect.any(String) });
         expect(result.current.lines).toHaveLength(0);
         expect(onSent).toHaveBeenCalledTimes(1);
         expect(result.current.sending).toBe(false);
@@ -125,7 +126,7 @@ describe('useOrderDraft', () => {
         const group = api.addItem.mock.calls[0][2].entityTempId;
         expect(group).toBeTruthy();
         expect(api.addItem.mock.calls[1][2].entityTempId).toBe(group);
-        expect(api.sendToKitchen.mock.calls[0][1]).toEqual({ dependencyKey: group, forceQueue: true });
+        expect(api.sendToKitchen.mock.calls[0][1]).toEqual({ dependencyKey: group, forceQueue: true, nonce: expect.any(String) });
     });
 
     it('lines the server already holds unsent are sent without adding again', async () => {
@@ -171,5 +172,114 @@ describe('useOrderDraft', () => {
         rerender({ ownerKey: '1:7', tableId: 4 });
         await waitFor(() => expect(result.current.loaded).toBe(true));
         expect(result.current.lines).toHaveLength(0);
+    });
+});
+
+describe('useOrderDraft fix round 1', () => {
+    it('C1: a failed kitchen send after applied lines tells the screen to reload', async () => {
+        const api = makeApi({ sendToKitchen: vi.fn().mockRejectedValue(new Error('red')) });
+        const { result, onChanged, onSent } = setup({ api });
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+        act(() => result.current.add(pizza));
+        await act(async () => {
+            await result.current.send();
+        });
+        expect(result.current.error).toBeTruthy();
+        expect(onChanged).toHaveBeenCalledTimes(1);
+        expect(onSent).not.toHaveBeenCalled();
+    });
+
+    it('C1: a line failing mid-way also reloads, so the applied ones show', async () => {
+        const api = makeApi();
+        api.addItem.mockResolvedValueOnce({ id: 1 }).mockRejectedValueOnce(new Error('red'));
+        const { result, onChanged } = setup({ api });
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+        act(() => result.current.add(pizza));
+        act(() => result.current.add(cola));
+        await act(async () => {
+            await result.current.send();
+        });
+        expect(onChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it('I1: edits made while a send is in flight survive (the sent quantity is subtracted)', async () => {
+        const gate: { release: () => void } = { release: () => undefined };
+        const api = makeApi({ addItem: vi.fn().mockImplementation(() => new Promise((resolve) => (gate.release = () => resolve({ id: 1 })))) });
+        const { result } = setup({ api });
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+        act(() => result.current.add(pizza));
+        let p!: Promise<unknown>;
+        act(() => {
+            p = result.current.send();
+        });
+        await waitFor(() => expect(api.addItem).toHaveBeenCalledTimes(1));
+        act(() => result.current.add(pizza)); // second unit while the first is going out
+        await act(async () => {
+            gate.release();
+            await p;
+        });
+        expect(api.addItem.mock.calls[0][1]).toEqual({ menuItemId: 1, quantity: 1 });
+        expect(result.current.lines.map((l) => [l.menuItemId, l.quantity])).toEqual([[1, 1]]);
+    });
+
+    it('I1: create-with-lines removes only the lines that were sent', async () => {
+        const gate: { release: () => void } = { release: () => undefined };
+        const api = makeApi({ createOrder: vi.fn().mockImplementation(() => new Promise((resolve) => (gate.release = () => resolve({ id: 900 })))) });
+        const { result } = setup({ api, orderId: null });
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+        act(() => result.current.add(pizza));
+        let p!: Promise<unknown>;
+        act(() => {
+            p = result.current.send();
+        });
+        await waitFor(() => expect(api.createOrder).toHaveBeenCalledTimes(1));
+        act(() => result.current.add(cola));
+        act(() => result.current.add(pizza));
+        await act(async () => {
+            gate.release();
+            await p;
+        });
+        expect(result.current.lines.map((l) => [l.menuItemId, l.quantity])).toEqual([[1, 1], [2, 1]]);
+    });
+
+    it('Minor 1: after create then a failed send, a retry reuses the created order', async () => {
+        const api = makeApi();
+        api.sendToKitchen.mockRejectedValueOnce(new Error('red')).mockResolvedValue({});
+        const { result } = setup({ api, orderId: null });
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+        act(() => result.current.add(pizza));
+        await act(async () => {
+            await result.current.send();
+        });
+        expect(result.current.sendCount).toBeGreaterThan(0); // the order holds unsent lines: still sendable
+        await act(async () => {
+            await result.current.send();
+        });
+        expect(api.createOrder).toHaveBeenCalledTimes(1);
+        expect(api.sendToKitchen).toHaveBeenCalledTimes(2);
+        expect(api.sendToKitchen.mock.calls[1][0]).toBe(900);
+        expect(api.addItem).not.toHaveBeenCalled();
+    });
+
+    it('Minor 8: each batch carries a nonce, reused on retry and renewed after a success', async () => {
+        const api = makeApi();
+        api.sendToKitchen.mockRejectedValueOnce(new Error('red')).mockResolvedValue({});
+        const { result } = setup({ api, serverUnsent: 1 }); // the screen reloads and reports the line the server now holds
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+        act(() => result.current.add(pizza));
+        await act(async () => {
+            await result.current.send();
+        });
+        await act(async () => {
+            await result.current.send();
+        });
+        const [first, retry] = api.sendToKitchen.mock.calls.map((c) => c[1].nonce);
+        expect(first).toBeTruthy();
+        expect(retry).toBe(first);
+        act(() => result.current.add(cola));
+        await act(async () => {
+            await result.current.send();
+        });
+        expect(api.sendToKitchen.mock.calls[2][1].nonce).not.toBe(first);
     });
 });

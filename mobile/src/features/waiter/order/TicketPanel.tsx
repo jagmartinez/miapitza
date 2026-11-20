@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Sheet } from '../tables/Sheet';
 import { ReadyCard } from './ReadyCard';
 import { TicketList, type ListRow } from './TicketList';
@@ -24,7 +24,11 @@ export interface TicketPanelProps {
     /** Everything the server holds for the order (unsent and sent). */
     serverLines: ServerLine[];
     now: number;
+    /** Server order total (taxes and discounts included). */
     total: number;
+    /** Draft lines at menu price: shown apart, never summed into the total. */
+    unsentTotal: number;
+    highlightSeq: number;
     sendCount: number;
     sending: boolean;
     error: string | null;
@@ -45,16 +49,17 @@ export interface TicketPanelProps {
 
 export const STATE_LABEL: Record<Exclude<LineState, 'new'>, string> = { ready: 'Listo', preparing: 'En preparación', delivered: 'Entregado' };
 
-type FooterProps = Pick<TicketPanelProps, 'total' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>;
+type FooterProps = Pick<TicketPanelProps, 'total' | 'unsentTotal' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>;
 
 /** Pinned footer: total, "Enviar a cocina · N" and the secondary actions. Never scrolls with the list. */
-export function TicketFooter({ total, sendCount, sending, canEdit, actions, onSend }: FooterProps) {
+export function TicketFooter({ total, unsentTotal, sendCount, sending, canEdit, actions, onSend }: FooterProps) {
     return (
         <footer className="ticket-foot">
             <div className="ticket-total">
                 <span className="muted">Total</span>
                 <strong>{money(total)}</strong>
             </div>
+            {unsentTotal > 0 && <span className="ticket-unsent muted">{`+ ${money(unsentTotal)} sin enviar`}</span>}
             {canEdit && (
                 <button type="button" className="btn btn-primary ticket-send" disabled={sendCount === 0 || sending} onClick={onSend}>
                     {`Enviar a cocina · ${sendCount}`}
@@ -110,6 +115,12 @@ export function TicketPanel(props: TicketPanelProps) {
     const { title, subtitle, drafts, highlightKey, serverLines, now, error, canEdit, canDeliver, busy } = props;
     const [expanded, setExpanded] = useState<string | null>(null); // one row open at a time
     const [noteFor, setNoteFor] = useState<NoteTarget | null>(null);
+    // Where the list should scroll: an expanded row, or the line just added (a counter, so the same key can repeat).
+    const [scrollReq, setScrollReq] = useState<{ key: string | null; n: number }>({ key: null, n: 0 });
+    useEffect(() => {
+        if (props.highlightSeq > 0 && highlightKey) setScrollReq((r) => ({ key: `d:${highlightKey}`, n: r.n + 1 }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [props.highlightSeq]);
 
     const unsent = useMemo(() => serverLines.filter((l) => l.state === 'new'), [serverLines]);
     const sent = useMemo(() => serverLines.filter((l) => l.state !== 'new'), [serverLines]);
@@ -117,7 +128,10 @@ export function TicketPanel(props: TicketPanelProps) {
 
     const rows = useMemo<ListRow[]>(() => {
         const out: ListRow[] = [];
-        const toggle = (key: string) => setExpanded((cur) => (cur === key ? null : key));
+        const toggle = (key: string) => {
+            setExpanded((cur) => (cur === key ? null : key));
+            setScrollReq((r) => ({ key, n: r.n + 1 }));
+        };
         if (drafts.length + unsent.length > 0) {
             out.push({ key: 'h-new', height: 32, node: <h3 className="ticket-section">Nuevo · sin enviar</h3> });
         }
@@ -223,7 +237,7 @@ export function TicketPanel(props: TicketPanelProps) {
                 </button>
             </header>
             {canDeliver && <ReadyCard lines={ready} now={now} busy={busy} onDeliver={props.onDeliver} />}
-            {rows.length > 0 ? <TicketList rows={rows} scrollToKey={highlightKey ? `d:${highlightKey}` : null} /> : <p className="muted ticket-empty">Toca un producto para agregarlo.</p>}
+            {rows.length > 0 ? <TicketList rows={rows} scrollTarget={scrollReq} /> : <p className="muted ticket-empty">Toca un producto para agregarlo.</p>}
             {error && (
                 <p className="error ticket-error" role="alert">
                     {error}

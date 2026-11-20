@@ -167,7 +167,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
             void picking.choose(table);
             return;
         }
-        if (order) onOpenOrder(order.id);
+        if (order) onOpenOrder(order.id, undefined, table.id);
         else if (state === 'free') setSheet({ kind: 'open', table });
         else void load(true); // the plan says occupied but we hold no order: our data is stale
     };
@@ -183,14 +183,12 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
         const id = created._offline ? created.entityTempId : created.id;
         if (id == null) throw new Error('No se pudo abrir la mesa.');
         setSheet(null);
-        // An order that only exists in the queue cannot tell its table: hand it over.
-        if (created._offline) onOpenOrder(id, undefined, table.id);
-        else onOpenOrder(id);
+        onOpenOrder(id, undefined, table.id);
     };
 
     const runAction = (action: SheetAction, table: PlanTable, order: ActiveOrder) => {
         setSheet(null);
-        if (action === 'view' || action === 'pay' || action === 'invoice') onOpenOrder(order.id, action);
+        if (action === 'view' || action === 'pay' || action === 'invoice') onOpenOrder(order.id, action, table.id);
         else picking.begin(action, table, order);
     };
 
@@ -253,7 +251,10 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 </div>
             )}
 
-            <ReadyBanner notice={notice} onOpen={(orderId) => onOpenOrder(orderId)} onDismiss={() => setNotice(null)} />
+            <ReadyBanner notice={notice} onOpen={(orderId) => {
+                const o = orders.find((x) => x.id === orderId);
+                onOpenOrder(orderId, undefined, o?.tableId ?? o?.table?.id ?? undefined);
+            }} onDismiss={() => setNotice(null)} />
 
             {branchId == null && <p className="error pad">Tu usuario no tiene sucursal asignada.</p>}
             {error && (
