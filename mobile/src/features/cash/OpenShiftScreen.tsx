@@ -18,6 +18,8 @@ export interface OpenShiftProps {
     onOpened: () => void;
     onBack?: () => void;
     title?: string;
+    /** "Historial de turnos" (the standalone caja only). */
+    onHistory?: () => void;
 }
 
 /** Why an open failed, in words for the cashier. */
@@ -31,7 +33,7 @@ export function openErrorMessage(error: unknown): string {
 }
 
 /** "Abrir turno" (spec 7.3.2b): register, opening float, open. Cash calls are online only. */
-export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abrir turno' }: OpenShiftProps) {
+export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abrir turno', onHistory }: OpenShiftProps) {
     const online = useOnline();
     const [registers, setRegisters] = useState<CashRegisterRow[] | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -156,6 +158,14 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
                     <span className="cash-offline" role="status">
                         {OFFLINE_TEXT}
                     </span>
+                )}
+                {onHistory && (
+                    <>
+                        <span className="grow" />
+                        <button type="button" className="btn" aria-label="Historial de turnos" disabled={pending} onClick={onHistory}>
+                            Historial
+                        </button>
+                    </>
                 )}
             </header>
             <div className="cash-open-body">

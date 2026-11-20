@@ -482,3 +482,109 @@
         min-height: 40px;
     }
 }
+
+/* Close report and history */
+.cash-head {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cash-tag {
+    flex: none;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cash-tag-warn {
+    color: var(--ready);
+    border-color: var(--ready);
+}
+
+.cash-tag-bad {
+    color: var(--alert);
+    border-color: var(--alert);
+}
+
+.cash-report-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.cash-report-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.cash-report-cards .cash-right {
+    align-self: stretch;
+}
+
+.cash-line-strong {
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-weight: 600;
+}
+
+.cash-note {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.cash-denoms-cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.cash-report-foot {
+    display: flex;
+    gap: 12px;
+}
+
+.cash-report-foot .btn {
+    min-height: 64px;
+    white-space: nowrap;
+}
+
+.cash-report-foot .cash-main {
+    width: auto;
+    flex: 1;
+}
+
+.cash-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.cash-history-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    text-align: left;
+}
+
+.cash-history-row > span:first-child {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}

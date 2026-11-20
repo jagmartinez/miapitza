@@ -164,11 +164,31 @@ export interface ClosePreview {
     absoluteDifference?: number;
 }
 
+export interface CountLine {
+    denomination: number;
+    count: number;
+}
+
+/** GET /cash-arqueo/:shiftId/report. For a CLOSED shift it is complete for every role (the blind rule applies only while open). */
 export interface ShiftReport {
-    shift: Record<string, unknown>;
+    shift: {
+        id?: number;
+        cashRegister?: string;
+        user?: string;
+        startDate?: string;
+        endDate?: string | null;
+        closedBy?: { id: number; name: string } | null;
+        forceClosed?: boolean;
+        closingExchangeRate?: number | null;
+        status?: 'ABIERTO' | 'CERRADO';
+        /** Closing note, when the server provides it. */
+        notes?: string | null;
+        [extra: string]: unknown;
+    };
+    header?: { companyName: string; ruc?: string | null; branchName: string; branchAddress?: string; branchPhone?: string };
     amounts: Record<string, number | null | undefined>;
     movements: { in: unknown[]; out: unknown[] };
-    counts: { bills: unknown[]; coins: unknown[]; usdBills: unknown[] };
+    counts: { bills: CountLine[]; coins: CountLine[]; usdBills: CountLine[] };
     reconciliation: { isBalanced?: boolean; surplus?: number; deficit?: number };
     report: { title: string; generatedAt: string; summary: string };
 }

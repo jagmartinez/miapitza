@@ -19,7 +19,7 @@ const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ defa
 // Caja loads (with its data layer) only when a cashier opens it; "Cerrar turno" / "Arqueo parcial" land on cashCount (Task 6).
 const CashEntry = lazy(() => import('../cash/CashEntry'));
 const CountCloseEntry = lazy(() => import('../cash/CountCloseEntry'));
-const CloseReportPlaceholder = lazy(() => import('../cash/CloseReportPlaceholder'));
+const CloseReportEntry = lazy(() => import('../cash/CloseReportEntry'));
 const loadingFallback = <main className="screen"><p className="muted">Cargando…</p></main>;
 
 const STALE_URLS = ['/orders/active', '/tables/plan'];
@@ -94,7 +94,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
     if (route.name === 'cashReport') {
         return (
             <Suspense fallback={loadingFallback}>
-                <CloseReportPlaceholder shiftId={route.shiftId} onDone={() => setRoute({ name: 'tables' })} />
+                <CloseReportEntry key={owner ?? ''} session={session} services={services} shiftId={route.shiftId} onDone={() => setRoute({ name: 'tables' })} />
             </Suspense>
         );
     }

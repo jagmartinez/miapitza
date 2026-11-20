@@ -22,6 +22,7 @@ export interface ActiveShiftProps {
     onBack: () => void;
     /** "Arqueo parcial" / "Cerrar turno": the count screen takes it from here. */
     onCount: (shiftId: number, mode: CountMode) => void;
+    onHistory?: () => void;
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
@@ -61,7 +62,7 @@ function Card({ title, amount, note }: { title: string; amount: string; note: st
 }
 
 /** Active shift (spec 7.3.2b). The count is blind: "Debe haber" is rendered for ADMIN / SUPERADMIN only, from the server value. */
-export function ActiveShiftScreen({ api, session, shift, requiresClose = false, closeMessage = null, addMovement, onBack, onCount }: ActiveShiftProps) {
+export function ActiveShiftScreen({ api, session, shift, requiresClose = false, closeMessage = null, addMovement, onBack, onCount, onHistory }: ActiveShiftProps) {
     const online = useOnline();
     const admin = isCashAdmin(session.user);
     const [data, setData] = useState<ShiftSummary | null>(null);
@@ -126,6 +127,11 @@ export function ActiveShiftScreen({ api, session, shift, requiresClose = false, 
                 <button type="button" className="btn" disabled={!online} onClick={() => onCount(shift.id, 'partial')}>
                     Arqueo parcial
                 </button>
+                {onHistory && (
+                    <button type="button" className="btn" aria-label="Historial de turnos" onClick={onHistory}>
+                        Historial
+                    </button>
+                )}
             </header>
             {(requiresClose || loadError) && (
                 <p className={requiresClose ? 'cash-notice cash-warn' : 'error cash-notice'} role={loadError ? 'alert' : 'status'}>
