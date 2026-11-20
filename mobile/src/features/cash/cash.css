@@ -327,3 +327,147 @@
         min-height: 44px;
     }
 }
+
+/* Count / close screen: Córdobas | Dólares + keypad | panel. */
+.cash-count-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(280px, 340px);
+    gap: 12px;
+    padding: 12px;
+}
+
+.cash-count-mid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.cash-dcol {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.cash-dlist {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cash-dgroup {
+    font-size: 12px;
+}
+
+.cash-drow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.4fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 2px 10px;
+    text-align: left;
+}
+
+.cash-dsub {
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cash-dfoot {
+    margin-top: auto;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+}
+
+.cash-count-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.cash-total dd {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.cash-result {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.cash-notes {
+    box-sizing: border-box;
+    width: 100%;
+    resize: none;
+    padding: 8px;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+}
+
+.cash-panel-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: auto;
+}
+
+.cash-panel-actions .btn {
+    min-height: 48px;
+    white-space: nowrap;
+}
+
+.cash-rate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cash-rate input {
+    box-sizing: border-box;
+    width: 96px;
+    padding: 8px;
+    text-align: right;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+}
+
+.cash-rate input[data-selected='true'] {
+    border-color: var(--text);
+}
+
+@media (max-height: 640px) {
+    .cash-count-body {
+        gap: 8px;
+        padding: 8px;
+    }
+    .cash-drow {
+        min-height: 30px;
+        padding: 0 8px;
+    }
+    .cash-count-mid .pay-keys .btn {
+        min-height: 40px;
+    }
+    .cash-panel-actions .btn {
+        min-height: 40px;
+    }
+}

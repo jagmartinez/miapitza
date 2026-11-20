@@ -11,14 +11,15 @@ import { loadCashApi } from '../../data/loadCashApi';
 import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
 import { useReadyInbox } from './readyInbox';
 
-type Route = { name: 'tables' } | { name: 'cash' } | { name: 'cashCount'; shiftId: number; mode: 'partial' | 'close' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
+type Route = { name: 'tables' } | { name: 'cash' } | { name: 'cashCount'; shiftId: number; mode: 'partial' | 'close' } | { name: 'cashReport'; shiftId: number } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
 
 // The order screen is the biggest waiter chunk: it loads when the first order opens.
 const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ default: m.OrderScreen })));
 
 // Caja loads (with its data layer) only when a cashier opens it; "Cerrar turno" / "Arqueo parcial" land on cashCount (Task 6).
 const CashEntry = lazy(() => import('../cash/CashEntry'));
-const CountPlaceholder = lazy(() => import('../cash/CountPlaceholder'));
+const CountCloseEntry = lazy(() => import('../cash/CountCloseEntry'));
+const CloseReportPlaceholder = lazy(() => import('../cash/CloseReportPlaceholder'));
 const loadingFallback = <main className="screen"><p className="muted">Cargando…</p></main>;
 
 const STALE_URLS = ['/orders/active', '/tables/plan'];
@@ -85,7 +86,15 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
     if (route.name === 'cashCount') {
         return (
             <Suspense fallback={loadingFallback}>
-                <CountPlaceholder shiftId={route.shiftId} mode={route.mode} onBack={() => setRoute({ name: 'cash' })} />
+                <CountCloseEntry key={owner ?? ''} session={session} services={services} shiftId={route.shiftId} mode={route.mode} onBack={() => setRoute({ name: 'cash' })} onClosed={(shiftId) => setRoute({ name: 'cashReport', shiftId })} />
+            </Suspense>
+        );
+    }
+
+    if (route.name === 'cashReport') {
+        return (
+            <Suspense fallback={loadingFallback}>
+                <CloseReportPlaceholder shiftId={route.shiftId} onDone={() => setRoute({ name: 'tables' })} />
             </Suspense>
         );
     }
