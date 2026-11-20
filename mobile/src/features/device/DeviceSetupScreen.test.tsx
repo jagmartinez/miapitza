@@ -140,3 +140,63 @@ describe('DeviceSetupScreen', () => {
         expect(await api.sessions.deviceToken()).toBeNull();
     });
 });
+
+describe('DeviceSetupScreen in-flight login and Cancelar', () => {
+    it('Back while the admin login is in flight discards its token and stays on the type step', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const api = fakeApi(async (c) => {
+            if (pathOf(c) === 'POST /auth/login') {
+                await gate;
+                return { data: { success: true, data: { token: 'late-admin', user: admin } } };
+            }
+            return { data: { success: true } };
+        });
+        const device = createDeviceApi({ http: api.http, sessions: api.sessions });
+        render(<DeviceSetupScreen api={device} onDone={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de servicio/ }));
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        await waitFor(() => expect(api.calls.map(pathOf)).toContain('POST /auth/login'));
+        fireEvent.click(screen.getByRole('button', { name: 'Atrás' }));
+        release();
+        // The late token is revoked, never kept, and the screen does not advance.
+        await waitFor(() => {
+            const logout = api.calls.find((c) => pathOf(c) === 'POST /auth/logout');
+            expect(logout?.headers.get('Authorization')).toBe('Bearer late-admin');
+        });
+        expect(screen.getByText('¿Qué es este dispositivo?')).toBeInTheDocument();
+        expect(screen.queryByLabelText(/Nombre del dispositivo/)).not.toBeInTheDocument();
+        await expect(device.register({ branchId: 1, type: 'SERVICE_TABLET', name: 'x' })).rejects.toThrow('admin login required');
+    });
+
+    it('cancel() invalidates an in-flight login at the api level', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const api = fakeApi(async () => {
+            await gate;
+            return { data: { success: true, data: { token: 'late-admin', user: admin } } };
+        });
+        const device = createDeviceApi({ http: api.http, sessions: api.sessions });
+        const login = device.adminLogin('a', 'b');
+        await device.cancel();
+        release();
+        expect(await login).toEqual({ status: 'cancelled' });
+    });
+
+    it('Cancelar on the details step drops the admin token and returns to the type step', async () => {
+        const { calls } = setup();
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de servicio/ }));
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        await screen.findByLabelText(/Nombre del dispositivo/);
+        fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+        expect(await screen.findByText('¿Qué es este dispositivo?')).toBeInTheDocument();
+        await waitFor(() => {
+            const logout = calls.find((c) => pathOf(c) === 'POST /auth/logout');
+            expect(logout?.headers.get('Authorization')).toBe('Bearer admin-tok');
+        });
+    });
+});

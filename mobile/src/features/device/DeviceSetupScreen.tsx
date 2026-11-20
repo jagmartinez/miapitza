@@ -23,6 +23,8 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
     const [kitchenUserId, setKitchenUserId] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    // Bumped when the admin leaves the login step; a late login result is then ignored.
+    const loginSeq = useRef(0);
 
     // Leaving setup for any reason must not leave an admin session alive.
     const apiRef = useRef(api);
@@ -49,10 +51,12 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
     async function login(e: FormEvent) {
         e.preventDefault();
         if (busy) return;
+        const seq = ++loginSeq.current;
         setBusy(true);
         setError(null);
         try {
             const result = await api.adminLogin(username.trim(), password, needsCode ? code.trim() : undefined);
+            if (seq !== loginSeq.current || result.status === 'cancelled') return;
             if (result.status === '2fa') {
                 setNeedsCode(true);
             } else {
@@ -62,9 +66,9 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
                 setStep('details');
             }
         } catch {
-            setError('No se pudo iniciar sesión');
+            if (seq === loginSeq.current) setError('No se pudo iniciar sesión');
         } finally {
-            setBusy(false);
+            if (seq === loginSeq.current) setBusy(false);
         }
     }
 
@@ -134,7 +138,7 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
                     )}
                     {error && <p className="error" role="alert">{error}</p>}
                     <button type="submit" className="btn btn-primary" disabled={busy || !username.trim() || !password}>Continuar</button>
-                    <button type="button" className="btn" onClick={() => { setStep('type'); setNeedsCode(false); setError(null); void api.cancel(); }}>Atrás</button>
+                    <button type="button" className="btn" onClick={() => { loginSeq.current++; setBusy(false); setStep('type'); setNeedsCode(false); setError(null); void api.cancel(); }}>Atrás</button>
                 </form>
             </main>
         );
@@ -159,6 +163,20 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
                 )}
                 {error && <p className="error" role="alert">{error}</p>}
                 <button type="submit" className="btn btn-primary" disabled={busy}>Registrar dispositivo</button>
+                <button
+                    type="button"
+                    className="btn"
+                    disabled={busy}
+                    onClick={() => {
+                        void api.cancel();
+                        setAdmin(null);
+                        setNeedsCode(false);
+                        setError(null);
+                        setStep('type');
+                    }}
+                >
+                    Cancelar
+                </button>
             </form>
         </main>
     );
