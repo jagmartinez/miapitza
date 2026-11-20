@@ -138,6 +138,14 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 return;
             }
 
+            // Waiter-app edits of unsent lines never reach the kitchen queue.
+            if (
+                message.type === WS_EVENTS.ORDER_UPDATE &&
+                (message.payload?.status === 'ITEMS_CHANGED' || message.payload?.status === 'GUESTS_CHANGED')
+            ) {
+                return;
+            }
+
             if (
                 message.type === WS_EVENTS.ORDER_SENT_TO_KITCHEN ||
                 message.type === WS_EVENTS.ORDER_IN_PREPARATION ||

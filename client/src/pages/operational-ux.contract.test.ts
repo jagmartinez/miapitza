@@ -119,6 +119,15 @@ describe('operational UX contracts', () => {
         expect(styles).toContain('.reports-page > .reports-detail-page');
     });
 
+    it('the kitchen ignores waiter ITEMS_CHANGED / GUESTS_CHANGED order updates (M7)', () => {
+        const kitchen = read('./Kitchen.tsx');
+        const guard = kitchen.indexOf("message.payload?.status === 'ITEMS_CHANGED'");
+        expect(guard).toBeGreaterThan(-1);
+        expect(kitchen).toContain("message.payload?.status === 'GUESTS_CHANGED'");
+        // The guard returns before the refetch branch that handles ORDER_UPDATE.
+        expect(guard).toBeLessThan(kitchen.indexOf('message.type === WS_EVENTS.ORDER_SENT_TO_KITCHEN'));
+    });
+
     it('uses the dedicated kitchen and explicit-warehouse delivery boundaries', () => {
         const orders = read('./Orders.tsx');
         const pos = read('./POS.tsx');
