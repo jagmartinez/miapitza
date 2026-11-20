@@ -45,6 +45,11 @@ export function SinglePayment({ ctx }: { ctx: ModeCtx }) {
                     <div className="pay-blocked" role="alert">
                         <strong>Abre tu turno de caja</strong>
                         <span className="muted">Necesitas un turno de caja abierto hoy para cobrar en efectivo. Elige otro método o abre tu turno.</span>
+                        {ctx.onOpenShift && (
+                            <button type="button" className="btn btn-primary" disabled={busy} onClick={ctx.onOpenShift}>
+                                Abrir turno
+                            </button>
+                        )}
                     </div>
                 ) : cash ? (
                     <>

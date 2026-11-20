@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiErrorMessage } from '@web/utils/apiError';
-import { can } from '../../../core/permissions';
+import { can, isCashier } from '../../../core/permissions';
 import type { Realtime } from '../../../core/realtime';
 import type { Session } from '../../../core/session';
 import type { OfflineQueue } from '../../../data/offlineQueue';
@@ -32,6 +32,8 @@ export interface TablesScreenProps {
     invalidate: () => Promise<void>;
     onOpenOrder: (orderId: OrderRef, intent?: OrderIntent, tableId?: number, tableNumber?: string) => void;
     onSwitchUser: () => void;
+    /** Opens the caja (icon in the header, only for cash roles). */
+    onOpenCash?: () => void;
     /** "Pedido listo" notices of this session (kept by WaiterHome, so they survive a visit to another order). */
     ready?: ReadyNotice[];
     onDismissReady?: (orderId: number) => void;
@@ -51,9 +53,18 @@ function LockIcon() {
     );
 }
 
+function CashIcon() {
+    return (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="6" width="18" height="12" rx="2" />
+            <circle cx="12" cy="12" r="2.5" />
+        </svg>
+    );
+}
+
 const NO_NOTICES: ReadyNotice[] = [];
 
-export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser, ready = NO_NOTICES, onDismissReady }: TablesScreenProps) {
+export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser, onOpenCash, ready = NO_NOTICES, onDismissReady }: TablesScreenProps) {
     const branchId = session.user.branchId;
     const [plan, setPlan] = useState<Plan | null>(null);
     const [orders, setOrders] = useState<ActiveOrder[]>([]);
@@ -271,6 +282,11 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 <button type="button" className="chip" aria-pressed={mineOnly} onClick={() => setMineOnly((v) => !v)}>
                     Mis mesas
                 </button>
+                {onOpenCash && isCashier(session.user) && (
+                    <button type="button" className="btn icon-btn" aria-label="Caja" onClick={onOpenCash}>
+                        <CashIcon />
+                    </button>
+                )}
                 <button type="button" className="btn icon-btn" aria-label="Cambiar usuario" onClick={onSwitchUser}>
                     <LockIcon />
                 </button>

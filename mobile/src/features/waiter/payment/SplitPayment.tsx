@@ -268,6 +268,11 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
                                             Abre tu turno de caja para cobrar en efectivo.
                                         </p>
                                     )}
+                                    {cashBlocked && ctx.onOpenShift && (
+                                        <button type="button" className="btn" disabled={busy} onClick={ctx.onOpenShift}>
+                                            Abrir turno
+                                        </button>
+                                    )}
                                     {cash && !cashBlocked && (
                                         <input aria-label={`Recibido de ${p.name}`} inputMode="decimal" placeholder="Recibido (exacto)" value={p.received} onChange={(e) => patch(p.id, { received: e.target.value.replace(/[^\d.]/g, '') })} />
                                     )}

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { getApiErrorMessage } from '@web/utils/apiError';
 import { hasUsableCashShift } from '@web/utils/paymentAccess';
 import { moneyToCents } from '@web/utils/payment';
-import { can } from '../../../core/permissions';
+import { can, isCashier } from '../../../core/permissions';
+import type { CashApi } from '../../../data/cashApi';
 import type { LoginUser } from '../../../core/session';
 import type { PaymentPlans } from '../../../data/paymentPlans';
 import { isOnline } from '../../../data/useOnline';
@@ -15,6 +16,9 @@ import { PaymentSummary } from './PaymentSummary';
 import { SinglePayment } from './SinglePayment';
 import { SplitPayment } from './SplitPayment';
 import './payment.css';
+
+// "Abrir turno" from the payment: the cash chunk loads only when a cashier without a shift taps it.
+const OpenShiftFlow = lazy(() => import('../../cash/OpenShiftFlow'));
 
 export type PaymentApi = FlowApi & Pick<WaiterApi, 'orderDetail' | 'paymentMethods' | 'cashShiftStatus' | 'settings' | 'splitEvenly' | 'splitByItems' | 'splitByAmount'>;
 export type PaymentMode = 'single' | 'mixed' | 'split';
@@ -32,6 +36,8 @@ export interface PaymentScreenProps {
     onClose: () => void;
     /** "Liberar mesa y volver": the server already freed the table on full payment; refresh the lists and leave. */
     onFinished: () => void;
+    /** Loads the cash data layer. With it, a cashier without an open shift can open one here and come back to the payment. */
+    loadCash?: () => Promise<CashApi>;
 }
 
 interface Loaded {
@@ -56,7 +62,7 @@ const NOT_SYNCED = 'El pedido aún se está sincronizando; cobrar requiere conex
 type Meta = Pick<ChargeMeta, 'allIds' | 'changeOf' | 'methodOf' | 'plan'> & { mode: PaymentMode; payable: number };
 
 /** The cashier's payment screen (spec 7.3.1). Only the cashier (payments.process + invoices.issue) gets here. */
-export default function PaymentScreen({ api, user, orderId, initialMode = 'single', plans, ownerKey = null, onClose, onFinished }: PaymentScreenProps) {
+export default function PaymentScreen({ api, user, orderId, initialMode = 'single', plans, ownerKey = null, onClose, onFinished, loadCash }: PaymentScreenProps) {
     const canSplit = can(user, 'bills.split');
     const [loaded, setLoaded] = useState<Loaded | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -72,6 +78,7 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [done, setDone] = useState<DoneData | null>(null);
+    const [openingShift, setOpeningShift] = useState(false);
     const flowRef = useRef<PaymentFlow | null>(null);
     const busyRef = useRef(false);
     const alive = useRef(true);
@@ -273,6 +280,20 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         onClose();
     };
 
+    if (openingShift && loadCash) {
+        return (
+            <Suspense fallback={<main className="pay" data-testid="payment-screen"><p className="muted pay-notice">Cargando caja…</p></main>}>
+                <OpenShiftFlow
+                    loadCash={loadCash}
+                    onBack={() => setOpeningShift(false)}
+                    onOpened={() => {
+                        setOpeningShift(false);
+                        void refresh().catch(() => undefined); // the shift is open now: cash unlocks
+                    }}
+                />
+            </Suspense>
+        );
+    }
     if (loadError) {
         return (
             <main className="pay" data-testid="payment-screen">
@@ -300,7 +321,7 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
     const { order, lines, methods, shiftOk, tipRate } = loaded;
     const subtotal = lines.reduce((n, l) => n + l.subtotal, 0);
     const tableLabel = order.table?.number ? `Mesa ${order.table.number}` : 'Mesa';
-    const ctx: ModeCtx = { methods, shiftOk, payable, charge, busy, locked: attempted, restored: resumed?.mode === mode ? resumed.plan : null, paid, pending, orderId: id, api, lines, onError: setError };
+    const ctx: ModeCtx = { methods, shiftOk, payable, charge, busy, locked: attempted, restored: resumed?.mode === mode ? resumed.plan : null, paid, pending, orderId: id, api, lines, onError: setError, onOpenShift: loadCash && isCashier(user) ? () => setOpeningShift(true) : undefined };
     const customerName = customer?.customerName || (typeof order.customerName === 'string' && order.customerName ? order.customerName : 'Consumidor final');
     const locked = attempted || busy;
 

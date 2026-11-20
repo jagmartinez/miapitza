@@ -5,15 +5,21 @@ import { loadWaiterData } from '../../data/loadWaiterData';
 import type { WaiterData } from '../../data/waiterData';
 import type { OrderRef } from '../../data/waiterApi';
 import { ownerKeyOf } from '../../data/types';
+import { loadCashApi } from '../../data/loadCashApi';
 
 
 import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
 import { useReadyInbox } from './readyInbox';
 
-type Route = { name: 'tables' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
+type Route = { name: 'tables' } | { name: 'cash' } | { name: 'cashCount'; shiftId: number; mode: 'partial' | 'close' } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
 
 // The order screen is the biggest waiter chunk: it loads when the first order opens.
 const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ default: m.OrderScreen })));
+
+// Caja loads (with its data layer) only when a cashier opens it; "Cerrar turno" / "Arqueo parcial" land on cashCount (Task 6).
+const CashEntry = lazy(() => import('../cash/CashEntry'));
+const CountPlaceholder = lazy(() => import('../cash/CountPlaceholder'));
+const loadingFallback = <main className="screen"><p className="muted">Cargando…</p></main>;
 
 const STALE_URLS = ['/orders/active', '/tables/plan'];
 
@@ -52,6 +58,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
         if (data) data.queue.notifySessionChanged();
     }, [data, userId]);
 
+    const loadCash = useCallback(() => loadCashApi(services), [services]);
     const owner = ownerKeyOf(session);
     const invalidate = useCallback(async () => {
         if (data && owner) await data.cache.invalidate(owner, STALE_URLS);
@@ -65,6 +72,21 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
                     Cambiar usuario
                 </button>
             </main>
+        );
+    }
+
+    if (route.name === 'cash') {
+        return (
+            <Suspense fallback={loadingFallback}>
+                <CashEntry session={session} services={services} onBack={() => setRoute({ name: 'tables' })} onCount={(shiftId, mode) => setRoute({ name: 'cashCount', shiftId, mode })} />
+            </Suspense>
+        );
+    }
+    if (route.name === 'cashCount') {
+        return (
+            <Suspense fallback={loadingFallback}>
+                <CountPlaceholder shiftId={route.shiftId} mode={route.mode} onBack={() => setRoute({ name: 'cash' })} />
+            </Suspense>
         );
     }
 
@@ -85,6 +107,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
                     intent={route.intent}
                     readyCount={inbox.notices.filter((n) => n.orderId !== openedId).length}
                     invalidate={invalidate}
+                    loadCash={loadCash}
                     onBack={() => setRoute({ name: 'tables' })}
                 />
             </Suspense>
@@ -102,6 +125,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
             onDismissReady={inbox.dismiss}
             onOpenOrder={(orderId, intent, tableId, tableNumber) => setRoute({ name: 'order', orderId, intent, tableId, tableNumber })}
             onSwitchUser={onSwitchUser}
+            onOpenCash={() => setRoute({ name: 'cash' })}
         />
     );
 }

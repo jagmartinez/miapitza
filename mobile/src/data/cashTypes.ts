@@ -46,7 +46,7 @@ export interface CashRegisterRow {
     branchId: number;
     branch?: { id: number; name: string; code?: string };
     status: 'OPEN' | 'CLOSED';
-    activeShift: { id: number; startDate: string; userId: number } | null;
+    activeShift: { id: number; startDate: string; userId: number; user?: { id: number; name: string } } | null;
 }
 
 export interface CashShiftInfo {
@@ -79,7 +79,7 @@ export interface CashSettings {
 }
 
 export interface ShiftSummary {
-    shift: CashShiftInfo & { movements?: unknown[] };
+    shift: CashShiftInfo & { movements?: CashMovementRow[] };
     summary: {
         startAmount: number;
         totalIn: number;
@@ -90,12 +90,24 @@ export interface ShiftSummary {
         otherIncome: number;
         otherOutflows: number;
         movementCount: number;
+        /** Sales of the shift by payment method, when the server provides them (cash sales are always in totalSalesCash). */
+        salesByMethod?: { cash: number; card: number; transfer: number; paymentCount: number };
         /** Omitted for a blind cashier while the shift is open. */
         expectedBalance?: number;
         expectedAmount?: number;
         actualBalance?: number | null;
         difference?: number | null;
     };
+}
+
+export interface CashMovementRow {
+    id: number;
+    type: 'IN' | 'OUT';
+    amount: number | string;
+    description?: string | null;
+    reference?: string | null;
+    documentType?: string | null;
+    createdAt: string;
 }
 
 export interface MovementInput {

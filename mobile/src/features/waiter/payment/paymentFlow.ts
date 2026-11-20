@@ -270,4 +270,6 @@ export interface ModeCtx {
     api: Pick<WaiterApi, 'splitEvenly' | 'splitByItems' | 'splitByAmount'>;
     lines: import('../order/orderModel').ServerLine[];
     onError: (message: string | null) => void;
+    /** Opens the cash-shift flow (only offered to cash roles when cash is blocked by a missing shift). */
+    onOpenShift?: () => void;
 }
