@@ -1,3 +1,8 @@
+import { useState } from 'react';
+import { Router } from './app/Router';
+import { createServices } from './core/services';
+
 export function App() {
-    return <main style={{ padding: 16 }}>Mia Pitza Ops</main>;
+    const [services] = useState(createServices);
+    return <Router services={services} />;
 }
