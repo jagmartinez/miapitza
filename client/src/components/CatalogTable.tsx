@@ -21,6 +21,8 @@ interface CatalogTableProps<T> {
     rowClassName?: (row: T) => string | undefined;
     /** Optional dependency: when it changes, pagination resets to page 1. */
     resetKey?: unknown;
+    /** Opens a row (e.g. a detail drawer). Clicks on buttons/links inside the row are ignored. */
+    onRowClick?: (row: T) => void;
 }
 
 const alignClass = (align?: 'left' | 'right' | 'center') =>
@@ -33,7 +35,8 @@ export default function CatalogTable<T>({
     rowKey,
     pageSize = 10,
     rowClassName,
-    resetKey
+    resetKey,
+    onRowClick
 }: CatalogTableProps<T>) {
     const [page, setPage] = useState(1);
 
@@ -60,7 +63,11 @@ export default function CatalogTable<T>({
                 </thead>
                 <tbody>
                     {paged.map(row => (
-                        <tr key={rowKey(row)} className={rowClassName?.(row)}>
+                        <tr
+                            key={rowKey(row)}
+                            className={[rowClassName?.(row), onRowClick ? 'is-clickable' : undefined].filter(Boolean).join(' ') || undefined}
+                            onClick={onRowClick ? (event) => { if (!(event.target as HTMLElement).closest('button, a, input, select, label')) onRowClick(row); } : undefined}
+                        >
                             {columns.map(col => (
                                 <td key={col.key} className={alignClass(col.align)}>{col.render(row)}</td>
                             ))}

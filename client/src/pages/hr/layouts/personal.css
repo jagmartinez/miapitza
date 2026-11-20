@@ -825,3 +825,55 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Inbox: a list of rows (not tiles) that fills the height of the payroll route. */
+.hr-dashboard-page .hr-ws-split { align-items: stretch; }
+.hr-dashboard-page .hr-ws-split-main { display: flex; flex-direction: column; }
+.hr-dashboard-page .hr-ws-split-main > .hr-ws-section { display: flex; flex: 1 1 auto; flex-direction: column; }
+.hr-dashboard-page .hr-ws-split-main > .hr-ws-section > .hr-ws-section-body { flex: 1 1 auto; padding: 0; }
+.hr-personal-page.hr-dashboard-page .hr-hd-task-grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0;
+}
+.hr-personal-page.hr-dashboard-page .hr-hd-task {
+  flex: 1 1 0;
+  min-height: 72px;
+  padding: 1rem 1.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--hr-ws-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.hr-personal-page.hr-dashboard-page .hr-hd-task:last-child { border-bottom: 0; }
+.hr-personal-page.hr-dashboard-page .hr-hd-task:hover { background: var(--hr-ws-muted); }
+.hr-personal-page.hr-dashboard-page .hr-hd-task.has-pending { box-shadow: inset 3px 0 0 var(--color-warning, #f59e0b); }
+.hr-personal-page.hr-dashboard-page .hr-hd-tile-text strong { white-space: nowrap; }
+
+/* Personal: row opens a summary drawer without leaving the list. */
+.hr-employees-page tr.is-clickable { cursor: pointer; }
+.hr-pe-preview { display: flex; flex-direction: column; gap: 1.25rem; }
+.hr-pe-preview-head { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; color: var(--hr-ws-text-2); font-size: .9rem; }
+.hr-pe-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; border: 1px solid var(--hr-ws-border); border-radius: .8rem; overflow: hidden; }
+.hr-pe-preview-grid > div { padding: .85rem 1rem; border-bottom: 1px solid var(--hr-ws-border); }
+.hr-pe-preview-grid > div:nth-child(odd) { border-right: 1px solid var(--hr-ws-border); }
+.hr-pe-preview-grid > div:nth-last-child(-n + 2) { border-bottom: 0; }
+.hr-pe-preview-grid dt { color: var(--hr-ws-text-2); font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.hr-pe-preview-grid dd { margin: .25rem 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.hr-pe-preview-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+
+/* Employee record header: one identity line instead of a side card of dashes. */
+.hr-pd-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.hr-pd-identity > span { display: inline-flex; align-items: center; gap: .3rem; }
+.hr-pd-identity > span + span::before { content: '·'; margin: 0 .55rem; color: var(--hr-ws-border); }
+.hr-pd-identity .hr-pd-code { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 700; color: var(--color-text); }

@@ -261,14 +261,14 @@ export default function Profile() {
             <div className="profile-shell">
                 <aside className="profile-identity" aria-labelledby="profile-overview-title">
                     <section className="profile-id-card">
-                        <div className="profile-id-cover" aria-hidden="true" />
-                        <ProfileAvatar />
-                        <h1 id="profile-overview-title"><span className="sr-only">Mi perfil: </span>{user?.name}</h1>
-                        <p className="profile-user-email">@{user?.username}</p>
-                        <div className="profile-id-badges">
-                            <span className="profile-badge is-role"><BadgeCheck size={14} aria-hidden="true" /> {user?.role?.name ?? 'Sin rol'}</span>
-                            <span className={`profile-badge ${hasEmployeeContext ? 'is-linked' : 'is-pending'}`} title={hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}><BriefcaseBusiness size={14} aria-hidden="true" /> {hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}</span>
+                        <div className="profile-id-head">
+                            <ProfileAvatar />
+                            <div className="profile-id-name">
+                                <h1 id="profile-overview-title"><span className="sr-only">Mi perfil: </span>{user?.name}</h1>
+                                <p className="profile-user-email">@{user?.username} · <span className="profile-id-role"><BadgeCheck size={13} aria-hidden="true" /> {user?.role?.name ?? 'Sin rol'}</span></p>
+                            </div>
                         </div>
+                        <p className={`profile-id-link ${hasEmployeeContext ? 'is-linked' : 'is-pending'}`}><BriefcaseBusiness size={14} aria-hidden="true" /> {hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}</p>
                         <ul className="profile-id-meta">
                             <li><Building2 size={15} aria-hidden="true" /><span>{fullUserData?.company?.name || user?.company?.name || 'Empresa no disponible'}</span></li>
                             <li><MapPin size={15} aria-hidden="true" /><span>{branchName || 'Sin sucursal asignada'}</span></li>
@@ -404,7 +404,7 @@ export default function Profile() {
                                 description="Consulta tu jornada, registra marcajes y gestiona solicitudes, pagos y beneficios desde un solo lugar."
                                 actions={<Link to="/rh/marcaje" className="profile-hr-main-link is-solid"><MapPin size={17} aria-hidden="true" /> Ir a marcaje <ChevronRight size={17} aria-hidden="true" /></Link>}
                             >
-                                <dl className="profile-kv-grid">
+                                <dl className="hr-console-signals profile-hr-signals">
                                     <div><dt>Empleado</dt><dd>{employeeLabel}</dd></div>
                                     <div className="is-success"><dt>Saldo de vacaciones</dt><dd>{myHrLoading ? 'Cargando…' : vacationBalance ? `${formatHrNumber(vacationBalance.available)} ${vacationBalance.unit.toLowerCase()}` : 'Sin saldo disponible'}</dd></div>
                                     <div><dt>Solicitudes en espera</dt><dd>{myHrLoading ? '…' : myPendingRequests ?? '—'}</dd></div>

@@ -64,15 +64,6 @@ function value(value?: string | null): string {
     return value?.trim() || '—';
 }
 
-function initials(name: string): string {
-    return name
-        .trim()
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((part) => part.charAt(0).toUpperCase())
-        .join('') || 'RH';
-}
-
 function tenureText(hireDate?: string | null, terminationDate?: string | null): string {
     if (!hireDate) return '—';
     const from = new Date(`${hireDate.slice(0, 10)}T00:00:00`);
@@ -202,35 +193,24 @@ export default function EmployeeDetail() {
     return (
         <HrPage className="hr-employee-detail-page hr-personal-page">
             <HrHero
-                eyebrow={employee ? `Recursos humanos · Expediente ${employee.employeeCode}` : 'Recursos humanos'}
-                icon={UserRound}
+                eyebrow="Recursos humanos"
                 title={employee ? employee.legalName : 'Expediente del colaborador'}
-                subtitle={employee
-                    ? `${employee.jobPosition?.name ?? 'Puesto sin asignar'} · ${employee.department?.name ?? 'Departamento sin asignar'}`
-                    : 'Identidad, relación laboral, asignaciones y documentos en un solo lugar'}
+                subtitle={employee ? (
+                    <span className="hr-employee-profile-card hr-pd-identity" aria-label="Resumen del expediente">
+                        <span className="hr-pd-code">{employee.employeeCode}</span>
+                        <span>{employee.jobPosition?.name ?? 'Puesto sin asignar'}</span>
+                        <span>{employee.department?.name ?? 'Departamento sin asignar'}</span>
+                        <span><MapPin size={13} aria-hidden="true" /> {employee.primaryBranch?.name ?? 'Sucursal sin asignar'}</span>
+                        {employee.workEmail && <span><Mail size={13} aria-hidden="true" /> {employee.workEmail}</span>}
+                        {employee.workPhone && <span><Phone size={13} aria-hidden="true" /> {employee.workPhone}</span>}
+                    </span>
+                ) : 'Identidad, relación laboral, asignaciones y documentos en un solo lugar'}
                 badges={employee ? <HrStatusPill status={employee.status} /> : undefined}
                 actions={
                     <button type="button" className="hr-pd-back" onClick={() => navigate('/rh/personal')}>
                         <ArrowLeft size={16} /> Volver a personal
                     </button>
                 }
-                aside={employee ? (
-                    <section className="hr-employee-profile-card hr-pd-profile" aria-label="Resumen del expediente">
-                        <div className="hr-pd-profile-top">
-                            <div className="hr-pd-avatar" aria-hidden="true">{initials(employee.legalName)}</div>
-                            <div className="hr-pd-profile-id">
-                                <span className="hr-ws-eyebrow">Expediente del colaborador</span>
-                                <strong>{employee.employeeCode}</strong>
-                                <small>Actualizado {displayDate(employee.updatedAt)}</small>
-                            </div>
-                        </div>
-                        <ul className="hr-pd-contact">
-                            <li><Mail size={14} aria-hidden="true" /><span>{value(employee.workEmail)}</span></li>
-                            <li><Phone size={14} aria-hidden="true" /><span>{value(employee.workPhone)}</span></li>
-                            <li><MapPin size={14} aria-hidden="true" /><span>{employee.primaryBranch?.name ?? 'Sucursal sin asignar'}</span></li>
-                        </ul>
-                    </section>
-                ) : undefined}
                 facts={employee ? facts : undefined}
             />
 
@@ -270,7 +250,6 @@ export default function EmployeeDetail() {
                                 >
                                     <header className="hr-ws-section-header">
                                         <div>
-                                            <span className="hr-ws-eyebrow">Expediente {employee.employeeCode}</span>
                                             <h2>{tabLabel}</h2>
                                             <p>{TAB_DESCRIPTIONS[activeTab]}</p>
                                         </div>

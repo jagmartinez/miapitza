@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 import './hr-workspace.css';
+import './hr-console.css';
 
 /**
  * RH layout kit. Mirrors the account centre (Profile) visual language so every
@@ -12,7 +13,11 @@ import './hr-workspace.css';
 type IconType = ComponentType<any>;
 
 export function HrPage({ className = '', children }: { className?: string; children: ReactNode }) {
-  return <div className={`page-wrapper hr-ws-page ${className}`.trim()}>{children}</div>;
+  return (
+    <div className={`page-wrapper hr-ws-page hr-console ${className}`.trim()}>
+      <div className="hr-console-main">{children}</div>
+    </div>
+  );
 }
 
 export type HrFact = {
@@ -24,7 +29,6 @@ export type HrFact = {
 
 export function HrHero({
   eyebrow,
-  icon: Icon,
   title,
   subtitle,
   badges,
@@ -32,7 +36,9 @@ export function HrHero({
   facts,
   aside,
 }: {
+  /** Kept for callers; the console rail already names the module, so it is only announced to screen readers. */
   eyebrow?: ReactNode;
+  /** Deprecated: the slim console header carries no icon tile. */
   icon?: IconType;
   title: ReactNode;
   subtitle?: ReactNode;
@@ -42,20 +48,20 @@ export function HrHero({
   aside?: ReactNode;
 }) {
   return (
-    <header className={`hr-ws-hero${aside ? ' has-aside' : ''}`}>
-      <div className="hr-ws-hero-main">
-        {Icon && <span className="hr-ws-hero-icon" aria-hidden="true"><Icon size={24} /></span>}
-        <div className="hr-ws-hero-text">
-          {eyebrow && <span className="hr-ws-eyebrow">{eyebrow}</span>}
-          <h1>{title}</h1>
+    <header className={`hr-ws-hero hr-console-head${aside ? ' has-aside' : ''}`}>
+      <div className="hr-console-head-row">
+        <div className="hr-console-head-text">
+          {eyebrow && <span className="sr-only">{eyebrow}</span>}
+          <div className="hr-console-head-title">
+            <h1>{title}</h1>
+            {badges && <div className="hr-ws-badges">{badges}</div>}
+          </div>
           {subtitle && <p>{subtitle}</p>}
-          {badges && <div className="hr-ws-badges">{badges}</div>}
         </div>
         {actions && <div className="hr-ws-hero-actions">{actions}</div>}
       </div>
-      {aside && <div className="hr-ws-hero-aside">{aside}</div>}
       {facts && facts.length > 0 && (
-        <dl className="hr-ws-facts">
+        <dl className="hr-console-signals">
           {facts.map((fact) => (
             <div key={fact.label} className={fact.tone && fact.tone !== 'default' ? `is-${fact.tone}` : undefined}>
               <dt>{fact.label}</dt>
@@ -65,6 +71,7 @@ export function HrHero({
           ))}
         </dl>
       )}
+      {aside && <div className="hr-ws-hero-aside">{aside}</div>}
     </header>
   );
 }

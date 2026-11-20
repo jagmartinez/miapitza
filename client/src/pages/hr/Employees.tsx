@@ -44,6 +44,8 @@ import './layouts/personal.css';
 
 type Option = { value: string; label: string };
 
+const PAGE_SIZE = 10;
+
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
     departments: [],
     positions: [],
@@ -126,6 +128,7 @@ export default function Employees() {
     const [totalItems, setTotalItems] = useState(0);
     const [editorOpen, setEditorOpen] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<HrEmployee | null>(null);
+    const [preview, setPreview] = useState<HrEmployee | null>(null);
     const [saving, setSaving] = useState(false);
 
     const loadLookups = useCallback(async () => {
@@ -149,7 +152,7 @@ export default function Employees() {
                 costCenterId: costCenterId ? Number(costCenterId) : undefined,
                 branchId: branchId ? Number(branchId) : undefined,
                 page,
-                limit: 25,
+                limit: PAGE_SIZE,
             });
             setEmployees(result.items);
             setTotalPages(result.pagination?.totalPages ?? 1);
@@ -322,15 +325,14 @@ export default function Employees() {
     const statusTabs: HrTabItem<HrEmploymentStatus | 'ALL'>[] = STATUS_OPTIONS.map((option) => ({
         key: option.value,
         label: option.label,
-        count: option.value === status && !loading && !error ? totalItems : undefined,
     }));
 
+    // Signals, not inventory: the total plus only the gaps that need action on this page.
     const facts: HrFact[] = [
-        { label: 'Expedientes', value: loading ? '—' : asCount(totalItems), hint: 'según los filtros aplicados', tone: 'accent' },
-        { label: 'Activos', value: loading ? '—' : asCount(pageStats.active), hint: `de ${asCount(employees.length)} en esta página`, tone: 'success' },
-        { label: 'Con permiso', value: loading ? '—' : asCount(pageStats.onLeave), hint: 'ausencias vigentes en la página', tone: pageStats.onLeave > 0 ? 'warning' : 'default' },
-        { label: 'Sin compensación vigente', value: loading ? '—' : asCount(pageStats.withoutCompensation), hint: 'requieren versión salarial', tone: pageStats.withoutCompensation > 0 ? 'danger' : 'success' },
-        { label: 'Sin usuario vinculado', value: loading ? '—' : asCount(pageStats.withoutUser), hint: 'sin acceso al sistema', tone: pageStats.withoutUser > 0 ? 'warning' : 'default' },
+        { label: 'Expedientes', value: loading ? '—' : asCount(totalItems), hint: 'según los filtros aplicados' },
+        ...(!loading && pageStats.withoutCompensation > 0 ? [{ label: 'Sin compensación vigente', value: asCount(pageStats.withoutCompensation), hint: 'en esta página · requieren versión salarial', tone: 'danger' as const }] : []),
+        ...(!loading && pageStats.withoutUser > 0 ? [{ label: 'Sin usuario vinculado', value: asCount(pageStats.withoutUser), hint: 'en esta página · sin acceso al sistema', tone: 'warning' as const }] : []),
+        ...(!loading && pageStats.onLeave > 0 ? [{ label: 'Con permiso', value: asCount(pageStats.onLeave), hint: 'en esta página · ausencia vigente', tone: 'warning' as const }] : []),
     ];
 
     const activeFilterCount = [search.trim(), departmentId, jobPositionId, costCenterId, branchId].filter(Boolean).length + (status === 'ALL' ? 0 : 1);
@@ -416,7 +418,6 @@ export default function Employees() {
                 aria-labelledby={`hr-employees-tab-${status.toLowerCase()}`}
                 eyebrow="Plantilla"
                 title="Expedientes laborales"
-                count={loading || error ? undefined : totalItems}
                 description={viewMode === 'table' ? 'Vista tabular con identificación y compensación vigente.' : 'Fichas por colaborador con su compensación vigente.'}
                 flush={viewMode === 'table' && !loading && !error && employees.length > 0}
                 className="hr-pe-results"
@@ -446,6 +447,7 @@ export default function Employees() {
                             rowKey={(employee) => employee.id}
                             columns={columns}
                             pageSize={Math.max(1, employees.length)}
+                            onRowClick={setPreview}
                             resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
                         />
                     </div>
@@ -493,9 +495,9 @@ export default function Employees() {
                     </div>
                 )}
 
-                {!loading && !error && totalPages > 1 && (
+                {!loading && !error && (
                     <div className="hr-pe-pagination">
-                        <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={25} onPageChange={setPage} />
+                        <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={PAGE_SIZE} onPageChange={setPage} alwaysShow emptyLabel="Sin expedientes" />
                     </div>
                 )}
             </HrSection>
@@ -516,6 +518,33 @@ export default function Employees() {
                     onCancel={closeEditor}
                     onSubmit={saveEmployee}
                 />
+            </Sidebar>
+            <Sidebar isOpen={Boolean(preview)} onClose={() => setPreview(null)} title={preview?.legalName ?? 'Expediente'} width="medium">
+                {preview && (() => {
+                    const compensation = currentCompensation(preview);
+                    return (
+                        <div className="hr-pe-preview">
+                            <div className="hr-pe-preview-head">
+                                <HrStatusPill status={preview.status} />
+                                <span>{preview.jobPosition?.name ?? 'Sin puesto'} · {preview.department?.name ?? 'Sin departamento'}</span>
+                            </div>
+                            <dl className="hr-pe-preview-grid">
+                                <div><dt>Código</dt><dd>{preview.employeeCode}</dd></div>
+                                <div><dt>Ingreso</dt><dd>{displayDate(preview.hireDate)}</dd></div>
+                                <div><dt>Identificación</dt><dd>{identificationText(preview)}</dd></div>
+                                <div><dt>Sucursal principal</dt><dd>{primaryBranch(preview)?.name ?? 'Sin asignar'}</dd></div>
+                                <div><dt>Usuario</dt><dd>{preview.user ? `@${preview.user.username}` : 'Sin usuario vinculado'}</dd></div>
+                                <div><dt>Compensación vigente</dt><dd>{preview.compensation === undefined ? 'Acceso restringido' : compensation ? formatHrMoney(compensation.currency, compensation.amount) : 'Sin compensación vigente'}</dd></div>
+                                <div><dt>Correo laboral</dt><dd>{preview.workEmail || '—'}</dd></div>
+                                <div><dt>Teléfono</dt><dd>{preview.phone || '—'}</dd></div>
+                            </dl>
+                            <div className="hr-pe-preview-actions">
+                                <Button onClick={() => navigate(`/rh/personal/${preview.id}`)}><Eye size={16} /> Abrir expediente completo</Button>
+                                <Button variant="secondary" onClick={() => { const target = preview; setPreview(null); void openEdit(target); }}><Edit2 size={16} /> Editar</Button>
+                            </div>
+                        </div>
+                    );
+                })()}
             </Sidebar>
         </HrPage>
     );

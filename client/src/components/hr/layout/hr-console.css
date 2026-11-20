@@ -1,0 +1,155 @@
+/* =====================================================================
+   RH console. Loaded after hr-workspace.css and overrides its chrome:
+   module rail + content column, slim header with a signal line (no fact
+   cards), underline tabs, filter bar without a box.
+   ===================================================================== */
+
+.page-wrapper.hr-ws-page.hr-console { display: block !important; }
+
+.hr-console-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+/* ---------- Slim header ---------- */
+.hr-console .hr-ws-hero.hr-console-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 0 0 1.25rem;
+  border: 0;
+  border-bottom: 1px solid var(--hr-ws-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.hr-console-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+}
+
+.hr-console-head-text { min-width: 0; flex: 1 1 360px; }
+
+.hr-console-head-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+}
+
+.hr-console-head-title h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 850;
+  letter-spacing: -.025em;
+  line-height: 1.15;
+}
+
+.hr-console-head-title .hr-ws-badges { margin: 0; }
+.hr-console-head-text > p { margin: .35rem 0 0; max-width: 72ch; color: var(--hr-ws-text-2); font-size: .9rem; }
+
+.hr-console .hr-console-head .hr-ws-hero-actions { margin-left: auto; }
+
+/* Signal line: plain text separated by rules. Neutral values stay quiet; tones highlight what needs action. */
+.hr-console-signals {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  row-gap: .75rem;
+}
+
+.hr-console-signals > div {
+  display: grid;
+  grid-template-columns: auto;
+  align-content: start;
+  gap: .1rem;
+  min-width: 0;
+  padding: 0 1.75rem;
+  border-left: 1px solid var(--hr-ws-border);
+}
+
+.hr-console-signals > div:first-child { padding-left: 0; border-left: 0; }
+
+.hr-console-signals dt {
+  color: var(--hr-ws-text-2);
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.hr-console-signals dd {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1.2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+
+.hr-console-signals small { color: var(--hr-ws-text-2); font-size: .76rem; }
+.hr-console-signals .is-accent dd { color: var(--color-primary); }
+.hr-console-signals .is-success dd { color: var(--color-success); }
+.hr-console-signals .is-warning dd { color: var(--color-warning); }
+.hr-console-signals .is-danger dd { color: var(--color-danger); }
+
+.hr-console .hr-console-head .hr-ws-hero-aside { width: 100%; }
+
+/* ---------- Underline tabs ---------- */
+.hr-console .hr-ws-tabs-bar {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--hr-ws-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.hr-console .hr-ws-tabs { gap: .25rem; padding: 0; background: transparent; }
+
+.hr-console .hr-ws-tabs button {
+  margin-bottom: -1px;
+  padding: .7rem .9rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--hr-ws-text-2);
+}
+
+.hr-console .hr-ws-tabs button:hover { background: transparent; color: var(--color-text); }
+
+.hr-console .hr-ws-tabs button.active {
+  border-bottom-color: var(--color-primary);
+  background: transparent;
+  color: var(--color-text);
+  box-shadow: none;
+}
+
+.hr-console .hr-ws-tabs button.active .hr-ws-tab-icon { color: var(--color-primary); }
+
+/* ---------- Filter bar: no box, sits on the page ---------- */
+.hr-console .hr-ws-toolbar {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ---------- Sections: flatter cards ---------- */
+.hr-console .hr-ws-section { box-shadow: none; }
+.hr-console .hr-ws-section-header { background: transparent; }
+
+@media (max-width: 680px) {
+  .hr-console-head-title h1 { font-size: 1.4rem; }
+  .hr-console-signals > div { padding: 0 1rem; }
+  .hr-console-signals > div:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .hr-console-signals > div { flex: 1 1 45%; }
+}
