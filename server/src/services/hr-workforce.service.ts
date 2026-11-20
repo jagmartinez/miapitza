@@ -11,6 +11,7 @@ import {
     type VacationBalanceUnit,
 } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
 import { scheduledWorkMinutes } from '../utils/hr-shift-minutes';
 import { isValidTimeZone, zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
@@ -668,7 +669,9 @@ export class AttendanceDerivedService {
             generated.push({ key: `REJECTED_EVENT:${event.id}`, type: 'REJECTED_ATTENDANCE_EVENT', severity: 'WARNING', message: `Marcaje ${event.id} rechazado` });
         }
         const dedupeKeys = generated.map(item => `${userId}:${date}:${scopeKey}:${item.key}`);
-        return prisma.$transaction(async tx => {
+        // Reads (list/me endpoints) recalculate the same day concurrently; a
+        // SERIALIZABLE write conflict is transient, so replay the whole unit.
+        return transactionWithP2034Retry(async tx => {
             const currentPeriod = await tx.attendancePeriod.findFirst({
                 where: { companyId, dateFrom: { lte: localDate }, dateTo: { gte: localDate } },
                 orderBy: { id: 'desc' },
