@@ -32,12 +32,56 @@ export function createRealtime(opts: RealtimeOptions) {
         }, wait);
     }
 
+    async function handleAuthFailure(mine: number, usedToken: string | null) {
+        let current: string | null = null;
+        try {
+            current = await opts.getToken();
+        } catch {
+            current = null;
+        }
+        if (mine !== generation) return; // closed or reconnected meanwhile
+        if (current && usedToken && current !== usedToken) {
+            // The session was switched (PIN switch): the old socket was revoked, not the new user.
+            delay = MIN_DELAY_MS;
+            open();
+            return;
+        }
+        // The current token itself is bad; retrying with it would only hammer the server.
+        wanted = false;
+        appEvents.emit('session-expired');
+    }
+
+    function teardownSocket() {
+        generation++;
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+        const socket = ws;
+        ws = null;
+        if (socket) {
+            socket.onclose = null;
+            socket.close();
+        }
+    }
+
     function open() {
         if (!wanted) return;
         const mine = ++generation;
         const Impl = opts.WebSocketImpl ?? WebSocket;
-        const socket = new Impl(opts.url);
+        let socket: WebSocket;
+        try {
+            socket = new Impl(opts.url);
+        } catch {
+            // Bad URL or platform refusal: back off and retry instead of throwing to the caller.
+            ws = null;
+            setStatus('offline');
+            scheduleReconnect();
+            return;
+        }
         ws = socket;
+        // Token this socket authenticated with; lets a 4001 tell "old session" from "bad session".
+        let usedToken: string | null = null;
 
         socket.onopen = () => {
             if (mine !== generation) return;
@@ -53,6 +97,7 @@ export function createRealtime(opts: RealtimeOptions) {
                     appEvents.emit('session-expired');
                     return;
                 }
+                usedToken = token;
                 socket.send(JSON.stringify({ type: 'AUTH', payload: { token } }));
             });
         };
@@ -78,9 +123,7 @@ export function createRealtime(opts: RealtimeOptions) {
             ws = null;
             setStatus('offline');
             if (event.code === AUTH_FAILED_CLOSE_CODE) {
-                // The token is bad; retrying with it would only hammer the server.
-                wanted = false;
-                appEvents.emit('session-expired');
+                void handleAuthFailure(mine, usedToken);
                 return;
             }
             scheduleReconnect();
@@ -97,19 +140,21 @@ export function createRealtime(opts: RealtimeOptions) {
             delay = MIN_DELAY_MS;
             open();
         },
+        /** Re-authenticate with the current token (call after a PIN switch / re-login). */
+        reconnect() {
+            if (!wanted) {
+                wanted = true;
+                delay = MIN_DELAY_MS;
+                open();
+                return;
+            }
+            teardownSocket();
+            delay = MIN_DELAY_MS;
+            open();
+        },
         close() {
             wanted = false;
-            generation++;
-            if (timer) {
-                clearTimeout(timer);
-                timer = null;
-            }
-            const socket = ws;
-            ws = null;
-            if (socket) {
-                socket.onclose = null;
-                socket.close();
-            }
+            teardownSocket();
             setStatus('offline');
         },
         subscribe(type: string, fn: (payload: unknown) => void): () => void {

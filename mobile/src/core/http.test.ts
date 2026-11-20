@@ -66,6 +66,72 @@ describe('http', () => {
     });
 });
 
+describe('http hardening', () => {
+    const session2: Session = { ...session, token: 'jwt-NEW' };
+
+    it('does not attach credentials to absolute URLs on other origins', async () => {
+        const { sessions, http, seen } = setup();
+        await sessions.save(session);
+        await sessions.saveDeviceToken('dev-9');
+        await http.get('https://evil.example/steal');
+        expect(seen[0].headers.get('Authorization')).toBeFalsy();
+        expect(seen[0].headers.get('X-Device-Token')).toBeFalsy();
+        await http.get('http://x/api/other');
+        expect(seen[1].headers.get('Authorization')).toBe('Bearer jwt-123');
+    });
+
+    it('late 401 from an old-token request does not wipe the new session', async () => {
+        const sessions = createSessionStore(memoryStore());
+        const http = createHttp({ baseURL: 'http://x/api', sessions });
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        http.defaults.adapter = async (config) => {
+            await gate;
+            throw new AxiosError('fail', '401', config, null, { data: {}, status: 401, statusText: '', headers: {}, config });
+        };
+        await sessions.save(session);
+        const fn = vi.fn();
+        const off = appEvents.on('session-expired', fn);
+        const pending = http.get('/orders').catch(() => 'rejected');
+        await new Promise((r) => setTimeout(r, 0)); // request is in flight with the old token
+        await sessions.save(session2); // PIN switch
+        release();
+        expect(await pending).toBe('rejected');
+        off();
+        expect(fn).not.toHaveBeenCalled();
+        expect((await sessions.load())?.token).toBe('jwt-NEW');
+    });
+
+    it('a burst of 401s clears once and emits once', async () => {
+        const { sessions, http } = setup(401);
+        await sessions.save(session);
+        const clear = vi.spyOn(sessions, 'clear');
+        const fn = vi.fn();
+        const off = appEvents.on('session-expired', fn);
+        await Promise.allSettled([http.get('/a'), http.get('/b'), http.get('/c'), http.get('/d')]);
+        off();
+        expect(clear).toHaveBeenCalledTimes(1);
+        expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('login-path exception is exact, tolerating a trailing slash', async () => {
+        const check = async (url: string) => {
+            const { sessions, http } = setup(401);
+            await sessions.save(session);
+            const fn = vi.fn();
+            const off = appEvents.on('session-expired', fn);
+            await http.get(url).catch(() => undefined);
+            off();
+            return fn.mock.calls.length;
+        };
+        expect(await check('/auth/login/')).toBe(0);
+        expect(await check('/auth/device-login')).toBe(0);
+        expect(await check('/auth/login?x=1')).toBe(0);
+        expect(await check('/reports/auth/login')).toBe(1);
+        expect(await check('/auth/login-history')).toBe(1);
+    });
+});
+
 describe('session store', () => {
     it('round-trips and ignores corrupt data', async () => {
         const store = memoryStore();

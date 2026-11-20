@@ -134,4 +134,82 @@ describe('realtime', () => {
         await vi.advanceTimersByTimeAsync(60000);
         expect(FakeWS.instances).toHaveLength(1);
     });
+
+    it('4001 on an old-session socket after a PIN switch reconnects with the new token, no logout', async () => {
+        let token = 'old';
+        const expired = vi.fn();
+        const off = appEvents.on('session-expired', expired);
+        const rt = make(async () => token);
+        rt.connect();
+        const first = FakeWS.instances[0];
+        first.open();
+        await flush();
+        first.serverSend({ type: 'CONNECTED' });
+        token = 'new'; // PIN switch; server revokes the old session and closes its socket
+        first.serverClose(4001);
+        await flush();
+        expect(expired).not.toHaveBeenCalled();
+        expect(FakeWS.instances).toHaveLength(2);
+        FakeWS.instances[1].open();
+        await flush();
+        expect(FakeWS.instances[1].sent).toEqual([JSON.stringify({ type: 'AUTH', payload: { token: 'new' } })]);
+        off();
+        rt.close();
+    });
+
+    it('4001 with the still-current token expires the session', async () => {
+        const expired = vi.fn();
+        const off = appEvents.on('session-expired', expired);
+        const rt = make(async () => 'same');
+        rt.connect();
+        FakeWS.instances[0].open();
+        await flush();
+        FakeWS.instances[0].serverClose(4001);
+        await flush();
+        await vi.advanceTimersByTimeAsync(60000);
+        expect(expired).toHaveBeenCalledTimes(1);
+        expect(FakeWS.instances).toHaveLength(1);
+        off();
+    });
+
+    it('reconnect() closes the socket intentionally and re-auths with the current token', async () => {
+        let token = 'old';
+        const expired = vi.fn();
+        const off = appEvents.on('session-expired', expired);
+        const rt = make(async () => token);
+        rt.connect();
+        const first = FakeWS.instances[0];
+        first.open();
+        await flush();
+        token = 'new';
+        rt.reconnect();
+        expect(first.closed).toBe(true);
+        first.serverClose(4001); // late close of the old socket must be ignored
+        await flush();
+        expect(expired).not.toHaveBeenCalled();
+        expect(FakeWS.instances).toHaveLength(2);
+        FakeWS.instances[1].open();
+        await flush();
+        expect(FakeWS.instances[1].sent).toEqual([JSON.stringify({ type: 'AUTH', payload: { token: 'new' } })]);
+        off();
+        rt.close();
+    });
+
+    it('a throwing WebSocket constructor does not throw from connect() and retries with backoff', async () => {
+        let calls = 0;
+        const Throwing = class {
+            constructor() {
+                calls++;
+                throw new Error('bad url');
+            }
+        };
+        const rt = createRealtime({ url: 'nope', getToken: async () => 't', WebSocketImpl: Throwing as unknown as typeof WebSocket });
+        expect(() => rt.connect()).not.toThrow();
+        expect(calls).toBe(1);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(calls).toBe(2);
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(calls).toBe(3);
+        rt.close();
+    });
 });
