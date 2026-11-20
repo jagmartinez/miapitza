@@ -99,6 +99,26 @@ describe('OperationalDeviceService', () => {
         });
     });
 
+    it('register requires the COCINA user to belong to the device branch', async () => {
+        jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 9 } as never);
+        const userFind = jest.spyOn(prisma.user, 'findFirst').mockResolvedValue(null);
+        await expect(OperationalDeviceService.register(actor, {
+            branchId: 9, type: 'KITCHEN_TABLET', name: 'KDS', kitchenUserId: 44,
+        })).rejects.toThrow();
+        expect(userFind.mock.calls[0][0]!.where).toMatchObject({ id: 44, branchId: 9 });
+    });
+
+    it('revoke hides devices of another branch from a branch-scoped actor', async () => {
+        jest.spyOn(prisma.operationalDevice, 'findFirst')
+            .mockResolvedValue({ id: 7, companyId: 5, branchId: 2, status: 'ACTIVE' } as never);
+        const update = jest.spyOn(prisma.operationalDevice, 'updateMany');
+        const sessions = jest.spyOn(SessionService, 'revokeByDevice');
+        await expect(OperationalDeviceService.revoke(actor, 7, { branchScope: 1 }))
+            .rejects.toThrow('Dispositivo no encontrado');
+        expect(update).not.toHaveBeenCalled();
+        expect(sessions).not.toHaveBeenCalled();
+    });
+
     it('revoke hides devices of other companies behind a generic not-found', async () => {
         jest.spyOn(prisma.operationalDevice, 'findFirst').mockResolvedValue(null);
         const revokeSessions = jest.spyOn(SessionService, 'revokeByDevice');

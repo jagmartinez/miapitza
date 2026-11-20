@@ -62,6 +62,8 @@ export class OperationalDeviceService {
                     id: input.kitchenUserId,
                     companyId: actor.companyId,
                     status: 'ACTIVE',
+                    // The kitchen account is fixed per branch.
+                    branchId: branch.id,
                     OR: [
                         { role: { name: 'COCINA' } },
                         { userRoles: { some: { role: { name: 'COCINA' } } } },
@@ -120,11 +122,18 @@ export class OperationalDeviceService {
         });
     }
 
-    static async revoke(actor: DeviceActor, deviceId: number): Promise<void> {
+    static async revoke(
+        actor: DeviceActor,
+        deviceId: number,
+        opts: { branchScope?: number } = {},
+    ): Promise<void> {
         const device = await prisma.operationalDevice.findFirst({
             where: { id: deviceId, companyId: actor.companyId },
         });
-        if (!device) throw new OperationalDeviceError('Dispositivo no encontrado', 404);
+        // A branch-pinned actor cannot see (or revoke) devices of other branches.
+        if (!device || (opts.branchScope !== undefined && device.branchId !== opts.branchScope)) {
+            throw new OperationalDeviceError('Dispositivo no encontrado', 404);
+        }
 
         const now = new Date();
         await prisma.operationalDevice.updateMany({

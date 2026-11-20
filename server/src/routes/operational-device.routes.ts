@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import type { OperationalDevice } from '@prisma/client';
 import { authMiddleware, requirePermission } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
-import { assertBranchAccess } from '../utils/branch-scope';
+import { assertBranchAccess, resolveBranchScope } from '../utils/branch-scope';
 import { OperationalDeviceService } from '../services/operational-device.service';
 
 const router = Router();
@@ -32,12 +32,16 @@ router.post(
     }),
     async (req: Request, res: Response, next: NextFunction) => {
         try {
-            assertBranchAccess(req.user!, req.body.branchId);
+            // validate() does not write coerced values back: coerce explicitly.
+            const branchId = Number(req.body.branchId);
+            const kitchenUserId = req.body.kitchenUserId === undefined || req.body.kitchenUserId === ''
+                ? undefined : Number(req.body.kitchenUserId);
+            assertBranchAccess(req.user!, branchId);
             const { device, deviceToken } = await OperationalDeviceService.register(actorOf(req), {
-                branchId: req.body.branchId,
+                branchId,
                 type: req.body.type,
                 name: req.body.name,
-                kitchenUserId: req.body.kitchenUserId,
+                kitchenUserId,
             });
             res.set('Cache-Control', 'no-store');
             res.status(201).json({ success: true, data: { device: publicDevice(device), deviceToken } });
@@ -52,8 +56,10 @@ router.get(
     validate({ query: { branchId: { type: 'number', min: 1, integer: true } } }),
     async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
-            if (branchId) assertBranchAccess(req.user!, branchId);
+            const requested = req.query.branchId ? Number(req.query.branchId) : undefined;
+            // Company-wide admins may filter or see all; branch-pinned users are forced to their branch.
+            if (requested) assertBranchAccess(req.user!, requested);
+            const branchId = resolveBranchScope(req.user!, requested);
             const devices = await OperationalDeviceService.list(actorOf(req), branchId);
             res.json({ success: true, data: devices.map(publicDevice) });
         } catch (error) {
@@ -67,7 +73,9 @@ router.post(
     validate({ params: { id: { type: 'number', required: true, min: 1, integer: true } } }),
     async (req: Request, res: Response, next: NextFunction) => {
         try {
-            await OperationalDeviceService.revoke(actorOf(req), Number(req.params.id));
+            await OperationalDeviceService.revoke(actorOf(req), Number(req.params.id), {
+                branchScope: resolveBranchScope(req.user!),
+            });
             res.json({ success: true, data: { revoked: true } });
         } catch (error) {
             next(error);
