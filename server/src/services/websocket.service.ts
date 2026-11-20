@@ -70,7 +70,11 @@ export class WebSocketService {
         });
 
         this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-            void this.handleConnection(ws, req);
+            this.handleConnection(ws, req).catch(() => {
+                // Generic message only: never include the token, cookie or error text.
+                console.error('[WS] Connection setup failed');
+                try { ws.close(4001, 'Authentication failed'); } catch { /* already closed */ }
+            });
         });
 
         this.startHeartbeat();
@@ -280,7 +284,14 @@ export class WebSocketService {
             const [key, ...valueParts] = rawCookie.trim().split('=');
             if (key === 'auth_token') {
                 const value = valueParts.join('=');
-                if (value) return decodeURIComponent(value);
+                if (value) {
+                    try {
+                        return decodeURIComponent(value);
+                    } catch {
+                        // Undecodable cookie is treated as no cookie.
+                        return null;
+                    }
+                }
             }
         }
 

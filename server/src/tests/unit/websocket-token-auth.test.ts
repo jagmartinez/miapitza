@@ -213,6 +213,67 @@ describe('WebSocket message-based token auth', () => {
         expect(svc().clients.size).toBe(0);
     });
 
+    it('treats a malformed cookie as no cookie: AUTH timeout still closes with 4001', async () => {
+        jest.useFakeTimers();
+        const ws = new FakeSocket();
+        await expect(svc().handleConnection(ws, { headers: { cookie: 'auth_token=%' } })).resolves.toBeUndefined();
+        jest.advanceTimersByTime(5000);
+        expect(ws.close).toHaveBeenCalledWith(4001, expect.any(String));
+    });
+
+    it('closes a real socket with a malformed cookie using 4001 end to end', async () => {
+        const http = await import('http');
+        const { WebSocket: WsClient } = await import('ws');
+        const server = http.createServer();
+        await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+        WebSocketService.initialize(server);
+        try {
+            const { port } = server.address() as { port: number };
+            const code = await new Promise<number>((resolve, reject) => {
+                const c = new WsClient('ws://127.0.0.1:' + port, { headers: { cookie: 'auth_token=%' } });
+                c.on('open', () => c.send(JSON.stringify({ type: 'PING' })));
+                c.on('close', (cd) => resolve(cd));
+                c.on('error', reject);
+            });
+            expect(code).toBe(4001);
+        } finally {
+            WebSocketService.shutdown();
+            await new Promise<void>((r) => server.close(() => r()));
+        }
+    });
+
+    it('clears the auth timer after a successful AUTH', async () => {
+        jest.useFakeTimers();
+        jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 7 } as never);
+        jest.spyOn(SessionService, 'isValid').mockResolvedValue(true);
+        jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(activeUser(7) as never);
+        const ws = new FakeSocket();
+        await svc().handleConnection(ws, { headers: {} });
+        expect(jest.getTimerCount()).toBe(1);
+        ws.emit('message', authMsg('t'));
+        await flush();
+        expect(jest.getTimerCount()).toBe(0);
+        jest.advanceTimersByTime(10000);
+        expect(ws.close).not.toHaveBeenCalled();
+    });
+
+    it('never sends CONNECTED when AUTH resolves after the timeout fired', async () => {
+        jest.useFakeTimers();
+        jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 7 } as never);
+        let release: (v: boolean) => void = () => undefined;
+        jest.spyOn(SessionService, 'isValid').mockReturnValue(new Promise<boolean>((r) => { release = r; }));
+        jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(activeUser(7) as never);
+        const ws = new FakeSocket();
+        await svc().handleConnection(ws, { headers: {} });
+        ws.emit('message', authMsg('t'));
+        jest.advanceTimersByTime(5000);
+        expect(ws.close).toHaveBeenCalledWith(4001, expect.any(String));
+        release(true);
+        await flush();
+        expect(ws.send).not.toHaveBeenCalled();
+        expect(svc().clients.size).toBe(0);
+    });
+
     it('isOriginAllowed accepts capacitor://localhost when listed', () => {
         const list = ['https://app.example.com', 'https://localhost', 'capacitor://localhost'];
         expect(WebSocketService.isOriginAllowed('capacitor://localhost', list, 'production')).toBe(true);
