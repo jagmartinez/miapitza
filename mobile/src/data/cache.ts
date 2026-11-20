@@ -194,6 +194,7 @@ export function createCache(db: MobileDB, now: () => number = Date.now) {
             try {
                 await db.caches.where('timestamp').below(now() - maxAgeMs).delete();
                 await db.tempIds.where('timestamp').below(now() - maxAgeMs).delete();
+                await db.paymentPlans.where('timestamp').below(now() - maxAgeMs).delete(); // plans of orders nobody reopened
             } catch (cause) {
                 reportStorage(toStorageError('cache', 'purge', cause));
             }
