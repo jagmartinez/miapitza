@@ -71,6 +71,11 @@ export function makeApi(over: Partial<Record<keyof OrderApi, unknown>> = {}) {
         updateItem: vi.fn().mockResolvedValue({}),
         removeItem: vi.fn().mockResolvedValue({}),
         deliverItems: vi.fn().mockResolvedValue({ delivered: [], skipped: [], alreadyDelivered: [] }),
+        pricing: vi.fn().mockResolvedValue({}),
+        authorizeDiscount: vi.fn().mockResolvedValue({}),
+        supervisors: vi.fn().mockResolvedValue([{ id: 31, name: 'Marta Lopez', initials: 'ML', color: null }, { id: 32, name: 'Raul Diaz', initials: 'RD', color: null }]),
+        discountLimit: vi.fn().mockResolvedValue({ limitPercent: 10 }),
+        validateCoupon: vi.fn().mockResolvedValue({ valid: true, discount: 20, message: 'Cupón aplicado' }),
         ...over,
     } as unknown as { [K in keyof OrderApi]: OrderApi[K] & ReturnType<typeof vi.fn> };
 }

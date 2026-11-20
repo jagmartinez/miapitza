@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiErrorMessage } from '@web/utils/apiError';
-import { can } from '../../../core/permissions';
+import { can, canAny } from '../../../core/permissions';
 import type { Realtime } from '../../../core/realtime';
 import type { Session } from '../../../core/session';
 import type { Drafts } from '../../../data/drafts';
@@ -14,7 +14,7 @@ import { CategoryRail } from './CategoryRail';
 import { FullTicketScreen } from './FullTicketScreen';
 import { ModifierSheet, type ModifierChoice } from './ModifierSheet';
 import { ProductGrid } from './ProductGrid';
-import { TicketPanel } from './TicketPanel';
+import { TicketPanel, type TicketPricing } from './TicketPanel';
 import {
     buildRail,
     minutesSince,
@@ -36,7 +36,7 @@ import '../tables/sheets.css';
 
 export type OrderApi = Pick<
     WaiterApi,
-    'menu' | 'menuItem' | 'categories' | 'topSellers' | 'promotions' | 'orderDetail' | 'activeOrders' | 'addItem' | 'sendToKitchen' | 'createOrder' | 'updateItem' | 'removeItem' | 'deliverItems'
+    'menu' | 'menuItem' | 'categories' | 'topSellers' | 'promotions' | 'orderDetail' | 'activeOrders' | 'addItem' | 'sendToKitchen' | 'createOrder' | 'updateItem' | 'removeItem' | 'deliverItems' | 'pricing' | 'authorizeDiscount' | 'supervisors' | 'discountLimit' | 'validateCoupon'
 >;
 
 export interface OrderScreenProps {
@@ -64,6 +64,9 @@ const CLOCK_TICK_MS = 30_000;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = Record<string, any>;
 const isTemp = (id: OrderRef) => typeof id === 'string' && !/^\d+$/.test(id);
+
+// Discount UI (sheet, keypad, supervisor screen) is only needed when the button is tapped.
+const DiscountSheet = lazy(() => import('../discount/DiscountSheet').then((m) => ({ default: m.DiscountSheet })));
 
 type SheetState = { product: Product; groups: ModifierGroup[] } | null;
 
@@ -97,6 +100,7 @@ export function OrderScreen(props: OrderScreenProps) {
     const [loadingId, setLoadingId] = useState<number | null>(null);
     const [busy, setBusy] = useState(false);
     const [full, setFull] = useState(false);
+    const [discountOpen, setDiscountOpen] = useState(false);
 
     // An order created offline carries a temp id until its create syncs; then the real order takes over.
     const [resolvedId, setResolvedId] = useState<number | null>(null);
@@ -334,14 +338,22 @@ export function OrderScreen(props: OrderScreenProps) {
     const actions = {
         canPay: can(user, 'payments.process'),
         canSplit: can(user, 'bills.split'),
-        canDiscount: can(user, 'orders.discount.apply'),
+        // Spec 7.3.0: a user without orders.discount.apply can still ask a supervisor to authorize (the server answers
+        // DISCOUNT_AUTH_REQUIRED), and every discount route requires orders.edit, so either permission shows the button.
+        canDiscount: canAny(user, ['orders.discount.apply', 'orders.edit']),
         onPay,
         onSplit,
-        onDiscount,
+        onDiscount: onDiscount ?? (() => setDiscountOpen(true)),
         onMore,
     };
     const productCount = sumQuantity(serverLines) + draft.count;
     const sentTotal = Number(order?.total) || 0;
+    const orderDiscount = Number(order?.discount) || 0;
+    const pricing: TicketPricing = {
+        subtotal: serverLines.reduce((n, l) => n + l.subtotal, 0),
+        discount: orderDiscount,
+        label: orderDiscount > 0 ? (order?.discountCode ? `Cupón ${String(order.discountCode)}` : String(order?.discountReason || 'Manual')) : null,
+    };
     const elapsed = order?.createdAt ? `${minutesSince(order.createdAt, now)} min` : '';
     const tableLabel = order?.table?.number ? `Mesa ${order.table.number}` : 'Mesa';
     const guests = typeof order?.guests === 'number' ? order.guests : null;
@@ -384,6 +396,7 @@ export function OrderScreen(props: OrderScreenProps) {
                     serverLines={serverLines}
                     now={now}
                     total={sentTotal}
+                    pricing={pricing}
                     unsentTotal={draft.total}
                     highlightSeq={draft.highlightSeq}
                     sendCount={draft.sendCount}
@@ -419,6 +432,21 @@ export function OrderScreen(props: OrderScreenProps) {
                     onSend={() => void draft.send()}
                     onBack={() => setFull(false)}
                 />
+            )}
+            {discountOpen && (
+                <Suspense fallback={null}>
+                    <DiscountSheet
+                        api={api}
+                        user={user}
+                        orderId={orderId}
+                        branchId={branchId ?? null}
+                        order={order}
+                        lines={serverLines}
+                        promotions={promos}
+                        onClose={() => setDiscountOpen(false)}
+                        onApplied={loadOrder}
+                    />
+                </Suspense>
             )}
             {sheet && <ModifierSheet product={sheet.product} groups={sheet.groups} onConfirm={confirmSheet} onClose={() => setSheet(null)} />}
         </main>

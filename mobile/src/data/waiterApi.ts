@@ -283,7 +283,13 @@ export function createWaiterApi(deps: WaiterApiDeps) {
         },
         async authorizeDiscount(orderId: OrderRef, body: AuthorizeDiscountBody) {
             const id = await syncedOrderId(orderId);
-            return mutate<Json>({ method: 'POST', url: `/orders/${id}/discount/authorize`, data: body, invalidates: true });
+            // Not through mutate(): its retry-key map is keyed by the body, and this body carries the supervisor's PIN,
+            // which must live nowhere but the caller's state. The route is never replayed server-side, so every attempt
+            // gets a fresh key; it is never queued either.
+            const owner = ownerKeyOf(await sessions.load());
+            const res = await http.request({ method: 'POST', url: `/orders/${id}/discount/authorize`, data: body, headers: { 'X-Idempotency-Key': newIdempotencyKey() } });
+            if (owner) await cache.invalidate(owner, STALE_AFTER_MUTATION);
+            return (res.data?.data ?? res.data) as Json;
         },
         async preinvoice(orderId: OrderRef) {
             const id = await syncedOrderId(orderId);

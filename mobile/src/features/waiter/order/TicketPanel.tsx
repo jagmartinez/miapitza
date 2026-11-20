@@ -16,6 +16,14 @@ export interface TicketActions {
     canDiscount: boolean;
 }
 
+/** What the server holds for the discount: shown above the total only when there is one. */
+export interface TicketPricing {
+    subtotal: number;
+    discount: number;
+    /** Reason chip (or "Cupón X"); null when there is no discount. */
+    label: string | null;
+}
+
 export interface TicketPanelProps {
     title: string;
     subtitle: string;
@@ -26,6 +34,7 @@ export interface TicketPanelProps {
     now: number;
     /** Server order total (taxes and discounts included). */
     total: number;
+    pricing?: TicketPricing;
     /** Draft lines at menu price: shown apart, never summed into the total. */
     unsentTotal: number;
     highlightSeq: number;
@@ -49,12 +58,24 @@ export interface TicketPanelProps {
 
 export const STATE_LABEL: Record<Exclude<LineState, 'new'>, string> = { ready: 'Listo', preparing: 'En preparación', delivered: 'Entregado' };
 
-type FooterProps = Pick<TicketPanelProps, 'total' | 'unsentTotal' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>;
+type FooterProps = Pick<TicketPanelProps, 'total' | 'pricing' | 'unsentTotal' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>;
 
 /** Pinned footer: total, "Enviar a cocina · N" and the secondary actions. Never scrolls with the list. */
-export function TicketFooter({ total, unsentTotal, sendCount, sending, canEdit, actions, onSend }: FooterProps) {
+export function TicketFooter({ total, pricing, unsentTotal, sendCount, sending, canEdit, actions, onSend }: FooterProps) {
     return (
         <footer className="ticket-foot">
+            {pricing && pricing.discount > 0 && (
+                <div className="ticket-pricing">
+                    <div className="ticket-line">
+                        <span className="muted">Subtotal</span>
+                        <span>{money(pricing.subtotal)}</span>
+                    </div>
+                    <div className="ticket-line">
+                        <span className="ticket-chip">{pricing.label}</span>
+                        <span>{`− ${money(pricing.discount)}`}</span>
+                    </div>
+                </div>
+            )}
             <div className="ticket-total">
                 <span className="muted">Total</span>
                 <strong>{money(total)}</strong>

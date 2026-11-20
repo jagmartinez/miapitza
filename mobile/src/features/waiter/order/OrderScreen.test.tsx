@@ -171,9 +171,11 @@ describe('OrderScreen', () => {
         setup({ permissions: ['orders.view', 'orders.edit', 'payments.process', 'bills.split'], handlers });
         fireEvent.click(await screen.findByRole('button', { name: 'Cobrar' }));
         fireEvent.click(screen.getByRole('button', { name: 'Dividir' }));
-        expect(screen.queryByRole('button', { name: 'Descuento' })).toBeNull();
+        // orders.edit alone shows Descuento: the waiter can ask a supervisor to authorize (spec 7.3.0)
+        fireEvent.click(screen.getByRole('button', { name: 'Descuento' }));
         expect(handlers.onPay).toHaveBeenCalledTimes(1);
         expect(handlers.onSplit).toHaveBeenCalledTimes(1);
+        expect(handlers.onDiscount).toHaveBeenCalledTimes(1);
     });
 
     it('refreshes from realtime events of this order (debounced) and unsubscribes on unmount', async () => {
