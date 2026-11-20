@@ -470,21 +470,24 @@ export class CashShiftService {
                 });
             }
         }
-        // An order's discount and tip are counted once, in the shift whose window holds the order's LAST active payment
-        // (by any cashier): a bill paid across two shifts is not counted in both. Only the report asks for these totals.
+        // An order's discount and tip are counted once, in the shift of the cashier who registered the order's LAST active
+        // payment, and only when that payment falls inside this shift's window. The cashier check keeps two overlapping
+        // shifts (two registers open at once) from both counting a bill split between them. Only the report asks for these.
         let counted = [...orders.values()];
         if (opts.orderTotals && orders.size > 0) {
-            const last = await prisma.payment.groupBy({
-                by: ['orderId'],
+            const all = await prisma.payment.findMany({
                 where: { orderId: { in: [...orders.keys()] }, status: 'ACTIVE' },
-                _max: { createdAt: true }
+                orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+                select: { orderId: true, createdAt: true, registeredById: true }
             });
-            counted = last
-                .filter((row) => {
-                    const at = row._max.createdAt;
-                    return !!at && at >= shift.startDate && (shift.endDate ? at < shift.endDate : true);
+            const lastByOrder = new Map<number, { createdAt: Date; registeredById: number | null }>();
+            for (const row of all) if (!lastByOrder.has(row.orderId)) lastByOrder.set(row.orderId, row);
+            counted = [...lastByOrder.entries()]
+                .filter(([, last]) => {
+                    const at = last.createdAt;
+                    return last.registeredById === shift.userId && at >= shift.startDate && (shift.endDate ? at < shift.endDate : true);
                 })
-                .map((row) => orders.get(row.orderId))
+                .map(([orderId]) => orders.get(orderId))
                 .filter((o): o is { discount: number; tip: number } => !!o);
         }
         const totalOf = (key: 'discount' | 'tip') => counted.reduce((n, o) => n + o[key], 0) / 100;

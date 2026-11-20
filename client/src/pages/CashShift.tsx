@@ -924,7 +924,7 @@ export default function CashShiftPage() {
                                 <div className="closing-info">
                                     <div className="info-row">
                                         <span>Esperado:</span>
-                                        <span>{isBlindCashier ? 'Oculto hasta validar' : formatMoney(Number(summary?.expectedAmount || 0))}</span>
+                                        <span>{formatMoney(Number(summary?.expectedAmount || 0))}</span>
                                     </div>
                                     <div className="info-row">
                                         <span>Real:</span>

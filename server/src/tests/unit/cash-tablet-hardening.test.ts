@@ -1,6 +1,6 @@
 import express from 'express';
 import request from 'supertest';
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 jest.doMock('../../middlewares/auth', () => ({
     authMiddleware: (req: any, _res: any, next: any) => {
@@ -23,6 +23,7 @@ const shiftRouter = require('../../routes/cash-shift.routes').default;
 const arqueoRouter = require('../../routes/cash-arqueo.routes').default;
 const registerRouter = require('../../routes/cash-register.routes').default;
 const { CashArqueoService } = require('../../services/cash-arqueo.service');
+const { CashShiftService } = require('../../services/cash-shift.service');
 const { SettingService } = require('../../services/setting.service');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
@@ -40,6 +41,12 @@ const as = (u: object) => JSON.stringify(u);
 afterEach(() => {
     jest.restoreAllMocks();
 });
+
+// salesBreakdown reads payments: keep every route test hermetic (no real database)
+function mockNoPayments() {
+    jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([] as never);
+    jest.spyOn(prisma.payment, 'groupBy').mockResolvedValue([] as never);
+}
 
 function mockOpenTx(findFirstResults: unknown[]) {
     const queue = [...findFirstResults];
@@ -155,13 +162,14 @@ describe('cash API user hygiene', () => {
             if (args?.select?.cashRegister) return { cashRegister: { branchId: 1 } };
             const u = args?.include?.user;
             return {
-                id: 5, startAmount: 50, endAmount: null, endDate: null, movements: [],
-                cashRegister: { id: 1, name: 'Caja' },
+                id: 5, userId: 7, startDate: new Date(), startAmount: 50, endAmount: null, endDate: null, movements: [],
+                cashRegister: { id: 1, name: 'Caja', branchId: 1 },
                 user: u && typeof u === 'object' && u.select
                     ? Object.fromEntries(Object.keys(u.select).map((k) => [k, (fullUser as any)[k]]))
                     : fullUser,
             };
         }) as never);
+        mockNoPayments();
         const res = await request(app).get('/cash-shifts/5/summary').set('x-test-user', as(admin)).expect(200);
         expect(res.body.data.shift.user).toEqual({ id: 7, name: 'Ana' });
         expect(JSON.stringify(res.body)).not.toMatch(/passwordHash|secret-hash|a@b\.c|1234/);
@@ -221,10 +229,11 @@ describe('cash API blind count for CAJERO', () => {
     });
 
     function mockSummaryShift(endDate: Date | null) {
+        mockNoPayments();
         jest.spyOn(prisma.cashShift, 'findFirst').mockImplementation((async (args: any) =>
             args?.select?.cashRegister ? { cashRegister: { branchId: 1 } } : {
-                id: 5, startAmount: 50, endAmount: endDate ? 50 : null, endDate, movements: [],
-                cashRegister: { id: 1, name: 'Caja' }, user: { id: 7, name: 'Ana' },
+                id: 5, userId: 7, startDate: new Date(Date.now() - 3600_000), startAmount: 50, endAmount: endDate ? 50 : null, endDate, movements: [],
+                cashRegister: { id: 1, name: 'Caja', branchId: 1 }, user: { id: 7, name: 'Ana' },
             }) as never);
     }
 
@@ -278,18 +287,59 @@ describe('cash API blind arqueo detail', () => {
     });
 });
 
+describe('cash summary access', () => {
+    it('GET /cash-shifts/:id/summary is for cashier roles only (a waiter cannot read an open shift expected amount)', async () => {
+        const getSummary = jest.spyOn(CashShiftService, 'getShiftSummary').mockResolvedValue({ summary: {} } as never);
+        const mesero = { userId: 9, companyId: 5, role: 'MESERO', roles: ['MESERO'], branchId: 1 };
+        await request(app).get('/cash-shifts/5/summary').set('x-test-user', as(mesero)).expect(403);
+        expect(getSummary).not.toHaveBeenCalled();
+    });
+});
+
+describe('cash API in-transaction blind check', () => {
+    it('a movement landing after the preview that pushes the difference out of tolerance gives CAJERO the amount-free message', async () => {
+        jest.spyOn(prisma.cashShift, 'findFirst').mockResolvedValue({ userId: 7 } as never);
+        jest.spyOn(CashArqueoService, 'previewClose').mockResolvedValue({
+            difference: 0, tolerance: 1, requiresNote: false, exceedsTolerance: false,
+        } as never);
+        jest.spyOn(SettingService, 'getCurrencySymbol').mockResolvedValue('C$' as never);
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            cashShift: {
+                // 100 at open, +500 IN landed after the preview: the locked expected is 600, the cashier counted 100
+                findFirst: jest.fn(async () => ({
+                    id: 5, endDate: null, closedById: null, startAmount: 100, movements: [{ type: 'IN', amount: 500 }],
+                })),
+                update: jest.fn(),
+            },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation((async (cb: any) => cb(tx)) as never);
+        const err: any = await CashArqueoService.closeShiftWithArqueo(5, 5, 100, ['CAJERO'], 7, 'nota').catch((e: unknown) => e);
+        expect(err.statusCode ?? err.status).toBe(403);
+        expect(err.code).toBe('CASH_DIFF_EXCEEDS_TOLERANCE');
+        expect(err.message).toBe('La diferencia excede la tolerancia. Llama a un supervisor.');
+        expect(err.message).not.toMatch(/\d/);
+        expect(tx.cashShift.update).not.toHaveBeenCalled();
+    });
+});
+
 describe('cash API blind scope and report', () => {
     const detailsShift = (endDate: Date | null) => jest.spyOn(prisma.cashShift, 'findFirst').mockImplementation((async (args: any) => {
-        if (args?.select?.cashRegister?.select?.branchId) return { cashRegister: { branchId: 1 } };
         if (args?.select?.cashRegister?.select?.branch) {
-            return { cashRegister: { branch: { name: 'S', address: null, phone: null, company: { name: 'C', ruc: 'R' } } } };
+            return {
+                userId: 7, startDate: new Date(Date.now() - 3600_000), endDate,
+                cashRegister: { branchId: 1, branch: { name: 'S', address: null, phone: null, company: { name: 'C', ruc: 'R' } } },
+            };
         }
+        if (args?.select?.cashRegister?.select?.branchId) return { cashRegister: { branchId: 1 } };
         return {
-            id: 5, startAmount: 50, endAmount: endDate ? 40 : null, endDate, startDate: new Date(),
+            id: 5, userId: 7, startAmount: 50, endAmount: endDate ? 40 : null, endDate, startDate: new Date(),
             forceClosed: false, closingExchangeRate: null, closedBy: null, movements: [],
             cashRegister: { id: 1, name: 'Caja', branchId: 1 }, user: { id: 7, name: 'Ana' },
         };
     }) as never);
+
+    beforeEach(() => mockNoPayments());
 
     it('report of an OPEN shift omits expected/difference for blind CAJERO, also in summary text', async () => {
         detailsShift(null);
@@ -310,6 +360,25 @@ describe('cash API blind scope and report', () => {
         const res = await request(app).get('/cash-arqueo/5/report').set('x-test-user', as(cajero)).expect(200);
         expect(res.body.data.amounts.expectedEndAmount).toBe(50);
         expect(res.body.data.report.summary).toMatch(/Esperado/);
+    });
+
+    it('report of an OPEN shift keeps sales, discounts, tips and header for blind CAJERO (they are not blind data)', async () => {
+        detailsShift(null);
+        jest.spyOn(prisma.cashCount, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(SettingService, 'getCurrencySymbol').mockResolvedValue('C$' as never);
+        const at = new Date(Date.now() - 1800_000);
+        jest.spyOn(prisma.payment, 'findMany').mockImplementation((async (args: any) => args?.where?.orderId
+            ? [{ orderId: 1, createdAt: at, registeredById: 7 }]
+            : [{ orderId: 1, methodType: 'CARD', amount: 40, order: { discount: 5, tipAmount: 2 } }]) as never);
+        const res = await request(app).get('/cash-arqueo/5/report').set('x-test-user', as(cajero)).expect(200);
+        // the blind redaction ran (expected and difference are gone) ...
+        expect(res.body.data.amounts).not.toHaveProperty('expectedEndAmount');
+        expect(res.body.data.report.summary).not.toMatch(/Esperado|Diferencia/);
+        // ... and left the sales data alone
+        expect(res.body.data.salesByMethod).toEqual({ cash: 0, card: 40, transfer: 0, paymentCount: 1 });
+        expect(res.body.data.discounts).toBe(5);
+        expect(res.body.data.tips).toBe(2);
+        expect(res.body.data.header.companyName).toBe('C');
     });
 
     it('CAJERO combined with ADMIN or SUPERADMIN is not blinded', async () => {
