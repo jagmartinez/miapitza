@@ -255,7 +255,7 @@ describe('order integration (per-line attribution persisted)', () => {
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
         // The client-sent discount is ignored for promotion codes.
-        await OrderService.updatePricing(41, 1, { discount: 999, discountCode: 'bebidas20' }, 7);
+        await OrderService.updatePricing(41, 1, { discount: 999, discountCode: 'bebidas20' }, 7, { role: 'ADMIN', roles: ['ADMIN'] });
 
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             // 425 - 49 = 376; IVA 15% = 56.40

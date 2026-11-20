@@ -32,7 +32,7 @@ describe('OrderService.updatePricing', () => {
             (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
         );
 
-        await OrderService.updatePricing(41, 1, { discount: 20, tipAmount: 500 }, 7);
+        await OrderService.updatePricing(41, 1, { discount: 20, tipAmount: 500 }, 7, { role: 'ADMIN', roles: ['ADMIN'] });
 
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ discount: 20, tax: 12, tipAmount: 8, total: 100 })
@@ -57,7 +57,7 @@ describe('OrderService.updatePricing', () => {
             (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
         );
 
-        await OrderService.updatePricing(41, 1, { discount: 0, tipAmount: 30 }, 7);
+        await OrderService.updatePricing(41, 1, { discount: 0, tipAmount: 30 }, 7, { role: 'ADMIN', roles: ['ADMIN'] });
 
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ discount: 0, tipAmount: 0, total: 115 })

@@ -1845,12 +1845,21 @@ export class OrderService {
             select: { discountAuthorizedById: true }
         });
         const authorizerId = stamped?.discountAuthorizedById ?? null;
-        const lastPricing = authorizerId ? null : await tx.auditLog.findFirst({
+        // The applier is the last PRICING_UPDATED that actually changed the
+        // discount: tip-only edits also write PRICING_UPDATED and must not
+        // transfer ownership of someone else's discount.
+        const recentPricing = authorizerId ? [] : await tx.auditLog.findMany({
             where: { companyId, entityType: 'Order', entityId: order.id, action: 'PRICING_UPDATED' },
             orderBy: { id: 'desc' },
-            select: { userId: true }
+            take: 50,
+            select: { userId: true, details: true }
         });
-        const authorUserId = authorizerId ?? lastPricing?.userId ?? order.userId;
+        const discountChange = recentPricing.find((entry) => {
+            const details = (entry.details ?? {}) as { previousDiscount?: unknown; discount?: unknown };
+            return details.previousDiscount !== undefined && details.discount !== undefined
+                && Number(details.previousDiscount) !== Number(details.discount);
+        });
+        const authorUserId = authorizerId ?? discountChange?.userId ?? order.userId;
         const author = await tx.user.findFirst({
             where: { id: authorUserId, companyId },
             select: {
@@ -1906,7 +1915,8 @@ export class OrderService {
         const originalTip = pricing.tipAmount;
         const clamped = await this.clampManualDiscountAfterVoid(
             tx, companyId,
-            { id: order.id, userId: actorUserId ?? order.userId, tipAmount: order.tipAmount },
+            // No qualifying audit => the order creator owns the discount (never the actor).
+            { id: order.id, userId: order.userId, tipAmount: order.tipAmount },
             pricing
         );
         if (clamped) {
@@ -3082,7 +3092,7 @@ export class OrderService {
             discountReason?: string;
         },
         userId: number,
-        actor?: { role?: string | null; roles?: string[] | null },
+        actor: { role?: string | null; roles?: string[] | null },
         options?: {
             /**
              * Supervisor-authorized manual discount: applied under the same lock and
@@ -3195,8 +3205,7 @@ export class OrderService {
                 } else if (
                     // A role's own maxDiscountPercent binds the web call too; roles
                     // without one fall through to the legacy rule below.
-                    actor
-                    && (roleLimit = await getConfiguredDiscountLimit({
+                    (roleLimit = await getConfiguredDiscountLimit({
                         userId, companyId, role: actor.role, roles: actor.roles
                     }, tx)) !== null
                 ) {

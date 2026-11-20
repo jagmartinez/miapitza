@@ -842,6 +842,8 @@ describe('removing or shrinking unsent lines re-caps the manual discount', () =>
     function lineTx(o: {
         discount: number; remaining: number; author: Role; authorizerId?: number | null;
         lastPricingUser?: number | null; cap?: string | null;
+        audits?: Array<{ userId: number; details: Record<string, number> }>;
+        roleOf?: Record<number, Role>;
     }) {
         const item = {
             id: 10, orderId: 41, menuItemId: 3, quantity: 4, price: 25, sentAt: null, voidedAt: null,
@@ -864,14 +866,20 @@ describe('removing or shrinking unsent lines re-caps the manual discount', () =>
                 findUnique: jest.fn(async (_a: unknown) => ({ discountAuthorizedById: o.authorizerId ?? null })),
                 update: jest.fn(async (args: unknown) => args),
             },
-            user: { findFirst: jest.fn(async (_a: unknown) => ({ role: o.author, userRoles: [] })) },
+            user: {
+                findFirst: jest.fn(async (a: { where: { id: number } }) =>
+                    ({ role: o.roleOf?.[a.where.id] ?? o.author, userRoles: [] })),
+            },
             setting: {
                 findMany: jest.fn(async () => [{ name: '5_tax_rate', value: '15' }]),
                 findUnique: jest.fn(async (args: { where: { companyId_name: { name: string } } }) =>
                     args.where.companyId_name.name.endsWith('_maxManualDiscountPercent') && o.cap != null ? { value: o.cap } : null),
             },
             auditLog: {
-                findFirst: jest.fn(async (_a: unknown) => (o.lastPricingUser === null ? null : { userId: o.lastPricingUser ?? 21 })),
+                findMany: jest.fn(async (_a: unknown) => o.audits
+                    ?? (o.lastPricingUser === null
+                        ? []
+                        : [{ userId: o.lastPricingUser ?? 21, details: { previousDiscount: 0, discount: o.discount } }])),
                 create: jest.fn(async (_args: unknown) => ({})),
             },
         };
@@ -921,16 +929,52 @@ describe('removing or shrinking unsent lines re-caps the manual discount', () =>
         expect(clampAudit(tx)).toBeUndefined();
     });
 
-    it.each(actions)('%s: an untracked applier falls back to the acting user\'s limit', async (_n, run) => {
+    it.each(actions)('%s: an untracked applier falls back to the order creator, never the acting ADMIN', async (_n, run) => {
         const tx = lineTx({
-            discount: 10, remaining: 50, author: { name: 'CAJERO', maxDiscountPercent: 4 }, lastPricingUser: null,
+            discount: 10, remaining: 50, author: { name: 'MESERO', maxDiscountPercent: null }, cap: '10', lastPricingUser: null,
+            roleOf: { 7: { name: 'ADMIN', maxDiscountPercent: null } },
         });
         useTx(tx);
 
-        await run(22);
+        await run(7); // an ADMIN shrinks the lines of a waiter-created discount
 
-        expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 22, companyId: 5 } }));
-        expect(orderUpdate(tx).discount).toBe(2);
+        expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 21, companyId: 5 } }));
+        expect(orderUpdate(tx).discount).toBe(5);
+    });
+
+    it.each(actions)('%s: a later tip-only edit by a MESERO does not take over an ADMIN discount', async (_n, run) => {
+        const tx = lineTx({
+            discount: 30, remaining: 50, author: { name: 'MESERO', maxDiscountPercent: null }, cap: '10',
+            audits: [
+                { userId: 21, details: { previousDiscount: 30, discount: 30 } }, // tip-only, newest
+                { userId: 7, details: { previousDiscount: 0, discount: 30 } },
+            ],
+            roleOf: { 7: { name: 'ADMIN', maxDiscountPercent: null } },
+        });
+        useTx(tx);
+
+        await run(21);
+
+        expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 7, companyId: 5 } }));
+        expect(orderUpdate(tx).discount).toBe(30);
+        expect(clampAudit(tx)).toBeUndefined();
+    });
+
+    it.each(actions)('%s: a later tip-only edit by an ADMIN does not free a MESERO discount', async (_n, run) => {
+        const tx = lineTx({
+            discount: 10, remaining: 50, author: { name: 'MESERO', maxDiscountPercent: null }, cap: '10',
+            audits: [
+                { userId: 7, details: { previousDiscount: 10, discount: 10 } }, // tip-only, newest
+                { userId: 21, details: { previousDiscount: 0, discount: 10 } },
+            ],
+            roleOf: { 7: { name: 'ADMIN', maxDiscountPercent: null } },
+        });
+        useTx(tx);
+
+        await run(7);
+
+        expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 21, companyId: 5 } }));
+        expect(orderUpdate(tx).discount).toBe(5);
     });
 
     it.each(actions)('%s: a discount within the limit is left alone and nothing is audited', async (_n, run) => {

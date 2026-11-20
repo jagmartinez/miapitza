@@ -112,7 +112,7 @@ function voidTx(options: {
         },
         auditLog: {
             create: jest.fn(async (_args: unknown) => ({})),
-            findFirst: jest.fn(async () => ({ userId: 6 }))
+            findMany: jest.fn(async () => [{ userId: 6, details: { previousDiscount: 0, discount: 10 } }])
         }
     };
 }
