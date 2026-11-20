@@ -1,0 +1,35 @@
+{
+  "name": "mia-pitza-ops-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": "^20.19.0 || >=22.12.0" },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "test": "vitest run",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-secure-storage": "6.0.1",
+    "@capacitor/android": "^6.2.3",
+    "@capacitor/core": "^6.2.3",
+    "axios": "^1.18.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.3",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^25.0.3",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^6.0.4",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.2.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}

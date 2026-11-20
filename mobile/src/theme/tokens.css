@@ -1,0 +1,18 @@
+:root {
+    --bg: #0E0F10;
+    --surface: #151618;
+    --surface-2: #1C1D20;
+    --border: #26272A;
+    --text: #E8E8E6;
+    --muted: #8C8D90;
+    --ready: #D4A84B;
+    --alert: #C96B66;
+}
+
+html, body, #root {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
