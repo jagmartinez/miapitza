@@ -194,6 +194,14 @@ export default function PayrollOperationWorkspace({
         </Button>
       </header>
 
+      <dl className="payroll-operation-totals" aria-label="Resumen total de la nómina">
+        <div><dt>Colaboradores</dt><dd>{run.totals?.employeeCount ?? run.snapshot.length}</dd></div>
+        <div><dt>Ingresos brutos</dt><dd>{formatRunTotal(currency, run.totals?.grossIncome)}</dd></div>
+        <div><dt>Deducciones</dt><dd>{formatRunTotal(currency, run.totals?.totalDeductions)}</dd></div>
+        <div><dt>Aportes patronales</dt><dd>{formatRunTotal(currency, run.totals?.employerContributions)}</dd></div>
+        <div className="net"><dt>Neto a pagar</dt><dd>{formatRunTotal(currency, run.totals?.netPay)}</dd></div>
+      </dl>
+
       {run.status === 'VOID' ? (
         <div className="payroll-operation-alert danger" role="alert">
           <AlertTriangle size={20} /> Esta corrida fue anulada. Se conserva únicamente para consulta y auditoría.
@@ -229,14 +237,6 @@ export default function PayrollOperationWorkspace({
           )}
         </div>
       </div>
-
-      <dl className="payroll-operation-totals" aria-label="Resumen total de la nómina">
-        <div><dt>Colaboradores</dt><dd>{run.totals?.employeeCount ?? run.snapshot.length}</dd></div>
-        <div><dt>Ingresos brutos</dt><dd>{formatRunTotal(currency, run.totals?.grossIncome)}</dd></div>
-        <div><dt>Deducciones</dt><dd>{formatRunTotal(currency, run.totals?.totalDeductions)}</dd></div>
-        <div><dt>Aportes patronales</dt><dd>{formatRunTotal(currency, run.totals?.employerContributions)}</dd></div>
-        <div className="net"><dt>Neto a pagar</dt><dd>{formatRunTotal(currency, run.totals?.netPay)}</dd></div>
-      </dl>
 
       <section className="payroll-operation-reporting" aria-labelledby="payroll-deliverables-title">
         <div>
