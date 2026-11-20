@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { calculateAutomaticPaymentRemainder, canUsePaymentMethodInMixed, summarizePaymentAllocation, splitTotalEvenly } from '@web/utils/payment';
+import { calculateAutomaticPaymentRemainder, canUsePaymentMethodInMixed, moneyToCents, summarizePaymentAllocation, splitTotalEvenly } from '@web/utils/payment';
 import { money } from '../order/orderModel';
 import { ChargeButton, Keypad, parseTyped, typeKey } from './controls';
-import { isCashType, type Leg, type ModeCtx } from './paymentFlow';
+import { cashChange, isCashType, type Leg, type ModeCtx } from './paymentFlow';
 
 interface Row {
     id: string;
     methodId: number;
     amount: string; // typed; the last row ignores it (it owns the remainder)
     reference: string;
+    received: string; // cash legs: what the customer handed over; '' = exact
 }
 
 const MAX_LEGS = 3;
@@ -16,18 +17,20 @@ const MAX_LEGS = 3;
 export function MixedPayment({ ctx }: { ctx: ModeCtx }) {
     const { methods, shiftOk, payable, busy, paid } = ctx;
     const usable = methods.filter((m) => canUsePaymentMethodInMixed(m.type, shiftOk));
+    const saved = (ctx.restored ?? null) as { rows: Row[]; counter: number } | null;
     const [rows, setRows] = useState<Row[]>(() => {
+        if (saved) return saved.rows;
         const [a, b] = usable;
         if (!a || !b) return [];
         const [first] = splitTotalEvenly(payable, 2);
         return [
-            { id: 'mix-1', methodId: a.id, amount: String(first), reference: '' },
-            { id: 'mix-2', methodId: b.id, amount: '', reference: '' },
+            { id: 'mix-1', methodId: a.id, amount: String(first), reference: '', received: '' },
+            { id: 'mix-2', methodId: b.id, amount: '', reference: '', received: '' },
         ];
     });
     const [selected, setSelected] = useState(0);
-    const [counter, setCounter] = useState(3);
-    const locked = paid.length > 0;
+    const [counter, setCounter] = useState(saved?.counter ?? 3);
+    const locked = ctx.locked;
 
     if (rows.length < 2) {
         return (
@@ -48,7 +51,11 @@ export function MixedPayment({ ctx }: { ctx: ModeCtx }) {
     const assigned = amounts.reduce((n, a) => n + a, 0);
     const missing = Math.max(0, payable - assigned);
     const methodIds = rows.map((r) => r.methodId);
-    const valid = amounts.every((a) => a > 0) && allocation.exact && new Set(methodIds).size === methodIds.length;
+    const typeOf = (methodId: number) => methods.find((m) => m.id === methodId)?.type;
+    /** What the customer handed over for a cash leg ('' = exactly the leg). */
+    const receivedOf = (r: Row, i: number) => (r.received === '' ? amounts[i] : (parseTyped(r.received) ?? 0));
+    const cashShort = rows.some((r, i) => isCashType(typeOf(r.methodId)) && !paid.includes(r.id) && moneyToCents(receivedOf(r, i)) < moneyToCents(amounts[i]));
+    const valid = amounts.every((a) => a > 0) && allocation.exact && new Set(methodIds).size === methodIds.length && !cashShort;
     const pending = rows.reduce((n, r, i) => (paid.includes(r.id) ? n : n + amounts[i]), 0); // legs still to charge (a retry after a drop)
     const nameOf = (id: number) => methods.find((m) => m.id === id)?.name ?? '';
 
@@ -56,7 +63,7 @@ export function MixedPayment({ ctx }: { ctx: ModeCtx }) {
     const add = () => {
         const free = usable.find((m) => !methodIds.includes(m.id));
         if (!free || rows.length >= MAX_LEGS) return;
-        setRows((cur) => [...cur, { id: `mix-${counter}`, methodId: free.id, amount: '', reference: '' }]);
+        setRows((cur) => [...cur, { id: `mix-${counter}`, methodId: free.id, amount: '', reference: '', received: '' }]);
         setCounter((n) => n + 1);
     };
     const remove = (index: number) => {
@@ -74,7 +81,8 @@ export function MixedPayment({ ctx }: { ctx: ModeCtx }) {
         if (!valid || busy) return;
         void ctx.charge(legs, {
             allIds: rows.map((r) => r.id),
-            changeOf: {},
+            changeOf: Object.fromEntries(rows.map((r, i) => [r.id, isCashType(typeOf(r.methodId)) ? cashChange(receivedOf(r, i), amounts[i]) : 0])),
+            plan: { rows, counter },
             methodOf: Object.fromEntries(rows.map((r) => [r.id, nameOf(r.methodId)])),
             expected: payable,
         });
@@ -115,8 +123,14 @@ export function MixedPayment({ ctx }: { ctx: ModeCtx }) {
                                 )}
                             </div>
                             {isLast && !done && <span className="muted">Resto automático</span>}
+                            {method && isCashType(method.type) && !done && (
+                                <div className="pay-leg-cash">
+                                    <input className="pay-ref" aria-label={`Recibido del tramo ${i + 1}`} inputMode="decimal" placeholder="Recibido (exacto)" value={r.received} onChange={(e) => patch(i, { received: e.target.value.replace(/[^\d.]/g, '') })} />
+                                    {amounts[i] > 0 && receivedOf(r, i) > amounts[i] && <span className="pay-change">{`Cambio ${money(cashChange(receivedOf(r, i), amounts[i]))}`}</span>}
+                                </div>
+                            )}
                             {method && !isCashType(method.type) && !done && (
-                                <input className="pay-ref" aria-label={`Referencia del tramo ${i + 1}`} placeholder="Referencia" value={r.reference} maxLength={191} onChange={(e) => patch(i, { reference: e.target.value })} />
+                                <input className="pay-ref" aria-label={`Referencia del tramo ${i + 1}`} placeholder="Referencia" disabled={ctx.pending.includes(r.id)} value={r.reference} maxLength={191} onChange={(e) => patch(i, { reference: e.target.value })} />
                             )}
                         </div>
                     );

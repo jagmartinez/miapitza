@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import { reportStorage, toStorageError } from './storage';
-import type { CacheEntry, DraftRow, SyncItem, TempIdRow } from './types';
+import type { CacheEntry, DraftRow, PlanRow, SyncItem, TempIdRow } from './types';
 
 /** Local store of the waiter app. Holds no tokens: owners are identified by `companyId:userId`. */
 export class MobileDB extends Dexie {
@@ -8,6 +8,7 @@ export class MobileDB extends Dexie {
     syncQueue!: Table<SyncItem, number>;
     drafts!: Table<DraftRow, string>;
     tempIds!: Table<TempIdRow, string>;
+    paymentPlans!: Table<PlanRow, string>;
 
     constructor(name = 'MobileDB') {
         super(name);
@@ -21,6 +22,7 @@ export class MobileDB extends Dexie {
             .stores({ drafts: 'id, ownerKey' })
             .upgrade((tx) => tx.table('drafts').clear());
         this.version(3).stores({ tempIds: 'id, ownerKey, timestamp' });
+        this.version(4).stores({ paymentPlans: 'id, ownerKey, timestamp' });
     }
 }
 

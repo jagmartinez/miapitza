@@ -68,6 +68,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
                     session={session}
                     api={data.api}
                     drafts={data.drafts}
+                    plans={data.plans}
                     realtime={services.realtime}
                     queue={data.queue}
                     orderId={route.orderId}

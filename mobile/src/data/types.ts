@@ -94,3 +94,32 @@ export function isPermanentSyncFailure(httpStatus: number | undefined, code?: un
     if (httpStatus === 409 && typeof code === 'string' && TRANSIENT_CONFLICT_CODES.has(code)) return false;
     return true;
 }
+
+/** One attempted payment leg of an in-progress plan: its key and what was sent under it. */
+export interface PlanLeg {
+    key: string;
+    fingerprint: string;
+    spec: { paymentMethodId: number; amount: number; payerName?: string; reference?: string };
+}
+
+/**
+ * The payment plan a cashier has started on an order (mode, split plan, the key of every attempted leg), so that
+ * leaving the screen after a lost response never loses the keys. Holds no tokens or PINs.
+ */
+export interface PlanRow {
+    /** `${ownerKey}|${orderId}` */
+    id: string;
+    ownerKey: string;
+    orderId: number;
+    timestamp: number;
+    mode: 'single' | 'mixed' | 'split';
+    /** What the whole plan adds up to (the server's remaining shrinks as legs are confirmed). */
+    payable: number;
+    /** The mode screen's own state (people, assignments, amounts), opaque to the store. */
+    plan: unknown;
+    allIds: string[];
+    changeOf: Record<string, number>;
+    methodOf: Record<string, string>;
+    legs: Record<string, PlanLeg>;
+    confirmed: string[];
+}

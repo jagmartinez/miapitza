@@ -30,15 +30,17 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
     const { methods, shiftOk, payable, busy, paid, lines, orderId, api, onError } = ctx;
     const defaultMethod = firstUsable(methods, shiftOk);
     const makePerson = (n: number): Person => ({ id: `p${n}`, name: `Persona ${n}`, methodId: defaultMethod, reference: '', received: '', amountText: '' });
-    const [persons, setPersons] = useState<Person[]>(() => [makePerson(1), makePerson(2)]);
-    const [counter, setCounter] = useState(3);
-    const [strategy, setStrategy] = useState<Strategy>('items');
-    const [owners, setOwners] = useState<Record<number, (string | null)[]>>({});
+    const saved = (ctx.restored ?? null) as { persons: Person[]; counter: number; strategy: Strategy; owners: Record<number, (string | null)[]>; shares: Record<string, number>; shareSig: string } | null;
+    const [persons, setPersons] = useState<Person[]>(() => saved?.persons ?? [makePerson(1), makePerson(2)]);
+    const [counter, setCounter] = useState(saved?.counter ?? 3);
+    const [strategy, setStrategy] = useState<Strategy>(saved?.strategy ?? 'items');
+    const [owners, setOwners] = useState<Record<number, (string | null)[]>>(saved?.owners ?? {});
     const [selectedLine, setSelectedLine] = useState<number | null>(null);
-    const [shares, setShares] = useState<Record<string, number>>({});
-    const [shareSig, setShareSig] = useState('');
+    const [shares, setShares] = useState<Record<string, number>>(saved?.shares ?? {});
+    const [shareSig, setShareSig] = useState(saved?.shareSig ?? '');
     const seq = useRef(0);
-    const locked = paid.length > 0;
+    // once a leg was attempted the plan is fixed: the calculators would now split what is left, not the original bill
+    const locked = ctx.locked;
 
     const ownersOf = (line: ServerLine) => owners[line.id] ?? emptyOwners(line);
     const namesUnique = hasUniqueNormalizedPayerNames(persons.map((p) => p.name));
@@ -159,6 +161,7 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
             changeOf: { [p.id]: cash ? cashChange(received, amount) : 0 },
             methodOf: Object.fromEntries(persons.map((x) => [x.id, methods.find((m) => m.id === x.methodId)?.name ?? ''])),
             expected: payable,
+            plan: { persons, counter, strategy, owners, shares, shareSig },
         });
     };
 
@@ -253,7 +256,7 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
                                 <span className="pay-paid">Pagado</span>
                             ) : (
                                 <>
-                                    <select aria-label={`Método de ${p.name}`} value={p.methodId ?? ''} onChange={(e) => patch(p.id, { methodId: Number(e.target.value) })}>
+                                    <select aria-label={`Método de ${p.name}`} disabled={ctx.pending.includes(p.id)} value={p.methodId ?? ''} onChange={(e) => patch(p.id, { methodId: Number(e.target.value) })}>
                                         {methods.map((m) => (
                                             <option key={m.id} value={m.id}>
                                                 {m.name}
@@ -269,7 +272,7 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
                                         <input aria-label={`Recibido de ${p.name}`} inputMode="decimal" placeholder="Recibido (exacto)" value={p.received} onChange={(e) => patch(p.id, { received: e.target.value.replace(/[^\d.]/g, '') })} />
                                     )}
                                     {cash && !cashBlocked && !cashShort && share > 0 && received > share && <span className="pay-change">{`Cambio ${money(cashChange(received, share))}`}</span>}
-                                    {method && !cash && <input aria-label={`Referencia de ${p.name}`} placeholder="Referencia" maxLength={191} value={p.reference} onChange={(e) => patch(p.id, { reference: e.target.value })} />}
+                                    {method && !cash && <input aria-label={`Referencia de ${p.name}`} placeholder="Referencia" maxLength={191} disabled={ctx.pending.includes(p.id)} value={p.reference} onChange={(e) => patch(p.id, { reference: e.target.value })} />}
                                     <button type="button" className="btn btn-primary" aria-label={`Cobrar a ${p.name}`} disabled={!canCharge} onClick={() => chargePerson(p)}>
                                         {sharesFresh ? `Cobrar ${money(share)}` : 'Cobrar'}
                                     </button>

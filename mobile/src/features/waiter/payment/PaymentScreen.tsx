@@ -4,12 +4,13 @@ import { hasUsableCashShift } from '@web/utils/paymentAccess';
 import { moneyToCents } from '@web/utils/payment';
 import { can } from '../../../core/permissions';
 import type { LoginUser } from '../../../core/session';
+import type { PaymentPlans } from '../../../data/paymentPlans';
 import { isOnline } from '../../../data/useOnline';
 import type { Json, OrderRef, WaiterApi } from '../../../data/waiterApi';
 import { money, normalizeServerLines, type ServerLine } from '../order/orderModel';
 import { MixedPayment } from './MixedPayment';
 import { PaymentDone, type DoneData } from './PaymentDone';
-import { createPaymentFlow, LegError, type ChargeFn, type ChargeMeta, type FiscalCustomer, type FlowApi, type Method, type ModeCtx, type PaymentFlow } from './paymentFlow';
+import { createPaymentFlow, LegError, matchPaidLegs, type ChargeFn, type ChargeMeta, type FiscalCustomer, type FlowApi, type FlowState, type Method, type ModeCtx, type PaymentFlow } from './paymentFlow';
 import { PaymentSummary } from './PaymentSummary';
 import { SinglePayment } from './SinglePayment';
 import { SplitPayment } from './SplitPayment';
@@ -24,6 +25,9 @@ export interface PaymentScreenProps {
     /** A server id: the order screen never opens payment for an order that exists only in the offline queue. */
     orderId: OrderRef;
     initialMode?: 'single' | 'split';
+    /** Where the in-progress plan (mode, split, leg keys) is kept so leaving the screen never loses it. Optional: memory only without it. */
+    plans?: PaymentPlans;
+    ownerKey?: string | null;
     /** Back to the order (nothing is lost: confirmed legs stay on the server). */
     onClose: () => void;
     /** "Liberar mesa y volver": the server already freed the table on full payment; refresh the lists and leave. */
@@ -49,14 +53,20 @@ const num = (v: unknown) => Number(v) || 0;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const NOT_SYNCED = 'El pedido aún se está sincronizando; cobrar requiere conexión.';
 
+type Meta = Pick<ChargeMeta, 'allIds' | 'changeOf' | 'methodOf' | 'plan'> & { mode: PaymentMode; payable: number };
+
 /** The cashier's payment screen (spec 7.3.1). Only the cashier (payments.process + invoices.issue) gets here. */
-export default function PaymentScreen({ api, user, orderId, initialMode = 'single', onClose, onFinished }: PaymentScreenProps) {
+export default function PaymentScreen({ api, user, orderId, initialMode = 'single', plans, ownerKey = null, onClose, onFinished }: PaymentScreenProps) {
+    const canSplit = can(user, 'bills.split');
     const [loaded, setLoaded] = useState<Loaded | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [mode, setMode] = useState<PaymentMode>(initialMode);
+    const [mode, setMode] = useState<PaymentMode>(initialMode === 'split' && !canSplit ? 'single' : initialMode);
     const [payable, setPayable] = useState(0);
     const [paid, setPaid] = useState<string[]>([]);
+    const [pending, setPending] = useState<string[]>([]);
     const [attempted, setAttempted] = useState(false);
+    const [resumed, setResumed] = useState<{ mode: PaymentMode; plan: unknown } | null>(null);
+    const [epoch, setEpoch] = useState(0);
     const [frozen, setFrozen] = useState(false);
     const [customer, setCustomer] = useState<FiscalCustomer | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -65,7 +75,8 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
     const flowRef = useRef<PaymentFlow | null>(null);
     const busyRef = useRef(false);
     const alive = useRef(true);
-    const metaRef = useRef<ChargeMeta | null>(null);
+    const metaRef = useRef<Meta | null>(null);
+    const initialTip = useRef(0);
     const id = Number(orderId);
 
     const allowed = can(user, 'payments.process') && can(user, 'invoices.issue');
@@ -86,26 +97,64 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         return { order, lines: normalizeServerLines(order), methods, shiftOk: hasUsableCashShift(shift, branchId), tipRate, remaining: num((summary as Json).remaining) };
     }, [api, id, user.branchId]);
 
+    /** Every key change goes to the store together with the mode screen's own state, before the request leaves. */
+    const persist = useCallback(
+        async (state: FlowState) => {
+            const meta = metaRef.current;
+            if (!plans || !ownerKey || !meta) return;
+            await plans.save(ownerKey, { orderId: id, mode: meta.mode, payable: meta.payable, plan: meta.plan, allIds: meta.allIds, changeOf: meta.changeOf, methodOf: meta.methodOf, legs: state.legs, confirmed: state.confirmed });
+        },
+        [plans, ownerKey, id],
+    );
+
+    const receiptOf = (order: Json, outcome: { fiscalInvoice?: Json | null; fiscalInvoiceError?: string | null } | null, meta: Pick<Meta, 'allIds' | 'changeOf' | 'methodOf'>): DoneData => ({
+        tableLabel: order.table?.number ? `Mesa ${order.table.number}` : 'Mesa',
+        invoiceNumber: outcome?.fiscalInvoice?.invoiceNumber ? String(outcome.fiscalInvoice.invoiceNumber) : order.invoiceNumber ? String(order.invoiceNumber) : null,
+        invoiceError: outcome?.fiscalInvoiceError ?? null,
+        methods: [...new Set(meta.allIds.map((leg) => meta.methodOf[leg]).filter(Boolean))].join(' + '),
+        change: meta.allIds.reduce((n, leg) => n + (meta.changeOf[leg] ?? 0), 0),
+    });
+
     useEffect(() => {
         alive.current = true;
         if (!allowed) return undefined;
-        fetchAll().then(
-            (data) => {
-                if (!alive.current) return;
-                const preinvoiced = !!(data.order.preInvoicedAt || data.order.invoiceNumber);
-                flowRef.current = createPaymentFlow({ api, orderId: id, preinvoiced });
-                setFrozen(preinvoiced);
-                setPayable(data.remaining);
-                setLoaded(data);
-            },
-            (cause) => alive.current && setLoadError(getApiErrorMessage(cause)),
-        );
+        (async () => {
+            const data = await fetchAll();
+            const row = plans && ownerKey ? await plans.load(ownerKey, id) : null;
+            if (!alive.current) return;
+            const preinvoiced = !!(data.order.preInvoicedAt || data.order.invoiceNumber);
+            const flow = createPaymentFlow({ api, orderId: id, preinvoiced, resume: row ? { legs: row.legs, confirmed: row.confirmed } : undefined, persist });
+            flowRef.current = flow;
+            initialTip.current = num(data.order.tipAmount);
+            setFrozen(preinvoiced);
+            setPayable(data.remaining);
+            if (row) {
+                metaRef.current = { mode: row.mode, payable: row.payable, plan: row.plan, allIds: row.allIds, changeOf: row.changeOf, methodOf: row.methodOf };
+                // legs sent before whose answer was lost: the server's payments say which of them it applied
+                await flow.markConfirmed(matchPaidLegs(row.legs, (data.order.payments as Json[]) ?? []));
+                if (row.allIds.every((leg) => flow.isConfirmed(leg))) {
+                    await plans!.clear(ownerKey!, id);
+                    setDone(receiptOf(data.order, null, row));
+                } else {
+                    setMode(row.mode);
+                    setPayable(row.payable);
+                    setPaid(flow.confirmedIds());
+                    setPending(pendingOf(flow));
+                    setAttempted(true);
+                    setResumed({ mode: row.mode, plan: row.plan });
+                }
+            }
+            setLoaded(data);
+        })().catch((cause) => alive.current && setLoadError(getApiErrorMessage(cause)));
         return () => {
             alive.current = false;
         };
-    }, [allowed, fetchAll, api, id]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- loads once per order
+    }, [allowed, fetchAll, api, id, plans, ownerKey]);
 
     if (!allowed) return null; // defence in depth: the entry points already hide Cobrar
+
+    const pendingOf = (flow: PaymentFlow) => Object.keys(flow.state().legs).filter((leg) => !flow.isConfirmed(leg));
 
     /** One server operation at a time: a double tap on Cobrar (or on the tip) never repeats it. */
     async function exclusive(action: () => Promise<void>): Promise<void> {
@@ -133,11 +182,11 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         }
     }
 
-    const refresh = async () => {
+    const refresh = async (force = false) => {
         const data = await fetchAll();
         if (!alive.current) return;
         setLoaded(data);
-        if (paid.length === 0) setPayable(data.remaining);
+        if (force || (paid.length === 0 && !attempted)) setPayable(data.remaining);
     };
 
     const toggleTip = (data: Loaded) =>
@@ -152,11 +201,13 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
     const charge: ChargeFn = (legs, meta) =>
         exclusive(async () => {
             const flow = flowRef.current!;
-            metaRef.current = meta;
+            const legIds = legs.map((l) => l.id);
+            metaRef.current = { mode, payable, plan: meta.plan, allIds: meta.allIds, changeOf: meta.changeOf, methodOf: meta.methodOf };
             await flow.prepare({ customer });
             setFrozen(true);
-            if (flow.confirmedIds().length === 0) {
-                // The server's remaining is the authority: if the order moved under the cashier, stop before charging anything.
+            // A leg already sent once is replayed first, with its own key and body: if the server applied it, the answer is the
+            // receipt, and the remaining balance is no longer the plan's total. The guard is only for legs never attempted.
+            if (!flow.hasPending(legIds) && flow.confirmedIds().length === 0) {
                 const remaining = await flow.remaining();
                 if (moneyToCents(remaining) !== moneyToCents(meta.expected)) {
                     setPayable(remaining);
@@ -168,19 +219,51 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
             try {
                 outcome = await flow.pay(legs);
             } finally {
-                if (alive.current) setPaid(flow.confirmedIds());
+                if (alive.current) {
+                    setPaid(flow.confirmedIds());
+                    const stillPending = pendingOf(flow);
+                    setPending(stillPending);
+                    // a definitive rejection leaves nothing behind: the plan can be edited again
+                    if (flow.confirmedIds().length === 0 && stillPending.length === 0) setAttempted(false);
+                }
             }
             if (alive.current && meta.allIds.every((leg) => flow.isConfirmed(leg))) {
-                const order = loaded!.order;
-                setDone({
-                    tableLabel: order.table?.number ? `Mesa ${order.table.number}` : 'Mesa',
-                    invoiceNumber: outcome.fiscalInvoice?.invoiceNumber ? String(outcome.fiscalInvoice.invoiceNumber) : null,
-                    invoiceError: outcome.fiscalInvoiceError,
-                    methods: [...new Set(meta.allIds.map((leg) => meta.methodOf[leg]).filter(Boolean))].join(' + '),
-                    change: meta.allIds.reduce((n, leg) => n + (meta.changeOf[leg] ?? 0), 0),
-                });
+                if (plans && ownerKey) await plans.clear(ownerKey, id);
+                setDone(receiptOf(loaded!.order, outcome, meta));
             }
         });
+
+    /** Starts over from what the server says is left; the keys of the discarded plan are dropped. */
+    const discard = () =>
+        void exclusive(async () => {
+            if (plans && ownerKey) await plans.clear(ownerKey, id);
+            const old = flowRef.current;
+            flowRef.current = createPaymentFlow({ api, orderId: id, preinvoiced: old?.isPrepared() ?? false, persist });
+            metaRef.current = null;
+            setPaid([]);
+            setPending([]);
+            setAttempted(false);
+            setResumed(null);
+            setEpoch((n) => n + 1);
+            await refresh(true);
+        });
+
+    /** Leaving before any leg was attempted gives the tip back as it was (the toggle wrote it to the order). */
+    const leave = async () => {
+        const flow = flowRef.current;
+        if (flow && loaded && !busyRef.current && !attempted && !flow.isPrepared() && num(loaded.order.tipAmount) !== initialTip.current && isOnline()) {
+            busyRef.current = true;
+            setBusy(true);
+            try {
+                await flow.setTip(initialTip.current);
+            } catch {
+                /* the tip stays; the ticket shows it */
+            } finally {
+                busyRef.current = false;
+            }
+        }
+        onClose();
+    };
 
     if (loadError) {
         return (
@@ -209,25 +292,33 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
     const { order, lines, methods, shiftOk, tipRate } = loaded;
     const subtotal = lines.reduce((n, l) => n + l.subtotal, 0);
     const tableLabel = order.table?.number ? `Mesa ${order.table.number}` : 'Mesa';
-    const ctx: ModeCtx = { methods, shiftOk, payable, charge, busy, paid, orderId: id, api, lines, onError: setError };
+    const ctx: ModeCtx = { methods, shiftOk, payable, charge, busy, locked: attempted, restored: resumed?.mode === mode ? resumed.plan : null, paid, pending, orderId: id, api, lines, onError: setError };
     const customerName = customer?.customerName || (typeof order.customerName === 'string' && order.customerName ? order.customerName : 'Consumidor final');
     const locked = attempted || busy;
 
     return (
         <main className="pay" data-testid="payment-screen" data-mode={mode}>
             <header className="pay-bar-top" data-fixed={48}>
-                <button type="button" className="btn" aria-label="Volver" disabled={busy} onClick={onClose}>
+                <button type="button" className="btn" aria-label="Volver" disabled={busy} onClick={() => void leave()}>
                     ←
                 </button>
                 <strong className="pay-title">{`Cobrar · ${tableLabel}`}</strong>
                 <div className="pay-modes" role="group" aria-label="Modo de cobro">
-                    {MODES.map((m) => (
+                    {MODES.filter((m) => m.id !== 'split' || canSplit).map((m) => (
                         <button key={m.id} type="button" className="btn" aria-pressed={mode === m.id} disabled={locked && mode !== m.id} onClick={() => setMode(m.id)}>
                             {m.label}
                         </button>
                     ))}
                 </div>
             </header>
+            {resumed && (
+                <p className="muted pay-notice pay-resumed" role="status">
+                    Cobro en curso retomado.{' '}
+                    <button type="button" className="btn" disabled={busy} onClick={discard}>
+                        Descartar plan
+                    </button>
+                </p>
+            )}
             {error && (
                 <p className="error pay-notice" role="alert">
                     {error}
@@ -249,9 +340,9 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
                     onToggleTip={() => toggleTip(loaded)}
                     onCustomer={setCustomer}
                 />
-                {mode === 'single' && <SinglePayment key="single" ctx={ctx} />}
-                {mode === 'mixed' && <MixedPayment key="mixed" ctx={ctx} />}
-                {mode === 'split' && <SplitPayment key="split" ctx={ctx} />}
+                {mode === 'single' && <SinglePayment key={`single-${epoch}`} ctx={ctx} />}
+                {mode === 'mixed' && <MixedPayment key={`mixed-${epoch}`} ctx={ctx} />}
+                {mode === 'split' && <SplitPayment key={`split-${epoch}`} ctx={ctx} />}
             </div>
         </main>
     );

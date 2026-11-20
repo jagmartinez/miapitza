@@ -4,6 +4,7 @@ import { can } from '../../../core/permissions';
 import type { Realtime } from '../../../core/realtime';
 import type { Session } from '../../../core/session';
 import type { Drafts } from '../../../data/drafts';
+import type { PaymentPlans } from '../../../data/paymentPlans';
 import type { OfflineQueue } from '../../../data/offlineQueue';
 import { OfflineIndicator } from '../../../data/OfflineIndicator';
 import { ownerKeyOf } from '../../../data/types';
@@ -45,6 +46,8 @@ export interface OrderScreenProps {
     session: Session;
     api: OrderApi;
     drafts: Drafts;
+    /** In-progress payment plans (keys of attempted legs); without it a plan only lives while the payment screen is open. */
+    plans?: PaymentPlans;
     realtime: Pick<Realtime, 'subscribe'>;
     queue: OfflineQueue | null;
     orderId: OrderRef;
@@ -496,7 +499,7 @@ export function OrderScreen(props: OrderScreenProps) {
             )}
             {payment && (
                 <Suspense fallback={<main className="pay" data-testid="payment-screen"><p className="muted pay-notice">Cargando cobro…</p></main>}>
-                    <PaymentScreen api={api} user={user} orderId={orderId} initialMode={payment} onClose={paymentClosed} onFinished={paymentFinished} />
+                    <PaymentScreen api={api} user={user} orderId={orderId} plans={props.plans} ownerKey={ownerKey} initialMode={payment} onClose={paymentClosed} onFinished={paymentFinished} />
                 </Suspense>
             )}
             {sheet && <ModifierSheet product={sheet.product} groups={sheet.groups} onConfirm={confirmSheet} onClose={() => setSheet(null)} />}

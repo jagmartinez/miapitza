@@ -200,6 +200,28 @@ describe('single payment', () => {
     });
 });
 
+describe('gates and leaving', () => {
+    it('Dividir is not offered without bills.split, and a split entry falls back to a single payment', async () => {
+        setup({ permissions: ['orders.view', 'payments.process', 'invoices.issue'], mode: 'split' });
+        await ready();
+        expect(screen.queryByRole('button', { name: 'Dividir' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Un pago' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('leaving with a tip toggled and nothing charged puts the tip back', async () => {
+        const orderDetail = vi.fn().mockResolvedValueOnce(detail()).mockResolvedValue(detail({ tipAmount: '20.00', total: '250.00' }));
+        const api = makeApi({ orderDetail, paymentSummary: vi.fn().mockResolvedValueOnce({ remaining: 230 }).mockResolvedValue({ remaining: 250 }) });
+        const { onClose } = setup({ api });
+        await ready();
+        click('Propina 10 %');
+        await waitFor(() => expect(api.pricing).toHaveBeenCalledWith(102, { tipAmount: 20 }));
+        await waitFor(() => expect(screen.getByTestId('pay-total')).toHaveTextContent('C$ 250'));
+        click('Volver');
+        await waitFor(() => expect(onClose).toHaveBeenCalled());
+        expect(api.pricing).toHaveBeenLastCalledWith(102, { tipAmount: 0 });
+    });
+});
+
 describe('tip and fiscal customer', () => {
     it('writes the tip on the order and shows the new total', async () => {
         const orderDetail = vi.fn().mockResolvedValueOnce(detail()).mockResolvedValue(detail({ tipAmount: '20.00', total: '250.00' }));

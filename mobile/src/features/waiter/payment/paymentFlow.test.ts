@@ -1,4 +1,4 @@
-import { cashChange, createPaymentFlow, LegError, quickAmounts, type FlowApi, type Leg } from './paymentFlow';
+import { cashChange, createPaymentFlow, evenLegAmounts, LegError, matchPaidLegs, quickAmounts, type FlowApi, type Leg } from './paymentFlow';
 
 const ok = (over: Record<string, unknown> = {}) => ({ data: { id: 1 }, fiscalInvoice: null, fiscalInvoiceError: null, ...over });
 const httpError = (status: number, message = 'x') => Object.assign(new Error(String(status)), { response: { status, data: { message } } });
@@ -57,6 +57,24 @@ describe('createPaymentFlow.prepare', () => {
         expect(api.pricing).toHaveBeenCalledWith(5, { tipAmount: 15 });
         expect(api.updateFiscalCustomer).toHaveBeenCalledTimes(1);
         expect(api.preinvoice).toHaveBeenCalledTimes(2);
+    });
+
+    it('a customer changed after a successful PATCH and a failed preinvoice is sent again before the retry', async () => {
+        const api = makeFlowApi({ preinvoice: vi.fn().mockRejectedValueOnce(networkError()).mockResolvedValue({}) });
+        const flow = createPaymentFlow({ api, orderId: 5 });
+        await expect(flow.prepare({ customer: { customerName: 'Ana' } })).rejects.toBeTruthy();
+        await flow.prepare({ customer: { customerName: 'Beto' } });
+        expect(api.updateFiscalCustomer.mock.calls.map((c) => c[1])).toEqual([{ customerName: 'Ana' }, { customerName: 'Beto' }]);
+        expect(api.preinvoice).toHaveBeenCalledTimes(2);
+        expect(api.updateFiscalCustomer.mock.invocationCallOrder[1]).toBeLessThan(api.preinvoice.mock.invocationCallOrder[1]);
+    });
+
+    it('an unchanged customer is not sent twice', async () => {
+        const api = makeFlowApi({ preinvoice: vi.fn().mockRejectedValueOnce(networkError()).mockResolvedValue({}) });
+        const flow = createPaymentFlow({ api, orderId: 5 });
+        await expect(flow.prepare({ customer: { customerName: 'Ana' } })).rejects.toBeTruthy();
+        await flow.prepare({ customer: { customerName: 'Ana' } });
+        expect(api.updateFiscalCustomer).toHaveBeenCalledTimes(1);
     });
 
     it('skips everything when the order is already pre-invoiced', async () => {
@@ -142,5 +160,55 @@ describe('createPaymentFlow.pay', () => {
         release();
         await Promise.allSettled([first, second]);
         expect(payLeg).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('pending attempts and resume', () => {
+    it('knows which legs hold a retained key after a lost response', async () => {
+        const flow = createPaymentFlow({ api: makeFlowApi({ payLeg: vi.fn().mockRejectedValue(networkError()) }), orderId: 5 });
+        await flow.pay([leg('a', 100)]).catch(() => undefined);
+        expect(flow.hasPending(['a'])).toBe(true);
+        expect(flow.hasPending(['b'])).toBe(false);
+    });
+
+    it('persists the key before the request leaves and resumes with it', async () => {
+        const saved: { legs: Record<string, { key: string }>; confirmed: string[] }[] = [];
+        const payLeg = vi.fn().mockRejectedValueOnce(networkError()).mockResolvedValue(ok());
+        const flow = createPaymentFlow({ api: makeFlowApi({ payLeg }), orderId: 5, persist: (s) => void saved.push(JSON.parse(JSON.stringify(s))) });
+        await flow.pay([leg('a', 100)]).catch(() => undefined);
+        expect(saved[0].legs.a.key).toBe(payLeg.mock.calls[0][1]); // written first
+        const api2 = makeFlowApi();
+        const resumed = createPaymentFlow({ api: api2, orderId: 5, resume: saved[saved.length - 1] as never });
+        expect(resumed.hasPending(['a'])).toBe(true);
+        await resumed.pay([leg('a', 100)]);
+        expect(api2.payLeg.mock.calls[0][1]).toBe(payLeg.mock.calls[0][1]);
+    });
+
+    it('matches attempted legs with the server payments by payer, amount and method, each payment once', () => {
+        const legs = {
+            a: { key: 'k1', fingerprint: 'f', spec: { paymentMethodId: 1, amount: 115, payerName: 'Ana' } },
+            b: { key: 'k2', fingerprint: 'f', spec: { paymentMethodId: 1, amount: 115, payerName: 'Beto' } },
+            c: { key: 'k3', fingerprint: 'f', spec: { paymentMethodId: 2, amount: 10 } },
+        };
+        const payments = [
+            { amount: '115.00', status: 'ACTIVE', paymentMethodId: 1, payerName: ' ana ' },
+            { amount: '115.00', status: 'REVERSED', paymentMethodId: 1, payerName: 'Beto' },
+            { amount: '10.00', status: 'ACTIVE', paymentMethodId: 2, payerName: null },
+        ];
+        expect(matchPaidLegs(legs, payments)).toEqual(['a', 'c']);
+    });
+});
+
+describe('rounding in cents', () => {
+    const sum = (xs: number[]) => xs.reduce((n, x) => n + Math.round(x * 100), 0);
+    it('C$ 100.00 in 3 sums exactly and the last leg takes the remainder', () => {
+        const parts = evenLegAmounts(100, 3);
+        expect(parts).toEqual([33.33, 33.33, 33.34]);
+        expect(sum(parts)).toBe(10000);
+    });
+    it('C$ 0.05 in 2 sums exactly', () => {
+        const parts = evenLegAmounts(0.05, 2);
+        expect(parts).toEqual([0.02, 0.03]);
+        expect(sum(parts)).toBe(5);
     });
 });

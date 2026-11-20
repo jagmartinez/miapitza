@@ -13,9 +13,10 @@ export function firstUsable(methods: ModeCtx['methods'], shiftOk: boolean) {
 
 export function SinglePayment({ ctx }: { ctx: ModeCtx }) {
     const { methods, shiftOk, payable, busy } = ctx;
-    const [methodId, setMethodId] = useState<number | null>(() => firstUsable(methods, shiftOk));
-    const [typed, setTyped] = useState(''); // '' = the exact amount
-    const [reference, setReference] = useState('');
+    const saved = (ctx.restored ?? {}) as { methodId?: number; typed?: string; reference?: string };
+    const [methodId, setMethodId] = useState<number | null>(() => saved.methodId ?? firstUsable(methods, shiftOk));
+    const [typed, setTyped] = useState(saved.typed ?? ''); // '' = the exact amount
+    const [reference, setReference] = useState(saved.reference ?? '');
     const method = methods.find((m) => m.id === methodId) ?? null;
     const cash = isCashType(method?.type);
     const blocked = cash && !shiftOk;
@@ -29,14 +30,14 @@ export function SinglePayment({ ctx }: { ctx: ModeCtx }) {
         if (!method || !canCharge) return;
         void ctx.charge(
             [{ id: SINGLE_LEG_ID, paymentMethodId: method.id, amount: payable, ...(!cash && reference.trim() ? { reference: reference.trim() } : {}) }],
-            { allIds: [SINGLE_LEG_ID], changeOf: { [SINGLE_LEG_ID]: change }, methodOf: { [SINGLE_LEG_ID]: method.name }, expected: payable },
+            { allIds: [SINGLE_LEG_ID], changeOf: { [SINGLE_LEG_ID]: change }, methodOf: { [SINGLE_LEG_ID]: method.name }, expected: payable, plan: { methodId: method.id, typed, reference } },
         );
     };
 
     return (
         <>
             <section className="pay-col pay-center" aria-label="Método y montos">
-                <MethodTiles methods={methods} selected={methodId} onSelect={(id) => { setMethodId(id); setTyped(''); }} />
+                <MethodTiles methods={methods} selected={methodId} disabledIds={ctx.pending.includes(SINGLE_LEG_ID) ? methods.filter((m) => m.id !== methodId).map((m) => m.id) : []} onSelect={(id) => { setMethodId(id); setTyped(''); }} />
                 {cash && !blocked && <QuickAmounts amounts={quick} onPick={(a, i) => setTyped(i === 0 ? '' : String(a))} />}
             </section>
             <section className="pay-col pay-right" aria-label="Recibido">
@@ -62,7 +63,7 @@ export function SinglePayment({ ctx }: { ctx: ModeCtx }) {
                 ) : (
                     <label className="field">
                         {`Referencia${method ? ` de ${method.name.toLowerCase()}` : ''}`}
-                        <input value={reference} maxLength={191} autoComplete="off" onChange={(e) => setReference(e.target.value)} />
+                        <input value={reference} maxLength={191} disabled={ctx.pending.includes(SINGLE_LEG_ID)} autoComplete="off" onChange={(e) => setReference(e.target.value)} />
                     </label>
                 )}
             </section>
