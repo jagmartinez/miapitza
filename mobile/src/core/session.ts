@@ -1,3 +1,5 @@
+import { appEvents } from './events';
+
 /** Shape of `data.user` returned by POST /api/auth/login, pin-login and device-login. */
 export interface LoginUser {
     id: number;
@@ -42,6 +44,9 @@ export function memoryStore(): SecureStore {
  * Android Keystore / iOS Keychain backed storage via
  * @aparajita/capacitor-secure-storage (6.x matches Capacitor 6). Loaded lazily so
  * it stays out of the initial bundle. Tokens are never written to localStorage.
+ * An unreadable value (lost Keystore key, plugin failure) reads as absent so the
+ * app falls back to setup / PIN instead of bricking; writes still throw so the
+ * session store can report them.
  */
 export function nativeSecureStore(): SecureStore {
     const plugin = async () => {
@@ -50,14 +55,22 @@ export function nativeSecureStore(): SecureStore {
     };
     return {
         async get(key) {
-            const value = await (await plugin()).getItem(key);
-            return typeof value === 'string' ? value : null;
+            try {
+                const value = await (await plugin()).getItem(key);
+                return typeof value === 'string' ? value : null;
+            } catch {
+                return null;
+            }
         },
         async set(key, value) {
             await (await plugin()).setItem(key, value);
         },
         async remove(key) {
-            await (await plugin()).removeItem(key);
+            try {
+                await (await plugin()).removeItem(key);
+            } catch {
+                // Nothing readable to remove, or the plugin failed: the key is as good as gone.
+            }
         },
     };
 }
@@ -70,9 +83,47 @@ export type DeviceType = 'SERVICE_TABLET' | 'KITCHEN_TABLET' | 'PERSONAL';
 const DEVICE_TYPES: readonly string[] = ['SERVICE_TABLET', 'KITCHEN_TABLET', 'PERSONAL'];
 
 export function createSessionStore(store: SecureStore) {
+    // Write-through cache: after the first read, the Keystore is only written to.
+    const cache = new Map<string, string | null>();
+
+    /** Non-secret diagnostic: which operation failed, never the value. */
+    const reportFailure = (op: 'read' | 'write' | 'remove', key: string) =>
+        appEvents.emit('storage-error', { op, key });
+
+    async function read(key: string): Promise<string | null> {
+        if (cache.has(key)) return cache.get(key) ?? null;
+        let value: string | null = null;
+        try {
+            value = await store.get(key);
+        } catch {
+            reportFailure('read', key);
+        }
+        // A write that landed while the read was in flight wins.
+        if (!cache.has(key)) cache.set(key, value);
+        return cache.get(key) ?? null;
+    }
+
+    async function write(key: string, value: string): Promise<void> {
+        cache.set(key, value); // memory first: the app keeps working if the Keystore fails
+        try {
+            await store.set(key, value);
+        } catch {
+            reportFailure('write', key);
+        }
+    }
+
+    async function remove(key: string): Promise<void> {
+        cache.set(key, null);
+        try {
+            await store.remove(key);
+        } catch {
+            reportFailure('remove', key);
+        }
+    }
+
     return {
         async load(): Promise<Session | null> {
-            const raw = await store.get(SESSION_KEY);
+            const raw = await read(SESSION_KEY);
             if (!raw) return null;
             try {
                 const parsed = JSON.parse(raw) as Session;
@@ -81,30 +132,19 @@ export function createSessionStore(store: SecureStore) {
                 return null;
             }
         },
-        async save(session: Session): Promise<void> {
-            await store.set(SESSION_KEY, JSON.stringify(session));
-        },
-        /** Drops only the user session; the paired device token survives. */
-        async clear(): Promise<void> {
-            await store.remove(SESSION_KEY);
-        },
-        async deviceToken(): Promise<string | null> {
-            return store.get(DEVICE_TOKEN_KEY);
-        },
-        async saveDeviceToken(token: string): Promise<void> {
-            await store.set(DEVICE_TOKEN_KEY, token);
-        },
+        save: (session: Session): Promise<void> => write(SESSION_KEY, JSON.stringify(session)),
+        /** Drops only the user session; the paired device token survives. The memory copy goes synchronously. */
+        clear: (): Promise<void> => remove(SESSION_KEY),
+        deviceToken: (): Promise<string | null> => read(DEVICE_TOKEN_KEY),
+        saveDeviceToken: (token: string): Promise<void> => write(DEVICE_TOKEN_KEY, token),
         async deviceType(): Promise<DeviceType | null> {
-            const value = await store.get(DEVICE_TYPE_KEY);
+            const value = await read(DEVICE_TYPE_KEY);
             return value && DEVICE_TYPES.includes(value) ? (value as DeviceType) : null;
         },
-        async saveDeviceType(type: DeviceType): Promise<void> {
-            await store.set(DEVICE_TYPE_KEY, type);
-        },
+        saveDeviceType: (type: DeviceType): Promise<void> => write(DEVICE_TYPE_KEY, type),
         /** Unpairs the device (revoked or reset): token and type go together. */
         async clearDevice(): Promise<void> {
-            await store.remove(DEVICE_TOKEN_KEY);
-            await store.remove(DEVICE_TYPE_KEY);
+            await Promise.all([remove(DEVICE_TOKEN_KEY), remove(DEVICE_TYPE_KEY)]);
         },
     };
 }

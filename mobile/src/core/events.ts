@@ -1,4 +1,4 @@
-export type AppEvent = 'session-expired' | 'realtime-status';
+export type AppEvent = 'session-expired' | 'realtime-status' | 'storage-error';
 
 type Listener = (payload?: unknown) => void;
 
