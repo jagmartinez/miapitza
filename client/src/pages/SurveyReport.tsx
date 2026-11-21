@@ -3,7 +3,7 @@ import { Building2, Calendar, MessageSquare } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import Select from '../components/Select';
 import { branchesAPI, surveysAPI } from '../services/api';
-import { monthRange, type SurveyRanking, type SurveyResponseRow, type SurveyResponsesPage, type SurveySummary } from '../utils/surveyReport';
+import { monthRange, rankingMonth, type SurveyRanking, type SurveyResponseRow, type SurveyResponsesPage, type SurveySummary } from '../utils/surveyReport';
 import type { Branch } from '../types';
 import SurveyReportView from './survey/SurveyReportView';
 
@@ -21,6 +21,8 @@ export default function SurveyReport() {
     const [page, setPage] = useState(1);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [responsesError, setResponsesError] = useState<string | null>(null);
+    const [retryTick, setRetryTick] = useState(0);
 
     useEffect(() => {
         branchesAPI.getAll().then((r) => setBranches(r.data.data || [])).catch(() => setBranches([]));
@@ -34,37 +36,49 @@ export default function SurveyReport() {
         return p;
     }, [filters]);
 
-    // Summary, ranking and alerts follow the filters; the table also follows the toggle and page.
+    const messageOf = (e: unknown, fallback: string) =>
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message || (e as Error)?.message || fallback;
+
+    // Summary, ranking and alerts follow the filters only. The `cancelled` flag drops out-of-order responses.
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        const base = range();
-        const month = (filters.dateTo || filters.dateFrom).slice(0, 7);
+        const month = rankingMonth(filters);
         Promise.all([
-            surveysAPI.summary(base),
+            surveysAPI.summary(range()),
             surveysAPI.ranking({ ...(filters.branchId ? { branchId: filters.branchId } : {}), ...(month ? { month } : {}) }),
-            surveysAPI.responses({ ...base, detractorsOnly: true, pageSize: 50 }),
+            surveysAPI.responses({ ...range(), detractorsOnly: true, pageSize: 50 }),
         ]).then(([s, r, a]) => {
             if (cancelled) return;
             setSummary(s.data.data);
             setRanking(r.data.data);
             setAlerts(a.data.data.items);
-        }).catch((e: { response?: { data?: { message?: string } }; message?: string }) => {
-            if (!cancelled) setError(e.response?.data?.message || e.message || 'Error al cargar las encuestas');
+        }).catch((e) => {
+            if (cancelled) return;
+            setSummary(null);
+            setRanking(null);
+            setAlerts([]);
+            setError(messageOf(e, 'Error al cargar las encuestas'));
         }).finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [range, filters.branchId, filters.dateFrom, filters.dateTo]);
+    }, [range, filters]);
 
     useEffect(() => {
         let cancelled = false;
+        setResponsesError(null);
         surveysAPI.responses({ ...range(), page, pageSize: PAGE_SIZE, ...(detractorsOnly ? { detractorsOnly: true } : {}) })
             .then((r) => { if (!cancelled) setResponses(r.data.data); })
-            .catch(() => undefined);
+            .catch((e) => {
+                if (cancelled) return;
+                setResponses({ items: [], total: 0, page, pageSize: PAGE_SIZE });
+                setResponsesError(messageOf(e, 'Error al cargar las respuestas'));
+            });
         return () => { cancelled = true; };
-    }, [range, page, detractorsOnly]);
+    }, [range, page, detractorsOnly, retryTick]);
 
-    useEffect(() => { setPage(1); }, [filters, detractorsOnly]);
+    const changeFilters = (next: typeof filters) => { setPage(1); setFilters(next); };
+    const toggleDetractors = (value: boolean) => { setPage(1); setDetractorsOnly(value); };
 
     return (
         <div className="page-wrapper">
@@ -77,9 +91,9 @@ export default function SurveyReport() {
                 <div className="filter-field filter-field-wide">
                     <label className="filter-field-label"><Calendar size={12} /> Rango de Fechas</label>
                     <div className="filter-field-date-range">
-                        <input type="date" className="filter-input" aria-label="Desde" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} />
+                        <input type="date" className="filter-input" aria-label="Desde" value={filters.dateFrom} onChange={(e) => changeFilters({ ...filters, dateFrom: e.target.value })} />
                         <span className="filter-range-sep">→</span>
-                        <input type="date" className="filter-input" aria-label="Hasta" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} />
+                        <input type="date" className="filter-input" aria-label="Hasta" value={filters.dateTo} onChange={(e) => changeFilters({ ...filters, dateTo: e.target.value })} />
                     </div>
                 </div>
                 <div className="filter-field">
@@ -87,24 +101,28 @@ export default function SurveyReport() {
                         label={<><Building2 size={12} /> Sucursal</>}
                         options={[{ value: '', label: ALL }, ...branches.map((b) => ({ value: String(b.id), label: b.name }))]}
                         value={{ value: filters.branchId, label: filters.branchId ? branches.find((b) => String(b.id) === filters.branchId)?.name || '' : ALL }}
-                        onChange={(opt) => opt && setFilters({ ...filters, branchId: opt.value })}
+                        onChange={(opt) => opt && changeFilters({ ...filters, branchId: opt.value })}
                         isSearchable={false}
                     />
                 </div>
             </div>
             {error && <p className="state-error" role="alert">{error}</p>}
-            {!summary && loading && <p className="state-placeholder">Cargando...</p>}
-            {summary && (
+            {loading && <p className="state-placeholder" role="status">Cargando...</p>}
+            {summary && !error && (
+                <div className={loading ? 'survey-loading' : undefined}>
                 <SurveyReportView
                     summary={summary}
                     ranking={ranking}
                     alerts={alerts}
                     responses={responses}
                     detractorsOnly={detractorsOnly}
-                    onToggleDetractors={setDetractorsOnly}
+                    onToggleDetractors={toggleDetractors}
                     onPageChange={setPage}
                     showBranches={!filters.branchId}
+                    responsesError={responsesError}
+                    onRetryResponses={() => setRetryTick((t) => t + 1)}
                 />
+                </div>
             )}
         </div>
     );

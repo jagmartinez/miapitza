@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    areaAverages, bestWaiter, detractorAlerts, ineligibleLabel, monthRange, npsTone, sortByResponses, trendPoints,
+    areaAverages, bestWaiter, detractorAlerts, ineligibleLabel, monthLabel, monthRange, npsTone, rankingMonth, trendPoints,
     type SurveyResponseRow,
 } from './surveyReport';
 
@@ -40,16 +40,15 @@ describe('surveyReport helpers', () => {
         expect(ineligibleLabel({ userId: 2, name: 'Luis', responses: 4 }, 10)).toBe('Sin opiniones suficientes (4/10)');
     });
 
-    it('sorts waiters by responses descending', () => {
-        const sorted = sortByResponses([
-            { userId: 1, name: 'A', responses: 2, nps: 0, avgWaiter: null },
-            { userId: 2, name: 'B', responses: 9, nps: 0, avgWaiter: null },
-        ]);
-        expect(sorted.map((w) => w.userId)).toEqual([2, 1]);
-    });
-
     it('alerts only detractors (nps <= 6) with contact phone first', () => {
         const alerts = detractorAlerts([row(1, 3), row(2, 9), row(3, 6, { contactPhone: '555-1234' }), row(4, 0, { contactPhone: '555-9' })]);
         expect(alerts.map((a) => a.id)).toEqual([4, 3, 1]);
+    });
+
+    it('derives the ranking month from the period and labels it', () => {
+        expect(rankingMonth({ dateFrom: '2026-10-01', dateTo: '2026-11-20' })).toBe('2026-11');
+        expect(rankingMonth({ dateFrom: '2026-10-01', dateTo: '' })).toBe('2026-10');
+        expect(rankingMonth({ dateFrom: '', dateTo: '' })).toBeUndefined();
+        expect(monthLabel('2026-11')).toBe('noviembre 2026');
     });
 });

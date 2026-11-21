@@ -47,8 +47,8 @@ describe('SurveyReportView', () => {
 
     it('highlights the best waiter of the month and lists ineligible ones with N/10', () => {
         const out = html(base());
-        expect(out).toContain('Mejor mesero del mes');
-        expect(out).toMatch(/Mejor mesero del mes[\s\S]*Luis/);
+        expect(out).toContain('Mejor mesero de noviembre 2026');
+        expect(out).toMatch(/Mejor mesero de noviembre 2026[\s\S]*Luis/);
         expect(out).toContain('Sin opiniones suficientes (5/10)');
     });
 
@@ -58,11 +58,17 @@ describe('SurveyReportView', () => {
         expect(out).toContain('aria-label="Tendencia semanal de NPS"');
     });
 
-    it('lists the by-waiter table sorted by responses', () => {
+    it('shows month in the heading, no duplicate by-waiter table, and NPS in the ranking', () => {
         const out = html(base());
-        const table = out.slice(out.indexOf('aria-label="Resultados por mesero"'));
-        expect(table.indexOf('Luis')).toBeGreaterThan(-1);
-        expect(table.indexOf('Luis')).toBeLessThan(table.indexOf('Ana'));
+        expect(out).toContain('Mejor mesero de noviembre 2026');
+        expect(out).not.toContain('Resultados por mesero');
+        expect(out.slice(out.indexOf('aria-label="Ranking de meseros"'))).toContain('>NPS<');
+    });
+
+    it('shows an inline error with Reintentar when the responses table failed', () => {
+        const out = html({ ...base(), responsesError: 'Falló', onRetryResponses: () => undefined });
+        expect(out).toContain('Falló');
+        expect(out).toContain('Reintentar');
     });
 
     it('shows detractor alerts with the contact phone and the Solo detractores toggle', () => {

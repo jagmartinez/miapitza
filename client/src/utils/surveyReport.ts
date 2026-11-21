@@ -104,16 +104,24 @@ export function ineligibleLabel(w: { responses: number; userId?: number; name?: 
     return `Sin opiniones suficientes (${w.responses}/${min})`;
 }
 
-export function sortByResponses(rows: SurveyWaiterRow[]) {
-    return [...rows].sort((a, b) => b.responses - a.responses);
-}
-
 /** Detractors (nps <= 6); the ones the customer left a phone for come first so they can be called back. */
 export function detractorAlerts(items: SurveyResponseRow[], limit = 6) {
     return items
         .filter((r) => r.nps <= 6)
         .sort((a, b) => Number(Boolean(b.contactPhone)) - Number(Boolean(a.contactPhone)) || (a.createdAt < b.createdAt ? 1 : -1))
         .slice(0, limit);
+}
+
+/** Month (YYYY-MM) the ranking covers: the month of the period end, else of its start. */
+export function rankingMonth(f: { dateFrom?: string; dateTo?: string }): string | undefined {
+    const m = (f.dateTo || f.dateFrom || '').slice(0, 7);
+    return /^\d{4}-\d{2}$/.test(m) ? m : undefined;
+}
+
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+export function monthLabel(month: string) {
+    const [y, m] = month.split('-');
+    return `${MONTHS[Number(m) - 1] ?? m} ${y}`;
 }
 
 export const fmtAvg = (v: number | null) => (v === null ? '—' : v.toFixed(1));

@@ -2,8 +2,8 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { Award, Phone, Star } from 'lucide-react';
 import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
 import {
-    areaAverages, bestWaiter, detractorAlerts, fmtAvg, fmtNps, ineligibleLabel, npsTone, sortByResponses, trendPoints,
-    type SurveyRanking, type SurveyRankingItem, type SurveyResponseRow, type SurveyResponsesPage, type SurveySummary, type SurveyWaiterRow,
+    areaAverages, bestWaiter, detractorAlerts, fmtAvg, fmtNps, ineligibleLabel, monthLabel, npsTone, trendPoints,
+    type SurveyRanking, type SurveyRankingItem, type SurveyResponseRow, type SurveyResponsesPage, type SurveySummary,
 } from '../../utils/surveyReport';
 import './SurveyReport.css';
 
@@ -16,16 +16,11 @@ export interface SurveyReportViewProps {
     onToggleDetractors: (value: boolean) => void;
     onPageChange: (page: number) => void;
     showBranches: boolean;
+    responsesError?: string | null;
+    onRetryResponses?: () => void;
 }
 
 const dateTime = (iso: string) => new Date(iso).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' });
-
-const waiterColumns: CatalogColumn<SurveyWaiterRow>[] = [
-    { key: 'name', header: 'Mesero', render: (r) => r.name || '—' },
-    { key: 'responses', header: 'Respuestas', align: 'right', render: (r) => r.responses },
-    { key: 'avg', header: 'Atención (1-5)', align: 'right', render: (r) => fmtAvg(r.avgWaiter) },
-    { key: 'nps', header: 'NPS', align: 'right', render: (r) => fmtNps(r.nps) },
-];
 
 const rankingColumns: CatalogColumn<SurveyRankingItem>[] = [
     { key: 'rank', header: '#', render: (r) => r.rank },
@@ -33,6 +28,7 @@ const rankingColumns: CatalogColumn<SurveyRankingItem>[] = [
     { key: 'branch', header: 'Sucursal', render: (r) => r.branchName ?? '—' },
     { key: 'responses', header: 'Respuestas', align: 'right', render: (r) => r.responses },
     { key: 'avg', header: 'Atención (1-5)', align: 'right', render: (r) => fmtAvg(r.attentionAvg) },
+    { key: 'nps', header: 'NPS', align: 'right', render: (r) => fmtNps(r.nps) },
     { key: 'score', header: 'Puntaje', align: 'right', render: (r) => r.score.toFixed(2) },
 ];
 
@@ -47,7 +43,7 @@ const responseColumns: CatalogColumn<SurveyResponseRow>[] = [
 ];
 
 export default function SurveyReportView({
-    summary, ranking, alerts, responses, detractorsOnly, onToggleDetractors, onPageChange, showBranches,
+    summary, ranking, alerts, responses, detractorsOnly, onToggleDetractors, onPageChange, showBranches, responsesError, onRetryResponses,
 }: SurveyReportViewProps) {
     const tone = npsTone(summary.nps);
     const areas = areaAverages(summary);
@@ -113,7 +109,7 @@ export default function SurveyReportView({
                     </div>
 
                     <section className="survey-section">
-                        <h2>Mejor mesero del mes</h2>
+                        <h2>Mejor mesero de {ranking ? monthLabel(ranking.month) : 'el mes'}</h2>
                         {best ? (
                             <p className="survey-best">
                                 <Award size={22} aria-hidden="true" />
@@ -151,7 +147,7 @@ export default function SurveyReportView({
                     )}
 
                     <section className="survey-section">
-                        <h2>Alertas de detractores</h2>
+                        <h2>Alertas de detractores <small className="survey-muted">(últimos con teléfono primero)</small></h2>
                         {alertRows.length === 0 ? (
                             <p className="survey-muted">Sin detractores en el período.</p>
                         ) : (
@@ -160,16 +156,11 @@ export default function SurveyReportView({
                                     <li key={r.id}>
                                         <span className="survey-nps survey-nps-detractor">{r.nps}</span>
                                         <span className="survey-alert-main">{r.comment ?? 'Sin comentario'}<small>{r.waiterName} · {r.branchName} · {dateTime(r.createdAt)}</small></span>
-                                        {r.contactPhone && <span className="survey-alert-phone"><Phone size={14} aria-hidden="true" /> {r.contactPhone}</span>}
+                                        {r.contactPhone && <span className="survey-alert-phone"><Phone size={14} aria-hidden="true" /> <a href={`tel:${r.contactPhone}`}>{r.contactPhone}</a></span>}
                                     </li>
                                 ))}
                             </ul>
                         )}
-                    </section>
-
-                    <section className="survey-section">
-                        <h2>Resultados por mesero</h2>
-                        <CatalogTable<SurveyWaiterRow> columns={waiterColumns} rows={sortByResponses(summary.byWaiter)} rowKey={(r) => r.userId} ariaLabel="Resultados por mesero" />
                     </section>
                 </>
             )}
@@ -182,6 +173,11 @@ export default function SurveyReportView({
                         Solo detractores
                     </label>
                 </div>
+                {responsesError && (
+                    <p className="state-error" role="alert">
+                        {responsesError} <button type="button" className="survey-retry" onClick={onRetryResponses}>Reintentar</button>
+                    </p>
+                )}
                 <CatalogTable<SurveyResponseRow>
                     columns={responseColumns}
                     rows={responses.items}
