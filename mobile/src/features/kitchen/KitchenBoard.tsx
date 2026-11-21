@@ -8,6 +8,7 @@ import { batchKey, type KitchenBatch } from './kitchenTypes';
 import { ReadyToasts, type ActionFailure } from './ReadyToasts';
 import { mergeRecent, RecentSheet } from './RecentSheet';
 import { useKitchenQueue, type KitchenRealtime } from './useKitchenQueue';
+import { useKioskExit } from './useKioskExit';
 import { useReadyCommit } from './useReadyCommit';
 import './kitchen.css';
 
@@ -39,6 +40,7 @@ interface Props {
 }
 
 export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: Props) {
+    const kioskExit = useKioskExit();
     const queue = useKitchenQueue(api, realtime);
     const commit = useReadyCommit(api, undoMs === undefined ? {} : { undoMs });
     const [now, setNow] = useState(() => Date.now());
@@ -135,7 +137,7 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
     return (
         <div className="kitchen">
             <header className="kitchen-bar">
-                <strong className="kitchen-title">Cocina</strong>
+                <strong className="kitchen-title" {...kioskExit}>Cocina</strong>
                 <span className="kitchen-clock">{clock(now)}</span>
                 <span className={`kitchen-conn ${dot}`} role="status">
                     <i aria-hidden="true" />

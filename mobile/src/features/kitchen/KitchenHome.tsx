@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { appEvents } from '../../core/events';
+import { enterKiosk, exitKiosk } from '../../core/kiosk';
 import { kitchenAuthStatus, type KitchenAuthStatus } from '../../core/kitchenAuth';
 import { realtimeStatus } from '../../core/realtime';
 import { can } from '../../core/permissions';
@@ -32,6 +33,13 @@ export function KitchenHome(props: { session: Session | null; services: Services
         return () => {
             offAuth();
             offRt();
+        };
+    }, []);
+
+    useEffect(() => {
+        void enterKiosk();
+        return () => {
+            void exitKiosk();
         };
     }, []);
 

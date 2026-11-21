@@ -1,8 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
 import { KitchenHome } from './KitchenHome';
+
+const kiosk = vi.hoisted(() => ({ enterKiosk: vi.fn(async () => {}), exitKiosk: vi.fn(async () => {}) }));
+vi.mock('../../core/kiosk', () => kiosk);
 
 const services = () =>
     ({
@@ -32,5 +35,37 @@ describe('KitchenHome permissions', () => {
     it('with kds.manage the button is enabled', async () => {
         render(<KitchenHome session={session(['kds.manage'])} services={services()} />);
         expect(await screen.findByRole('button', { name: 'Iniciar' })).toBeEnabled();
+    });
+});
+
+describe('KitchenHome kiosk', () => {
+    beforeEach(() => {
+        kiosk.enterKiosk.mockClear();
+        kiosk.exitKiosk.mockClear();
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('enterKiosk on mount, exitKiosk on unmount', async () => {
+        const { unmount } = render(<KitchenHome session={session([])} services={services()} />);
+        await screen.findByRole('button', { name: 'Iniciar' });
+        expect(kiosk.enterKiosk).toHaveBeenCalledTimes(1);
+        expect(kiosk.exitKiosk).not.toHaveBeenCalled();
+        unmount();
+        expect(kiosk.exitKiosk).toHaveBeenCalledTimes(1);
+    });
+
+    it('long-press 5 s on title asks to exit', async () => {
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        render(<KitchenHome session={session([])} services={services()} />);
+        await screen.findByRole('button', { name: 'Iniciar' });
+        vi.useFakeTimers();
+        try {
+            fireEvent.pointerDown(screen.getByText('Cocina'));
+            act(() => { vi.advanceTimersByTime(5_000); });
+        } finally {
+            vi.useRealTimers();
+        }
+        expect(confirm).toHaveBeenCalledWith('¿Salir del modo kiosco?');
+        expect(kiosk.exitKiosk).toHaveBeenCalledTimes(1);
     });
 });
