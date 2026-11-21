@@ -7,6 +7,7 @@ let currentUser: Record<string, unknown> = {};
 jest.mock('../../middlewares/auth', () => ({
     authMiddleware: (req: { user?: unknown }, _res: unknown, next: () => void) => { req.user = currentUser; next(); },
     extractAuthToken: () => 'session-token',
+    requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 const prisma = require('../../utils/prisma').default as typeof import('../../utils/prisma').default;
@@ -122,5 +123,14 @@ describe('POST /surveys', () => {
         expect(data.comment).toBeNull();
         expect(data.contactPhone).toBeNull();
         expect(data.waiterRating).toBeNull();
+    });
+
+    it('trims before length and pattern checks (padded comment, whitespace-only phone)', async () => {
+        const { create } = setup();
+        await post({ comment: `   ${'x'.repeat(500)}   `, contactPhone: '   ' }).expect(201);
+        const data = (create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+        expect(data.comment).toBe('x'.repeat(500));
+        expect(data.contactPhone).toBeNull();
+        await post({ contactPhone: '  555-123-4567  ' }).expect(201);
     });
 });
