@@ -12,7 +12,7 @@ function build() {
     const services = {
         sessions,
         http: api.http,
-        realtime: { close: vi.fn(), reconnect: vi.fn(), connect: vi.fn(), subscribe: vi.fn() },
+        realtime: { close: vi.fn(), reconnect: vi.fn(), connect: vi.fn(), subscribe: vi.fn(() => () => {}) },
         deviceApi: { cancel: vi.fn().mockResolvedValue(undefined) },
         pinApi: {
             roster: vi.fn().mockResolvedValue([{ id: 7, name: 'Ana Perez', initials: 'AP', color: null }]),

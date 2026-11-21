@@ -23,6 +23,7 @@ export interface KitchenBatch {
     customerName?: string | null;
     createdAt: string;
     items: KitchenLine[];
+    kitchenBatchSequence?: number | null;
     kitchenReadyAt?: string | null;
     kitchenReleasedAt?: string | null;
 }

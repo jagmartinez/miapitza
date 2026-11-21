@@ -1,0 +1,152 @@
+/* KDS board. Tokens only; landscape tablet; horizontal row of equal-height cards. */
+.kitchen {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.kitchen-bar {
+    flex: none;
+    min-height: 56px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 4px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+.kitchen-title { font-size: 20px; }
+.kitchen-clock { font-variant-numeric: tabular-nums; color: var(--muted); }
+.kitchen-spacer { flex: 1; }
+.kitchen-conn { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.kitchen-conn i { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.kitchen-conn.is-online i { background: #5CB85C; }
+.kitchen-conn.is-reconnecting i { background: var(--ready); }
+.kitchen-conn.is-offline i { background: var(--alert); }
+
+.kitchen-btn {
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font: inherit;
+}
+
+.kitchen-error {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(201, 107, 102, 0.18);
+    border-bottom: 1px solid var(--alert);
+}
+.kitchen-msg { margin: 0; padding: 32px 16px; text-align: center; color: var(--muted); font-size: 18px; }
+
+.kitchen-row {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.kitchen-card {
+    flex: none;
+    width: 260px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+.kitchen-card.is-ready { outline: 2px solid var(--ready); outline-offset: -2px; }
+.kitchen-card.time-warning { border-color: var(--alert); }
+.kitchen-card.time-urgent { border-color: var(--alert); }
+.kitchen-card.time-urgent .kitchen-card-head { background: rgba(201, 107, 102, 0.35); }
+
+.kitchen-card-head {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+}
+.kitchen-card-table { font-size: 22px; }
+.kitchen-card-waiter { color: var(--muted); }
+.kitchen-card-min { margin-left: auto; font-variant-numeric: tabular-nums; }
+.kitchen-card-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); }
+
+.kitchen-card-lines { flex: 1; min-height: 0; margin: 0; padding: 8px 12px; list-style: none; overflow-y: auto; }
+.kitchen-card-lines li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.kitchen-line-name { font-size: 18px; }
+.kitchen-line-mod { padding-left: 14px; color: var(--muted); font-size: 14px; }
+.kitchen-line-note { padding-left: 14px; color: var(--ready); font-size: 14px; }
+
+.kitchen-card-foot { flex: none; display: flex; flex-direction: column; }
+.kitchen-action {
+    width: 100%;
+    min-height: 64px;
+    border: 0;
+    border-top: 1px solid var(--border);
+    background: var(--ready);
+    color: #1A1405;
+    font: inherit;
+    font-size: 20px;
+    font-weight: 600;
+}
+.kitchen-action:disabled { background: var(--surface-2); color: var(--muted); }
+.kitchen-noperm { padding: 6px 12px; font-size: 13px; color: var(--muted); text-align: center; }
+
+.kitchen-toasts {
+    position: absolute;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(520px, calc(100% - 32px));
+}
+.kitchen-toast {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--ready);
+}
+.kitchen-toast.is-failure { border-color: var(--alert); }
+.kitchen-toast button {
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+
+.kitchen-recent { max-height: 80%; overflow-y: auto; }
+.kitchen-recent-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.kitchen-recent ul { margin: 0; padding: 0; list-style: none; }
+.kitchen-recent li { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.kitchen-recent li strong { min-width: 80px; }
