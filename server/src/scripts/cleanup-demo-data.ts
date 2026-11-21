@@ -657,6 +657,7 @@ async function applyCleanup(inventory: CleanupInventory, stockPlans: StockPlan[]
         if (orderItemIds.length) await tx.orderItemModifier.deleteMany({ where: { orderItemId: { in: orderItemIds } } });
         if (orderIds.length) await tx.pedidosYaOrderSync.deleteMany({ where: { orderId: { in: orderIds }, companyId } });
         if (orderItemIds.length) await tx.orderItem.deleteMany({ where: { id: { in: orderItemIds }, order: { companyId } } });
+        if (orderIds.length) await tx.surveyResponse.deleteMany({ where: { orderId: { in: orderIds }, companyId } });
         if (orderIds.length) await tx.order.deleteMany({ where: { id: { in: orderIds }, companyId } });
 
         if (productionOrderIds.length) {

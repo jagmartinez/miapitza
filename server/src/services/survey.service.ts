@@ -282,8 +282,7 @@ export class SurveyService {
                     attentionAvg: rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0,
                     nps: npsSummary(list.map((r) => r.nps)).nps,
                 };
-            })
-            .filter((r) => r.responses > 0);
+            });
         return { month, ...rankWaiters(inputs, RANKING_PRIOR_WEIGHT, MIN_RANKING_RESPONSES) };
     }
 
@@ -350,7 +349,7 @@ export class SurveyService {
 
         const order = await prisma.order.findFirst({
             where: { id: input.orderId, companyId: actor.companyId },
-            select: { id: true, branchId: true, userId: true, financialStatus: true },
+            select: { id: true, branchId: true, userId: true, financialStatus: true, closedAt: true },
         });
         if (!order) throw new SurveyError('SURVEY_ORDER_NOT_FOUND');
         assertBranchAccess(actor as Parameters<typeof assertBranchAccess>[0], order.branchId);
@@ -367,6 +366,8 @@ export class SurveyService {
                     branchId: order.branchId,
                     orderId: order.id,
                     waiterUserId: order.userId,
+                    // Attribute to the service time, not to a late offline-queue replay.
+                    createdAt: order.closedAt && order.closedAt.getTime() <= Date.now() ? order.closedAt : new Date(),
                     operationalDeviceId: device.id,
                     nps: input.nps,
                     waiterRating: input.waiterRating,

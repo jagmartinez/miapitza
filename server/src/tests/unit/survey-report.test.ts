@@ -250,3 +250,24 @@ describe('route permissions', () => {
         expect(me.slice(0, me.indexOf('\n'))).not.toContain('requirePermission');
     });
 });
+
+describe('ranking with unrated responses', () => {
+    it('lists waiters whose responses carry no waiterRating as ineligible with 0', async () => {
+        setup([
+            ...repeat(10, { nps: 9, waiterRating: 5, waiterUserId: 21, branchId: 1 }),
+            ...repeat(4, { nps: 9, waiterUserId: 22, branchId: 1 }),
+        ]);
+        const res = await request(app).get('/api/v1/surveys/ranking?month=2026-03').expect(200);
+        expect(res.body.data.items.map((i: { userId: number }) => i.userId)).toEqual([21]);
+        expect(res.body.data.ineligible).toEqual([{ userId: 22, name: 'Beto', responses: 0 }]);
+    });
+});
+
+describe('demo cleanup', () => {
+    it('deletes SurveyResponse rows before the orders they reference (FK restrict)', () => {
+        const src = fs.readFileSync(path.resolve(__dirname, '../../scripts/cleanup-demo-data.ts'), 'utf8');
+        const survey = src.indexOf('tx.surveyResponse.deleteMany');
+        expect(survey).toBeGreaterThan(-1);
+        expect(survey).toBeLessThan(src.indexOf('tx.order.deleteMany'));
+    });
+});

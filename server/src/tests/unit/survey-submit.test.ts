@@ -134,3 +134,23 @@ describe('POST /surveys', () => {
         await post({ contactPhone: '  555-123-4567  ' }).expect(201);
     });
 });
+
+describe('POST /surveys attribution time', () => {
+    it('stores createdAt from the order closedAt (late offline replay), falling back to now', async () => {
+        const closedAt = new Date('2026-03-31T23:30:00Z');
+        const { create } = setup({ order: { ...order, closedAt } });
+        await post().expect(201);
+        expect((create.mock.calls[0][0] as { data: { createdAt: Date } }).data.createdAt).toEqual(closedAt);
+        create.mockClear();
+        const c2 = setup().create;
+        const before = Date.now();
+        await post().expect(201);
+        const at = (c2.mock.calls[0][0] as { data: { createdAt: Date } }).data.createdAt.getTime();
+        expect(at).toBeGreaterThanOrEqual(before);
+        // a closedAt in the future is never trusted
+        create.mockClear();
+        setup({ order: { ...order, closedAt: new Date(Date.now() + 86_400_000) } });
+        await post().expect(201);
+        expect((create.mock.calls[0][0] as { data: { createdAt: Date } }).data.createdAt.getTime()).toBeLessThanOrEqual(Date.now());
+    });
+});
