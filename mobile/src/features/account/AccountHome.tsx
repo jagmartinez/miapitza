@@ -9,7 +9,7 @@ import { useToast } from '../../ui/Toast';
 import { useAccountNav, type AccountSection } from './AccountNav';
 import type { HrApi } from './hrApi';
 import { toHrError } from './hrApi';
-import { useAccountSummary, type PendingItem, type RequestCardModel } from './useAccountSummary';
+import { PART_LABELS, useAccountSummary, type PendingItem, type RequestCardModel } from './useAccountSummary';
 import './account-home.css';
 
 interface Props {
@@ -26,7 +26,7 @@ const PENDING_SECTION: Record<PendingItem['kind'], AccountSection> = { schedule:
 export function AccountHome({ session, hr, onLogout }: Props) {
     const { navigate } = useAccountNav();
     const toast = useToast();
-    const linked = session.user.employeeId != null;
+    const linked = session.user.accountType === 'INTERNAL' && session.user.employeeId != null;
     const summary = useAccountSummary(hr, { userId: session.user.id, enabled: linked });
     const busy = useRef(new Set<string>());
     const [, force] = useState(0);
@@ -76,16 +76,22 @@ export function AccountHome({ session, hr, onLogout }: Props) {
         <main className="ah">
             {header}
             <div className="ah-body">
-                {summary.status === 'error' && (
-                    <p className="error" role="alert">
-                        No se pudo cargar tu información. <button type="button" className="ah-link" onClick={summary.reload}>Reintentar</button>
-                    </p>
-                )}
+                {summary.failed
+                    .filter((p) => p !== 'today')
+                    .map((p) => (
+                        <p key={p} className="error" role="alert">
+                            No se pudo cargar {PART_LABELS[p]}. <button type="button" className="ah-link" onClick={summary.reload}>Reintentar</button>
+                        </p>
+                    ))}
 
                 <section aria-label="Marcar">
                     <Card title="Marcar">
                         {summary.status === 'loading' && !today && <p className="muted">Cargando…</p>}
-                        {stale ? (
+                        {!today && summary.failed.includes('today') ? (
+                            <p className="error" role="alert">
+                                No se pudo cargar tu marcaje. <button type="button" className="ah-link" onClick={summary.reload}>Reintentar</button>
+                            </p>
+                        ) : stale ? (
                             <>
                                 <p>Tienes una jornada abierta sin cerrar</p>
                                 <button type="button" className="btn btn-primary ah-wide" onClick={() => navigate('correction', { stale: true })}>

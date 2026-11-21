@@ -1,5 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { appEvents } from '../../core/events';
+import { act } from '@testing-library/react';
 import { useAccountSummary, markReceiptsSeen } from './useAccountSummary';
 import type { HrApi } from './hrApi';
 
@@ -72,5 +74,57 @@ describe('useAccountSummary', () => {
         const { result } = renderHook(() => useAccountSummary(hr, { userId: 7, enabled: false }));
         expect(result.current.status).toBe('idle');
         expect(hr.attendanceToday).not.toHaveBeenCalled();
+    });
+
+    it('first install seeds receipts as seen; later ones are new', async () => {
+        localStorage.clear();
+        const receipts = vi.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]);
+        const hr1 = api({ myReceipts: receipts });
+        const first = renderHook(() => useAccountSummary(hr1, { userId: 7 }));
+        await waitFor(() => expect(first.result.current.status).toBe('ready'));
+        expect(first.result.current.pendingForYou).toHaveLength(0);
+        first.unmount();
+        const later = vi.fn().mockResolvedValue([{ id: 1 }, { id: 2 }, { id: 3, periodLabel: 'P3' }]);
+        const hr2 = api({ myReceipts: later });
+        const second = renderHook(() => useAccountSummary(hr2, { userId: 7 }));
+        await waitFor(() => expect(second.result.current.status).toBe('ready'));
+        expect(second.result.current.pendingForYou.map((p) => p.refId)).toEqual([3]);
+    });
+
+    it('unpublished week creates no pending item', async () => {
+        const hr = api();
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(result.current.pendingForYou).toHaveLength(0);
+    });
+
+    it('reports failed parts and keeps the rest', async () => {
+        const hr = api({ myWorkforce: vi.fn().mockRejectedValue(new Error('x')) });
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(result.current.failed).toEqual(['workforce']);
+        expect(result.current.today).not.toBeNull();
+    });
+
+    it('account-user-changed clears the previous data immediately', async () => {
+        const hr = api({ mySwaps: vi.fn().mockResolvedValue([{ id: 8, status: 'PENDING', requestedById: 2, targetUserId: 7, createdAt: 'x' }]) });
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.pendingForYou).toHaveLength(1));
+        act(() => appEvents.emit('account-user-changed'));
+        expect(result.current.today).toBeNull();
+        expect(result.current.pendingForYou).toHaveLength(0);
+    });
+
+    it('myRequests shows loan requests, not active or paid loans', async () => {
+        const hr = api({
+            myLoans: vi.fn().mockResolvedValue([
+                { id: 1, status: 'ACTIVE', requestedAmount: '1', currency: 'USD', requestedAt: 'a' },
+                { id: 2, status: 'PAID', requestedAmount: '1', currency: 'USD', requestedAt: 'a' },
+                { id: 3, status: 'REJECTED', requestedAmount: '1', currency: 'USD', requestedAt: 'a' },
+            ]),
+        });
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(result.current.myRequests.map((r) => r.refId)).toEqual([3]);
     });
 });

@@ -10,7 +10,7 @@ describe('AccountApp', () => {
             if (String(c.url).includes('loan-policy')) return { data: { data: { currency: 'USD', maxAmount: '10', eligible: true } } };
             return { data: { data: [] } };
         });
-        const linked = { ...session, user: { ...session.user, employeeId: 3 } };
+        const linked = { ...session, user: { ...session.user, employeeId: 3, accountType: 'INTERNAL' } };
         render(<AccountApp session={linked} services={{ http } as unknown as Services} onLogout={vi.fn()} />);
         fireEvent.click(await screen.findByText('Mi horario'));
         expect(screen.getByRole('heading', { name: 'Mi horario' })).toBeInTheDocument();

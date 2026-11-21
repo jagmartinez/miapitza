@@ -4,6 +4,7 @@ import { selectVacationBalance } from '@web/components/hr/vacationBalance';
 import { formatLocalDateInput } from '@web/utils/dateInput';
 import type { HrTodayAttendance } from '@web/types/hr-attendance';
 import type { HrVacationBalance } from '@web/types/hr-workforce';
+import { appEvents } from '../../core/events';
 import type { HrApi, HrLoanPolicy, HrSwap } from './hrApi';
 
 export type RequestKind = 'leave' | 'overtime' | 'correction' | 'swap' | 'loan';
@@ -30,6 +31,18 @@ export interface RequestCardModel {
     createdAt: string;
 }
 
+export type SummaryPart = 'today' | 'schedule' | 'receipts' | 'swaps' | 'workforce' | 'loans' | 'loanPolicy';
+
+export const PART_LABELS: Record<SummaryPart, string> = {
+    today: 'tu marcaje',
+    schedule: 'tu horario',
+    receipts: 'tus recibos',
+    swaps: 'tus cambios de turno',
+    workforce: 'tus permisos y horas extra',
+    loans: 'tus préstamos',
+    loanPolicy: 'el límite de préstamo',
+};
+
 export type SummaryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface AccountSummary {
@@ -39,6 +52,8 @@ export interface AccountSummary {
     vacation: HrVacationBalance | null;
     loanPolicy: HrLoanPolicy | null;
     status: SummaryStatus;
+    /** Parts that failed to load (Spanish noun phrases): the rest of the home still shows. */
+    failed: SummaryPart[];
     reload: () => void;
 }
 
@@ -66,8 +81,9 @@ export function markReceiptsSeen(userId: number, ids: number[]): void {
     }
 }
 
-export function seenReceipts(userId: number): Set<number> {
-    return new Set(readSeen()[String(userId)] ?? []);
+export function seenReceipts(userId: number): Set<number> | null {
+    const ids = readSeen()[String(userId)];
+    return ids ? new Set(ids) : null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -86,6 +102,7 @@ const STATUS_LABELS: Record<string, string> = {
     REVERSED: 'Revertido',
 };
 
+const REQUEST_LOAN_STATUSES = new Set(['REQUESTED', 'APPROVED', 'REJECTED', 'CANCELLED']);
 const PENDING = new Set(['PENDING', 'ACCEPTED', 'REQUESTED']);
 const toneOf = (s: string): RequestCardModel['tone'] => (PENDING.has(s) ? 'pending' : s === 'REJECTED' ? 'rejected' : 'neutral');
 
@@ -126,7 +143,7 @@ const range = (a: unknown, b: unknown) => (a === b || !b ? String(a ?? '') : `${
 export function buildSummary(input: {
     userId: number;
     schedules: Array<{ id: number; weekStart: string; acknowledgedAt?: string | null } | null>;
-    receipts: Array<{ id: number; periodLabel?: string }>;
+    receipts: Array<{ id: number; periodLabel?: string }> | null;
     swaps: HrSwap[];
     workforce: {
         leaveRequests?: AnyRow[];
@@ -142,8 +159,10 @@ export function buildSummary(input: {
         }
     }
     const seen = seenReceipts(input.userId);
-    for (const r of input.receipts) {
-        if (!seen.has(r.id)) pending.push({ id: `receipt-${r.id}`, kind: 'receipt', title: 'Recibo nuevo', detail: r.periodLabel ?? '', refId: r.id });
+    // First load for this user: whatever exists now is not "new"; only later receipts are.
+    if (!seen && input.receipts !== null) markReceiptsSeen(input.userId, input.receipts.map((r) => r.id));
+    for (const r of input.receipts ?? []) {
+        if (seen && !seen.has(r.id)) pending.push({ id: `receipt-${r.id}`, kind: 'receipt', title: 'Recibo nuevo', detail: r.periodLabel ?? '', refId: r.id });
     }
     for (const w of input.swaps) {
         if (w.status === 'PENDING' && w.targetUserId === input.userId) {
@@ -166,7 +185,8 @@ export function buildSummary(input: {
         if (w.requestedById !== input.userId) continue;
         requests.push(card('swap', w as unknown as AnyRow, 'Cambio de turno', w.targetUser?.name ? `Con ${w.targetUser.name}` : '', w.status === 'PENDING' || w.status === 'ACCEPTED'));
     }
-    for (const l of input.loans) {
+    // Only loan requests; active/paid loans belong to the Préstamos screen.
+    for (const l of input.loans.filter((x) => REQUEST_LOAN_STATUSES.has(x.status))) {
         requests.push(card('loan', l, 'Préstamo', money(l.currency, l.requestedAmount), l.status === 'REQUESTED'));
     }
     requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -184,11 +204,23 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
         myRequests: [],
         vacation: null,
         loanPolicy: null,
-        status: enabled ? 'loading' : 'idle',
+        failed: [] as SummaryPart[],
+        status: (enabled ? 'loading' : 'idle') as SummaryStatus,
     });
     const [tick, setTick] = useState(0);
     const reload = useCallback(() => setTick((t) => t + 1), []);
     const alive = useRef(0);
+
+    // A different user must never see the previous user's data, not even for a frame.
+    useEffect(
+        () =>
+            appEvents.on('account-user-changed', () => {
+                alive.current++;
+                setState({ today: null, pendingForYou: [], myRequests: [], vacation: null, loanPolicy: null, failed: [], status: enabled ? 'loading' : 'idle' });
+                setTick((t) => t + 1);
+            }),
+        [enabled],
+    );
 
     useEffect(() => {
         if (!enabled) return;
@@ -210,15 +242,17 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
             hr.loanPolicy(),
         ]).then((r) => {
             if (run !== alive.current) return;
+            const parts: SummaryPart[] = ['today', 'schedule', 'schedule', 'receipts', 'swaps', 'workforce', 'loans', 'loanPolicy'];
+            const failed = [...new Set(parts.filter((_, i) => r[i].status === 'rejected'))];
             if (r.every((x) => x.status === 'rejected')) {
-                setState((s) => ({ ...s, status: 'error' }));
+                setState((s) => ({ ...s, failed, status: 'error' }));
                 return;
             }
             const workforce = ok(r[5]);
             const { pending, requests } = buildSummary({
                 userId,
                 schedules: [ok(r[1]), ok(r[2])],
-                receipts: ok(r[3]) ?? [],
+                receipts: ok(r[3]),
                 swaps: ok(r[4]) ?? [],
                 workforce: workforce as unknown as Parameters<typeof buildSummary>[0]["workforce"],
                 loans: (ok(r[6]) ?? []) as unknown as AnyRow[],
@@ -229,6 +263,7 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
                 myRequests: requests,
                 vacation: selectVacationBalance(workforce?.vacationBalances),
                 loanPolicy: ok(r[7]),
+                failed,
                 status: 'ready',
             });
         });

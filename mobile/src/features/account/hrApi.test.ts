@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { AxiosError } from 'axios';
 import { fakeApi, pathOf } from '../../test/helpers';
 import { appEvents } from '../../core/events';
 import { createHrApi, HrError } from './hrApi';
@@ -105,6 +104,24 @@ describe('hrApi', () => {
         expect(err.message).toContain('Saldo insuficiente');
         expect(err.code).toBe('HR_VACATION_INSUFFICIENT_BALANCE');
         expect(err.isAmbiguous).toBe(true);
-        void AxiosError;
+    });
+
+    it('mySchedule returns null for unpublished week', async () => {
+        const { http } = fakeApi(() => ok(null));
+        expect(await createHrApi(http).mySchedule('2026-11-16')).toBeNull();
+    });
+
+    it('retry after failed submit reuses the draft', async () => {
+        let submits = 0;
+        const { http, calls } = fakeApi((c) => {
+            if (String(c.url).endsWith('/submit')) return submits++ === 0 ? { status: 503, data: {} } : ok({ id: 9, status: 'PENDING' });
+            return ok({ id: 9, status: 'DRAFT' });
+        });
+        const api = createHrApi(http);
+        const body = { leaveTypeId: 1, startDate: '2026-12-01', endDate: '2026-12-02', fraction: 'FULL_DAY' as const, reason: 'viaje' };
+        await expect(api.createLeave(body, { actionId: 'l' })).rejects.toBeInstanceOf(HrError);
+        const out = await api.createLeave(body, { actionId: 'l' });
+        expect(out.status).toBe('PENDING');
+        expect(calls.map(pathOf).filter((x) => x === 'POST /v1/hr/leave/requests')).toHaveLength(1);
     });
 });

@@ -123,7 +123,12 @@ interface CallOpts {
 export function createHrApi(http: AxiosInstance) {
     // Remembered keys of ambiguous failures, by action fingerprint. Per user: dropped on user change.
     const attempts = new Map<string, IdempotentAttempt>();
-    const off = appEvents.on('account-user-changed', () => attempts.clear());
+    // Drafts already created per leave action, so a retry after a failed submit re-submits the same draft.
+    const drafts = new Map<string, HrLeaveRequest>();
+    const off = appEvents.on('account-user-changed', () => {
+        attempts.clear();
+        drafts.clear();
+    });
 
     async function call<T>(url: string, o: CallOpts = {}): Promise<T> {
         const method = o.method ?? 'GET';
@@ -146,7 +151,7 @@ export function createHrApi(http: AxiosInstance) {
             });
             if (fingerprint) attempts.delete(fingerprint);
             if (o.responseType === 'blob') return res.data as T;
-            return (res.data?.data ?? res.data) as T;
+            return unwrap<T>(res.data);
         } catch (error) {
             if (fingerprint && !isAmbiguousMutationFailure(error)) attempts.delete(fingerprint);
             throw toHrError(error);
@@ -189,8 +194,12 @@ export function createHrApi(http: AxiosInstance) {
         leaveTypes: () => list<HrLeaveType>(`${H}/leave/types`),
         /** Creates a DRAFT then submits it; both steps are idempotent under the same actionId. */
         async createLeave(body: HrLeaveRequestPayload, opts: ActionOpts = {}): Promise<HrLeaveRequest> {
-            const draft = await post<HrLeaveRequest>(`${H}/leave/requests`, body, opts);
-            return post<HrLeaveRequest>(`${H}/leave/requests/${draft.id}/submit`, {}, opts);
+            const dk = opts.actionId ? `${opts.actionId} ${bodyFingerprint(body)}` : null;
+            const draft = (dk && drafts.get(dk)) || (await post<HrLeaveRequest>(`${H}/leave/requests`, body, opts));
+            if (dk) drafts.set(dk, draft);
+            const submitted = await post<HrLeaveRequest>(`${H}/leave/requests/${draft.id}/submit`, {}, opts);
+            if (dk) drafts.delete(dk);
+            return submitted;
         },
         cancelLeave: (id: number, reason: string, opts: ActionOpts = {}) => post<HrLeaveRequest>(`${H}/leave/requests/${id}/cancel`, { reason }, opts),
         createOvertime: (body: HrOvertimeRequestPayload, opts: ActionOpts = {}) => post<HrOvertimeRequest>(`${H}/overtime/requests`, body, opts),
@@ -221,6 +230,12 @@ export function createHrApi(http: AxiosInstance) {
 }
 
 export type HrApi = ReturnType<typeof createHrApi>;
+
+/** `{success,data}` envelope: a null `data` stays null (e.g. a week without a published schedule). */
+function unwrap<T>(body: unknown): T {
+    if (body && typeof body === 'object' && 'data' in body) return (body as { data: T }).data;
+    return body as T;
+}
 
 function bodyFingerprint(data: unknown): string {
     if (typeof FormData !== 'undefined' && data instanceof FormData) return 'form';

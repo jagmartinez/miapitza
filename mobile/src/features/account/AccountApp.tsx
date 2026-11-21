@@ -5,6 +5,7 @@ import { ScreenHeader } from '../../ui/ScreenHeader';
 import { ToastProvider } from '../../ui/Toast';
 import { AccountHome } from './AccountHome';
 import { AccountNavProvider, useAccountNav, type AccountSection } from './AccountNav';
+import { PunchScreen } from './attendance/PunchScreen';
 import { createHrApi, type HrApi } from './hrApi';
 
 const TITLES: Record<Exclude<AccountSection, 'home'>, string> = {
@@ -35,6 +36,7 @@ function SectionPlaceholder({ section }: { section: Exclude<AccountSection, 'hom
 function Screens({ session, hr, onLogout }: { session: Session; hr: HrApi; onLogout: () => void }) {
     const { section } = useAccountNav();
     if (section === 'home') return <AccountHome session={session} hr={hr} onLogout={onLogout} />;
+    if (section === 'punch') return <PunchScreen hr={hr} />;
     return <SectionPlaceholder section={section} />;
 }
 

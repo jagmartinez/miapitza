@@ -7,7 +7,7 @@ import type { HrApi } from './hrApi';
 import { session } from '../../test/helpers';
 import type { Session } from '../../core/session';
 
-const linked: Session = { ...session, user: { ...session.user, employeeId: 3 } };
+const linked: Session = { ...session, user: { ...session.user, employeeId: 3, accountType: 'INTERNAL' } };
 const admin: Session = { ...linked, user: { ...linked.user, role: { id: 2, name: 'ADMIN' }, roles: ['ADMIN'] } };
 
 function hrWith(today: unknown, over: Record<string, unknown> = {}): HrApi {
@@ -116,5 +116,25 @@ describe('AccountHome', () => {
         await screen.findByRole('button', { name: 'Entrada' });
         fireEvent.click(screen.getByText('Mi nómina'));
         expect(screen.getByTestId('where')).toHaveTextContent('payroll');
+    });
+
+    it('employeeId without an INTERNAL account is unlinked', () => {
+        renderHome({ ...linked, user: { ...linked.user, accountType: 'EXTERNAL' } }, hrWith(today));
+        expect(screen.getByText(/no está vinculado/)).toBeInTheDocument();
+    });
+
+    it('attendanceToday failing shows a retry in the Marcar card, rest still renders', async () => {
+        const attendanceToday = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue(today);
+        renderHome(linked, hrWith(today, { attendanceToday }));
+        expect(await screen.findByText(/No se pudo cargar tu marcaje/)).toBeInTheDocument();
+        expect(screen.getByText('Solicitar')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+        expect(await screen.findByRole('button', { name: 'Entrada' })).toBeInTheDocument();
+    });
+
+    it('myWorkforce failing shows an inline error but keeps the other parts', async () => {
+        renderHome(linked, hrWith(today, { myWorkforce: vi.fn().mockRejectedValue(new Error('x')) }));
+        expect(await screen.findByText(/No se pudo cargar tus permisos y horas extra/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Entrada' })).toBeInTheDocument();
     });
 });
