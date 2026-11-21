@@ -46,9 +46,34 @@ describe('LoanRequestForm', () => {
 
     it('ineligible shows reason and no form', async () => {
         mount(<LoanRequestForm hr={api({ loanPolicy: vi.fn().mockResolvedValue({ ...policy, eligible: false, tenureMonths: 2, ineligibleReason: 'x' }), requestLoan: vi.fn() })} />);
-        expect(await screen.findByText('Aún no cumples la antigüedad mínima de 6 meses')).toBeTruthy();
+        expect(await screen.findByText('Aún no cumples la antigüedad mínima de 6 meses.')).toBeTruthy();
         expect(screen.queryByLabelText('Monto')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Enviar' })).toBeNull();
+    });
+
+    it('maps the disabled-policy code to Spanish and never prints raw codes', async () => {
+        const { unmount } = mount(<LoanRequestForm hr={api({ loanPolicy: vi.fn().mockResolvedValue({ ...policy, maxAmount: null, maxInstallments: null, minTenureMonths: null, eligible: false, ineligibleReason: 'HR_LOAN_POLICY_DISABLED' }), requestLoan: vi.fn() })} />);
+        expect(await screen.findByText('Los préstamos no están habilitados en este momento.')).toBeTruthy();
+        expect(screen.queryByText(/HR_LOAN/)).toBeNull();
+        unmount();
+        mount(<LoanRequestForm hr={api({ loanPolicy: vi.fn().mockResolvedValue({ ...policy, eligible: false, tenureMonths: 6, ineligibleReason: 'HR_LOAN_TENURE_POLICY' }), requestLoan: vi.fn() })} />);
+        expect(await screen.findByText('Aún no cumples la antigüedad mínima de 6 meses.')).toBeTruthy();
+    });
+
+    it('unknown reason codes fall back to generic Spanish', async () => {
+        mount(<LoanRequestForm hr={api({ loanPolicy: vi.fn().mockResolvedValue({ ...policy, eligible: false, ineligibleReason: 'SOMETHING_NEW' }), requestLoan: vi.fn() })} />);
+        expect(await screen.findByText('Por ahora no puedes solicitar un préstamo.')).toBeTruthy();
+        expect(screen.queryByText(/SOMETHING_NEW/)).toBeNull();
+    });
+
+    it('shows inline messages for amount 0 and installments above max, and singular cuota', async () => {
+        mount(<LoanRequestForm hr={api({ loanPolicy: vi.fn().mockResolvedValue(policy), requestLoan: vi.fn() })} />);
+        await screen.findByLabelText('Monto');
+        fill('0', '13');
+        expect(screen.getByText('Ingresa un monto mayor que 0.')).toBeTruthy();
+        expect(screen.getByText('Máximo 12 cuotas.')).toBeTruthy();
+        fill('100', '1');
+        expect(screen.getByText(/1 cuota de .*100\.00.* \(última/)).toBeTruthy();
     });
 
     it('double submit sends once with same key', async () => {
@@ -99,6 +124,18 @@ describe('LoansScreen', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Cancelar solicitud' }));
         fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cancelación' }));
         await waitFor(() => expect(cancelLoanRequest).toHaveBeenCalledWith(1, undefined, { actionId: 'cancel-loan-1' }));
+    });
+});
+
+describe('LoansScreen balances', () => {
+    it('shows an inline error with retry when a balance fails', async () => {
+        const myLoan = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue(loan({ status: 'ACTIVE', outstandingBalance: '400.00' }));
+        mount(<LoansScreen hr={api({ myLoans: vi.fn().mockResolvedValue([loan({ id: 2, status: 'ACTIVE', installmentCount: 1 })]), myLoan })} />);
+        expect(await screen.findByText(/No se pudo cargar el saldo/)).toBeTruthy();
+        expect(screen.getByText(/1 cuota ·|1 cuota$/)).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+        expect(await screen.findByText(/Saldo/)).toBeTruthy();
+        expect(screen.queryByText(/No se pudo cargar el saldo/)).toBeNull();
     });
 });
 

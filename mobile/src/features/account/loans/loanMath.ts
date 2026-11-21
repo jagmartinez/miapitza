@@ -22,3 +22,6 @@ export function installmentPlan(amount: string, n: number): string[] {
     plan[n - 1] = total - each * (n - 1);
     return plan.map(fromCents);
 }
+
+/** "1 cuota" / "3 cuotas". */
+export const cuotas = (n: number) => `${n} ${n === 1 ? 'cuota' : 'cuotas'}`;

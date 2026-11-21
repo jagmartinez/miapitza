@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatHrMoney } from '@web/utils/hrFormat';
 import type { HrLoan } from '@web/types/hr-benefits';
 import { Card } from '../../../ui/Card';
@@ -7,6 +7,7 @@ import { useAccountNav } from '../AccountNav';
 import { toHrError, type HrApi } from '../hrApi';
 import type { RequestCardModel } from '../useAccountSummary';
 import { useCancelFlow } from '../requests/common';
+import { cuotas } from './loanMath';
 import { LOAN_STATUS_LABELS, LoanDetail } from './LoanDetail';
 import '../requests/requests.css';
 
@@ -20,20 +21,28 @@ export function LoansScreen({ hr }: { hr: HrApi }) {
     const [loans, setLoans] = useState<HrLoan[] | null>(null);
     const [balances, setBalances] = useState<Record<number, string>>({});
     const [error, setError] = useState<string | null>(null);
+    const [balanceFailed, setBalanceFailed] = useState(false);
+    // Ignores answers of a superseded load (reload, unmount).
+    const gen = useRef(0);
+    useEffect(() => () => void gen.current++, []);
 
     const load = useCallback(() => {
+        const mine = ++gen.current;
         setError(null);
+        setBalances({});
+        setBalanceFailed(false);
         hr.myLoans().then(
             (rows) => {
+                if (mine !== gen.current) return;
                 setLoans(rows);
                 rows.filter((l) => HAS_BALANCE.has(l.status)).forEach((l) => {
                     hr.myLoan(l.id).then(
-                        (d) => setBalances((b) => ({ ...b, [l.id]: d.outstandingBalance })),
-                        () => undefined,
+                        (d) => mine === gen.current && setBalances((b) => ({ ...b, [l.id]: d.outstandingBalance })),
+                        () => mine === gen.current && setBalanceFailed(true),
                     );
                 });
             },
-            (e) => setError(toHrError(e).message),
+            (e) => mine === gen.current && setError(toHrError(e).message),
         );
     }, [hr]);
     useEffect(() => {
@@ -71,6 +80,11 @@ export function LoansScreen({ hr }: { hr: HrApi }) {
                         {error} <button type="button" className="ah-link" onClick={load}>Reintentar</button>
                     </p>
                 )}
+                {balanceFailed && (
+                    <p className="error" role="alert">
+                        No se pudo cargar el saldo de algún préstamo. <button type="button" className="ah-link" onClick={load}>Reintentar</button>
+                    </p>
+                )}
                 {!loans && !error && <p className="muted">Cargando…</p>}
                 {loans && !loans.length && <p className="muted">Aún no tienes préstamos.</p>}
                 {loans?.map((l) => (
@@ -82,7 +96,7 @@ export function LoansScreen({ hr }: { hr: HrApi }) {
                         onClick={l.status === 'REQUESTED' ? undefined : () => navigate('loans', { loanId: l.id })}
                     >
                         <span>
-                            {l.installmentCount} cuotas{balances[l.id] != null && <> · Saldo {formatHrMoney(l.currency, balances[l.id])}</>}
+                            {cuotas(l.installmentCount)}{balances[l.id] != null && <> · Saldo {formatHrMoney(l.currency, balances[l.id])}</>}
                         </span>
                         {l.status === 'REQUESTED' && (
                             <button type="button" className="btn ah-cancel" onClick={() => ask(l)}>

@@ -4,6 +4,7 @@ import type { HrLoan, HrLoanInstallment } from '@web/types/hr-benefits';
 import { Card } from '../../../ui/Card';
 import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useAccountNav } from '../AccountNav';
+import { cuotas } from './loanMath';
 import { toHrError, type HrApi } from '../hrApi';
 import '../requests/requests.css';
 
@@ -55,7 +56,7 @@ export function LoanDetail({ hr, id }: { hr: HrApi; id: number }) {
                     <>
                         <Card title={formatHrMoney(loan.currency, loan.approvedAmount ?? loan.requestedAmount)} badge={LOAN_STATUS_LABELS[loan.status] ?? loan.status}>
                             <span>
-                                Saldo {formatHrMoney(loan.currency, loan.outstandingBalance)} · {loan.installmentCount} cuotas
+                                Saldo {formatHrMoney(loan.currency, loan.outstandingBalance)} · {cuotas(loan.installmentCount)}
                             </span>
                         </Card>
                         {!loan.schedule?.length && <p className="muted">Aún no hay calendario de cuotas.</p>}

@@ -5,16 +5,17 @@ import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useAccountNav } from '../AccountNav';
 import { toHrError, type HrApi, type HrLoanPolicy } from '../hrApi';
 import { Field, FormScreen, useRequestSubmit } from '../requests/common';
-import { fromCents, installmentPlan, toCents } from './loanMath';
+import { cuotas, fromCents, installmentPlan, toCents } from './loanMath';
 
 export const PURPOSE_MAX = 900;
 const SERVER_MAX_INSTALLMENTS = 120;
 
 function ineligibleMessage(p: HrLoanPolicy): string {
-    if (p.minTenureMonths != null && p.tenureMonths != null && p.tenureMonths < p.minTenureMonths) {
-        return `Aún no cumples la antigüedad mínima de ${p.minTenureMonths} meses`;
+    if (p.ineligibleReason === 'HR_LOAN_POLICY_DISABLED') return 'Los préstamos no están habilitados en este momento.';
+    if (p.ineligibleReason === 'HR_LOAN_TENURE_POLICY' || (p.minTenureMonths != null && p.tenureMonths != null && p.tenureMonths < p.minTenureMonths)) {
+        return p.minTenureMonths != null ? `Aún no cumples la antigüedad mínima de ${p.minTenureMonths} meses.` : 'Aún no cumples la antigüedad mínima requerida.';
     }
-    return p.ineligibleReason || 'Por ahora no puedes solicitar un préstamo.';
+    return 'Por ahora no puedes solicitar un préstamo.';
 }
 
 /** Loan request: single screen with the policy limits and the live installment line. */
@@ -91,6 +92,11 @@ export function LoanRequestForm({ hr }: { hr: HrApi }) {
                 <input type="text" inputMode="decimal" value={formatHrDecimalInput(amount)} onChange={(e) => setAmount(normalizeHrDecimalInput(e.target.value))} />
             </Field>
             {maxCents !== null && <p className="muted">Máximo {money(String(policy.maxAmount))}</p>}
+            {amount !== '' && (cents === null || cents <= 0) && (
+                <p className="pf-error" role="alert">
+                    Ingresa un monto mayor que 0.
+                </p>
+            )}
             {cents !== null && maxCents !== null && cents > maxCents && (
                 <p className="pf-error" role="alert">
                     El monto supera el máximo permitido.
@@ -99,10 +105,20 @@ export function LoanRequestForm({ hr }: { hr: HrApi }) {
             <Field label="Cuotas">
                 <input type="number" inputMode="numeric" min={1} max={maxCount} step={1} value={count} onChange={(e) => setCount(e.target.value)} />
             </Field>
+            {count !== '' && (!Number.isInteger(n) || n < 1) && (
+                <p className="pf-error" role="alert">
+                    Ingresa al menos 1 cuota.
+                </p>
+            )}
+            {count !== '' && Number.isInteger(n) && n > maxCount && (
+                <p className="pf-error" role="alert">
+                    Máximo {maxCount} cuotas.
+                </p>
+            )}
             <p className="muted">Entre 1 y {maxCount} cuotas.</p>
             {plan.length > 0 && (
                 <p className="rq-info">
-                    {plan.length} cuotas de {money(plan[0])} (última {money(plan[plan.length - 1])})
+                    {cuotas(plan.length)} de {money(plan[0])} (última {money(plan[plan.length - 1])})
                 </p>
             )}
             {policy.maxPaymentPercent != null && <p className="muted">Máximo {Number(policy.maxPaymentPercent)}% de tu salario por cuota</p>}
