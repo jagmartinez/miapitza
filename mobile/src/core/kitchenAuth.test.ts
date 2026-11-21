@@ -1,4 +1,4 @@
-import { createKitchenAuth } from './kitchenAuth';
+import { createKitchenAuth, kitchenAuthStatus } from './kitchenAuth';
 import { appEvents } from './events';
 import { fakeApi, pathOf, user } from '../test/helpers';
 
@@ -92,6 +92,7 @@ describe('kitchenAuth', () => {
         expect(waits[1]).toBeGreaterThanOrEqual(1900);
         expect(waits[2]).toBeGreaterThanOrEqual(3900);
         appEvents.emit('realtime-status', 'online');
+        await vi.advanceTimersByTimeAsync(2000); // re-login floor
         const before = logins(calls);
         appEvents.emit('session-expired');
         await vi.advanceTimersByTimeAsync(50);
@@ -156,6 +157,7 @@ describe('kitchenAuth', () => {
         await auth.start();
         appEvents.emit('realtime-status', 'online');
         expect(statuses[statuses.length - 1]).toBe('online');
+        await vi.advanceTimersByTimeAsync(2000); // re-login floor
         await sessions.clear();
         appEvents.emit('session-expired');
         expect(statuses[statuses.length - 1]).toBe('renewing');
@@ -166,6 +168,68 @@ describe('kitchenAuth', () => {
         expect(statuses[statuses.length - 1]).toBe('online');
         off();
         auth.stop();
+    });
+
+    it('session-expired storms re-login at most once per 2 s', async () => {
+        const { auth, sessions, calls } = setup([ok('k-1')]);
+        await sessions.saveDeviceToken('dev-1');
+        await auth.start();
+        appEvents.emit('realtime-status', 'online');
+        await vi.advanceTimersByTimeAsync(60_000); // long healthy period: next re-login is immediate
+        appEvents.emit('session-expired');
+        await vi.advanceTimersByTimeAsync(10);
+        expect(logins(calls)).toBe(2);
+        for (let n = 0; n < 10; n++) {
+            appEvents.emit('realtime-status', 'online');
+            appEvents.emit('session-expired');
+            await vi.advanceTimersByTimeAsync(500);
+        }
+        // 5 s of storm after the 2nd login: at most 3 more attempts (every >= 2 s)
+        expect(logins(calls)).toBeLessThanOrEqual(5);
+        expect(logins(calls)).toBeGreaterThanOrEqual(3);
+        auth.stop();
+    });
+
+    it('leaves account-unavailable once a login succeeds, and a later transient failure reports offline', async () => {
+        const unavailable = { status: 403, data: { success: false, code: 'KITCHEN_ACCOUNT_UNAVAILABLE' } };
+        const { auth, sessions } = setup([unavailable, ok('k-1'), { status: 503 }]);
+        const statuses: unknown[] = [];
+        const off = appEvents.on('kitchen-auth-status', (s) => statuses.push(s));
+        await sessions.saveDeviceToken('dev-1');
+        await auth.start();
+        expect(statuses[statuses.length - 1]).toBe('account-unavailable');
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(statuses[statuses.length - 1]).toBe('online');
+        off();
+        auth.stop();
+        // transient failure while unavailable -> offline
+        const b = setup([unavailable, { status: 503 }]);
+        const s2: unknown[] = [];
+        const off2 = appEvents.on('kitchen-auth-status', (s) => s2.push(s));
+        await b.sessions.saveDeviceToken('dev-1');
+        await b.auth.start();
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(s2[s2.length - 1]).toBe('offline');
+        off2();
+        b.auth.stop();
+    });
+
+    it('stop() and revoke reset the status to connecting', async () => {
+        const a = setup([ok('k-1')]);
+        await a.sessions.saveDeviceToken('dev-1');
+        await a.auth.start();
+        appEvents.emit('realtime-status', 'online');
+        expect(kitchenAuthStatus()).toBe('online');
+        a.auth.stop();
+        expect(kitchenAuthStatus()).toBe('connecting');
+        const b = setup([{ status: 403, data: { code: 'KITCHEN_ACCOUNT_UNAVAILABLE' } }, { status: 401, data: { code: 'DEVICE_NOT_ACTIVE' } }]);
+        await b.sessions.saveDeviceToken('dev-1');
+        await b.auth.start();
+        expect(kitchenAuthStatus()).toBe('account-unavailable');
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(b.onRevoked).toHaveBeenCalled();
+        expect(kitchenAuthStatus()).toBe('connecting');
+        b.auth.stop();
     });
 
     it('stop() unsubscribes from session-expired and cancels pending retries', async () => {

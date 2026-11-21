@@ -157,7 +157,7 @@ describe('kitchen mode', () => {
         await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'false'));
         expect(home).toBeInTheDocument();
         expect(screen.getByTestId('kitchen-home')).toBe(home); // same instance, never unmounted
-        await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'true'));
+        await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'true'), { timeout: 4000 });
         expect(screen.getByTestId('kitchen-home')).toBe(home);
         expect(n).toBe(2);
     });

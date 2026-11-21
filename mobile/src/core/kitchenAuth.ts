@@ -7,6 +7,8 @@ import type { Session, SessionStore } from './session';
 const MIN_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30_000;
 const UNAVAILABLE_RETRY_MS = 60_000;
+/** Minimum spacing between device-login attempts triggered by session-expired storms. */
+const MIN_RELOGIN_GAP_MS = 2000;
 
 export type KitchenAuthStatus = 'connecting' | 'online' | 'renewing' | 'account-unavailable' | 'offline';
 
@@ -43,6 +45,7 @@ export function createKitchenAuth(deps: Deps) {
     // Re-login spacing when the socket never became healthy after the last login.
     let expiryBackoff = MIN_BACKOFF_MS;
     let online = false;
+    let lastAttemptAt = -Infinity;
     let unsubscribeStatus: (() => void) | null = null;
     let unsubscribe: (() => void) | null = null;
 
@@ -58,6 +61,7 @@ export function createKitchenAuth(deps: Deps) {
         stopped = true;
         if (timer) clearTimeout(timer);
         timer = null;
+        setStatus('connecting');
         await sessions.clearDevice();
         await sessions.clear();
         onRevoked();
@@ -66,6 +70,7 @@ export function createKitchenAuth(deps: Deps) {
     async function attempt() {
         if (stopped || inFlight) return;
         inFlight = true;
+        lastAttemptAt = Date.now();
         try {
             if (!(await sessions.deviceToken())) {
                 await revoke();
@@ -80,6 +85,7 @@ export function createKitchenAuth(deps: Deps) {
             await realtime.reconnect();
             backoff = MIN_BACKOFF_MS;
             online = false;
+            if (lastStatus === 'account-unavailable' || lastStatus === 'offline') setStatus('online');
             onSession(session);
         } catch (err) {
             if (stopped) return;
@@ -95,6 +101,7 @@ export function createKitchenAuth(deps: Deps) {
                 schedule(UNAVAILABLE_RETRY_MS);
                 return;
             }
+            if (lastStatus === 'account-unavailable') setStatus('offline');
             const wait = backoff;
             backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
             schedule(wait);
@@ -122,7 +129,7 @@ export function createKitchenAuth(deps: Deps) {
             unsubscribe = appEvents.on('session-expired', () => {
                 if (lastStatus !== 'account-unavailable') setStatus('renewing');
                 if (online) {
-                    schedule(0);
+                    schedule(Math.max(0, MIN_RELOGIN_GAP_MS - (Date.now() - lastAttemptAt)));
                     return;
                 }
                 // Socket auth failed right after a successful login: back off 1 s -> 30 s.
@@ -136,6 +143,7 @@ export function createKitchenAuth(deps: Deps) {
             stopped = true;
             if (timer) clearTimeout(timer);
             timer = null;
+            setStatus('connecting');
             unsubscribe?.();
             unsubscribe = null;
             unsubscribeStatus?.();
