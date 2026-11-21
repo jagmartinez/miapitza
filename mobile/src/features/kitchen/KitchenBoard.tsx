@@ -64,16 +64,12 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
     }, [batches, lastLoadedAt, syncQueue]);
 
     const committedCount = commit.committed.length;
+    const refreshRecent = useCallback(() => {
+        api.recent(10).then(setServerRecent, () => {});
+    }, [api]);
     useEffect(() => {
-        let alive = true;
-        api.recent(10).then(
-            (r) => alive && setServerRecent(r),
-            () => {},
-        );
-        return () => {
-            alive = false;
-        };
-    }, [api, committedCount]);
+        refreshRecent();
+    }, [refreshRecent, committedCount]);
 
     const toggleSound = () => {
         const next = !sound;
@@ -89,21 +85,28 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
         async (b: KitchenBatch) => {
             const key = batchKey(b);
             setStarting((s) => new Set(s).add(key));
+            setStartFailures((f) => f.filter((x) => x.key !== key));
             try {
                 await api.start(b, newIdempotencyKey());
             } catch (cause) {
                 if (!(cause instanceof KitchenActionError && cause.kind === 'already-done')) {
                     const message = cause instanceof KitchenActionError ? cause.message : 'Sin conexión con el servidor.';
                     setStartFailures((f) => [...f.filter((x) => x.key !== key), { key, label: kitchenLabel(b), message }]);
+                    setStarting((s) => {
+                        const n = new Set(s);
+                        n.delete(key);
+                        return n;
+                    });
+                    return;
                 }
-            } finally {
-                setStarting((s) => {
-                    const n = new Set(s);
-                    n.delete(key);
-                    return n;
-                });
-                void queue.reload();
             }
+            // Keep "Iniciando…" until the refreshed queue reflects the new state (no flicker back to Iniciar).
+            await queue.reload();
+            setStarting((s) => {
+                const n = new Set(s);
+                n.delete(key);
+                return n;
+            });
         },
         [api, queue.reload],
     );
@@ -142,7 +145,10 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
                 <button type="button" className="kitchen-btn" aria-pressed={sound} onClick={toggleSound}>
                     {sound ? 'Sonido: sí' : 'Sonido: no'}
                 </button>
-                <button type="button" className="kitchen-btn" onClick={() => setShowRecent(true)}>
+                <button type="button" className="kitchen-btn" onClick={() => {
+                        refreshRecent();
+                        setShowRecent(true);
+                    }}>
                     {`Recientes (${recent.length})`}
                 </button>
             </header>

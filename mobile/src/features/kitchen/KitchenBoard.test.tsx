@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { KitchenActionError } from './kitchenApi';
 import { KitchenBoard } from './KitchenBoard';
 import { playKitchenChime } from './kitchenSound';
 import type { KitchenBatch } from './kitchenTypes';
@@ -33,17 +34,17 @@ function fakeRealtime() {
     };
 }
 
-function setup(over: { queue?: () => Promise<KitchenBatch[]>; recent?: KitchenBatch[]; canManage?: boolean } = {}) {
+function setup(over: { queue?: () => Promise<KitchenBatch[]>; recent?: KitchenBatch[]; canManage?: boolean; start?: () => Promise<void>; undoMs?: number } = {}) {
     const api = {
         queue: vi.fn(over.queue ?? (async () => [mk(1), mk(2)])),
         config: vi.fn(async () => ({ warningMinutes: 5, urgentMinutes: 10 })),
         recent: vi.fn(async () => over.recent ?? []),
-        start: vi.fn(async () => {}),
+        start: vi.fn(over.start ?? (async () => {})),
         ready: vi.fn(async () => {}),
         release: vi.fn(async () => {}),
     };
     const realtime = fakeRealtime();
-    const utils = render(<KitchenBoard api={api as never} realtime={realtime} canManage={over.canManage ?? true} connection="online" undoMs={60_000} />);
+    const utils = render(<KitchenBoard api={api as never} realtime={realtime} canManage={over.canManage ?? true} connection="online" undoMs={over.undoMs ?? 60_000} />);
     return { api, realtime, ...utils };
 }
 
@@ -118,5 +119,56 @@ describe('KitchenBoard', () => {
         expect(sheet).toHaveTextContent('M1');
         expect(sheet).toHaveTextContent('M7');
         expect(sheet.querySelectorAll('li')).toHaveLength(2);
+    });
+
+    it('start in flight keeps Iniciando… disabled', async () => {
+        let release!: () => void;
+        const { api } = setup({ queue: async () => [mk(1, { status: 'SENT_TO_KITCHEN' })], start: () => new Promise<void>((r) => (release = r)) });
+        fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }));
+        expect(await screen.findByRole('button', { name: 'Iniciando…' })).toBeDisabled();
+        api.queue.mockResolvedValue([mk(1, { status: 'IN_PREPARATION' })]);
+        await act(async () => release());
+        expect(await screen.findByRole('button', { name: 'Listo' })).toBeEnabled();
+    });
+
+    it('start already-done is treated as success', async () => {
+        const { api } = setup({
+            queue: async () => [mk(1, { status: 'SENT_TO_KITCHEN' })],
+            start: () => Promise.reject(new KitchenActionError('already-done', 'ya')),
+        });
+        fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }));
+        await waitFor(() => expect(api.queue).toHaveBeenCalledTimes(2));
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Iniciar' })).toBeEnabled());
+    });
+
+    it('start failure shows a dismissable toast, cleared by a later success', async () => {
+        const { api } = setup({
+            queue: async () => [mk(1, { status: 'SENT_TO_KITCHEN' })],
+            start: () => Promise.reject(new KitchenActionError('rejected', 'boom')),
+        });
+        fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }));
+        expect(await screen.findByText('No se pudo marcar M1: boom')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+        expect(screen.queryByText('No se pudo marcar M1: boom')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Iniciar' }));
+        await screen.findByText('No se pudo marcar M1: boom');
+        api.start.mockResolvedValueOnce(undefined);
+        fireEvent.click(screen.getByRole('button', { name: 'Iniciar' }));
+        await waitFor(() => expect(screen.queryByText('No se pudo marcar M1: boom')).not.toBeInTheDocument());
+    });
+
+    it('Recientes merges local committed with server and dedupes', async () => {
+        const { api } = setup({ undoMs: 10, recent: [mk(1, { kitchenReleasedAt: '2026-11-21T10:00:00.000Z' }), mk(7)] });
+        await screen.findByText('M1');
+        fireEvent.click(screen.getAllByRole('button', { name: 'Listo' })[0]); // M1
+        await waitFor(() => expect(api.release).toHaveBeenCalledTimes(1));
+        // committed M1 + server M1 (dup) + server M7 -> 2
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Recientes (2)' })).toBeInTheDocument());
+        const calls = api.recent.mock.calls.length;
+        fireEvent.click(screen.getByRole('button', { name: 'Recientes (2)' }));
+        expect(api.recent.mock.calls.length).toBe(calls + 1); // refreshed on open
+        expect(screen.getByRole('dialog').querySelectorAll('li')).toHaveLength(2);
     });
 });

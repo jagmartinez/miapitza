@@ -115,14 +115,15 @@
 .kitchen-noperm { padding: 6px 12px; font-size: 13px; color: var(--muted); text-align: center; }
 
 .kitchen-toasts {
-    position: absolute;
-    left: 50%;
-    bottom: 16px;
-    transform: translateX(-50%);
+    /* In flow, below the card row: the row shrinks, so no Listo button is ever under a toast. */
+    flex: none;
+    box-sizing: border-box;
+    align-self: center;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    width: min(520px, calc(100% - 32px));
+    gap: 6px;
+    width: min(520px, 100%);
+    padding: 0 16px 10px;
 }
 .kitchen-toast {
     display: flex;
@@ -145,7 +146,27 @@
     font: inherit;
 }
 
-.kitchen-recent { max-height: 80%; overflow-y: auto; }
+/* Own overlay rules: this chunk must not depend on the waiter sheets.css. */
+.kds-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: var(--scrim, rgba(0, 0, 0, 0.55));
+}
+.kds-sheet {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 640px;
+    padding: 16px;
+    background: var(--surface, #151618);
+    color: var(--text, #E8E8E6);
+    border: 1px solid var(--border, #26272A);
+    border-radius: 14px 14px 0 0;
+}
+.kitchen-recent { max-height: 80vh; overflow-y: auto; }
 .kitchen-recent-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .kitchen-recent ul { margin: 0; padding: 0; list-style: none; }
 .kitchen-recent li { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border); }

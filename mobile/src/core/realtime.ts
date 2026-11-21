@@ -5,6 +5,10 @@ const MIN_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30000;
 const JITTER = 0.2; // ±20 % so a fleet of tablets does not reconnect in lockstep
 
+let lastRealtimeStatus: 'online' | 'offline' | 'unknown' = 'unknown';
+/** Latest socket status, for screens that mount after it was emitted. */
+export const realtimeStatus = () => lastRealtimeStatus;
+
 export interface RealtimeOptions {
     url: string;
     getToken: () => Promise<string | null>;
@@ -21,7 +25,10 @@ export function createRealtime(opts: RealtimeOptions) {
     let generation = 0;
     let wanted = false;
 
-    const setStatus = (status: 'online' | 'offline') => appEvents.emit('realtime-status', status);
+    const setStatus = (status: 'online' | 'offline') => {
+        lastRealtimeStatus = status;
+        appEvents.emit('realtime-status', status);
+    };
 
     function scheduleReconnect() {
         if (!wanted || timer) return;

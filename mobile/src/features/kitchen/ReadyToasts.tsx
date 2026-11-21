@@ -14,7 +14,7 @@ interface Props {
     onDismiss: (key: string) => void;
 }
 
-/** Stacked bottom toasts (max 3): undo countdowns first, then failures. */
+/** Stacked toasts in their own band below the cards (max 3): failures first so they are never hidden, then undo countdowns. */
 export function ReadyToasts({ pending, failures, onUndo, onDismiss }: Props) {
     const [now, setNow] = useState(() => Date.now());
     const hasPending = pending.length > 0;
@@ -26,8 +26,8 @@ export function ReadyToasts({ pending, failures, onUndo, onDismiss }: Props) {
     }, [hasPending]);
 
     const rows = [
-        ...pending.map((p) => ({ kind: 'pending' as const, p })),
         ...failures.map((f) => ({ kind: 'failure' as const, f })),
+        ...pending.map((p) => ({ kind: 'pending' as const, p })),
     ].slice(0, MAX_TOASTS);
     if (rows.length === 0) return null;
     return (

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { appEvents } from '../../core/events';
 import { kitchenAuthStatus, type KitchenAuthStatus } from '../../core/kitchenAuth';
+import { realtimeStatus } from '../../core/realtime';
 import { can } from '../../core/permissions';
 import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
@@ -23,7 +24,7 @@ export function KitchenHome(props: { session: Session | null; services: Services
     const lastSession = useRef<Session | null>(session);
     if (session) lastSession.current = session;
     const [auth, setAuth] = useState<KitchenAuthStatus>(kitchenAuthStatus());
-    const [realtimeOnline, setRealtimeOnline] = useState(true);
+    const [realtimeOnline, setRealtimeOnline] = useState(() => realtimeStatus() === 'online');
     useEffect(() => {
         setAuth(kitchenAuthStatus());
         const offAuth = appEvents.on('kitchen-auth-status', (s) => setAuth(s as KitchenAuthStatus));

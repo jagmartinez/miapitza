@@ -22,8 +22,8 @@ export function mergeRecent(local: KitchenBatch[], server: KitchenBatch[]): Kitc
 
 export function RecentSheet({ batches, onClose }: { batches: KitchenBatch[]; onClose: () => void }) {
     return (
-        <div className="sheet-backdrop" onClick={onClose}>
-            <div className="sheet kitchen-recent" role="dialog" aria-modal="true" aria-label="Recientes" onClick={(e) => e.stopPropagation()}>
+        <div className="kds-sheet-backdrop" onClick={onClose}>
+            <div className="kds-sheet kitchen-recent" role="dialog" aria-modal="true" aria-label="Recientes" onClick={(e) => e.stopPropagation()}>
                 <header className="kitchen-recent-head">
                     <strong>Recientes</strong>
                     <button type="button" onClick={onClose}>
