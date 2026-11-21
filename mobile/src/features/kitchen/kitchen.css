@@ -74,7 +74,16 @@
     border-radius: 10px;
     overflow: hidden;
 }
-.kitchen-card.is-ready { box-shadow: inset 0 0 0 3px var(--ready); } /* inside the border, so the delay color stays visible */
+.kitchen-card { position: relative; }
+/* Overlay ring inside the border: visible over head and button, delay border stays visible. */
+.kitchen-card.is-ready::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 3px var(--ready);
+    pointer-events: none;
+}
 .kitchen-card.time-warning { border-color: var(--alert); }
 .kitchen-card.time-urgent { border-color: var(--alert); }
 .kitchen-card.time-urgent .kitchen-card-head { background: rgba(201, 107, 102, 0.35); }
@@ -141,7 +150,7 @@
     background: var(--surface-2);
     border: 1px solid var(--border);
 }
-.kitchen-toast > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.kitchen-toast > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kitchen-toast-more {
     position: absolute;
     top: -14px;
