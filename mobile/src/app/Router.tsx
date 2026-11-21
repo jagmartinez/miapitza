@@ -6,8 +6,7 @@ import { applyOrientation } from '../core/orientation';
 import type { Services } from '../core/services';
 import type { DeviceType, Session } from '../core/session';
 import { IdleLockBoundary } from '../core/IdleLockBoundary';
-import { AccountHome } from '../features/account/AccountHome';
-import { LoginScreen } from '../features/account/LoginScreen';
+import { AccountShell } from '../features/account/AccountShell';
 import { DeviceSetupScreen } from '../features/device/DeviceSetupScreen';
 import { PinScreen } from '../features/pin/PinScreen';
 import { WaiterHome } from '../features/waiter/WaiterHome';
@@ -26,7 +25,7 @@ function WaiterSession({ session, services, onSwitchUser }: { session: Session; 
 }
 
 export function Router({ services }: { services: Services }) {
-    const { sessions, realtime, pinApi, deviceApi, accountApi } = services;
+    const { sessions, realtime, pinApi, deviceApi } = services;
     // undefined while the secure store is still being read.
     const [deviceType, setDeviceType] = useState<DeviceType | null | undefined>(undefined);
     const [session, setSession] = useState<Session | null>(null);
@@ -142,16 +141,7 @@ export function Router({ services }: { services: Services }) {
                 </Suspense>
             );
         case 'account':
-            return session ? (
-                <AccountHome
-                    session={session}
-                    onLogout={() => {
-                        void accountApi.logout().catch(() => undefined);
-                        setSession(null);
-                    }}
-                />
-            ) : (
-                <LoginScreen api={accountApi} onLoggedIn={setSession} />
-            );
+            // Mounted regardless of the session: an expiry shows login over the kept screens.
+            return <AccountShell session={session} services={services} onSession={setSession} onSessionEnd={() => setSession(null)} />;
     }
 }

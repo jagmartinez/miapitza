@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Router } from './Router';
 import { appEvents } from '../core/events';
 import type { Services } from '../core/services';
@@ -160,5 +160,37 @@ describe('kitchen mode', () => {
         await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'true'), { timeout: 4000 });
         expect(screen.getByTestId('kitchen-home')).toBe(home);
         expect(n).toBe(2);
+    });
+});
+
+describe('account mode', () => {
+    it('keeps the account screen mounted across an expiry and shows login over it', async () => {
+        const { services, sessions } = build();
+        await sessions.saveDeviceType('PERSONAL');
+        await sessions.save(session);
+        render(<Router services={services} />);
+        const tree = await screen.findByTestId('account-tree');
+        await sessions.clear();
+        act(() => appEvents.emit('session-expired'));
+        expect(await screen.findByText('Tu sesión expiró. Vuelve a iniciar sesión.')).toBeInTheDocument();
+        expect(screen.getByTestId('account-tree')).toBe(tree); // same instance, never unmounted
+    });
+
+    it('a 403 PASSWORD_CHANGE_REQUIRED opens the blocking change screen', async () => {
+        const { services, sessions } = build();
+        await sessions.saveDeviceType('PERSONAL');
+        await sessions.save(session);
+        render(<Router services={services} />);
+        await screen.findByTestId('account-tree');
+        act(() => appEvents.emit('password-change-required'));
+        expect(await screen.findByLabelText('Nueva contraseña')).toBeInTheDocument();
+    });
+
+    it('a stored mustChangePassword session starts on the change screen', async () => {
+        const { services, sessions } = build();
+        await sessions.saveDeviceType('PERSONAL');
+        await sessions.save({ ...session, mustChangePassword: true });
+        render(<Router services={services} />);
+        expect(await screen.findByLabelText('Nueva contraseña')).toBeInTheDocument();
     });
 });

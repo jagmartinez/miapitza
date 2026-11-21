@@ -5,10 +5,12 @@ import type { AccountApi } from './accountApi';
 interface Props {
     api: AccountApi;
     onLoggedIn: (session: Session) => void;
+    /** Informational line above the form (session expired, password changed). */
+    notice?: string | null;
 }
 
 /** Username + password (+ 2FA when the server asks) for personal phones. */
-export function LoginScreen({ api, onLoggedIn }: Props) {
+export function LoginScreen({ api, onLoggedIn, notice }: Props) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [code, setCode] = useState('');
@@ -40,6 +42,7 @@ export function LoginScreen({ api, onLoggedIn }: Props) {
         <main className="screen">
             <form className="form" onSubmit={(e) => void submit(e)}>
                 <h1>Mia Pitza Ops</h1>
+                {notice && <p className="muted" role="status">{notice}</p>}
                 <label className="field">Usuario
                     <input value={username} autoCapitalize="none" autoComplete="username" onChange={(e) => setUsername(e.target.value)} />
                 </label>

@@ -116,6 +116,10 @@ export function createHttp(opts: { baseURL: string; sessions: SessionStore }): A
                     // Surface the original 401, not a storage error.
                 }
             }
+            // Password gate: surface it, never clear the session (change-password still needs it).
+            if (error?.response?.status === 403 && error.response.data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+                appEvents.emit('password-change-required');
+            }
             return Promise.reject(error);
         },
     );

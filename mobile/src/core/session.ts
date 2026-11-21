@@ -17,7 +17,15 @@ export interface LoginUser {
     permissions: unknown;
 }
 
-export type Session = { token: string; user: LoginUser; issuedAt: number };
+export type Session = {
+    token: string;
+    user: LoginUser;
+    issuedAt: number;
+    /** Personal-phone login flags: the server blocks everything but change-password while either is set. */
+    mustChangePassword?: boolean;
+    passwordExpired?: boolean;
+    sessionTimeoutMinutes?: number;
+};
 
 export interface SecureStore {
     get(key: string): Promise<string | null>;

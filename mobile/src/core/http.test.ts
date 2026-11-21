@@ -217,3 +217,39 @@ describe('http discount endpoints', () => {
         expect(fn).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('http 403 PASSWORD_CHANGE_REQUIRED', () => {
+    function setup403(code: string) {
+        const sessions = createSessionStore(memoryStore());
+        const http = createHttp({ baseURL: 'http://x/api', sessions });
+        http.defaults.adapter = async (config) => {
+            throw new AxiosError('fail', '403', config, null, { data: { success: false, code }, status: 403, statusText: '', headers: {}, config });
+        };
+        return { sessions, http };
+    }
+
+    it('emits password-change-required and keeps the session', async () => {
+        const { sessions, http } = setup403('PASSWORD_CHANGE_REQUIRED');
+        await sessions.save(session);
+        const required = vi.fn();
+        const expired = vi.fn();
+        const off1 = appEvents.on('password-change-required', required);
+        const off2 = appEvents.on('session-expired', expired);
+        await expect(http.get('/orders')).rejects.toBeTruthy();
+        off1();
+        off2();
+        expect(required).toHaveBeenCalledTimes(1);
+        expect(expired).not.toHaveBeenCalled();
+        expect(await sessions.load()).not.toBeNull();
+    });
+
+    it('other 403s emit nothing', async () => {
+        const { sessions, http } = setup403('FORBIDDEN');
+        await sessions.save(session);
+        const required = vi.fn();
+        const off = appEvents.on('password-change-required', required);
+        await expect(http.get('/orders')).rejects.toBeTruthy();
+        off();
+        expect(required).not.toHaveBeenCalled();
+    });
+});

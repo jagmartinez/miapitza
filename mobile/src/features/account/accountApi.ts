@@ -8,6 +8,8 @@ export type AccountLoginResult = { status: 'ok'; session: Session } | { status: 
 export interface AccountApi {
     login(username: string, password: string, twoFactorCode?: string): Promise<AccountLoginResult>;
     logout(): Promise<void>;
+    /** Server revokes every session on success, so the local one is dropped too. */
+    changePassword(oldPassword: string, newPassword: string): Promise<void>;
 }
 
 type RealtimeControl = Pick<ReturnType<typeof createRealtime>, 'close' | 'reconnect'>;
@@ -23,9 +25,17 @@ export function createAccountApi(deps: { http: AxiosInstance; sessions: SessionS
             if (data?.requires2FA) return { status: '2fa' };
             if (typeof data?.token !== 'string' || !data.token) throw new Error('login');
             const session: Session = { token: data.token, user: data.user, issuedAt: Date.now() };
+            if (typeof data.mustChangePassword === 'boolean') session.mustChangePassword = data.mustChangePassword;
+            if (typeof data.passwordExpired === 'boolean') session.passwordExpired = data.passwordExpired;
+            if (typeof data.sessionTimeoutMinutes === 'number') session.sessionTimeoutMinutes = data.sessionTimeoutMinutes;
             await sessions.save(session);
             await realtime.reconnect();
             return { status: 'ok', session };
+        },
+        async changePassword(oldPassword, newPassword) {
+            await http.post('/auth/change-password', { oldPassword, newPassword });
+            realtime.close();
+            await sessions.clear();
         },
         async logout() {
             await lockAndRevoke({ http, sessions, realtime });
