@@ -363,6 +363,15 @@ describe('SwapForm', () => {
         expect(screen.getByTestId('where')).toHaveTextContent('requests');
     });
 
+    it('a definitive 409 from the server shows its real reason and does not lock the form', async () => {
+        const createSwap = vi.fn().mockRejectedValue(new HrError('Ya existe una solicitud abierta para ese turno', { status: 409, isAmbiguous: true }));
+        mount(<SwapForm hr={api({ ...base(), createSwap })} userId={7} />);
+        await fill();
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Ya existe una solicitud abierta para ese turno');
+        expect(screen.getByRole('button', { name: 'Enviar' })).toBeEnabled();
+    });
+
     it('swap double tap sends once', async () => {
         let release!: () => void;
         const createSwap = vi.fn(() => new Promise((r) => (release = () => r({ id: 1 }))));

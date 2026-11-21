@@ -126,7 +126,7 @@ function RejectSheet({ item, onConfirm, onClose }: { item: Item; onConfirm: (rea
                 <button type="submit" className="btn btn-primary" disabled={!ok || sending}>
                     Confirmar rechazo
                 </button>
-                <button type="button" className="btn" onClick={onClose}>
+                <button type="button" className="btn" onClick={onClose} disabled={sending}>
                     Volver
                 </button>
             </form>

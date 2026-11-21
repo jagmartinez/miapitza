@@ -26,6 +26,8 @@ export function PendingForYou({ hr, userId }: { hr: HrApi; userId: number }) {
             summary.reload();
         } catch (e) {
             toast.show(toHrError(e).message, 'error');
+            // Already answered or gone (or the answer was lost): show the real state.
+            summary.reload();
         } finally {
             busy.current.delete(id);
             tick();

@@ -40,7 +40,9 @@ export function useRequestSubmit(opts: { onAmbiguous?: string } = {}) {
                 back();
             } catch (e) {
                 const err = toHrError(e);
-                const lock = err.isAmbiguous && !!opts.onAmbiguous;
+                // Only "no answer" (network, 408, 5xx) may have been applied; any other server answer is definitive.
+                const noAnswer = err.status === undefined || err.status === 408 || err.status >= 500;
+                const lock = err.isAmbiguous && noAnswer && !!opts.onAmbiguous;
                 setLocked(lock);
                 setError(lock ? opts.onAmbiguous! : err.message);
             } finally {

@@ -42,6 +42,10 @@ export function ChangePasswordScreen({ api, onChanged, onLogout, onBack }: Props
         setError(null);
         try {
             await api.changePassword(current, next);
+            setCurrent('');
+            setNext('');
+            setRepeat('');
+            setBusy(false);
             onChanged();
         } catch (err) {
             setError(serverMessage(err));

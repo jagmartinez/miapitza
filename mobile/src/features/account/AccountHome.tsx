@@ -45,7 +45,7 @@ export function AccountHome({ session, hr, onLogout }: Props) {
     const actions = today?.availableActions ?? [];
     const stale = today?.blockingIssue?.code === 'STALE_OPEN_ATTENDANCE';
     const facePending = summary.biometric?.status === 'PENDING' && today?.policy?.requireBiometric !== false;
-    const loanDatum = loanPolicy?.eligible && loanPolicy.maxAmount != null ? `Hasta ${formatHrMoney(loanPolicy.currency, loanPolicy.maxAmount)}` : 'No disponible';
+    const loanDatum = !loanPolicy?.eligible ? 'No disponible' : loanPolicy.maxAmount != null ? `Hasta ${formatHrMoney(loanPolicy.currency, loanPolicy.maxAmount)}` : 'Disponible';
     const vacationDatum = vacation ? `${formatHrNumber(vacation.available)} días disponibles` : 'Sin saldo';
 
     return (

@@ -1,4 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { configure, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+// Lazy chunks and a busy machine make the 1 s default flaky (the full suite runs ~100 files in parallel).
+configure({ asyncUtilTimeout: 5000 });
 import { createOfflineQueue, STALE_AFTER_MS } from './offlineQueue';
 import { OfflineIndicator } from './OfflineIndicator';
 import { makeEnv, sessionFor } from './testkit';

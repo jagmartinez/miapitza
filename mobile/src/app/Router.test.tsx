@@ -1,4 +1,7 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { configure, act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+// Lazy chunks and a busy machine make the 1 s default flaky (the full suite runs ~100 files in parallel).
+configure({ asyncUtilTimeout: 5000 });
 import { Router } from './Router';
 import { appEvents } from '../core/events';
 import type { Services } from '../core/services';

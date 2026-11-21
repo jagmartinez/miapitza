@@ -20,6 +20,16 @@ describe('ChangePasswordScreen', () => {
         expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
     });
 
+    it('after success the fields are cleared and the button is usable again (the tree is kept across re-login)', async () => {
+        const { onChanged, fill } = setup();
+        fill('old', 'newpassword1', 'newpassword1');
+        fireEvent.click(screen.getByRole('button', { name: 'Cambiar contraseña' }));
+        await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+        expect(screen.getByLabelText('Contraseña actual')).toHaveValue('');
+        expect(screen.getByLabelText('Nueva contraseña')).toHaveValue('');
+        expect(screen.getByLabelText('Repite la nueva contraseña')).toHaveValue('');
+    });
+
     it('mismatch is rejected without calling the server', () => {
         const { changePassword, fill } = setup();
         fill('old', 'newpassword1', 'newpassword2');

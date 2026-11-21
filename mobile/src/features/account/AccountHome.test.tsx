@@ -115,6 +115,11 @@ describe('AccountHome', () => {
         expect(await screen.findByText('No disponible')).toBeInTheDocument();
     });
 
+    it('an eligible employee with no cap sees "Disponible", not "No disponible"', async () => {
+        renderHome(linked, hrWith(today, { loanPolicy: vi.fn().mockResolvedValue({ currency: 'USD', maxAmount: null, eligible: true }) }));
+        expect(await screen.findByText('Disponible')).toBeInTheDocument();
+    });
+
     it('cancel on a pending request calls the matching api once', async () => {
         const cancelOvertime = vi.fn().mockResolvedValue({});
         const hr = hrWith(today, {

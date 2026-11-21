@@ -4,6 +4,7 @@ import type { HrLoan, HrLoanInstallment } from '@web/types/hr-benefits';
 import { Card } from '../../../ui/Card';
 import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useAccountNav } from '../AccountNav';
+import { dateOnly } from '../format';
 import { cuotas } from './loanMath';
 import { toHrError, type HrApi } from '../hrApi';
 import '../requests/requests.css';
@@ -28,7 +29,7 @@ const INSTALLMENT_LABELS: Record<HrLoanInstallment['status'], string> = {
     CANCELLED: 'Cancelada',
 };
 
-const dateLabel = (d: string) => d.slice(0, 10);
+const dateLabel = (d: string) => dateOnly(d) || d;
 
 /** One loan with its installment schedule; OVERDUE installments get the soft red chip. */
 export function LoanDetail({ hr, id }: { hr: HrApi; id: number }) {
