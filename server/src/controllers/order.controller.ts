@@ -815,13 +815,15 @@ export class OrderController {
                 req.user!.userId,
                 kitchenBatchId,
             );
+            // Deduplicated by dedupKey: a replay repairs a notification lost to a
+            // failed first attempt without re-pushing an existing one.
+            await KitchenNotificationService.notifyReady({
+                companyId,
+                orderId: id,
+                kitchenBatchId: result.kitchenBatchId,
+                complete: true,
+            });
             if (result.changed) {
-                await KitchenNotificationService.notifyReady({
-                    companyId,
-                    orderId: id,
-                    kitchenBatchId: result.kitchenBatchId,
-                    complete: true,
-                });
                 WebSocketService.broadcastOrderReady(id, result.order.table?.number, {
                     companyId,
                     branchId: result.order.branchId,

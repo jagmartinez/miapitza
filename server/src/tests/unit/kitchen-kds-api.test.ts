@@ -100,12 +100,27 @@ describe('kitchen ready controller guard', () => {
         return { notify, ready };
     }
 
-    it('repeated ready does not emit ORDER_READY nor create a notification', async () => {
+    it('repeated ready does not broadcast ORDER_READY but still calls the deduplicated notifyReady', async () => {
         const { notify, ready } = stubReady(false);
         const res = { json: jest.fn() } as unknown as Response;
         await OrderController.markKitchenReady(readyRequest(), res, jest.fn() as unknown as NextFunction);
-        expect(notify).not.toHaveBeenCalled();
+        expect(notify).toHaveBeenCalledTimes(1);
         expect(ready).not.toHaveBeenCalled();
+    });
+
+    it('ready replay after a failed first notification still creates the notification', async () => {
+        const { notify } = stubReady(true);
+        notify.mockRejectedValueOnce(new Error('transient'));
+        const next = jest.fn();
+        const res = { json: jest.fn() } as unknown as Response;
+        await OrderController.markKitchenReady(readyRequest(), res, next as unknown as NextFunction);
+        expect(next).toHaveBeenCalledTimes(1);
+        jest.spyOn(OrderService, 'markKitchenBatchReady').mockResolvedValue({
+            changed: false, branchId: 3, kitchenBatchId: 7, order: { id: 41, branchId: 3 },
+        } as never);
+        await OrderController.markKitchenReady(readyRequest(), res, next as unknown as NextFunction);
+        expect(notify).toHaveBeenCalledTimes(2);
+        expect(res.json).toHaveBeenCalledTimes(1);
     });
 
     it('first ready emits ORDER_READY and creates the notification', async () => {

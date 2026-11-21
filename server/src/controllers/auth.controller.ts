@@ -239,6 +239,10 @@ export class AuthController {
                 console.warn('[AUTH] Device login rejected', { ipAddress: req.ip || null, reason: error.code });
                 return next({ statusCode: error.statusCode, code: error.code, message: error.message });
             }
+            const bag = error as { name?: unknown; code?: unknown } | null;
+            const isPrisma = (typeof bag?.name === 'string' && bag.name.startsWith('PrismaClient'))
+                || (typeof bag?.code === 'string' && /^P\d{4}$/.test(bag.code));
+            if (isPrisma) return next(error);
             AuthController.handleDeviceAuthError('Device login', error, req, next);
         }
     }

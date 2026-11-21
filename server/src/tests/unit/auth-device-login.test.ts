@@ -4,6 +4,7 @@ import prisma from '../../utils/prisma';
 import { AuthService, DeviceAuthError } from '../../services/auth.service';
 import { AuthController } from '../../controllers/auth.controller';
 import { OperationalDeviceService } from '../../services/operational-device.service';
+import { WebSocketService } from '../../services/websocket.service';
 
 const NOT_ACTIVE = { code: 'DEVICE_NOT_ACTIVE', statusCode: 401 };
 const KITCHEN_UNAVAILABLE = { code: 'KITCHEN_ACCOUNT_UNAVAILABLE', statusCode: 403 };
@@ -41,7 +42,7 @@ function mockInfra(opts: { deviceActiveInTx?: boolean } = {}) {
     const auditCreate = jest.fn(async (_args: CreateArgs) => ({}));
     const queryRaw = jest.fn(async () => [{ status: opts.deviceActiveInTx === false ? 'REVOKED' : 'ACTIVE' }]);
     jest.spyOn(prisma, '$transaction').mockImplementation((async (cb: (tx: unknown) => unknown) =>
-        cb({ userSession: { create: sessionCreate, updateMany: sessionUpdateMany }, auditLog: { create: auditCreate }, $queryRaw: queryRaw })) as never);
+        cb({ userSession: { create: sessionCreate, updateMany: sessionUpdateMany, findMany: jest.fn(async () => [{ tokenHash: 'h-old-1' }, { tokenHash: 'h-old-2' }]) }, auditLog: { create: auditCreate }, $queryRaw: queryRaw })) as never);
     jest.spyOn(prisma.setting, 'findFirst').mockResolvedValue(null);
     return { sessionCreate, sessionUpdateMany, auditCreate, queryRaw, calls };
 }
@@ -146,6 +147,16 @@ describe('device-login single session per device', () => {
         });
         expect(calls).toEqual(['updateMany', 'create']);
     });
+
+    it('device-login: closes the sockets of the replaced sessions after commit', async () => {
+        setup(cook());
+        mockInfra();
+        const close = jest.spyOn(WebSocketService, 'closeBySessionHashes').mockReturnValue(0);
+
+        await AuthService.deviceLogin({ deviceToken: 'tok' });
+
+        expect(close).toHaveBeenCalledWith(['h-old-1', 'h-old-2'], 'Session replaced');
+    });
 });
 
 describe('AuthController device-login error mapping', () => {
@@ -168,6 +179,13 @@ describe('AuthController device-login error mapping', () => {
             statusCode: 403, code: 'KITCHEN_ACCOUNT_UNAVAILABLE',
             message: 'La cuenta de cocina no está disponible. Avisa al administrador.',
         });
+    });
+
+    it('forwards Prisma errors to the central handler instead of a generic 401', async () => {
+        const named = Object.assign(new Error('Transaction already closed'), { name: 'PrismaClientKnownRequestError', code: 'P2028' });
+        expect(await run(named)).toBe(named);
+        const coded = Object.assign(new Error('deadlock'), { code: 'P2034' });
+        expect(await run(coded)).toBe(coded);
     });
 
     it('keeps the generic 401 for other failures (PIN login / roster path unchanged)', async () => {

@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SessionService } from './session.service';
+import { WebSocketService } from './websocket.service';
 import { TwoFactorService } from './twoFactor.service';
 import { ROLES, PIN_ROLES } from '../constants/roles';
 import {
@@ -371,9 +372,11 @@ export class AuthService {
         if (!user.companyId) {
             throw new Error(GENERIC_AUTH_ERROR);
         }
+        let replacedHashes: string[] = [];
         await prisma.$transaction(async (tx) => {
             if (opts.guard) await opts.guard(tx);
             if (opts.revokePriorDeviceSessions && opts.deviceTag) {
+                replacedHashes = await SessionService.activeHashesByDevice(opts.deviceTag, tx);
                 await tx.userSession.updateMany({
                     where: { device: opts.deviceTag, revoked: false },
                     data: { revoked: true },
@@ -401,6 +404,8 @@ export class AuthService {
                 },
             }, tx);
         });
+        // Do not wait for the next heartbeat: drop sockets of the replaced sessions now.
+        if (replacedHashes.length > 0) WebSocketService.closeBySessionHashes(replacedHashes, 'Session replaced');
 
         return {
             token,
