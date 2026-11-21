@@ -371,7 +371,11 @@ export function OrderScreen(props: OrderScreenProps) {
     };
 
     const paymentSurvey = props.onSurvey ? async (info: { orderId: number; waiterName: string }) => {
-        await props.invalidate?.(); // the table is already free: the lists are stale when the waiter returns
+        try {
+            await props.invalidate?.(); // the table is already free: the lists are stale when the waiter returns
+        } catch {
+            /* a stale list must not stop the customer's survey */
+        }
         props.onSurvey!(info);
     } : undefined;
 

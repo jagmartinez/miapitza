@@ -8,10 +8,12 @@ export function useBackBlock(active: boolean): void {
         if (!active || !Capacitor.isNativePlatform()) return undefined;
         let removed = false;
         let handle: { remove: () => Promise<void> } | null = null;
-        void App.addListener('backButton', () => undefined).then((h) => {
-            if (removed) void h.remove();
-            else handle = h;
-        });
+        void App.addListener('backButton', () => undefined)
+            .then((h) => {
+                if (removed) void h.remove();
+                else handle = h;
+            })
+            .catch(() => undefined); // plugin not synced: Back stays as is, never an unhandled rejection
         return () => {
             removed = true;
             if (handle) void handle.remove();

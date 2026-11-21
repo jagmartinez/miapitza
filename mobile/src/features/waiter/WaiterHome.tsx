@@ -8,6 +8,8 @@ import { ownerKeyOf } from '../../data/types';
 import { loadCashApi } from '../../data/loadCashApi';
 
 
+import { SurveyBoundary } from '../survey/SurveyBoundary';
+import { useBackBlock } from '../survey/useBackBlock';
 import { createSurveyApi } from '../survey/surveyApi';
 import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
 import { useReadyInbox } from './readyInbox';
@@ -69,6 +71,8 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
         if (data && owner) await data.cache.invalidate(owner, STALE_URLS);
     }, [data, owner]);
 
+    // Back is swallowed from the moment the survey route is chosen, also while its chunk loads.
+    useBackBlock(route.name === 'survey');
     const surveySubmit = useMemo(() => (data ? createSurveyApi(data.api).submit : async () => undefined), [data]);
 
     if (!data) {
@@ -109,7 +113,9 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
         // Locked: no way back to the order. It ends on its own (thanks or idle) through onSwitchUser, which locks and revokes the session.
         return (
             <Suspense fallback={loadingFallback}>
-                <SurveyScreen orderId={route.orderId} waiterName={route.waiterName} submit={surveySubmit} onDone={onSwitchUser} />
+                <SurveyBoundary onFail={onSwitchUser}>
+                    <SurveyScreen orderId={route.orderId} waiterName={route.waiterName} submit={surveySubmit} onDone={onSwitchUser} />
+                </SurveyBoundary>
             </Suspense>
         );
     }

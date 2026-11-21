@@ -7,7 +7,15 @@ import './survey.css';
 const IDLE_MS = 60_000;
 const THANKS_MS = 5_000;
 /** The lock waits for a slow submit this long at most: the customer is never held. */
-const SETTLE_MAX_MS = 8_000;
+const SETTLE_MAX_MS = 12_000;
+/** Taps this soon after the step changes are the tail of a double tap. */
+const SETTLE_TAP_MS = 400;
+
+/** Only what the server accepts (digits, + ( ) - and spaces, 6-30 chars); otherwise nothing: a bad phone must not cost the whole survey. */
+export function cleanPhone(v: string): string | null {
+    const p = v.replace(/[^0-9+()\-\s]/g, '').trim().slice(0, 30).trim();
+    return p.length >= 6 ? p : null;
+}
 
 type Rating = number | null;
 type Area = 'waiterRating' | 'foodRating' | 'waitRating' | 'ambienceRating';
@@ -28,7 +36,7 @@ function Stars({ label, value, onChange }: { label: string; value: Rating; onCha
             <span className="sv-area-label">{label}</span>
             <div className="sv-stars">
                 {[1, 2, 3, 4, 5].map((n) => (
-                    <button key={n} type="button" className={`sv-star${value !== null && n <= value ? ' on' : ''}`} aria-label={`${label}: ${n} de 5`} aria-pressed={value === n} onClick={() => onChange(value === n ? null : n)}>
+                    <button key={n} type="button" className={`sv-star${value !== null && n <= value ? ' on' : ''}`} aria-label={`${label}: ${n} de 5`} aria-pressed={value === n} onClick={() => onChange(n)}>
                         ★
                     </button>
                 ))}
@@ -44,6 +52,12 @@ export default function SurveyScreen({ orderId, waiterName, submit, onDone }: Su
     const [ratings, setRatings] = useState<Record<Area, Rating>>({ waiterRating: null, foodRating: null, waitRating: null, ambienceRating: null });
     const [comment, setComment] = useState('');
     const [phone, setPhone] = useState('');
+    const [settling, setSettling] = useState(false);
+    useEffect(() => {
+        if (!settling) return undefined;
+        const t = setTimeout(() => setSettling(false), SETTLE_TAP_MS);
+        return () => clearTimeout(t);
+    }, [settling]);
     const sent = useRef<Promise<void> | null>(null);
     const closing = useRef(false);
     const alive = useRef(true);
@@ -61,7 +75,7 @@ export default function SurveyScreen({ orderId, waiterName, submit, onDone }: Su
     /** Starts the one submit (a double tap or idle after Enviar reuses it). Failures never reach the customer. */
     const send = (): void => {
         if (sent.current || nps === null) return;
-        const input: SurveyInput = { orderId, nps, ...ratings, comment: clean(comment), contactPhone: clean(phone) };
+        const input: SurveyInput = { orderId, nps, ...ratings, comment: clean(comment), contactPhone: cleanPhone(phone) };
         sent.current = Promise.resolve()
             .then(() => submit(input, surveyKey(orderId)))
             .then(
@@ -122,6 +136,7 @@ export default function SurveyScreen({ orderId, waiterName, submit, onDone }: Su
                             className="sv-key"
                             onClick={() => {
                                 setNps(n);
+                                setSettling(true);
                                 setStep('details');
                             }}
                         >
@@ -138,7 +153,7 @@ export default function SurveyScreen({ orderId, waiterName, submit, onDone }: Su
     }
 
     return (
-        <main className="sv sv-details" data-testid="survey" aria-label="Encuesta">
+        <main className={`sv sv-details${settling ? ' sv-settling' : ''}`} data-testid="survey" aria-label="Encuesta">
             <section className="sv-col">
                 <Stars label={waiterLabel} value={ratings.waiterRating} onChange={(v) => setRatings((r) => ({ ...r, waiterRating: v }))} />
                 <Stars label="Comida" value={ratings.foodRating} onChange={(v) => setRatings((r) => ({ ...r, foodRating: v }))} />

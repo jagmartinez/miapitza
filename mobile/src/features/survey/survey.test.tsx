@@ -16,8 +16,9 @@ vi.mock('@capacitor/core', async (orig) => {
     return { ...actual, Capacitor: { ...actual.Capacitor, isNativePlatform: () => true } };
 });
 
-import SurveyScreen from './SurveyScreen';
-import { createSurveyApi, surveyKey } from './surveyApi';
+import SurveyScreen, { cleanPhone } from './SurveyScreen';
+import { SurveyBoundary } from './SurveyBoundary';
+import { createSurveyApi, surveyKey, FIRST_ATTEMPT_TIMEOUT_MS } from './surveyApi';
 import { itemTitle } from '../../data/queueLabels';
 import type { SyncItem } from '../../data/types';
 
@@ -228,7 +229,7 @@ describe('surveyApi', () => {
     });
 
     it('does not queue a domain 4xx', async () => {
-        const err = Object.assign(new Error('conflict'), { isAxiosError: true, response: { status: 409, data: {} } });
+        const err = Object.assign(new Error('conflict'), { isAxiosError: true, response: { status: 403, data: { code: 'SURVEY_DEVICE_REQUIRED' } } });
         const mutate = vi.fn().mockRejectedValue(err);
         await expect(createSurveyApi({ mutate }).submit(body, 'survey-5')).rejects.toBe(err);
         expect(mutate).toHaveBeenCalledTimes(1);
@@ -237,5 +238,110 @@ describe('surveyApi', () => {
     it('queued survey is labelled Encuesta del cliente', () => {
         expect(itemTitle({ operationType: 'GENERIC_MUTATION', meta: { label: 'Encuesta del cliente' } } as unknown as SyncItem)).toBe('Encuesta del cliente');
         expect(itemTitle({ operationType: 'GENERIC_MUTATION', url: '/surveys', method: 'POST' } as unknown as SyncItem)).toBe('Encuesta del cliente');
+    });
+});
+
+describe('fix round 1', () => {
+    const body = { orderId: 5, nps: 9, waiterRating: 4, foodRating: null, waitRating: null, ambienceRating: null, comment: 'ok', contactPhone: '8888-1234' };
+    const http = (status: number, code: string) => Object.assign(new Error(code), { isAxiosError: true, response: { status, data: { code } } });
+
+    it('first attempt times out before the lock bound, and the enqueue happens while the session exists', async () => {
+        let session = true;
+        const queuedWhile: boolean[] = [];
+        const mutate = vi.fn(async (spec: { config?: { timeout?: number }; queue?: { forceQueue?: boolean } }) => {
+            if (spec.queue?.forceQueue) {
+                queuedWhile.push(session);
+                if (!session) throw new Error('No hay sesión para encolar la operación');
+                return { _offline: true };
+            }
+            // a dead network: the request only fails when its own timeout elapses
+            await new Promise((r) => setTimeout(r, spec.config?.timeout ?? 15_000));
+            throw Object.assign(new Error('timeout of 5000ms exceeded'), { isAxiosError: true, request: {}, code: 'ECONNABORTED' });
+        });
+        const api = createSurveyApi({ mutate });
+        const onDone = vi.fn(() => {
+            session = false;
+        });
+        render(<SurveyScreen orderId={9} waiterName="Ana" submit={api.submit} onDone={onDone} />);
+        nps(9);
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(20_000);
+        });
+        expect(FIRST_ATTEMPT_TIMEOUT_MS).toBeLessThan(8_000);
+        expect(queuedWhile).toEqual([true]);
+        expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('cleanPhone keeps only accepted characters and needs 6', () => {
+        expect(cleanPhone(' 8888-1234 ')).toBe('8888-1234');
+        expect(cleanPhone('+505 (8888) 1234')).toBe('+505 (8888) 1234');
+        expect(cleanPhone('8888.1234 #')).toBe('88881234');
+        expect(cleanPhone('ext 123')).toBeNull();
+        expect(cleanPhone('abc')).toBeNull();
+        expect(cleanPhone('1'.repeat(40))).toHaveLength(30);
+    });
+
+    it('sanitised phone goes to the server; a short one goes as null', async () => {
+        const { submit } = setup();
+        nps(8);
+        fireEvent.change(screen.getByLabelText('Teléfono (opcional, si quieres que te contactemos)'), { target: { value: '12-ab' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await flush();
+        expect(submit.mock.calls[0][0]).toMatchObject({ contactPhone: null });
+    });
+
+    it('SURVEY_INVALID 400 retries once without comment and phone', async () => {
+        const mutate = vi.fn().mockRejectedValueOnce(http(400, 'SURVEY_INVALID')).mockResolvedValueOnce({ created: true });
+        await createSurveyApi({ mutate }).submit(body, 'survey-5');
+        expect(mutate).toHaveBeenCalledTimes(2);
+        expect(mutate.mock.calls[1][0].data).toEqual({ ...body, comment: null, contactPhone: null });
+        expect(mutate.mock.calls[1][0].key).not.toBe('survey-5');
+    });
+
+    it('SURVEY_INVALID without free text is not retried', async () => {
+        const mutate = vi.fn().mockRejectedValue(http(400, 'SURVEY_INVALID'));
+        await expect(createSurveyApi({ mutate }).submit({ ...body, comment: null, contactPhone: null }, 'k')).rejects.toBeTruthy();
+        expect(mutate).toHaveBeenCalledTimes(1);
+    });
+
+    it('409 by code: NOT_PAID is definitive, IDEMPOTENCY_IN_PROGRESS is accepted without queueing', async () => {
+        const notPaid = vi.fn().mockRejectedValue(http(409, 'SURVEY_ORDER_NOT_PAID'));
+        await expect(createSurveyApi({ mutate: notPaid }).submit(body, 'k')).rejects.toBeTruthy();
+        expect(notPaid).toHaveBeenCalledTimes(1);
+        const busy = vi.fn().mockRejectedValue(http(409, 'IDEMPOTENCY_IN_PROGRESS'));
+        await expect(createSurveyApi({ mutate: busy }).submit(body, 'k')).resolves.toBeUndefined();
+        expect(busy).toHaveBeenCalledTimes(1);
+    });
+
+    it('tapping the selected star keeps it', async () => {
+        const { submit } = setup();
+        nps(5);
+        stars('Comida', 4);
+        stars('Comida', 4);
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await flush();
+        expect(submit.mock.calls[0][0]).toMatchObject({ foodRating: 4 });
+    });
+
+    it('the details step ignores taps right after an NPS key (double tap tail)', () => {
+        setup();
+        nps(9);
+        expect(screen.getByTestId('survey')).toHaveClass('sv-settling');
+    });
+
+    it('a crashing survey falls back to locking', () => {
+        const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const onFail = vi.fn();
+        const Boom = () => {
+            throw new Error('chunk');
+        };
+        render(
+            <SurveyBoundary onFail={onFail}>
+                <Boom />
+            </SurveyBoundary>,
+        );
+        expect(onFail).toHaveBeenCalledTimes(1);
+        err.mockRestore();
     });
 });
