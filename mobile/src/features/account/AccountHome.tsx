@@ -1,11 +1,12 @@
 import { ATTENDANCE_ACTION_LABELS } from '@web/components/hr/attendanceRules';
 import { formatHrMoney, formatHrNumber } from '@web/utils/hrFormat';
-import { isCompanyAdmin } from '../../core/permissions';
+import { isCompanyAdmin, isWaiter } from '../../core/permissions';
 import type { Session } from '../../core/session';
 import { Card } from '../../ui/Card';
 import { ScreenHeader } from '../../ui/ScreenHeader';
 import { useAccountNav, type AccountSection } from './AccountNav';
 import type { HrApi } from './hrApi';
+import { useMyService } from './useMyService';
 import { useCancelFlow } from './requests/common';
 import { PART_LABELS, useAccountSummary, type PendingItem } from './useAccountSummary';
 import './account-home.css';
@@ -24,6 +25,7 @@ export function AccountHome({ session, hr, onLogout }: Props) {
     const { navigate } = useAccountNav();
     const linked = session.user.accountType === 'INTERNAL' && session.user.employeeId != null;
     const summary = useAccountSummary(hr, { userId: session.user.id, enabled: linked });
+    const service = useMyService(hr, linked && isWaiter(session.user));
     const cancel = useCancelFlow(hr, summary.reload);
 
     const header = <ScreenHeader title={session.user.name} right={<button type="button" className="btn ah-logout" onClick={onLogout}>Salir</button>} />;
@@ -131,6 +133,24 @@ export function AccountHome({ session, hr, onLogout }: Props) {
 
                 <h2 className="ah-h">Mi espacio</h2>
                 <div className="ah-list">
+                    {isWaiter(session.user) && (
+                        <Card title="Mi servicio">
+                            {service.error ? (
+                                <p className="error" role="alert">
+                                    No se pudo cargar tu servicio. <button type="button" className="ah-link" onClick={service.reload}>Reintentar</button>
+                                </p>
+                            ) : !service.data ? (
+                                <p className="muted">Cargando…</p>
+                            ) : service.data.attentionAvg == null || service.data.nps == null ? (
+                                <p className="muted">Aún no hay suficientes opiniones este mes</p>
+                            ) : (
+                                <>
+                                    <p>Atención {service.data.attentionAvg.toFixed(1)} · NPS {service.data.nps}</p>
+                                    {service.data.rank != null && <p className="muted">Puesto {service.data.rank} de {service.data.rankedCount}</p>}
+                                </>
+                            )}
+                        </Card>
+                    )}
                     <Card title="Mi horario" onClick={() => navigate('schedule')} />
                     <Card title="Mi nómina" onClick={() => navigate('payroll')} />
                     <Card title="Préstamos" onClick={() => navigate('loans')} />

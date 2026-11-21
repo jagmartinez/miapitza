@@ -24,6 +24,7 @@ function hrWith(today: unknown, over: Record<string, unknown> = {}): HrApi {
         }),
         myLoans: vi.fn().mockResolvedValue([]),
         loanPolicy: vi.fn().mockResolvedValue({ currency: 'USD', maxAmount: '500', eligible: true }),
+        myService: vi.fn().mockResolvedValue({ month: '2026-11', responses: 0, attentionAvg: null, nps: null, rank: null, rankedCount: 0 }),
         ...over,
     } as unknown as HrApi;
 }

@@ -147,6 +147,15 @@ function isDefinitiveRejection(e: HrError): boolean {
 
 export type HrDecision = 'APPROVED' | 'REJECTED';
 const PENDING_LIMIT = 100;
+export interface MyServiceScore {
+    month: string;
+    responses: number;
+    attentionAvg: number | null;
+    nps: number | null;
+    rank: number | null;
+    rankedCount: number;
+}
+
 const H = '/v1/hr';
 const B = '/v1/hr/benefits';
 
@@ -229,6 +238,7 @@ export function createHrApi(http: AxiosInstance) {
         dispose: off,
 
         // ---- attendance ----
+        myService: () => call<MyServiceScore>('/v1/surveys/me'),
         attendanceToday: () => call<HrTodayAttendance>(`${H}/me/attendance/today`),
         attendancePolicy: () => call<HrAttendancePolicy>(`${H}/attendance/policy`),
         biometricStatus: () => call<HrBiometricProfile>(`${H}/biometrics/me`),

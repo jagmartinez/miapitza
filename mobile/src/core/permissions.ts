@@ -29,3 +29,8 @@ export function isCashAdmin(user: LoginUser): boolean {
 export function isCompanyAdmin(user: LoginUser): boolean {
     return roleNames(user).some((r) => CASH_ADMIN_ROLES.includes(r));
 }
+
+/** The waiter role: the only one with a monthly customer-service score. */
+export function isWaiter(user: LoginUser): boolean {
+    return roleNames(user).includes('MESERO');
+}
