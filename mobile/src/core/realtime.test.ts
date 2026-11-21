@@ -283,4 +283,51 @@ describe('realtime subscriber gating', () => {
         expect(got).toEqual([]);
         rt.close();
     });
+
+    it('pings every 25 s while connected', async () => {
+        const rt = make();
+        rt.connect();
+        const ws = FakeWS.instances[0];
+        ws.open();
+        await flush();
+        ws.serverSend({ type: 'CONNECTED' });
+        await vi.advanceTimersByTimeAsync(25_000);
+        expect(ws.sent.filter((m) => JSON.parse(m).type === 'PING')).toHaveLength(1);
+        ws.serverSend({ type: 'PONG' });
+        await vi.advanceTimersByTimeAsync(25_000);
+        expect(ws.sent.filter((m) => JSON.parse(m).type === 'PING')).toHaveLength(2);
+    });
+
+    it('silent socket is closed and reconnected after 60 s', async () => {
+        const statuses: string[] = [];
+        const off = appEvents.on('realtime-status', (s) => statuses.push(String(s)));
+        const rt = make();
+        rt.connect();
+        const ws = FakeWS.instances[0];
+        ws.open();
+        await flush();
+        ws.serverSend({ type: 'CONNECTED' });
+        await vi.advanceTimersByTimeAsync(59_000);
+        expect(ws.closed).toBe(false);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(ws.closed).toBe(true);
+        expect(statuses.at(-1)).toBe('offline');
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(FakeWS.instances).toHaveLength(2);
+        off();
+    });
+
+    it('any message keeps the socket alive', async () => {
+        const rt = make();
+        rt.connect();
+        const ws = FakeWS.instances[0];
+        ws.open();
+        await flush();
+        ws.serverSend({ type: 'CONNECTED' });
+        for (let i = 0; i < 4; i++) {
+            await vi.advanceTimersByTimeAsync(30_000);
+            ws.serverSend({ type: 'PONG' });
+        }
+        expect(ws.closed).toBe(false);
+    });
 });

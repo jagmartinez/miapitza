@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { newIdempotencyKey } from '@web/utils/idempotency';
-import { appEvents } from '../../core/events';
 import { kitchenAuthStatus } from '../../core/kitchenAuth';
 import { KitchenActionError, type KitchenApi } from './kitchenApi';
 import { kitchenLabel } from './kitchenLabel';
 import { batchKey, type KitchenBatch } from './kitchenTypes';
+import { useSessionWake } from './useSessionWake';
 
 export const READY_UNDO_MS = 5000;
 const MIN_BACKOFF_MS = 2000;
 const MAX_BACKOFF_MS = 30_000;
 const MAX_COMMITTED = 10;
+/** A commit that gets no usable answer for this long is given up and the card restored. */
+const GIVE_UP_MS = 120_000;
 
 export interface PendingReady {
     key: string;
@@ -19,6 +21,7 @@ export interface PendingReady {
 }
 export interface ReadyFailure {
     key: string;
+    label: string;
     message: string;
 }
 
@@ -35,6 +38,8 @@ interface Entry {
     /** Steps already acknowledged by the server (0 = none, 1 = ready done). */
     step: 0 | 1;
     timer: ReturnType<typeof setTimeout> | null;
+    /** Start of the current run of network/5xx failures (reset by any acknowledged step). */
+    failingSince: number | null;
 }
 
 type ReadyApi = Pick<KitchenApi, 'ready' | 'release'>;
@@ -43,12 +48,13 @@ type ReadyApi = Pick<KitchenApi, 'ready' | 'release'>;
  * "Listo" with a deferred commit: the card hides at once, the user has `undoMs` to undo,
  * then ready -> release run in sequence with idempotency keys fixed at markReady time.
  */
-export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number } = {}) {
+export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number; sessionKey?: string | null } = {}) {
     const undoMs = opts.undoMs ?? READY_UNDO_MS;
     const apiRef = useRef(api);
     apiRef.current = api;
     const entries = useRef(new Map<string, Entry>());
     const mounted = useRef(true);
+    const onSessionWake = useSessionWake(opts.sessionKey);
     const [, setVersion] = useState(0);
     const [committed, setCommitted] = useState<KitchenBatch[]>([]);
     const [failures, setFailures] = useState<ReadyFailure[]>([]);
@@ -58,18 +64,23 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number } = {}) {
 
     const waitForOnline = useCallback(
         (entry: Entry, backoff: number, resume: (next: number) => void) => {
-            const off = appEvents.on('kitchen-auth-status', (status) => {
-                if (status !== 'online') return;
-                off();
-                resume(MIN_BACKOFF_MS);
-            });
+            const cancel = onSessionWake(() => resume(MIN_BACKOFF_MS));
             // Already online (the 401 outran the status event): retry with the same growing backoff.
             if (kitchenAuthStatus() === 'online') {
-                off();
+                cancel();
                 entry.timer = setTimeout(() => resume(Math.min(backoff * 2, MAX_BACKOFF_MS)), backoff);
             }
         },
-        [],
+        [onSessionWake],
+    );
+
+    const fail = useCallback(
+        (entry: Entry, message: string) => {
+            entries.current.delete(entry.key);
+            if (mounted.current) setFailures((f) => [...f.filter((x) => x.key !== entry.key), { key: entry.key, label: entry.label || 'Comanda', message }]);
+            bump();
+        },
+        [bump],
     );
 
     const run = useCallback(
@@ -89,25 +100,30 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number } = {}) {
                         continue;
                     }
                     if (err.kind === 'auth') {
+                        entry.failingSince = null;
                         waitForOnline(entry, backoff, (next) => void run(entry, next));
                         return;
                     }
                     if (err.kind === 'network') {
+                        entry.failingSince ??= Date.now();
+                        if (Date.now() - entry.failingSince >= GIVE_UP_MS) {
+                            fail(entry, 'sin respuesta del servidor');
+                            return;
+                        }
                         entry.timer = setTimeout(() => void run(entry, Math.min(backoff * 2, MAX_BACKOFF_MS)), backoff);
                         return;
                     }
-                    entries.current.delete(entry.key);
-                    if (mounted.current) setFailures((f) => [...f.filter((x) => x.key !== entry.key), { key: entry.key, message: err.message }]);
-                    bump();
+                    fail(entry, err.message);
                     return;
                 }
+                entry.failingSince = null;
                 entry.step = (entry.step + 1) as 0 | 1;
             }
             entry.phase = 'done';
             if (mounted.current) setCommitted((c) => [{ ...entry.batch, status: 'READY', kitchenReleasedAt: new Date().toISOString() },...c.filter((b) => batchKey(b) !== entry.key)].slice(0, MAX_COMMITTED));
             bump();
         },
-        [bump, waitForOnline],
+        [bump, fail, waitForOnline],
     );
 
     const startCommit = useCallback(
@@ -135,6 +151,7 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number } = {}) {
                 phase: 'pending',
                 step: 0,
                 timer: null,
+                failingSince: null,
             };
             entry.timer = setTimeout(() => startCommit(entry), undoMs);
             entries.current.set(key, entry);

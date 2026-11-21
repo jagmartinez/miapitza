@@ -216,4 +216,36 @@ describe('useKitchenQueue', () => {
         await tick(500);
         expect(queue).not.toHaveBeenCalled();
     });
+
+    it('queue refetches every 60 s', async () => {
+        const { queue } = setup(async () => []);
+        await flush();
+        expect(queue).toHaveBeenCalledTimes(1);
+        await tick(60_000);
+        expect(queue).toHaveBeenCalledTimes(2);
+        await tick(60_000);
+        expect(queue).toHaveBeenCalledTimes(3);
+    });
+
+    it('safety refetch is skipped while a load is in flight', async () => {
+        let release!: () => void;
+        const { queue } = setup(() => new Promise<KitchenBatch[]>((r) => (release = () => r([]))));
+        await flush();
+        await tick(60_000);
+        expect(queue).toHaveBeenCalledTimes(1);
+        await act(async () => release());
+    });
+
+    it('no queue request before the first session', async () => {
+        const api = { queue: vi.fn(async () => []), config: vi.fn(async () => ({ warningMinutes: 3, urgentMinutes: 10 })) } as unknown as KitchenApi;
+        const rt = fakeRealtime();
+        const hook = renderHook(({ enabled }) => useKitchenQueue(api, rt, { enabled }), { initialProps: { enabled: false } });
+        await tick(70_000);
+        expect(api.queue).not.toHaveBeenCalled();
+        expect(hook.result.current.status).toBe('loading');
+        hook.rerender({ enabled: true });
+        await flush();
+        expect(api.queue).toHaveBeenCalledTimes(1);
+        expect(hook.result.current.status).toBe('ready');
+    });
 });

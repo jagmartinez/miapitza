@@ -12,10 +12,13 @@ export interface KitchenRealtime {
 
 export interface UseKitchenQueueOptions {
     debounceMs?: number;
+    /** False until the kitchen has a session: no request goes out unauthenticated. Default true. */
+    enabled?: boolean;
 }
 
 export type KitchenQueueStatus = 'loading' | 'ready' | 'error';
 
+const SAFETY_REFETCH_MS = 60_000;
 const REFETCH_TYPES = ['ORDER_SENT_TO_KITCHEN', 'ORDER_IN_PREPARATION', 'ORDER_READY', 'ORDER_UPDATE', 'CONNECTED'] as const;
 /** Edits to lines not yet sent to the kitchen; the full order payload is not batch-shaped. */
 const IGNORED_UPDATE_STATUSES = new Set(['ITEMS_CHANGED', 'GUESTS_CHANGED']);
@@ -40,6 +43,7 @@ function visibleBatches(raw: KitchenBatch[]): KitchenBatch[] {
 
 export function useKitchenQueue(api: KitchenApi, realtime: KitchenRealtime, opts: UseKitchenQueueOptions = {}) {
     const debounceMs = opts.debounceMs ?? 250;
+    const enabled = opts.enabled ?? true;
     const [batches, setBatches] = useState<KitchenBatch[]>([]);
     const [config, setConfig] = useState<KitchenConfig | undefined>();
     const [status, setStatus] = useState<KitchenQueueStatus>('loading');
@@ -51,14 +55,17 @@ export function useKitchenQueue(api: KitchenApi, realtime: KitchenRealtime, opts
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const prevKeys = useRef<Set<string> | null>(null);
     const listeners = useRef(new Set<(fresh: KitchenBatch[]) => void>());
+    const loading = useRef(false);
     const configLoaded = useRef(false);
     const apiRef = useRef(api);
     apiRef.current = api;
 
     const load = useCallback(async () => {
         const mine = ++seq.current;
+        loading.current = true;
         try {
             const raw = await apiRef.current.queue();
+            if (mine === seq.current) loading.current = false;
             if (!alive.current || mine !== seq.current) return; // stale or unmounted
             const next = visibleBatches(raw);
             const previous = prevKeys.current;
@@ -80,6 +87,7 @@ export function useKitchenQueue(api: KitchenApi, realtime: KitchenRealtime, opts
                 }
             }
         } catch (cause) {
+            if (mine === seq.current) loading.current = false;
             if (!alive.current || mine !== seq.current) return;
             setStatus('error');
             setError(queueErrorText(cause));
@@ -107,7 +115,16 @@ export function useKitchenQueue(api: KitchenApi, realtime: KitchenRealtime, opts
 
     useEffect(() => {
         alive.current = true;
+        if (!enabled) {
+            return () => {
+                alive.current = false;
+            };
+        }
         void load();
+        // Safety net for a socket that died silently: events alone would never trigger a refetch.
+        const poll = setInterval(() => {
+            if (!loading.current) void load();
+        }, SAFETY_REFETCH_MS);
         const offs = REFETCH_TYPES.map((type) =>
             realtime.subscribe(type, (payload) => {
                 if (type === 'ORDER_UPDATE') {
@@ -119,11 +136,12 @@ export function useKitchenQueue(api: KitchenApi, realtime: KitchenRealtime, opts
         );
         return () => {
             alive.current = false;
+            clearInterval(poll);
             offs.forEach((off) => off());
             if (timer.current) clearTimeout(timer.current);
             timer.current = null;
         };
-    }, [realtime, load, schedule]);
+    }, [realtime, load, schedule, enabled]);
 
     const reload = useCallback(() => load(), [load]);
     const onNewBatches = useCallback((cb: (fresh: KitchenBatch[]) => void) => {

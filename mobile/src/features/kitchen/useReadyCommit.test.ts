@@ -13,13 +13,13 @@ const mk = (id: number, kitchenBatchId = 1): KitchenBatch => ({
     orderType: 'DINE_IN', createdAt: '2026-01-01T00:00:00Z', items: [],
 });
 
-function setup() {
+function setup(sessionKey: string | null = null) {
     const calls: string[] = [];
     const api = {
         ready: vi.fn(async (b: KitchenBatch, _k: string) => { calls.push(`ready:${b.id}:${b.kitchenBatchId}`); }),
         release: vi.fn(async (b: KitchenBatch, _k: string) => { calls.push(`release:${b.id}:${b.kitchenBatchId}`); }),
     };
-    const hook = renderHook(() => useReadyCommit(api as never));
+    const hook = renderHook(({ k }: { k: string | null }) => useReadyCommit(api as never, { sessionKey: k }), { initialProps: { k: sessionKey } });
     return { api, calls, hook };
 }
 
@@ -125,7 +125,7 @@ describe('useReadyCommit', () => {
         act(() => hook.result.current.markReady(mk(1)));
         await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
         expect(hook.result.current.hiddenKeys.has('1:1')).toBe(false);
-        expect(hook.result.current.failures).toEqual([{ key: '1:1', message: 'No se puede' }]);
+        expect(hook.result.current.failures).toEqual([{ key: '1:1', label: 'M1', message: 'No se puede' }]);
         expect(api.release).not.toHaveBeenCalled();
     });
 
@@ -170,7 +170,7 @@ describe('useReadyCommit', () => {
         act(() => hook.result.current.markReady(mk(1)));
         await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
         expect(hook.result.current.hiddenKeys.has('1:1')).toBe(false);
-        expect(hook.result.current.failures).toEqual([{ key: '1:1', message: 'No liberar' }]);
+        expect(hook.result.current.failures).toEqual([{ key: '1:1', label: 'M1', message: 'No liberar' }]);
         expect(hook.result.current.committed).toHaveLength(0);
     });
 
@@ -257,5 +257,36 @@ describe('useReadyCommit', () => {
         const a = hook.result.current.hiddenKeys;
         await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
         expect(hook.result.current.hiddenKeys).toBe(a);
+    });
+
+    it('gives up after 2 min of continuous network failure: restores the card with a failure', async () => {
+        const { api, hook } = setup();
+        api.ready.mockRejectedValue(new KitchenActionError('network', 'x'));
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(110_000); });
+        expect(hook.result.current.hiddenKeys.has('1:1')).toBe(true);
+        await act(async () => { await vi.advanceTimersByTimeAsync(40_000); });
+        expect(hook.result.current.hiddenKeys.has('1:1')).toBe(false);
+        expect(hook.result.current.failures).toEqual([{ key: '1:1', label: 'M1', message: 'sin respuesta del servidor' }]);
+        const calls = api.ready.mock.calls.length;
+        await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+        expect(api.ready.mock.calls.length).toBe(calls);
+    });
+
+    it('paused-on-auth commits also resume when a new session arrives', async () => {
+        const { api, hook } = setup('s1');
+        api.ready.mockRejectedValueOnce(new KitchenActionError('auth', 'x'));
+        act(() => hook.result.current.markReady(mk(1)));
+        authStatus = 'renewing';
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(api.ready).toHaveBeenCalledTimes(1);
+        hook.rerender({ k: null });
+        await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+        expect(api.ready).toHaveBeenCalledTimes(1);
+        hook.rerender({ k: 's2' });
+        await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+        expect(api.ready).toHaveBeenCalledTimes(2);
+        expect(api.release).toHaveBeenCalledTimes(1);
     });
 });

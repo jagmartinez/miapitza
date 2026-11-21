@@ -3,6 +3,8 @@ import { appEvents } from './events';
 const AUTH_FAILED_CLOSE_CODE = 4001;
 const MIN_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30000;
+const PING_MS = 25_000;
+const SILENCE_MS = 60_000;
 const JITTER = 0.2; // ±20 % so a fleet of tablets does not reconnect in lockstep
 
 let lastRealtimeStatus: 'online' | 'offline' | 'unknown' = 'unknown';
@@ -24,6 +26,15 @@ export function createRealtime(opts: RealtimeOptions) {
     // Bumped on every connect/close so late async work from an old attempt is ignored.
     let generation = 0;
     let wanted = false;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function stopLiveness() {
+        if (pingTimer) clearInterval(pingTimer);
+        if (silenceTimer) clearTimeout(silenceTimer);
+        pingTimer = null;
+        silenceTimer = null;
+    }
 
     const setStatus = (status: 'online' | 'offline') => {
         lastRealtimeStatus = status;
@@ -61,6 +72,7 @@ export function createRealtime(opts: RealtimeOptions) {
 
     function teardownSocket() {
         generation++;
+        stopLiveness();
         if (timer) {
             clearTimeout(timer);
             timer = null;
@@ -93,6 +105,29 @@ export function createRealtime(opts: RealtimeOptions) {
         // Subscribers only hear from a socket the server has authenticated.
         let connected = false;
 
+        // A path that dies without FIN/RST never fires onclose: ping, and give up on a silent socket.
+        const armSilenceWatchdog = () => {
+            if (silenceTimer) clearTimeout(silenceTimer);
+            silenceTimer = setTimeout(() => {
+                if (mine !== generation) return;
+                teardownSocket();
+                setStatus('offline');
+                scheduleReconnect();
+            }, SILENCE_MS);
+        };
+        const startLiveness = () => {
+            stopLiveness();
+            armSilenceWatchdog();
+            pingTimer = setInterval(() => {
+                if (mine !== generation) return;
+                try {
+                    socket.send(JSON.stringify({ type: 'PING' }));
+                } catch {
+                    /* a dead socket is caught by the silence watchdog */
+                }
+            }, PING_MS);
+        };
+
         socket.onopen = () => {
             if (mine !== generation) return;
             void opts.getToken().then((token) => {
@@ -100,6 +135,7 @@ export function createRealtime(opts: RealtimeOptions) {
                 if (!token) {
                     // No session: nothing to authenticate with, so do not retry.
                     wanted = false;
+                    stopLiveness();
                     socket.onclose = null;
                     socket.close();
                     ws = null;
@@ -121,8 +157,10 @@ export function createRealtime(opts: RealtimeOptions) {
                 return;
             }
             if (!message || typeof message.type !== 'string') return;
+            if (connected) armSilenceWatchdog();
             if (message.type === 'CONNECTED') {
                 connected = true;
+                startLiveness();
                 delay = MIN_DELAY_MS; // authenticated: the connection is healthy
                 setStatus('online');
             }
@@ -133,6 +171,7 @@ export function createRealtime(opts: RealtimeOptions) {
         socket.onclose = (event: CloseEvent) => {
             if (mine !== generation) return;
             ws = null;
+            stopLiveness();
             setStatus('offline');
             if (event.code === AUTH_FAILED_CLOSE_CODE) {
                 void handleAuthFailure(mine, usedToken);
