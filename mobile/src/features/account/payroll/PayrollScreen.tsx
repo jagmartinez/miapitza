@@ -7,14 +7,12 @@ import { useToast } from '../../../ui/Toast';
 import { printOut } from '../../print/printOut';
 import { toHrError, type HrApi } from '../hrApi';
 import { useAccountNav } from '../AccountNav';
+import { dateOnly } from '../format';
 import { useSessionRestored } from '../useSessionRestored';
 import { markReceiptsSeen, seenReceipts } from '../useAccountSummary';
 import '../profile/profile.css';
 
-const dateLabel = (v: string) => {
-    const d = new Date(v.length === 10 ? `${v}T00:00:00` : v);
-    return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString('es-NI');
-};
+const dateLabel = (v: string) => dateOnly(v) || v;
 
 /** Self-safe fields only: the trace and employer-side contributions are not shown. */
 function ReceiptDetail({ hr, receipt, onBack }: { hr: HrApi; receipt: HrPayrollReceiptSummary; onBack: () => void }) {

@@ -61,7 +61,7 @@ function WeekCard({ title, weekStart, week, busy, onConfirm, onRetry }: { title:
             </div>
             {s.acknowledgedAt ? (
                 <p className="pf-ok">Confirmado {dateLabel(s.acknowledgedAt)}</p>
-            ) : (
+            ) : !shifts.length ? null : (
                 <button type="button" className="btn btn-primary ah-wide" disabled={busy} onClick={() => onConfirm(s.id)}>
                     Confirmar horario
                 </button>

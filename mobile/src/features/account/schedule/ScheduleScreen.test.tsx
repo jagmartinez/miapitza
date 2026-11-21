@@ -45,6 +45,13 @@ describe('ScheduleScreen', () => {
         expect(screen.getByText(/^Confirmado /)).toBeInTheDocument();
     });
 
+    it('a published week with none of my shifts has no Confirmar horario (the server would answer 404)', async () => {
+        const mySchedule = vi.fn(async (w: string) => sched(1, w, { shifts: [] }));
+        mount({ mySchedule });
+        expect(await screen.findAllByText('Sin turnos esta semana.')).toHaveLength(2);
+        expect(screen.queryByRole('button', { name: 'Confirmar horario' })).toBeNull();
+    });
+
     it('confirm calls acknowledge once and shows Confirmado', async () => {
         let release!: () => void;
         const acknowledgeSchedule = vi.fn(() => new Promise<unknown>((r) => (release = () => r({ acknowledgedAt: '2026-11-18T15:00:00Z' }))));

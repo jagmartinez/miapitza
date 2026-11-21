@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDaysDateOnly, weekStartFor } from '@web/components/hr/scheduleDates';
 import { selectVacationBalance } from '@web/components/hr/vacationBalance';
 import { formatLocalDateInput } from '@web/utils/dateInput';
+import { formatHrMoney } from '@web/utils/hrFormat';
 import type { HrBiometricProfile, HrTodayAttendance } from '@web/types/hr-attendance';
 import type { HrVacationBalance } from '@web/types/hr-workforce';
 import { appEvents } from '../../core/events';
 import type { HrApi, HrLoanPolicy, HrSwap } from './hrApi';
+import { dateOnly, shiftText } from './format';
 import { useSessionRestored } from './useSessionRestored';
 
 export type RequestKind = 'leave' | 'overtime' | 'correction' | 'swap' | 'loan';
@@ -15,6 +17,8 @@ export interface PendingItem {
     kind: 'schedule' | 'receipt' | 'swap';
     title: string;
     detail: string;
+    /** Extra lines for the full card (swap shift, offered shift, reason). */
+    lines?: string[];
     refId: number;
 }
 
@@ -140,12 +144,20 @@ function card(kind: RequestKind, row: AnyRow, title: string, detail: string, can
     };
 }
 
-const money = (currency: unknown, v: unknown) => `${String(currency ?? '')} ${String(v ?? '')}`.trim();
-const range = (a: unknown, b: unknown) => (a === b || !b ? String(a ?? '') : `${String(a)} al ${String(b)}`);
+const money = (currency: unknown, v: unknown) => formatHrMoney(String(currency ?? ''), v as string | number | null | undefined);
+const day = (v: unknown) => dateOnly(String(v ?? '')) || String(v ?? '');
+const range = (a: unknown, b: unknown) => (day(a) === day(b) || !b ? day(a) : `${day(a)} al ${day(b)}`);
+/** 100 min -> "1 h 40 min"; 120 -> "2 h"; 45 -> "45 min". */
+export function minutesText(total: number): string {
+    if (!Number.isFinite(total) || total <= 0) return '0 min';
+    const h = Math.floor(total / 60);
+    const m = Math.round(total % 60);
+    return h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`;
+}
 
 export function buildSummary(input: {
     userId: number;
-    schedules: Array<{ id: number; weekStart: string; acknowledgedAt?: string | null } | null>;
+    schedules: Array<{ id: number; weekStart: string; acknowledgedAt?: string | null; shifts?: unknown[] } | null>;
     receipts: Array<{ id: number; periodLabel?: string }> | null;
     swaps: HrSwap[];
     workforce: {
@@ -159,8 +171,9 @@ export function buildSummary(input: {
 }): { pending: PendingItem[]; requests: RequestCardModel[] } {
     const pending: PendingItem[] = [];
     for (const s of input.schedules) {
-        if (s && !s.acknowledgedAt) {
-            pending.push({ id: `schedule-${s.id}`, kind: 'schedule', title: 'Confirma tu horario', detail: `Semana del ${s.weekStart}`, refId: s.id });
+        // The server returns the company's published week even with no shifts for this user, and then refuses the acknowledgement (404).
+        if (s && !s.acknowledgedAt && (s.shifts?.length ?? 0) > 0) {
+            pending.push({ id: `schedule-${s.id}`, kind: 'schedule', title: 'Confirma tu horario', detail: `Semana del ${dateOnly(s.weekStart) || s.weekStart}`, refId: s.id });
         }
     }
     const seen = seenReceipts(input.userId);
@@ -171,7 +184,17 @@ export function buildSummary(input: {
     }
     for (const w of input.swaps) {
         if (w.status === 'PENDING' && w.targetUserId === input.userId) {
-            pending.push({ id: `swap-${w.id}`, kind: 'swap', title: 'Responde cambio de turno', detail: w.requestedBy?.name ? `De ${w.requestedBy.name}` : '', refId: w.id });
+            const name = w.requestedBy?.name;
+            const theirs = shiftText(w.requesterShift);
+            const offered = shiftText(w.offeredShift);
+            pending.push({
+                id: `swap-${w.id}`,
+                kind: 'swap',
+                title: 'Responde cambio de turno',
+                detail: [name ? `De ${name}` : '', theirs].filter(Boolean).join(' · '),
+                lines: [theirs && `Turno que te piden: ${theirs}`, offered && `A cambio de: ${offered}`, w.reason ? `Motivo: ${w.reason}` : ''].filter(Boolean) as string[],
+                refId: w.id,
+            });
         }
     }
 
@@ -181,14 +204,14 @@ export function buildSummary(input: {
         requests.push(card('leave', r, name, range(r.startDate, r.endDate), r.status === 'PENDING'));
     }
     for (const r of input.workforce?.overtimeRequests ?? []) {
-        requests.push(card('overtime', r, 'Horas extra', `${String(r.date)} · ${Number(r.requestedMinutes) / 60} h`, r.status === 'PENDING'));
+        requests.push(card('overtime', r, 'Horas extra', `${day(r.date)} · ${minutesText(Number(r.requestedMinutes))}`, r.status === 'PENDING'));
     }
     for (const r of input.workforce?.corrections ?? []) {
         requests.push(card('correction', r, 'Corrección de marcaje', CORRECTION_LABELS[String(r.type)] ?? '', r.status === 'PENDING'));
     }
     for (const w of input.swaps) {
         if (w.requestedById !== input.userId) continue;
-        requests.push(card('swap', w as unknown as AnyRow, 'Cambio de turno', w.targetUser?.name ? `Con ${w.targetUser.name}` : '', w.status === 'PENDING' || w.status === 'ACCEPTED'));
+        requests.push(card('swap', w as unknown as AnyRow, 'Cambio de turno', [w.targetUser?.name ? `Con ${w.targetUser.name}` : '', shiftText(w.requesterShift)].filter(Boolean).join(' · '), w.status === 'PENDING' || w.status === 'ACCEPTED'));
     }
     // Only loan requests; active/paid loans belong to the Préstamos screen.
     for (const l of input.loans.filter((x) => REQUEST_LOAN_STATUSES.has(x.status))) {

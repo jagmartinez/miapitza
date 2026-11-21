@@ -12,7 +12,7 @@ vi.mock('../../print/printOut', () => ({ printOut: { sharePdf } }));
 import { PayrollScreen } from './PayrollScreen';
 
 const receipt = (id: number, over = {}) => ({
-    id, runId: 1, userId: 7, runKind: 'REGULAR', runCode: `R${id}`, periodLabel: `Quincena ${id}`, payDate: '2026-11-15', currency: 'NIO',
+    id, runId: 1, userId: 7, runKind: 'REGULAR', runCode: `R${id}`, periodLabel: `Quincena ${id}`, payDate: '2026-11-15T00:00:00.000Z', currency: 'NIO',
     grossIncome: '12000', totalDeductions: '1500', netPay: '10500', status: 'PUBLISHED', ...over,
 });
 const detail = (id: number) => ({
@@ -60,6 +60,13 @@ describe('PayrollScreen', () => {
         fireEvent.click(screen.getByLabelText('Volver'));
         expect(await screen.findByText('Quincena 2')).toBeInTheDocument();
         expect(screen.queryByText('Nuevo')).toBeNull();
+    });
+
+    it('the pay date is the calendar date of the UTC-midnight value, not the device zone', async () => {
+        const hr = { myReceipts: vi.fn(async () => [receipt(5)]), myReceipt: vi.fn(async () => detail(5)) };
+        mount(hr);
+        fireEvent.click(await screen.findByText('Quincena 5'));
+        expect(await screen.findByText('15/11/2026')).toBeInTheDocument();
     });
 
     it('download shares PDF blob', async () => {

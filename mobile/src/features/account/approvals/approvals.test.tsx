@@ -10,7 +10,7 @@ import { ApprovalsScreen } from './ApprovalsScreen';
 
 const leave = { id: 1, userId: 9, user: { id: 9, name: 'Luis Gómez' }, leaveType: { name: 'Permiso personal' }, startDate: '2026-12-01', endDate: '2026-12-02', fraction: 'FULL_DAY', reason: 'Trámite', status: 'PENDING' };
 const ot = { id: 2, userId: 9, user: { id: 9, name: 'Luis Gómez' }, date: '2026-11-18', requestedMinutes: 90, reason: 'Cierre tarde', status: 'PENDING' };
-const corr = { id: 3, userId: 10, user: null, type: 'ADD_PUNCH', requestedAction: 'CHECK_OUT', requestedOccurredAt: '2026-11-18T22:00', reason: 'Olvidé marcar', status: 'PENDING' };
+const corr = { id: 3, userId: 10, user: null, type: 'ADD_PUNCH', requestedAction: 'CHECK_OUT', requestedOccurredAt: '2026-11-19T04:00:00.000Z', requestedTimezone: 'America/Managua', reason: 'Olvidé marcar', status: 'PENDING' };
 const swap = { id: 4, status: 'ACCEPTED', requestedBy: { id: 9, name: 'Luis Gómez' }, targetUser: { id: 11, name: 'Rosa Díaz' }, requesterShift: { id: 50, startAt: '2026-11-25T15:00:00.000Z', endAt: '2026-11-25T23:00:00.000Z', timezoneSnapshot: 'America/Guatemala', branch: { id: 1, name: 'Centro' } }, reason: 'Cita' };
 
 function makeHr(over: Record<string, unknown> = {}) {
@@ -111,6 +111,13 @@ describe('ApprovalsScreen', () => {
         fireEvent.click(screen.getByRole('tab', { name: /^Cambios de turno/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Aprobar' }));
         await waitFor(() => expect(hr.approveSwap).toHaveBeenCalledWith(4, ''));
+    });
+
+    it('correction card shows the requested time in the correction timezone, not UTC', async () => {
+        mount(makeHr());
+        await screen.findByText('Luis Gómez');
+        fireEvent.click(screen.getByRole('tab', { name: /^Correcciones/ }));
+        expect(screen.getByText(/salida · 18\/11\/2026 22:00/)).toBeInTheDocument();
     });
 
     it('shows a retry when a list fails to load', async () => {

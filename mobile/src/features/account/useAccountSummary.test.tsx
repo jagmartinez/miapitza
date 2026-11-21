@@ -31,7 +31,7 @@ describe('useAccountSummary', () => {
     it('summary builds pending items (unacknowledged schedule, new receipt, swap to answer)', async () => {
         localStorage.clear();
         const hr = api({
-            mySchedule: vi.fn().mockResolvedValue({ id: 4, weekStart: '2026-11-16', acknowledgedAt: null, shifts: [] }),
+            mySchedule: vi.fn().mockResolvedValue({ id: 4, weekStart: '2026-11-16T00:00:00.000Z', acknowledgedAt: null, shifts: [{ id: 1 }] }),
             myReceipts: vi.fn().mockResolvedValue([{ id: 11, periodLabel: 'Nov Q1' }, { id: 12, periodLabel: 'Nov Q2' }]),
             mySwaps: vi.fn().mockResolvedValue([
                 { id: 8, status: 'PENDING', requestedById: 2, targetUserId: 7, requestedBy: { id: 2, name: 'Luis' }, createdAt: 'x' },
@@ -43,6 +43,7 @@ describe('useAccountSummary', () => {
         await waitFor(() => expect(result.current.status).toBe('ready'));
         const titles = result.current.pendingForYou.map((p) => p.title);
         expect(titles).toContain('Confirma tu horario');
+        expect(result.current.pendingForYou.find((p) => p.kind === 'schedule')?.detail).toBe('Semana del 16/11/2026');
         expect(titles.filter((t) => t === 'Recibo nuevo')).toHaveLength(1);
         expect(titles).toContain('Responde cambio de turno');
         expect(result.current.pendingForYou.find((p) => p.kind === 'swap')?.refId).toBe(8);
@@ -98,6 +99,50 @@ describe('useAccountSummary', () => {
         const second = renderHook(() => useAccountSummary(hr2, { userId: 7 }));
         await waitFor(() => expect(second.result.current.status).toBe('ready'));
         expect(second.result.current.pendingForYou.map((p) => p.refId)).toEqual([3]);
+    });
+
+    it('a published week with none of my shifts creates no "Confirma tu horario"', async () => {
+        const hr = api({ mySchedule: vi.fn().mockResolvedValue({ id: 4, weekStart: '2026-11-16T00:00:00.000Z', acknowledgedAt: null, status: 'PUBLISHED', shifts: [] }) });
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(result.current.pendingForYou).toHaveLength(0);
+    });
+
+    it('the swap to answer carries the requester shift (in its own zone), the offered shift and the reason', async () => {
+        const shift = (id: number, a: string, b: string) => ({ id, startAt: a, endAt: b, timezoneSnapshot: 'America/Managua', branch: { id: 1, name: 'Matriz' } });
+        const hr = api({
+            mySwaps: vi.fn().mockResolvedValue([
+                {
+                    id: 8, status: 'PENDING', requestedById: 2, targetUserId: 7, requestedBy: { id: 2, name: 'Luis' }, reason: 'Cita médica', createdAt: 'x',
+                    requesterShift: shift(1, '2026-11-25T15:00:00.000Z', '2026-11-25T23:00:00.000Z'),
+                    offeredShift: shift(2, '2026-11-26T15:00:00.000Z', '2026-11-26T23:00:00.000Z'),
+                },
+            ]),
+        });
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        const p = result.current.pendingForYou[0];
+        expect(p.detail).toBe('De Luis · 25/11/2026 09:00-17:00 · Matriz');
+        expect(p.lines).toEqual(['Turno que te piden: 25/11/2026 09:00-17:00 · Matriz', 'A cambio de: 26/11/2026 09:00-17:00 · Matriz', 'Motivo: Cita médica']);
+    });
+
+    it('request cards format overtime time, loan money and ISO dates', async () => {
+        const hr = api({
+            myWorkforce: vi.fn().mockResolvedValue({
+                leaveRequests: [{ id: 1, status: 'PENDING', startDate: '2026-12-01T00:00:00.000Z', endDate: '2026-12-02T00:00:00.000Z', createdAt: '2026-11-01T00:00:00Z', leaveType: { name: 'Vacaciones' } }],
+                overtimeRequests: [{ id: 2, status: 'APPROVED', date: '2026-11-10T00:00:00.000Z', requestedMinutes: 100, createdAt: '2026-11-11T00:00:00Z' }],
+                corrections: [],
+                vacationBalances: [],
+            }),
+            myLoans: vi.fn().mockResolvedValue([{ id: 5, status: 'REQUESTED', requestedAmount: '5000.00', currency: 'NIO', requestedAt: '2026-11-13T00:00:00Z' }]),
+        });
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        const by = (k: string) => result.current.myRequests.find((r) => r.kind === k)!;
+        expect(by('overtime').detail).toBe('10/11/2026 · 1 h 40 min');
+        expect(by('leave').detail).toBe('01/12/2026 al 02/12/2026');
+        expect(by('loan').detail).toMatch(/5[.,\s]?000/);
+        expect(by('loan').detail).not.toBe('NIO 5000.00');
     });
 
     it('unpublished week creates no pending item', async () => {

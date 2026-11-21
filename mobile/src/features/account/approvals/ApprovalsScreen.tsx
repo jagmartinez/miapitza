@@ -3,8 +3,9 @@ import { Card } from '../../../ui/Card';
 import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useToast } from '../../../ui/Toast';
 import { useAccountNav } from '../AccountNav';
+import { instantText, shiftText } from '../format';
 import { useSessionRestored } from '../useSessionRestored';
-import { toHrError, type HrApi, type HrSwap, type HrSwapShift } from '../hrApi';
+import { toHrError, type HrApi, type HrSwap } from '../hrApi';
 import { REASON_MAX, validReason } from '../requests/common';
 import type { HrAttendanceCorrection, HrLeaveRequest, HrOvertimeRequest } from '@web/types/hr-workforce';
 import '../profile/profile.css';
@@ -69,30 +70,12 @@ const fromCorrection = (r: HrAttendanceCorrection): Item => ({
     who: who(r.user?.name, r.userId),
     lines: [
         CORRECTION_TYPE[r.type] ?? r.type,
-        [r.requestedAction ? ACTION[r.requestedAction] : '', r.requestedOccurredAt ? `${day(r.requestedOccurredAt.slice(0, 10))} ${r.requestedOccurredAt.slice(11, 16)}` : '']
+        [r.requestedAction ? ACTION[r.requestedAction] : '', instantText(r.requestedOccurredAt, (r as { requestedTimezone?: string | null }).requestedTimezone)]
             .filter(Boolean)
             .join(' · '),
     ].filter(Boolean),
     reason: r.reason,
 });
-/** "25/11/2026 09:00-17:00" read in the shift's own timezone (the instants are UTC). */
-function shiftText(sh?: HrSwapShift | null): string {
-    if (!sh?.startAt || !sh.endAt) return '';
-    const timeZone = sh.timezoneSnapshot || undefined;
-    const parts = (iso: string) => {
-        try {
-            const f = new Intl.DateTimeFormat('en-GB', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-            return Object.fromEntries(f.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
-        } catch {
-            return null;
-        }
-    };
-    const a = parts(sh.startAt);
-    const b = parts(sh.endAt);
-    if (!a || !b) return '';
-    return `${a.day}/${a.month}/${a.year} ${a.hour}:${a.minute}-${b.hour}:${b.minute}${sh.branch?.name ? ` · ${sh.branch.name}` : ''}`;
-}
-
 const fromSwap = (r: HrSwap): Item => ({
     kind: 'swap',
     id: r.id,

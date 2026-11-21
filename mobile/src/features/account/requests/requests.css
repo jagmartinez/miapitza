@@ -20,3 +20,4 @@
 .rq-info { margin: 0; color: var(--ready); font-weight: 600; }
 .rq-actions { display: flex; gap: 10px; margin-top: 10px; }
 .rq-actions .btn { flex: 1; }
+.rq-line { display: block; margin-top: 2px; }

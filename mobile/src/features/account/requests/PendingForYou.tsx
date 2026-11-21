@@ -49,6 +49,9 @@ export function PendingForYou({ hr, userId }: { hr: HrApi; userId: number }) {
                     p.kind === 'swap' ? (
                         <Card key={p.id} title={p.title} badge="Pendiente" badgeTone="pending">
                             <span>{p.detail}</span>
+                            {p.lines?.map((l) => (
+                                <span key={l} className="muted rq-line">{l}</span>
+                            ))}
                             <div className="rq-actions">
                                 <button type="button" className="btn btn-primary" disabled={busy.current.has(p.refId)} onClick={() => void respond(p.refId, 'ACCEPT')}>
                                     Aceptar

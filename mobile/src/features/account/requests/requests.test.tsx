@@ -414,4 +414,24 @@ describe('PendingForYou', () => {
         await waitFor(() => expect(respondSwap).toHaveBeenCalledTimes(1));
         expect(respondSwap).toHaveBeenCalledWith(12, 'ACCEPT');
     });
+
+    it('the swap card shows which shift is asked, the offered one and the reason', async () => {
+        const sh = (id: number, a: string, b: string) => ({ id, startAt: a, endAt: b, timezoneSnapshot: 'America/Managua', branch: { id: 1, name: 'Matriz' } });
+        const hr = api({
+            ...summaryBase,
+            myWorkforce: vi.fn().mockResolvedValue({}),
+            myLoans: vi.fn().mockResolvedValue([]),
+            mySwaps: vi.fn().mockResolvedValue([
+                {
+                    id: 12, status: 'PENDING', requestedById: 8, targetUserId: 7, requesterShiftId: 1, createdAt: '2026-11-10', requestedBy: { id: 8, name: 'Luis Mora' }, reason: 'Cita médica',
+                    requesterShift: sh(1, '2026-11-25T15:00:00.000Z', '2026-11-25T23:00:00.000Z'),
+                    offeredShift: sh(2, '2026-11-26T15:00:00.000Z', '2026-11-26T23:00:00.000Z'),
+                },
+            ]),
+        });
+        mount(<PendingForYou hr={hr} userId={7} />);
+        expect(await screen.findByText('Turno que te piden: 25/11/2026 09:00-17:00 · Matriz')).toBeInTheDocument();
+        expect(screen.getByText('A cambio de: 26/11/2026 09:00-17:00 · Matriz')).toBeInTheDocument();
+        expect(screen.getByText('Motivo: Cita médica')).toBeInTheDocument();
+    });
 });
