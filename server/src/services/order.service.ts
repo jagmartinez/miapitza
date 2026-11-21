@@ -29,6 +29,7 @@ import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { reconcileTableGroupForTable } from './table-group.service';
 import { tableOpenAccountWhere, tableOperationalOrderWhere } from './table-occupancy-policy';
 import { selectLatestKitchenBatch } from './kitchen-batch';
+import { KitchenError } from './kitchen-errors';
 import { isRetryableTransactionError, SETTLEMENT_TRANSACTION_OPTIONS, transactionWithP2034Retry } from '../utils/transaction-retry';
 
 /** User-facing (Spanish) messages other flows compare against. */
@@ -326,6 +327,7 @@ export class OrderService {
             kitchenBatchSentAt: batch.sentAt,
             kitchenStartedAt: batch.startedAt,
             kitchenReleasedAt: batch.releasedAt,
+            kitchenReadyAt: batch.readyAt,
             items: batch.items,
         });
     }
@@ -409,7 +411,21 @@ export class OrderService {
             },
             orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
         });
-        if (!batch) throw new Error('La tanda de cocina no existe o ya fue liberada');
+        if (!batch) {
+            const released = await tx.kitchenBatch.findFirst({
+                where: {
+                    ...(kitchenBatchId ? { id: kitchenBatchId } : {}),
+                    orderId,
+                    companyId,
+                    status: 'RELEASED',
+                },
+                select: { id: true },
+            });
+            throw new KitchenError(
+                'La tanda de cocina no existe o ya fue liberada',
+                released ? 'KITCHEN_BATCH_RELEASED' : 'KITCHEN_BATCH_NOT_FOUND',
+            );
+        }
         return batch;
     }
 
@@ -3454,7 +3470,7 @@ export class OrderService {
                 };
             }
             if (batch.status !== 'PENDING') {
-                throw new Error('Solo una tanda pendiente puede iniciar preparación');
+                throw new KitchenError('Solo una tanda pendiente puede iniciar preparación', 'KITCHEN_INVALID_STATE');
             }
 
             const now = new Date();
@@ -3463,7 +3479,7 @@ export class OrderService {
                 data: { status: 'IN_PROGRESS', startedAt: now }
             });
             if (started.count === 0) {
-                throw new Error('La tanda no tiene productos pendientes para iniciar');
+                throw new KitchenError('La tanda no tiene productos pendientes para iniciar', 'KITCHEN_NOTHING_PENDING');
             }
 
             await tx.kitchenBatch.update({
@@ -3622,7 +3638,7 @@ export class OrderService {
                 },
                 orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
             });
-            if (!batch) throw new Error('Tanda de cocina no encontrada');
+            if (!batch) throw new KitchenError('Tanda de cocina no encontrada', 'KITCHEN_BATCH_NOT_FOUND');
             if (batch.status === 'RELEASED') {
                 const current = await tx.kitchenBatch.findUnique({
                     where: { id: batch.id },
@@ -3637,7 +3653,7 @@ export class OrderService {
                 };
             }
             if (batch.status !== 'READY') {
-                throw new Error('La tanda debe estar lista antes de liberarla');
+                throw new KitchenError('La tanda debe estar lista antes de liberarla', 'KITCHEN_BATCH_NOT_READY');
             }
 
             const releasedAt = new Date();
@@ -3684,6 +3700,24 @@ export class OrderService {
             };
         }, SETTLEMENT_TRANSACTION_OPTIONS);
         return result;
+    }
+
+    /** Batches released in the last 12 h (newest first) for the tablet's "recientes" list. */
+    static async getRecentKitchenBatches(companyId: number, branchId?: number, limit = 10) {
+        const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 30) : 10;
+        const since = new Date(Date.now() - 12 * 60 * 60 * 1000);
+        const batches = await prisma.kitchenBatch.findMany({
+            where: {
+                companyId,
+                ...(branchId ? { branchId } : {}),
+                status: 'RELEASED',
+                releasedAt: { gte: since },
+            },
+            include: kitchenBatchOrderInclude,
+            orderBy: [{ releasedAt: 'desc' }, { id: 'desc' }],
+            take: safeLimit,
+        });
+        return batches.map((batch) => this.withPersistentKitchenBatch(batch));
     }
 
     static async getKitchenHistory(companyId: number, branchId?: number, limit = 100) {

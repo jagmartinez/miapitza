@@ -5,6 +5,7 @@ import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../uti
 import { parseQueryDateFrom, parseQueryDateTo } from '../utils/date-range';
 import { SettingService } from '../services/setting.service';
 import { KitchenNotificationService } from '../services/kitchen-notification.service';
+import { KitchenError } from '../services/kitchen-errors';
 import {
     DISCOUNT_AUTH_ERROR,
     DiscountAuthRejectedError,
@@ -759,6 +760,19 @@ export class OrderController {
         }
     }
 
+    static async getRecentKitchenBatches(req: Request, res: Response, next: NextFunction) {
+        try {
+            const requested = req.query.branchId ? Number(req.query.branchId) : undefined;
+            const branchId = resolveBranchScope(req.user!, requested);
+            const limit = req.query.limit ? Number(req.query.limit) : 10;
+            const data = await OrderService.getRecentKitchenBatches(req.user!.companyId, branchId, limit);
+            res.json({ success: true, data });
+        } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error al consultar recientes KDS' });
+        }
+    }
+
     static async startKitchenPreparation(req: Request, res: Response, next: NextFunction) {
         try {
             const id = Number(req.params.id);
@@ -782,7 +796,7 @@ export class OrderController {
             });
             res.json({ success: true, message: result.changed ? 'Preparación iniciada' : 'La preparación ya estaba iniciada', data: result.order });
         } catch (error) {
-            if (error instanceof BranchScopeError) return next(error);
+            if (error instanceof BranchScopeError || error instanceof KitchenError) return next(error);
             next({ statusCode: 409, message: error instanceof Error ? error.message : 'No se pudo iniciar la preparación' });
         }
     }
@@ -801,23 +815,25 @@ export class OrderController {
                 req.user!.userId,
                 kitchenBatchId,
             );
-            await KitchenNotificationService.notifyReady({
-                companyId,
-                orderId: id,
-                kitchenBatchId: result.kitchenBatchId,
-                complete: true,
-            });
-            WebSocketService.broadcastOrderReady(id, result.order.table?.number, {
-                companyId,
-                branchId: result.order.branchId,
-            });
+            if (result.changed) {
+                await KitchenNotificationService.notifyReady({
+                    companyId,
+                    orderId: id,
+                    kitchenBatchId: result.kitchenBatchId,
+                    complete: true,
+                });
+                WebSocketService.broadcastOrderReady(id, result.order.table?.number, {
+                    companyId,
+                    branchId: result.order.branchId,
+                });
+            }
             WebSocketService.broadcastOrderUpdate(id, 'KITCHEN_READY', result.order, {
                 companyId,
                 branchId: result.order.branchId,
             });
             res.json({ success: true, message: 'Tanda marcada como lista', data: result.order });
         } catch (error) {
-            if (error instanceof BranchScopeError) return next(error);
+            if (error instanceof BranchScopeError || error instanceof KitchenError) return next(error);
             next({ statusCode: 409, message: error instanceof Error ? error.message : 'No se pudo marcar la orden lista' });
         }
     }
@@ -860,7 +876,7 @@ export class OrderController {
             }
             res.json({ success: true, message: result.changed ? 'Orden liberada del KDS' : 'La orden ya estaba liberada', data: result.order });
         } catch (error) {
-            if (error instanceof BranchScopeError) return next(error);
+            if (error instanceof BranchScopeError || error instanceof KitchenError) return next(error);
             next({ statusCode: 409, message: error instanceof Error ? error.message : 'No se pudo liberar la orden' });
         }
     }

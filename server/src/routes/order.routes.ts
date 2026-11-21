@@ -29,6 +29,7 @@ router.get('/', requirePermission('orders.view', ...ORDER_READ_FALLBACK_ROLES), 
 router.get('/active', requirePermission('orders.view', ...ORDER_READ_FALLBACK_ROLES), OrderController.getActive);
 router.get('/kitchen/config', requirePermission('kds.view', 'SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF'), OrderController.getKitchenConfig);
 router.get('/kitchen/queue', requirePermission('kds.view', 'SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF'), OrderController.getKitchenQueue);
+router.get('/kitchen/recent', requirePermission('kds.view', 'SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF'), OrderController.getRecentKitchenBatches);
 router.get('/kitchen/history', requirePermission('kds.view', 'SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF'), OrderController.getKitchenHistory);
 router.get('/discount/supervisors', deviceLimiter, requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), OrderController.listDiscountSupervisors);
 router.get('/:id', requirePermission('orders.view', ...ORDER_READ_FALLBACK_ROLES), validate(s.idParam), OrderController.getById);
