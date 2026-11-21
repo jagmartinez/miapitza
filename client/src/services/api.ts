@@ -1077,6 +1077,13 @@ export const usersAPI = {
     delete: (id: number) => api.delete(`/users/${id}`)
 };
 
+const SURVEYS_API_BASE = '/v1/surveys';
+export const surveysAPI = {
+    summary: (params?: Record<string, unknown>) => api.get(`${SURVEYS_API_BASE}/summary`, { params }),
+    responses: (params?: Record<string, unknown>) => api.get(`${SURVEYS_API_BASE}/responses`, { params }),
+    ranking: (params?: Record<string, unknown>) => api.get(`${SURVEYS_API_BASE}/ranking`, { params }),
+};
+
 const HR_API_BASE = '/v1/hr';
 
 export interface BranchGeofencePayload {

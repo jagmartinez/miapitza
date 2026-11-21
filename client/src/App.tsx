@@ -78,6 +78,7 @@ const Reservations = lazy(() => import('./pages/Reservations'));
 const InvoiceHistory = lazy(() => import('./pages/InvoiceHistory'));
 const Companies = lazy(() => import('./pages/Companies'));
 const WasteReport = lazy(() => import('./pages/WasteReport'));
+const SurveyReport = lazy(() => import('./pages/SurveyReport'));
 const BankReconciliation = lazy(() => import('./pages/BankReconciliation'));
 const Kardex = lazy(() => import('./pages/Kardex'));
 const Catering = lazy(() => import('./pages/Catering'));
@@ -192,6 +193,7 @@ function App() {
                                 <Route path="/reporteria/:reportId" element={<RoleGuard roles={ADMIN} permission="view_reports"><Reports /></RoleGuard>} />
                                 <Route path="/users" element={<RoleGuard roles={ADMIN} permission="view_users"><Users /></RoleGuard>} />
                                 <Route path="/waste-report" element={<RoleGuard roles={ADMIN} permission="view_reports"><WasteReport /></RoleGuard>} />
+                                <Route path="/encuestas" element={<RoleGuard roles={ADMIN} permission="surveys.view"><SurveyReport /></RoleGuard>} />
                                 <Route path="/bank-reconciliation" element={<RoleGuard roles={ADMIN} permission="view_reports"><BankReconciliation /></RoleGuard>} />
 
                                 {/* Configuration – admin/superadmin */}
