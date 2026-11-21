@@ -74,7 +74,7 @@
     border-radius: 10px;
     overflow: hidden;
 }
-.kitchen-card.is-ready { outline: 2px solid var(--ready); outline-offset: -2px; }
+.kitchen-card.is-ready { box-shadow: inset 0 0 0 3px var(--ready); } /* inside the border, so the delay color stays visible */
 .kitchen-card.time-warning { border-color: var(--alert); }
 .kitchen-card.time-urgent { border-color: var(--alert); }
 .kitchen-card.time-urgent .kitchen-card-head { background: rgba(201, 107, 102, 0.35); }
@@ -105,8 +105,8 @@
     min-height: 64px;
     border: 0;
     border-top: 1px solid var(--border);
-    background: var(--ready);
-    color: #1A1405;
+    background: var(--text);
+    color: var(--bg);
     font: inherit;
     font-size: 20px;
     font-weight: 600;
@@ -115,27 +115,45 @@
 .kitchen-noperm { padding: 6px 12px; font-size: 13px; color: var(--muted); text-align: center; }
 
 .kitchen-toasts {
-    /* In flow, below the card row: the row shrinks, so no Listo button is ever under a toast. */
+    /* Fixed-height band, always present: the card row never changes height when a toast appears. */
     flex: none;
     box-sizing: border-box;
+    position: relative;
     align-self: center;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 60px 60px;
+    align-content: start;
     gap: 6px;
-    width: min(520px, 100%);
+    width: min(760px, 100%);
+    height: 138px;
     padding: 0 16px 10px;
 }
 .kitchen-toast {
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 10px 14px;
+    min-width: 0;
+    padding: 4px 12px;
     border-radius: 10px;
     background: var(--surface-2);
-    border: 1px solid var(--ready);
+    border: 1px solid var(--border);
 }
-.kitchen-toast.is-failure { border-color: var(--alert); }
+.kitchen-toast > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.kitchen-toast-more {
+    position: absolute;
+    top: -14px;
+    right: 24px;
+    padding: 0 8px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+}
+.kitchen-toast.is-failure { grid-column: 1 / -1; grid-row: 2; border-color: var(--alert); }
 .kitchen-toast button {
     min-height: 44px;
     padding: 0 14px;
@@ -171,3 +189,6 @@
 .kitchen-recent ul { margin: 0; padding: 0; list-style: none; }
 .kitchen-recent li { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .kitchen-recent li strong { min-width: 80px; }
+
+.kitchen-exit-text { margin: 0 0 16px; font-size: 20px; }
+.kitchen-exit-actions { display: flex; gap: 12px; justify-content: flex-end; }

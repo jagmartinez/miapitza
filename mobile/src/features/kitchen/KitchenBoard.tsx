@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { newIdempotencyKey } from '@web/utils/idempotency';
+import { kitchenAuthStatus } from '../../core/kitchenAuth';
 import { KitchenActionError, type KitchenApi } from './kitchenApi';
 import { KitchenCard } from './KitchenCard';
 import { kitchenLabel } from './kitchenLabel';
@@ -10,6 +11,7 @@ import { mergeRecent, RecentSheet } from './RecentSheet';
 import { useKitchenQueue, type KitchenRealtime } from './useKitchenQueue';
 import { useKioskExit } from './useKioskExit';
 import { useReadyCommit } from './useReadyCommit';
+import { useSessionWake } from './useSessionWake';
 import './kitchen.css';
 
 export type KitchenConnection = 'online' | 'reconnecting' | 'offline' | 'unavailable';
@@ -21,6 +23,19 @@ const CONNECTION_TEXT: Record<KitchenConnection, string> = {
     unavailable: 'Cuenta de cocina no disponible — avisa al administrador',
 };
 
+const MAX_AUTH_RETRIES = 5;
+/** Resolves when the session is usable again (auth back online / new session). */
+function waitForSession(wake: (resume: () => void) => () => void): Promise<void> {
+    return new Promise((resolve) => {
+        const cancel = wake(resolve);
+        // Already online (the 401 outran the status event): just retry shortly.
+        if (kitchenAuthStatus() === 'online') {
+            cancel();
+            setTimeout(resolve, 2000);
+        }
+    });
+}
+
 const SOUND_KEY = 'kds.sound';
 const readSound = (): boolean => {
     try {
@@ -29,7 +44,7 @@ const readSound = (): boolean => {
         return true;
     }
 };
-const clock = (ms: number) => new Date(ms).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', hour12: false });
+const clock = (ms: number) => new Date(ms).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 interface Props {
     api: KitchenApi;
@@ -37,12 +52,17 @@ interface Props {
     canManage: boolean;
     connection: KitchenConnection;
     undoMs?: number;
+    /** False until the kitchen has had a session: no queue request goes out unauthenticated. Default true. */
+    sessionReady?: boolean;
+    /** Changes when a new session arrives; wakes work paused on authentication. */
+    sessionKey?: string | null;
 }
 
-export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: Props) {
-    const kioskExit = useKioskExit();
-    const queue = useKitchenQueue(api, realtime);
-    const commit = useReadyCommit(api, undoMs === undefined ? {} : { undoMs });
+export function KitchenBoard({ api, realtime, canManage, connection, undoMs, sessionReady = true, sessionKey = null }: Props) {
+    const kiosk = useKioskExit();
+    const queue = useKitchenQueue(api, realtime, { enabled: sessionReady });
+    const commit = useReadyCommit(api, undoMs === undefined ? { sessionKey } : { undoMs, sessionKey });
+    const wake = useSessionWake(sessionKey);
     const [now, setNow] = useState(() => Date.now());
     const [sound, setSound] = useState(readSound);
     const [starting, setStarting] = useState<ReadonlySet<string>>(new Set());
@@ -70,8 +90,8 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
         api.recent(10).then(setServerRecent, () => {});
     }, [api]);
     useEffect(() => {
-        refreshRecent();
-    }, [refreshRecent, committedCount]);
+        if (sessionReady) refreshRecent();
+    }, [refreshRecent, committedCount, sessionReady]);
 
     const toggleSound = () => {
         const next = !sound;
@@ -89,11 +109,21 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
             setStarting((s) => new Set(s).add(key));
             setStartFailures((f) => f.filter((x) => x.key !== key));
             try {
-                await api.start(b, newIdempotencyKey());
+                // Same idempotency key across retries; an auth error means the session is being renewed.
+                const idem = newIdempotencyKey();
+                for (let attempt = 0; ; attempt++) {
+                    try {
+                        await api.start(b, idem);
+                        break;
+                    } catch (cause) {
+                        if (!(cause instanceof KitchenActionError && cause.kind === 'auth' && attempt < MAX_AUTH_RETRIES)) throw cause;
+                        await waitForSession(wake);
+                    }
+                }
             } catch (cause) {
                 if (!(cause instanceof KitchenActionError && cause.kind === 'already-done')) {
                     const message = cause instanceof KitchenActionError ? cause.message : 'Sin conexión con el servidor.';
-                    setStartFailures((f) => [...f.filter((x) => x.key !== key), { key, label: kitchenLabel(b), message }]);
+                    setStartFailures((f) => [...f.filter((x) => x.key !== key), { key, label: kitchenLabel(b), message, action: 'start' }]);
                     setStarting((s) => {
                         const n = new Set(s);
                         n.delete(key);
@@ -110,21 +140,15 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
                 return n;
             });
         },
-        [api, queue.reload],
+        [api, queue.reload, wake],
     );
 
     const visible = batches.filter((b) => !commit.hiddenKeys.has(batchKey(b)));
     const recent = mergeRecent(commit.committed, serverRecent);
     const failures: ActionFailure[] = [
-        ...commit.failures.map((f) => ({ ...f, label: f.key })),
+        ...commit.failures.map((f) => ({ ...f, action: 'ready' as const })),
         ...startFailures,
     ];
-    // Commit failures only carry the key; resolve the label from what we know.
-    const labelFor = (key: string) => {
-        const b = batches.find((x) => batchKey(x) === key) ?? commit.committed.find((x) => batchKey(x) === key);
-        return b ? kitchenLabel(b) : key;
-    };
-    const toastFailures = failures.map((f) => ({ ...f, label: f.label === f.key ? labelFor(f.key) : f.label }));
     const dismiss = (key: string) => {
         commit.dismissFailure(key);
         setStartFailures((f) => f.filter((x) => x.key !== key));
@@ -137,7 +161,7 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
     return (
         <div className="kitchen">
             <header className="kitchen-bar">
-                <strong className="kitchen-title" {...kioskExit}>Cocina</strong>
+                <strong className="kitchen-title" {...kiosk.handlers}>Cocina</strong>
                 <span className="kitchen-clock">{clock(now)}</span>
                 <span className={`kitchen-conn ${dot}`} role="status">
                     <i aria-hidden="true" />
@@ -184,7 +208,8 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs }: P
                 </div>
             )}
 
-            <ReadyToasts pending={commit.pending} failures={toastFailures} onUndo={commit.undo} onDismiss={dismiss} />
+            <ReadyToasts pending={commit.pending} failures={failures} onUndo={commit.undo} onDismiss={dismiss} />
+            {kiosk.sheet}
             {showRecent && <RecentSheet batches={recent} onClose={() => setShowRecent(false)} />}
         </div>
     );

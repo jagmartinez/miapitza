@@ -35,14 +35,11 @@ function toActionError(cause: unknown, action: Action): KitchenActionError {
 export function createKitchenApi(http: AxiosInstance) {
     async function act(action: Action, b: BatchRef, key: string): Promise<void> {
         try {
-            const res = await http.post(
+            await http.post(
                 `/orders/${b.id}/kitchen/${action}`,
                 { kitchenBatchId: b.kitchenBatchId },
                 { headers: { 'X-Idempotency-Key': key } },
             );
-            if (res.data?.changed === false || res.data?.data?.changed === false) {
-                throw new KitchenActionError('already-done', 'La acción ya estaba aplicada.');
-            }
         } catch (cause) {
             throw toActionError(cause, action);
         }

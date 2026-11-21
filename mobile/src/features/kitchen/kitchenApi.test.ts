@@ -1,5 +1,5 @@
 import type { AxiosInstance } from 'axios';
-import { createKitchenApi, KitchenActionError } from './kitchenApi';
+import { createKitchenApi } from './kitchenApi';
 
 const batch = { id: 7, kitchenBatchId: 3 };
 const httpWith = (post: unknown, get: unknown = vi.fn()) => ({ post, get }) as unknown as AxiosInstance;
@@ -20,9 +20,9 @@ describe('kitchenApi', () => {
         await expect(createKitchenApi(httpWith(post)).start(batch, 'k')).rejects.toMatchObject({ kind: 'rejected' });
     });
 
-    it('maps a 200 with changed:false to already-done', async () => {
-        const post = vi.fn(async () => ({ data: { success: true, changed: false } }));
-        await expect(createKitchenApi(httpWith(post)).start(batch, 'k')).rejects.toBeInstanceOf(KitchenActionError);
+    it('a 200 with the real {success,data} body (order in data) resolves', async () => {
+        const post = vi.fn(async () => ({ data: { success: true, message: 'x', data: { id: 1 } } }));
+        await expect(createKitchenApi(httpWith(post)).start(batch, 'k')).resolves.toBeUndefined();
     });
 
     it('maps 401 to auth, timeout/5xx to network, other 4xx to rejected', async () => {

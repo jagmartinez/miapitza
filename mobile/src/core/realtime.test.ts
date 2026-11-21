@@ -311,7 +311,7 @@ describe('realtime subscriber gating', () => {
         expect(ws.closed).toBe(false);
         await vi.advanceTimersByTimeAsync(1_000);
         expect(ws.closed).toBe(true);
-        expect(statuses.at(-1)).toBe('offline');
+        expect(statuses[statuses.length - 1]).toBe('offline');
         await vi.advanceTimersByTimeAsync(1_000);
         expect(FakeWS.instances).toHaveLength(2);
         off();

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { appEvents } from '../../core/events';
 import { KitchenActionError } from './kitchenApi';
 import { KitchenBoard } from './KitchenBoard';
 import { playKitchenChime } from './kitchenSound';
@@ -148,15 +149,15 @@ describe('KitchenBoard', () => {
             start: () => Promise.reject(new KitchenActionError('rejected', 'boom')),
         });
         fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }));
-        expect(await screen.findByText('No se pudo marcar M1: boom')).toBeInTheDocument();
+        expect(await screen.findByText('No se pudo iniciar M1: boom')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
-        expect(screen.queryByText('No se pudo marcar M1: boom')).not.toBeInTheDocument();
+        expect(screen.queryByText('No se pudo iniciar M1: boom')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: 'Iniciar' }));
-        await screen.findByText('No se pudo marcar M1: boom');
+        await screen.findByText('No se pudo iniciar M1: boom');
         api.start.mockResolvedValueOnce(undefined);
         fireEvent.click(screen.getByRole('button', { name: 'Iniciar' }));
-        await waitFor(() => expect(screen.queryByText('No se pudo marcar M1: boom')).not.toBeInTheDocument());
+        await waitFor(() => expect(screen.queryByText('No se pudo iniciar M1: boom')).not.toBeInTheDocument());
     });
 
     it('Recientes merges local committed with server and dedupes', async () => {
@@ -170,5 +171,33 @@ describe('KitchenBoard', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Recientes (2)' }));
         expect(api.recent.mock.calls.length).toBe(calls + 1); // refreshed on open
         expect(screen.getByRole('dialog').querySelectorAll('li')).toHaveLength(2);
+    });
+
+    it('start hitting auth during renewal keeps Iniciando… with no failure, then retries once the session returns', async () => {
+        const { api } = setup({ queue: async () => [mk(1, { status: 'SENT_TO_KITCHEN' })] });
+        api.start.mockRejectedValueOnce(new KitchenActionError('auth', 'Token expirado'));
+        fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }));
+        await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1));
+        expect(await screen.findByRole('button', { name: 'Iniciando…' })).toBeDisabled();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await act(async () => { appEvents.emit('kitchen-auth-status', 'online'); });
+        await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+        const keys = (api.start.mock.calls as unknown as string[][]).map((c) => c[1]);
+        expect(keys[0]).toBe(keys[1]);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('a rejected Listo commit names the table, never the raw key', async () => {
+        const { api } = setup({ undoMs: 10 });
+        api.ready.mockRejectedValueOnce(new KitchenActionError('rejected', 'Ya no existe'));
+        await screen.findByText('M1');
+        fireEvent.click(screen.getAllByRole('button', { name: 'Listo' })[0]);
+        expect(await screen.findByText('No se pudo marcar M1: Ya no existe')).toBeInTheDocument();
+    });
+
+    it('the toast band is rendered even with no toasts', async () => {
+        setup();
+        await screen.findByText('M1');
+        expect(screen.getByTestId('kitchen-toasts')).toBeInTheDocument();
     });
 });

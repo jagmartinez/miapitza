@@ -9,10 +9,13 @@ import type { Session } from '../../core/session';
 import { KitchenBoard, type KitchenConnection } from './KitchenBoard';
 import { createKitchenApi } from './kitchenApi';
 
-function connectionOf(auth: KitchenAuthStatus, realtimeOnline: boolean, hasSession: boolean): KitchenConnection {
+/** Realtime must be offline this long before the bar says "Sin conexión"; shorter drops are just reconnecting. */
+export const OFFLINE_AFTER_MS = 30_000;
+
+export function connectionOf(auth: KitchenAuthStatus, realtimeOnline: boolean, hasSession: boolean, offlineLong = false): KitchenConnection {
     if (auth === 'account-unavailable') return 'unavailable';
-    if (auth === 'offline') return 'offline';
-    if (auth === 'renewing' || auth === 'connecting' || !hasSession || !realtimeOnline) return 'reconnecting';
+    if (!realtimeOnline && offlineLong) return 'offline';
+    if (auth === 'renewing' || auth === 'connecting' || auth === 'offline' || !hasSession || !realtimeOnline) return 'reconnecting';
     return 'online';
 }
 
@@ -26,6 +29,15 @@ export function KitchenHome(props: { session: Session | null; services: Services
     if (session) lastSession.current = session;
     const [auth, setAuth] = useState<KitchenAuthStatus>(kitchenAuthStatus());
     const [realtimeOnline, setRealtimeOnline] = useState(() => realtimeStatus() === 'online');
+    const [offlineLong, setOfflineLong] = useState(false);
+    useEffect(() => {
+        if (realtimeOnline) {
+            setOfflineLong(false);
+            return;
+        }
+        const t = setTimeout(() => setOfflineLong(true), OFFLINE_AFTER_MS);
+        return () => clearTimeout(t);
+    }, [realtimeOnline]);
     useEffect(() => {
         setAuth(kitchenAuthStatus());
         const offAuth = appEvents.on('kitchen-auth-status', (s) => setAuth(s as KitchenAuthStatus));
@@ -52,7 +64,9 @@ export function KitchenHome(props: { session: Session | null; services: Services
                 api={api}
                 realtime={services.realtime}
                 canManage={!!user && can(user, 'kds.manage')}
-                connection={connectionOf(auth, realtimeOnline, session !== null)}
+                connection={connectionOf(auth, realtimeOnline, session !== null, offlineLong)}
+                sessionReady={lastSession.current !== null}
+                sessionKey={session?.token ?? null}
             />
         </main>
     );

@@ -1,13 +1,23 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useKioskExit } from './useKioskExit';
 
 const exitKiosk = vi.hoisted(() => vi.fn());
 vi.mock('../../core/kiosk', () => ({ exitKiosk }));
 
 function Title() {
-    const handlers = useKioskExit();
-    return <h1 {...handlers}>Cocina</h1>;
+    const { handlers, sheet } = useKioskExit();
+    return (
+        <>
+            <h1 {...handlers}>Cocina</h1>
+            {sheet}
+        </>
+    );
 }
+
+const hold = (ms = 5_000) => {
+    fireEvent.pointerDown(screen.getByText('Cocina'));
+    act(() => { vi.advanceTimersByTime(ms); });
+};
 
 describe('useKioskExit', () => {
     beforeEach(() => {
@@ -19,46 +29,63 @@ describe('useKioskExit', () => {
         vi.restoreAllMocks();
     });
 
-    it('long-press 5 s on title asks to exit', () => {
-        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    it('long-press 5 s opens an in-app confirm sheet, never window.confirm', () => {
+        const confirm = vi.spyOn(window, 'confirm');
         render(<Title />);
-        fireEvent.pointerDown(screen.getByText('Cocina'));
-        vi.advanceTimersByTime(4_999);
+        hold(4_999);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(screen.getByRole('dialog')).toHaveTextContent('¿Salir del modo kiosco?');
         expect(confirm).not.toHaveBeenCalled();
-        vi.advanceTimersByTime(1);
-        expect(confirm).toHaveBeenCalledWith('¿Salir del modo kiosco?');
-        expect(exitKiosk).toHaveBeenCalledTimes(1);
+        expect(exitKiosk).not.toHaveBeenCalled();
     });
 
-    it('declining the confirm keeps the kiosk', () => {
-        vi.spyOn(window, 'confirm').mockReturnValue(false);
+    it('Salir exits the kiosk', () => {
         render(<Title />);
-        fireEvent.pointerDown(screen.getByText('Cocina'));
-        vi.advanceTimersByTime(5_000);
+        hold();
+        fireEvent.click(screen.getByRole('button', { name: 'Salir' }));
+        expect(exitKiosk).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('Cancelar keeps the kiosk', () => {
+        render(<Title />);
+        hold();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+        expect(exitKiosk).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('the sheet auto-closes after 10 s without exiting', () => {
+        render(<Title />);
+        hold();
+        act(() => { vi.advanceTimersByTime(9_999); });
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(exitKiosk).not.toHaveBeenCalled();
     });
 
     it('releasing early cancels the press', () => {
-        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
         render(<Title />);
         const title = screen.getByText('Cocina');
         fireEvent.pointerDown(title);
-        vi.advanceTimersByTime(3_000);
+        act(() => { vi.advanceTimersByTime(3_000); });
         fireEvent.pointerUp(title);
-        vi.advanceTimersByTime(5_000);
-        expect(confirm).not.toHaveBeenCalled();
+        act(() => { vi.advanceTimersByTime(5_000); });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     it('leaving the element or unmounting cancels the press', () => {
-        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
         const { unmount } = render(<Title />);
         const title = screen.getByText('Cocina');
         fireEvent.pointerDown(title);
         fireEvent.pointerLeave(title);
-        vi.advanceTimersByTime(5_000);
+        act(() => { vi.advanceTimersByTime(5_000); });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         fireEvent.pointerDown(title);
         unmount();
-        vi.advanceTimersByTime(5_000);
-        expect(confirm).not.toHaveBeenCalled();
+        act(() => { vi.advanceTimersByTime(5_000); });
+        expect(exitKiosk).not.toHaveBeenCalled();
     });
 });

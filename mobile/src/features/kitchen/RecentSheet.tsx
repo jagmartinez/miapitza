@@ -4,20 +4,25 @@ import { batchKey, type KitchenBatch } from './kitchenTypes';
 const hhmm = (iso?: string | null): string => {
     if (!iso) return '';
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 };
 
-/** Last 10 released batches: local commits first, then the server list, deduped by key. */
+const releasedAt = (b: KitchenBatch): number => {
+    const t = new Date(b.kitchenReleasedAt ?? b.kitchenReadyAt ?? '').getTime();
+    return Number.isNaN(t) ? 0 : t;
+};
+
+/** Last 10 released batches from this tablet and the server, deduped by key (server copy wins), newest release first. */
 export function mergeRecent(local: KitchenBatch[], server: KitchenBatch[]): KitchenBatch[] {
     const seen = new Set<string>();
-    const out: KitchenBatch[] = [];
-    for (const b of [...local, ...server]) {
+    const all: KitchenBatch[] = [];
+    for (const b of [...server, ...local]) {
         const key = batchKey(b);
         if (seen.has(key)) continue;
         seen.add(key);
-        out.push(b);
+        all.push(b);
     }
-    return out.slice(0, 10);
+    return all.sort((a, b) => releasedAt(b) - releasedAt(a)).slice(0, 10);
 }
 
 export function RecentSheet({ batches, onClose }: { batches: KitchenBatch[]; onClose: () => void }) {
