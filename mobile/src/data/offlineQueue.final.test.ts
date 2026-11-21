@@ -1,4 +1,4 @@
-import { createOfflineQueue, STALE_AFTER_MS } from './offlineQueue';
+import { createOfflineQueue, MAX_RETRIES, STALE_AFTER_MS } from './offlineQueue';
 import { makeEnv, sessionFor } from './testkit';
 
 async function setup(userId = 1) {
@@ -80,6 +80,46 @@ describe('customer survey items never go stale', () => {
         await queue.process();
         expect(seen.map((s) => s.url)).toEqual(['/v1/surveys']);
         expect(await queue.listFailed()).toHaveLength(0);
+    });
+});
+
+describe('queued survey replay verdicts', () => {
+    const survey = { url: '/v1/surveys', method: 'POST' as const, data: { orderId: 5, nps: 9 }, operationType: 'GENERIC_MUTATION' as const, idempotencyKey: 'survey-order-5' };
+    const rejectWith = async (status: number, code?: string) => {
+        const env = await setup();
+        await env.queue.enqueue(survey);
+        env.reply(() => ({ status, code }));
+        return env;
+    };
+
+    it.each([
+        [409, 'SURVEY_ORDER_NOT_PAID'],
+        [404, 'SURVEY_ORDER_NOT_FOUND'],
+        [400, 'SURVEY_INVALID'],
+        [409, 'IDEMPOTENCY_MISMATCH'],
+        [403, undefined],
+    ])('%s %s is dropped: no row, no error badge', async (status, code) => {
+        const env = await rejectWith(status, code);
+        await env.queue.process();
+        expect(await env.db.syncQueue.count()).toBe(0);
+        expect(env.queue.getSnapshot()).toEqual({ pending: 0, failed: 0 });
+    });
+
+    it('a plain 404 stays pending and retries, capped by MAX_RETRIES (then failed, retriable by hand)', async () => {
+        const env = await rejectWith(404, 'ROUTE_NOT_FOUND');
+        await env.queue.process();
+        const row = (await env.db.syncQueue.toArray())[0];
+        expect(row.status).toBe('pending');
+        expect(row.retryCount).toBe(1);
+        await env.db.syncQueue.update(row.id!, { retryCount: MAX_RETRIES - 1, nextAttemptAt: null });
+        await env.queue.process();
+        expect((await env.db.syncQueue.toArray())[0].status).toBe('failed');
+    });
+
+    it('a 5xx keeps the survey queued', async () => {
+        const env = await rejectWith(503);
+        await env.queue.process();
+        expect((await env.db.syncQueue.toArray())[0].status).toBe('pending');
     });
 });
 

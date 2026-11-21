@@ -3,7 +3,7 @@ import { newIdempotencyKey } from '@web/utils/idempotency';
 import { appEvents } from '../core/events';
 import type { SessionStore } from '../core/session';
 import type { MobileDB } from './cache';
-import { isSurveyItem } from './queueLabels';
+import { isDefinitiveSurveyRejection, isSurveyItem } from './queueLabels';
 import { guarded, reportStorage, toStorageError } from './storage';
 import { isPermanentSyncFailure, ownerKeyOf, SessionChangedError, type SyncItem } from './types';
 
@@ -295,7 +295,14 @@ export function createOfflineQueue(deps: QueueDeps) {
                     return ownerKey;
                 }
                 const retryCount = item.retryCount + 1;
-                const permanent = isPermanentSyncFailure(status, err.response.data?.code);
+                const survey = isSurveyItem(item);
+                if (survey && isDefinitiveSurveyRejection(status, err.response.data?.code)) {
+                    // Nobody can fix it and nobody may discard it: it must not sit as an error on the PIN screen forever.
+                    await db.syncQueue.delete(item.id!);
+                    continue;
+                }
+                // A survey 404 is a missing route (deploy), not a verdict: it keeps retrying, capped by MAX_RETRIES.
+                const permanent = !(survey && status === 404) && isPermanentSyncFailure(status, err.response.data?.code);
                 if (retryCount >= MAX_RETRIES || permanent) {
                     const terminal = permanent ? `[${status}] ${lastError}` : lastError;
                     await db.syncQueue.update(item.id!, { retryCount, status: 'failed', lastError: terminal, nextAttemptAt: null });

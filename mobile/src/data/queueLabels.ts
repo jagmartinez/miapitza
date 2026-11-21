@@ -5,6 +5,12 @@ export const SURVEY_URL = '/v1/surveys';
 /** A customer survey: it never expires and its owner cannot discard it (the rated person must not decide if a score arrives). */
 export const isSurveyItem = (item: Pick<SyncItem, 'url'>): boolean => item.url.split('?')[0] === SURVEY_URL;
 
+/** The server answered a replayed survey with a verdict no retry changes (its own SURVEY_* code, a key reused with other answers, or the device is not allowed): the row is dropped. */
+export function isDefinitiveSurveyRejection(status: number | undefined, code: unknown): boolean {
+    const c = typeof code === 'string' ? code : '';
+    return c.startsWith('SURVEY_') || c === 'IDEMPOTENCY_MISMATCH' || status === 403;
+}
+
 /** What a queued item is, in the waiter's words (the label saved with it wins). */
 export function itemTitle(item: SyncItem): string {
     if (item.meta?.label) return item.meta.label;
