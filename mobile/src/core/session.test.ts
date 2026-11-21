@@ -135,6 +135,20 @@ describe('nativeSecureStore', () => {
         return mod.nativeSecureStore();
     }
 
+    it('never awaits the plugin proxy itself (Capacitor proxies throw on .then)', async () => {
+        const proxyLike = {
+            then: () => {
+                throw new Error('"SecureStorage.then()" is not implemented on android');
+            },
+            getItem: vi.fn().mockResolvedValue('stored'),
+            setItem: vi.fn().mockResolvedValue(undefined),
+        };
+        const store = await withPlugin(proxyLike);
+        expect(await store.get('session')).toBe('stored');
+        await expect(store.set('session', 'x')).resolves.toBeUndefined();
+        expect(proxyLike.setItem).toHaveBeenCalledWith('session', 'x');
+    });
+
     it('a failing or non-string read is null, never a throw', async () => {
         const failingStore = await withPlugin({ getItem: vi.fn().mockRejectedValue(new Error('keystore')) });
         expect(await failingStore.get('session')).toBeNull();

@@ -57,25 +57,25 @@ export function memoryStore(): SecureStore {
  * session store can report them.
  */
 export function nativeSecureStore(): SecureStore {
-    const plugin = async () => {
-        const { SecureStorage } = await import('@aparajita/capacitor-secure-storage');
-        return SecureStorage;
-    };
+    // Resolve to the module, never to the plugin itself: a Capacitor plugin is a
+    // Proxy whose `.then` throws ("SecureStorage.then() is not implemented"), so
+    // resolving a promise with it would break every read and write.
+    const plugin = () => import('@aparajita/capacitor-secure-storage');
     return {
         async get(key) {
             try {
-                const value = await (await plugin()).getItem(key);
+                const value = await (await plugin()).SecureStorage.getItem(key);
                 return typeof value === 'string' ? value : null;
             } catch {
                 return null;
             }
         },
         async set(key, value) {
-            await (await plugin()).setItem(key, value);
+            await (await plugin()).SecureStorage.setItem(key, value);
         },
         async remove(key) {
             try {
-                await (await plugin()).removeItem(key);
+                await (await plugin()).SecureStorage.removeItem(key);
             } catch {
                 // Nothing readable to remove, or the plugin failed: the key is as good as gone.
             }
