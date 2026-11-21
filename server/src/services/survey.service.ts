@@ -1,11 +1,10 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
-import { assertBranchAccess } from '../utils/branch-scope';
 import { SessionService } from './session.service';
 import { SurveyError } from './survey-errors';
-import { resolveBranchScope } from '../utils/branch-scope';
+import { assertBranchAccess, resolveBranchScope } from '../utils/branch-scope';
 import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
-import { getZonedParts, zonedDateKey, zonedStartOfDay } from '../utils/timezone';
+import { getZonedMonthBounds, getZonedParts, zonedDateKey, zonedStartOfDay } from '../utils/timezone';
 import { MIN_RANKING_RESPONSES, RANKING_PRIOR_WEIGHT, meanOrNull, npsSummary, rankWaiters } from '../utils/nps';
 
 export interface SurveyActor {
@@ -35,6 +34,7 @@ export interface SurveyResponsesFilters extends SurveyReportFilters {
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const MIN_SELF_RESPONSES = 3;
+const MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
 
 export interface SurveySubmitResult {
     id: number;
@@ -93,9 +93,13 @@ export class SurveyService {
     }
 
     private static dateWindow(viewer: SurveyViewer, f: SurveyReportFilters) {
-        const gte = parseOptionalQueryDateFrom(f.dateFrom, SurveyService.tz(viewer));
-        const lte = parseOptionalQueryDateTo(f.dateTo, SurveyService.tz(viewer));
-        return gte || lte ? { createdAt: { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) } } : {};
+        const tz = SurveyService.tz(viewer);
+        const given = { from: parseOptionalQueryDateFrom(f.dateFrom, tz), to: parseOptionalQueryDateTo(f.dateTo, tz) };
+        // Always bounded: a missing side defaults to the current month in the user timezone.
+        const gte = given.from ?? getZonedMonthBounds(tz, given.to ?? new Date()).start;
+        const lte = given.to ?? getZonedMonthBounds(tz).endInclusive;
+        if (lte.getTime() - gte.getTime() > MAX_RANGE_MS) throw new SurveyError('SURVEY_RANGE_TOO_LARGE');
+        return { createdAt: { gte, lte } };
     }
 
     /** [start, endExclusive) of a YYYY-MM month in the viewer timezone; defaults to the current month. */

@@ -93,6 +93,34 @@ describe('GET /surveys/summary', () => {
         expect(where).toMatchObject({ companyId: 5, branchId: 1 });
     });
 
+    it('defaults to the current month in the user timezone when no dates are given', async () => {
+        const { find } = setup([]);
+        const res = await request(app).get('/api/v1/surveys/summary?branchId=99').expect(200);
+        expect(res.body.data.responses).toBe(0);
+        const { gte, lte } = (find.mock.calls[0][0] as { where: { createdAt: { gte: Date; lte: Date } } }).where.createdAt;
+        expect(zonedMonthKey(gte, TZ)).toBe(zonedMonthKey(new Date(), TZ));
+        expect(zonedMonthKey(lte, TZ)).toBe(zonedMonthKey(new Date(), TZ));
+        expect(gte.getUTCHours()).toBe(6);
+    });
+
+    it('rejects spans over 366 days with SURVEY_RANGE_TOO_LARGE', async () => {
+        const { find } = setup([]);
+        const res = await request(app).get('/api/v1/surveys/summary?dateFrom=2024-01-01&dateTo=2026-01-01').expect(400);
+        expect(res.body.code).toBe('SURVEY_RANGE_TOO_LARGE');
+        expect(res.body.message).toBe('El período máximo es de un año.');
+        expect(find).not.toHaveBeenCalled();
+        await request(app).get('/api/v1/surveys/responses?dateFrom=2024-01-01').expect(400);
+        await request(app).get('/api/v1/surveys/summary?dateFrom=2025-03-01&dateTo=2026-02-28').expect(200);
+    });
+
+    it('rejects non-integer branchId / waiterUserId / page with 400', async () => {
+        setup([]);
+        await request(app).get('/api/v1/surveys/summary?branchId=1.5').expect(400);
+        await request(app).get('/api/v1/surveys/responses?waiterUserId=1.5').expect(400);
+        await request(app).get('/api/v1/surveys/responses?page=1.5').expect(400);
+        await request(app).get('/api/v1/surveys/ranking?branchId=abc').expect(400);
+    });
+
     it('applies the date window in the user timezone', async () => {
         const { find } = setup([]);
         await request(app).get('/api/v1/surveys/summary?dateFrom=2026-03-01&dateTo=2026-03-31').expect(200);

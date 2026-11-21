@@ -6,13 +6,15 @@ export type SurveyErrorCode =
     | 'SURVEY_DEVICE_REQUIRED'
     | 'SURVEY_ORDER_NOT_FOUND'
     | 'SURVEY_ORDER_NOT_PAID'
-    | 'SURVEY_INVALID';
+    | 'SURVEY_INVALID'
+    | 'SURVEY_RANGE_TOO_LARGE';
 
 const SURVEY_ERROR_STATUS: Record<SurveyErrorCode, number> = {
     SURVEY_DEVICE_REQUIRED: 403,
     SURVEY_ORDER_NOT_FOUND: 404,
     SURVEY_ORDER_NOT_PAID: 409,
     SURVEY_INVALID: 400,
+    SURVEY_RANGE_TOO_LARGE: 400,
 };
 
 const SURVEY_ERROR_MESSAGE: Record<SurveyErrorCode, string> = {
@@ -20,6 +22,7 @@ const SURVEY_ERROR_MESSAGE: Record<SurveyErrorCode, string> = {
     SURVEY_ORDER_NOT_FOUND: 'Cuenta no encontrada',
     SURVEY_ORDER_NOT_PAID: 'La cuenta aun no esta pagada',
     SURVEY_INVALID: 'Datos de encuesta invalidos',
+    SURVEY_RANGE_TOO_LARGE: 'El período máximo es de un año.',
 };
 
 export class SurveyError extends Error {

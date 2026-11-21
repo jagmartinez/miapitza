@@ -3,6 +3,7 @@ import { authMiddleware, extractAuthToken, requirePermission } from '../middlewa
 import { validateQueryDates } from '../middlewares/validate-query-dates';
 import { validate } from '../middlewares/validate';
 import { SurveyService } from '../services/survey.service';
+import { SurveyError } from '../services/survey-errors';
 
 const router = Router();
 
@@ -39,7 +40,12 @@ router.post(
 );
 
 const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined);
-const num = (v: unknown) => (str(v) === undefined ? undefined : Number(v));
+const num = (v: unknown) => {
+    if (str(v) === undefined) return undefined;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1 || n > 2147483647) throw new SurveyError('SURVEY_INVALID');
+    return n;
+};
 const viewerOf = (req: Request) => req.user as NonNullable<Request['user']>;
 const q = (req: Request) => req.query as Record<string, unknown>;
 
