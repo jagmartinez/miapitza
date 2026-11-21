@@ -1,0 +1,120 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { AccountHome } from './AccountHome';
+import { AccountNavProvider, useAccountNav } from './AccountNav';
+import { ToastProvider } from '../../ui/Toast';
+import type { HrApi } from './hrApi';
+import { session } from '../../test/helpers';
+import type { Session } from '../../core/session';
+
+const linked: Session = { ...session, user: { ...session.user, employeeId: 3 } };
+const admin: Session = { ...linked, user: { ...linked.user, role: { id: 2, name: 'ADMIN' }, roles: ['ADMIN'] } };
+
+function hrWith(today: unknown, over: Record<string, unknown> = {}): HrApi {
+    return {
+        attendanceToday: vi.fn().mockResolvedValue(today),
+        mySchedule: vi.fn().mockResolvedValue(null),
+        myReceipts: vi.fn().mockResolvedValue([]),
+        mySwaps: vi.fn().mockResolvedValue([]),
+        myWorkforce: vi.fn().mockResolvedValue({
+            leaveRequests: [],
+            overtimeRequests: [],
+            corrections: [],
+            vacationBalances: [{ id: 1, available: 6, unit: 'DAYS', leaveType: { code: 'VAC', name: 'Vacaciones' } }],
+        }),
+        myLoans: vi.fn().mockResolvedValue([]),
+        loanPolicy: vi.fn().mockResolvedValue({ currency: 'USD', maxAmount: '500', eligible: true }),
+        ...over,
+    } as unknown as HrApi;
+}
+
+function Where() {
+    const n = useAccountNav();
+    return <span data-testid="where">{n.section}</span>;
+}
+
+function renderHome(s: Session, hr: HrApi) {
+    return render(
+        <ToastProvider>
+            <AccountNavProvider>
+                <AccountHome session={s} hr={hr} onLogout={() => {}} />
+                <Where />
+            </AccountNavProvider>
+        </ToastProvider>,
+    );
+}
+
+const today = { availableActions: ['CHECK_IN', 'CHECK_OUT'], blockingIssue: null, punches: [] };
+
+describe('AccountHome', () => {
+    it('shows the primary mark button from availableActions and opens punch', async () => {
+        renderHome(linked, hrWith(today));
+        const btn = await screen.findByRole('button', { name: 'Entrada' });
+        fireEvent.click(btn);
+        expect(screen.getByTestId('where')).toHaveTextContent('punch');
+    });
+
+    it('home hides Por aprobar for non-admin', async () => {
+        renderHome(linked, hrWith(today));
+        await screen.findByRole('button', { name: 'Entrada' });
+        expect(screen.queryByText('Por aprobar')).toBeNull();
+    });
+
+    it('home shows Por aprobar for admin', async () => {
+        renderHome(admin, hrWith(today));
+        expect(await screen.findByText('Por aprobar')).toBeInTheDocument();
+    });
+
+    it('home without employeeId shows the unlinked message', () => {
+        const hr = hrWith(today);
+        renderHome(session, hr);
+        expect(screen.getByText('Tu usuario no está vinculado a un empleado. Pide a RH que lo vincule.')).toBeInTheDocument();
+        expect(screen.getByText('Mi información')).toBeInTheDocument();
+        expect(screen.queryByText('Solicitar')).toBeNull();
+        expect(hr.attendanceToday).not.toHaveBeenCalled();
+    });
+
+    it('stale open attendance shows Corregir marcaje', async () => {
+        const stale = { availableActions: [], blockingIssue: { code: 'STALE_OPEN_ATTENDANCE', message: 'x' }, punches: [] };
+        renderHome(linked, hrWith(stale));
+        expect(await screen.findByText('Tienes una jornada abierta sin cerrar')).toBeInTheDocument();
+        const buttons = screen.getAllByRole('button', { name: 'Corregir marcaje' });
+        fireEvent.click(buttons[0]);
+        expect(screen.getByTestId('where')).toHaveTextContent('correction');
+    });
+
+    it('request grid shows vacation days and loan maximum, or "No disponible"', async () => {
+        const { unmount } = renderHome(linked, hrWith(today));
+        expect(await screen.findByText(/6 días disponibles/)).toBeInTheDocument();
+        expect(screen.getByText(/500/)).toBeInTheDocument();
+        unmount();
+        renderHome(linked, hrWith(today, { loanPolicy: vi.fn().mockResolvedValue({ currency: 'USD', maxAmount: '500', eligible: false }) }));
+        expect(await screen.findByText('No disponible')).toBeInTheDocument();
+    });
+
+    it('cancel on a pending request calls the matching api once', async () => {
+        const cancelOvertime = vi.fn().mockResolvedValue({});
+        const hr = hrWith(today, {
+            cancelOvertime,
+            myWorkforce: vi.fn().mockResolvedValue({
+                leaveRequests: [],
+                corrections: [],
+                vacationBalances: [],
+                overtimeRequests: [{ id: 4, status: 'PENDING', date: '2026-11-10', requestedMinutes: 60, createdAt: '2026-11-11T00:00:00Z' }],
+            }),
+        });
+        renderHome(linked, hr);
+        const btn = await screen.findByRole('button', { name: 'Cancelar' });
+        fireEvent.click(btn);
+        fireEvent.click(btn);
+        await waitFor(() => expect(cancelOvertime).toHaveBeenCalledTimes(1));
+        expect(cancelOvertime.mock.calls[0][0]).toBe(4);
+    });
+
+    it('links navigate to sections', async () => {
+        renderHome(linked, hrWith(today));
+        await screen.findByRole('button', { name: 'Entrada' });
+        fireEvent.click(screen.getByText('Mi nómina'));
+        expect(screen.getByTestId('where')).toHaveTextContent('payroll');
+    });
+});

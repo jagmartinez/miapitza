@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { appEvents } from '../../core/events';
 import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
-import { AccountHome } from './AccountHome';
 import { ChangePasswordScreen } from './ChangePasswordScreen';
 import { LoginScreen } from './LoginScreen';
+
+// The account screens are a lazy chunk: the first paint only needs login / blocking screens.
+const AccountApp = lazy(() => import('./AccountApp'));
 
 interface Props {
     /** Null while logged out / expired: the shell stays mounted and shows login above the kept tree. */
@@ -96,7 +98,13 @@ export function AccountShell({ session, services, onSession, onSessionEnd, child
                         else el.removeAttribute('inert');
                     }}
                 >
-                    {children ? children(treeSession) : <AccountHome session={treeSession} onLogout={handleLogout} />}
+                    {children ? (
+                        children(treeSession)
+                    ) : (
+                        <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Cargando…</p>}>
+                            <AccountApp session={treeSession} services={services} onLogout={handleLogout} />
+                        </Suspense>
+                    )}
                 </div>
             )}
             {overlay === 'login' && (

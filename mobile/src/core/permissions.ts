@@ -24,3 +24,8 @@ export function isCashier(user: LoginUser): boolean {
 export function isCashAdmin(user: LoginUser): boolean {
     return roleNames(user).some((r) => CASH_ADMIN_ROLES.includes(r));
 }
+
+/** ADMIN or SUPERADMIN: the only accounts the server lets decide HR requests ("Por aprobar"). */
+export function isCompanyAdmin(user: LoginUser): boolean {
+    return roleNames(user).some((r) => CASH_ADMIN_ROLES.includes(r));
+}

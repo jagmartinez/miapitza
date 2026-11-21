@@ -1,0 +1,9 @@
+.ah { min-height: 100vh; background: var(--bg); color: var(--text); }
+.ah-body { display: flex; flex-direction: column; gap: 12px; padding: 16px; padding-bottom: 32px; }
+.ah-h { margin: 8px 0 0; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.ah-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ah-list { display: flex; flex-direction: column; gap: 12px; }
+.ah-wide { width: 100%; margin-top: 8px; }
+.ah-cancel { margin-top: 10px; min-height: 44px; }
+.ah-logout { min-height: 40px; padding: 0 12px; font-size: 14px; }
+.ah-link { background: none; border: 0; color: var(--ready); font: inherit; text-decoration: underline; padding: 0; }
