@@ -526,10 +526,9 @@ export class AuthService {
             deviceTag: deviceSessionTag(device.id),
             auditAction: 'DEVICE_LOGIN',
             revokePriorDeviceSessions: true,
+            // Only a genuine "not active" result unpairs; DB/infra errors propagate as 5xx.
             guard: async (tx) => {
-                try {
-                    await assertDeviceStillActive(tx, device.id);
-                } catch {
+                if (!(await OperationalDeviceService.isActiveForUpdate(tx, device.id))) {
                     throw new DeviceAuthError('DEVICE_NOT_ACTIVE');
                 }
             },

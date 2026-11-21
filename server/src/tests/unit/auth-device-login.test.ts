@@ -5,8 +5,8 @@ import { AuthService, DeviceAuthError } from '../../services/auth.service';
 import { AuthController } from '../../controllers/auth.controller';
 import { OperationalDeviceService } from '../../services/operational-device.service';
 
-const NOT_ACTIVE = { code: 'DEVICE_NOT_ACTIVE' };
-const KITCHEN_UNAVAILABLE = { code: 'KITCHEN_ACCOUNT_UNAVAILABLE' };
+const NOT_ACTIVE = { code: 'DEVICE_NOT_ACTIVE', statusCode: 401 };
+const KITCHEN_UNAVAILABLE = { code: 'KITCHEN_ACCOUNT_UNAVAILABLE', statusCode: 403 };
 
 beforeAll(() => {
     process.env.JWT_SECRET = 'test-secret-for-device-login';
@@ -115,6 +115,20 @@ describe('AuthService.deviceLogin', () => {
         await expect(AuthService.deviceLogin({ deviceToken: 'tok' })).rejects.toMatchObject(NOT_ACTIVE);
 
         expect(queryRaw).toHaveBeenCalledTimes(1);
+        expect(sessionCreate).not.toHaveBeenCalled();
+    });
+});
+
+describe('device-login guard errors', () => {
+    it('device-login: DB error in the guard propagates and is not DEVICE_NOT_ACTIVE', async () => {
+        setup(cook());
+        const { sessionCreate, queryRaw } = mockInfra();
+        queryRaw.mockRejectedValueOnce(new Error('Lock wait timeout exceeded'));
+
+        const err = await AuthService.deviceLogin({ deviceToken: 'tok' }).catch((e) => e);
+
+        expect(err).not.toBeInstanceOf(DeviceAuthError);
+        expect(err.message).toBe('Lock wait timeout exceeded');
         expect(sessionCreate).not.toHaveBeenCalled();
     });
 });
