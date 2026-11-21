@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { ScreenHeader } from '../../ui/ScreenHeader';
 import type { AccountApi } from './accountApi';
 
 interface Props {
@@ -6,6 +7,8 @@ interface Props {
     /** The server revoked every session: the caller returns to login. */
     onChanged: () => void;
     onLogout: () => void;
+    /** Voluntary change from "Mi información": shows a back button and no forced-logout exit. Absent = blocking. */
+    onBack?: () => void;
 }
 
 const MIN = 8;
@@ -17,7 +20,7 @@ function serverMessage(e: unknown): string {
 }
 
 /** Blocking screen: no back button; the only exits are changing the password or "Cerrar sesión". */
-export function ChangePasswordScreen({ api, onChanged, onLogout }: Props) {
+export function ChangePasswordScreen({ api, onChanged, onLogout, onBack }: Props) {
     const [current, setCurrent] = useState('');
     const [next, setNext] = useState('');
     const [repeat, setRepeat] = useState('');
@@ -47,10 +50,12 @@ export function ChangePasswordScreen({ api, onChanged, onLogout }: Props) {
     }
 
     return (
-        <main className="screen">
-            <form className="form" onSubmit={(e) => void submit(e)}>
-                <h1>Cambia tu contraseña</h1>
-                <p className="muted">Debes cambiarla para continuar.</p>
+        <main className={onBack ? undefined : 'screen'}>
+            {onBack && <ScreenHeader title="Cambiar contraseña" onBack={onBack} />}
+            <form className="form" style={onBack ? { padding: 16 } : undefined} onSubmit={(e) => void submit(e)}>
+                {!onBack && <h1>Cambia tu contraseña</h1>}
+                {!onBack && <p className="muted">Debes cambiarla para continuar.</p>}
+                {onBack && <p className="muted">Al cambiarla se cerrarán todas tus sesiones y deberás iniciar sesión de nuevo.</p>}
                 <label className="field">Contraseña actual
                     <input type="password" value={current} autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} />
                 </label>
@@ -62,7 +67,7 @@ export function ChangePasswordScreen({ api, onChanged, onLogout }: Props) {
                 </label>
                 {error && <p className="error" role="alert">{error}</p>}
                 <button type="submit" className="btn btn-primary" disabled={busy || !current || !next || !repeat}>Cambiar contraseña</button>
-                <button type="button" className="btn" onClick={onLogout}>Cerrar sesión</button>
+                {!onBack && <button type="button" className="btn" onClick={onLogout}>Cerrar sesión</button>}
             </form>
         </main>
     );

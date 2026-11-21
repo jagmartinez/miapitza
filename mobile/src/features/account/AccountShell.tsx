@@ -102,7 +102,7 @@ export function AccountShell({ session, services, onSession, onSessionEnd, child
                         children(treeSession)
                     ) : (
                         <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Cargando…</p>}>
-                            <AccountApp session={treeSession} services={services} onLogout={handleLogout} />
+                            <AccountApp session={treeSession} services={services} onLogout={handleLogout} onPasswordChanged={handleChanged} />
                         </Suspense>
                     )}
                 </div>

@@ -124,4 +124,11 @@ describe('hrApi', () => {
         expect(out.status).toBe('PENDING');
         expect(calls.map(pathOf).filter((x) => x === 'POST /v1/hr/leave/requests')).toHaveLength(1);
     });
+
+    it('authMe reads the PIN flags from /auth/me', async () => {
+        const { http, calls } = fakeApi(() => ok({ id: 1, hasPin: true, canUsePin: false }));
+        const me = await createHrApi(http).authMe();
+        expect(calls[0].url).toBe('/auth/me');
+        expect(me).toMatchObject({ hasPin: true, canUsePin: false });
+    });
 });

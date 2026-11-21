@@ -61,4 +61,20 @@ describe('ChangePasswordScreen', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
         expect(onLogout).toHaveBeenCalled();
     });
+
+    it('non-blocking mode (onBack): back button, no forced text, no logout, same submit', async () => {
+        const changePassword = vi.fn().mockResolvedValue(undefined);
+        const onBack = vi.fn();
+        const onChanged = vi.fn();
+        render(<ChangePasswordScreen api={{ changePassword }} onChanged={onChanged} onLogout={vi.fn()} onBack={onBack} />);
+        expect(screen.queryByText('Debes cambiarla para continuar.')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Cerrar sesión' })).toBeNull();
+        fireEvent.click(screen.getByLabelText('Volver'));
+        expect(onBack).toHaveBeenCalled();
+        fireEvent.change(screen.getByLabelText('Contraseña actual'), { target: { value: 'old' } });
+        fireEvent.change(screen.getByLabelText('Nueva contraseña'), { target: { value: 'newpassword1' } });
+        fireEvent.change(screen.getByLabelText('Repite la nueva contraseña'), { target: { value: 'newpassword1' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Cambiar contraseña' }));
+        await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    });
 });

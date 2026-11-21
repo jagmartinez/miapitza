@@ -222,6 +222,7 @@ export function createHrApi(http: AxiosInstance) {
             post<HrLoan>(`${B}/me/loan-requests/${id}/cancel`, reason ? { reason } : {}, opts),
 
         // ---- me ----
+        authMe: () => call<{ hasPin?: boolean; canUsePin?: boolean }>('/auth/me'),
         myEmployee: () => call<HrEmployeeSummary>(`${H}/me/employee`),
         profile: () => call<Record<string, unknown>>('/users/profile'),
         updateProfile: (body: Record<string, unknown>) => call<Record<string, unknown>>('/users/profile', { method: 'PUT', data: body }),
