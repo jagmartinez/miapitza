@@ -3,7 +3,9 @@ import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
 import { ScreenHeader } from '../../ui/ScreenHeader';
 import { ToastProvider } from '../../ui/Toast';
+import { isCompanyAdmin } from '../../core/permissions';
 import { AccountHome } from './AccountHome';
+import { ApprovalsScreen } from './approvals/ApprovalsScreen';
 import { AccountNavProvider, useAccountNav, type AccountSection } from './AccountNav';
 import { PunchScreen } from './attendance/PunchScreen';
 import { LoanRequestForm } from './loans/LoanRequestForm';
@@ -61,6 +63,7 @@ function Screens({ session, hr, accountApi, onLogout, onPasswordChanged }: { ses
     if (section === 'loanRequest') return <LoanRequestForm hr={hr} />;
     if (section === 'loans') return <LoansScreen hr={hr} />;
     if (section === 'requests') return <MyRequests hr={hr} userId={session.user.id} />;
+    if (section === 'approvals' && isCompanyAdmin(session.user)) return <ApprovalsScreen hr={hr} />;
     if (section === 'pending') return <PendingForYou hr={hr} userId={session.user.id} />;
     return <SectionPlaceholder section={section} />;
 }

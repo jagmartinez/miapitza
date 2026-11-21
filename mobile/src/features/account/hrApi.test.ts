@@ -144,3 +144,56 @@ describe('hrApi', () => {
         await expect(createHrApi(http).receiptPdf(1)).rejects.toThrow('Sin PDF');
     });
 });
+
+describe('hrApi approvals', () => {
+    const keyOf = (c: { headers?: unknown }) => (c.headers as unknown as { get(k: string): string }).get('Idempotency-Key');
+
+    it('lists pending items with the status filter', async () => {
+        const { http, calls } = fakeApi(() => ok([]));
+        const api = createHrApi(http);
+        await api.pendingLeave();
+        await api.pendingOvertime();
+        await api.pendingCorrections();
+        await api.pendingSwaps();
+        expect(calls.map(pathOf)).toEqual([
+            'GET /v1/hr/leave/requests',
+            'GET /v1/hr/overtime/requests',
+            'GET /v1/hr/attendance/corrections',
+            'GET /v1/hr/swaps',
+        ]);
+        expect(calls.map((c) => c.params.status)).toEqual(['PENDING', 'PENDING', 'PENDING', 'ACCEPTED']);
+        expect(calls[0].params.limit).toBe(100);
+    });
+
+    it('decide bodies carry decision, reason and approvedMinutes with a stable key per action', async () => {
+        let fail = true;
+        const { http, calls } = fakeApi((c) => {
+            if (String(c.url).includes('/overtime/') && fail) {
+                fail = false;
+                return { status: 503, data: { message: 'x' } };
+            }
+            return ok({ id: 1 });
+        });
+        const api = createHrApi(http);
+        await api.decideLeave(5, 'REJECTED', 'sin cupo', { actionId: 'l' });
+        await api.decideCorrection(6, 'APPROVED', 'Aprobado', { actionId: 'c' });
+        await expect(api.decideOvertime(7, 'APPROVED', 30, 'Aprobado', { actionId: 'o' })).rejects.toBeInstanceOf(HrError);
+        await api.decideOvertime(7, 'APPROVED', 30, 'Aprobado', { actionId: 'o' });
+        expect(pathOf(calls[0])).toBe('POST /v1/hr/leave/requests/5/decide');
+        expect(JSON.parse(calls[0].data)).toEqual({ decision: 'REJECTED', reason: 'sin cupo' });
+        expect(pathOf(calls[1])).toBe('POST /v1/hr/attendance/corrections/6/decide');
+        expect(JSON.parse(calls[2].data)).toEqual({ decision: 'APPROVED', approvedMinutes: 30, reason: 'Aprobado' });
+        expect(keyOf(calls[3])).toBe(keyOf(calls[2]));
+    });
+
+    it('approves and rejects swaps without a key', async () => {
+        const { http, calls } = fakeApi(() => ok({ id: 1 }));
+        const api = createHrApi(http);
+        await api.approveSwap(9, 'ok');
+        await api.rejectSwap(9);
+        expect(pathOf(calls[0])).toBe('POST /v1/hr/swaps/9/approve');
+        expect(JSON.parse(calls[0].data)).toEqual({ notes: 'ok' });
+        expect(pathOf(calls[1])).toBe('POST /v1/hr/swaps/9/manager-cancel');
+        expect(keyOf(calls[0])).toBeFalsy();
+    });
+});

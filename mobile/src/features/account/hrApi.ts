@@ -128,6 +128,8 @@ export interface HrSwapBody {
     reason?: string;
 }
 
+export type HrDecision = 'APPROVED' | 'REJECTED';
+const PENDING_LIMIT = 100;
 const H = '/v1/hr';
 const B = '/v1/hr/benefits';
 
@@ -243,6 +245,21 @@ export function createHrApi(http: AxiosInstance) {
         createSwap: (body: HrSwapBody) => call<HrSwap>(`${H}/swaps`, { method: 'POST', data: body }),
         respondSwap: (id: number, decision: 'ACCEPT' | 'REJECT') => call<HrSwap>(`${H}/swaps/${id}/respond`, { method: 'POST', data: { decision } }),
         cancelSwap: (id: number) => call<HrSwap>(`${H}/swaps/${id}/cancel`, { method: 'POST', data: {} }),
+
+        // ---- approvals (ADMIN/SUPERADMIN: the server enforces it) ----
+        pendingLeave: () => list<HrLeaveRequest>(`${H}/leave/requests`, { status: 'PENDING', limit: PENDING_LIMIT }),
+        pendingOvertime: () => list<HrOvertimeRequest>(`${H}/overtime/requests`, { status: 'PENDING', limit: PENDING_LIMIT }),
+        pendingCorrections: () => list<HrAttendanceCorrection>(`${H}/attendance/corrections`, { status: 'PENDING', limit: PENDING_LIMIT }),
+        /** A swap reaches the boss only after the colleague accepted it (the server approves ACCEPTED only). */
+        pendingSwaps: () => list<HrSwap>(`${H}/swaps`, { status: 'ACCEPTED' }),
+        decideLeave: (id: number, decision: HrDecision, reason: string, opts: ActionOpts = {}) =>
+            post<HrLeaveRequest>(`${H}/leave/requests/${id}/decide`, { decision, reason }, opts),
+        decideOvertime: (id: number, decision: HrDecision, approvedMinutes: number | undefined, reason: string, opts: ActionOpts = {}) =>
+            post<HrOvertimeRequest>(`${H}/overtime/requests/${id}/decide`, { decision, ...(approvedMinutes ? { approvedMinutes } : {}), reason }, opts),
+        decideCorrection: (id: number, decision: HrDecision, reason: string, opts: ActionOpts = {}) =>
+            post<HrAttendanceCorrection>(`${H}/attendance/corrections/${id}/decide`, { decision, reason }, opts),
+        approveSwap: (id: number, notes: string) => call<HrSwap>(`${H}/swaps/${id}/approve`, { method: 'POST', data: notes ? { notes } : {} }),
+        rejectSwap: (id: number) => call<HrSwap>(`${H}/swaps/${id}/manager-cancel`, { method: 'POST', data: {} }),
 
         // ---- loans ----
         loanPolicy: () => call<HrLoanPolicy>(`${B}/me/loan-policy`),
