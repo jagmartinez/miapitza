@@ -101,11 +101,15 @@ export class HrWorkforceController {
             }
             const today = new Date();
             const employee = await prisma.employee.findFirst({
-                where: { id: user.employeeId, companyId: user.companyId, userId: user.userId },
+                where: {
+                    id: user.employeeId,
+                    companyId: user.companyId,
+                    userId: user.userId,
+                    status: { in: ['ACTIVE', 'ON_LEAVE'] },
+                },
                 select: {
                     employeeCode: true,
                     legalName: true,
-                    preferredName: true,
                     hireDate: true,
                     workEmail: true,
                     workPhone: true,

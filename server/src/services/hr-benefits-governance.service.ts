@@ -372,7 +372,11 @@ export async function validateLoanPolicy(
   return policy;
 }
 
-/** Current loan limits and eligibility for one employee, built on the same rules as validateLoanTerms. */
+/**
+ * Current loan limits and eligibility for one employee, built on the same rules as validateLoanTerms.
+ * `eligible` covers tenure/policy availability only. Payment capacity and current compensation
+ * (HR_LOAN_CAPACITY_POLICY, HR_LOAN_COMPENSATION_REQUIRED) are re-validated by the server at request time.
+ */
 export async function loanPolicyView(
   companyId: number,
   employeeId: number,

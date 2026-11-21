@@ -46,9 +46,31 @@ export class PinService {
         return PinService.rolesAllowPin(roleNames) || permissionNames.includes(DISCOUNT_AUTHORIZE_PERMISSION);
     }
 
-    static async hasPin(userId: number): Promise<boolean> {
-        const row = await prisma.user.findUnique({ where: { id: userId }, select: { pinHash: true } });
-        return Boolean(row?.pinHash);
+    /** Role names and permissions exactly as setPin evaluates them (unfiltered roles). */
+    static evaluateAccess(user: {
+        role: { name: string; permissions?: { name: string }[] };
+        userRoles: { role: { name: string; permissions?: { name: string }[] } }[];
+    }): { roleNames: string[]; permissionNames: string[]; canUsePin: boolean } {
+        const roleNames = [user.role.name, ...user.userRoles.map((entry) => entry.role.name)];
+        const permissionNames = collectPermissionNames([
+            user.role,
+            ...user.userRoles.map((entry) => entry.role),
+        ] as never);
+        return { roleNames, permissionNames, canUsePin: PinService.canUsePin(roleNames, permissionNames) };
+    }
+
+    /** PIN status for GET /auth/me; same role source as setPin. Errors propagate. */
+    static async pinStatus(userId: number): Promise<{ hasPin: boolean; canUsePin: boolean }> {
+        const row = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                pinHash: true,
+                role: { select: { name: true, permissions: { select: { name: true } } } },
+                userRoles: { select: { role: { select: { name: true, permissions: { select: { name: true } } } } } },
+            },
+        });
+        if (!row) return { hasPin: false, canUsePin: false };
+        return { hasPin: Boolean(row.pinHash), canUsePin: PinService.evaluateAccess(row).canUsePin };
     }
 
     /**
@@ -86,14 +108,9 @@ export class PinService {
         }
         await loginAttemptService.recordSuccess(user.id, ip);
         PinService.validateFormat(pin);
-        const roleNames = [user.role.name, ...user.userRoles.map((entry) => entry.role.name)];
         // A discount supervisor may hold a PIN to authorize discounts on a tablet.
         // That PIN never opens a session: pin-login still requires roles within PIN_ROLES.
-        const permissionNames = collectPermissionNames([
-            user.role,
-            ...user.userRoles.map((entry) => entry.role),
-        ]);
-        if (!PinService.canUsePin(roleNames, permissionNames)) {
+        if (!PinService.evaluateAccess(user).canUsePin) {
             throw new PinError('Tu rol no puede usar PIN de acceso rápido', 403);
         }
 
