@@ -10,4 +10,13 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(KioskPlugin.class);
         super.onCreate(savedInstanceState);
     }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // The pin prompt or a dialog can bring the system bars back: re-hide them while the kiosk is on.
+        if (hasFocus && KioskPlugin.isImmersiveWanted()) {
+            KioskPlugin.applyImmersive(this);
+        }
+    }
 }
