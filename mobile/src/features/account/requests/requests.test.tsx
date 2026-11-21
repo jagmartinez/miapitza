@@ -269,6 +269,49 @@ describe('CorrectionForm', () => {
     });
 });
 
+describe('CorrectionForm punch picker', () => {
+    const todayPunches = {
+        timezone: 'America/Managua',
+        punches: [
+            { id: 31, action: 'CHECK_IN', occurredAt: '2026-11-20T14:02:00.000Z' },
+            { id: 32, action: 'CHECK_IN', occurredAt: '2026-11-20T14:05:00.000Z' },
+        ],
+    };
+    function open(hr: HrApi) {
+        render(
+            <ToastProvider>
+                <AccountNavProvider>
+                    <Go />
+                    <Params hr={hr} />
+                </AccountNavProvider>
+            </ToastProvider>,
+        );
+        fireEvent.click(screen.getByText('go'));
+    }
+
+    it('VOID_PUNCH picks one of my own recent punches by label (branch time) and sends its id', async () => {
+        const createCorrection = vi.fn().mockResolvedValue({ id: 1 });
+        open(api({ createCorrection, attendanceToday: vi.fn().mockResolvedValue(todayPunches) }));
+        fireEvent.change(screen.getByLabelText('Tipo de corrección'), { target: { value: 'VOID_PUNCH' } });
+        expect(screen.queryByLabelText('Número del marcaje afectado')).toBeNull();
+        const picker = await screen.findByLabelText('Marcaje afectado');
+        await waitFor(() => expect(within(picker).getByRole('option', { name: 'Entrada 20/11/2026 08:05' })).toBeInTheDocument());
+        fireEvent.change(picker, { target: { value: '32' } });
+        fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Marqué dos veces' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await waitFor(() => expect(createCorrection).toHaveBeenCalledTimes(1));
+        expect(createCorrection.mock.calls[0][0]).toEqual({ type: 'VOID_PUNCH', targetEventId: 32, reason: 'Marqué dos veces' });
+    });
+
+    it('with no recent punches the target types cannot be sent and the user is told why', async () => {
+        open(api({ createCorrection: vi.fn(), attendanceToday: vi.fn().mockResolvedValue({ timezone: 'America/Managua', punches: [] }) }));
+        fireEvent.change(screen.getByLabelText('Tipo de corrección'), { target: { value: 'VOID_PUNCH' } });
+        expect(await screen.findByText(/No hay marcajes recientes/)).toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Marqué dos veces' } });
+        expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
+    });
+});
+
 describe('SwapForm', () => {
     const tomorrow = formatLocalDateInput(new Date(Date.now() + 86_400_000));
     const mine = { id: 5, weekStart: '2026-11-16', status: 'PUBLISHED', shifts: [{ id: 50, userId: 7, branchId: 1, date: tomorrow, startTime: '08:00:00', endTime: '16:00:00' }] };

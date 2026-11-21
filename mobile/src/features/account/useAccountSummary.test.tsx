@@ -72,6 +72,18 @@ describe('useAccountSummary', () => {
         expect(result.current.myRequests[0].kind).toBe('swap'); // newest first
     });
 
+    it('a DRAFT leave left behind is shown as Borrador and can be cancelled', async () => {
+        const hr = api({
+            myWorkforce: vi.fn().mockResolvedValue({
+                leaveRequests: [{ id: 1, status: 'DRAFT', startDate: '2026-12-01', endDate: '2026-12-02', createdAt: '2026-11-01T00:00:00Z', leaveType: { name: 'Vacaciones' } }],
+                overtimeRequests: [], corrections: [], vacationBalances: [],
+            }),
+        });
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(result.current.myRequests[0]).toMatchObject({ statusLabel: 'Borrador', cancellable: true });
+    });
+
     it('status is error only when everything failed', async () => {
         const boom = vi.fn().mockRejectedValue(new Error('x'));
         const hr = api({ attendanceToday: boom, mySchedule: boom, myReceipts: boom, mySwaps: boom, myWorkforce: boom, myLoans: boom, loanPolicy: boom });

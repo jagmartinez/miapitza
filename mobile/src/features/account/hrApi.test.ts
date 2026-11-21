@@ -125,6 +125,66 @@ describe('hrApi', () => {
         expect(calls.map(pathOf).filter((x) => x === 'POST /v1/hr/leave/requests')).toHaveLength(1);
     });
 
+    const leaveBody = { leaveTypeId: 1, startDate: '2026-12-01', endDate: '2026-12-02', fraction: 'FULL_DAY' as const, reason: 'viaje' };
+
+    it('R10: an edited payload under the same action gets a new Idempotency-Key; the same payload keeps it', async () => {
+        const { http, calls } = fakeApi(() => ({ status: 503, data: {} }));
+        const api = createHrApi(http);
+        const key = (i: number) => (calls[i].headers as unknown as { get(k: string): string }).get('Idempotency-Key');
+        const a = { date: '2026-11-20', requestedMinutes: 60, reason: 'cierre' };
+        await api.createOvertime(a, { actionId: 'x' }).catch(() => undefined);
+        await api.createOvertime(a, { actionId: 'x' }).catch(() => undefined);
+        await api.createOvertime({ ...a, requestedMinutes: 90 }, { actionId: 'x' }).catch(() => undefined);
+        expect(key(1)).toBe(key(0));
+        expect(key(2)).not.toBe(key(0));
+    });
+
+    it('a lost submit response that was applied (409 "only a draft") is success when the request is pending', async () => {
+        let submits = 0;
+        const { http, calls } = fakeApi((c) => {
+            if (String(c.url).endsWith('/submit')) {
+                return submits++ === 0 ? { status: 503, data: {} } : { status: 409, data: { success: false, code: 'HR_WORKFLOW_CAS_CONFLICT', message: 'Solo un borrador puede enviarse' } };
+            }
+            if (String(c.url).endsWith('/me/workforce')) return ok({ leaveRequests: [{ id: 9, status: 'PENDING' }] });
+            return ok({ id: 9, status: 'DRAFT' });
+        });
+        const api = createHrApi(http);
+        await expect(api.createLeave(leaveBody, { actionId: 'l' })).rejects.toBeInstanceOf(HrError);
+        const out = await api.createLeave(leaveBody, { actionId: 'l' });
+        expect(out).toMatchObject({ id: 9, status: 'PENDING' });
+        expect(calls.map(pathOf).filter((x) => x === 'POST /v1/hr/leave/requests')).toHaveLength(1);
+    });
+
+    it('a 409 "only a draft" with the request not pending stays an error', async () => {
+        let submits = 0;
+        const { http } = fakeApi((c) => {
+            if (String(c.url).endsWith('/submit')) {
+                return submits++ === 0 ? { status: 503, data: {} } : { status: 409, data: { code: 'HR_WORKFLOW_CAS_CONFLICT', message: 'Solo un borrador puede enviarse' } };
+            }
+            if (String(c.url).endsWith('/me/workforce')) return ok({ leaveRequests: [{ id: 9, status: 'CANCELLED' }] });
+            return ok({ id: 9, status: 'DRAFT' });
+        });
+        const api = createHrApi(http);
+        await api.createLeave(leaveBody, { actionId: 'l' }).catch(() => undefined);
+        await expect(api.createLeave(leaveBody, { actionId: 'l' })).rejects.toThrow('Solo un borrador');
+    });
+
+    it('a definitive submit rejection cancels the orphan draft and the next try creates a fresh one', async () => {
+        let submits = 0;
+        const { http, calls } = fakeApi((c) => {
+            if (String(c.url).endsWith('/submit')) return submits++ === 0 ? { status: 409, data: { code: 'HR_LEAVE_OVERLAP', message: 'Se solapa' } } : ok({ id: 10, status: 'PENDING' });
+            if (String(c.url).endsWith('/cancel')) return ok({ id: 9, status: 'CANCELLED' });
+            return ok({ id: submits === 0 ? 9 : 10, status: 'DRAFT' });
+        });
+        const api = createHrApi(http);
+        await expect(api.createLeave(leaveBody, { actionId: 'l' })).rejects.toThrow('Se solapa');
+        const cancel = calls.find((c) => String(c.url).endsWith('/cancel'))!;
+        expect(pathOf(cancel)).toBe('POST /v1/hr/leave/requests/9/cancel');
+        expect(JSON.parse(cancel.data).reason).toBe('Borrador descartado');
+        await api.createLeave({ ...leaveBody, endDate: '2026-12-03' }, { actionId: 'l' });
+        expect(calls.map(pathOf).filter((x) => x === 'POST /v1/hr/leave/requests')).toHaveLength(2);
+    });
+
     it('authMe reads the PIN flags from /auth/me', async () => {
         const { http, calls } = fakeApi(() => ok({ id: 1, hasPin: true, canUsePin: false }));
         const me = await createHrApi(http).authMe();

@@ -138,6 +138,13 @@ export interface HrSwapBody {
     reason?: string;
 }
 
+const DISCARD_REASON = 'Borrador descartado';
+
+/** The server answered and said no (4xx except timeout / rate limit / still processing): nothing was applied. */
+function isDefinitiveRejection(e: HrError): boolean {
+    return e.status !== undefined && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429 && e.code !== 'IDEMPOTENCY_IN_PROGRESS' && e.code !== 'HR_WORKFLOW_CAS_CONFLICT';
+}
+
 export type HrDecision = 'APPROVED' | 'REJECTED';
 const PENDING_LIMIT = 100;
 const H = '/v1/hr';
@@ -201,6 +208,16 @@ export function createHrApi(http: AxiosInstance) {
         }
     }
 
+    /** Re-reads my own leave request after an ambiguous submit. */
+    async function findLeave(id: number, body: HrLeaveRequestPayload): Promise<HrLeaveRequest | null> {
+        try {
+            const w = await call<HrMyWorkforce>(`${H}/me/workforce`, { params: { dateFrom: body.startDate, dateTo: body.endDate } });
+            return w?.leaveRequests?.find((r) => r.id === id) ?? null;
+        } catch {
+            return null;
+        }
+    }
+
     const post = <T>(url: string, data: unknown, action?: ActionOpts, extra: Partial<CallOpts> = {}) =>
         call<T>(url, { method: 'POST', data, idempotent: true, action, ...extra });
     const list = async <T>(url: string, params?: unknown): Promise<T[]> => {
@@ -238,11 +255,31 @@ export function createHrApi(http: AxiosInstance) {
         /** Creates a DRAFT then submits it; both steps are idempotent under the same actionId. */
         async createLeave(body: HrLeaveRequestPayload, opts: ActionOpts = {}): Promise<HrLeaveRequest> {
             const dk = opts.actionId ? `${opts.actionId} ${bodyFingerprint(body)}` : null;
-            const draft = (dk && drafts.get(dk)) || (await post<HrLeaveRequest>(`${H}/leave/requests`, body, opts));
+            const remembered = dk ? drafts.get(dk) : undefined;
+            // The server dedupes neither create nor submit: a retry only ever re-submits the draft it already made.
+            const draft = remembered || (await post<HrLeaveRequest>(`${H}/leave/requests`, body, opts));
             if (dk) drafts.set(dk, draft);
-            const submitted = await post<HrLeaveRequest>(`${H}/leave/requests/${draft.id}/submit`, {}, opts);
-            if (dk) drafts.delete(dk);
-            return submitted;
+            try {
+                const submitted = await post<HrLeaveRequest>(`${H}/leave/requests/${draft.id}/submit`, {}, opts);
+                if (dk) drafts.delete(dk);
+                return submitted;
+            } catch (error) {
+                const err = toHrError(error);
+                if (err.code === 'HR_WORKFLOW_CAS_CONFLICT' && remembered) {
+                    // The first submit was applied but its answer was lost: the request is already in flight.
+                    const applied = await findLeave(draft.id, body);
+                    if (applied && applied.status !== 'DRAFT' && applied.status !== 'CANCELLED' && applied.status !== 'REJECTED') {
+                        if (dk) drafts.delete(dk);
+                        return applied;
+                    }
+                }
+                if (isDefinitiveRejection(err)) {
+                    // Do not leave an orphan DRAFT behind (it would show in Mis solicitudes and never clear).
+                    if (dk) drafts.delete(dk);
+                    await post<HrLeaveRequest>(`${H}/leave/requests/${draft.id}/cancel`, { reason: DISCARD_REASON }, { actionId: `${opts.actionId ?? 'leave'}-discard-${draft.id}` }).catch(() => undefined);
+                }
+                throw err;
+            }
         },
         cancelLeave: (id: number, reason: string, opts: ActionOpts = {}) => post<HrLeaveRequest>(`${H}/leave/requests/${id}/cancel`, { reason }, opts),
         createOvertime: (body: HrOvertimeRequestPayload, opts: ActionOpts = {}) => post<HrOvertimeRequest>(`${H}/overtime/requests`, body, opts),

@@ -201,7 +201,8 @@ export function buildSummary(input: {
     const requests: RequestCardModel[] = [];
     for (const r of input.workforce?.leaveRequests ?? []) {
         const name = (r.leaveType as { name?: string } | undefined)?.name ?? 'Permiso';
-        requests.push(card('leave', r, name, range(r.startDate, r.endDate), r.status === 'PENDING'));
+        // A DRAFT left behind by an interrupted submit can be discarded: the server cancels it too.
+        requests.push(card('leave', r, name, range(r.startDate, r.endDate), r.status === 'PENDING' || r.status === 'DRAFT'));
     }
     for (const r of input.workforce?.overtimeRequests ?? []) {
         requests.push(card('overtime', r, 'Horas extra', `${day(r.date)} · ${minutesText(Number(r.requestedMinutes))}`, r.status === 'PENDING'));

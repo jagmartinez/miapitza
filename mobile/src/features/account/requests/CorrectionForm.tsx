@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import type { HrAttendanceAction } from '@web/types/hr-attendance';
+import { useEffect, useState } from 'react';
+import { ATTENDANCE_ACTION_LABELS } from '@web/components/hr/attendanceRules';
+import type { HrAttendanceAction, HrAttendancePunch } from '@web/types/hr-attendance';
 import type { HrAttendanceCorrectionPayload, HrCorrectionType } from '@web/types/hr-workforce';
 import { useAccountNav } from '../AccountNav';
+import { instantText } from '../format';
 import type { HrApi } from '../hrApi';
 import { Field, FormScreen, useRequestSubmit, validReason, REASON_MAX } from './common';
 
@@ -25,7 +27,20 @@ export function CorrectionForm({ hr }: { hr: HrApi }) {
 
     const needsTime = type === 'ADD_PUNCH' || type === 'CHANGE_TIME';
     const needsTarget = type === 'VOID_PUNCH' || type === 'CHANGE_TIME';
-    const canSubmit = validReason(reason) && (!needsTime || !!occurredAt) && (!needsTarget || Number(targetEventId) > 0);
+    // The only self route that lists punch ids is today's attendance (today plus any open session).
+    const [recent, setRecent] = useState<{ punches: HrAttendancePunch[]; tz: string } | 'error' | null>(null);
+    useEffect(() => {
+        if (!needsTarget || recent) return;
+        let alive = true;
+        hr.attendanceToday().then(
+            (t) => alive && setRecent({ punches: t?.punches ?? [], tz: t?.timezone ?? 'UTC' }),
+            () => alive && setRecent('error'),
+        );
+        return () => {
+            alive = false;
+        };
+    }, [hr, needsTarget, recent]);
+    const canSubmit = validReason(reason) && (!needsTime || !!occurredAt) && (!needsTarget || (recent !== null && recent !== 'error' && recent.punches.some((p) => String(p.id) === targetEventId)));
 
     const send = () =>
         submit((opts) => {
@@ -62,9 +77,24 @@ export function CorrectionForm({ hr }: { hr: HrApi }) {
                 </Field>
             )}
             {needsTarget && (
-                <Field label="Número del marcaje afectado">
-                    <input type="number" inputMode="numeric" min={1} value={targetEventId} onChange={(e) => setTargetEventId(e.target.value)} />
-                </Field>
+                recent === 'error' ? (
+                    <p className="pf-error" role="alert">
+                        No se pudieron cargar tus marcajes. <button type="button" className="ah-link" onClick={() => setRecent(null)}>Reintentar</button>
+                    </p>
+                ) : recent && recent.punches.length === 0 ? (
+                    <p className="muted">No hay marcajes recientes (de hoy) para corregir. Si falta uno, usa «Agregar marcaje».</p>
+                ) : (
+                    <Field label="Marcaje afectado">
+                        <select value={targetEventId} onChange={(e) => setTargetEventId(e.target.value)} disabled={!recent}>
+                            <option value="">{recent ? 'Elige un marcaje' : 'Cargando…'}</option>
+                            {recent?.punches.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                    {`${ATTENDANCE_ACTION_LABELS[p.action]} ${instantText(p.occurredAt, recent.tz)}`}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+                )
             )}
             {needsTime && (
                 <Field label="Fecha y hora">
