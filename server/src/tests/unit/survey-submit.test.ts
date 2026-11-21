@@ -99,8 +99,14 @@ describe('POST /surveys', () => {
     it.each([
         ['nps 11', { nps: 11 }],
         ['nps -1', { nps: -1 }],
-        ['rating 0', { serviceRating: 0 }],
-        ['rating 6', { foodRating: 6 }],
+        ['waiterRating 0', { waiterRating: 0 }],
+        ['waitRating 0', { waitRating: 0 }],
+        ['ambienceRating 6', { ambienceRating: 6 }],
+        ['foodRating 0', { foodRating: 0 }],
+        ['waiterRating 6', { waiterRating: 6 }],
+        ['waitRating 6', { waitRating: 6 }],
+        ['ambienceRating 0', { ambienceRating: 0 }],
+        ['foodRating 6', { foodRating: 6 }],
         ['comment of 501 chars', { comment: 'x'.repeat(501) }],
         ['phone abc', { contactPhone: 'abc' }],
     ])('validates ranges: %s', async (_label, body) => {

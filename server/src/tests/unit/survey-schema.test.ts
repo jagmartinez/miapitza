@@ -9,8 +9,8 @@ const dir = 'prisma/migrations/20261123_customer_survey';
 describe('customer survey schema (Phase 5a Task 1)', () => {
     it('SurveyResponse exposes the expected columns', () => {
         expect(Object.keys(Prisma.SurveyResponseScalarFieldEnum).sort()).toEqual([
-            'branchId', 'comment', 'companyId', 'contactPhone', 'createdAt', 'foodRating', 'id', 'nps',
-            'operationalDeviceId', 'orderId', 'serviceRating', 'waiterRating', 'waiterUserId',
+            'ambienceRating', 'branchId', 'comment', 'companyId', 'contactPhone', 'createdAt', 'foodRating', 'id', 'nps',
+            'operationalDeviceId', 'orderId', 'waitRating', 'waiterRating', 'waiterUserId',
         ]);
     });
 

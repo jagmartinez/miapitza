@@ -5300,7 +5300,8 @@ model SurveyResponse {
   operationalDeviceId Int
   nps                 Int
   waiterRating        Int?
-  serviceRating       Int?
+  waitRating          Int?
+  ambienceRating      Int?
   foodRating          Int?
   comment             String?  @db.VarChar(500)
   contactPhone        String?  @db.VarChar(30)
