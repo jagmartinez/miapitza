@@ -59,10 +59,13 @@ describe('useReadyCommit', () => {
     });
 
     it('hides only the committed batch key', async () => {
-        const { hook } = setup();
+        const { api, hook } = setup();
         act(() => hook.result.current.markReady(mk(1, 1)));
         expect([...hook.result.current.hiddenKeys]).toEqual(['1:1']);
         expect(hook.result.current.hiddenKeys.has('1:2')).toBe(false);
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(hook.result.current.hiddenKeys.has('1:2')).toBe(false);
+        expect(api.ready.mock.calls.every(([b]) => b.kitchenBatchId === 1)).toBe(true);
     });
 
     it('keeps a committed key hidden until the queue no longer contains it', async () => {
@@ -144,5 +147,115 @@ describe('useReadyCommit', () => {
         const ids = hook.result.current.committed.map((b) => b.id);
         expect(ids).toHaveLength(10);
         expect(new Set(ids).size).toBe(10);
+        expect(ids).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+        expect(hook.result.current.committed[0]).toMatchObject({ status: 'READY' });
+        expect(hook.result.current.committed[0].kitchenReleasedAt).toBeTruthy();
+    });
+
+    it('ready ok then release network error retries release only with its key', async () => {
+        const { api, hook } = setup();
+        api.release.mockRejectedValueOnce(new KitchenActionError('network', 'x'));
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+        expect(api.ready).toHaveBeenCalledTimes(1);
+        expect(api.release).toHaveBeenCalledTimes(2);
+        expect(api.release.mock.calls[0][1]).toBe(api.release.mock.calls[1][1]);
+        expect(hook.result.current.committed).toHaveLength(1);
+    });
+
+    it('release rejected after ready succeeded restores the card and reports a failure', async () => {
+        const { api, hook } = setup();
+        api.release.mockRejectedValueOnce(new KitchenActionError('rejected', 'No liberar'));
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(hook.result.current.hiddenKeys.has('1:1')).toBe(false);
+        expect(hook.result.current.failures).toEqual([{ key: '1:1', message: 'No liberar' }]);
+        expect(hook.result.current.committed).toHaveLength(0);
+    });
+
+    it('undo after the deadline is a no-op once ready was sent', async () => {
+        const { api, hook } = setup();
+        api.release.mockRejectedValueOnce(new KitchenActionError('network', 'x'));
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        act(() => hook.result.current.undo('1:1'));
+        expect(hook.result.current.hiddenKeys.has('1:1')).toBe(true);
+        await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+        expect(api.release).toHaveBeenCalledTimes(2);
+        expect(hook.result.current.committed).toHaveLength(1);
+    });
+
+    it('auth error on release pauses and resumes release only with the same key', async () => {
+        const { api, hook } = setup();
+        api.release.mockRejectedValueOnce(new KitchenActionError('auth', 'x'));
+        authStatus = 'renewing';
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+        expect(api.release).toHaveBeenCalledTimes(1);
+        authStatus = 'online';
+        await act(async () => { appEvents.emit('kitchen-auth-status', 'online'); await vi.advanceTimersByTimeAsync(0); });
+        expect(api.ready).toHaveBeenCalledTimes(1);
+        expect(api.release).toHaveBeenCalledTimes(2);
+        expect(api.release.mock.calls[0][1]).toBe(api.release.mock.calls[1][1]);
+    });
+
+    it('auth error while status already online backs off 2 s then doubles', async () => {
+        const { api, hook } = setup();
+        api.ready.mockRejectedValue(new KitchenActionError('auth', 'x'));
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(api.ready).toHaveBeenCalledTimes(1);
+        await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+        expect(api.ready).toHaveBeenCalledTimes(2);
+        await act(async () => { await vi.advanceTimersByTimeAsync(3999); });
+        expect(api.ready).toHaveBeenCalledTimes(2);
+        await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+        expect(api.ready).toHaveBeenCalledTimes(3);
+    });
+
+    it('network backoff grows 2 s to 30 s and caps', async () => {
+        const { api, hook } = setup();
+        api.ready.mockRejectedValue(new KitchenActionError('network', 'x'));
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        let n = 1;
+        for (const wait of [2000, 4000, 8000, 16000, 30000, 30000]) {
+            await act(async () => { await vi.advanceTimersByTimeAsync(wait - 1); });
+            expect(api.ready).toHaveBeenCalledTimes(n);
+            await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+            n += 1;
+            expect(api.ready).toHaveBeenCalledTimes(n);
+        }
+    });
+
+    it('unmount does not cancel an in-flight commit', async () => {
+        const { api, hook } = setup();
+        api.ready.mockRejectedValueOnce(new KitchenActionError('network', 'x'));
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        hook.unmount();
+        await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+        expect(api.ready).toHaveBeenCalledTimes(2);
+        expect(api.release).toHaveBeenCalledTimes(1);
+    });
+
+    it('a non-KitchenActionError is a bug: restores the card and reports a failure', async () => {
+        const { api, hook } = setup();
+        api.ready.mockRejectedValueOnce(new TypeError('boom'));
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+        expect(api.ready).toHaveBeenCalledTimes(1);
+        expect(hook.result.current.hiddenKeys.has('1:1')).toBe(false);
+        expect(hook.result.current.failures).toHaveLength(1);
+    });
+
+    it('hiddenKeys is referentially stable while membership is unchanged', async () => {
+        const { hook } = setup();
+        act(() => hook.result.current.markReady(mk(1)));
+        const a = hook.result.current.hiddenKeys;
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(hook.result.current.hiddenKeys).toBe(a);
     });
 });

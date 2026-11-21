@@ -57,16 +57,16 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number } = {}) {
     }, []);
 
     const waitForOnline = useCallback(
-        (entry: Entry, resume: () => void) => {
+        (entry: Entry, backoff: number, resume: (next: number) => void) => {
             const off = appEvents.on('kitchen-auth-status', (status) => {
                 if (status !== 'online') return;
                 off();
-                resume();
+                resume(MIN_BACKOFF_MS);
             });
-            // If the session already came back before we subscribed, do not wait forever.
+            // Already online (the 401 outran the status event): retry with the same growing backoff.
             if (kitchenAuthStatus() === 'online') {
                 off();
-                entry.timer = setTimeout(resume, MIN_BACKOFF_MS);
+                entry.timer = setTimeout(() => resume(Math.min(backoff * 2, MAX_BACKOFF_MS)), backoff);
             }
         },
         [],
@@ -82,13 +82,14 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number } = {}) {
                 try {
                     await apiRef.current[action](entry.batch, key);
                 } catch (cause) {
-                    const err = cause instanceof KitchenActionError ? cause : new KitchenActionError('network', 'Sin conexión con el servidor.');
+                    // A non-KitchenActionError is a programming bug, not a network blip: never retry it forever.
+                    const err = cause instanceof KitchenActionError ? cause : new KitchenActionError('rejected', 'Error inesperado al marcar Listo.');
                     if (err.kind === 'already-done') {
                         entry.step = (entry.step + 1) as 0 | 1;
                         continue;
                     }
                     if (err.kind === 'auth') {
-                        waitForOnline(entry, () => void run(entry, MIN_BACKOFF_MS));
+                        waitForOnline(entry, backoff, (next) => void run(entry, next));
                         return;
                     }
                     if (err.kind === 'network') {
@@ -103,7 +104,7 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number } = {}) {
                 entry.step = (entry.step + 1) as 0 | 1;
             }
             entry.phase = 'done';
-            if (mounted.current) setCommitted((c) => [entry.batch, ...c.filter((b) => batchKey(b) !== entry.key)].slice(0, MAX_COMMITTED));
+            if (mounted.current) setCommitted((c) => [{ ...entry.batch, status: 'READY', kitchenReleasedAt: new Date().toISOString() },...c.filter((b) => batchKey(b) !== entry.key)].slice(0, MAX_COMMITTED));
             bump();
         },
         [bump, waitForOnline],
@@ -188,7 +189,12 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number } = {}) {
         };
     }, [startCommit]);
 
-    const hiddenKeys = new Set(entries.current.keys());
+    const hiddenRef = useRef<Set<string>>(new Set());
+    const current = entries.current;
+    if (current.size !== hiddenRef.current.size || [...current.keys()].some((k) => !hiddenRef.current.has(k))) {
+        hiddenRef.current = new Set(current.keys());
+    }
+    const hiddenKeys = hiddenRef.current;
     const pending: PendingReady[] = [...entries.current.values()]
         .filter((e) => e.phase === 'pending')
         .map(({ key, label, waiter, deadline }) => ({ key, label, waiter, deadline }));
