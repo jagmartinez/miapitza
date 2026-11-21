@@ -35,7 +35,11 @@ export function createAccountApi(deps: { http: AxiosInstance; sessions: SessionS
         async changePassword(oldPassword, newPassword) {
             await http.post('/auth/change-password', { oldPassword, newPassword });
             realtime.close();
-            await sessions.clear();
+            try {
+                await sessions.clear();
+            } catch {
+                // The server already revoked every session; login must still be reached.
+            }
         },
         async logout() {
             await lockAndRevoke({ http, sessions, realtime });

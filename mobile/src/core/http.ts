@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import { appEvents } from './events';
-import type { SessionStore } from './session';
+import type { Session, SessionStore } from './session';
 
 /** A 401 from these means "bad credentials", not "your session ended". */
 const CREDENTIAL_PATHS = new Set(['/auth/login', '/auth/pin-login', '/auth/device-login']);
@@ -117,8 +117,15 @@ export function createHttp(opts: { baseURL: string; sessions: SessionStore }): A
                 }
             }
             // Password gate: surface it, never clear the session (change-password still needs it).
-            if (error?.response?.status === 403 && error.response.data?.code === 'PASSWORD_CHANGE_REQUIRED') {
-                appEvents.emit('password-change-required');
+            if (error?.response?.status === 403 && error.response.data?.code === 'PASSWORD_CHANGE_REQUIRED' && sent) {
+                // A late 403 from a previous user's token must not block the next user.
+                let current: Session | null = null;
+                try {
+                    current = await opts.sessions.load();
+                } catch {
+                    // Unreadable storage: treat as no current session.
+                }
+                if (current?.token === sent) appEvents.emit('password-change-required');
             }
             return Promise.reject(error);
         },

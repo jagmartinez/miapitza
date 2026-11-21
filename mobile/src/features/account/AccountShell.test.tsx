@@ -107,4 +107,50 @@ describe('AccountShell', () => {
         expect(accountApi.logout).toHaveBeenCalled();
         expect(screen.queryByLabelText('borrador')).toBeNull();
     });
+
+    it('same user id in another company wipes the tree', async () => {
+        const { services } = build();
+        render(<Harness initial={session} services={services} />);
+        const input = screen.getByLabelText('borrador') as HTMLInputElement;
+        await setSession(null);
+        await setSession({ ...session, user: { ...session.user, companyId: 2 } });
+        expect(screen.getByLabelText('borrador')).not.toBe(input);
+    });
+
+    it('emits account-user-changed for a different user but not for the same one', async () => {
+        const { services } = build();
+        const fn = vi.fn();
+        const off = appEvents.on('account-user-changed', fn);
+        render(<Harness initial={session} services={services} />);
+        await setSession(null);
+        await setSession({ ...session, token: 'again' });
+        expect(fn).not.toHaveBeenCalled();
+        await setSession(null);
+        await setSession(other);
+        off();
+        expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('the kept tree is inert and aria-hidden under the overlay', async () => {
+        const { services } = build();
+        render(<Harness initial={session} services={services} />);
+        const tree = screen.getByTestId('account-tree');
+        expect(tree).not.toHaveAttribute('inert');
+        await setSession(null);
+        expect(tree).toHaveAttribute('inert');
+        expect(tree).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('expiry during the blocking screen shows login; same user re-login with the flag returns to blocking', async () => {
+        const { services } = build();
+        const flagged = { ...session, mustChangePassword: true };
+        render(<Harness initial={flagged} services={services} />);
+        expect(screen.getByLabelText('Nueva contraseña')).toBeInTheDocument();
+        act(() => appEvents.emit('session-expired'));
+        await setSession(null);
+        expect(await screen.findByRole('button', { name: 'Entrar' })).toBeInTheDocument();
+        expect(screen.queryByLabelText('Nueva contraseña')).toBeNull();
+        await setSession({ ...flagged, token: 'tok-new' });
+        expect(await screen.findByLabelText('Nueva contraseña')).toBeInTheDocument();
+    });
 });

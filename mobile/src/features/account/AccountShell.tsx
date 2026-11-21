@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { appEvents } from '../../core/events';
 import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
@@ -29,8 +29,9 @@ const overlayStyle: CSSProperties = { position: 'fixed', inset: 0, zIndex: 50, o
  */
 export function AccountShell({ session, services, onSession, onSessionEnd, children }: Props) {
     const { accountApi } = services;
-    const [track, setTrack] = useState<{ userId: number | null; key: number; last: Session | null }>({
+    const [track, setTrack] = useState<{ userId: number | null; companyId: number | null; key: number; last: Session | null }>({
         userId: session?.user.id ?? null,
+        companyId: session?.user.companyId ?? null,
         key: 0,
         last: session,
     });
@@ -38,11 +39,19 @@ export function AccountShell({ session, services, onSession, onSessionEnd, child
     const [notice, setNotice] = useState<keyof typeof NOTICES | null>(null);
 
     // Derive during render so a different user never paints one frame of the old tree.
-    if (session && (track.userId !== session.user.id || track.last !== session)) {
-        const sameUser = track.userId === null || track.userId === session.user.id;
-        setTrack({ userId: session.user.id, key: sameUser ? track.key : track.key + 1, last: session });
+    if (session && (track.userId !== session.user.id || track.companyId !== (session.user.companyId ?? null) || track.last !== session)) {
+        const sameUser = track.userId === null || (track.userId === session.user.id && track.companyId === (session.user.companyId ?? null));
+        setTrack({ userId: session.user.id, companyId: session.user.companyId ?? null, key: sameUser ? track.key : track.key + 1, last: session });
     }
     const treeSession = session ?? track.last;
+
+    // The tree was wiped (different user or explicit logout): per-user caches (Task 3 hrApi) must drop.
+    const seenKey = useRef(track.key);
+    useEffect(() => {
+        if (seenKey.current === track.key) return;
+        seenKey.current = track.key;
+        appEvents.emit('account-user-changed');
+    }, [track.key]);
 
     useEffect(() => appEvents.on('session-expired', () => setNotice('expired')), []);
     useEffect(() => appEvents.on('password-change-required', () => setForced(true)), []);
@@ -60,7 +69,7 @@ export function AccountShell({ session, services, onSession, onSessionEnd, child
         void accountApi.logout().catch(() => undefined);
         setNotice(null);
         setForced(false);
-        setTrack((t) => ({ userId: null, key: t.key + 1, last: null }));
+        setTrack((t) => ({ userId: null, companyId: null, key: t.key + 1, last: null }));
         onSessionEnd();
     }, [accountApi, onSessionEnd]);
 

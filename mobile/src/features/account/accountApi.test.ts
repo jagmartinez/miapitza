@@ -49,4 +49,16 @@ describe('accountApi', () => {
         await expect(account.changePassword('x', 'newpassword')).rejects.toBeTruthy();
         expect(await sessions.load()).not.toBeNull();
     });
+
+    it('changePassword still resolves when clearing the session throws', async () => {
+        const { account, http, realtime } = (() => {
+            const api = fakeApi(() => ({ data: { success: true } }));
+            const sessions = { ...api.sessions, clear: () => Promise.reject(new Error('keystore')) };
+            const realtime = { close: vi.fn(), reconnect: vi.fn() };
+            return { http: api.http, realtime, account: createAccountApi({ http: api.http, sessions, realtime }) };
+        })();
+        await expect(account.changePassword('old', 'newpassword')).resolves.toBeUndefined();
+        expect(http).toBeTruthy();
+        expect(realtime.close).toHaveBeenCalled();
+    });
 });

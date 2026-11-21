@@ -252,4 +252,25 @@ describe('http 403 PASSWORD_CHANGE_REQUIRED', () => {
         off();
         expect(required).not.toHaveBeenCalled();
     });
+
+    it('a late 403 from a previous user token emits nothing', async () => {
+        const sessions = createSessionStore(memoryStore());
+        const http = createHttp({ baseURL: 'http://x/api', sessions });
+        let release: () => void = () => {};
+        const gate = new Promise<void>((r) => (release = r));
+        http.defaults.adapter = async (config) => {
+            await gate;
+            throw new AxiosError('fail', '403', config, null, { data: { code: 'PASSWORD_CHANGE_REQUIRED' }, status: 403, statusText: '', headers: {}, config });
+        };
+        await sessions.save(session);
+        const required = vi.fn();
+        const off = appEvents.on('password-change-required', required);
+        const pending = http.get('/orders');
+        await new Promise((r) => setTimeout(r, 10));
+        await sessions.save({ ...session, token: 'jwt-other' });
+        release();
+        await expect(pending).rejects.toBeTruthy();
+        off();
+        expect(required).not.toHaveBeenCalled();
+    });
 });
