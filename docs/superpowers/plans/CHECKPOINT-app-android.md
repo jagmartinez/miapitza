@@ -1,6 +1,6 @@
 # Punto de control — App Android
 
-> Leer esto primero para retomar. Actualizado: 2026-11-20 (Fase 3 cerrada).
+> Leer esto primero para retomar. Actualizado: 2026-11-20 (Fase 4 cerrada, Android Studio instalado).
 
 ## Dónde estamos
 - Rama: `feat/app-android` (creada desde `codex/rh-nomina-estatutaria` @ 6d548af). No publicada (sin push).
@@ -107,8 +107,35 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - Diferidos de código: menores en la bitácora (R6–R16).
 - Uso semanal consumido por la Fase 3: ~3 puntos (46 % → 49 %).
 
+## Fase 4 (Mi cuenta en el celular) — ✅ código terminado y revisado (2026-11-20)
+- Plan: `docs/superpowers/plans/2026-11-22-app-android-fase-4-mi-cuenta.md`. Bitácora con decisiones R1–R11: `.superpowers/sdd/2026-11-22-app-android-fase-4-mi-cuenta/progress.md` (no versionada).
+- Decisiones del usuario: "Por aprobar" solo ADMIN/SUPERADMIN (R11: también se muestra a admins sin ficha de empleado, porque el servidor les permite decidir); push y "mi NPS" pasan a la Fase 5.
+- Hecho:
+  - **Servidor:** `GET /hr/benefits/me/loan-policy`, cancelar solicitud de préstamo, `hasPin`/`canUsePin` en `/auth/me`, `GET /hr/me/employee`.
+  - **App (pantallas de carga diferida):**
+    - sesión con cambio de contraseña obligatorio; el re-login del mismo usuario conserva lo escrito y uno distinto lo borra;
+    - inicio con Marcar (todas las acciones disponibles), Solicitar, Pendiente para ti y Mis solicitudes;
+    - marcaje con cara y GPS, registro facial e idempotencia con la misma clave y el mismo challenge;
+    - Mi horario, Mi nómina (PDF), Mi información y PIN;
+    - permisos, horas extra, correcciones (con selector de marcajes de hoy) y cambios de turno;
+    - préstamos con cuota en vivo;
+    - Por aprobar.
+- Revisiones: un refutador por tarea; finales Opus (servidor, limpia) y Opus + Fable 5.2 (app: 1 crítico y 12 importantes, todos corregidos); re-revisión limpia.
+- Pruebas: servidor 202 suites / 1768; cliente `tsc` limpio; app 100 archivos / 868; JS inicial 88.8 KB gzip. Sin migraciones nuevas.
+- Diferidos (gate de dispositivo): cámara, GPS y diálogos de permisos reales; botón atrás sobre la pantalla bloqueante; diseño en vertical.
+- Diferidos de código (detalle en la bitácora):
+  - corregir marcajes de días anteriores (falta una ruta propia en el servidor);
+  - un POST de borrador de permiso que vence por tiempo puede dejar un borrador huérfano (se puede cancelar);
+  - 6 menores de la re-revisión;
+  - un botón primario por tarjeta en Pendiente/Por aprobar (decisión visual).
+- Uso semanal consumido por la Fase 4: ~4 puntos (49 % → 53 %).
+
+## Android Studio
+- Instalado 2026-11-20 (winget, 2026.2.2.9, en `C:\Program Files\Android\Android Studio`). Falta que el usuario complete el asistente inicial (SDK y licencias). Después: `npx cap sync android`, compilar el APK y hacer los gates de dispositivo de las Fases 0–4.
+
 ## Siguiente
-- Fase 4 (Mi cuenta en el celular): plan escrito en `docs/superpowers/plans/2026-11-22-app-android-fase-4-mi-cuenta.md` (8 tareas: 1 servidor, 7 app; críticas 2 y 4). Decisión del usuario: "Por aprobar" solo ADMIN/SUPERADMIN. Push y "mi NPS" pasan a la Fase 5. Falta aprobarlo y ejecutarlo.
+- Gates de dispositivo cuando el SDK esté listo.
+- Fase 5 (push/FCM, NPS, inventario, mi NPS): plan por escribir.
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
