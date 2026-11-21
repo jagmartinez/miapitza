@@ -6,6 +6,8 @@ import { ToastProvider } from '../../ui/Toast';
 import { AccountHome } from './AccountHome';
 import { AccountNavProvider, useAccountNav, type AccountSection } from './AccountNav';
 import { PunchScreen } from './attendance/PunchScreen';
+import { LoanRequestForm } from './loans/LoanRequestForm';
+import { LoansScreen } from './loans/LoansScreen';
 import { PayrollScreen } from './payroll/PayrollScreen';
 import { ProfileScreen } from './profile/ProfileScreen';
 import { CorrectionForm } from './requests/CorrectionForm';
@@ -56,6 +58,8 @@ function Screens({ session, hr, accountApi, onLogout, onPasswordChanged }: { ses
     if (section === 'overtime') return <OvertimeForm hr={hr} />;
     if (section === 'correction') return <CorrectionForm hr={hr} />;
     if (section === 'swap') return <SwapForm hr={hr} userId={session.user.id} />;
+    if (section === 'loanRequest') return <LoanRequestForm hr={hr} />;
+    if (section === 'loans') return <LoansScreen hr={hr} />;
     if (section === 'requests') return <MyRequests hr={hr} userId={session.user.id} />;
     if (section === 'pending') return <PendingForYou hr={hr} userId={session.user.id} />;
     return <SectionPlaceholder section={section} />;
