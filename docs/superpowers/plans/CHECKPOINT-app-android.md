@@ -135,7 +135,7 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 
 ## Siguiente
 - Gates de dispositivo cuando el SDK esté listo.
-- Fase 5 (push/FCM, NPS, inventario, mi NPS): plan por escribir.
+- Fase 5 dividida en 5a NPS (plan `docs/superpowers/plans/2026-11-23-app-android-fase-5a-nps.md`, 5 tareas), 5b Inventario y 5c Push (necesita proyecto Firebase del usuario).
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
