@@ -1,6 +1,6 @@
 # Punto de control — App Android
 
-> Leer esto primero para retomar. Actualizado: 2026-11-20 (Fase 4 cerrada, Android Studio instalado).
+> Leer esto primero para retomar. Actualizado: 2026-11-21 (Fase 5a NPS cerrada; APK de prueba compila).
 
 ## Dónde estamos
 - Rama: `feat/app-android` (creada desde `codex/rh-nomina-estatutaria` @ 6d548af). No publicada (sin push).
@@ -130,12 +130,51 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
   - un botón primario por tarjeta en Pendiente/Por aprobar (decisión visual).
 - Uso semanal consumido por la Fase 4: ~4 puntos (49 % → 53 %).
 
-## Android Studio
-- Instalado 2026-11-20 (winget, 2026.2.2.9, en `C:\Program Files\Android\Android Studio`). Falta que el usuario complete el asistente inicial (SDK y licencias). Después: `npx cap sync android`, compilar el APK y hacer los gates de dispositivo de las Fases 0–4.
+## Fase 5a (Encuesta NPS del cliente) — ✅ código terminado y revisado (2026-11-21)
+- Plan: `docs/superpowers/plans/2026-11-23-app-android-fase-5a-nps.md`. Bitácora: `.superpowers/sdd/2026-11-23-app-android-fase-5a-nps/progress.md` (no versionada).
+- Decisiones del usuario (a mitad de fase):
+  - **4 áreas con estrellas:** Atención de {mesero}, Comida (cocina como equipo), Tiempo de espera, Ambiente y limpieza. No hay "servicio en general".
+  - **Ranking mensual de meseros:** mínimo 10 opiniones, promedio bayesiano con m=10; destaca al "Mejor mesero del mes".
+  - **Tablero web de decisión:** "de nada sirve si no tengo visibilidad".
+- Hecho:
+  - **Servidor:**
+    - modelo `SurveyResponse`, con una respuesta por orden e idempotente;
+    - permiso `surveys.view` (ADMIN/SUPERADMIN);
+    - `POST /api/v1/surveys`: el dispositivo se deriva de la sesión PIN y el mesero es `order.userId`;
+    - endpoints `summary`, `responses` y `ranking` (ventana por defecto del mes, máximo 366 días) y `me`, que se oculta con menos de 3 respuestas;
+    - la encuesta se atribuye a la fecha de cierre de la orden.
+  - **App, tablet:**
+    - "Pedir opinión" tras cobrar abre una encuesta bloqueada: Atrás bloqueado, 60 s de inactividad, "gracias" y vuelta al PIN;
+    - si la red falla, la respuesta va a la cola;
+    - las encuestas en cola no caducan, nadie puede descartarlas y se eliminan solas si el servidor las rechaza definitivamente.
+  - **App, celular:** tarjeta "Mi servicio" con atención, NPS y puesto en el ranking.
+  - **Web:** página "Encuestas NPS" con:
+    - KPIs, tendencia semanal y promedios por área;
+    - mejor mesero del mes y ranking;
+    - comparación entre sucursales;
+    - alertas de detractores con teléfono y tabla de respuestas.
+- Revisiones: un refutador por tarea; finales Opus (todo) + Fable 5.2 (app y web), que encontraron 1 crítico: la ruta `/surveys` en vez de `/v1/surveys`. Hubo una ola de correcciones y una re-revisión; ya está corregido.
+- Pruebas: servidor 206 suites / 1829; cliente `tsc` + 97 archivos / 479; app 103 archivos / 914; JS inicial 89.9 KB gzip.
+- Migración nueva `20261123_customer_survey`.
+- Diferidos (gate de dispositivo):
+  - encuesta real contra una orden pagada por Wi-Fi;
+  - botón Atrás físico;
+  - inactividad mientras se escribe con el teclado;
+  - diseño a 1280×800 y 1024×600.
+- Diferidos de código (en la bitácora): zona horaria única del ranking (falta zona horaria de empresa), KPI de cobertura de encuestas, "Mi servicio" con NPS oculto bajo 3.
+- Uso semanal consumido por la Fase 5a: ~1 punto (53 % → 54 %).
+
+## Entorno de prueba en dispositivo (2026-11-21)
+- **Android Studio 2026.2.2 y JDK 17:** Android Studio está instalado y su SDK configurado. Microsoft OpenJDK 17 se instaló porque el Java 25 de Android Studio no sirve para Gradle 8.2.1. Hay que compilar con `JAVA_HOME` apuntando al JDK 17.
+- **Compilar el APK de prueba contra esta PC:** `VITE_API_URL=http://192.168.1.4:3000/api npm run build`, luego `CAP_LAN_DEV=1 npx cap sync android` y `./gradlew assembleDebug`. Solo el APK debug permite http; el release no.
+- **Servidor:** configuración `api-lan-mobile` en `.claude/launch.json`, con `CLIENT_URL` que incluye `https://localhost`.
+- **Migraciones:** las 4 nuevas (`20261120`…`20261123`) se ensayaron en la copia `miapitza_costeo_restore_test` sin errores ni diferencias de esquema, y se aplicaron a la base de prueba `miapitza_costeo_20261119`.
+- **Pendiente:** instalar el APK en la tablet o el celular por USB (`adb install`), emparejar el dispositivo desde la web y hacer los gates de dispositivo de las Fases 0–5a. La base de prueba no tiene órdenes pagadas.
 
 ## Siguiente
-- Gates de dispositivo cuando el SDK esté listo.
-- Fase 5 dividida en 5a NPS (plan `docs/superpowers/plans/2026-11-23-app-android-fase-5a-nps.md`, 5 tareas), 5b Inventario y 5c Push (necesita proyecto Firebase del usuario).
+- Gates de dispositivo.
+- Fase 5b (Inventario: conteo ciego y aprobación): plan por escribir.
+- Fase 5c (Push/FCM): necesita que el usuario cree un proyecto de Firebase.
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
