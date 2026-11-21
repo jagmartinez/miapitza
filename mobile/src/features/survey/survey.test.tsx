@@ -1,0 +1,241 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+
+const listeners: { event: string; cb: () => void; remove: ReturnType<typeof vi.fn> }[] = [];
+vi.mock('@capacitor/app', () => ({
+    App: {
+        addListener: vi.fn(async (event: string, cb: () => void) => {
+            const remove = vi.fn(async () => undefined);
+            listeners.push({ event, cb, remove });
+            return { remove };
+        }),
+    },
+}));
+vi.mock('@capacitor/core', async (orig) => {
+    const actual = await orig<typeof import('@capacitor/core')>();
+    return { ...actual, Capacitor: { ...actual.Capacitor, isNativePlatform: () => true } };
+});
+
+import SurveyScreen from './SurveyScreen';
+import { createSurveyApi, surveyKey } from './surveyApi';
+import { itemTitle } from '../../data/queueLabels';
+import type { SyncItem } from '../../data/types';
+
+const flush = async () => {
+    await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+    });
+};
+
+function setup(over: Partial<{ submit: (i: unknown, k: string) => Promise<unknown>; waiterName: string }> = {}) {
+    const submit = vi.fn(over.submit ?? (async () => ({ created: true })));
+    const onDone = vi.fn();
+    render(<SurveyScreen orderId={102} waiterName={over.waiterName ?? 'Ana Perez'} submit={submit} onDone={onDone} />);
+    return { submit, onDone };
+}
+const nps = (n: number) => fireEvent.click(screen.getByRole('button', { name: String(n) }));
+const stars = (label: string, n: number) => fireEvent.click(screen.getByRole('button', { name: `${label}: ${n} de 5` }));
+
+beforeEach(() => {
+    listeners.length = 0;
+    vi.useFakeTimers();
+});
+afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+});
+
+describe('SurveyScreen', () => {
+    it('shows the NPS question with legend and the rest after choosing', () => {
+        setup();
+        expect(screen.getByText('¿Qué tan probable es que nos recomiendes a un amigo?')).toBeInTheDocument();
+        expect(screen.getByText('Nada probable')).toBeInTheDocument();
+        expect(screen.getByText('Muy probable')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Enviar' })).toBeNull();
+        nps(9);
+        expect(screen.getByText('Atención de Ana')).toBeInTheDocument();
+        expect(screen.getByText('Comida')).toBeInTheDocument();
+        expect(screen.getByText('Tiempo de espera')).toBeInTheDocument();
+        expect(screen.getByText('Ambiente y limpieza')).toBeInTheDocument();
+        expect(screen.getByText('Comentario (opcional)')).toBeInTheDocument();
+        expect(screen.getByText('Teléfono (opcional, si quieres que te contactemos)')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Enviar' })).toBeInTheDocument();
+    });
+
+    it('submits answers with stable idempotency key per order', async () => {
+        const { submit } = setup();
+        nps(10);
+        stars('Atención de Ana', 5);
+        stars('Comida', 4);
+        stars('Tiempo de espera', 3);
+        stars('Ambiente y limpieza', 2);
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await flush();
+        expect(submit).toHaveBeenCalledTimes(1);
+        expect(submit).toHaveBeenCalledWith({ orderId: 102, nps: 10, waiterRating: 5, foodRating: 4, waitRating: 3, ambienceRating: 2, comment: null, contactPhone: null }, surveyKey(102));
+        expect(surveyKey(102)).toBe(surveyKey(102));
+        expect(surveyKey(103)).not.toBe(surveyKey(102));
+        expect(screen.getByText('¡Gracias por tu opinión!')).toBeInTheDocument();
+    });
+
+    it('phone and comment trimmed; empty sent as null', async () => {
+        const { submit } = setup();
+        nps(7);
+        fireEvent.change(screen.getByLabelText('Comentario (opcional)'), { target: { value: '  Todo bien  ' } });
+        fireEvent.change(screen.getByLabelText('Teléfono (opcional, si quieres que te contactemos)'), { target: { value: '  8888-1234 ' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await flush();
+        expect(submit.mock.calls[0][0]).toMatchObject({ comment: 'Todo bien', contactPhone: '8888-1234', waiterRating: null, foodRating: null });
+    });
+
+    it('blank comment and phone go as null', async () => {
+        const { submit } = setup();
+        nps(0);
+        fireEvent.change(screen.getByLabelText('Comentario (opcional)'), { target: { value: '   ' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await flush();
+        expect(submit.mock.calls[0][0]).toMatchObject({ nps: 0, comment: null, contactPhone: null });
+    });
+
+    it('double tap Enviar submits once', async () => {
+        const { submit } = setup({ submit: () => new Promise(() => undefined) });
+        nps(8);
+        const send = screen.getByRole('button', { name: 'Enviar' });
+        fireEvent.click(send);
+        fireEvent.click(send);
+        await flush();
+        expect(submit).toHaveBeenCalledTimes(1);
+    });
+
+    it('thanks then onDone after 5s', async () => {
+        const { onDone } = setup();
+        nps(9);
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await flush();
+        expect(onDone).not.toHaveBeenCalled();
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(4900);
+        });
+        expect(onDone).not.toHaveBeenCalled();
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(200);
+        });
+        expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failing submit (domain error) still thanks and locks', async () => {
+        const { onDone } = setup({ submit: async () => Promise.reject(Object.assign(new Error('x'), { response: { status: 409 } })) });
+        nps(9);
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await flush();
+        expect(screen.getByText('¡Gracias por tu opinión!')).toBeInTheDocument();
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5100);
+        });
+        expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('waits for a slow submit before locking, but not forever', async () => {
+        let release: () => void = () => undefined;
+        const { onDone } = setup({ submit: () => new Promise((r) => (release = () => r({}))) });
+        nps(9);
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5100);
+        });
+        expect(onDone).not.toHaveBeenCalled();
+        await act(async () => {
+            release();
+            await vi.advanceTimersByTimeAsync(10);
+        });
+        expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('locks anyway when the submit never settles', async () => {
+        const { onDone } = setup({ submit: () => new Promise(() => undefined) });
+        nps(9);
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(20_000);
+        });
+        expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('idle 60s with nps submits partial then locks', async () => {
+        const order: string[] = [];
+        const { submit, onDone } = setup({ submit: async () => void order.push('submit') });
+        onDone.mockImplementation(() => order.push('lock'));
+        nps(6);
+        stars('Comida', 4);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(60_100);
+        });
+        expect(submit).toHaveBeenCalledTimes(1);
+        expect(submit.mock.calls[0][0]).toMatchObject({ nps: 6, foodRating: 4, waiterRating: null });
+        expect(order).toEqual(['submit', 'lock']);
+    });
+
+    it('idle without nps locks without submit', async () => {
+        const { submit, onDone } = setup();
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(60_100);
+        });
+        expect(submit).not.toHaveBeenCalled();
+        expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('touch restarts the idle countdown', async () => {
+        const { onDone } = setup();
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(50_000);
+        });
+        fireEvent.pointerDown(document);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(50_000);
+        });
+        expect(onDone).not.toHaveBeenCalled();
+    });
+
+    it('back button is swallowed while survey open', async () => {
+        const { unmount } = render(<SurveyScreen orderId={1} waiterName="Ana" submit={vi.fn()} onDone={vi.fn()} />);
+        await flush();
+        const l = listeners.find((x) => x.event === 'backButton');
+        expect(l).toBeTruthy();
+        expect(() => l!.cb()).not.toThrow();
+        unmount();
+        await flush();
+        expect(l!.remove).toHaveBeenCalled();
+    });
+});
+
+describe('surveyApi', () => {
+    const body = { orderId: 5, nps: 9, waiterRating: null, foodRating: null, waitRating: null, ambienceRating: null, comment: null, contactPhone: null };
+
+    it('posts to /surveys with the key and GENERIC_MUTATION queue', async () => {
+        const mutate = vi.fn().mockResolvedValue({ created: true });
+        await createSurveyApi({ mutate }).submit(body, 'survey-5');
+        expect(mutate).toHaveBeenCalledTimes(1);
+        expect(mutate.mock.calls[0][0]).toMatchObject({ method: 'POST', url: '/surveys', data: body, key: 'survey-5', queue: { operationType: 'GENERIC_MUTATION', meta: { label: 'Encuesta del cliente' } } });
+    });
+
+    it('queues once with the same key after a network failure', async () => {
+        const net = Object.assign(new Error('Network Error'), { isAxiosError: true, request: {}, code: 'ERR_NETWORK' });
+        const mutate = vi.fn().mockRejectedValueOnce(net).mockResolvedValueOnce({ _offline: true });
+        await createSurveyApi({ mutate }).submit(body, 'survey-5');
+        expect(mutate).toHaveBeenCalledTimes(2);
+        expect(mutate.mock.calls[1][0]).toMatchObject({ key: 'survey-5', queue: { operationType: 'GENERIC_MUTATION', forceQueue: true } });
+    });
+
+    it('does not queue a domain 4xx', async () => {
+        const err = Object.assign(new Error('conflict'), { isAxiosError: true, response: { status: 409, data: {} } });
+        const mutate = vi.fn().mockRejectedValue(err);
+        await expect(createSurveyApi({ mutate }).submit(body, 'survey-5')).rejects.toBe(err);
+        expect(mutate).toHaveBeenCalledTimes(1);
+    });
+
+    it('queued survey is labelled Encuesta del cliente', () => {
+        expect(itemTitle({ operationType: 'GENERIC_MUTATION', meta: { label: 'Encuesta del cliente' } } as unknown as SyncItem)).toBe('Encuesta del cliente');
+        expect(itemTitle({ operationType: 'GENERIC_MUTATION', url: '/surveys', method: 'POST' } as unknown as SyncItem)).toBe('Encuesta del cliente');
+    });
+});

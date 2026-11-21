@@ -490,3 +490,11 @@
     min-width: 140px;
     min-height: 56px;
 }
+
+/* "Pedir opinión": outlined, so "Liberar mesa y volver" stays the primary action. */
+.pay-done .pay-survey {
+    min-height: 56px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+}

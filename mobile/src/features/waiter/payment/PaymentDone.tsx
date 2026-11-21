@@ -22,7 +22,7 @@ export interface InvoiceSource {
 
 type Share = 'print' | 'send';
 
-export function PaymentDone({ data, onFinish, invoice, printer = printOut }: { data: DoneData; onFinish: () => void; invoice?: InvoiceSource; printer?: Pick<PrintOut, 'sharePdf'> }) {
+export function PaymentDone({ data, onFinish, onSurvey, invoice, printer = printOut }: { data: DoneData; onFinish: () => void; /** Hands the tablet to the customer for the locked survey. */ onSurvey?: () => void; invoice?: InvoiceSource; printer?: Pick<PrintOut, 'sharePdf'> }) {
     const online = useOnline();
     const [busy, setBusy] = useState<Share | null>(null);
     const [failure, setFailure] = useState<{ text: string; retry: Share | null } | null>(null);
@@ -96,6 +96,11 @@ export function PaymentDone({ data, onFinish, invoice, printer = printOut }: { d
                         </button>
                     )}
                 </p>
+            )}
+            {onSurvey && (
+                <button type="button" className="btn pay-survey" onClick={onSurvey}>
+                    Pedir opinión
+                </button>
             )}
             <button type="button" className="btn btn-primary pay-charge" onClick={onFinish}>
                 Liberar mesa y volver

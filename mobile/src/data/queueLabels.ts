@@ -15,7 +15,7 @@ export function itemTitle(item: SyncItem): string {
         case 'CREATE_PAYMENT':
             return 'Pago';
         default:
-            return 'Cambio del pedido';
+            return item.url === '/surveys' ? 'Encuesta del cliente' : 'Cambio del pedido';
     }
 }
 

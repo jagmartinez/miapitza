@@ -44,6 +44,8 @@ export type OrderApi = Pick<
     PaymentApi;
 
 export interface OrderScreenProps {
+    /** The customer survey after payment (locked screen); absent: no "Pedir opinión". */
+    onSurvey?: (info: { orderId: number; waiterName: string }) => void;
     session: Session;
     api: OrderApi;
     drafts: Drafts;
@@ -368,6 +370,11 @@ export function OrderScreen(props: OrderScreenProps) {
         onBack();
     };
 
+    const paymentSurvey = props.onSurvey ? async (info: { orderId: number; waiterName: string }) => {
+        await props.invalidate?.(); // the table is already free: the lists are stale when the waiter returns
+        props.onSurvey!(info);
+    } : undefined;
+
     // intent 'pay': go straight to the payment once the order and the draft are on screen
     useEffect(() => {
         if (intent === 'pay' && order && draft.loaded && !payHandled.current && canPay) {
@@ -545,7 +552,7 @@ export function OrderScreen(props: OrderScreenProps) {
             )}
             {payment && (
                 <Suspense fallback={<main className="pay" data-testid="payment-screen"><p className="muted pay-notice">Cargando cobro…</p></main>}>
-                    <PaymentScreen api={api} user={user} orderId={orderId} plans={props.plans} loadCash={props.loadCash} onOpenCash={props.onOpenCash} ownerKey={ownerKey} initialMode={payment} onClose={paymentClosed} onFinished={paymentFinished} />
+                    <PaymentScreen api={api} user={user} orderId={orderId} plans={props.plans} loadCash={props.loadCash} onOpenCash={props.onOpenCash} ownerKey={ownerKey} initialMode={payment} onClose={paymentClosed} onFinished={paymentFinished} onSurvey={paymentSurvey} />
                 </Suspense>
             )}
             {sheet && <ModifierSheet product={sheet.product} groups={sheet.groups} onConfirm={confirmSheet} onClose={() => setSheet(null)} />}

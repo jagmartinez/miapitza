@@ -218,6 +218,8 @@ export function createWaiterApi(deps: WaiterApiDeps) {
     }
 
     return {
+        /** Generic queued mutation, for features that own their route (customer survey). */
+        mutate,
         // ---- reads (cached) ----
         floorPlan: (branchId: number, onRefresh?: (d: Json) => void) => cached<Json>(`/tables/plan/${branchId}`, undefined, TTL.plan, true, onRefresh),
         activeOrders: (branchId: number) => cached<Json[]>('/orders/active', { branchId }, TTL.orders, false),

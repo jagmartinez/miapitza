@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
 import { loadWaiterData } from '../../data/loadWaiterData';
@@ -8,10 +8,11 @@ import { ownerKeyOf } from '../../data/types';
 import { loadCashApi } from '../../data/loadCashApi';
 
 
+import { createSurveyApi } from '../survey/surveyApi';
 import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
 import { useReadyInbox } from './readyInbox';
 
-type Route = { name: 'tables' } | { name: 'cash' } | { name: 'cashCount'; shiftId: number; mode: 'partial' | 'close' } | { name: 'cashReport'; shiftId: number } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
+type Route = { name: 'tables' } | { name: 'cash' } | { name: 'cashCount'; shiftId: number; mode: 'partial' | 'close' } | { name: 'cashReport'; shiftId: number } | { name: 'survey'; orderId: number; waiterName: string } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
 
 // The order screen is the biggest waiter chunk: it loads when the first order opens.
 const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ default: m.OrderScreen })));
@@ -20,6 +21,7 @@ const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ defa
 const CashEntry = lazy(() => import('../cash/CashEntry'));
 const CountCloseEntry = lazy(() => import('../cash/CountCloseEntry'));
 const CloseReportEntry = lazy(() => import('../cash/CloseReportEntry'));
+const SurveyScreen = lazy(() => import('../survey/SurveyScreen'));
 const loadingFallback = <main className="screen"><p className="muted">Cargando…</p></main>;
 
 const STALE_URLS = ['/orders/active', '/tables/plan'];
@@ -67,6 +69,8 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
         if (data && owner) await data.cache.invalidate(owner, STALE_URLS);
     }, [data, owner]);
 
+    const surveySubmit = useMemo(() => (data ? createSurveyApi(data.api).submit : async () => undefined), [data]);
+
     if (!data) {
         return (
             <main className="screen">
@@ -101,6 +105,15 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
         );
     }
 
+    if (route.name === 'survey') {
+        // Locked: no way back to the order. It ends on its own (thanks or idle) through onSwitchUser, which locks and revokes the session.
+        return (
+            <Suspense fallback={loadingFallback}>
+                <SurveyScreen orderId={route.orderId} waiterName={route.waiterName} submit={surveySubmit} onDone={onSwitchUser} />
+            </Suspense>
+        );
+    }
+
     if (route.name === 'order') {
         return (
             <Suspense fallback={<main className="screen"><p className="muted">Cargando…</p></main>}>
@@ -120,6 +133,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
                     invalidate={invalidate}
                     loadCash={loadCash}
                     onOpenCash={() => setRoute({ name: 'cash' })}
+                    onSurvey={({ orderId, waiterName }) => setRoute({ name: 'survey', orderId, waiterName })}
                     onBack={() => setRoute({ name: 'tables' })}
                 />
             </Suspense>

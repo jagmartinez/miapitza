@@ -29,6 +29,7 @@ function setup(opts: { permissions?: string[]; intent?: 'view' | 'pay'; orderId?
         intent: opts.intent ?? ('view' as const),
         invalidate: vi.fn().mockResolvedValue(undefined),
         onBack: vi.fn(),
+        onSurvey: vi.fn(),
     };
     render(<OrderScreen {...props} />);
     return { ...props, api };
@@ -97,6 +98,22 @@ describe('Cobrar entry points', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Liberar mesa y volver' }));
         await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
         expect(invalidate).toHaveBeenCalled();
+    });
+
+    it('payment done shows Pedir opinión as secondary and opens the survey with the order waiter name', async () => {
+        const { onBack, onSurvey, invalidate } = setup();
+        fireEvent.click(await cobrar());
+        await screen.findByText('Cobrar · Mesa 2');
+        fireEvent.click(screen.getByRole('button', { name: 'Tarjeta' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Cobrar C$ 115' }));
+        await screen.findByText('Mesa 2 cobrada');
+        const ask = screen.getByRole('button', { name: 'Pedir opinión' });
+        expect(ask).not.toHaveClass('btn-primary');
+        expect(screen.getByRole('button', { name: 'Liberar mesa y volver' })).toHaveClass('btn-primary');
+        fireEvent.click(ask);
+        await waitFor(() => expect(onSurvey).toHaveBeenCalledWith({ orderId: 102, waiterName: 'Ana Perez' }));
+        expect(invalidate).toHaveBeenCalled();
+        expect(onBack).not.toHaveBeenCalled();
     });
 
     it('refuses to open without connection', async () => {

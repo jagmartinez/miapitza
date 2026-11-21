@@ -36,6 +36,8 @@ export interface PaymentScreenProps {
     onClose: () => void;
     /** "Liberar mesa y volver": the server already freed the table on full payment; refresh the lists and leave. */
     onFinished: () => void;
+    /** "Pedir opinión": hand the tablet to the customer. Absent: the button is not offered. */
+    onSurvey?: (info: { orderId: number; waiterName: string }) => void;
     /** Loads the cash data layer. With it, a cashier without an open shift can open one here and come back to the payment. */
     loadCash?: () => Promise<CashApi>;
     /** Opens Caja, to close the shift that blocks cash. */
@@ -73,7 +75,7 @@ const NOT_SYNCED = 'El pedido aún se está sincronizando; cobrar requiere conex
 type Meta = Pick<ChargeMeta, 'allIds' | 'changeOf' | 'methodOf' | 'plan'> & { mode: PaymentMode; payable: number };
 
 /** The cashier's payment screen (spec 7.3.1). Only the cashier (payments.process + invoices.issue) gets here. */
-export default function PaymentScreen({ api, user, orderId, initialMode = 'single', plans, ownerKey = null, onClose, onFinished, loadCash, onOpenCash }: PaymentScreenProps) {
+export default function PaymentScreen({ api, user, orderId, initialMode = 'single', plans, ownerKey = null, onClose, onFinished, onSurvey, loadCash, onOpenCash }: PaymentScreenProps) {
     const canSplit = can(user, 'bills.split');
     const [loaded, setLoaded] = useState<Loaded | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -317,7 +319,7 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
     if (done) {
         // The PDF route needs invoices.view (server invoice.routes); without it, or without a fiscal invoice, there is nothing to share.
         const invoice = done.invoiceNumber && !done.invoiceError && can(user, 'invoices.view') ? { load: () => api.invoicePdf(id), fileName: `factura-${done.invoiceNumber}.pdf` } : undefined;
-        return <PaymentDone data={done} onFinish={onFinished} invoice={invoice} />;
+        return <PaymentDone data={done} onFinish={onFinished} onSurvey={onSurvey ? () => onSurvey({ orderId: id, waiterName: typeof loaded.order.user?.name === 'string' ? loaded.order.user.name : '' }) : undefined} invoice={invoice} />;
     }
 
     const { order, lines, methods, shiftOk, shiftBlock, tipRate } = loaded;
