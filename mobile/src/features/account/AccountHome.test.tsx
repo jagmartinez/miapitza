@@ -110,11 +110,15 @@ describe('AccountHome', () => {
             }),
         });
         renderHome(linked, hr);
-        const btn = await screen.findByRole('button', { name: 'Cancelar' });
-        fireEvent.click(btn);
-        fireEvent.click(btn);
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+        const confirm = screen.getByRole('button', { name: 'Confirmar cancelación' });
+        expect(confirm).toBeDisabled();
+        fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Ya no la necesito' } });
+        fireEvent.click(confirm);
+        fireEvent.click(confirm);
         await waitFor(() => expect(cancelOvertime).toHaveBeenCalledTimes(1));
         expect(cancelOvertime.mock.calls[0][0]).toBe(4);
+        expect(cancelOvertime.mock.calls[0][1]).toBe('Ya no la necesito');
     });
 
     it('links navigate to sections', async () => {

@@ -12,7 +12,9 @@ export type AccountSection =
     | 'swap'
     | 'loanRequest'
     | 'loans'
-    | 'approvals';
+    | 'approvals'
+    | 'requests'
+    | 'pending';
 
 export type SectionParams = Record<string, unknown>;
 

@@ -1,0 +1,22 @@
+.rq { min-height: 100vh; background: var(--bg); color: var(--text); }
+.rq-form { display: flex; flex-direction: column; gap: 14px; padding: 16px; padding-bottom: 32px; }
+.rq-form select,
+.rq-form input[type='date'],
+.rq-form input[type='time'],
+.rq-form input[type='datetime-local'],
+.rq-form input[type='number'],
+.rq-text {
+    min-height: 48px;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0 12px;
+    font-size: 16px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.rq-text { padding: 10px 12px; font-family: inherit; resize: vertical; }
+.rq-info { margin: 0; color: var(--ready); font-weight: 600; }
+.rq-actions { display: flex; gap: 10px; margin-top: 10px; }
+.rq-actions .btn { flex: 1; }

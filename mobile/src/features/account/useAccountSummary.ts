@@ -153,6 +153,8 @@ export function buildSummary(input: {
         corrections?: AnyRow[];
     } | null;
     loans: AnyRow[];
+    /** Cap of the request cards (the home shows a few; Mis solicitudes asks for more). */
+    limit?: number;
 }): { pending: PendingItem[]; requests: RequestCardModel[] } {
     const pending: PendingItem[] = [];
     for (const s of input.schedules) {
@@ -192,14 +194,14 @@ export function buildSummary(input: {
         requests.push(card('loan', l, 'Préstamo', money(l.currency, l.requestedAmount), l.status === 'REQUESTED'));
     }
     requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return { pending, requests: requests.slice(0, MAX_REQUESTS) };
+    return { pending, requests: requests.slice(0, input.limit ?? MAX_REQUESTS) };
 }
 
 const ok = <T,>(r: PromiseSettledResult<T>): T | null => (r.status === 'fulfilled' ? r.value : null);
 
 /** One round of reads that feeds the account home. Partial failures degrade; only a total failure is an error. */
-export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: boolean }): AccountSummary {
-    const { userId, enabled = true } = opts;
+export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: boolean; maxRequests?: number }): AccountSummary {
+    const { userId, enabled = true, maxRequests } = opts;
     const [state, setState] = useState<Omit<AccountSummary, 'reload'>>({
         today: null,
         biometric: null,
@@ -260,6 +262,7 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
                 swaps: ok(r[4]) ?? [],
                 workforce: workforce as unknown as Parameters<typeof buildSummary>[0]["workforce"],
                 loans: (ok(r[6]) ?? []) as unknown as AnyRow[],
+                limit: maxRequests,
             });
             setState({
                 today: ok(r[0]),
@@ -275,7 +278,7 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
         return () => {
             alive.current++;
         };
-    }, [hr, userId, enabled, tick]);
+    }, [hr, userId, enabled, maxRequests, tick]);
 
     return { ...state, reload };
 }

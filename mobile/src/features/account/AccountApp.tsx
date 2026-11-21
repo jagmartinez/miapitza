@@ -8,6 +8,12 @@ import { AccountNavProvider, useAccountNav, type AccountSection } from './Accoun
 import { PunchScreen } from './attendance/PunchScreen';
 import { PayrollScreen } from './payroll/PayrollScreen';
 import { ProfileScreen } from './profile/ProfileScreen';
+import { CorrectionForm } from './requests/CorrectionForm';
+import { LeaveForm } from './requests/LeaveForm';
+import { MyRequests } from './requests/MyRequests';
+import { OvertimeForm } from './requests/OvertimeForm';
+import { PendingForYou } from './requests/PendingForYou';
+import { SwapForm } from './requests/SwapForm';
 import { ScheduleScreen } from './schedule/ScheduleScreen';
 import type { AccountApi } from './accountApi';
 import { createHrApi, type HrApi } from './hrApi';
@@ -24,6 +30,8 @@ const TITLES: Record<Exclude<AccountSection, 'home'>, string> = {
     loanRequest: 'Solicitar préstamo',
     loans: 'Préstamos',
     approvals: 'Por aprobar',
+    requests: 'Mis solicitudes',
+    pending: 'Pendiente para ti',
 };
 
 /** Shown for sections whose screen a later task provides. */
@@ -44,6 +52,12 @@ function Screens({ session, hr, accountApi, onLogout, onPasswordChanged }: { ses
     if (section === 'schedule') return <ScheduleScreen hr={hr} />;
     if (section === 'payroll') return <PayrollScreen hr={hr} userId={session.user.id} />;
     if (section === 'info') return <ProfileScreen hr={hr} accountApi={accountApi} onPasswordChanged={onPasswordChanged} onLogout={onLogout} />;
+    if (section === 'leave') return <LeaveForm hr={hr} />;
+    if (section === 'overtime') return <OvertimeForm hr={hr} />;
+    if (section === 'correction') return <CorrectionForm hr={hr} />;
+    if (section === 'swap') return <SwapForm hr={hr} userId={session.user.id} />;
+    if (section === 'requests') return <MyRequests hr={hr} userId={session.user.id} />;
+    if (section === 'pending') return <PendingForYou hr={hr} userId={session.user.id} />;
     return <SectionPlaceholder section={section} />;
 }
 

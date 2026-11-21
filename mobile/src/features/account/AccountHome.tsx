@@ -1,15 +1,13 @@
-import { useRef, useState } from 'react';
 import { ATTENDANCE_ACTION_LABELS } from '@web/components/hr/attendanceRules';
 import { formatHrMoney, formatHrNumber } from '@web/utils/hrFormat';
 import { isCompanyAdmin } from '../../core/permissions';
 import type { Session } from '../../core/session';
 import { Card } from '../../ui/Card';
 import { ScreenHeader } from '../../ui/ScreenHeader';
-import { useToast } from '../../ui/Toast';
 import { useAccountNav, type AccountSection } from './AccountNav';
 import type { HrApi } from './hrApi';
-import { toHrError } from './hrApi';
-import { PART_LABELS, useAccountSummary, type PendingItem, type RequestCardModel } from './useAccountSummary';
+import { useCancelFlow } from './requests/common';
+import { PART_LABELS, useAccountSummary, type PendingItem } from './useAccountSummary';
 import './account-home.css';
 
 interface Props {
@@ -19,38 +17,14 @@ interface Props {
 }
 
 const UNLINKED = 'Tu usuario no está vinculado a un empleado. Pide a RH que lo vincule.';
-const CANCEL_REASON = 'Cancelada por el empleado';
 
-const PENDING_SECTION: Record<PendingItem['kind'], AccountSection> = { schedule: 'schedule', receipt: 'payroll', swap: 'swap' };
+const PENDING_SECTION: Record<PendingItem['kind'], AccountSection> = { schedule: 'schedule', receipt: 'payroll', swap: 'pending' };
 
 export function AccountHome({ session, hr, onLogout }: Props) {
     const { navigate } = useAccountNav();
-    const toast = useToast();
     const linked = session.user.accountType === 'INTERNAL' && session.user.employeeId != null;
     const summary = useAccountSummary(hr, { userId: session.user.id, enabled: linked });
-    const busy = useRef(new Set<string>());
-    const [, force] = useState(0);
-
-    async function cancel(r: RequestCardModel) {
-        if (busy.current.has(r.id)) return;
-        busy.current.add(r.id);
-        force((n) => n + 1);
-        const opts = { actionId: `cancel-${r.id}` };
-        try {
-            if (r.kind === 'leave') await hr.cancelLeave(r.refId, CANCEL_REASON, opts);
-            else if (r.kind === 'overtime') await hr.cancelOvertime(r.refId, CANCEL_REASON, opts);
-            else if (r.kind === 'correction') await hr.cancelCorrection(r.refId, CANCEL_REASON, opts);
-            else if (r.kind === 'swap') await hr.cancelSwap(r.refId);
-            else await hr.cancelLoanRequest(r.refId, undefined, opts);
-            toast.show('Solicitud cancelada');
-            summary.reload();
-        } catch (e) {
-            toast.show(toHrError(e).message, 'error');
-        } finally {
-            busy.current.delete(r.id);
-            force((n) => n + 1);
-        }
-    }
+    const cancel = useCancelFlow(hr, summary.reload);
 
     const header = <ScreenHeader title={session.user.name} right={<button type="button" className="btn ah-logout" onClick={onLogout}>Salir</button>} />;
 
@@ -136,12 +110,13 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                 {summary.myRequests.length > 0 && (
                     <>
                         <h2 className="ah-h">Mis solicitudes</h2>
+                        <button type="button" className="ah-link" onClick={() => navigate('requests')}>Ver todas</button>
                         <div className="ah-list">
                             {summary.myRequests.map((r) => (
                                 <Card key={r.id} title={r.title} badge={r.statusLabel} badgeTone={r.tone}>
                                     <span>{r.detail}</span>
                                     {r.cancellable && (
-                                        <button type="button" className="btn ah-cancel" disabled={busy.current.has(r.id)} onClick={() => void cancel(r)}>
+                                        <button type="button" className="btn ah-cancel" onClick={() => cancel.ask(r)}>
                                             Cancelar
                                         </button>
                                     )}
@@ -160,6 +135,7 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                     {isCompanyAdmin(session.user) && <Card title="Por aprobar" onClick={() => navigate('approvals')} />}
                 </div>
             </div>
+            {cancel.sheet}
         </main>
     );
 }
