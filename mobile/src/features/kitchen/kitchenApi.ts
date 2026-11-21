@@ -25,7 +25,7 @@ function toActionError(cause: unknown, action: Action): KitchenActionError {
     const message = res?.data?.message || (status ? 'La cocina rechazó la acción.' : 'Sin conexión con el servidor.');
     if (typeof status !== 'number') return new KitchenActionError('network', message);
     if (status === 401) return new KitchenActionError('auth', message, code);
-    if (status >= 500 || status === 408 || status === 429) return new KitchenActionError('network', message, code);
+    if (status >= 500 || status === 408 || status === 429 || code === 'IDEMPOTENCY_IN_PROGRESS') return new KitchenActionError('network', message, code);
     if (code === 'KITCHEN_BATCH_RELEASED' && (action === 'ready' || action === 'release')) {
         return new KitchenActionError('already-done', message, code);
     }

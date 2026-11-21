@@ -169,4 +169,51 @@ describe('useKitchenQueue', () => {
         await flush();
         expect(hook.result.current.batches).toHaveLength(2);
     });
+
+    it('a throwing new-batch listener does not fail the load nor skip other listeners', async () => {
+        let data = [mk(1, 1)];
+        const { hook, rt } = setup(async () => data);
+        await flush();
+        const bad = vi.fn(() => {
+            throw new Error('x');
+        });
+        const good = vi.fn();
+        act(() => {
+            hook.result.current.onNewBatches(bad);
+            hook.result.current.onNewBatches(good);
+        });
+        data = [mk(2, 1)];
+        rt.emit('ORDER_SENT_TO_KITCHEN');
+        await tick(300);
+        expect(good).toHaveBeenCalledTimes(1);
+        expect(hook.result.current.status).toBe('ready');
+        expect(hook.result.current.batches.map((b) => b.id)).toEqual([2]);
+    });
+
+    it('uses Spanish error text for 403 and network failures', async () => {
+        let err: unknown = { response: { status: 403 } };
+        const { hook, rt } = setup(async () => {
+            if (err) throw err;
+            return [];
+        });
+        await flush();
+        expect(hook.result.current.error).toBe('Sin permiso para ver la cocina');
+        err = new Error('Network Error');
+        rt.emit('ORDER_READY');
+        await tick(300);
+        expect(hook.result.current.error).toBe('Sin conexión con el servidor');
+    });
+
+    it('unmount unsubscribes realtime and clears timers', async () => {
+        const { hook, rt, queue } = setup(async () => [mk(1, 1)]);
+        await flush();
+        queue.mockClear();
+        rt.emit('ORDER_READY');
+        hook.unmount();
+        await tick(500);
+        expect(queue).not.toHaveBeenCalled();
+        rt.emit('ORDER_READY');
+        await tick(500);
+        expect(queue).not.toHaveBeenCalled();
+    });
 });

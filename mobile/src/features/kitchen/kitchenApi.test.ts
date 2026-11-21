@@ -43,6 +43,13 @@ describe('kitchenApi', () => {
         });
     });
 
+    it('maps IDEMPOTENCY_IN_PROGRESS to retryable network', async () => {
+        const post = vi.fn(async () => {
+            throw fail(409, { code: 'IDEMPOTENCY_IN_PROGRESS', message: 'en curso' });
+        });
+        await expect(createKitchenApi(httpWith(post)).ready(batch, 'k')).rejects.toMatchObject({ kind: 'network' });
+    });
+
     it('reads config, queue and recent', async () => {
         const get = vi.fn(async (url: string) => ({
             data: { data: url.endsWith('config') ? { warningMinutes: 3, urgentMinutes: 10, clockStartsAt: 'x' } : [{ id: 1 }] },

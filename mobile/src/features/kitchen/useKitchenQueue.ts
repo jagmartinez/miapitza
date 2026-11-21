@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getKitchenReceivedAt } from '@web/utils/kdsTiming';
+import { getApiErrorMessage } from '@web/utils/apiError';
 import { isVoidedOrderLine } from '@web/utils/orderLineVoid';
+import { httpStatus } from '../../core/httpErrors';
 import type { KitchenApi } from './kitchenApi';
 import { batchKey, type KitchenBatch, type KitchenConfig } from './kitchenTypes';
 
@@ -17,6 +19,13 @@ export type KitchenQueueStatus = 'loading' | 'ready' | 'error';
 const REFETCH_TYPES = ['ORDER_SENT_TO_KITCHEN', 'ORDER_IN_PREPARATION', 'ORDER_READY', 'ORDER_UPDATE', 'CONNECTED'] as const;
 /** Edits to lines not yet sent to the kitchen; the full order payload is not batch-shaped. */
 const IGNORED_UPDATE_STATUSES = new Set(['ITEMS_CHANGED', 'GUESTS_CHANGED']);
+
+function queueErrorText(cause: unknown): string {
+    const status = httpStatus(cause);
+    if (status === 403) return 'Sin permiso para ver la cocina';
+    if (status === undefined) return 'Sin conexión con el servidor';
+    return getApiErrorMessage(cause) || 'No se pudo cargar la cola.';
+}
 
 /** Visible lines only; a batch with none left is hidden; oldest received first. */
 function visibleBatches(raw: KitchenBatch[]): KitchenBatch[] {
@@ -60,12 +69,20 @@ export function useKitchenQueue(api: KitchenApi, realtime: KitchenRealtime, opts
             setLastLoadedAt(Date.now());
             if (previous) {
                 const fresh = next.filter((b) => !previous.has(batchKey(b)));
-                if (fresh.length > 0) [...listeners.current].forEach((fn) => fn(fresh));
+                if (fresh.length > 0) {
+                    for (const fn of [...listeners.current]) {
+                        try {
+                            fn(fresh);
+                        } catch {
+                            /* a faulty listener must not affect the load or other listeners */
+                        }
+                    }
+                }
             }
         } catch (cause) {
             if (!alive.current || mine !== seq.current) return;
             setStatus('error');
-            setError((cause as Error)?.message || 'No se pudo cargar la cola.');
+            setError(queueErrorText(cause));
         }
         if (!configLoaded.current) {
             try {
