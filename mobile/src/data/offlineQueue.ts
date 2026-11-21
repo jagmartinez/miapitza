@@ -3,6 +3,7 @@ import { newIdempotencyKey } from '@web/utils/idempotency';
 import { appEvents } from '../core/events';
 import type { SessionStore } from '../core/session';
 import type { MobileDB } from './cache';
+import { isSurveyItem } from './queueLabels';
 import { guarded, reportStorage, toStorageError } from './storage';
 import { isPermanentSyncFailure, ownerKeyOf, SessionChangedError, type SyncItem } from './types';
 
@@ -94,7 +95,7 @@ export function createOfflineQueue(deps: QueueDeps) {
     }
 
     // A row left 'processing' by a kill is as expired as any other: it must not be reset to pending and replayed.
-    const isStale = (r: SyncItem) => r.status !== 'failed' && !r.approvedStale && now() - r.timestamp > STALE_AFTER_MS;
+    const isStale = (r: SyncItem) => r.status !== 'failed' && !r.approvedStale && !isSurveyItem(r) && now() - r.timestamp > STALE_AFTER_MS;
 
     /** Marks the owner's items that waited past the service window as failed (never replayed by itself). */
     async function sweepStale(ownerKey: string): Promise<void> {

@@ -1,5 +1,10 @@
 import type { SyncItem } from './types';
 
+/** Where the customer survey is posted (the API root is /api, the module lives under v1). */
+export const SURVEY_URL = '/v1/surveys';
+/** A customer survey: it never expires and its owner cannot discard it (the rated person must not decide if a score arrives). */
+export const isSurveyItem = (item: Pick<SyncItem, 'url'>): boolean => item.url.split('?')[0] === SURVEY_URL;
+
 /** What a queued item is, in the waiter's words (the label saved with it wins). */
 export function itemTitle(item: SyncItem): string {
     if (item.meta?.label) return item.meta.label;
@@ -15,7 +20,7 @@ export function itemTitle(item: SyncItem): string {
         case 'CREATE_PAYMENT':
             return 'Pago';
         default:
-            return item.url === '/surveys' ? 'Encuesta del cliente' : 'Cambio del pedido';
+            return isSurveyItem(item) ? 'Encuesta del cliente' : 'Cambio del pedido';
     }
 }
 

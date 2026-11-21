@@ -6,7 +6,6 @@
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     gap: 24px;
     padding: 24px 40px;
     overflow-y: auto;
@@ -53,8 +52,21 @@
 
 .sv-details {
     flex-direction: row;
-    align-items: center;
+    align-items: flex-start;
     gap: 40px;
+}
+
+/* Centred without clipping: auto margins keep the top reachable when the keyboard shrinks the view. */
+.sv > :first-child {
+    margin-top: auto;
+}
+
+.sv > :last-child {
+    margin-bottom: auto;
+}
+
+.sv-details > .sv-col {
+    margin-block: auto;
 }
 
 .sv-col {

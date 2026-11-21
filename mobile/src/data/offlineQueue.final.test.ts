@@ -70,6 +70,19 @@ describe('final review: stale queued work (ruling b)', () => {
     });
 });
 
+describe('customer survey items never go stale', () => {
+    it('a survey queued more than 12 h ago still replays on its own', async () => {
+        const { queue, advance, seen, setOnline } = await setup();
+        setOnline(false);
+        await queue.enqueue({ url: '/v1/surveys', method: 'POST', data: { orderId: 5, nps: 9 }, operationType: 'GENERIC_MUTATION', idempotencyKey: 'survey-order-5' });
+        advance(STALE_AFTER_MS * 3);
+        setOnline(true);
+        await queue.process();
+        expect(seen.map((s) => s.url)).toEqual(['/v1/surveys']);
+        expect(await queue.listFailed()).toHaveLength(0);
+    });
+});
+
 describe('final review: pending work per user (ruling a)', () => {
     it('counts every user\'s queued items, so the PIN screen can show "N pendientes"', async () => {
         const { queue, sessions, advance } = await setup(1);

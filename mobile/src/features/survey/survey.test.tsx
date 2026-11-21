@@ -19,7 +19,7 @@ vi.mock('@capacitor/core', async (orig) => {
 import SurveyScreen, { cleanPhone } from './SurveyScreen';
 import { SurveyBoundary } from './SurveyBoundary';
 import { createSurveyApi, surveyKey, FIRST_ATTEMPT_TIMEOUT_MS } from './surveyApi';
-import { itemTitle } from '../../data/queueLabels';
+import { itemTitle, SURVEY_URL, isSurveyItem } from '../../data/queueLabels';
 import type { SyncItem } from '../../data/types';
 
 const flush = async () => {
@@ -217,7 +217,7 @@ describe('surveyApi', () => {
         const mutate = vi.fn().mockResolvedValue({ created: true });
         await createSurveyApi({ mutate }).submit(body, 'survey-5');
         expect(mutate).toHaveBeenCalledTimes(1);
-        expect(mutate.mock.calls[0][0]).toMatchObject({ method: 'POST', url: '/surveys', data: body, key: 'survey-5', queue: { operationType: 'GENERIC_MUTATION', meta: { label: 'Encuesta del cliente' } } });
+        expect(mutate.mock.calls[0][0]).toMatchObject({ method: 'POST', url: SURVEY_URL, data: body, key: 'survey-5', queue: { operationType: 'GENERIC_MUTATION', meta: { label: 'Encuesta del cliente' } } });
     });
 
     it('queues once with the same key after a network failure', async () => {
@@ -237,7 +237,7 @@ describe('surveyApi', () => {
 
     it('queued survey is labelled Encuesta del cliente', () => {
         expect(itemTitle({ operationType: 'GENERIC_MUTATION', meta: { label: 'Encuesta del cliente' } } as unknown as SyncItem)).toBe('Encuesta del cliente');
-        expect(itemTitle({ operationType: 'GENERIC_MUTATION', url: '/surveys', method: 'POST' } as unknown as SyncItem)).toBe('Encuesta del cliente');
+        expect(itemTitle({ operationType: 'GENERIC_MUTATION', url: '/v1/surveys', method: 'POST' } as unknown as SyncItem)).toBe('Encuesta del cliente');
     });
 });
 
@@ -343,5 +343,48 @@ describe('fix round 1', () => {
         );
         expect(onFail).toHaveBeenCalledTimes(1);
         err.mockRestore();
+    });
+});
+
+describe('fix wave', () => {
+    const http = (status: number, code?: string) => Object.assign(new Error('x'), { isAxiosError: true, response: { status, data: code ? { code } : {} } });
+    const body = { orderId: 5, nps: 9, waiterRating: null, foodRating: null, waitRating: null, ambienceRating: null, comment: null, contactPhone: null };
+
+    it('the survey path is the v1 route the server mounts', () => {
+        expect(SURVEY_URL).toBe('/v1/surveys');
+    });
+
+    it('goes through the real waiter api to /v1/surveys', async () => {
+        const { createWaiterApi } = await import('../../data/waiterApi');
+        const request = vi.fn().mockResolvedValue({ data: { data: { created: true } } });
+        const api = createWaiterApi({
+            http: { request } as never,
+            sessions: { load: async () => ({ token: 't', user: { id: 1, companyId: 1 } }) } as never,
+            cache: { invalidate: async () => undefined } as never,
+            queue: { onSynced: () => undefined } as never,
+            isOnline: () => true,
+        });
+        await createSurveyApi(api).submit(body, 'survey-order-5');
+        expect(request.mock.calls[0][0]).toMatchObject({ method: 'POST', url: '/v1/surveys', data: body });
+        expect(request.mock.calls[0][0].headers['X-Idempotency-Key']).toBe('survey-order-5');
+    });
+
+    it('a 404 without a SURVEY code (missing route) is queued, not dropped', async () => {
+        const mutate = vi.fn().mockRejectedValueOnce(http(404)).mockResolvedValueOnce({ _offline: true });
+        await createSurveyApi({ mutate }).submit(body, 'k');
+        expect(mutate.mock.calls[1][0].queue.forceQueue).toBe(true);
+    });
+
+    it('SURVEY_ORDER_NOT_FOUND 404 and IDEMPOTENCY_MISMATCH 409 are definitive', async () => {
+        for (const e of [http(404, 'SURVEY_ORDER_NOT_FOUND'), http(409, 'IDEMPOTENCY_MISMATCH')]) {
+            const mutate = vi.fn().mockRejectedValue(e);
+            await expect(createSurveyApi({ mutate }).submit(body, 'k')).rejects.toBe(e);
+            expect(mutate).toHaveBeenCalledTimes(1);
+        }
+    });
+
+    it('survey items are recognised by url', () => {
+        expect(isSurveyItem({ url: '/v1/surveys' })).toBe(true);
+        expect(isSurveyItem({ url: '/orders/1' })).toBe(false);
     });
 });
