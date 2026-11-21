@@ -534,6 +534,14 @@ router.post(
   validate({ body: loanBody }),
   HrBenefitsController.myLoanCreate
 );
+router.get('/me/loan-policy', selfBenefits, HrBenefitsController.myLoanPolicy);
+router.post(
+  '/me/loan-requests/:id/cancel',
+  selfBenefits,
+  allowHrBodyFields(['reason']),
+  validate({ params: idParam, body: { reason: { type: 'string' as const, max: 500 } } }),
+  HrBenefitsController.myLoanCancel
+);
 router.get(
   '/me/deductions',
   selfBenefits,

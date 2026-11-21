@@ -465,6 +465,23 @@ export class HrBenefitsController {
       handle(e, res, next);
     }
   }
+  static async myLoanPolicy(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json({ success: true, data: await HrLoanService.policyFor(await selfScope(req)) });
+    } catch (e) {
+      handle(e, res, next);
+    }
+  }
+  static async myLoanCancel(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json({
+        success: true,
+        data: await HrLoanService.cancelOwn(await selfScope(req), id(req), req.body ?? {}, key(req)),
+      });
+    } catch (e) {
+      handle(e, res, next);
+    }
+  }
   static async myDeductionList(req: Request, res: Response, next: NextFunction) {
     try {
       sendList(res, await HrDeductionService.list(await selfScope(req), req.query));

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
+import prisma from '../utils/prisma';
 import {
     AttendanceCorrectionService,
     AttendanceDerivedService,
@@ -87,6 +88,61 @@ function handleError(error: unknown, res: Response, next: NextFunction): void {
 }
 
 export class HrWorkforceController {
+    /** GET /hr/me/employee: read-only summary of the caller's own employee record. */
+    static async myEmployee(req: Request, res: Response, next: NextFunction) {
+        try {
+            const user = req.user!;
+            if (user.accountType !== 'INTERNAL' || !user.employeeId) {
+                throw new HrWorkforceError(
+                    'El autoservicio requiere una cuenta INTERNAL ligada a empleado',
+                    403,
+                    'HR_INTERNAL_EMPLOYEE_REQUIRED'
+                );
+            }
+            const today = new Date();
+            const employee = await prisma.employee.findFirst({
+                where: { id: user.employeeId, companyId: user.companyId, userId: user.userId },
+                select: {
+                    employeeCode: true,
+                    legalName: true,
+                    preferredName: true,
+                    hireDate: true,
+                    workEmail: true,
+                    workPhone: true,
+                    emergencyContactName: true,
+                    emergencyContactPhone: true,
+                    jobPosition: { select: { name: true } },
+                    branchAssignments: {
+                        where: {
+                            effectiveFrom: { lte: today },
+                            OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }],
+                        },
+                        orderBy: [{ isPrimary: 'desc' }, { effectiveFrom: 'desc' }],
+                        take: 1,
+                        select: { branch: { select: { name: true } } },
+                    },
+                },
+            });
+            if (!employee) {
+                throw new HrWorkforceError('Empleado no encontrado', 404, 'HR_EMPLOYEE_NOT_FOUND');
+            }
+            res.json({
+                success: true,
+                data: {
+                    code: employee.employeeCode,
+                    fullName: employee.legalName,
+                    position: employee.jobPosition?.name ?? null,
+                    branchName: employee.branchAssignments[0]?.branch.name ?? null,
+                    hireDate: employee.hireDate ? employee.hireDate.toISOString().slice(0, 10) : null,
+                    workEmail: employee.workEmail ?? null,
+                    workPhone: employee.workPhone ?? null,
+                    emergencyContactName: employee.emergencyContactName ?? null,
+                    emergencyContactPhone: employee.emergencyContactPhone ?? null,
+                },
+            });
+        } catch (error) { handleError(error, res, next); }
+    }
+
     static async dailySummaries(req: Request, res: Response, next: NextFunction) {
         try {
             requireCompanyOwner(req);

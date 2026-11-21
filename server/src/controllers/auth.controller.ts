@@ -38,9 +38,12 @@ export class AuthController {
     static async me(req: Request, res: Response, next: NextFunction) {
         try {
             // req.user is set by auth middleware — return fresh user data
+            const user = req.user!;
+            const hasPin = await PinService.hasPin(user.userId);
+            const canUsePin = PinService.canUsePin(user.roles || [user.role], user.permissions || []);
             res.json({
                 success: true,
-                data: req.user
+                data: { ...user, hasPin, canUsePin }
             });
         } catch {
             next({ statusCode: 401, message: 'Sesión inválida' });

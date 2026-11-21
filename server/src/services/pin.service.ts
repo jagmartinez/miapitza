@@ -41,6 +41,16 @@ export class PinService {
         return roleNames.length > 0 && roleNames.every((name) => (PIN_ROLES as string[]).includes(name));
     }
 
+    /** Same rule setPin enforces: PIN roles, or a discount supervisor (PIN never opens a session for them). */
+    static canUsePin(roleNames: string[], permissionNames: string[]): boolean {
+        return PinService.rolesAllowPin(roleNames) || permissionNames.includes(DISCOUNT_AUTHORIZE_PERMISSION);
+    }
+
+    static async hasPin(userId: number): Promise<boolean> {
+        const row = await prisma.user.findUnique({ where: { id: userId }, select: { pinHash: true } });
+        return Boolean(row?.pinHash);
+    }
+
     /**
      * Sets the caller's own PIN. A PIN is a standing credential, so the account
      * password must be re-entered; every failure is the same generic 401 and
@@ -79,11 +89,11 @@ export class PinService {
         const roleNames = [user.role.name, ...user.userRoles.map((entry) => entry.role.name)];
         // A discount supervisor may hold a PIN to authorize discounts on a tablet.
         // That PIN never opens a session: pin-login still requires roles within PIN_ROLES.
-        const canAuthorizeDiscounts = collectPermissionNames([
+        const permissionNames = collectPermissionNames([
             user.role,
             ...user.userRoles.map((entry) => entry.role),
-        ]).includes(DISCOUNT_AUTHORIZE_PERMISSION);
-        if (!PinService.rolesAllowPin(roleNames) && !canAuthorizeDiscounts) {
+        ]);
+        if (!PinService.canUsePin(roleNames, permissionNames)) {
             throw new PinError('Tu rol no puede usar PIN de acceso rápido', 403);
         }
 

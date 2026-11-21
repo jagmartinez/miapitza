@@ -179,6 +179,7 @@ router.post('/vacation/adjustments', ownerManage, allowHrBodyFields(['userId', '
 } }), HrWorkforceController.createVacationAdjustment);
 
 router.get('/me/attendance/summary', selfWorkforce, validate({ query: commonQuery }), HrWorkforceController.myAttendanceSummaries);
+router.get('/me/employee', selfWorkforce, HrWorkforceController.myEmployee);
 router.get('/me/workforce', selfWorkforce, validate({ query: commonQuery }), HrWorkforceController.myWorkforce);
 
 export default router;
