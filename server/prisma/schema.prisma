@@ -156,6 +156,7 @@ model Company {
   employmentSettlementLines       HrEmploymentSettlementLine[]
   kitchenNotifications            KitchenNotification[]
   operationalDevices              OperationalDevice[]
+  surveyResponses                 SurveyResponse[]
 }
 
 enum CostingMethod {
@@ -231,6 +232,7 @@ model Branch {
   payrollSnapshots                PayrollSnapshotLine[]
   kitchenNotifications            KitchenNotification[]
   operationalDevices              OperationalDevice[]
+  surveyResponses                 SurveyResponse[]
   travelRequests                  HrTravelRequest[]
   inventoryWarehouseRoutes        InventoryWarehouseRoute[]
   promotionBranches               PromotionBranch[]
@@ -448,6 +450,7 @@ model User {
   kitchenNotifications              KitchenNotification[]              @relation("KitchenNotificationRecipient")
   kitchenOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceKitchenUser")
   createdOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceCreatedBy")
+  waiterSurveyResponses             SurveyResponse[]                   @relation("SurveyWaiter")
   revokedOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceRevokedBy")
   cashShifts                        CashShift[]                        @relation("CashShiftOpenedBy")
   cashShiftsClosed                  CashShift[]                        @relation("CashShiftClosedBy")
@@ -4142,6 +4145,7 @@ model Order {
   payments                      Payment[]
   pedidosYaSyncs                PedidosYaOrderSync[]
   kitchenNotifications          KitchenNotification[]
+  surveyResponse                SurveyResponse?
   fiscalCreditNotes             FiscalCreditNote[]
   fiscalInvoiceCancellation     FiscalInvoiceCancellation?
   primaryTableConsolidations    TableConsolidation[]       @relation("TableConsolidationPrimaryOrder")
@@ -5278,10 +5282,37 @@ model OperationalDevice {
   kitchenUser User?   @relation("OperationalDeviceKitchenUser", fields: [kitchenUserId], references: [id], onDelete: SetNull)
   createdBy   User    @relation("OperationalDeviceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   revokedBy   User?   @relation("OperationalDeviceRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  surveyResponses SurveyResponse[]
 
   @@index([companyId, branchId, status])
   @@index([kitchenUserId])
   @@index([createdById])
   @@index([revokedById])
   @@index([branchId])
+}
+
+model SurveyResponse {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  branchId            Int
+  orderId             Int      @unique
+  waiterUserId        Int
+  operationalDeviceId Int
+  nps                 Int
+  waiterRating        Int?
+  serviceRating       Int?
+  foodRating          Int?
+  comment             String?  @db.VarChar(500)
+  contactPhone        String?  @db.VarChar(30)
+  createdAt           DateTime @default(now())
+
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch            Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  order             Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  waiter            User              @relation("SurveyWaiter", fields: [waiterUserId], references: [id], onDelete: Restrict)
+  operationalDevice OperationalDevice @relation(fields: [operationalDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, branchId, createdAt])
+  @@index([waiterUserId, createdAt])
+  @@index([operationalDeviceId])
 }

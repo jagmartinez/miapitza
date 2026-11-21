@@ -7,6 +7,7 @@ import { validate } from '../middlewares/validate';
 import { generateApiKey } from '../utils/apiKeyGenerator';
 import hrRoutes from './hr.routes';
 import operationalDeviceRoutes from './operational-device.routes';
+import surveyRoutes from './survey.routes';
 import { createFaceVerificationProvider } from '../services/hr-face-provider';
 import { checkStorageReadiness } from '../services/storage-identity.service';
 
@@ -266,6 +267,7 @@ v1.get('/health', async (_req: Request, res: Response) => {
 v1.use(globalLimiter);
 v1.use('/hr', hrRoutes);
 v1.use('/operational-devices', operationalDeviceRoutes);
+v1.use('/surveys', surveyRoutes);
 
 // ── API info endpoint ──
 v1.get('/', (_req: Request, res: Response) => {

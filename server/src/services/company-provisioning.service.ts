@@ -34,6 +34,7 @@ const TABLE_PERMISSIONS = [
 
 const KDS_PERMISSIONS = ['kds.view', 'kds.manage'];
 const DEVICE_PERMISSIONS = ['devices.manage'];
+const SURVEY_PERMISSIONS = ['surveys.view'];
 
 const OPERATIONAL_PERMISSIONS = [
     'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver',
@@ -65,7 +66,7 @@ const TENANT_ADMIN_HR = [
 
 const ROLE_PERMISSION_MAP: Record<string, string[]> = {
     [ROLES.ADMIN]: [
-        ...BASE_PERMISSIONS, ...TABLE_PERMISSIONS, ...KDS_PERMISSIONS, ...DEVICE_PERMISSIONS, ...OPERATIONAL_PERMISSIONS,
+        ...BASE_PERMISSIONS, ...TABLE_PERMISSIONS, ...KDS_PERMISSIONS, ...DEVICE_PERMISSIONS, ...SURVEY_PERMISSIONS, ...OPERATIONAL_PERMISSIONS,
         ...TENANT_ADMIN_HR, ...SELF_SERVICE_HR,
     ],
     [ROLES.CAJERO]: [
