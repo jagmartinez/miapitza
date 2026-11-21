@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { formatLocalDateInput } from '@web/utils/dateInput';
 import { ToastProvider } from '../../../ui/Toast';
 import { AccountNavProvider, useAccountNav, type SectionParams } from '../AccountNav';
-import { HrError, type HrApi } from '../hrApi';
+import { AccountHome } from '../AccountHome';
+import { HrError, createHrApi, type HrApi } from '../hrApi';
+import { fakeApi, session } from '../../../test/helpers';
+import type { Session } from '../../../core/session';
 import { CorrectionForm } from './CorrectionForm';
 import { LeaveForm } from './LeaveForm';
 import { MyRequests } from './MyRequests';
@@ -118,6 +121,115 @@ describe('LeaveForm', () => {
     });
 });
 
+describe('LeaveForm fractions and checks', () => {
+    async function open(createLeave: unknown = vi.fn().mockResolvedValue({ id: 1 })) {
+        mount(<LeaveForm hr={leaveApi(createLeave)} />);
+        await screen.findByRole('option', { name: 'Permiso personal' });
+        fillLeave();
+        return createLeave as ReturnType<typeof vi.fn>;
+    }
+
+    it('end date before start disables send', async () => {
+        await open();
+        fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: '2026-11-30' } });
+        expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
+        expect(screen.getByText('La fecha final no puede ser anterior a la inicial.')).toBeInTheDocument();
+    });
+
+    it('HALF_DAY body carries times and the server validates the length', async () => {
+        const createLeave = await open();
+        fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: '2026-12-01' } });
+        fireEvent.change(screen.getByLabelText('Fracción'), { target: { value: 'HALF_DAY' } });
+        fireEvent.change(screen.getByLabelText('Hora inicial'), { target: { value: '08:00' } });
+        fireEvent.change(screen.getByLabelText('Hora final'), { target: { value: '11:00' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await waitFor(() => expect(createLeave).toHaveBeenCalledTimes(1));
+        expect(createLeave.mock.calls[0][0]).toMatchObject({ fraction: 'HALF_DAY', startTime: '08:00', endTime: '11:00' });
+    });
+
+    it('HOURS body, single day only and end after start', async () => {
+        const createLeave = await open();
+        fireEvent.change(screen.getByLabelText('Fracción'), { target: { value: 'HOURS' } });
+        fireEvent.change(screen.getByLabelText('Hora inicial'), { target: { value: '10:00' } });
+        fireEvent.change(screen.getByLabelText('Hora final'), { target: { value: '12:00' } });
+        const send = screen.getByRole('button', { name: 'Enviar' });
+        expect(send).toBeDisabled();
+        fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: '2026-12-01' } });
+        fireEvent.change(screen.getByLabelText('Hora final'), { target: { value: '09:00' } });
+        expect(send).toBeDisabled();
+        fireEvent.change(screen.getByLabelText('Hora final'), { target: { value: '12:00' } });
+        expect(send).toBeEnabled();
+        fireEvent.click(send);
+        await waitFor(() => expect(createLeave).toHaveBeenCalledTimes(1));
+        expect(createLeave.mock.calls[0][0]).toEqual({ leaveTypeId: 3, startDate: '2026-12-01', endDate: '2026-12-01', fraction: 'HOURS', startTime: '10:00', endTime: '12:00', reason: 'Trámite personal' });
+    });
+
+    it('failed submit after the draft was created re-submits the same draft', async () => {
+        let submits = 0;
+        const { http, calls } = fakeApi((c) => {
+            const url = c.url ?? '';
+            if (url.endsWith('/leave/types')) return { data: { data: types } };
+            if (url.includes('/me/workforce')) return { data: { data: workforce } };
+            if (url.endsWith('/leave/requests')) return { status: 201, data: { data: { id: 77 } } };
+            if (url.endsWith('/leave/requests/77/submit')) return ++submits === 1 ? { status: 503, data: { message: 'caido' } } : { data: { data: { id: 77 } } };
+            return { status: 404 };
+        });
+        mount(<LeaveForm hr={createHrApi(http)} />);
+        await screen.findByRole('option', { name: 'Permiso personal' });
+        fillLeave();
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await screen.findByRole('alert');
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Enviar' })).toBeEnabled());
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await waitFor(() => expect(submits).toBe(2));
+        expect(calls.filter((c) => (c.url ?? '').endsWith('/leave/requests') && c.method === 'post')).toHaveLength(1);
+    });
+});
+
+describe('summary reload', () => {
+    const linked: Session = { ...session, user: { ...session.user, employeeId: 3, accountType: 'INTERNAL' } };
+    function Switch({ hr }: { hr: HrApi }) {
+        const n = useAccountNav();
+        return n.section === 'leave' ? <LeaveForm hr={hr} /> : <AccountHome session={linked} hr={hr} onLogout={() => {}} />;
+    }
+    const homeApi = (extra: Record<string, unknown> = {}) =>
+        api({
+            attendanceToday: vi.fn().mockResolvedValue({ availableActions: [], blockingIssue: null }),
+            mySchedule: vi.fn().mockResolvedValue(null),
+            myReceipts: vi.fn().mockResolvedValue([]),
+            mySwaps: vi.fn().mockResolvedValue([]),
+            myLoans: vi.fn().mockResolvedValue([]),
+            loanPolicy: vi.fn().mockResolvedValue(null),
+            leaveTypes: vi.fn().mockResolvedValue(types),
+            myWorkforce: vi.fn().mockResolvedValue(workforce),
+            ...extra,
+        });
+
+    it('home reloads its summary after a request is submitted', async () => {
+        const hr = homeApi({ createLeave: vi.fn().mockResolvedValue({ id: 1 }) });
+        const today = hr.attendanceToday as unknown as ReturnType<typeof vi.fn>;
+        mount(<Switch hr={hr} />);
+        await screen.findByText('Permiso / vacaciones');
+        await waitFor(() => expect(today).toHaveBeenCalled());
+        const before = today.mock.calls.length;
+        fireEvent.click(screen.getByText('Permiso / vacaciones'));
+        await screen.findByRole('option', { name: 'Permiso personal' });
+        fillLeave();
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await waitFor(() => expect(today.mock.calls.length).toBeGreaterThan(before));
+    });
+
+    it('MyRequests reloads after a cancel', async () => {
+        const myWorkforce = vi.fn().mockResolvedValue({ leaveRequests: [], corrections: [], vacationBalances: [], overtimeRequests: [{ id: 4, status: 'PENDING', date: '2026-11-10', requestedMinutes: 60, createdAt: '2026-11-11T00:00:00Z' }] });
+        const hr = homeApi({ myWorkforce, cancelOvertime: vi.fn().mockResolvedValue({}) });
+        mount(<MyRequests hr={hr} userId={7} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancelar solicitud' }));
+        fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Ya no la necesito' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Confirmar cancelación' }));
+        await waitFor(() => expect(myWorkforce).toHaveBeenCalledTimes(2));
+    });
+});
+
 describe('OvertimeForm', () => {
     it('validates minutes 1-10080 and sends', async () => {
         const createOvertime = vi.fn().mockResolvedValue({ id: 1 });
@@ -152,7 +264,8 @@ describe('CorrectionForm', () => {
         fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Olvidé marcar salida' } });
         fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
         await waitFor(() => expect(createCorrection).toHaveBeenCalledTimes(1));
-        expect(createCorrection.mock.calls[0][0]).toMatchObject({ type: 'ADD_PUNCH', requestedAction: 'CHECK_OUT', requestedOccurredAt: '2026-11-09T22:00', reason: 'Olvidé marcar salida' });
+        expect(createCorrection.mock.calls[0][0]).toEqual({ type: 'ADD_PUNCH', requestedAction: 'CHECK_OUT', requestedOccurredAt: '2026-11-09T22:00', reason: 'Olvidé marcar salida' });
+        expect(createCorrection.mock.calls[0][0]).not.toHaveProperty('requestedTimezone');
     });
 });
 
@@ -201,6 +314,30 @@ describe('SwapForm', () => {
         expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo confirmar el envío; revisa Mis solicitudes antes de reintentar.');
         await new Promise((r) => setTimeout(r, 50));
         expect(createSwap).toHaveBeenCalledTimes(1);
+        // locked until the user checks Mis solicitudes
+        expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Ver Mis solicitudes' }));
+        expect(screen.getByTestId('where')).toHaveTextContent('requests');
+    });
+
+    it('swap double tap sends once', async () => {
+        let release!: () => void;
+        const createSwap = vi.fn(() => new Promise((r) => (release = () => r({ id: 1 }))));
+        mount(<SwapForm hr={api({ ...base(), createSwap })} userId={7} />);
+        await fill();
+        const send = screen.getByRole('button', { name: 'Enviar' });
+        fireEvent.click(send);
+        fireEvent.click(send);
+        expect(createSwap).toHaveBeenCalledTimes(1);
+        await act(async () => release());
+    });
+
+    it('does not offer shifts that already started', async () => {
+        const started = { id: 51, userId: 7, branchId: 1, date: formatLocalDateInput(), startTime: '00:00:00', endTime: '00:01:00' };
+        mount(<SwapForm hr={api({ ...base(), mySchedule: vi.fn().mockResolvedValue({ ...mine, shifts: [started, ...mine.shifts] }) })} userId={7} />);
+        const shift = await screen.findByLabelText('Mi turno');
+        await waitFor(() => expect(within(shift).getAllByRole('option').length).toBe(2));
+        expect(within(shift).queryByRole('option', { name: /00:00/ })).toBeNull();
     });
 });
 
@@ -236,6 +373,26 @@ describe('MyRequests', () => {
         await waitFor(() => expect(cancelOvertime).toHaveBeenCalledTimes(1));
         expect(cancelOvertime.mock.calls[0][0]).toBe(4);
         expect(cancelOvertime.mock.calls[0][1]).toBe('Ya no la necesito');
+    });
+});
+
+describe('PendingForYou failures', () => {
+    it('failed sources show an error with retry, never the empty message', async () => {
+        const mySwaps = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue([]);
+        const hr = api({
+            attendanceToday: vi.fn().mockResolvedValue({}),
+            loanPolicy: vi.fn().mockResolvedValue(null),
+            mySchedule: vi.fn().mockResolvedValue(null),
+            myReceipts: vi.fn().mockResolvedValue([]),
+            myWorkforce: vi.fn().mockResolvedValue({}),
+            myLoans: vi.fn().mockResolvedValue([]),
+            mySwaps,
+        });
+        mount(<PendingForYou hr={hr} userId={7} />);
+        expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cargar tus cambios de turno');
+        expect(screen.queryByText('No tienes nada pendiente.')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+        expect(await screen.findByText('No tienes nada pendiente.')).toBeInTheDocument();
     });
 });
 

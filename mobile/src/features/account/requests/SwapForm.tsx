@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { addDaysDateOnly, sortScheduleShifts, weekStartFor } from '@web/components/hr/scheduleDates';
 import { formatLocalDateInput } from '@web/utils/dateInput';
 import type { HrScheduleShift, HrWeeklySchedule } from '@web/types/hr-schedule';
+import { useAccountNav } from '../AccountNav';
 import { toHrError, type HrApi, type HrSwapBody } from '../hrApi';
 import { AMBIGUOUS_SWAP, Field, FormScreen, useRequestSubmit } from './common';
 
+const notStarted = (s: HrScheduleShift) => new Date(`${s.date}T${s.startTime.slice(0, 5)}:00`).getTime() > Date.now();
 const hhmm = (t: string) => t.slice(0, 5);
 const dayLabel = (date: string) => {
     const d = new Date(`${date}T00:00:00`);
@@ -22,7 +24,8 @@ function publishedShifts(raw: unknown): HrScheduleShift[] {
 
 export function SwapForm({ hr, userId }: { hr: HrApi; userId: number }) {
     // The server takes no Idempotency-Key for swaps: an ambiguous failure is reported, never retried.
-    const { busy, error, submit } = useRequestSubmit({ onAmbiguous: AMBIGUOUS_SWAP });
+    const { navigate } = useAccountNav();
+    const { busy, error, locked, submit } = useRequestSubmit({ onAmbiguous: AMBIGUOUS_SWAP });
     const [mine, setMine] = useState<HrScheduleShift[] | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [shiftId, setShiftId] = useState('');
@@ -44,7 +47,7 @@ export function SwapForm({ hr, userId }: { hr: HrApi; userId: number }) {
                 return;
             }
             const all = r.flatMap((x) => (x.status === 'fulfilled' && x.value && x.value.status === 'PUBLISHED' ? x.value.shifts ?? [] : []));
-            const unique = [...new Map(all.map((s) => [s.id, s])).values()].filter((s) => s.date >= today);
+            const unique = [...new Map(all.map((s) => [s.id, s])).values()].filter((s) => notStarted(s));
             setMine(sortScheduleShifts(unique));
         });
         return () => {
@@ -80,11 +83,11 @@ export function SwapForm({ hr, userId }: { hr: HrApi; userId: number }) {
         return [...seen].map(([id, name]) => ({ id, name }));
     }, [team, userId, myShift]);
     const mateShifts = useMemo(
-        () => sortScheduleShifts(team.filter((s) => String(s.userId) === mateId && s.date >= today && (!myShift || s.branchId === myShift.branchId))),
+        () => sortScheduleShifts(team.filter((s) => String(s.userId) === mateId && notStarted(s) && (!myShift || s.branchId === myShift.branchId))),
         [team, mateId, today, myShift],
     );
 
-    const canSubmit = !!myShift && !!mateId && reason.length <= 1000;
+    const canSubmit = !!myShift && !!mateId && reason.length <= 1000 && !locked;
     const send = () =>
         submit(() => {
             const body: HrSwapBody = {
@@ -146,6 +149,11 @@ export function SwapForm({ hr, userId }: { hr: HrApi; userId: number }) {
             <Field label="Motivo">
                 <textarea className="rq-text" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />
             </Field>
+            {locked && (
+                <button type="button" className="btn" onClick={() => navigate('requests')}>
+                    Ver Mis solicitudes
+                </button>
+            )}
             <p className="muted">Tu compañero debe aceptar y luego RH aprueba el cambio.</p>
         </FormScreen>
     );

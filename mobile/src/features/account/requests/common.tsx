@@ -25,6 +25,8 @@ export function useRequestSubmit(opts: { onAmbiguous?: string } = {}) {
     const inFlight = useRef(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // After an ambiguous failure with a custom message the form stays locked: the user must check first.
+    const [locked, setLocked] = useState(false);
 
     const submit = useCallback(
         async (run: (action: ActionOpts) => Promise<unknown>) => {
@@ -38,7 +40,9 @@ export function useRequestSubmit(opts: { onAmbiguous?: string } = {}) {
                 back();
             } catch (e) {
                 const err = toHrError(e);
-                setError(err.isAmbiguous && opts.onAmbiguous ? opts.onAmbiguous : err.message);
+                const lock = err.isAmbiguous && !!opts.onAmbiguous;
+                setLocked(lock);
+                setError(lock ? opts.onAmbiguous! : err.message);
             } finally {
                 inFlight.current = false;
                 setBusy(false);
@@ -46,7 +50,7 @@ export function useRequestSubmit(opts: { onAmbiguous?: string } = {}) {
         },
         [actionId, back, toast, opts.onAmbiguous],
     );
-    return { busy, error, submit };
+    return { busy, error, locked, submit };
 }
 
 interface FormProps {

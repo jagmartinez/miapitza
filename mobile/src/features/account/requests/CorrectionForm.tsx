@@ -22,7 +22,6 @@ export function CorrectionForm({ hr }: { hr: HrApi }) {
     const [targetEventId, setTargetEventId] = useState('');
     const [occurredAt, setOccurredAt] = useState('');
     const [reason, setReason] = useState('');
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
     const needsTime = type === 'ADD_PUNCH' || type === 'CHANGE_TIME';
     const needsTarget = type === 'VOID_PUNCH' || type === 'CHANGE_TIME';
@@ -34,7 +33,7 @@ export function CorrectionForm({ hr }: { hr: HrApi }) {
                 type,
                 ...(type === 'ADD_PUNCH' ? { requestedAction: action } : {}),
                 ...(needsTarget && targetEventId ? { targetEventId: Number(targetEventId) } : {}),
-                ...(needsTime && occurredAt ? { requestedOccurredAt: occurredAt, requestedTimezone: timezone } : {}),
+                ...(needsTime && occurredAt ? { requestedOccurredAt: occurredAt } : {}),
                 reason: reason.trim(),
             };
             return hr.createCorrection(body, opts);
@@ -71,6 +70,9 @@ export function CorrectionForm({ hr }: { hr: HrApi }) {
                 <Field label="Fecha y hora">
                     <input type="datetime-local" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />
                 </Field>
+            )}
+            {needsTime && (
+                <p className="muted">Hora de la sucursal</p>
             )}
             <Field label="Motivo">
                 <textarea className="rq-text" rows={4} maxLength={REASON_MAX} value={reason} onChange={(e) => setReason(e.target.value)} />

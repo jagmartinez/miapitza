@@ -4,7 +4,7 @@ import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useToast } from '../../../ui/Toast';
 import { useAccountNav } from '../AccountNav';
 import { toHrError, type HrApi } from '../hrApi';
-import { useAccountSummary } from '../useAccountSummary';
+import { PART_LABELS, useAccountSummary } from '../useAccountSummary';
 import './requests.css';
 
 /** Things waiting on the employee: confirm schedule, new receipt, swap to answer. */
@@ -36,8 +36,15 @@ export function PendingForYou({ hr, userId }: { hr: HrApi; userId: number }) {
         <main className="rq">
             <ScreenHeader title="Pendiente para ti" onBack={back} />
             <div className="rq-form">
+                {summary.failed
+                    .filter((p) => p === 'schedule' || p === 'receipts' || p === 'swaps')
+                    .map((p) => (
+                        <p key={p} className="error" role="alert">
+                            No se pudo cargar {PART_LABELS[p]}. <button type="button" className="ah-link" onClick={summary.reload}>Reintentar</button>
+                        </p>
+                    ))}
                 {summary.status === 'loading' && <p className="muted">Cargando…</p>}
-                {summary.status === 'ready' && !summary.pendingForYou.length && <p className="muted">No tienes nada pendiente.</p>}
+                {summary.status === 'ready' && !summary.failed.length && !summary.pendingForYou.length && <p className="muted">No tienes nada pendiente.</p>}
                 {summary.pendingForYou.map((p) =>
                     p.kind === 'swap' ? (
                         <Card key={p.id} title={p.title} badge="Pendiente" badgeTone="pending">

@@ -53,9 +53,11 @@ export function LeaveForm({ hr }: { hr: HrApi }) {
     const type = types?.find((t) => String(t.id) === typeId);
     const balance = balanceFor(type, vacation);
     const withTimes = fraction === 'HOURS' || fraction === 'HALF_DAY';
-    const span = withTimes && startTime && endTime ? minuteOfDay(endTime)! - minuteOfDay(startTime)! : null;
-    const halfInvalid = fraction === 'HALF_DAY' && span != null && span !== 240;
-    const canSubmit = !!type && !!startDate && !!endDate && endDate >= startDate && validReason(reason) && (!withTimes || (!!startTime && !!endTime)) && !halfInvalid;
+    const datesInvalid = !!startDate && !!endDate && endDate < startDate;
+    // HOURS is a time range within one day. HALF_DAY length is configured on the server, which validates it.
+    const hoursMultiDay = fraction === 'HOURS' && !!startDate && !!endDate && endDate !== startDate;
+    const hoursOrder = fraction === 'HOURS' && !!startTime && !!endTime && (minuteOfDay(endTime) ?? 0) <= (minuteOfDay(startTime) ?? 0);
+    const canSubmit = !!type && !!startDate && !!endDate && !datesInvalid && validReason(reason) && (!withTimes || (!!startTime && !!endTime)) && !hoursMultiDay && !hoursOrder;
 
     const send = () =>
         submit((action) => {
@@ -118,7 +120,9 @@ export function LeaveForm({ hr }: { hr: HrApi }) {
                     </Field>
                 </>
             )}
-            {halfInvalid && <p className="muted">Medio día debe cubrir exactamente 4 horas.</p>}
+            {datesInvalid && <p className="pf-error">La fecha final no puede ser anterior a la inicial.</p>}
+            {hoursMultiDay && <p className="pf-error">Un rango de horas debe ser de un solo día.</p>}
+            {hoursOrder && <p className="pf-error">La hora final debe ser posterior a la inicial.</p>}
             <Field label="Motivo">
                 <textarea className="rq-text" rows={4} maxLength={REASON_MAX} value={reason} onChange={(e) => setReason(e.target.value)} />
             </Field>
