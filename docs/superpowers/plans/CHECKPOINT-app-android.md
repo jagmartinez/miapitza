@@ -108,7 +108,7 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - Uso semanal consumido por la Fase 3: ~3 puntos (46 % → 49 %).
 
 ## Siguiente
-- Fase 4 (Mi cuenta en el celular). Primero escribir su plan (ver reglas abajo: `mustChangePassword`/`passwordExpired`, PIN con `currentPassword`).
+- Fase 4 (Mi cuenta en el celular): plan escrito en `docs/superpowers/plans/2026-11-22-app-android-fase-4-mi-cuenta.md` (8 tareas: 1 servidor, 7 app; críticas 2 y 4). Decisión del usuario: "Por aprobar" solo ADMIN/SUPERADMIN. Push y "mi NPS" pasan a la Fase 5. Falta aprobarlo y ejecutarlo.
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
