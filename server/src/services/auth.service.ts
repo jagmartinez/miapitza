@@ -79,11 +79,33 @@ export interface IssueSessionOptions {
     auditAction: Extract<AuditAction, 'LOGIN' | 'PIN_LOGIN' | 'DEVICE_LOGIN'>;
     /** Runs first inside the session transaction; throw to abort issuing the session. */
     guard?: (tx: Prisma.TransactionClient) => Promise<void>;
+    /** With a deviceTag: revoke that device's earlier live sessions in the issuing transaction. */
+    revokePriorDeviceSessions?: boolean;
 }
 
 export type LoginResult = Awaited<ReturnType<typeof AuthService.issueSession>>;
 
 const GENERIC_AUTH_ERROR = 'Credenciales inválidas';
+
+const DEVICE_AUTH_ERRORS = {
+    DEVICE_NOT_ACTIVE: { statusCode: 401, message: 'Dispositivo no autorizado' },
+    KITCHEN_ACCOUNT_UNAVAILABLE: {
+        statusCode: 403,
+        message: 'La cuenta de cocina no está disponible. Avisa al administrador.',
+    },
+} as const;
+
+/** Typed device-login failure so the kitchen app can tell "unpair" from "ask the admin". */
+export class DeviceAuthError extends Error {
+    readonly code: keyof typeof DEVICE_AUTH_ERRORS;
+    readonly statusCode: 401 | 403;
+    constructor(code: keyof typeof DEVICE_AUTH_ERRORS) {
+        super(DEVICE_AUTH_ERRORS[code].message);
+        this.name = 'DeviceAuthError';
+        this.code = code;
+        this.statusCode = DEVICE_AUTH_ERRORS[code].statusCode;
+    }
+}
 
 const PIN_USER_LOCK_ERROR = /temporarily locked/i;
 const DEVICE_PIN_MAX_FAILURES = 20;
@@ -351,6 +373,12 @@ export class AuthService {
         }
         await prisma.$transaction(async (tx) => {
             if (opts.guard) await opts.guard(tx);
+            if (opts.revokePriorDeviceSessions && opts.deviceTag) {
+                await tx.userSession.updateMany({
+                    where: { device: opts.deviceTag, revoked: false },
+                    data: { revoked: true },
+                });
+            }
             const session = await SessionService.create(
                 user.id,
                 token,
@@ -474,7 +502,7 @@ export class AuthService {
     }): Promise<LoginResult> {
         const device = await OperationalDeviceService.resolveActive(input.deviceToken);
         if (!device || device.type !== 'KITCHEN_TABLET' || !device.kitchenUserId) {
-            throw new Error(GENERIC_AUTH_ERROR);
+            throw new DeviceAuthError('DEVICE_NOT_ACTIVE');
         }
 
         const user = await prisma.user.findUnique({
@@ -488,7 +516,7 @@ export class AuthService {
             || user.branchId !== device.branchId
             || !isKitchenDeviceUser(roleNames)
         ) {
-            throw new Error(GENERIC_AUTH_ERROR);
+            throw new DeviceAuthError('KITCHEN_ACCOUNT_UNAVAILABLE');
         }
 
         return AuthService.issueSession(user, {
@@ -497,7 +525,14 @@ export class AuthService {
             idleTimeoutMinutes: KITCHEN_SESSION_IDLE_MINUTES,
             deviceTag: deviceSessionTag(device.id),
             auditAction: 'DEVICE_LOGIN',
-            guard: (tx) => assertDeviceStillActive(tx, device.id),
+            revokePriorDeviceSessions: true,
+            guard: async (tx) => {
+                try {
+                    await assertDeviceStillActive(tx, device.id);
+                } catch {
+                    throw new DeviceAuthError('DEVICE_NOT_ACTIVE');
+                }
+            },
         });
     }
 

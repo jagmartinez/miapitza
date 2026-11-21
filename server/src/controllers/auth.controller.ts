@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { createHash } from 'node:crypto';
-import { AuthService } from '../services/auth.service';
+import { AuthService, DeviceAuthError } from '../services/auth.service';
 import { PinService, PinError } from '../services/pin.service';
 import { SessionService } from '../services/session.service';
 import { TwoFactorService } from '../services/twoFactor.service';
@@ -235,6 +235,10 @@ export class AuthController {
             });
             res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
         } catch (error) {
+            if (error instanceof DeviceAuthError) {
+                console.warn('[AUTH] Device login rejected', { ipAddress: req.ip || null, reason: error.code });
+                return next({ statusCode: error.statusCode, code: error.code, message: error.message });
+            }
             AuthController.handleDeviceAuthError('Device login', error, req, next);
         }
     }
