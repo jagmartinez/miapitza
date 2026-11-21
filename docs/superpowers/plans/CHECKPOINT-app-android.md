@@ -85,7 +85,7 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - Uso semanal consumido por la Fase 2b: ~2 puntos (44 % → 46 %).
 
 ## Siguiente
-- Fase 3 (Cocina / KDS en tablet fija). Primero escribir su plan (ver "Reglas para la Fase 2": no desemparejar ante cualquier 401, evitar sesiones duplicadas).
+- Fase 3 (Cocina / KDS en tablet fija): plan escrito en `docs/superpowers/plans/2026-11-21-app-android-fase-3-cocina.md` (7 tareas: 2 servidor, 5 app; críticas 1, 3 y 5). Falta aprobarlo y ejecutarlo.
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
