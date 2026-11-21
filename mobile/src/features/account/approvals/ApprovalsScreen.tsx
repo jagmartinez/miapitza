@@ -3,7 +3,7 @@ import { Card } from '../../../ui/Card';
 import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useToast } from '../../../ui/Toast';
 import { useAccountNav } from '../AccountNav';
-import { toHrError, type HrApi, type HrSwap } from '../hrApi';
+import { toHrError, type HrApi, type HrSwap, type HrSwapShift } from '../hrApi';
 import { REASON_MAX, validReason } from '../requests/common';
 import type { HrAttendanceCorrection, HrLeaveRequest, HrOvertimeRequest } from '@web/types/hr-workforce';
 import '../profile/profile.css';
@@ -74,21 +74,41 @@ const fromCorrection = (r: HrAttendanceCorrection): Item => ({
     ].filter(Boolean),
     reason: r.reason,
 });
+/** "25/11/2026 09:00-17:00" read in the shift's own timezone (the instants are UTC). */
+function shiftText(sh?: HrSwapShift | null): string {
+    if (!sh?.startAt || !sh.endAt) return '';
+    const timeZone = sh.timezoneSnapshot || undefined;
+    const parts = (iso: string) => {
+        try {
+            const f = new Intl.DateTimeFormat('en-GB', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+            return Object.fromEntries(f.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+        } catch {
+            return null;
+        }
+    };
+    const a = parts(sh.startAt);
+    const b = parts(sh.endAt);
+    if (!a || !b) return '';
+    return `${a.day}/${a.month}/${a.year} ${a.hour}:${a.minute}-${b.hour}:${b.minute}${sh.branch?.name ? ` · ${sh.branch.name}` : ''}`;
+}
+
 const fromSwap = (r: HrSwap): Item => ({
     kind: 'swap',
     id: r.id,
     who: who(r.requestedBy?.name, r.requestedById),
     lines: [
         `con ${who(r.targetUser?.name, r.targetUserId)}`,
-        r.requesterShift?.date ? `${day(r.requesterShift.date)} ${r.requesterShift.startTime ?? ''}-${r.requesterShift.endTime ?? ''}` : '',
+        shiftText(r.requesterShift),
     ].filter(Boolean),
     reason: r.reason,
 });
 
-function RejectSheet({ item, onConfirm, onClose }: { item: Item; onConfirm: (reason: string) => Promise<void>; onClose: () => void }) {
+function RejectSheet({ item, onConfirm, onClose }: { item: Item; onConfirm: (reason: string) => Promise<string | null>; onClose: () => void }) {
     const needsReason = item.kind !== 'swap';
     const [reason, setReason] = useState('');
     const ok = !needsReason || validReason(reason);
+    const [error, setError] = useState<string | null>(null);
+    const [sending, setSending] = useState(false);
     return (
         <div className="pf-sheet-backdrop">
             <form
@@ -97,7 +117,13 @@ function RejectSheet({ item, onConfirm, onClose }: { item: Item; onConfirm: (rea
                 aria-label="Rechazar solicitud"
                 onSubmit={(e: FormEvent) => {
                     e.preventDefault();
-                    if (ok) void onConfirm(reason.trim());
+                    if (!ok || sending) return;
+                    setSending(true);
+                    setError(null);
+                    void onConfirm(reason.trim()).then((msg) => {
+                        setError(msg);
+                        setSending(false);
+                    });
                 }}
             >
                 <h2>Rechazar solicitud</h2>
@@ -108,7 +134,12 @@ function RejectSheet({ item, onConfirm, onClose }: { item: Item; onConfirm: (rea
                         <textarea className="rq-text" rows={3} maxLength={REASON_MAX} value={reason} onChange={(e) => setReason(e.target.value)} />
                     </label>
                 )}
-                <button type="submit" className="btn btn-primary" disabled={!ok}>
+                {error && (
+                    <p className="pf-error" role="alert">
+                        {error}
+                    </p>
+                )}
+                <button type="submit" className="btn btn-primary" disabled={!ok || sending}>
                     Confirmar rechazo
                 </button>
                 <button type="button" className="btn" onClick={onClose}>
@@ -137,7 +168,7 @@ function ApprovalCard({ item, busy, error, onApprove, onReject }: { item: Item; 
                     <input type="number" inputMode="numeric" min={1} max={item.requestedMinutes} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
                 </label>
             )}
-            {item.kind === 'overtime' && !minutesOk && <p className="pf-error">Máximo {item.requestedMinutes} min</p>}
+            {item.kind === 'overtime' && !minutesOk && <p className="pf-error">Entre 1 y {item.requestedMinutes} min</p>}
             {error && (
                 <p className="pf-error" role="alert">
                     {error}
@@ -187,9 +218,9 @@ export function ApprovalsScreen({ hr }: { hr: HrApi }) {
     }, [load]);
 
     const decide = useCallback(
-        async (item: Item, decision: 'APPROVED' | 'REJECTED', reason: string, minutes?: number) => {
+        async (item: Item, decision: 'APPROVED' | 'REJECTED', reason: string, minutes?: number): Promise<string | null> => {
             const key = `${item.kind}-${item.id}`;
-            if (inFlight.current.has(key)) return;
+            if (inFlight.current.has(key)) return null;
             inFlight.current.add(key);
             setBusy(new Set(inFlight.current));
             setErrors((e) => ({ ...e, [key]: '' }));
@@ -206,16 +237,25 @@ export function ApprovalsScreen({ hr }: { hr: HrApi }) {
                 });
                 setRejecting(null);
                 toast.show(decision === 'APPROVED' ? 'Solicitud aprobada' : 'Solicitud rechazada');
+                return null;
             } catch (e) {
                 const err = toHrError(e);
-                setErrors((x) => ({ ...x, [key]: err.code === 'HR_SELF_APPROVAL_FORBIDDEN' ? SELF_APPROVAL : err.message }));
-                setRejecting(null);
+                const msg = err.code === 'HR_SELF_APPROVAL_FORBIDDEN' ? SELF_APPROVAL : err.message;
+                // Already decided by someone else (409) or gone (404), except self-approval: refresh the tab.
+                if ((err.status === 409 || err.status === 404) && err.code !== 'HR_SELF_APPROVAL_FORBIDDEN') {
+                    setRejecting(null);
+                    load(item.kind);
+                    toast.show(msg, 'error');
+                    return null;
+                }
+                setErrors((x) => ({ ...x, [key]: msg }));
+                return msg;
             } finally {
                 inFlight.current.delete(key);
                 setBusy(new Set(inFlight.current));
             }
         },
-        [hr, toast],
+        [hr, toast, load],
     );
 
     const current = data[tab];
@@ -256,7 +296,11 @@ export function ApprovalsScreen({ hr }: { hr: HrApi }) {
                         />
                     ))}
             </div>
-            {rejecting && <RejectSheet item={rejecting} onClose={() => setRejecting(null)} onConfirm={(reason) => decide(rejecting, 'REJECTED', reason)} />}
+            {rejecting && <RejectSheet item={rejecting} onClose={() => setRejecting(null)} onConfirm={async (reason) => {
+                        const msg = await decide(rejecting, 'REJECTED', reason);
+                        if (msg === null) setRejecting(null);
+                        return msg;
+                    }} />}
         </main>
     );
 }

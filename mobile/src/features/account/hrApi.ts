@@ -86,6 +86,14 @@ export interface HrLoanPolicy {
     tenureMonths: number | null;
 }
 
+export interface HrSwapShift {
+    id: number;
+    startAt: string;
+    endAt: string;
+    timezoneSnapshot?: string | null;
+    branch?: { id: number; name: string } | null;
+}
+
 export interface HrSwap {
     id: number;
     status: 'PENDING' | 'ACCEPTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
@@ -97,7 +105,9 @@ export interface HrSwap {
     createdAt: string;
     requestedBy?: { id: number; name: string } | null;
     targetUser?: { id: number; name: string } | null;
-    requesterShift?: { id: number; date?: string; startTime?: string; endTime?: string } | null;
+    /** Raw ScheduledShift: ISO UTC instants plus the timezone to read them in. */
+    requesterShift?: HrSwapShift | null;
+    offeredShift?: HrSwapShift | null;
 }
 
 export interface HrEmployeeSummary {
