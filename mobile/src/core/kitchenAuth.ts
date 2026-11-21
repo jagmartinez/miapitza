@@ -1,11 +1,22 @@
 import type { AxiosInstance } from 'axios';
 import { appEvents } from './events';
-import { httpStatus } from './httpErrors';
+import { httpCode, httpStatus } from './httpErrors';
 import type { createRealtime } from './realtime';
 import type { Session, SessionStore } from './session';
 
 const MIN_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30_000;
+const UNAVAILABLE_RETRY_MS = 60_000;
+
+export type KitchenAuthStatus = 'connecting' | 'online' | 'renewing' | 'account-unavailable' | 'offline';
+
+let lastStatus: KitchenAuthStatus = 'connecting';
+/** Latest status, for screens that mount after it was emitted. */
+export const kitchenAuthStatus = () => lastStatus;
+function setStatus(status: KitchenAuthStatus) {
+    lastStatus = status;
+    appEvents.emit('kitchen-auth-status', status);
+}
 
 type RealtimeControl = Pick<ReturnType<typeof createRealtime>, 'reconnect'>;
 
@@ -72,8 +83,16 @@ export function createKitchenAuth(deps: Deps) {
             onSession(session);
         } catch (err) {
             if (stopped) return;
-            if (httpStatus(err) === 401) {
+            const status = httpStatus(err);
+            const code = httpCode(err);
+            // Only an explicit "this device is no longer authorized" unpairs; any other 401 may be transient.
+            if (status === 401 && code === 'DEVICE_NOT_ACTIVE') {
                 await revoke();
+                return;
+            }
+            if (status === 403 && code === 'KITCHEN_ACCOUNT_UNAVAILABLE') {
+                setStatus('account-unavailable');
+                schedule(UNAVAILABLE_RETRY_MS);
                 return;
             }
             const wait = backoff;
@@ -87,6 +106,7 @@ export function createKitchenAuth(deps: Deps) {
     return {
         async start() {
             stopped = false;
+            setStatus('connecting');
             unsubscribe?.();
             unsubscribeStatus?.();
             // CONNECTED proves the new session works: the next expiry is a normal one.
@@ -94,9 +114,13 @@ export function createKitchenAuth(deps: Deps) {
                 if (status === 'online') {
                     online = true;
                     expiryBackoff = MIN_BACKOFF_MS;
+                    setStatus('online');
+                } else if (status === 'offline' && lastStatus === 'online') {
+                    setStatus('offline');
                 }
             });
             unsubscribe = appEvents.on('session-expired', () => {
+                if (lastStatus !== 'account-unavailable') setStatus('renewing');
                 if (online) {
                     schedule(0);
                     return;

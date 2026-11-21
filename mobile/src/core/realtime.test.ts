@@ -35,9 +35,13 @@ const flush = () => vi.advanceTimersByTimeAsync(0);
 
 beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5); // jitter factor exactly 1
     FakeWS.instances = [];
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+});
 
 describe('realtime', () => {
     it('sends AUTH first on open', async () => {
@@ -79,6 +83,37 @@ describe('realtime', () => {
             await vi.advanceTimersByTimeAsync(1);
             expect(FakeWS.instances).toHaveLength(i + 2);
         }
+        rt.close();
+    });
+
+    it('reconnect delay has ±20 % jitter within [800 ms, 36 s]', async () => {
+        const rand = vi.spyOn(Math, 'random');
+        const firstDelay = async (r: number) => {
+            FakeWS.instances = [];
+            rand.mockReturnValue(r);
+            const rt = make();
+            rt.connect();
+            FakeWS.instances[0].serverClose(1006);
+            let waited = 0;
+            while (FakeWS.instances.length < 2 && waited < 40_000) {
+                await vi.advanceTimersByTimeAsync(10);
+                waited += 10;
+            }
+            rt.close();
+            return waited;
+        };
+        expect(await firstDelay(0)).toBe(800);
+        expect(await firstDelay(1)).toBe(1200);
+        // capped delay (30 s) stays within 36 s at the top of the jitter range
+        rand.mockReturnValue(1);
+        const rt = make();
+        FakeWS.instances = [];
+        rt.connect();
+        for (let i = 0; i < 6; i++) {
+            FakeWS.instances[i].serverClose(1006);
+            await vi.advanceTimersByTimeAsync(36_000);
+        }
+        expect(FakeWS.instances).toHaveLength(7);
         rt.close();
     });
 

@@ -1,4 +1,4 @@
-export type AppEvent = 'session-expired' | 'realtime-status' | 'storage-error';
+export type AppEvent = 'session-expired' | 'realtime-status' | 'storage-error' | 'kitchen-auth-status';
 
 type Listener = (payload?: unknown) => void;
 

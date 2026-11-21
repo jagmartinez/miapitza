@@ -3,6 +3,7 @@ import { appEvents } from './events';
 const AUTH_FAILED_CLOSE_CODE = 4001;
 const MIN_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30000;
+const JITTER = 0.2; // ±20 % so a fleet of tablets does not reconnect in lockstep
 
 export interface RealtimeOptions {
     url: string;
@@ -24,7 +25,7 @@ export function createRealtime(opts: RealtimeOptions) {
 
     function scheduleReconnect() {
         if (!wanted || timer) return;
-        const wait = delay;
+        const wait = Math.round(delay * (1 - JITTER + Math.random() * 2 * JITTER));
         delay = Math.min(delay * 2, MAX_DELAY_MS);
         timer = setTimeout(() => {
             timer = null;

@@ -99,8 +99,8 @@ describe('kitchenAuth', () => {
         auth.stop();
     });
 
-    it('treats a rejected device token as revoked: clears the device and stops retrying', async () => {
-        const { auth, sessions, calls, onRevoked } = setup([{ status: 401 }]);
+    it('unpairs only on 401 with code DEVICE_NOT_ACTIVE: clears the device and stops retrying', async () => {
+        const { auth, sessions, calls, onRevoked } = setup([{ status: 401, data: { success: false, code: 'DEVICE_NOT_ACTIVE' } }]);
         await sessions.saveDeviceToken('dev-1');
         await sessions.saveDeviceType('KITCHEN_TABLET');
         await auth.start();
@@ -109,6 +109,62 @@ describe('kitchenAuth', () => {
         expect(await sessions.deviceType()).toBeNull();
         await vi.advanceTimersByTimeAsync(120_000);
         expect(logins(calls)).toBe(1);
+        auth.stop();
+    });
+
+    it('401 without a code backs off and retries, never unpairs', async () => {
+        const { auth, sessions, calls, onRevoked } = setup([{ status: 401, data: { success: false } }, ok('k-1')]);
+        await sessions.saveDeviceToken('dev-1');
+        await auth.start();
+        expect(onRevoked).not.toHaveBeenCalled();
+        expect(await sessions.deviceToken()).toBe('dev-1');
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(logins(calls)).toBe(2);
+        expect((await sessions.load())?.token).toBe('k-1');
+        auth.stop();
+    });
+
+    it('403 KITCHEN_ACCOUNT_UNAVAILABLE reports account-unavailable and retries every 60 s without unpairing', async () => {
+        const { auth, sessions, calls, onRevoked } = setup([
+            { status: 403, data: { success: false, code: 'KITCHEN_ACCOUNT_UNAVAILABLE' } },
+            { status: 403, data: { success: false, code: 'KITCHEN_ACCOUNT_UNAVAILABLE' } },
+            ok('k-1'),
+        ]);
+        const statuses: unknown[] = [];
+        const off = appEvents.on('kitchen-auth-status', (s) => statuses.push(s));
+        await sessions.saveDeviceToken('dev-1');
+        await auth.start();
+        expect(statuses).toContain('account-unavailable');
+        expect(logins(calls)).toBe(1);
+        await vi.advanceTimersByTimeAsync(59_000);
+        expect(logins(calls)).toBe(1);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(logins(calls)).toBe(2);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(logins(calls)).toBe(3);
+        expect(onRevoked).not.toHaveBeenCalled();
+        expect(await sessions.deviceToken()).toBe('dev-1');
+        off();
+        auth.stop();
+    });
+
+    it('session-expired reports renewing, re-logs in, then online once the socket connects', async () => {
+        const { auth, sessions, calls } = setup([ok('k-1'), ok('k-2')]);
+        const statuses: unknown[] = [];
+        const off = appEvents.on('kitchen-auth-status', (s) => statuses.push(s));
+        await sessions.saveDeviceToken('dev-1');
+        await auth.start();
+        appEvents.emit('realtime-status', 'online');
+        expect(statuses[statuses.length - 1]).toBe('online');
+        await sessions.clear();
+        appEvents.emit('session-expired');
+        expect(statuses[statuses.length - 1]).toBe('renewing');
+        await vi.advanceTimersByTimeAsync(100);
+        expect(logins(calls)).toBe(2);
+        expect(statuses[statuses.length - 1]).toBe('renewing');
+        appEvents.emit('realtime-status', 'online');
+        expect(statuses[statuses.length - 1]).toBe('online');
+        off();
         auth.stop();
     });
 

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Router } from './Router';
+import { appEvents } from '../core/events';
 import type { Services } from '../core/services';
 import { createSessionStore, memoryStore } from '../core/session';
 import { fakeApi, pathOf, session } from '../test/helpers';
@@ -130,5 +131,34 @@ describe('follow-up M7: a revoked device wipes the local database', () => {
             expect(await fresh.drafts.count()).toBe(0);
             fresh.close();
         });
+    });
+});
+
+describe('kitchen mode', () => {
+    it('keeps KitchenHome mounted while the session is renewed', async () => {
+        const kitchenUser = { id: 3, name: 'Cocina', roles: ['COCINA'], permissions: [] };
+        let n = 0;
+        const api = fakeApi((config) =>
+            pathOf(config) === 'POST /auth/device-login'
+                ? { data: { success: true, data: { token: `k-${++n}`, user: kitchenUser } } }
+                : { data: { success: true, data: [] } },
+        );
+        const { services } = build();
+        const kitchenServices = { ...services, http: api.http, sessions: api.sessions } as Services;
+        await api.sessions.saveDeviceType('KITCHEN_TABLET');
+        await api.sessions.saveDeviceToken('dev-1');
+        render(<Router services={kitchenServices} />);
+        const home = await screen.findByTestId('kitchen-home');
+        await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'true'));
+        appEvents.emit('realtime-status', 'online');
+
+        await api.sessions.clear();
+        appEvents.emit('session-expired');
+        await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'false'));
+        expect(home).toBeInTheDocument();
+        expect(screen.getByTestId('kitchen-home')).toBe(home); // same instance, never unmounted
+        await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'true'));
+        expect(screen.getByTestId('kitchen-home')).toBe(home);
+        expect(n).toBe(2);
     });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { appEvents } from '../core/events';
 import { createKitchenAuth } from '../core/kitchenAuth';
 import { resolveMode } from '../core/mode';
@@ -9,10 +9,12 @@ import { IdleLockBoundary } from '../core/IdleLockBoundary';
 import { AccountHome } from '../features/account/AccountHome';
 import { LoginScreen } from '../features/account/LoginScreen';
 import { DeviceSetupScreen } from '../features/device/DeviceSetupScreen';
-import { KitchenHome } from '../features/kitchen/KitchenHome';
 import { PinScreen } from '../features/pin/PinScreen';
 import { WaiterHome } from '../features/waiter/WaiterHome';
 import { loadWaiterData, wipeWaiterData } from '../data/loadWaiterData';
+
+// Split out of the main bundle: waiter and account tablets never need the kitchen board.
+const KitchenHome = lazy(() => import('../features/kitchen/KitchenHome').then((m) => ({ default: m.KitchenHome })));
 
 /** Locks the waiter tablet back to the PIN screen after 2 minutes without touch (10 while a cash count has entries). */
 function WaiterSession({ session, services, onSwitchUser }: { session: Session; services: Services; onSwitchUser: () => void }) {
@@ -133,7 +135,12 @@ export function Router({ services }: { services: Services }) {
                 <PinScreen api={pinApi} onLoggedIn={setSession} onRevoked={handleRevoked} loadPending={loadPending} />
             );
         case 'kitchen':
-            return session ? <KitchenHome session={session} /> : <main className="screen"><p className="muted">Conectando…</p></main>;
+            // Mounted regardless of the session: a renewal must not unmount the board.
+            return (
+                <Suspense fallback={<main className="screen"><p className="muted">Conectando…</p></main>}>
+                    <KitchenHome session={session} services={services} />
+                </Suspense>
+            );
         case 'account':
             return session ? (
                 <AccountHome
