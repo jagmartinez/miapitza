@@ -7,6 +7,7 @@ import './attendance.css';
 export const MSG = {
     cameraDenied: 'Activa la cámara para la app en Ajustes del teléfono.',
     cameraUnavailable: 'No se encontró una cámara frontal disponible o la usa otra app. Ciérrala e inténtalo de nuevo.',
+    noFrame: 'La cámara no envió imagen. Reintenta.',
     cameraUnknown: 'No fue posible iniciar la cámara. Inténtalo de nuevo.',
     locationDenied: 'Activa la ubicación para la app en Ajustes del teléfono.',
     locationTimeout: 'No se pudo obtener tu ubicación a tiempo. Sal a un lugar abierto y reintenta.',
@@ -29,7 +30,7 @@ export function appendFrames(form: FormData, frames: Blob[], prefix: string) {
 
 /** Maps a camera/location/api failure to user copy. */
 export function failureMessage(e: unknown): string {
-    if (e instanceof FaceCaptureError) return e.kind === 'denied' ? MSG.cameraDenied : e.kind === 'unavailable' ? MSG.cameraUnavailable : MSG.cameraUnknown;
+    if (e instanceof FaceCaptureError) return e.kind === 'denied' ? MSG.cameraDenied : e.kind === 'unavailable' ? MSG.cameraUnavailable : e.kind === 'noframe' ? MSG.noFrame : MSG.cameraUnknown;
     if (e instanceof LocationError) return e.kind === 'denied' ? MSG.locationDenied : e.kind === 'timeout' ? MSG.locationTimeout : MSG.locationUnavailable;
     if (e instanceof HrError) return e.code === 'FACE_PROVIDER_UNAVAILABLE' ? MSG.provider : e.message || MSG.unconfirmed;
     return (e as Error)?.message || MSG.unconfirmed;
@@ -38,9 +39,18 @@ export function failureMessage(e: unknown): string {
 /** The video stays mounted (hidden) so the hook can attach the stream before the preview shows. */
 export function CameraView({ videoRef, visible, instruction }: { videoRef: RefObject<HTMLVideoElement>; visible: boolean; instruction?: string }) {
     return (
-        <div className="att-camera" hidden={!visible}>
-            <video ref={videoRef} muted playsInline className="att-video" />
-            {instruction && <p className="att-instruction" aria-live="assertive">{instruction}</p>}
+        <div className="att-camera">
+            <div hidden={!visible}>
+                <video ref={videoRef} muted playsInline className="att-video" />
+            </div>
+            {/* Always mounted so screen readers announce the text when it changes. */}
+            <p className="att-instruction" aria-live="assertive">{visible ? instruction : ''}</p>
         </div>
     );
+}
+
+/** Resend the identical request only when it may not have reached the server (no response, 408, 5xx). */
+export function isResendable(e: unknown): boolean {
+    if (!(e instanceof HrError) || e.code === 'FACE_PROVIDER_UNAVAILABLE') return false;
+    return e.status === undefined || e.status === 408 || e.status >= 500;
 }

@@ -54,6 +54,12 @@ describe('AccountHome', () => {
         expect(screen.getByTestId('where')).toHaveTextContent('punch');
     });
 
+    it('PENDING face enrollment replaces the mark button', async () => {
+        renderHome(linked, hrWith(today, { biometricStatus: vi.fn().mockResolvedValue({ status: 'PENDING' }) }));
+        expect(await screen.findByText('Registro facial pendiente de aprobación')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Entrada' })).toBeNull();
+    });
+
     it('home hides Por aprobar for non-admin', async () => {
         renderHome(linked, hrWith(today));
         await screen.findByRole('button', { name: 'Entrada' });

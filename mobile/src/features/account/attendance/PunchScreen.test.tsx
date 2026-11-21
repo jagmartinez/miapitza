@@ -1,11 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PunchScreen } from './PunchScreen';
 import { AccountNavProvider, useAccountNav } from '../AccountNav';
 import { ToastProvider } from '../../../ui/Toast';
 import { HrError, type HrApi } from '../hrApi';
-import { mockCamera, mockGeolocation, type CameraMock } from './captureMocks';
+import { mockCamera, mockGeolocation, type CameraMock } from '../../../test/captureMocks';
 
 const today = {
     serverTime: '2026-11-20T08:00:00Z',
@@ -30,8 +30,10 @@ const challenge = (over = {}) => ({
 });
 const accepted = { decision: 'ACCEPTED', message: 'ok', checks: {}, punch: { id: 1, action: 'CHECK_IN', occurredAt: '2026-11-20T08:02:30Z' } };
 
+let nav: ReturnType<typeof useAccountNav>;
 function Open() {
-    const { navigate } = useAccountNav();
+    nav = useAccountNav();
+    const { navigate } = nav;
     useEffect(() => navigate('punch', { action: 'CHECK_IN' }), [navigate]);
     return null;
 }
@@ -189,5 +191,90 @@ describe('PunchScreen', () => {
         setup({ biometricStatus: vi.fn().mockResolvedValue({ status: 'PENDING', pendingApproval: true }) });
         expect(await screen.findByText('Registro facial pendiente de aprobación')).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /^Marcar/ })).toBeNull();
+    });
+
+    it('429 challenge error shows the server message and restarts fresh', async () => {
+        const punch = vi
+            .fn()
+            .mockRejectedValueOnce(new HrError('Demasiados intentos con este reto.', { code: 'CHALLENGE_ATTEMPTS_EXCEEDED', status: 429, isAmbiguous: true }))
+            .mockResolvedValueOnce(accepted);
+        const hr = setup({ punch });
+        await start();
+        expect(await screen.findByText('Demasiados intentos con este reto.')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+        expect(await screen.findByText('Entrada registrada 08:02')).toBeInTheDocument();
+        expect(hr.createChallenge).toHaveBeenCalledTimes(2);
+        expect(punch.mock.calls[1][1].actionId).not.toBe(punch.mock.calls[0][1].actionId);
+        expect(punch.mock.calls[1][0]).not.toBe(punch.mock.calls[0][0]);
+    });
+
+    it('409 domain error restarts fresh', async () => {
+        const punch = vi
+            .fn()
+            .mockRejectedValueOnce(new HrError('El reto ya fue usado.', { code: 'CHALLENGE_REPLAY', status: 409, isAmbiguous: true }))
+            .mockResolvedValueOnce(accepted);
+        const hr = setup({ punch });
+        await start();
+        expect(await screen.findByText('El reto ya fue usado.')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+        await screen.findByText('Entrada registrada 08:02');
+        expect(hr.createChallenge).toHaveBeenCalledTimes(2);
+    });
+
+    it('requireBiometric false still creates the challenge but skips the camera and frames', async () => {
+        const t = { ...today, policy: { ...today.policy, requireBiometric: false } };
+        const hr = setup({ attendanceToday: vi.fn().mockResolvedValue(t) });
+        await start();
+        await screen.findByText('Entrada registrada 08:02');
+        expect(hr.createChallenge).toHaveBeenCalledTimes(1);
+        expect(cam.getUserMedia).not.toHaveBeenCalled();
+        const form = (hr.punch as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData;
+        expect(form.get('challengeId')).toBe('c1');
+        expect(form.getAll('faceImage')).toHaveLength(0);
+    });
+
+    it('double tap runs the flow once (requireGeolocation false)', async () => {
+        const t = { ...today, policy: { ...today.policy, requireGeolocation: false } };
+        const hr = setup({ attendanceToday: vi.fn().mockResolvedValue(t) });
+        const btn = await screen.findByRole('button', { name: /^Marcar/ });
+        fireEvent.click(btn);
+        fireEvent.click(btn);
+        await screen.findByText('Entrada registrada 08:02');
+        expect(hr.createChallenge).toHaveBeenCalledTimes(1);
+        expect(hr.punch).toHaveBeenCalledTimes(1);
+    });
+
+    it('back during createChallenge never opens the camera or punches', async () => {
+        let release!: (c: unknown) => void;
+        const hr = setup({ createChallenge: vi.fn(() => new Promise((r) => (release = r))) });
+        await start();
+        await waitFor(() => expect(hr.createChallenge).toHaveBeenCalled());
+        act(() => nav.back());
+        await act(async () => release(challenge()));
+        expect(cam.getUserMedia).not.toHaveBeenCalled();
+        expect(hr.punch).not.toHaveBeenCalled();
+    });
+
+    it('back during capture stops the tracks and never punches', async () => {
+        const hr = setup({ createChallenge: vi.fn().mockResolvedValue(challenge({ captureFrameCount: 4, captureIntervalMs: 60 })) });
+        await start();
+        await waitFor(() => expect(cam.getUserMedia).toHaveBeenCalled());
+        act(() => nav.back());
+        await new Promise((r) => setTimeout(r, 400));
+        expect(cam.track.stop).toHaveBeenCalled();
+        expect(hr.punch).not.toHaveBeenCalled();
+    });
+
+    it('an action not available goes back home', async () => {
+        const t = { ...today, availableActions: ['CHECK_OUT'] };
+        setup({ attendanceToday: vi.fn().mockResolvedValue(t) });
+        await waitFor(() => expect(nav.section).toBe('home'));
+    });
+
+    it('PENDING screen can refresh the status', async () => {
+        const biometricStatus = vi.fn().mockResolvedValueOnce({ status: 'PENDING' }).mockResolvedValue({ status: 'ACTIVE' });
+        setup({ biometricStatus });
+        fireEvent.click(await screen.findByRole('button', { name: 'Actualizar' }));
+        expect(await screen.findByRole('button', { name: /^Marcar/ })).toBeInTheDocument();
     });
 });

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EnrollScreen } from './EnrollScreen';
 import type { HrApi } from '../hrApi';
-import { mockCamera } from './captureMocks';
+import { mockCamera } from '../../../test/captureMocks';
 
 const policy = { biometricConsentVersion: 'v7', biometricRetentionNotice: 'Aviso' } as never;
 

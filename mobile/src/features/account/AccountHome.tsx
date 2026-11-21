@@ -69,6 +69,7 @@ export function AccountHome({ session, hr, onLogout }: Props) {
     const { today, vacation, loanPolicy } = summary;
     const action = today?.availableActions?.[0];
     const stale = today?.blockingIssue?.code === 'STALE_OPEN_ATTENDANCE';
+    const facePending = summary.biometric?.status === 'PENDING' && today?.policy?.requireBiometric !== false;
     const loanDatum = loanPolicy?.eligible && loanPolicy.maxAmount != null ? `Hasta ${formatHrMoney(loanPolicy.currency, loanPolicy.maxAmount)}` : 'No disponible';
     const vacationDatum = vacation ? `${formatHrNumber(vacation.available)} días disponibles` : 'Sin saldo';
 
@@ -98,6 +99,8 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                                     Corregir marcaje
                                 </button>
                             </>
+                        ) : facePending ? (
+                            <p className="muted">Registro facial pendiente de aprobación</p>
                         ) : action ? (
                             <button type="button" className="btn btn-primary ah-wide" onClick={() => navigate('punch', { action })}>
                                 {ATTENDANCE_ACTION_LABELS[action]}

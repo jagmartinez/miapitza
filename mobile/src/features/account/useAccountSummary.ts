@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDaysDateOnly, weekStartFor } from '@web/components/hr/scheduleDates';
 import { selectVacationBalance } from '@web/components/hr/vacationBalance';
 import { formatLocalDateInput } from '@web/utils/dateInput';
-import type { HrTodayAttendance } from '@web/types/hr-attendance';
+import type { HrBiometricProfile, HrTodayAttendance } from '@web/types/hr-attendance';
 import type { HrVacationBalance } from '@web/types/hr-workforce';
 import { appEvents } from '../../core/events';
 import type { HrApi, HrLoanPolicy, HrSwap } from './hrApi';
@@ -47,6 +47,8 @@ export type SummaryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface AccountSummary {
     today: HrTodayAttendance | null;
+    /** Own face-enrollment status; null when unknown (a failed read never blocks the home). */
+    biometric: HrBiometricProfile | null;
     pendingForYou: PendingItem[];
     myRequests: RequestCardModel[];
     vacation: HrVacationBalance | null;
@@ -200,6 +202,7 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
     const { userId, enabled = true } = opts;
     const [state, setState] = useState<Omit<AccountSummary, 'reload'>>({
         today: null,
+        biometric: null,
         pendingForYou: [],
         myRequests: [],
         vacation: null,
@@ -216,7 +219,7 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
         () =>
             appEvents.on('account-user-changed', () => {
                 alive.current++;
-                setState({ today: null, pendingForYou: [], myRequests: [], vacation: null, loanPolicy: null, failed: [], status: enabled ? 'loading' : 'idle' });
+                setState({ today: null, biometric: null, pendingForYou: [], myRequests: [], vacation: null, loanPolicy: null, failed: [], status: enabled ? 'loading' : 'idle' });
                 setTick((t) => t + 1);
             }),
         [enabled],
@@ -240,11 +243,12 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
             hr.myWorkforce({ dateFrom: from, dateTo: to }),
             hr.myLoans(),
             hr.loanPolicy(),
+            Promise.resolve().then(() => hr.biometricStatus()),
         ]).then((r) => {
             if (run !== alive.current) return;
             const parts: SummaryPart[] = ['today', 'schedule', 'schedule', 'receipts', 'swaps', 'workforce', 'loans', 'loanPolicy'];
             const failed = [...new Set(parts.filter((_, i) => r[i].status === 'rejected'))];
-            if (r.every((x) => x.status === 'rejected')) {
+            if (r.slice(0, 8).every((x) => x.status === 'rejected')) {
                 setState((s) => ({ ...s, failed, status: 'error' }));
                 return;
             }
@@ -259,6 +263,7 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
             });
             setState({
                 today: ok(r[0]),
+                biometric: ok(r[8]),
                 pendingForYou: pending,
                 myRequests: requests,
                 vacation: selectVacationBalance(workforce?.vacationBalances),

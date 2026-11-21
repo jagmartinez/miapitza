@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { HrAttendanceChallenge, HrAttendancePolicy, HrBiometricProfile } from '@web/types/hr-attendance';
 import { isChallengeExpired } from '@web/components/hr/attendanceRules';
-import { HrError, type HrApi } from '../hrApi';
+import type { HrApi } from '../hrApi';
 import { useFaceCapture } from './useFaceCapture';
-import { appendFrames, CameraView, failureMessage, MSG, newActionId } from './captureCommon';
+import { appendFrames, CameraView, failureMessage, isResendable, MSG, newActionId } from './captureCommon';
 
 interface Pending {
     form: FormData;
@@ -24,6 +24,14 @@ export function EnrollScreen({ hr, policy, onDone }: { hr: HrApi; policy: HrAtte
     const [accepted, setAccepted] = useState(false);
     const [view, setView] = useState<View>({ k: 'consent' });
     const pending = useRef<Pending | null>(null);
+    const running = useRef(false);
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+        };
+    }, []);
 
     const submit = async (p: Pending) => {
         setView({ k: 'sending' });
@@ -32,20 +40,26 @@ export function EnrollScreen({ hr, policy, onDone }: { hr: HrApi; policy: HrAtte
             pending.current = null;
             setView({ k: 'done', profile });
         } catch (e) {
-            const ambiguous = e instanceof HrError && e.isAmbiguous && e.code !== 'FACE_PROVIDER_UNAVAILABLE';
-            if (!ambiguous) pending.current = null;
-            setView({ k: 'error', msg: ambiguous ? MSG.unconfirmed : failureMessage(e), resend: ambiguous });
+            const resend = isResendable(e);
+            if (!resend) pending.current = null;
+            if (mounted.current) setView({ k: 'error', msg: resend ? MSG.unconfirmed : failureMessage(e), resend });
         }
     };
 
     const run = async () => {
+        if (running.current) return;
+        running.current = true;
         pending.current = null;
+        setView({ k: 'sending' });
         try {
             const challenge = await hr.createChallenge('BIOMETRIC_ENROLLMENT');
+            if (!mounted.current) return;
             setView({ k: 'capturing', instruction: challenge.livenessInstruction ?? challenge.instruction });
             await face.start();
+            if (!mounted.current) return face.stop();
             const frames = await face.captureFrames(challenge.captureFrameCount, challenge.captureIntervalMs);
             face.stop();
+            if (!mounted.current) return;
             const form = new FormData();
             form.append('challengeId', challenge.id);
             if (challenge.token) form.append('challengeToken', challenge.token);
@@ -57,14 +71,25 @@ export function EnrollScreen({ hr, policy, onDone }: { hr: HrApi; policy: HrAtte
             await submit(p);
         } catch (e) {
             face.stop();
-            setView({ k: 'error', msg: failureMessage(e), resend: false });
+            if (mounted.current) setView({ k: 'error', msg: failureMessage(e), resend: false });
+        } finally {
+            running.current = false;
         }
     };
 
-    const retry = () => {
+    const retry = async () => {
         const p = pending.current;
-        if (p && !isChallengeExpired(p.challenge.expiresAt)) void submit(p);
-        else void run();
+        if (p && !isChallengeExpired(p.challenge.expiresAt)) {
+            if (running.current) return;
+            running.current = true;
+            try {
+                await submit(p);
+            } finally {
+                running.current = false;
+            }
+        } else {
+            await run();
+        }
     };
 
     const busy = view.k === 'capturing' || view.k === 'sending';
@@ -98,7 +123,7 @@ export function EnrollScreen({ hr, policy, onDone }: { hr: HrApi; policy: HrAtte
             {view.k === 'error' && (
                 <>
                     <p role="alert" className="att-error">{view.msg}</p>
-                    <button type="button" className="btn btn-primary" onClick={retry}>
+                    <button type="button" className="btn btn-primary" onClick={() => void retry()}>
                         Reintentar
                     </button>
                 </>

@@ -3,11 +3,11 @@ import type { HrAttendanceAction, HrAttendanceChallenge, HrAttendancePolicy, HrA
 import { ATTENDANCE_ACTION_LABELS, isChallengeExpired, presentAttendanceChecks } from '@web/components/hr/attendanceRules';
 import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useAccountNav } from '../AccountNav';
-import { HrError, type HrApi } from '../hrApi';
+import type { HrApi } from '../hrApi';
 import { useFaceCapture } from './useFaceCapture';
 import { useLocation, type LocationFix } from './useLocation';
 import { EnrollScreen } from './EnrollScreen';
-import { appendFrames, CameraView, failureMessage, MSG, newActionId } from './captureCommon';
+import { appendFrames, CameraView, failureMessage, isResendable, MSG, newActionId } from './captureCommon';
 
 const DONE_LABEL: Record<HrAttendanceAction, string> = {
     CHECK_IN: 'Entrada registrada',
@@ -18,7 +18,7 @@ const DONE_LABEL: Record<HrAttendanceAction, string> = {
 
 interface Pending {
     form: FormData;
-    challenge: HrAttendanceChallenge | null;
+    challenge: HrAttendanceChallenge;
     actionId: string;
 }
 
@@ -28,6 +28,7 @@ type View =
     | { k: 'enroll'; policy: HrAttendancePolicy }
     | { k: 'pendingEnrollment' }
     | { k: 'ready' }
+    | { k: 'preparing' }
     | { k: 'locating' }
     | { k: 'capturing'; instruction?: string }
     | { k: 'sending' }
@@ -45,6 +46,7 @@ function formatTime(iso: string | undefined, timeZone: string): string {
 
 export function PunchScreen({ hr }: { hr: HrApi }) {
     const { back, navigate, params } = useAccountNav();
+    const running = useRef(false);
     const face = useFaceCapture();
     const loc = useLocation();
     const [view, setView] = useState<View>({ k: 'loading' });
@@ -67,6 +69,8 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
             const [t, policy, bio] = await Promise.all([hr.attendanceToday(), hr.attendancePolicy(), hr.biometricStatus()]);
             if (!mounted.current) return;
             setToday(t);
+            const wanted = params.action as HrAttendanceAction | undefined;
+            if (wanted && !t.blockingIssue && !t.availableActions?.includes(wanted)) return navigate('home');
             if (t.policy?.requireBiometric !== false) {
                 if (bio.status === 'PENDING') return show({ k: 'pendingEnrollment' });
                 if (bio.status === 'NOT_ENROLLED' || bio.status === 'REVOKED') return show({ k: 'enroll', policy });
@@ -75,7 +79,7 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
         } catch (e) {
             show({ k: 'loadError', msg: failureMessage(e) });
         }
-    }, [hr, show]);
+    }, [hr, show, navigate, params.action]);
     useEffect(() => {
         void load();
     }, [load]);
@@ -89,15 +93,24 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
             pending.current = null;
             show({ k: 'result', result });
         } catch (e) {
-            const ambiguous = e instanceof HrError && e.isAmbiguous && e.code !== 'FACE_PROVIDER_UNAVAILABLE';
-            if (!ambiguous) pending.current = null;
-            show({ k: 'error', msg: ambiguous ? MSG.unconfirmed : failureMessage(e), resend: ambiguous });
+            const resend = isResendable(e);
+            if (!resend) pending.current = null;
+            show({ k: 'error', msg: resend ? MSG.unconfirmed : failureMessage(e), resend });
         }
     };
 
+    /** Leaving the screen cancels the flow: nothing opens the camera or submits afterwards. */
+    const cancelled = () => {
+        if (mounted.current) return false;
+        face.stop();
+        return true;
+    };
+
     const run = async () => {
-        if (!today || !action) return;
+        if (!today || !action || running.current) return;
+        running.current = true;
         pending.current = null;
+        show({ k: 'preparing' });
         const wantsFace = today.policy?.requireBiometric !== false;
         const wantsLocation = today.policy?.requireGeolocation !== false;
         try {
@@ -105,22 +118,26 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
             if (wantsLocation) {
                 show({ k: 'locating' });
                 fix = await loc.get();
+                if (cancelled()) return;
                 const max = today.locationRequirements?.maxAccuracyM ?? today.policy?.maxLocationAccuracyM;
                 if (max != null && fix.accuracyM > max) {
                     return show({ k: 'error', msg: `Ubicación imprecisa (±${Math.round(fix.accuracyM)} m). Sal a un lugar abierto y reintenta.`, resend: false });
                 }
             }
+            // The server requires a challenge for every punch, like the web wizard; only the frames depend on the policy.
+            const challenge = await hr.createChallenge('ATTENDANCE_PUNCH', action);
+            if (cancelled()) return;
             const form = new FormData();
             form.append('action', action);
-            let challenge: HrAttendanceChallenge | null = null;
+            form.append('challengeId', challenge.id);
+            if (challenge.token) form.append('challengeToken', challenge.token);
             if (wantsFace) {
-                challenge = await hr.createChallenge('ATTENDANCE_PUNCH', action);
                 show({ k: 'capturing', instruction: challenge.livenessInstruction ?? challenge.instruction });
                 await face.start();
+                if (cancelled()) return;
                 const frames = await face.captureFrames(challenge.captureFrameCount, challenge.captureIntervalMs);
                 face.stop();
-                form.append('challengeId', challenge.id);
-                if (challenge.token) form.append('challengeToken', challenge.token);
+                if (cancelled()) return;
                 appendFrames(form, frames, 'face-evidence');
             }
             if (fix) {
@@ -135,17 +152,28 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
         } catch (e) {
             face.stop();
             show({ k: 'error', msg: failureMessage(e), resend: false });
+        } finally {
+            running.current = false;
         }
     };
 
-    const retry = () => {
+    const retry = async () => {
         const p = pending.current;
-        if (p && (!p.challenge || !isChallengeExpired(p.challenge.expiresAt))) void submit(p);
-        else void run();
+        if (p && !isChallengeExpired(p.challenge.expiresAt)) {
+            if (running.current) return;
+            running.current = true;
+            try {
+                await submit(p);
+            } finally {
+                running.current = false;
+            }
+        } else {
+            await run();
+        }
     };
 
     const tz = today?.timezone ?? 'UTC';
-    const busy = view.k === 'locating' || view.k === 'capturing' || view.k === 'sending';
+    const busy = view.k === 'preparing' || view.k === 'locating' || view.k === 'capturing' || view.k === 'sending';
     const shift = today?.scheduledShift;
 
     return (
@@ -164,6 +192,7 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
                     <div className="att-result" data-tone="review">
                         <h2>Registro facial pendiente de aprobación</h2>
                         <p className="muted">RH debe aprobar tu registro antes de que puedas marcar.</p>
+                        <button type="button" className="btn btn-primary" onClick={() => void load()}>Actualizar</button>
                     </div>
                 )}
                 {view.k === 'enroll' && (
@@ -204,7 +233,7 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
                 {view.k === 'error' && (
                     <>
                         <p role="alert" className="att-error">{view.msg}</p>
-                        <button type="button" className="btn btn-primary" onClick={view.resend ? retry : () => void run()}>
+                        <button type="button" className="btn btn-primary" onClick={view.resend ? () => void retry() : () => void run()}>
                             Reintentar
                         </button>
                     </>
@@ -223,7 +252,7 @@ function ResultView({ result, action, tz, onRetry, onDone }: { result: HrAttenda
                 <div className="att-result" data-tone="ok">
                     <h2>
                         <span aria-hidden="true">✓ </span>
-                        {`${DONE_LABEL[act]} ${when}`}
+                        {`${DONE_LABEL[act] ?? 'Marcaje registrado'} ${when}`}
                     </h2>
                 </div>
                 <button type="button" className="btn btn-primary" onClick={onDone}>Listo</button>

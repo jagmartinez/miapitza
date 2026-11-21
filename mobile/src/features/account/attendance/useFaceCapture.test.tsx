@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useFaceCapture } from './useFaceCapture';
-import { mockCamera } from './captureMocks';
+import { mockCamera } from '../../../test/captureMocks';
 
 afterEach(() => vi.useRealTimers());
 
@@ -46,5 +46,34 @@ describe('useFaceCapture', () => {
             });
             expect(result.current.error).toBe(kind);
         }
+    });
+
+    it('rejects a capture when the camera never sends an image', async () => {
+        mockCamera();
+        Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', { configurable: true, get: () => 0 });
+        vi.useFakeTimers();
+        const { result } = renderHook(() => useFaceCapture());
+        await act(async () => result.current.start());
+        let err: unknown;
+        await act(async () => {
+            const p = result.current.captureFrames(1, 0).catch((e) => (err = e));
+            await vi.advanceTimersByTimeAsync(2100);
+            await p;
+        });
+        expect(err).toMatchObject({ kind: 'noframe' });
+    });
+
+    it('a camera start that never resolves ends with an error', async () => {
+        vi.useFakeTimers();
+        mockCamera();
+        (navigator.mediaDevices.getUserMedia as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise(() => undefined));
+        const { result } = renderHook(() => useFaceCapture());
+        let err: unknown;
+        await act(async () => {
+            const p = result.current.start().catch((e) => (err = e));
+            await vi.advanceTimersByTimeAsync(20_100);
+            await p;
+        });
+        expect(err).toMatchObject({ kind: 'unknown' });
     });
 });

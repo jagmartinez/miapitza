@@ -1,6 +1,6 @@
 .att-screen { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 .att-camera { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.att-camera[hidden] { display: none; }
+[hidden] { display: none; }
 .att-video { width: 100%; max-width: 320px; aspect-ratio: 1; object-fit: cover; border-radius: 50%; background: #000; transform: scaleX(-1); }
 .att-instruction { margin: 0; font-size: 24px; font-weight: 700; text-align: center; }
 .att-result { padding: 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }

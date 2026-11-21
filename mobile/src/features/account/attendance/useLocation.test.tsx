@@ -1,7 +1,9 @@
 import { renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from './useLocation';
-import { mockGeolocation } from './captureMocks';
+import { mockGeolocation } from '../../../test/captureMocks';
+
+afterEach(() => vi.useRealTimers());
 
 describe('useLocation', () => {
     it('returns the fix with high accuracy options', async () => {
@@ -19,5 +21,14 @@ describe('useLocation', () => {
             const { result } = renderHook(() => useLocation());
             await expect(result.current.get()).rejects.toMatchObject({ kind });
         }
+    });
+
+    it('a prompt that never answers times out after the watchdog', async () => {
+        vi.useFakeTimers();
+        Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: vi.fn() } });
+        const { result } = renderHook(() => useLocation());
+        const p = result.current.get().catch((e) => e);
+        await vi.advanceTimersByTimeAsync(20_100);
+        expect(await p).toMatchObject({ kind: 'timeout' });
     });
 });

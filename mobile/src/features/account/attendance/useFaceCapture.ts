@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
-export type FaceCaptureErrorKind = 'denied' | 'unavailable' | 'unknown';
+export type FaceCaptureErrorKind = 'denied' | 'unavailable' | 'noframe' | 'unknown';
+
+const START_WATCHDOG_MS = 20_000;
 
 export class FaceCaptureError extends Error {
     kind: FaceCaptureErrorKind;
@@ -33,6 +35,8 @@ export function useFaceCapture(): {
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const detached = useRef<HTMLVideoElement | null>(null);
+    const startTok = useRef(0);
+    const unmounted = useRef(false);
     const [error, setError] = useState<FaceCaptureErrorKind | undefined>();
 
     const stop = useCallback(() => {
@@ -43,25 +47,49 @@ export function useFaceCapture(): {
         detached.current = null;
     }, []);
 
-    useEffect(() => stop, [stop]);
+    useEffect(() => {
+        unmounted.current = false;
+        return () => {
+            unmounted.current = true;
+            startTok.current++;
+            stop();
+        };
+    }, [stop]);
 
     const start = useCallback(async () => {
         stop();
+        const tok = ++startTok.current;
         setError(undefined);
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
             if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('no camera api'), { name: 'NotFoundError' });
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 720 } }, audio: false });
-            streamRef.current = stream;
-            const video = videoRef.current ?? (detached.current = document.createElement('video'));
-            video.muted = true;
-            video.playsInline = true;
-            video.srcObject = stream;
-            await video.play();
+            const work = (async () => {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 720 } }, audio: false });
+                if (tok !== startTok.current || unmounted.current) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    throw new FaceCaptureError('unknown');
+                }
+                streamRef.current = stream;
+                const video = videoRef.current ?? (detached.current = document.createElement('video'));
+                video.muted = true;
+                video.playsInline = true;
+                video.srcObject = stream;
+                await video.play();
+            })();
+            const watchdog = new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new FaceCaptureError('unknown')), START_WATCHDOG_MS);
+            });
+            work.catch(() => undefined);
+            await Promise.race([work, watchdog]);
+            if (tok !== startTok.current || unmounted.current) throw new FaceCaptureError('unknown');
         } catch (e) {
+            startTok.current++;
             stop();
-            const kind = kindOf(e);
-            setError(kind);
+            const kind = e instanceof FaceCaptureError ? e.kind : kindOf(e);
+            if (!unmounted.current) setError(kind);
             throw new FaceCaptureError(kind);
+        } finally {
+            clearTimeout(timer);
         }
     }, [stop]);
 
@@ -74,6 +102,7 @@ export function useFaceCapture(): {
                 video.addEventListener('loadeddata', done, { once: true });
                 setTimeout(done, 2000);
             });
+            if (!video.videoWidth) throw new FaceCaptureError('noframe');
         }
         const canvas = document.createElement('canvas');
         canvas.width = SIZE;
@@ -81,9 +110,9 @@ export function useFaceCapture(): {
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new FaceCaptureError('unknown');
         // Center-crop to a square, like the web capture.
-        const side = Math.min(video.videoWidth, video.videoHeight) || SIZE;
-        const sx = ((video.videoWidth || side) - side) / 2;
-        const sy = ((video.videoHeight || side) - side) / 2;
+        const side = Math.min(video.videoWidth, video.videoHeight);
+        const sx = (video.videoWidth - side) / 2;
+        const sy = (video.videoHeight - side) / 2;
         ctx.drawImage(video, sx, sy, side, side, 0, 0, SIZE, SIZE);
         return new Promise<Blob>((resolve, reject) =>
             canvas.toBlob((b) => (b ? resolve(b) : reject(new FaceCaptureError('unknown'))), 'image/jpeg', 0.86),
