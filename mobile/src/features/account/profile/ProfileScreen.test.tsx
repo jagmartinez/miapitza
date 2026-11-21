@@ -42,7 +42,31 @@ describe('ProfileScreen', () => {
         fireEvent.change(phone, { target: { value: '222' } });
         fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
         await waitFor(() => expect(hr.updateProfile).toHaveBeenCalledTimes(1));
-        expect(hr.updateProfile).toHaveBeenCalledWith({ phone: '222', email: 'a@x.com', address: 'Calle 1' });
+        expect(hr.updateProfile).toHaveBeenCalledWith({ phone: '222' });
+    });
+
+    it('an empty email that was already empty is never sent', async () => {
+        const { hr } = mount({ profile: vi.fn(async () => ({ email: '', phone: '111', address: '' })) });
+        fireEvent.change(await screen.findByLabelText('Teléfono'), { target: { value: '333' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+        await waitFor(() => expect(hr.updateProfile).toHaveBeenCalledWith({ phone: '333' }));
+    });
+
+    it('clearing an existing email is refused without calling the server', async () => {
+        const { hr } = mount();
+        fireEvent.change(await screen.findByLabelText('Correo'), { target: { value: '' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+        expect(await screen.findByText('El correo no puede quedar vacío')).toBeInTheDocument();
+        expect(hr.updateProfile).not.toHaveBeenCalled();
+    });
+
+    it('authMe failure shows a retryable PIN status error', async () => {
+        const authMe = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue({ hasPin: false, canUsePin: true });
+        mount({ authMe });
+        expect(await screen.findByText('No se pudo cargar el estado del PIN')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+        expect(await screen.findByRole('button', { name: 'Definir PIN' })).toBeInTheDocument();
+        expect(screen.queryByText('No se pudo cargar el estado del PIN')).toBeNull();
     });
 
     it('PIN option hidden when canUsePin false', async () => {

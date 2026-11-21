@@ -47,6 +47,28 @@ export class HrError extends Error {
     }
 }
 
+/** Blob error bodies (responseType 'blob') hold the server's JSON message: decode it so describeApiError can read it. */
+function readBlobText(b: Blob): Promise<string> {
+    if (typeof b.text === 'function') return b.text();
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onerror = () => reject(r.error);
+        r.onload = () => resolve(String(r.result));
+        r.readAsText(b);
+    });
+}
+
+async function decodeBlobError(error: unknown): Promise<void> {
+    const res = (error as { response?: { data?: unknown } })?.response;
+    if (!res || typeof Blob === 'undefined' || !(res.data instanceof Blob)) return;
+    try {
+        const parsed = JSON.parse(await readBlobText(res.data));
+        res.data = parsed;
+    } catch {
+        res.data = undefined;
+    }
+}
+
 export function toHrError(error: unknown): HrError {
     if (error instanceof HrError) return error;
     const d = describeApiError(error);
@@ -150,10 +172,19 @@ export function createHrApi(http: AxiosInstance) {
                 ...(o.responseType ? { responseType: o.responseType } : {}),
             });
             if (fingerprint) attempts.delete(fingerprint);
-            if (o.responseType === 'blob') return res.data as T;
+            if (o.responseType === 'blob') {
+                const blob = res.data as Blob;
+                // A 2xx that carries JSON is an error envelope, not the file.
+                if (typeof Blob !== 'undefined' && blob instanceof Blob && /json/i.test(blob.type)) {
+                    await decodeBlobError({ response: res });
+                    throw new HrError(describeApiError({ response: res }).message || 'No se pudo descargar el archivo', { isAmbiguous: false });
+                }
+                return blob as T;
+            }
             return unwrap<T>(res.data);
         } catch (error) {
             if (fingerprint && !isAmbiguousMutationFailure(error)) attempts.delete(fingerprint);
+            if (o.responseType === 'blob') await decodeBlobError(error);
             throw toHrError(error);
         }
     }
@@ -181,7 +212,7 @@ export function createHrApi(http: AxiosInstance) {
 
         // ---- schedule ----
         mySchedule: (weekStart: string) => call<HrWeeklySchedule | null>(`${H}/me/schedule`, { params: { weekStart } }),
-        acknowledgeSchedule: (id: number) => call<unknown>(`${H}/schedules/${id}/acknowledge`, { method: 'POST' }),
+        acknowledgeSchedule: (id: number) => call<{ acknowledgedAt?: string } | null>(`${H}/schedules/${id}/acknowledge`, { method: 'POST' }),
         teamSchedule: (weekStart: string) => call<unknown>(`${H}/team/schedule`, { params: { weekStart } }),
 
         // ---- payroll ----

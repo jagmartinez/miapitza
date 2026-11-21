@@ -97,7 +97,7 @@ function ReceiptDetail({ hr, receipt, onBack }: { hr: HrApi; receipt: HrPayrollR
 }
 
 export function PayrollScreen({ hr, userId }: { hr: HrApi; userId: number }) {
-    const { back } = useAccountNav();
+    const { back, params } = useAccountNav();
     const [receipts, setReceipts] = useState<HrPayrollReceiptSummary[] | null>(null);
     const [failed, setFailed] = useState(false);
     const [seen, setSeen] = useState<Set<number> | null>(() => seenReceipts(userId));
@@ -106,11 +106,17 @@ export function PayrollScreen({ hr, userId }: { hr: HrApi; userId: number }) {
     const load = useCallback(async () => {
         setFailed(false);
         try {
-            setReceipts(await hr.myReceipts({ limit: 50 }));
+            const list = await hr.myReceipts({ limit: 50 });
+            // Never initialised for this user: whatever exists now is not "new" (same rule as the home).
+            if (!seenReceipts(userId)) {
+                markReceiptsSeen(userId, list.map((r) => r.id));
+                setSeen(seenReceipts(userId));
+            }
+            setReceipts(list);
         } catch {
             setFailed(true);
         }
-    }, [hr]);
+    }, [hr, userId]);
     useEffect(() => {
         void load();
     }, [load]);
@@ -120,6 +126,17 @@ export function PayrollScreen({ hr, userId }: { hr: HrApi; userId: number }) {
         setSeen((cur) => new Set([...(cur ?? []), r.id]));
         setOpen(r);
     }
+
+    // Deep link from "Pendiente para ti": open that receipt once the list is in.
+    const deepLinked = useRef(false);
+    useEffect(() => {
+        const id = Number(params.refId);
+        if (deepLinked.current || !receipts || !params.refId || !Number.isFinite(id)) return;
+        deepLinked.current = true;
+        const r = receipts.find((x) => x.id === id);
+        if (r) openReceipt(r);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [receipts, params.refId]);
 
     if (open) return <ReceiptDetail hr={hr} receipt={open} onBack={() => setOpen(null)} />;
     return (

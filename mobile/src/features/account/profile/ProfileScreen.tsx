@@ -35,6 +35,8 @@ export function ProfileScreen({ hr, accountApi, onPasswordChanged, onLogout }: P
     const toast = useToast();
     const [employee, setEmployee] = useState<HrEmployeeSummary | null>(null);
     const [form, setForm] = useState<Form | null>(null);
+    const [initial, setInitial] = useState<Form | null>(null);
+    const [pinFailed, setPinFailed] = useState(false);
     const [pin, setPin] = useState<{ hasPin: boolean; canUsePin: boolean }>({ hasPin: false, canUsePin: false });
     const [failed, setFailed] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -46,8 +48,12 @@ export function ProfileScreen({ hr, accountApi, onPasswordChanged, onLogout }: P
         setFailed(false);
         const [emp, prof, me] = await Promise.allSettled([hr.myEmployee(), hr.profile(), hr.authMe()]);
         if (emp.status === 'fulfilled') setEmployee(emp.value);
-        if (prof.status === 'fulfilled') setForm({ phone: text(prof.value.phone), email: text(prof.value.email), address: text(prof.value.address) });
-        else setFailed(true);
+        if (prof.status === 'fulfilled') {
+            const f = { phone: text(prof.value.phone), email: text(prof.value.email), address: text(prof.value.address) };
+            setForm(f);
+            setInitial(f);
+        } else setFailed(true);
+        setPinFailed(me.status === 'rejected');
         if (me.status === 'fulfilled') setPin({ hasPin: me.value.hasPin === true, canUsePin: me.value.canUsePin === true });
     }, [hr]);
     useEffect(() => {
@@ -55,12 +61,19 @@ export function ProfileScreen({ hr, accountApi, onPasswordChanged, onLogout }: P
     }, [load]);
 
     async function save() {
-        if (!form || saveBusy.current) return;
+        if (!form || !initial || saveBusy.current) return;
+        // Only what changed: an empty field that was already empty is never sent.
+        const body: Partial<Form> = {};
+        for (const k of ['phone', 'email', 'address'] as const) if (form[k].trim() !== initial[k]) body[k] = form[k].trim();
+        if (!Object.keys(body).length) return toast.show('No hay cambios que guardar');
+        if (body.email === '') return toast.show('El correo no puede quedar vacío', 'error');
         saveBusy.current = true;
         setSaving(true);
         try {
             // Whitelist: only what the employee may edit about themselves.
-            await hr.updateProfile({ phone: form.phone, email: form.email, address: form.address });
+            await hr.updateProfile(body);
+            setInitial({ ...initial, ...body });
+            setForm({ ...form, ...body });
             toast.show('Datos guardados');
         } catch (e) {
             toast.show(toHrError(e).message, 'error');
@@ -123,6 +136,12 @@ export function ProfileScreen({ hr, accountApi, onPasswordChanged, onLogout }: P
                 )}
                 <div className="pf-actions">
                     <button type="button" className="btn" onClick={() => setView('password')}>Cambiar contraseña</button>
+                    {pinFailed && (
+                        <div>
+                            <p role="alert" className="pf-error">No se pudo cargar el estado del PIN</p>
+                            <button type="button" className="btn" onClick={() => void load()}>Reintentar</button>
+                        </div>
+                    )}
                     {pin.canUsePin && (
                         <button type="button" className="btn" onClick={() => setSheet(true)}>{pin.hasPin ? 'Cambiar PIN' : 'Definir PIN'}</button>
                     )}

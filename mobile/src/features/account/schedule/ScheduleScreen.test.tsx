@@ -47,7 +47,7 @@ describe('ScheduleScreen', () => {
 
     it('confirm calls acknowledge once and shows Confirmado', async () => {
         let release!: () => void;
-        const acknowledgeSchedule = vi.fn(() => new Promise<unknown>((r) => (release = () => r({}))));
+        const acknowledgeSchedule = vi.fn(() => new Promise<unknown>((r) => (release = () => r({ acknowledgedAt: '2026-11-18T15:00:00Z' }))));
         const mySchedule = vi.fn(async (w: string) => (w === thisWeek ? sched(1, thisWeek) : null));
         mount({ mySchedule, acknowledgeSchedule });
         const btn = await screen.findByRole('button', { name: 'Confirmar horario' });
@@ -63,6 +63,35 @@ describe('ScheduleScreen', () => {
     it('no schedule message', async () => {
         mount({ mySchedule: vi.fn(async () => null) });
         expect(await screen.findAllByText('Aún no hay horario publicado para esta semana')).toHaveLength(2);
+    });
+
+    it('Confirmado shows the server timestamp, not the device clock', async () => {
+        const acknowledgeSchedule = vi.fn(async () => ({ acknowledgedAt: '2026-11-18T15:00:00Z' }));
+        mount({ mySchedule: vi.fn(async (w: string) => (w === thisWeek ? sched(1, thisWeek) : null)), acknowledgeSchedule });
+        fireEvent.click(await screen.findByRole('button', { name: 'Confirmar horario' }));
+        expect(await screen.findByText(`Confirmado ${new Date('2026-11-18T15:00:00Z').toLocaleDateString('es-NI')}`)).toBeInTheDocument();
+    });
+
+    it('uses the server date and timezone, not the device clock, for the week', async () => {
+        // 02:00Z on Mon 2026-11-23 is still Sunday 22 in Managua: week of Mon 2026-11-16.
+        const mySchedule = vi.fn(async () => null);
+        const attendanceToday = vi.fn(async () => ({ serverTime: '2026-11-23T02:00:00Z', timezone: 'America/Managua' }));
+        mount({ mySchedule, attendanceToday });
+        await screen.findAllByText('Aún no hay horario publicado para esta semana');
+        expect(mySchedule).toHaveBeenCalledWith('2026-11-16');
+        expect(mySchedule).toHaveBeenCalledWith('2026-11-23');
+    });
+
+    it('re-reads the week when acknowledge does not echo a timestamp', async () => {
+        let acked = false;
+        const mySchedule = vi.fn(async (w: string) => (w === thisWeek ? sched(1, thisWeek, { acknowledgedAt: acked ? '2026-11-18T15:00:00Z' : null }) : null));
+        const acknowledgeSchedule = vi.fn(async () => {
+            acked = true;
+            return {};
+        });
+        mount({ mySchedule, acknowledgeSchedule });
+        fireEvent.click(await screen.findByRole('button', { name: 'Confirmar horario' }));
+        expect(await screen.findByText(/^Confirmado /)).toBeInTheDocument();
     });
 
     it('a failed acknowledge keeps the button enabled', async () => {

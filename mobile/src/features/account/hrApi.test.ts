@@ -131,4 +131,16 @@ describe('hrApi', () => {
         expect(calls[0].url).toBe('/auth/me');
         expect(me).toMatchObject({ hasPin: true, canUsePin: false });
     });
+
+    it('receiptPdf surfaces the server message from a Blob error body', async () => {
+        const { http } = fakeApi(() => ({ status: 404, data: new Blob([JSON.stringify({ message: 'Recibo no disponible' })], { type: 'application/json' }) }));
+        const err = await createHrApi(http).receiptPdf(1).catch((e) => e);
+        expect(err).toBeInstanceOf(HrError);
+        expect(err.message).toBe('Recibo no disponible');
+    });
+
+    it('receiptPdf rejects a 2xx JSON body instead of returning it as a file', async () => {
+        const { http } = fakeApi(() => ({ status: 200, data: new Blob([JSON.stringify({ message: 'Sin PDF' })], { type: 'application/json' }) }));
+        await expect(createHrApi(http).receiptPdf(1)).rejects.toThrow('Sin PDF');
+    });
 });

@@ -69,12 +69,25 @@ function WeekCard({ title, weekStart, week, busy, onConfirm, onRetry }: { title:
     );
 }
 
+/** "Today" in the server's timezone (the week the server means); null when unknown. */
+export function serverToday(serverTime?: string, timezone?: string): string | null {
+    if (!serverTime || !timezone) return null;
+    try {
+        const d = new Date(serverTime);
+        if (Number.isNaN(d.getTime())) return null;
+        const day = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+        return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+    } catch {
+        return null;
+    }
+}
+
 export function ScheduleScreen({ hr }: { hr: HrApi }) {
     const { back } = useAccountNav();
     const toast = useToast();
-    const thisWeek = weekStartFor();
-    const nextWeek = addDaysDateOnly(thisWeek, 7);
-    const [weeks, setWeeks] = useState<Record<string, Week>>({ [thisWeek]: { k: 'loading' }, [nextWeek]: { k: 'loading' } });
+    const [thisWeek, setThisWeek] = useState<string | null>(null);
+    const nextWeek = thisWeek ? addDaysDateOnly(thisWeek, 7) : null;
+    const [weeks, setWeeks] = useState<Record<string, Week>>({});
     const [busyId, setBusyId] = useState<number | null>(null);
     const inFlight = useRef(false);
 
@@ -92,6 +105,24 @@ export function ScheduleScreen({ hr }: { hr: HrApi }) {
     );
 
     useEffect(() => {
+        let live = true;
+        void (async () => {
+            let today: string | null = null;
+            try {
+                const t = await hr.attendanceToday();
+                today = serverToday(t?.serverTime, t?.timezone);
+            } catch {
+                // offline or not an attendance user: the device date is the fallback
+            }
+            if (live) setThisWeek(weekStartFor(today ?? new Date()));
+        })();
+        return () => {
+            live = false;
+        };
+    }, [hr]);
+
+    useEffect(() => {
+        if (!thisWeek || !nextWeek) return;
         void load(thisWeek);
         void load(nextWeek);
     }, [load, thisWeek, nextWeek]);
@@ -101,8 +132,13 @@ export function ScheduleScreen({ hr }: { hr: HrApi }) {
         inFlight.current = true;
         setBusyId(id);
         try {
-            await hr.acknowledgeSchedule(id);
-            const at = new Date().toISOString();
+            const ack = await hr.acknowledgeSchedule(id);
+            // The server's timestamp; if it did not echo one, re-read the week.
+            const at = ack?.acknowledgedAt;
+            if (!at) {
+                await load(weekStart);
+                return;
+            }
             setWeeks((cur) => {
                 const w = cur[weekStart];
                 return w?.k === 'ok' && w.schedule ? { ...cur, [weekStart]: { k: 'ok', schedule: { ...w.schedule, acknowledgedAt: at } } } : cur;
@@ -119,11 +155,12 @@ export function ScheduleScreen({ hr }: { hr: HrApi }) {
         <main className="ah">
             <ScreenHeader title="Mi horario" onBack={back} />
             <div className="ah-body">
-                {[
+                {!thisWeek && <p className="muted">Cargando…</p>}
+                {thisWeek && nextWeek && [
                     { w: thisWeek, title: 'Esta semana' },
                     { w: nextWeek, title: 'Próxima semana' },
                 ].map(({ w, title }) => (
-                    <WeekCard key={w} title={title} weekStart={w} week={weeks[w]} busy={busyId !== null} onConfirm={(id) => void confirm(w, id)} onRetry={() => void load(w)} />
+                    <WeekCard key={w} title={title} weekStart={w} week={weeks[w] ?? { k: 'loading' }} busy={busyId !== null} onConfirm={(id) => void confirm(w, id)} onRetry={() => void load(w)} />
                 ))}
             </div>
         </main>
