@@ -54,6 +54,23 @@ describe('AccountHome', () => {
         expect(screen.getByTestId('where')).toHaveTextContent('punch');
     });
 
+    it('with the real server list [BREAK_START, CHECK_OUT] both actions are available and CHECK_OUT is secondary', async () => {
+        renderHome(linked, hrWith({ ...today, availableActions: ['BREAK_START', 'CHECK_OUT'] }));
+        const primary = await screen.findByRole('button', { name: 'Iniciar descanso' });
+        const exit = screen.getByRole('button', { name: 'Salida' });
+        expect(primary).toHaveClass('btn-primary');
+        expect(exit).not.toHaveClass('btn-primary');
+        fireEvent.click(exit);
+        expect(screen.getByTestId('where')).toHaveTextContent('punch');
+    });
+
+    it('admin without an employee link still sees Por aprobar next to the unlinked message', () => {
+        renderHome({ ...admin, user: { ...admin.user, employeeId: undefined } }, hrWith(today));
+        expect(screen.getByText(/no está vinculado/)).toBeInTheDocument();
+        fireEvent.click(screen.getByText('Por aprobar'));
+        expect(screen.getByTestId('where')).toHaveTextContent('approvals');
+    });
+
     it('PENDING face enrollment replaces the mark button', async () => {
         renderHome(linked, hrWith(today, { biometricStatus: vi.fn().mockResolvedValue({ status: 'PENDING' }) }));
         expect(await screen.findByText('Registro facial pendiente de aprobación')).toBeInTheDocument();

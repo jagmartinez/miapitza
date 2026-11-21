@@ -35,13 +35,14 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                 <div className="ah-body">
                     <p className="muted">{UNLINKED}</p>
                     <Card title="Mi información" onClick={() => navigate('info')} />
+                    {isCompanyAdmin(session.user) && <Card title="Por aprobar" onClick={() => navigate('approvals')} />}
                 </div>
             </main>
         );
     }
 
     const { today, vacation, loanPolicy } = summary;
-    const action = today?.availableActions?.[0];
+    const actions = today?.availableActions ?? [];
     const stale = today?.blockingIssue?.code === 'STALE_OPEN_ATTENDANCE';
     const facePending = summary.biometric?.status === 'PENDING' && today?.policy?.requireBiometric !== false;
     const loanDatum = loanPolicy?.eligible && loanPolicy.maxAmount != null ? `Hasta ${formatHrMoney(loanPolicy.currency, loanPolicy.maxAmount)}` : 'No disponible';
@@ -75,10 +76,12 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                             </>
                         ) : facePending ? (
                             <p className="muted">Registro facial pendiente de aprobación</p>
-                        ) : action ? (
-                            <button type="button" className="btn btn-primary ah-wide" onClick={() => navigate('punch', { action })}>
-                                {ATTENDANCE_ACTION_LABELS[action]}
-                            </button>
+                        ) : actions.length > 0 ? (
+                            actions.map((action, i) => (
+                                <button key={action} type="button" className={`btn ${i === 0 ? 'btn-primary ' : ''}ah-wide`} onClick={() => navigate('punch', { action })}>
+                                    {ATTENDANCE_ACTION_LABELS[action]}
+                                </button>
+                            ))
                         ) : (
                             today && <p className="muted">No tienes marcajes disponibles ahora.</p>
                         )}

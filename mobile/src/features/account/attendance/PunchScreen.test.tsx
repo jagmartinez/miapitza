@@ -5,6 +5,7 @@ import { PunchScreen } from './PunchScreen';
 import { AccountNavProvider, useAccountNav } from '../AccountNav';
 import { ToastProvider } from '../../../ui/Toast';
 import { HrError, type HrApi } from '../hrApi';
+import { appEvents } from '../../../core/events';
 import { mockCamera, mockGeolocation, type CameraMock } from '../../../test/captureMocks';
 
 const today = {
@@ -31,10 +32,11 @@ const challenge = (over = {}) => ({
 const accepted = { decision: 'ACCEPTED', message: 'ok', checks: {}, punch: { id: 1, action: 'CHECK_IN', occurredAt: '2026-11-20T08:02:30Z' } };
 
 let nav: ReturnType<typeof useAccountNav>;
+let openParams: Record<string, unknown> = { action: 'CHECK_IN' };
 function Open() {
     nav = useAccountNav();
     const { navigate } = nav;
-    useEffect(() => navigate('punch', { action: 'CHECK_IN' }), [navigate]);
+    useEffect(() => navigate('punch', openParams), [navigate]);
     return null;
 }
 function Host({ hr }: { hr: HrApi }) {
@@ -65,6 +67,7 @@ function setup(over: Record<string, unknown> = {}) {
 const start = async () => fireEvent.click(await screen.findByRole('button', { name: /^Marcar/ }));
 
 beforeEach(() => {
+    openParams = { action: 'CHECK_IN' };
     cam = mockCamera();
     mockGeolocation({ accuracy: 12 });
 });
@@ -269,6 +272,40 @@ describe('PunchScreen', () => {
         const t = { ...today, availableActions: ['CHECK_OUT'] };
         setup({ attendanceToday: vi.fn().mockResolvedValue(t) });
         await waitFor(() => expect(nav.section).toBe('home'));
+    });
+
+    it('IDEMPOTENCY_IN_PROGRESS is "still processing" and the retry reuses the same key and challenge', async () => {
+        const punch = vi
+            .fn()
+            .mockRejectedValueOnce(new HrError('Solicitud duplicada en proceso', { code: 'IDEMPOTENCY_IN_PROGRESS', status: 409, isAmbiguous: true }))
+            .mockResolvedValueOnce(accepted);
+        const hr = setup({ punch });
+        await start();
+        expect(await screen.findByText('Tu marcaje todavía se está procesando. Espera unos segundos y reintenta.')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+        await screen.findByText('Entrada registrada 08:02');
+        expect(hr.createChallenge).toHaveBeenCalledTimes(1);
+        expect(punch.mock.calls[1][0]).toBe(punch.mock.calls[0][0]);
+        expect(punch.mock.calls[1][1].actionId).toBe(punch.mock.calls[0][1].actionId);
+    });
+
+    it('opened without an action, the available actions are offered and CHECK_OUT can be chosen', async () => {
+        openParams = {};
+        const t = { ...today, availableActions: ['BREAK_START', 'CHECK_OUT'] };
+        const hr = setup({ attendanceToday: vi.fn().mockResolvedValue(t) });
+        fireEvent.click(await screen.findByRole('button', { name: 'Salida' }));
+        fireEvent.click(await screen.findByRole('button', { name: /^Marcar/ }));
+        await screen.findByText(/registrad/);
+        const form = (hr.punch as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData;
+        expect(form.get('action')).toBe('CHECK_OUT');
+    });
+
+    it('a load error is re-read when the same user logs in again', async () => {
+        const attendanceToday = vi.fn().mockRejectedValueOnce(new HrError('Tu sesión expiró', { status: 401, isAmbiguous: false })).mockResolvedValue(today);
+        setup({ attendanceToday });
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        act(() => appEvents.emit('account-session-restored'));
+        expect(await screen.findByRole('button', { name: /^Marcar/ })).toBeInTheDocument();
     });
 
     it('PENDING screen can refresh the status', async () => {

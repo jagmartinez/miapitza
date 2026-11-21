@@ -14,6 +14,7 @@ export const MSG = {
     locationUnavailable: 'La ubicación no está disponible. Activa el GPS del teléfono y reintenta.',
     provider: 'El reconocimiento facial no está disponible. Intenta en unos minutos.',
     unconfirmed: 'No se pudo confirmar el envío. Revisa tu conexión y reintenta.',
+    inProgress: 'Tu marcaje todavía se está procesando. Espera unos segundos y reintenta.',
 };
 
 export function newActionId(): string {
@@ -49,8 +50,12 @@ export function CameraView({ videoRef, visible, instruction }: { videoRef: RefOb
     );
 }
 
-/** Resend the identical request only when it may not have reached the server (no response, 408, 5xx). */
+export const isInProgress = (e: unknown): boolean => e instanceof HrError && e.code === 'IDEMPOTENCY_IN_PROGRESS';
+
+/** Resend the identical request only when it may not have reached the server (no response, 408, 5xx) or is still in progress. */
 export function isResendable(e: unknown): boolean {
     if (!(e instanceof HrError) || e.code === 'FACE_PROVIDER_UNAVAILABLE') return false;
+    // The first copy is still being processed: resend later with the same key and challenge.
+    if (e.code === 'IDEMPOTENCY_IN_PROGRESS') return true;
     return e.status === undefined || e.status === 408 || e.status >= 500;
 }

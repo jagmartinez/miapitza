@@ -19,6 +19,15 @@ function api(over: Partial<Record<keyof HrApi, unknown>> = {}): HrApi {
 }
 
 describe('useAccountSummary', () => {
+    it('reloads when the same user logs in again over the kept tree', async () => {
+        const attendanceToday = vi.fn().mockRejectedValueOnce(new Error('401')).mockResolvedValue({ availableActions: ['CHECK_IN'], blockingIssue: null, punches: [] });
+        const hr = api({ attendanceToday, mySchedule: vi.fn().mockRejectedValue(new Error('401')) });
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.failed).toContain('today'));
+        act(() => appEvents.emit('account-session-restored'));
+        await waitFor(() => expect(result.current.today?.availableActions).toEqual(['CHECK_IN']));
+    });
+
     it('summary builds pending items (unacknowledged schedule, new receipt, swap to answer)', async () => {
         localStorage.clear();
         const hr = api({

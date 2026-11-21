@@ -4,6 +4,7 @@ import type { HrLoan } from '@web/types/hr-benefits';
 import { Card } from '../../../ui/Card';
 import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useAccountNav } from '../AccountNav';
+import { useSessionRestored } from '../useSessionRestored';
 import { toHrError, type HrApi } from '../hrApi';
 import type { RequestCardModel } from '../useAccountSummary';
 import { useCancelFlow } from '../requests/common';
@@ -49,6 +50,9 @@ export function LoansScreen({ hr }: { hr: HrApi }) {
         if (loanId === null) load();
     }, [load, loanId]);
 
+    useSessionRestored(() => {
+        if (loanId === null && (error || balanceFailed)) load();
+    });
     const cancel = useCancelFlow(hr, load);
     if (loanId !== null) return <LoanDetail hr={hr} id={loanId} />;
 

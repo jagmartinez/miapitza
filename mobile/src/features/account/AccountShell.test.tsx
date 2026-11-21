@@ -87,6 +87,30 @@ describe('AccountShell', () => {
         expect(after.value).toBe('mi borrador');
     });
 
+    async function loginThroughForm(accountApi: { login: ReturnType<typeof vi.fn> }, as: Session) {
+        accountApi.login.mockResolvedValue({ status: 'ok', session: as });
+        fireEvent.change(screen.getByLabelText('Usuario'), { target: { value: 'u' } });
+        fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'pw' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+    }
+
+    it('a same-user login emits account-session-restored; a different user does not', async () => {
+        const { services, accountApi } = build();
+        const fn = vi.fn();
+        const off = appEvents.on('account-session-restored', fn);
+        render(<Harness initial={session} services={services} />);
+        act(() => appEvents.emit('session-expired'));
+        await setSession(null);
+        await loginThroughForm(accountApi, { ...session, token: 'tok-new' });
+        await waitFor(() => expect(fn).toHaveBeenCalledTimes(1));
+        act(() => appEvents.emit('session-expired'));
+        await setSession(null);
+        await loginThroughForm(accountApi, other);
+        await waitFor(() => expect(screen.queryByRole('button', { name: 'Entrar' })).toBeNull());
+        off();
+        expect(fn).toHaveBeenCalledTimes(1);
+    });
+
     it('different user wipes the tree', async () => {
         const { services } = build();
         render(<Harness initial={session} services={services} />);

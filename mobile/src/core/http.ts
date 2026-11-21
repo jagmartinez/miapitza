@@ -2,8 +2,8 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axio
 import { appEvents } from './events';
 import type { Session, SessionStore } from './session';
 
-/** A 401 from these means "bad credentials", not "your session ended". */
-const CREDENTIAL_PATHS = new Set(['/auth/login', '/auth/pin-login', '/auth/device-login']);
+/** A 401 from these means "bad credentials", not "your session ended" (/auth/me/pin: wrong current password). */
+const CREDENTIAL_PATHS = new Set(['/auth/login', '/auth/pin-login', '/auth/device-login', '/auth/me/pin']);
 
 /**
  * Supervisor discount endpoints. They also read X-Device-Token, and a 401 from them

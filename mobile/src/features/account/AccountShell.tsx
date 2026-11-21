@@ -60,11 +60,14 @@ export function AccountShell({ session, services, onSession, onSessionEnd, child
 
     const handleLoggedIn = useCallback(
         (next: Session) => {
+            // Same user over the kept tree: reads that failed while the session was gone must reload.
+            const sameUser = track.userId === next.user.id && track.companyId === (next.user.companyId ?? null);
             setNotice(null);
             setForced(false);
             onSession(next);
+            if (sameUser) appEvents.emit('account-session-restored');
         },
-        [onSession],
+        [onSession, track.userId, track.companyId],
     );
 
     const handleLogout = useCallback(() => {

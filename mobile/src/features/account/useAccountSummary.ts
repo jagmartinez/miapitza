@@ -6,6 +6,7 @@ import type { HrBiometricProfile, HrTodayAttendance } from '@web/types/hr-attend
 import type { HrVacationBalance } from '@web/types/hr-workforce';
 import { appEvents } from '../../core/events';
 import type { HrApi, HrLoanPolicy, HrSwap } from './hrApi';
+import { useSessionRestored } from './useSessionRestored';
 
 export type RequestKind = 'leave' | 'overtime' | 'correction' | 'swap' | 'loan';
 
@@ -215,6 +216,7 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
     const [tick, setTick] = useState(0);
     const reload = useCallback(() => setTick((t) => t + 1), []);
     const alive = useRef(0);
+    useSessionRestored(reload);
 
     // A different user must never see the previous user's data, not even for a frame.
     useEffect(

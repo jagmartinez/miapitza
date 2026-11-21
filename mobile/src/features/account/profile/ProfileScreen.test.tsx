@@ -108,7 +108,7 @@ describe('ProfileScreen', () => {
         expect(await screen.findByRole('button', { name: 'Cambiar PIN' })).toBeInTheDocument();
     });
 
-    it('PIN sheet shows the server message and keeps the sheet', async () => {
+    it('PIN sheet shows "Contraseña actual incorrecta" on 401 and keeps the sheet', async () => {
         const err = Object.assign(new Error('x'), { response: { status: 401, data: { message: 'Credenciales inválidas' } } });
         mount({ setPin: vi.fn().mockRejectedValue(err) });
         fireEvent.click(await screen.findByRole('button', { name: 'Definir PIN' }));
@@ -116,7 +116,7 @@ describe('ProfileScreen', () => {
         fireEvent.change(screen.getByLabelText('Repite el PIN'), { target: { value: '2580' } });
         fireEvent.change(screen.getByLabelText('Contraseña actual'), { target: { value: 'bad' } });
         fireEvent.click(screen.getByRole('button', { name: 'Guardar PIN' }));
-        expect(await screen.findByText('Credenciales inválidas')).toBeInTheDocument();
+        expect(await screen.findByText('Contraseña actual incorrecta')).toBeInTheDocument();
     });
 
     it('Cambiar contraseña opens the non-blocking screen with a back button', async () => {

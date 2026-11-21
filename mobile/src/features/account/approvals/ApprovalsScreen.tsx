@@ -3,6 +3,7 @@ import { Card } from '../../../ui/Card';
 import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useToast } from '../../../ui/Toast';
 import { useAccountNav } from '../AccountNav';
+import { useSessionRestored } from '../useSessionRestored';
 import { toHrError, type HrApi, type HrSwap, type HrSwapShift } from '../hrApi';
 import { REASON_MAX, validReason } from '../requests/common';
 import type { HrAttendanceCorrection, HrLeaveRequest, HrOvertimeRequest } from '@web/types/hr-workforce';
@@ -216,6 +217,10 @@ export function ApprovalsScreen({ hr }: { hr: HrApi }) {
     useEffect(() => {
         TABS.forEach((t) => load(t.kind));
     }, [load]);
+
+    useSessionRestored(() => {
+        TABS.forEach((t) => data[t.kind] === 'error' && load(t.kind));
+    });
 
     const decide = useCallback(
         async (item: Item, decision: 'APPROVED' | 'REJECTED', reason: string, minutes?: number): Promise<string | null> => {

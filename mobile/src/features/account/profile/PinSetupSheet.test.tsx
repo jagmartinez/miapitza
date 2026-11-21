@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { HrError } from '../hrApi';
 import { PinSetupSheet, validatePin } from './PinSetupSheet';
 
 describe('validatePin', () => {
@@ -30,6 +31,13 @@ describe('PinSetupSheet', () => {
         const { onSubmit, fill } = setup();
         fill('2580369', '2580369');
         await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('258036', 'pw'));
+    });
+
+    it('a 401 shows "Contraseña actual incorrecta" and keeps the sheet usable', async () => {
+        const { fill } = setup(vi.fn().mockRejectedValue(new HrError('Credenciales inválidas', { status: 401, isAmbiguous: false })));
+        fill('2580', '2580');
+        expect(await screen.findByText('Contraseña actual incorrecta')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Guardar PIN' })).not.toBeDisabled();
     });
 
     it('rejects a descending run and repeated digits without submitting', () => {

@@ -35,7 +35,9 @@ export function PinSetupSheet({ hasPin, onSubmit, onClose }: Props) {
         try {
             await onSubmit(pin, current);
         } catch (err) {
-            setError(toHrError(err).message);
+            const e = toHrError(err);
+            // The server answers a wrong current password with 401 (never a session end here).
+            setError(e.status === 401 ? 'Contraseña actual incorrecta' : e.message);
             setBusy(false);
         }
     }

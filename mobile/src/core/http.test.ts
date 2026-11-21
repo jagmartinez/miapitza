@@ -109,6 +109,17 @@ describe('http', () => {
         expect(fn).not.toHaveBeenCalled();
         expect(await sessions.load()).not.toBeNull();
     });
+
+    it('a 401 from PUT /auth/me/pin (wrong current password) does not expire the session', async () => {
+        const { sessions, http } = setup(401);
+        await sessions.save(session);
+        const fn = vi.fn();
+        const off = appEvents.on('session-expired', fn);
+        await expect(http.put('/auth/me/pin', {})).rejects.toBeTruthy();
+        off();
+        expect(fn).not.toHaveBeenCalled();
+        expect(await sessions.load()).not.toBeNull();
+    });
 });
 
 describe('http hardening', () => {

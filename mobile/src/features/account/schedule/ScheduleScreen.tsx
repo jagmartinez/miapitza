@@ -6,6 +6,7 @@ import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useToast } from '../../../ui/Toast';
 import { useAccountNav } from '../AccountNav';
 import { toHrError, type HrApi } from '../hrApi';
+import { useSessionRestored } from '../useSessionRestored';
 import '../profile/profile.css';
 
 type Week = { k: 'loading' } | { k: 'error' } | { k: 'ok'; schedule: HrWeeklySchedule | null };
@@ -126,6 +127,10 @@ export function ScheduleScreen({ hr }: { hr: HrApi }) {
         void load(thisWeek);
         void load(nextWeek);
     }, [load, thisWeek, nextWeek]);
+
+    useSessionRestored(() => {
+        for (const [w, week] of Object.entries(weeks)) if (week.k === 'error') void load(w);
+    });
 
     async function confirm(weekStart: string, id: number) {
         if (inFlight.current) return;

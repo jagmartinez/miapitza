@@ -7,6 +7,7 @@ import { useToast } from '../../../ui/Toast';
 import { printOut } from '../../print/printOut';
 import { toHrError, type HrApi } from '../hrApi';
 import { useAccountNav } from '../AccountNav';
+import { useSessionRestored } from '../useSessionRestored';
 import { markReceiptsSeen, seenReceipts } from '../useAccountSummary';
 import '../profile/profile.css';
 
@@ -120,6 +121,9 @@ export function PayrollScreen({ hr, userId }: { hr: HrApi; userId: number }) {
     useEffect(() => {
         void load();
     }, [load]);
+    useSessionRestored(() => {
+        if (failed) void load();
+    });
 
     function openReceipt(r: HrPayrollReceiptSummary) {
         markReceiptsSeen(userId, [r.id]);

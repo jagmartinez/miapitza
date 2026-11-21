@@ -3,11 +3,12 @@ import type { HrAttendanceAction, HrAttendanceChallenge, HrAttendancePolicy, HrA
 import { ATTENDANCE_ACTION_LABELS, isChallengeExpired, presentAttendanceChecks } from '@web/components/hr/attendanceRules';
 import { ScreenHeader } from '../../../ui/ScreenHeader';
 import { useAccountNav } from '../AccountNav';
+import { useSessionRestored } from '../useSessionRestored';
 import type { HrApi } from '../hrApi';
 import { useFaceCapture } from './useFaceCapture';
 import { useLocation, type LocationFix } from './useLocation';
 import { EnrollScreen } from './EnrollScreen';
-import { appendFrames, CameraView, failureMessage, isResendable, MSG, newActionId } from './captureCommon';
+import { appendFrames, CameraView, failureMessage, isInProgress, isResendable, MSG, newActionId } from './captureCommon';
 
 const DONE_LABEL: Record<HrAttendanceAction, string> = {
     CHECK_IN: 'Entrada registrada',
@@ -83,8 +84,17 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
     useEffect(() => {
         void load();
     }, [load]);
+    // Re-login over a load error: read again (a form in progress keeps its state).
+    const viewKind = useRef(view.k);
+    viewKind.current = view.k;
+    useSessionRestored(() => {
+        if (viewKind.current === 'loadError') void load();
+    });
 
-    const action: HrAttendanceAction | undefined = (params.action as HrAttendanceAction | undefined) ?? today?.availableActions?.[0];
+    const [chosen, setChosen] = useState<HrAttendanceAction | undefined>();
+    const available = today?.availableActions ?? [];
+    // With several available actions and none picked on the home, the employee chooses here.
+    const action: HrAttendanceAction | undefined = (params.action as HrAttendanceAction | undefined) ?? chosen ?? (available.length === 1 ? available[0] : undefined);
 
     const submit = async (p: Pending) => {
         show({ k: 'sending' });
@@ -95,7 +105,7 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
         } catch (e) {
             const resend = isResendable(e);
             if (!resend) pending.current = null;
-            show({ k: 'error', msg: resend ? MSG.unconfirmed : failureMessage(e), resend });
+            show({ k: 'error', msg: isInProgress(e) ? MSG.inProgress : resend ? MSG.unconfirmed : failureMessage(e), resend });
         }
     };
 
@@ -224,6 +234,12 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
                                     Marcar {ATTENDANCE_ACTION_LABELS[action].toLowerCase()}
                                 </button>
                             </>
+                        ) : available.length > 1 ? (
+                            available.map((a, i) => (
+                                <button key={a} type="button" className={`btn${i === 0 ? ' btn-primary' : ''}`} onClick={() => setChosen(a)}>
+                                    {ATTENDANCE_ACTION_LABELS[a]}
+                                </button>
+                            ))
                         ) : (
                             <p className="muted">No hay marcajes disponibles ahora.</p>
                         )}
