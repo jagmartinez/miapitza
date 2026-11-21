@@ -1,6 +1,6 @@
 # Punto de control — App Android
 
-> Leer esto primero para retomar. Actualizado: 2026-11-20 (Fase 2b cerrada).
+> Leer esto primero para retomar. Actualizado: 2026-11-20 (Fase 3 cerrada).
 
 ## Dónde estamos
 - Rama: `feat/app-android` (creada desde `codex/rh-nomina-estatutaria` @ 6d548af). No publicada (sin push).
@@ -84,8 +84,31 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
   - PDF del reporte de cierre.
 - Uso semanal consumido por la Fase 2b: ~2 puntos (44 % → 46 %).
 
+## Fase 3 (Cocina / KDS) — ✅ código terminado y revisado (2026-11-20)
+- Plan: `docs/superpowers/plans/2026-11-21-app-android-fase-3-cocina.md`. Bitácora con decisiones R1–R16: `.superpowers/sdd/2026-11-21-app-android-fase-3-cocina/progress.md` (no versionada).
+- Hecho:
+  - **Servidor:**
+    - device-login con errores tipados: solo `DEVICE_NOT_ACTIVE` (401) desempareja; `KITCHEN_ACCOUNT_UNAVAILABLE` (403) no; errores de BD → 5xx;
+    - una sola sesión por tablet (revoca la anterior y cierra su socket);
+    - errores KDS tipados, `GET /orders/kitchen/recent`, `kitchenReadyAt`;
+    - `ORDER_READY` sin repetir, pero el aviso al mesero se repara en reintentos.
+  - **App:**
+    - sesión de cocina resistente (no desempareja ante 401 transitorio, la pantalla no se desmonta al renovar cada 8 h, tope de 2 s entre re-logins, jitter en reconexión);
+    - cola en vivo por tanda, sonido también tras cola vacía, ping/vigilancia del socket y refresco de seguridad cada 60 s, nunca "Sin comandas" ante error;
+    - Listo con deshacer 5 s → ready → release, reintentos con las mismas claves, se rinde a los 2 min;
+    - tablero, avisos en banda fija, recientes (10), indicador de conexión;
+    - kiosco: pantalla encendida (keep-awake 5.0.1), lock task / fijar pantalla, salida con pulsación larga de 5 s.
+- Revisiones: refutador por tarea; finales Opus (servidor) + Opus y Fable 5.2 (app); una ola por lado, re-revisadas y limpias.
+- Pruebas: servidor 201 suites / 1753; cliente `tsc` limpio; app 79 archivos / 650; JS inicial 87 KB gzip. Sin migraciones nuevas.
+- Diferidos (gate de dispositivo):
+  - compilar `KioskPlugin.java` / `MainActivity` y `npx cap sync android`;
+  - turno completo sin web: comanda visible ≤ 2 s, Listo/Deshacer, Wi-Fi apagado/encendido, renovación de 8 h, revocar tablet (desempareja) vs desactivar usuario de cocina (no desempareja);
+  - fijar pantalla, sonido sin gesto, diseño a 1280×800 y 1024×600.
+- Diferidos de código: menores en la bitácora (R6–R16).
+- Uso semanal consumido por la Fase 3: ~3 puntos (46 % → 49 %).
+
 ## Siguiente
-- Fase 3 (Cocina / KDS en tablet fija): plan escrito en `docs/superpowers/plans/2026-11-21-app-android-fase-3-cocina.md` (7 tareas: 2 servidor, 5 app; críticas 1, 3 y 5). Falta aprobarlo y ejecutarlo.
+- Fase 4 (Mi cuenta en el celular). Primero escribir su plan (ver reglas abajo: `mustChangePassword`/`passwordExpired`, PIN con `currentPassword`).
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
