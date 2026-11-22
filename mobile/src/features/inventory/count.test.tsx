@@ -186,17 +186,33 @@ describe('CountScreen', () => {
         expect(css).toMatch(/\.cnt-row \{[^}]*height: 40px/);
     });
 
-    it('compact layout fits 360', () => {
-        const c = LAYOUT.compact;
-        expect(c.header + c.controls + c.footer).toBeLessThanOrEqual(360);
-        expect(c.header + c.unit + c.display + c.key * c.keyRows).toBeLessThanOrEqual(360);
-        expect(c.key).toBeGreaterThanOrEqual(44);
+    it('compact layout fits 360 with the real CSS sizes (R14)', () => {
         const css = readFileSync('src/features/inventory/inventory.css', 'utf8');
-        const compact = css.slice(css.indexOf(`@media (max-height: ${LAYOUT.compactMaxHeight}px) {\n    .cnt-header`));
-        expect(compact).toMatch(/\.cnt-header \{\s*height: 44px/);
-        expect(compact).toMatch(/\.cnt-footer \{[^}]*height: 44px/);
-        expect(compact).toMatch(/\.cnt-units \{\s*height: 36px/);
-        expect(compact).toMatch(/\.cnt-display \{\s*height: 44px/);
+        const compact = css.slice(css.lastIndexOf(`@media (max-height: ${LAYOUT.compactMaxHeight}px)`));
+        const px = (re: RegExp) => {
+            const m = re.exec(compact);
+            if (!m) throw new Error(`missing in compact CSS: ${re}`);
+            return Number(m[1]);
+        };
+        const header = px(/\.cnt-header \{\s*height: (\d+)px/);
+        const gap = px(/\.cnt-right \{\s*gap: (\d+)px/);
+        const padY = px(/\.cnt-right \{[^}]*padding: (\d+)px/);
+        const unit = px(/\.cnt-units \{\s*height: (\d+)px/);
+        const display = px(/\.cnt-display \{\s*height: (\d+)px/);
+        const keypadGap = px(/\.cnt-keypad \{\s*gap: (\d+)px/);
+        const key = px(/grid-template-rows: repeat\(4, minmax\((\d+)px/);
+        const keysBase = Number(/\.cnt-key \{\s*min-height: (\d+)px/.exec(css)?.[1]);
+        // Right panel: padding top and bottom, 3 children with 2 gaps between them, 4 key rows with 3 gaps.
+        const panel = 2 * padY + unit + display + 2 * gap + 4 * key + 3 * keypadGap;
+        expect(header + panel).toBeLessThanOrEqual(LAYOUT.usableHeight);
+        expect({ header, gap, padY, unit, display, keypadGap, key }).toEqual({
+            header: LAYOUT.compact.header, gap: LAYOUT.compact.panelGap, padY: LAYOUT.compact.panelPadY, unit: LAYOUT.compact.unit,
+            display: LAYOUT.compact.display, keypadGap: LAYOUT.compact.keypadGap, key: LAYOUT.compact.key,
+        });
+        expect(key).toBeGreaterThanOrEqual(48);
+        expect(keysBase).toBeGreaterThanOrEqual(48);
+        // The left column: header + controls + list + footer, the list takes the rest.
+        expect(header + px(/\.cnt-controls,\s*\.cnt-footer \{\s*height: (\d+)px/) * 2).toBeLessThanOrEqual(LAYOUT.usableHeight);
         expect(css).toMatch(/\.cnt-key-save \{[^}]*grid-row: 3 \/ span 2/);
     });
 

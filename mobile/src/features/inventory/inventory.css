@@ -795,7 +795,7 @@
     min-height: 48px;
 }
 
-/* Short landscape (~360 dp): LAYOUT.compact in CountScreen.tsx. Left column 44 + 44 + 44, right panel 36 + 44 + 4 x 44 (keys grow to 48). */
+/* Short landscape (~360 dp): LAYOUT.compact in CountScreen.tsx. Header 44, right panel 2 + 36 + 2 + 44 + 2 + (4 x 48 + 3 x 2) + 2 = 286 with keys of 48: header + panel = 330, inside 360 dp minus a 24 dp status bar (336). */
 @media (max-height: 520px) {
     .cnt-header {
         height: 44px;
@@ -818,8 +818,8 @@
     }
 
     .cnt-right {
-        gap: 4px;
-        padding: 4px 8px;
+        gap: 2px;
+        padding: 2px 8px;
     }
 
     .cnt-units {
@@ -832,7 +832,7 @@
     }
 
     .cnt-keypad {
-        gap: 4px;
+        gap: 2px;
         grid-template-rows: repeat(4, minmax(48px, 1fr));
     }
 

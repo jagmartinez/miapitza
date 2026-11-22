@@ -12,8 +12,10 @@ import './inventory.css';
 
 /** Short landscape screens (~360 dp): everything fits without scrolling. Kept in sync with inventory.css (a test pins the sum). */
 export const LAYOUT = {
-    compact: { header: 44, controls: 44, footer: 44, unit: 36, display: 44, key: 44, keyRows: 4 },
+    compact: { header: 44, controls: 44, footer: 44, unit: 36, display: 44, key: 48, keyRows: 4, panelGap: 2, panelPadY: 2, keypadGap: 2 },
     compactMaxHeight: 520,
+    /** Visible height of a 360 dp phone with its status bar showing (the app is not immersive outside kiosk mode). */
+    usableHeight: 336,
 } as const;
 
 type Indicator = 'saved' | 'saving' | 'queued' | 'error';
