@@ -14,7 +14,7 @@
 
 .vlist {
     flex: 1;
-    min-height: 0;
+    min-height: 140px;
     overflow-y: auto;
 }
 
@@ -312,4 +312,28 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     color: var(--muted);
+}
+
+/* Short landscape screens: the list keeps its minimum height and the ticket panel scrolls instead. */
+@media (max-height: 480px) {
+    .ticket-head {
+        padding: 6px 14px;
+    }
+
+    .ticket-foot {
+        position: sticky;
+        bottom: 0;
+        background: var(--surface);
+        gap: 6px;
+        padding: 6px 14px 8px;
+    }
+
+    .ticket-total strong {
+        font-size: 20px;
+    }
+
+    .ticket-send {
+        min-height: 48px;
+        font-size: 16px;
+    }
 }
