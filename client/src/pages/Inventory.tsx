@@ -88,6 +88,14 @@ type ProductInventory = Product & {
 };
 
 type StrOption = SingleValue<{ value: string; label: string }>;
+/** 409 COUNT_SHEET_OPEN: the warehouse has an open blind count sheet. */
+function countSheetOpenMessage(error: unknown): string | null {
+    const code = (error as { response?: { data?: { code?: string } } })?.response?.data?.code;
+    return code === 'COUNT_SHEET_OPEN'
+        ? 'Hay un conteo abierto en esta bodega; apruébalo o recházalo primero'
+        : null;
+}
+
 function apiErrorMessage(error: unknown): string {
     return getApiErrorMessage(error);
 }
@@ -507,7 +515,7 @@ export default function Inventory() {
             setIsAdjustmentModalOpen(false);
             loadInventory();
         } catch (error: unknown) {
-            showError('Error: ' + apiErrorMessage(error));
+            showError(countSheetOpenMessage(error) ?? 'Error: ' + apiErrorMessage(error));
         } finally {
             setAdjusting(false);
         }

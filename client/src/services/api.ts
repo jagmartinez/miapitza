@@ -1084,6 +1084,16 @@ export const surveysAPI = {
     ranking: (params?: Record<string, unknown>) => api.get(`${SURVEYS_API_BASE}/ranking`, { params }),
 };
 
+const INVENTORY_COUNTS_API_BASE = '/v1/inventory-counts';
+export const inventoryCountsAPI = {
+    list: (params?: Record<string, unknown>) => api.get(`${INVENTORY_COUNTS_API_BASE}/review`, { params }),
+    detail: (id: number) => api.get(`${INVENTORY_COUNTS_API_BASE}/${id}/review`),
+    recount: (id: number, data: { productIds: number[]; note?: string }) => api.post(`${INVENTORY_COUNTS_API_BASE}/${id}/recount`, data),
+    reject: (id: number, reason: string) => api.post(`${INVENTORY_COUNTS_API_BASE}/${id}/reject`, { reason }),
+    approve: (id: number, idempotencyKey: string) =>
+        api.post(`${INVENTORY_COUNTS_API_BASE}/${id}/approve`, {}, idempotencyHeaders(idempotencyKey)),
+};
+
 const HR_API_BASE = '/v1/hr';
 
 export interface BranchGeofencePayload {
