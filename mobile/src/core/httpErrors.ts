@@ -9,3 +9,9 @@ export function httpCode(error: unknown): string | undefined {
     const code = (error as { response?: { data?: { code?: unknown } } } | null)?.response?.data?.code;
     return typeof code === 'string' ? code : undefined;
 }
+
+/** Human message of a failed request's JSON body, if the server sent one. */
+export function httpMessage(error: unknown): string | undefined {
+    const message = (error as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+    return typeof message === 'string' && message.trim() ? message : undefined;
+}

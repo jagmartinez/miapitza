@@ -33,7 +33,7 @@ function WeekCard({ title, weekStart, week, busy, onConfirm, onRetry }: { title:
     }
     const s = week.schedule;
     if (!s || s.status !== 'PUBLISHED') {
-        return <Card title={title}><p className="muted">Aún no hay horario publicado para esta semana</p></Card>;
+        return <Card title={title}><p className="muted">Aún no hay horario publicado</p></Card>;
     }
     const shifts = sortScheduleShifts(s.shifts ?? []);
     return (

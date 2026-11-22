@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DeviceType, LoginUser } from '../../core/session';
-import { httpStatus } from '../../core/httpErrors';
+import { httpMessage, httpStatus } from '../../core/httpErrors';
 import type { DeviceApi } from './deviceApi';
 
 interface Props {
@@ -99,8 +99,10 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
             await api.cancel();
             setAdmin(null);
             setNeedsCode(false);
+            setPassword('');
             setStep('login');
-            setError(status === 403 ? 'Este usuario no puede registrar dispositivos' : 'No se pudo registrar el dispositivo');
+            // A 400 is the server telling the admin what to fix (e.g. an inactive kitchen user): show it.
+            setError(status === 403 ? 'Este usuario no puede registrar dispositivos' : (status === 400 && httpMessage(err)) || 'No se pudo registrar el dispositivo');
             setBusy(false);
         }
     }

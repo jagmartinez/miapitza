@@ -69,7 +69,7 @@ describe('ScheduleScreen', () => {
 
     it('no schedule message', async () => {
         mount({ mySchedule: vi.fn(async () => null) });
-        expect(await screen.findAllByText('Aún no hay horario publicado para esta semana')).toHaveLength(2);
+        expect(await screen.findAllByText('Aún no hay horario publicado')).toHaveLength(2);
     });
 
     it('Confirmado shows the server timestamp, not the device clock', async () => {
@@ -84,7 +84,7 @@ describe('ScheduleScreen', () => {
         const mySchedule = vi.fn(async () => null);
         const attendanceToday = vi.fn(async () => ({ serverTime: '2026-11-23T02:00:00Z', timezone: 'America/Managua' }));
         mount({ mySchedule, attendanceToday });
-        await screen.findAllByText('Aún no hay horario publicado para esta semana');
+        await screen.findAllByText('Aún no hay horario publicado');
         expect(mySchedule).toHaveBeenCalledWith('2026-11-16');
         expect(mySchedule).toHaveBeenCalledWith('2026-11-23');
     });

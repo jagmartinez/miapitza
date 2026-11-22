@@ -67,6 +67,24 @@ describe('DeviceSetupScreen', () => {
         expect(JSON.parse(String(register.data))).toMatchObject({ type: 'KITCHEN_TABLET', kitchenUserId: 42 });
     });
 
+    it('a 400 on register shows the server reason and clears the password', async () => {
+        const api = fakeApi((c) => {
+            const p = pathOf(c);
+            if (p === 'POST /auth/login') return { data: { success: true, data: { token: 'admin-tok', user: admin } } };
+            if (p === 'POST /v1/operational-devices') return { status: 400, data: { success: false, message: 'Usuario de cocina inválido' } };
+            return { data: { success: true } };
+        });
+        render(<DeviceSetupScreen api={createDeviceApi({ http: api.http, sessions: api.sessions })} onDone={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de servicio/ }));
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        fireEvent.change(await screen.findByLabelText(/Nombre del dispositivo/), { target: { value: 'Salón' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Registrar dispositivo' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Usuario de cocina inválido');
+        expect(screen.getByLabelText('Contraseña')).toHaveValue('');
+    });
+
     it('drops the admin token right after a register failure, and on Back', async () => {
         const api = fakeApi((c) => {
             const p = pathOf(c);
