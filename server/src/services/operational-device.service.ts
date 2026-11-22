@@ -59,7 +59,7 @@ export class OperationalDeviceService {
         }
 
         const branch = await prisma.branch.findFirst({
-            where: { id: input.branchId, companyId: actor.companyId },
+            where: { id: input.branchId, companyId: actor.companyId, status: 'ACTIVE' },
             select: { id: true },
         });
         if (!branch) throw new OperationalDeviceError('Sucursal no encontrada', 404);
@@ -143,6 +143,57 @@ export class OperationalDeviceService {
             SELECT status FROM \`OperationalDevice\` WHERE id = ${deviceId} FOR UPDATE
         `;
         return rows.length === 1 && rows[0].status === 'ACTIVE';
+    }
+
+    /**
+     * Choices for registering a tablet: active branches the caller may act on,
+     * each with the users `register` would accept as KITCHEN_TABLET account.
+     */
+    static async setupOptions(actor: DeviceActor, branchScope?: number): Promise<{
+        branches: Array<{
+            id: number;
+            name: string;
+            kitchenUsers: Array<{ id: number; name: string; username: string }>;
+        }>;
+    }> {
+        const branches = await prisma.branch.findMany({
+            where: {
+                companyId: actor.companyId,
+                status: 'ACTIVE',
+                ...(branchScope !== undefined ? { id: branchScope } : {}),
+            },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+        });
+        if (branches.length === 0) return { branches: [] };
+
+        const users = await prisma.user.findMany({
+            where: {
+                companyId: actor.companyId,
+                status: 'ACTIVE',
+                branchId: { in: branches.map((branch) => branch.id) },
+            },
+            select: {
+                id: true,
+                name: true,
+                username: true,
+                branchId: true,
+                role: { select: { name: true } },
+                userRoles: { select: { role: { select: { name: true } } } },
+            },
+            orderBy: { name: 'asc' },
+        });
+
+        return {
+            branches: branches.map((branch) => ({
+                id: branch.id,
+                name: branch.name,
+                kitchenUsers: users
+                    .filter((user) => user.branchId === branch.id
+                        && isKitchenDeviceUser([user.role.name, ...user.userRoles.map((entry) => entry.role.name)]))
+                    .map((user) => ({ id: user.id, name: user.name, username: user.username })),
+            })),
+        };
     }
 
     static async list(actor: DeviceActor, branchId?: number): Promise<OperationalDevice[]> {

@@ -63,6 +63,16 @@ describe('OperationalDeviceService', () => {
         expect(create).not.toHaveBeenCalled();
     });
 
+    it('register only looks up ACTIVE branches (inactive -> 404)', async () => {
+        const find = jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue(null);
+        const create = jest.spyOn(prisma.operationalDevice, 'create');
+        await expect(OperationalDeviceService.register(actor, {
+            branchId: 9, type: 'SERVICE_TABLET', name: 'X',
+        })).rejects.toMatchObject({ statusCode: 404, message: 'Sucursal no encontrada' });
+        expect(find.mock.calls[0][0]!.where).toMatchObject({ id: 9, companyId: 5, status: 'ACTIVE' });
+        expect(create).not.toHaveBeenCalled();
+    });
+
     it('resolveActive returns null for unknown or REVOKED tokens', async () => {
         const find = jest.spyOn(prisma.operationalDevice, 'findUnique').mockResolvedValue(null);
         const update = jest.spyOn(prisma.operationalDevice, 'update');
@@ -186,5 +196,50 @@ describe('OperationalDeviceService', () => {
         const revokeSessions = jest.spyOn(SessionService, 'revokeByDevice');
         await expect(OperationalDeviceService.revoke(actor, 7)).rejects.toThrow('Dispositivo no encontrado');
         expect(revokeSessions).not.toHaveBeenCalled();
+    });
+});
+
+describe('OperationalDeviceService.setupOptions', () => {
+    const u = (id: number, branchId: number, role: string, extra: string[] = []) => ({
+        id, name: `U${id}`, username: `u${id}`, branchId,
+        role: { name: role }, userRoles: extra.map((name) => ({ role: { name } })),
+    });
+
+    it('lists only eligible kitchen users per branch (company-wide)', async () => {
+        const branchFind = jest.spyOn(prisma.branch, 'findMany').mockResolvedValue([
+            { id: 1, name: 'Centro' }, { id: 2, name: 'Norte' },
+        ] as never);
+        const userFind = jest.spyOn(prisma.user, 'findMany').mockResolvedValue([
+            u(10, 1, 'COCINA'),
+            u(11, 1, 'COCINA', ['ADMIN']),
+            u(13, 2, 'COCINA'),
+            u(14, 1, 'MESERO'),
+        ] as never);
+
+        const out = await OperationalDeviceService.setupOptions(actor);
+
+        expect(branchFind.mock.calls[0][0]!.where).toMatchObject({ companyId: 5, status: 'ACTIVE' });
+        expect((branchFind.mock.calls[0][0]!.where as Record<string, unknown>).id).toBeUndefined();
+        expect(out.branches.map((b) => b.id)).toEqual([1, 2]);
+        expect(out.branches[0].kitchenUsers.map((x) => x.id)).toEqual([10]);
+        // INACTIVE users are excluded by the query itself.
+        expect(userFind.mock.calls[0][0]!.where).toMatchObject({ companyId: 5, status: 'ACTIVE' });
+        expect(out.branches[1].kitchenUsers).toEqual([{ id: 13, name: 'U13', username: 'u13' }]);
+    });
+
+    it('branch-pinned scope queries only that branch', async () => {
+        const branchFind = jest.spyOn(prisma.branch, 'findMany').mockResolvedValue([{ id: 2, name: 'Norte' }] as never);
+        const userFind = jest.spyOn(prisma.user, 'findMany').mockResolvedValue([u(13, 2, 'COCINA')] as never);
+        const out = await OperationalDeviceService.setupOptions(actor, 2);
+        expect(branchFind.mock.calls[0][0]!.where).toMatchObject({ companyId: 5, id: 2 });
+        expect((userFind.mock.calls[0][0]!.where as Record<string, unknown>).branchId).toEqual({ in: [2] });
+        expect(out.branches).toHaveLength(1);
+    });
+
+    it('a branch without kitchen users gets an empty list', async () => {
+        jest.spyOn(prisma.branch, 'findMany').mockResolvedValue([{ id: 1, name: 'Centro' }] as never);
+        jest.spyOn(prisma.user, 'findMany').mockResolvedValue([] as never);
+        const out = await OperationalDeviceService.setupOptions(actor);
+        expect(out.branches).toEqual([{ id: 1, name: 'Centro', kitchenUsers: [] }]);
     });
 });

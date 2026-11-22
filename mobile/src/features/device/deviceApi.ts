@@ -8,11 +8,25 @@ export interface RegisterInput {
     kitchenUserId?: number;
 }
 
+export interface SetupKitchenUser {
+    id: number;
+    name: string;
+    username: string;
+}
+
+export interface SetupBranch {
+    id: number;
+    name: string;
+    kitchenUsers: SetupKitchenUser[];
+}
+
 export type AdminLoginResult = { status: 'ok'; user: LoginUser } | { status: '2fa' } | { status: 'cancelled' };
 
 export interface DeviceApi {
     /** Password login of an administrator. The session is held privately, never stored as the app session. */
     adminLogin(username: string, password: string, twoFactorCode?: string): Promise<AdminLoginResult>;
+    /** Branches the admin may register devices for, with their eligible kitchen users. */
+    setupOptions(): Promise<SetupBranch[]>;
     /** Registers the device (PERSONAL only records the type), then drops the admin session. */
     register(input: RegisterInput): Promise<{ deviceType: DeviceType }>;
     /** Abandons setup: revokes the admin session if one is held and voids any login still in flight. */
@@ -60,6 +74,15 @@ export function createDeviceApi(deps: { http: AxiosInstance; sessions: SessionSt
             if (typeof data?.token !== 'string' || !data.token) throw new Error('login');
             adminToken = data.token;
             return { status: 'ok', user: data.user as LoginUser };
+        },
+
+        async setupOptions() {
+            if (!adminToken) throw new Error('admin login required');
+            const res = await http.get('/v1/operational-devices/setup-options', {
+                headers: { Authorization: `Bearer ${adminToken}` },
+            });
+            const branches = res.data?.data?.branches;
+            return Array.isArray(branches) ? (branches as SetupBranch[]) : [];
         },
 
         async register(input) {

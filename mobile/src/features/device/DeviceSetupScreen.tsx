@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DeviceType, LoginUser } from '../../core/session';
 import { httpMessage, httpStatus } from '../../core/httpErrors';
-import type { DeviceApi } from './deviceApi';
+import type { DeviceApi, SetupBranch } from './deviceApi';
 
 interface Props {
     api: DeviceApi;
@@ -19,12 +19,51 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
     const [needsCode, setNeedsCode] = useState(false);
     const [admin, setAdmin] = useState<LoginUser | null>(null);
     const [name, setName] = useState('');
-    const [branchId, setBranchId] = useState('');
-    const [kitchenUserId, setKitchenUserId] = useState('');
+    const [branches, setBranches] = useState<SetupBranch[] | null>(null);
+    const [optionsState, setOptionsState] = useState<'loading' | 'error' | 'ready'>('loading');
+    const [branchSel, setBranchSel] = useState('');
+    const [kitchenSel, setKitchenSel] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     // Bumped when the admin leaves the login step; a late login result is then ignored.
     const loginSeq = useRef(0);
+    // Same idea for the setup-options request: bumped on every load and whenever the details step is left.
+    const optionsSeq = useRef(0);
+
+    async function loadOptions(preferredBranch: number | null) {
+        const seq = ++optionsSeq.current;
+        setOptionsState('loading');
+        try {
+            const list = await api.setupOptions();
+            if (seq !== optionsSeq.current) return;
+            setBranches(list);
+            setBranchSel(preferredBranch != null && list.some((b) => b.id === preferredBranch) ? String(preferredBranch) : '');
+            setKitchenSel('');
+            setOptionsState('ready');
+        } catch (err) {
+            if (seq !== optionsSeq.current) return;
+            const status = httpStatus(err);
+            if (status === 401 || status === 403) {
+                optionsSeq.current++;
+                await api.cancel();
+                setAdmin(null);
+                setNeedsCode(false);
+                setPassword('');
+                setStep('login');
+                setError(status === 403 ? 'Este usuario no puede registrar dispositivos' : 'La sesión expiró, vuelve a iniciar sesión');
+                return;
+            }
+            setOptionsState('error');
+        }
+    }
+
+    const branchList = branches ?? [];
+    const selectedBranch = branchList.length === 1 ? branchList[0] : branchList.find((b) => String(b.id) === branchSel) ?? null;
+    const kitchenUsers = selectedBranch?.kitchenUsers ?? [];
+    const kitchenUser = kitchenUsers.length === 1 ? kitchenUsers[0] : kitchenUsers.find((u) => String(u.id) === kitchenSel) ?? null;
+    const isKitchen = type === 'KITCHEN_TABLET';
+    const noKitchenUsers = isKitchen && selectedBranch != null && kitchenUsers.length === 0;
+    const canRegister = optionsState === 'ready' && selectedBranch != null && !noKitchenUsers && (!isKitchen || kitchenUser != null);
 
     // Leaving setup for any reason must not leave an admin session alive.
     const apiRef = useRef(api);
@@ -64,6 +103,7 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
                 setPassword('');
                 setCode('');
                 setStep('details');
+                void loadOptions(result.user.branchId ?? null);
             }
         } catch {
             if (seq === loginSeq.current) setError('No se pudo iniciar sesión');
@@ -75,27 +115,23 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
     async function register(e: FormEvent) {
         e.preventDefault();
         if (busy || !admin) return;
-        const branch = admin.branchId ?? Number(branchId);
-        if (!name.trim() || !Number.isInteger(branch) || branch < 1) {
+        if (!name.trim() || !selectedBranch) {
             setError('Completa los datos del dispositivo');
             return;
         }
-        let kitchen: number | undefined;
-        if (type === 'KITCHEN_TABLET') {
-            kitchen = Number(kitchenUserId);
-            if (!Number.isInteger(kitchen) || kitchen < 1) {
-                setError('Indica el usuario de cocina');
-                return;
-            }
+        if (isKitchen && !kitchenUser) {
+            setError('Indica el usuario de cocina');
+            return;
         }
         setBusy(true);
         setError(null);
         try {
-            await api.register({ branchId: branch, type, name: name.trim(), kitchenUserId: kitchen });
+            await api.register({ branchId: selectedBranch.id, type, name: name.trim(), kitchenUserId: isKitchen ? kitchenUser?.id : undefined });
             onDone(type);
         } catch (err) {
             const status = httpStatus(err);
             // Do not keep the admin token around while the form sits open.
+            optionsSeq.current++;
             await api.cancel();
             setAdmin(null);
             setNeedsCode(false);
@@ -153,23 +189,40 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
                 <label className="field">Nombre del dispositivo
                     <input value={name} onChange={(e) => setName(e.target.value)} />
                 </label>
-                {admin?.branchId == null && (
-                    <label className="field">Sucursal (ID)
-                        <input value={branchId} inputMode="numeric" onChange={(e) => setBranchId(e.target.value)} />
+                {optionsState === 'loading' && <p className="muted" style={{ margin: 0 }}>Cargando…</p>}
+                {optionsState === 'error' && (
+                    <>
+                        <p className="error" role="alert">No se pudieron cargar las sucursales</p>
+                        <button type="button" className="btn" onClick={() => void loadOptions(admin?.branchId ?? null)}>Reintentar</button>
+                    </>
+                )}
+                {optionsState === 'ready' && branchList.length === 0 && <p className="error" role="alert">No tienes sucursales disponibles</p>}
+                {optionsState === 'ready' && branchList.length === 1 && <p style={{ margin: 0 }}>Sucursal: {branchList[0].name}</p>}
+                {optionsState === 'ready' && branchList.length > 1 && (
+                    <label className="field">Sucursal
+                        <select value={branchSel} onChange={(e) => { setBranchSel(e.target.value); setKitchenSel(''); }}>
+                            <option value="">Elige una sucursal</option>
+                            {branchList.map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+                        </select>
                     </label>
                 )}
-                {type === 'KITCHEN_TABLET' && (
-                    <label className="field">Usuario de cocina (ID)
-                        <input value={kitchenUserId} inputMode="numeric" onChange={(e) => setKitchenUserId(e.target.value)} />
+                {isKitchen && selectedBranch && kitchenUsers.length > 0 && (
+                    <label className="field">Usuario de cocina
+                        <select value={kitchenUser ? String(kitchenUser.id) : ''} onChange={(e) => setKitchenSel(e.target.value)}>
+                            {!kitchenUser && <option value="">Elige el usuario de cocina</option>}
+                            {kitchenUsers.map((u) => <option key={u.id} value={String(u.id)}>{u.name} ({u.username})</option>)}
+                        </select>
                     </label>
                 )}
+                {noKitchenUsers && <p className="error">Esta sucursal no tiene usuarios de cocina activos. Créalo o actívalo en Usuarios (web).</p>}
                 {error && <p className="error" role="alert">{error}</p>}
-                <button type="submit" className="btn btn-primary" disabled={busy}>Registrar dispositivo</button>
+                <button type="submit" className="btn btn-primary" disabled={busy || !canRegister}>Registrar dispositivo</button>
                 <button
                     type="button"
                     className="btn"
                     disabled={busy}
                     onClick={() => {
+                        optionsSeq.current++;
                         void api.cancel();
                         setAdmin(null);
                         setNeedsCode(false);

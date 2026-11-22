@@ -68,3 +68,15 @@ describe('operational-device routes branch scoping', () => {
             .send({ branchId: 'abc', type: 'SERVICE_TABLET', name: 'T' }).expect(400);
     });
 });
+
+describe('operational-device routes setup-options', () => {
+    it('GET /setup-options is no-store and scoped per caller', async () => {
+        const opts = jest.spyOn(OperationalDeviceService, 'setupOptions').mockResolvedValue({ branches: [] });
+        const res = await request(app).get('/setup-options').set('x-test-user', as(pinned)).expect(200);
+        expect(res.headers['cache-control']).toBe('no-store');
+        expect(res.body).toEqual({ success: true, data: { branches: [] } });
+        expect(opts).toHaveBeenLastCalledWith({ userId: 2, companyId: 5 }, 1);
+        await request(app).get('/setup-options').set('x-test-user', as(admin)).expect(200);
+        expect(opts).toHaveBeenLastCalledWith({ userId: 1, companyId: 5 }, undefined);
+    });
+});

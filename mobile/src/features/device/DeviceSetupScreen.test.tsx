@@ -5,14 +5,22 @@ import { fakeApi, pathOf, user } from '../../test/helpers';
 
 const admin = { ...user, id: 1, role: { id: 9, name: 'ADMIN' }, roles: ['ADMIN'], branchId: 3 };
 
-function setup(opts: { twoFactor?: boolean } = {}) {
+const centro = { id: 3, name: 'Centro', kitchenUsers: [{ id: 42, name: 'Ana', username: 'ana' }] };
+const norte = { id: 4, name: 'Norte', kitchenUsers: [{ id: 50, name: 'Beto', username: 'beto' }, { id: 51, name: 'Carla', username: 'carla' }] };
+const sur = { id: 5, name: 'Sur', kitchenUsers: [{ id: 60, name: 'Dora', username: 'dora' }, { id: 61, name: 'Eli', username: 'eli' }] };
+const optionsRes = (branches: unknown[]) => ({ data: { success: true, data: { branches } } });
+const registerBtn = () => screen.getByRole('button', { name: 'Registrar dispositivo' });
+const ready = () => waitFor(() => expect(registerBtn()).toBeEnabled());
+
+function setup(opts: { twoFactor?: boolean; branches?: unknown[]; admin?: typeof admin } = {}) {
     const api = fakeApi((c) => {
         const p = pathOf(c);
         if (p === 'POST /auth/login') {
             const body = JSON.parse(String(c.data));
             if (opts.twoFactor && !body.twoFactorCode) return { data: { success: true, data: { requires2FA: true } } };
-            return { data: { success: true, data: { token: 'admin-tok', user: admin } } };
+            return { data: { success: true, data: { token: 'admin-tok', user: opts.admin ?? admin } } };
         }
+        if (p === 'GET /v1/operational-devices/setup-options') return optionsRes(opts.branches ?? [centro]);
         if (p === 'POST /v1/operational-devices') return { status: 201, data: { success: true, data: { device: { id: 5 }, deviceToken: 'dev-raw' } } };
         return { data: { success: true } };
     });
@@ -39,7 +47,8 @@ describe('DeviceSetupScreen', () => {
         fireEvent.change(code, { target: { value: '123456' } });
         fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
         fireEvent.change(await screen.findByLabelText(/Nombre del dispositivo/), { target: { value: 'Salón 1' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Registrar dispositivo' }));
+        await ready();
+        fireEvent.click(registerBtn());
 
         await waitFor(() => expect(onDone).toHaveBeenCalledWith('SERVICE_TABLET'));
         const register = calls.find((c) => pathOf(c) === 'POST /v1/operational-devices')!;
@@ -53,15 +62,15 @@ describe('DeviceSetupScreen', () => {
         expect(await sessions.deviceType()).toBe('SERVICE_TABLET');
     });
 
-    it('registers a kitchen tablet with the kitchen user id', async () => {
+    it('registers a kitchen tablet auto-selecting its only kitchen user', async () => {
         const { calls, onDone } = setup();
         fireEvent.click(screen.getByRole('button', { name: /Tablet de cocina/ }));
         type('Usuario', 'admin');
         type('Contraseña', 'secret-pass');
         fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
         fireEvent.change(await screen.findByLabelText(/Nombre del dispositivo/), { target: { value: 'Cocina' } });
-        type(/Usuario de cocina/, '42');
-        fireEvent.click(screen.getByRole('button', { name: 'Registrar dispositivo' }));
+        await ready();
+        fireEvent.click(registerBtn());
         await waitFor(() => expect(onDone).toHaveBeenCalledWith('KITCHEN_TABLET'));
         const register = calls.find((c) => pathOf(c) === 'POST /v1/operational-devices')!;
         expect(JSON.parse(String(register.data))).toMatchObject({ type: 'KITCHEN_TABLET', kitchenUserId: 42 });
@@ -71,6 +80,7 @@ describe('DeviceSetupScreen', () => {
         const api = fakeApi((c) => {
             const p = pathOf(c);
             if (p === 'POST /auth/login') return { data: { success: true, data: { token: 'admin-tok', user: admin } } };
+            if (p === 'GET /v1/operational-devices/setup-options') return optionsRes([centro]);
             if (p === 'POST /v1/operational-devices') return { status: 400, data: { success: false, message: 'Usuario de cocina inválido' } };
             return { data: { success: true } };
         });
@@ -80,7 +90,8 @@ describe('DeviceSetupScreen', () => {
         type('Contraseña', 'secret-pass');
         fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
         fireEvent.change(await screen.findByLabelText(/Nombre del dispositivo/), { target: { value: 'Salón' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Registrar dispositivo' }));
+        await ready();
+        fireEvent.click(registerBtn());
         expect(await screen.findByRole('alert')).toHaveTextContent('Usuario de cocina inválido');
         expect(screen.getByLabelText('Contraseña')).toHaveValue('');
     });
@@ -89,6 +100,7 @@ describe('DeviceSetupScreen', () => {
         const api = fakeApi((c) => {
             const p = pathOf(c);
             if (p === 'POST /auth/login') return { data: { success: true, data: { token: 'admin-tok', user: admin } } };
+            if (p === 'GET /v1/operational-devices/setup-options') return optionsRes([centro]);
             if (p === 'POST /v1/operational-devices') return { status: 500 };
             return { data: { success: true } };
         });
@@ -99,7 +111,8 @@ describe('DeviceSetupScreen', () => {
         type('Contraseña', 'secret-pass');
         fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
         fireEvent.change(await screen.findByLabelText(/Nombre del dispositivo/), { target: { value: 'Salón' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Registrar dispositivo' }));
+        await ready();
+        fireEvent.click(registerBtn());
         expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo registrar');
         expect(logouts()).toHaveLength(1);
         expect(logouts()[0].headers.get('Authorization')).toBe('Bearer admin-tok');
@@ -216,5 +229,185 @@ describe('DeviceSetupScreen in-flight login and Cancelar', () => {
             const logout = calls.find((c) => pathOf(c) === 'POST /auth/logout');
             expect(logout?.headers.get('Authorization')).toBe('Bearer admin-tok');
         });
+    });
+});
+
+describe('DeviceSetupScreen pickers', () => {
+    async function toDetails(kitchen = false) {
+        fireEvent.click(screen.getByRole('button', { name: kitchen ? /Tablet de cocina/ : /Tablet de servicio/ }));
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        await screen.findByLabelText(/Nombre del dispositivo/);
+    }
+    const noBranchAdmin = { ...admin, branchId: null } as unknown as typeof admin;
+
+    it('uses the only branch without a picker', async () => {
+        const { calls } = setup({ admin: noBranchAdmin });
+        await toDetails();
+        expect(await screen.findByText('Sucursal: Centro')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Sucursal')).not.toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText(/Nombre del dispositivo/), { target: { value: 'Salón' } });
+        await ready();
+        fireEvent.click(registerBtn());
+        await waitFor(() => expect(calls.map(pathOf)).toContain('POST /v1/operational-devices'));
+        const register = calls.find((c) => pathOf(c) === 'POST /v1/operational-devices')!;
+        expect(JSON.parse(String(register.data))).toMatchObject({ branchId: 3 });
+    });
+
+    it('multi-branch picker preselects admin.branchId and resets the kitchen user on change', async () => {
+        const { calls, onDone } = setup({ branches: [centro, norte, sur], admin: { ...admin, branchId: 4 } });
+        await toDetails(true);
+        const branch = (await screen.findByLabelText('Sucursal')) as HTMLSelectElement;
+        expect(branch.value).toBe('4');
+        const kitchen = screen.getByLabelText('Usuario de cocina') as HTMLSelectElement;
+        expect(kitchen.value).toBe('');
+        expect(screen.getByRole('option', { name: 'Elige el usuario de cocina' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Carla (carla)' })).toBeInTheDocument();
+        fireEvent.change(kitchen, { target: { value: '51' } });
+        fireEvent.change(screen.getByLabelText(/Nombre del dispositivo/), { target: { value: 'Cocina' } });
+        await ready();
+        fireEvent.change(branch, { target: { value: '5' } });
+        // Branch 5 has several kitchen users: the previous choice must not carry over.
+        await waitFor(() => expect(screen.getByRole('option', { name: 'Dora (dora)' })).toBeInTheDocument());
+        expect((screen.getByLabelText('Usuario de cocina') as HTMLSelectElement).value).toBe('');
+        expect(registerBtn()).toBeDisabled();
+        fireEvent.change(screen.getByLabelText('Usuario de cocina'), { target: { value: '61' } });
+        await ready();
+        fireEvent.click(registerBtn());
+        await waitFor(() => expect(onDone).toHaveBeenCalledWith('KITCHEN_TABLET'));
+        const register = calls.find((c) => pathOf(c) === 'POST /v1/operational-devices')!;
+        expect(JSON.parse(String(register.data))).toMatchObject({ branchId: 5, kitchenUserId: 61 });
+    });
+
+    it('multi-branch without admin branch asks to pick and blocks Registrar until chosen', async () => {
+        setup({ branches: [centro, norte], admin: noBranchAdmin });
+        await toDetails();
+        const branch = await screen.findByLabelText('Sucursal');
+        expect(screen.getByRole('option', { name: 'Elige una sucursal' })).toBeInTheDocument();
+        expect(registerBtn()).toBeDisabled();
+        fireEvent.change(branch, { target: { value: '3' } });
+        await ready();
+    });
+
+    it('an empty kitchen list shows the message and disables Registrar', async () => {
+        setup({ branches: [{ id: 3, name: 'Centro', kitchenUsers: [] }] });
+        await toDetails(true);
+        expect(await screen.findByText(/no tiene usuarios de cocina activos/)).toBeInTheDocument();
+        expect(registerBtn()).toBeDisabled();
+    });
+
+    it('zero branches shows an error and disables Registrar', async () => {
+        setup({ branches: [] });
+        await toDetails();
+        expect(await screen.findByText('No tienes sucursales disponibles')).toBeInTheDocument();
+        expect(registerBtn()).toBeDisabled();
+    });
+
+    it('a failed options load shows Reintentar and the retry works', async () => {
+        let fail = true;
+        const api = fakeApi((c) => {
+            const p = pathOf(c);
+            if (p === 'POST /auth/login') return { data: { success: true, data: { token: 'admin-tok', user: admin } } };
+            if (p === 'GET /v1/operational-devices/setup-options') return fail ? { status: 500 } : optionsRes([centro]);
+            return { data: { success: true } };
+        });
+        render(<DeviceSetupScreen api={createDeviceApi({ http: api.http, sessions: api.sessions })} onDone={vi.fn()} />);
+        await toDetails();
+        fireEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
+        fail = false;
+        expect(await screen.findByText('Sucursal: Centro')).toBeInTheDocument();
+        await ready();
+    });
+
+    it('setupOptions sends the admin bearer token and requires a login', async () => {
+        const api = fakeApi((c) =>
+            pathOf(c) === 'POST /auth/login'
+                ? { data: { success: true, data: { token: 'admin-tok', user: admin } } }
+                : optionsRes([centro]),
+        );
+        const device = createDeviceApi({ http: api.http, sessions: api.sessions });
+        await expect(device.setupOptions()).rejects.toThrow('admin login required');
+        await device.adminLogin('a', 'b');
+        expect(await device.setupOptions()).toEqual([centro]);
+        const call = api.calls.find((c) => pathOf(c) === 'GET /v1/operational-devices/setup-options')!;
+        expect(call.headers.get('Authorization')).toBe('Bearer admin-tok');
+    });
+});
+
+describe('DeviceSetupScreen options failures and races', () => {
+    function build(optionsHandler: () => unknown, registerStatus = 500) {
+        const api = fakeApi((c) => {
+            const p = pathOf(c);
+            if (p === 'POST /auth/login') return { data: { success: true, data: { token: 'admin-tok', user: admin } } };
+            if (p === 'GET /v1/operational-devices/setup-options') return optionsHandler() as never;
+            if (p === 'POST /v1/operational-devices') return { status: registerStatus };
+            return { data: { success: true } };
+        });
+        render(<DeviceSetupScreen api={createDeviceApi({ http: api.http, sessions: api.sessions })} onDone={vi.fn()} />);
+        return api;
+    }
+    async function login() {
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de servicio/ }));
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    }
+
+    it.each([[403, 'Este usuario no puede registrar dispositivos'], [401, 'La sesión expiró, vuelve a iniciar sesión']])(
+        'a %i on setup-options drops the admin session and returns to login',
+        async (status, message) => {
+            const api = build(() => ({ status }));
+            await login();
+            expect(await screen.findByRole('alert')).toHaveTextContent(message);
+            expect(screen.getByLabelText('Contraseña')).toHaveValue('');
+            await waitFor(() => {
+                const logout = api.calls.find((c) => pathOf(c) === 'POST /auth/logout');
+                expect(logout?.headers.get('Authorization')).toBe('Bearer admin-tok');
+            });
+        },
+    );
+
+    it('a late options result after Cancelar is ignored', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        build(async () => {
+            await gate;
+            return optionsRes([centro]);
+        });
+        await login();
+        await screen.findByLabelText(/Nombre del dispositivo/);
+        expect(screen.getByText('Cargando…')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+        await screen.findByText('¿Qué es este dispositivo?');
+        release();
+        await new Promise((r) => setTimeout(r, 30));
+        expect(screen.getByText('¿Qué es este dispositivo?')).toBeInTheDocument();
+    });
+
+    it('a late options result after a register failure does not move the screen', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        let calls = 0;
+        build(async () => {
+            if (calls++ === 0) return optionsRes([centro]);
+            await gate;
+            return optionsRes([centro]);
+        });
+        await login();
+        fireEvent.change(await screen.findByLabelText(/Nombre del dispositivo/), { target: { value: 'Salón' } });
+        await ready();
+        fireEvent.click(registerBtn());
+        expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo registrar');
+        // Log in again: a second options load is now pending behind the gate.
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        await screen.findByText('Cargando…');
+        fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+        await screen.findByText('¿Qué es este dispositivo?');
+        release();
+        await new Promise((r) => setTimeout(r, 30));
+        expect(screen.getByText('¿Qué es este dispositivo?')).toBeInTheDocument();
     });
 });

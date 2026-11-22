@@ -68,6 +68,16 @@ router.get(
     },
 );
 
+router.get('/setup-options', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await OperationalDeviceService.setupOptions(actorOf(req), resolveBranchScope(req.user!));
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+});
+
 router.post(
     '/:id/revoke',
     validate({ params: { id: { type: 'number', required: true, min: 1, integer: true } } }),
