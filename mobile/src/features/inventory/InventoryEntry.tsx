@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Services } from '../../core/services';
 import type { Session } from '../../core/session';
 import { loadWaiterData } from '../../data/loadWaiterData';
 import type { WaiterData } from '../../data/waiterData';
+import { InventoryHome } from './InventoryHome';
+import { NewCountScreen } from './NewCountScreen';
+import { createInventoryApi } from './inventoryApi';
 
 /** Internal routes of the blind count. The screens of each one arrive with their own task; the entry owns which one is up. */
 export type InventoryRoute = { name: 'home' } | { name: 'new' } | { name: 'count'; sheetId: number } | { name: 'finish'; sheetId: number };
@@ -37,6 +40,14 @@ export default function InventoryEntry({ session, services, onSwitchUser, onBack
         if (data) data.queue.notifySessionChanged();
     }, [data, userId]);
 
+    const api = useMemo(() => (data ? createInventoryApi(data, services.http) : null), [data, services.http]);
+
+    if (data && api && route.name === 'home')
+        return <InventoryHome api={api} user={session.user} onNew={() => setRoute({ name: 'new' })} onContinue={(sheetId) => setRoute({ name: 'count', sheetId })} onSwitchUser={onSwitchUser} onBack={onBack} />;
+    if (data && api && route.name === 'new')
+        return <NewCountScreen api={api} onStarted={(sheetId) => setRoute({ name: 'count', sheetId })} onBack={() => setRoute({ name: 'home' })} />;
+
+    // Loading, or a route whose screen arrives with a later task.
     return (
         <main className="screen inventory" data-testid="inventory-entry" data-route={route.name}>
             <header className="inventory-bar">

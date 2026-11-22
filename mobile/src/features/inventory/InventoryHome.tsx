@@ -1,0 +1,155 @@
+import { useCallback, useEffect, useState } from 'react';
+import type { LoginUser } from '../../core/session';
+import type { InventoryApi } from './inventoryApi';
+import { initialsOf, resultText, STATUS_LABEL, startedText } from './inventoryFormat';
+import type { RecentSheet } from './inventoryTypes';
+import './inventory.css';
+
+type Filter = 'all' | 'review' | 'approved';
+const FILTERS: Array<{ id: Filter; label: string }> = [
+    { id: 'all', label: 'Todos' },
+    { id: 'review', label: 'En revisión' },
+    { id: 'approved', label: 'Aprobados' },
+];
+const isOpen = (s: RecentSheet) => s.displayStatus === 'EN_CURSO' || s.displayStatus === 'DEVUELTO';
+const matches = (s: RecentSheet, f: Filter) => f === 'all' || (f === 'review' ? s.displayStatus === 'EN_REVISION' : s.displayStatus === 'APROBADO');
+
+export interface InventoryHomeProps {
+    api: Pick<InventoryApi, 'recent'>;
+    user: Pick<LoginUser, 'name' | 'color'>;
+    onNew: () => void;
+    onContinue: (sheetId: number) => void;
+    onSwitchUser: () => void;
+    /** Only when opened from the tables. */
+    onBack?: () => void;
+}
+
+export function InventoryHome({ api, user, onNew, onContinue, onSwitchUser, onBack }: InventoryHomeProps) {
+    const [sheets, setSheets] = useState<RecentSheet[] | null>(null);
+    const [failed, setFailed] = useState(false);
+    const [filter, setFilter] = useState<Filter>('all');
+
+    const load = useCallback(() => {
+        setFailed(false);
+        api.recent('all').then(
+            (list) => setSheets(list),
+            () => setFailed(true),
+        );
+    }, [api]);
+    useEffect(() => {
+        let alive = true;
+        api.recent('all').then(
+            (list) => alive && setSheets(list),
+            () => alive && setFailed(true),
+        );
+        return () => {
+            alive = false;
+        };
+    }, [api]);
+
+    const open = (sheets ?? []).filter(isOpen);
+    const rows = (sheets ?? []).filter((s) => matches(s, filter));
+
+    return (
+        <main className="inv" data-testid="inventory-home">
+            <header className="inv-bar">
+                <span className="avatar-disc small" role="img" aria-label={`Usuario ${user.name}`} style={user.color ? { background: user.color } : undefined}>
+                    {initialsOf(user.name)}
+                </span>
+                <strong className="inv-title">Inventario</strong>
+                <span className="grow" />
+                {onBack && (
+                    <button type="button" className="btn" onClick={onBack}>
+                        Mesas
+                    </button>
+                )}
+                <button type="button" className="btn btn-primary" onClick={onNew}>
+                    Nuevo conteo
+                </button>
+                <button type="button" className="btn" aria-label="Cambiar usuario" onClick={onSwitchUser}>
+                    🔒
+                </button>
+            </header>
+            <div className="inv-body">
+                {failed && (
+                    <div className="inv-error" role="alert">
+                        <p className="error">No se pudo cargar el inventario.</p>
+                        <button type="button" className="btn" onClick={load}>
+                            Reintentar
+                        </button>
+                    </div>
+                )}
+                {!failed && sheets === null && <p className="muted">Cargando…</p>}
+                {sheets !== null && (
+                    <>
+                        {open.length > 0 && (
+                            <section className="inv-section" aria-label="En curso">
+                                <h2>En curso</h2>
+                                <div className="inv-open">
+                                    {open.map((s) => (
+                                        <article key={s.id} className="inv-open-card" data-testid="open-sheet">
+                                            <div className="inv-open-main">
+                                                <strong>{s.warehouseName}</strong>
+                                                <span className="muted">
+                                                    Inicio {startedText(s.startedAt)} · {s.scopeLabel}
+                                                </span>
+                                                <span>
+                                                    {s.countedCount} de {s.productCount} contados
+                                                    {s.result && 'recount' in s.result ? ` · ${resultText(s.result)}` : ''}
+                                                </span>
+                                            </div>
+                                            {s.displayStatus === 'DEVUELTO' && <span className="inv-badge inv-badge-returned">Devuelto</span>}
+                                            <button type="button" className="btn btn-primary" onClick={() => onContinue(s.id)}>
+                                                Continuar
+                                            </button>
+                                        </article>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+                        <section className="inv-section" aria-label="Recientes">
+                            <div className="inv-recent-head">
+                                <h2>Recientes</h2>
+                                <div className="inv-filters" role="group" aria-label="Filtrar recientes">
+                                    {FILTERS.map((f) => (
+                                        <button key={f.id} type="button" className="inv-filter" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
+                                            {f.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {rows.length === 0 ? (
+                                <p className="muted">Sin conteos.</p>
+                            ) : (
+                                <table className="inv-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Bodega</th>
+                                            <th>Inicio</th>
+                                            <th>Alcance</th>
+                                            <th>Estado</th>
+                                            <th>Resultado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {rows.map((s) => (
+                                            <tr key={s.id} data-testid="recent-row">
+                                                <td>{s.warehouseName}</td>
+                                                <td>{startedText(s.startedAt)}</td>
+                                                <td>{s.scopeLabel}</td>
+                                                <td>
+                                                    <span className={`inv-badge inv-badge-${s.displayStatus.toLowerCase()}`}>{STATUS_LABEL[s.displayStatus]}</span>
+                                                </td>
+                                                <td>{resultText(s.result)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </section>
+                    </>
+                )}
+            </div>
+        </main>
+    );
+}

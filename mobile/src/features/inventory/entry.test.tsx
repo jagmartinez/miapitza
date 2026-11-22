@@ -38,7 +38,7 @@ async function enter(login: Session) {
 describe('Inventario entry routes', () => {
     it('inventory-only user lands on Inventario without loading tables', async () => {
         const api = await enter(withPermissions(['inventory.count'], 'BODEGA'));
-        await screen.findByTestId('inventory-entry');
+        await screen.findByTestId('inventory-home');
         expect(screen.getByText('Inventario')).toBeInTheDocument();
         await waitFor(() => expect(screen.queryByText('Cargando…')).toBeNull());
         expect(api.calls.some((c) => pathOf(c).includes('/tables/plan'))).toBe(false);
@@ -59,9 +59,9 @@ describe('Inventario entry routes', () => {
     it('Inventario back returns to tables', async () => {
         await enter(withPermissions(['tables.map.view', 'inventory.count']));
         fireEvent.click(await screen.findByRole('button', { name: 'Inventario' }));
-        await screen.findByTestId('inventory-entry');
-        fireEvent.click(screen.getByRole('button', { name: 'Volver' }));
+        await screen.findByTestId('inventory-home');
+        fireEvent.click(screen.getByRole('button', { name: 'Mesas' }));
         expect(await screen.findByRole('button', { name: 'Mis mesas' })).toBeInTheDocument();
-        expect(screen.queryByTestId('inventory-entry')).toBeNull();
+        expect(screen.queryByTestId('inventory-home')).toBeNull();
     });
 });
