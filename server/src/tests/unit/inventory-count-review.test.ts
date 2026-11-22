@@ -214,6 +214,72 @@ describe('POST /inventory-counts/:id/approve', () => {
     });
 });
 
+describe('approve fixes (fix round 1)', () => {
+    it('runs at READ COMMITTED so cost and stock reads after the locks see the latest committed data', async () => {
+        setup({ lines: [countedLine(10, 12, 10)] });
+        await approve().expect(200);
+        const options = (prisma.$transaction as unknown as jest.Mock).mock.calls[0][1] as Record<string, unknown>;
+        expect(options).toEqual(expect.objectContaining({ isolationLevel: 'ReadCommitted', timeout: 120_000, maxWait: 10_000 }));
+    });
+
+    it('a shortage larger than the current stock posts OUT with allowNegative (stock ends negative)', async () => {
+        // expected 10, counted 0, stock is 7 after POS sales: delta -10 on top of 7 => -3
+        const { apply, state } = setup({ lines: [countedLine(10, 0, 10)] });
+        const res = await approve();
+        expect(res.status).toBe(200);
+        expect(apply).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ direction: 'OUT', quantity: 10, allowNegative: true }));
+        expect(state.status).toBe('APPROVED');
+    });
+});
+
+describe('physicalCount while a sheet is open (fix round 1)', () => {
+    const { InventoryMovementService } = require('../../services/inventory-movement.service') as typeof import('../../services/inventory-movement.service');
+    function physicalSetup(openSheet: unknown) {
+        jest.spyOn(prisma.warehouse, 'findFirst').mockResolvedValue({ id: 3 } as never);
+        jest.spyOn(prisma.product, 'findFirst').mockResolvedValue({ id: 10, name: 'Leche', unit: 'kg', baseUnit: { abbreviation: 'kg' } } as never);
+        jest.spyOn(UnitConversionService, 'convert').mockResolvedValue({ baseQuantity: 1, conversionFactor: 1, originalUnit: 'kg' } as never);
+        const tx = {
+            inventoryCountSheet: { findFirst: jest.fn(async (..._args: unknown[]) => openSheet) },
+            stock: { findUnique: jest.fn(async () => ({ id: 1, quantity: 5 })), aggregate: jest.fn(async () => ({ _sum: { quantity: 5 } })) },
+            product: { findFirst: jest.fn(async () => costed) },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation((async (fn: (t: unknown) => unknown) => fn(tx)) as never);
+        jest.spyOn(InventoryEngineService, 'lockInventoryScope').mockResolvedValue(undefined as never);
+        const apply = jest.spyOn(InventoryEngineService, 'applyMovement').mockResolvedValue({ movementId: 1, unitCost: 2 } as never);
+        jest.spyOn(AuditLogService, 'log').mockResolvedValue({} as never);
+        return { tx, apply };
+    }
+    const input = { warehouseId: 3, productId: 10, userId: 9, countedQuantity: 1, reason: 'Inventario' };
+
+    it('rejects with COUNT_SHEET_OPEN when the warehouse has an open sheet', async () => {
+        const { apply, tx } = physicalSetup({ id: 70 });
+        await expect(InventoryMovementService.physicalCount(5, input)).rejects.toMatchObject({ code: 'COUNT_SHEET_OPEN' });
+        expect(tx.inventoryCountSheet.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ companyId: 5, warehouseId: 3, openWarehouseId: { not: null } }),
+        }));
+        expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('still posts when no sheet is open', async () => {
+        const { apply } = physicalSetup(null);
+        await InventoryMovementService.physicalCount(5, input);
+        expect(apply).toHaveBeenCalled();
+    });
+
+    it('the controller answers 409 COUNT_SHEET_OPEN', async () => {
+        const { CountSheetOpenError } = require('../../services/inventory-movement.service') as typeof import('../../services/inventory-movement.service');
+        const { InventoryMovementController } = require('../../controllers/inventory-movement.controller') as typeof import('../../controllers/inventory-movement.controller');
+        const { WarehouseService } = require('../../services/warehouse.service') as typeof import('../../services/warehouse.service');
+        jest.spyOn(WarehouseService, 'getById').mockResolvedValue({ branchId: null } as never);
+        jest.spyOn(InventoryMovementService, 'physicalCount').mockRejectedValue(new CountSheetOpenError(70));
+        const json = jest.fn();
+        const res = { status: jest.fn((_code: number) => ({ json })) };
+        await InventoryMovementController.physicalCount({ user: admin, body: { warehouseId: 3 } } as never, res as never, jest.fn());
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(json).toHaveBeenCalledWith(expect.objectContaining({ code: 'COUNT_SHEET_OPEN' }));
+    });
+});
+
 describe('POST /inventory-counts/:id/recount', () => {
     it('recount resets chosen lines, keeps previous count and returns sheet as DRAFT', async () => {
         const { lineUpdate, sheetUpdate, state } = setup({ lines: [] });

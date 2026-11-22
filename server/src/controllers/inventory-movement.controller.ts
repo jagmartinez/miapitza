@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { InventoryMovementService } from '../services/inventory-movement.service';
+import { InventoryMovementService, CountSheetOpenError } from '../services/inventory-movement.service';
 import { WarehouseService } from '../services/warehouse.service';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
@@ -146,6 +146,10 @@ export class InventoryMovementController {
                 data: result
             });
         } catch (error: unknown) {
+            if (error instanceof CountSheetOpenError) {
+                res.status(409).json({ success: false, code: error.code, message: error.message, details: { sheetId: error.sheetId } });
+                return;
+            }
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }

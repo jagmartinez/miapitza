@@ -30,8 +30,18 @@ export class ProductCostMissingError extends Error {
     }
 }
 
+/** A manual absolute count is refused while a blind-count sheet is open on the warehouse (approval would apply the difference twice). */
+export class CountSheetOpenError extends Error {
+    readonly code = 'COUNT_SHEET_OPEN';
+    readonly statusCode = 409;
+    constructor(readonly sheetId: number) {
+        super('La bodega tiene un conteo ciego abierto; apruébelo o recházalo antes de registrar un conteo físico individual');
+        this.name = 'CountSheetOpenError';
+    }
+}
+
 export class InventoryMovementService {
-    private static movementDirection(movement: { type: string; direction?: string | null; reason?: string | null }): 'IN' | 'OUT' {
+    static movementDirection(movement: { type: string; direction?: string | null; reason?: string | null }): 'IN' | 'OUT' {
         if (movement.direction === 'IN' || movement.direction === 'OUT') return movement.direction;
         if (movement.type === 'IN' || movement.type === 'ADJUSTMENT') return 'IN';
         if (movement.type === 'OUT') return 'OUT';
@@ -374,6 +384,8 @@ export class InventoryMovementService {
         audit: Record<string, unknown>;
         /** AuditLog entityId when no movement is posted (defaults to the product id). */
         auditEntityFallbackId?: number;
+        /** Count-sheet approval posts shortages on top of the CURRENT stock, which may legitimately end negative. */
+        allowNegative?: boolean;
     }): Promise<{ movementId: number | null; direction: 'IN' | 'OUT' | null; unitCost: number | null }> {
         const delta = input.deltaBase;
         const factor = input.conversionFactor > 0 ? input.conversionFactor : 1;
@@ -427,7 +439,8 @@ export class InventoryMovementService {
                 conversionFactor: factor,
                 sourceType: 'ADJUSTMENT',
                 origin: 'MANUAL',
-                productName: input.productName
+                productName: input.productName,
+                ...(input.allowNegative && { allowNegative: true })
             });
             movementId = result.movementId;
             postedUnitCost = result.unitCost;
@@ -501,6 +514,11 @@ export class InventoryMovementService {
             // Product FOR UPDATE serializes every stock writer of this product, so
             // the stock read below cannot change before the engine posts the delta.
             await InventoryEngineService.lockInventoryScope(tx, companyId, [data.warehouseId], [data.productId]);
+            const openSheet = await tx.inventoryCountSheet.findFirst({
+                where: { companyId, warehouseId: data.warehouseId, openWarehouseId: { not: null } },
+                select: { id: true }
+            });
+            if (openSheet) throw new CountSheetOpenError(openSheet.id);
             const stock = await tx.stock.findUnique({
                 where: { warehouseId_productId: { warehouseId: data.warehouseId, productId: data.productId } },
                 select: { id: true, quantity: true }

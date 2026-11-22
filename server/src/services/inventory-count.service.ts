@@ -42,7 +42,10 @@ const MAX_UNIT_LENGTH = 20;
 const MAX_CLIENT_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const EPSILON = 1e-9;
 const REVIEW_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'] as const;
-const APPROVAL_TX_OPTIONS = { timeout: 120_000, maxWait: 10_000 };
+// READ COMMITTED: the sheet/lines are read before the product locks are taken, and under the default
+// REPEATABLE READ that early read would pin a snapshot that predates purchases committed while we waited
+// for the locks (stale cost/stock, lost average-cost updates). Every read after the locks must be fresh.
+const APPROVAL_TX_OPTIONS = { timeout: 120_000, maxWait: 10_000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted };
 const MAX_NOTE_LENGTH = 500;
 const MIN_REASON_LENGTH = 3;
 
@@ -452,7 +455,7 @@ export class InventoryCountService {
             if (sheet.status !== 'DRAFT') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
             const line = await tx.inventoryCountLine.findUnique({
                 where: { sheetId_productId: { sheetId, productId } },
-                select: { id: true, countedBaseQuantity: true, clientCountedAt: true },
+                select: { id: true, countedBaseQuantity: true, expectedAtCount: true, clientCountedAt: true },
             });
             if (!line) throw new InventoryCountError('INVENTORY_COUNT_NOT_FOUND', 'El producto no está en este conteo');
             const counted = line.countedBaseQuantity !== null;
@@ -484,17 +487,18 @@ export class InventoryCountService {
                     throw new InventoryCountError('INVENTORY_COUNT_UNIT_INVALID');
                 }
             }
-            const stock = await tx.stock.findFirst({
-                where: { warehouseId: sheet.warehouseId, productId, companyId: actor.companyId },
-                select: { quantity: true },
-            });
+            // Expected is captured on the FIRST save of the line (stock as of the count moment) and kept on
+            // later corrections; only an admin recount clears it so it is captured again.
+            const expectedAtCount = line.expectedAtCount !== null && line.expectedAtCount !== undefined
+                ? null
+                : await InventoryCountService.stockAsOf(tx, actor.companyId, sheet.warehouseId, productId, new Date(Math.max(clientCountedAt.getTime(), sheet.startedAt.getTime())));
             const saved = await tx.inventoryCountLine.updateMany({
                 where: newer,
                 data: {
                     unit: match.abbreviation,
                     countedQuantity: quantity,
                     countedBaseQuantity: baseQuantity,
-                    expectedAtCount: Number(stock?.quantity ?? 0),
+                    ...(expectedAtCount !== null && { expectedAtCount }),
                     countedById: actor.userId,
                     countedAt: new Date(),
                     clientCountedAt,
@@ -504,6 +508,22 @@ export class InventoryCountService {
             });
             return { productId, counted: true, applied: saved.count > 0 };
         });
+    }
+
+    /** Stock as of `moment`: current stock minus the net movements posted after it. */
+    private static async stockAsOf(tx: Prisma.TransactionClient, companyId: number, warehouseId: number, productId: number, moment: Date): Promise<number> {
+        const [stock, movements] = await Promise.all([
+            tx.stock.findFirst({ where: { warehouseId, productId, companyId }, select: { quantity: true } }),
+            tx.inventoryMovement.findMany({
+                where: { companyId, warehouseId, productId, createdAt: { gt: moment } },
+                select: { type: true, direction: true, quantity: true, reason: true },
+            }),
+        ]);
+        const net = movements.reduce((sum, m) => {
+            const sign = InventoryMovementService.movementDirection(m) === 'IN' ? 1 : -1;
+            return sum + sign * Number(m.quantity);
+        }, 0);
+        return round6(Number(stock?.quantity ?? 0) - net);
     }
 
     /** Sends the sheet to review: uncounted lines are flagged `notCounted` (they are never adjusted). */
@@ -827,6 +847,7 @@ export class InventoryCountService {
                         reference: `CONTEO-${sheetId}`,
                         originalUnit: unit?.abbreviation ?? line.unit ?? 'u',
                         conversionFactor: unit && unit.conversionFactor > 0 ? unit.conversionFactor : 1,
+                        allowNegative: true,
                         audit: {
                             kind: 'INVENTORY_COUNT_SHEET',
                             sheetId,

@@ -23,6 +23,7 @@ function setup(opts: { stock: number | null; avgCost?: number; averageCostKnown?
         baseQuantity: quantity * factor, conversionFactor: factor, originalQuantity: quantity, originalUnit: unit, baseUnit: 'g'
     })) as never);
     const tx = {
+        inventoryCountSheet: { findFirst: jest.fn(async () => null) },
         stock: {
             findUnique: jest.fn(async () => (opts.stock == null ? null : { id: 3, quantity: opts.stock })),
             aggregate: jest.fn(async () => ({ _sum: { quantity: opts.stock ?? 0 } }))

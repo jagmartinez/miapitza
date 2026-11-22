@@ -54,7 +54,8 @@ function setup(over: { sheet?: unknown; line?: unknown; stock?: unknown; updated
     const convert = jest.spyOn(UnitConversionService, 'convert').mockImplementation((async (_p: number, _c: number, qty: number, unit: string) => ({
         baseQuantity: qty * (unit === 'bolsa' ? 5 : 1),
     })) as never);
-    return { lock, findSheet, findLine, findStock, updateLine, convert };
+    const movements = jest.spyOn(prisma.inventoryMovement, 'findMany').mockResolvedValue([] as never);
+    return { movements, lock, findSheet, findLine, findStock, updateLine, convert };
 }
 
 const put = (body: Record<string, unknown> = {}, productId = 10) =>
@@ -129,6 +130,42 @@ describe('GET /inventory-counts/:id (blind sheet)', () => {
         jest.restoreAllMocks();
         setup({ sheet: sheetRow({ branchId: 2 }) });
         await request(app).get('/api/v1/inventory-counts/70').expect(403);
+    });
+});
+
+describe('expected capture (fix round 1)', () => {
+    it('a late correction keeps the original expected', async () => {
+        const { updateLine } = setup({
+            stock: { quantity: 7 }, // 3 sold since the count
+            line: lineRow({
+                unit: 'kg', countedQuantity: decimal('8'), countedBaseQuantity: decimal('8'), expectedAtCount: decimal('10'),
+                clientCountedAt: new Date(T1),
+            }),
+        });
+        await put({ unit: 'kg', countedQuantity: 9, clientCountedAt: T2 }).expect(200);
+        const data = dataOf(updateLine);
+        expect(data).toMatchObject({ countedBaseQuantity: 9, countedQuantity: 9 });
+        expect('expectedAtCount' in data).toBe(false);
+    });
+
+    it('first save stores the stock as of clientCountedAt (sales after it are added back)', async () => {
+        // offline save arrives late: stock now 7, 3 units sold after the count => expected 10
+        const { updateLine, movements } = setup({ stock: { quantity: 7 } });
+        movements.mockResolvedValue([{ type: 'OUT', direction: 'OUT', quantity: decimal('3'), reason: 'Venta' }] as never);
+        await put({ unit: 'kg', countedQuantity: 8 }).expect(200);
+        expect(dataOf(updateLine).expectedAtCount).toBe(10);
+        const where = (movements.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+        expect(where).toMatchObject({ companyId: 5, warehouseId: 3, productId: 10 });
+        // never earlier than the sheet start (09:00 in the fixture; T1 is an hour before now so it may be earlier or later)
+        const cutoff = (where.createdAt as { gt: Date }).gt.getTime();
+        expect(cutoff).toBe(Math.max(new Date(T1).getTime(), new Date('2026-11-24T09:00:00.000Z').getTime()));
+    });
+
+    it('inbound movements after the count are subtracted', async () => {
+        const { updateLine, movements } = setup({ stock: { quantity: 15 } });
+        movements.mockResolvedValue([{ type: 'IN', direction: 'IN', quantity: decimal('5'), reason: 'Compra' }] as never);
+        await put({ unit: 'kg', countedQuantity: 8 }).expect(200);
+        expect(dataOf(updateLine).expectedAtCount).toBe(10);
     });
 });
 
