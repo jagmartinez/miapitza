@@ -69,6 +69,7 @@ export function createOfflineQueue(deps: QueueDeps) {
     let dirty = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let detach: (() => void) | null = null;
+    let starters = 0;
     let stopped = false;
 
     const currentOwner = async () => ownerKeyOf(await sessions.load());
@@ -596,29 +597,43 @@ export function createOfflineQueue(deps: QueueDeps) {
         },
         getSnapshot: (): QueueSnapshot => snapshot,
 
-        /** Replays on connectivity regained; returns a stop function. */
+        /**
+         * Replays on connectivity regained; returns this caller's own stop function. Reference counted: several screens
+         * (waiter home, inventory) may start the same queue, and it detaches only when the last one stops.
+         */
         start(): () => void {
-            if (detach) return detach;
-            stopped = false;
-            const onOnline = () => {
-                // Connectivity is back: items paused by a network error need not wait for their backoff.
-                void db.syncQueue
-                    .filter((r) => r.status === 'pending' && (r.networkFailures ?? 0) > 0)
-                    .modify({ nextAttemptAt: null })
-                    .catch((cause) => reportStorage(toStorageError('queue', 'resume', cause)))
-                    .finally(() => void process());
+            starters += 1;
+            if (!detach) {
+                stopped = false;
+                const onOnline = () => {
+                    // Connectivity is back: items paused by a network error need not wait for their backoff.
+                    void db.syncQueue
+                        .filter((r) => r.status === 'pending' && (r.networkFailures ?? 0) > 0)
+                        .modify({ nextAttemptAt: null })
+                        .catch((cause) => reportStorage(toStorageError('queue', 'resume', cause)))
+                        .finally(() => void process());
+                };
+                window.addEventListener('online', onOnline);
+                void refreshCounts();
+                void process();
+                detach = () => {
+                    window.removeEventListener('online', onOnline);
+                    stopped = true;
+                    if (timer) clearTimeout(timer);
+                    timer = null;
+                    detach = null;
+                };
+            }
+            let released = false;
+            return () => {
+                if (released) return;
+                released = true;
+                starters -= 1;
+                if (starters <= 0) {
+                    starters = 0;
+                    detach?.();
+                }
             };
-            window.addEventListener('online', onOnline);
-            void refreshCounts();
-            void process();
-            detach = () => {
-                window.removeEventListener('online', onOnline);
-                stopped = true;
-                if (timer) clearTimeout(timer);
-                timer = null;
-                detach = null;
-            };
-            return detach;
         },
     };
 }
