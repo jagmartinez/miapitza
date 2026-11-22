@@ -184,6 +184,8 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - Menores diferidos N1–N3 y enlace al Kardex: ✅ corregidos (2026-11-22): indicador neutro «Se conservó un valor más reciente», una pérdida real reemplaza al aviso neutro, aviso «este conteo ya fue cerrado» si la hoja no es borrador, y el enlace del movimiento abre el Kardex con producto, bodega y fecha de aprobación. Pruebas: client 498, mobile 1007.
 
 ## Siguiente
+- Prueba en emulador 2026-11-22: conteo ciego completo (iniciar → contar → enviar → aprobar → Aprobado) OK. Encontrado y corregido (0303e17): `FOR SHARE` no existe en MariaDB → `LOCK IN SHARE MODE` (fallaba aprobar y movimientos de inventario en MariaDB). Confirmar si producción es MySQL 8 o MariaDB.
+- Emulador estable: `-no-snapshot-load -gpu swiftshader_indirect`; forzar horizontal con `settings put system user_rotation 1`.
 - Gates de dispositivo (Fases 0–5b): tablet de servicio, cocina, Mi cuenta, inventario.
 - Fase 5c (Push/FCM): necesita que el usuario cree un proyecto de Firebase.
 - Emulador: AVD `Medium_Phone_API_37.0`; a veces la ventana queda fuera de pantalla o la imagen en negro (problema de video del emulador).
