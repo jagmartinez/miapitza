@@ -11,6 +11,8 @@ import './requests.css';
 export const AMBIGUOUS_SWAP = 'No se pudo confirmar el envío; revisa Mis solicitudes antes de reintentar.';
 export const REASON_MIN = 3;
 export const REASON_MAX = 2000;
+/** The server caps a loan-request cancel reason at 500. */
+export const LOAN_CANCEL_REASON_MAX = 500;
 
 export const validReason = (s: string) => s.trim().length >= REASON_MIN && s.trim().length <= REASON_MAX;
 
@@ -117,7 +119,8 @@ function CancelSheet({ target, onConfirm, onClose }: { target: RequestCardModel;
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const inFlight = useRef(false);
-    const ok = !required || validReason(reason);
+    const max = target.kind === 'loan' ? LOAN_CANCEL_REASON_MAX : REASON_MAX;
+    const ok = (!required || validReason(reason)) && reason.trim().length <= max;
 
     async function confirm(e: FormEvent) {
         e.preventDefault();
@@ -142,8 +145,11 @@ function CancelSheet({ target, onConfirm, onClose }: { target: RequestCardModel;
                 {(required || target.kind === 'loan') && (
                     <label className="field">
                         Motivo
-                        <textarea className="rq-text" rows={3} maxLength={REASON_MAX} value={reason} onChange={(e) => setReason(e.target.value)} />
+                        <textarea className="rq-text" rows={3} maxLength={max} value={reason} onChange={(e) => setReason(e.target.value)} />
                     </label>
+                )}
+                {target.kind === 'loan' && (
+                    <p className="muted" aria-live="polite">{`${reason.length}/${max}`}</p>
                 )}
                 {error && (
                     <p className="pf-error" role="alert">

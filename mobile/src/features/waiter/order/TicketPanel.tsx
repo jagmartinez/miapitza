@@ -95,6 +95,41 @@ const EMPTY_QUEUED: QueuedLine[] = [];
 
 export const STATE_LABEL: Record<Exclude<LineState, 'new'>, string> = { ready: 'Listo', preparing: 'En preparación', delivered: 'Entregado' };
 
+/** "···" sheet: Descuento and the table actions. Shared by the panel and the full ticket. */
+export function MoreActionsSheet({ actions, onClose }: { actions: Pick<TicketActions, 'canDiscount' | 'onDiscount' | 'onMore'>; onClose: () => void }) {
+    return (
+        <Sheet label="Más acciones" title="Más acciones" onClose={onClose}>
+            <div className="more-actions">
+                {actions.canDiscount && (
+                    <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={!actions.onDiscount}
+                        onClick={() => {
+                            onClose();
+                            actions.onDiscount?.();
+                        }}
+                    >
+                        Descuento
+                    </button>
+                )}
+                {actions.onMore && (
+                    <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                            onClose();
+                            actions.onMore?.();
+                        }}
+                    >
+                        Acciones de la mesa
+                    </button>
+                )}
+            </div>
+        </Sheet>
+    );
+}
+
 type FooterProps = Pick<TicketPanelProps, 'total' | 'pricing' | 'unsentTotal' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>;
 
 /** Pinned footer: total, one primary "Enviar a cocina · N" and the outlined secondary row (Cobrar | Dividir | ···). Never scrolls with the list. */
@@ -130,64 +165,45 @@ export function TicketFooter({ total, pricing, unsentTotal, sendCount, sending, 
             )}
             <div className="ticket-total">
                 <span className="muted">Total</span>
-                <strong>{money(total)}</strong>
+                <strong>{money(total + unsentTotal)}</strong>
             </div>
             {sending && <span className="ticket-unsent muted" role="status">Enviando…</span>}
-            {unsentTotal > 0 && <span className="ticket-unsent muted">{`+ ${money(unsentTotal)} sin enviar`}</span>}
-            {canEdit && (
-                <button type="button" className="btn btn-primary ticket-send" disabled={sendCount === 0 || sending} onClick={onSend}>
-                    {`Enviar a cocina · ${sendCount}`}
-                </button>
-            )}
-            <div className="ticket-secondary">
-                {actions.canPay && (
-                    <button type="button" className="btn btn-outline" disabled={!actions.onPay} onClick={actions.onPay}>
-                        Cobrar
-                    </button>
-                )}
-                {actions.canSplit && (
-                    <button type="button" className="btn btn-outline" disabled={!actions.onSplit} onClick={actions.onSplit}>
-                        Dividir
-                    </button>
-                )}
-                {showMore && (
+            {unsentTotal > 0 && <span className="ticket-unsent muted">{`${money(unsentTotal)} sin enviar`}</span>}
+            {(() => {
+                const moreBtn = (
                     <button type="button" className="btn btn-outline icon-btn" aria-label="Más acciones" onClick={() => setMoreOpen(true)}>
                         <IconDots size={20} stroke={1.5} aria-hidden />
                     </button>
-                )}
-            </div>
-            {moreOpen && (
-                <Sheet label="Más acciones" onClose={() => setMoreOpen(false)}>
-                    <h2 className="sheet-title">Más acciones</h2>
-                    <div className="more-actions">
-                        {actions.canDiscount && (
-                            <button
-                                type="button"
-                                className="btn btn-ghost"
-                                disabled={!actions.onDiscount}
-                                onClick={() => {
-                                    setMoreOpen(false);
-                                    actions.onDiscount?.();
-                                }}
-                            >
-                                Descuento
-                            </button>
+                );
+                const hasSecondary = actions.canPay || actions.canSplit;
+                const sendBtn = canEdit && (
+                    <button type="button" className="btn btn-primary ticket-send" disabled={sendCount === 0 || sending} onClick={onSend}>
+                        {sendCount > 0 ? `Enviar a cocina · ${sendCount}` : 'Enviar a cocina'}
+                    </button>
+                );
+                return (
+                    <>
+                        {/* Without Cobrar/Dividir (waiter) the "···" sits at the right of the send row instead of alone. */}
+                        {sendBtn && (hasSecondary || !showMore ? sendBtn : <div className="ticket-sendrow">{sendBtn}{moreBtn}</div>)}
+                        {(hasSecondary || (!sendBtn && showMore)) && (
+                            <div className="ticket-secondary">
+                                {actions.canPay && (
+                                    <button type="button" className="btn btn-outline" disabled={!actions.onPay} onClick={actions.onPay}>
+                                        Cobrar
+                                    </button>
+                                )}
+                                {actions.canSplit && (
+                                    <button type="button" className="btn btn-outline" disabled={!actions.onSplit} onClick={actions.onSplit}>
+                                        Dividir
+                                    </button>
+                                )}
+                                {showMore && moreBtn}
+                            </div>
                         )}
-                        {actions.onMore && (
-                            <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => {
-                                    setMoreOpen(false);
-                                    actions.onMore?.();
-                                }}
-                            >
-                                Acciones de la mesa
-                            </button>
-                        )}
-                    </div>
-                </Sheet>
-            )}
+                    </>
+                );
+            })()}
+            {moreOpen && <MoreActionsSheet actions={actions} onClose={() => setMoreOpen(false)} />}
         </footer>
     );
 }

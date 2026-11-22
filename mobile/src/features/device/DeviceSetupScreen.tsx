@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DeviceType, LoginUser } from '../../core/session';
-import { httpMessage, httpStatus } from '../../core/httpErrors';
+import { httpCode, httpMessage, httpStatus } from '../../core/httpErrors';
 import type { DeviceApi, SetupBranch } from './deviceApi';
 import './device.css';
+const DEVICE_NAME_MAX = 100;
 
 interface Props {
     api: DeviceApi;
@@ -51,7 +52,7 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
                 setNeedsCode(false);
                 setPassword('');
                 setStep('login');
-                setError(status === 403 ? 'Este usuario no puede registrar dispositivos' : 'La sesión expiró, vuelve a iniciar sesión');
+                setError(status === 403 && httpCode(err) === 'PASSWORD_CHANGE_REQUIRED' ? 'Debes cambiar tu contraseña en la web antes de registrar dispositivos' : status === 403 ? 'Este usuario no puede registrar dispositivos' : 'La sesión expiró, vuelve a iniciar sesión');
                 return;
             }
             setOptionsState('error');
@@ -139,7 +140,14 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
             setPassword('');
             setStep('login');
             // A 400 is the server telling the admin what to fix (e.g. an inactive kitchen user): show it.
-            setError(status === 403 ? 'Este usuario no puede registrar dispositivos' : (status === 400 && httpMessage(err)) || 'No se pudo registrar el dispositivo');
+            // Without any HTTP answer the server may still have created the device: say so instead of inviting a blind retry.
+            setError(
+                status === undefined
+                    ? 'No se pudo confirmar el registro. Revisa la lista de dispositivos (web) antes de reintentar.'
+                    : status === 403
+                      ? 'Este usuario no puede registrar dispositivos'
+                      : (status === 400 && httpMessage(err)) || 'No se pudo registrar el dispositivo',
+            );
             setBusy(false);
         }
     }
@@ -185,8 +193,8 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
                         </label>
                     )}
                     {error && <p className="error" role="alert">{error}</p>}
-                    <button type="submit" className="btn btn-primary" disabled={busy || !username.trim() || !password}>Continuar</button>
-                    <button type="button" className="btn" onClick={() => { loginSeq.current++; setBusy(false); setStep('type'); setNeedsCode(false); setError(null); void api.cancel(); }}>Atrás</button>
+                    <button type="submit" className="btn btn-primary" disabled={busy || !username.trim() || !password || (needsCode && !code.trim())}>Continuar</button>
+                    <button type="button" className="btn" onClick={() => { loginSeq.current++; setBusy(false); setStep('type'); setNeedsCode(false); setPassword(''); setCode(''); setError(null); void api.cancel(); }}>Atrás</button>
                 </form>
             </main>
         );
@@ -197,7 +205,7 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
             <form className="form" onSubmit={(e) => void register(e)}>
                 <h1>{type === 'KITCHEN_TABLET' ? 'Tablet de cocina' : 'Tablet de servicio'}</h1>
                 <label className="field">Nombre del dispositivo
-                    <input value={name} onChange={(e) => setName(e.target.value)} />
+                    <input value={name} maxLength={DEVICE_NAME_MAX} onChange={(e) => setName(e.target.value)} />
                 </label>
                 {optionsState === 'loading' && <p className="muted" style={{ margin: 0 }}>Cargando…</p>}
                 {optionsState === 'error' && (

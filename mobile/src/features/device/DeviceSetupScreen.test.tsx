@@ -411,3 +411,56 @@ describe('DeviceSetupScreen options failures and races', () => {
         expect(screen.getByText('¿Qué es este dispositivo?')).toBeInTheDocument();
     });
 });
+
+describe('DeviceSetupScreen edge cases (M6/M7)', () => {
+    function mk(handlers: { options?: () => unknown; register?: () => unknown; twoFactor?: boolean }) {
+        const api = fakeApi((c) => {
+            const p = pathOf(c);
+            if (p === 'POST /auth/login') {
+                if (handlers.twoFactor && !JSON.parse(String(c.data)).twoFactorCode) return { data: { success: true, data: { requires2FA: true } } };
+                return { data: { success: true, data: { token: 'admin-tok', user: admin } } };
+            }
+            if (p === 'GET /v1/operational-devices/setup-options') return (handlers.options?.() ?? optionsRes([centro])) as never;
+            if (p === 'POST /v1/operational-devices') return (handlers.register?.() ?? { status: 201, data: {} }) as never;
+            return { data: { success: true } };
+        });
+        render(<DeviceSetupScreen api={createDeviceApi({ http: api.http, sessions: api.sessions })} onDone={vi.fn()} />);
+        return api;
+    }
+
+    it('Continuar stays disabled while the 2FA code is empty, and Atrás clears the typed password', async () => {
+        mk({ twoFactor: true });
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de servicio/ }));
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        await screen.findByLabelText('Código 2FA');
+        expect(screen.getByRole('button', { name: 'Continuar' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Atrás' }));
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de servicio/ }));
+        expect(screen.getByLabelText('Contraseña')).toHaveValue('');
+    });
+
+    it('a password-change gate on setup-options is not reported as "cannot register"', async () => {
+        mk({ options: () => ({ status: 403, data: { code: 'PASSWORD_CHANGE_REQUIRED' } }) });
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de servicio/ }));
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('cambiar tu contraseña');
+    });
+
+    it('a lost register response warns that the device may exist; the name input is capped at 100', async () => {
+        mk({ register: () => { throw new Error('timeout'); } });
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de servicio/ }));
+        type('Usuario', 'admin');
+        type('Contraseña', 'secret-pass');
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        const nameBox = await screen.findByLabelText(/Nombre del dispositivo/);
+        expect(nameBox).toHaveAttribute('maxlength', '100');
+        fireEvent.change(nameBox, { target: { value: 'Salón' } });
+        await ready();
+        fireEvent.click(registerBtn());
+        expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo confirmar el registro');
+    });
+});

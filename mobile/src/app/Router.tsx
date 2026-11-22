@@ -122,6 +122,8 @@ export function Router({ services }: { services: Services }) {
             // Best effort: the local database is also unreachable without a paired device.
         }
         setSession(null);
+        // The name belongs to the unpaired branch: a re-registration must not inherit it.
+        setBranchName(null);
         setDeviceType(null);
     }, [realtime, sessions, services]);
     const handleRevoked = useCallback(() => void revoke(), [revoke]);

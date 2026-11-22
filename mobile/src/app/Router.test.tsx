@@ -198,3 +198,46 @@ describe('account mode', () => {
         expect(await screen.findByLabelText('Nueva contraseña')).toBeInTheDocument();
     });
 });
+
+describe('stale branch name after re-registering (M1)', () => {
+    it('a revoked kitchen tablet re-registered without a branch name does not keep the old "Cocina Bamboo"', async () => {
+        const kitchenUser = { id: 3, name: 'Cocina', roles: ['COCINA'], permissions: [] };
+        let logins = 0;
+        let revoked = false;
+        const api = fakeApi((config) => {
+            const p = pathOf(config);
+            if (p === 'POST /auth/device-login') {
+                logins++;
+                if (logins === 1) return { data: { success: true, data: { token: 'k-1', user: kitchenUser, branch: { id: 1, name: 'Bamboo' } } } };
+                if (!revoked) { revoked = true; return { status: 401, data: { code: 'DEVICE_NOT_ACTIVE' } }; }
+                return { data: { success: true, data: { token: 'k-2', user: kitchenUser, branch: null } } };
+            }
+            if (p === 'POST /auth/login') return { data: { success: true, data: { token: 'adm', user: { ...kitchenUser, id: 1, role: { id: 9, name: 'ADMIN' }, roles: ['ADMIN'], branchId: 2 } } } };
+            if (p === 'GET /v1/operational-devices/setup-options') return { data: { success: true, data: { branches: [{ id: 2, name: 'Norte', kitchenUsers: [{ id: 3, name: 'Cocina', username: 'k' }] }] } } };
+            if (p === 'POST /v1/operational-devices') return { status: 201, data: { success: true, data: { device: { id: 6 }, deviceToken: 'dev-2' } } };
+            return { data: { success: true, data: [] } };
+        });
+        const { services } = build();
+        const { createDeviceApi } = await import('../features/device/deviceApi');
+        const kitchenServices = { ...services, http: api.http, sessions: api.sessions, deviceApi: createDeviceApi({ http: api.http, sessions: api.sessions }) } as Services;
+        await api.sessions.saveDeviceType('KITCHEN_TABLET');
+        await api.sessions.saveDeviceToken('dev-1');
+        render(<Router services={kitchenServices} />);
+        expect(await screen.findByText('Cocina Bamboo')).toBeInTheDocument();
+        appEvents.emit('realtime-status', 'online');
+        await api.sessions.clear();
+        appEvents.emit('session-expired');
+        // The renewal answers DEVICE_NOT_ACTIVE: the tablet is unpaired and lands on setup.
+        expect(await screen.findByText('¿Qué es este dispositivo?', undefined, { timeout: 8000 })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /Tablet de cocina/ }));
+        fireEvent.change(screen.getByLabelText('Usuario'), { target: { value: 'admin' } });
+        fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'secret-pass' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+        fireEvent.change(await screen.findByLabelText(/Nombre del dispositivo/), { target: { value: 'Cocina 2' } });
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Registrar dispositivo' })).toBeEnabled());
+        fireEvent.click(screen.getByRole('button', { name: 'Registrar dispositivo' }));
+        const title = await screen.findByText(/^Cocina$/, undefined, { timeout: 8000 });
+        expect(title).toBeInTheDocument();
+        expect(screen.queryByText('Cocina Bamboo')).toBeNull();
+    });
+});

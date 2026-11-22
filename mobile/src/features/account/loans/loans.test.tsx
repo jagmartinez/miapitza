@@ -76,6 +76,37 @@ describe('LoanRequestForm', () => {
         expect(screen.getByText(/1 cuota de .*100\.00.* \(última/)).toBeTruthy();
     });
 
+    it('decimal installments get an integer message, not "al menos 1"', async () => {
+        mount(<LoanRequestForm hr={api({ loanPolicy: vi.fn().mockResolvedValue(policy), requestLoan: vi.fn() })} />);
+        await screen.findByLabelText('Monto');
+        fill('100', '2.5');
+        expect(screen.getByText('Ingresa un número entero de cuotas.')).toBeTruthy();
+        expect(screen.queryByText('Ingresa al menos 1 cuota.')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
+    });
+
+    it('presets above the allowed maximum are hidden; pressing one fills the field and submits it', async () => {
+        const requestLoan = vi.fn().mockResolvedValue({});
+        mount(<LoanRequestForm hr={api({ loanPolicy: vi.fn().mockResolvedValue({ ...policy, maxInstallments: 5 }), requestLoan })} />);
+        await screen.findByLabelText('Monto');
+        const group = screen.getByRole('group', { name: 'Cuotas frecuentes' });
+        expect([...group.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['2', '4']);
+        fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '100' } });
+        fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Reparación' } });
+        fireEvent.click(screen.getByRole('button', { name: '4' }));
+        expect(screen.getByRole('button', { name: '4' })).toHaveAttribute('aria-pressed', 'true');
+        expect((screen.getByLabelText('Cuotas') as HTMLInputElement).value).toBe('4');
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        await waitFor(() => expect(requestLoan).toHaveBeenCalled());
+        expect(requestLoan.mock.calls[0][0]).toMatchObject({ preferredInstallments: 4 });
+    });
+
+    it('renders no preset group when fewer than 2 installments are allowed', async () => {
+        mount(<LoanRequestForm hr={api({ loanPolicy: vi.fn().mockResolvedValue({ ...policy, maxInstallments: 1 }), requestLoan: vi.fn() })} />);
+        await screen.findByLabelText('Monto');
+        expect(screen.queryByRole('group', { name: 'Cuotas frecuentes' })).toBeNull();
+    });
+
     it('double submit sends once with same key', async () => {
         let resolve!: (v: unknown) => void;
         const requestLoan = vi.fn().mockImplementation(() => new Promise((r) => (resolve = r)));

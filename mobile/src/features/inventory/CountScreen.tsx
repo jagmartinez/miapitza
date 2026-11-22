@@ -143,6 +143,7 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
             setSelectedId(null);
             setText('');
             setFresh(false);
+            setUnit('');
         }
     };
     const sheetDrops = drops.filter((d) => d.sheetId === sheetId);

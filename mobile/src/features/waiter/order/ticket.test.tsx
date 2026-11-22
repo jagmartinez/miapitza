@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { OrderScreen } from './OrderScreen';
+import { FullTicketScreen } from './FullTicketScreen';
 import { makeApi, makeDrafts, makeRealtime, minutesAgo, orderOf, serverItem, userSession, ALL_PERMISSIONS } from './testkit';
 
 function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[]; drafts?: ReturnType<typeof makeDrafts> } = {}) {
@@ -191,6 +192,59 @@ describe('full ticket', () => {
         expect(within(full).getByRole('button', { name: 'Dividir' })).toBeInTheDocument();
         fireEvent.click(within(full).getByRole('button', { name: 'Volver al pedido' }));
         expect(screen.queryByRole('region', { name: 'Ticket completo' })).toBeNull();
+    });
+});
+
+describe('full ticket fixes', () => {
+    const baseProps = {
+        title: 'Mesa 2',
+        drafts: [],
+        canEdit: true,
+        canDeliver: true,
+        busy: false,
+        sendCount: 0,
+        sending: false,
+        error: null,
+        onDeliver: vi.fn(),
+        onSend: vi.fn(),
+        onBack: vi.fn(),
+    };
+    const line = (id: number, name: string, over: Record<string, unknown> = {}) => ({ id, menuItemId: id, name, quantity: 1, unitPrice: 50, subtotal: 50, notes: '', modifiers: [], state: 'preparing' as const, finishedAt: null, sentAt: null, ...over });
+    const noActions = { canPay: false, canSplit: false, canDiscount: false };
+
+    it('M-3: ages tick without new data', () => {
+        vi.useFakeTimers();
+        try {
+            const sentAt = new Date(Date.now() - 2 * 60_000).toISOString();
+            render(<FullTicketScreen {...baseProps} serverLines={[line(1, 'Pizza', { sentAt })]} actions={noActions} />);
+            expect(screen.getByText('Preparando · 2 min')).toBeInTheDocument();
+            act(() => {
+                vi.advanceTimersByTime(3 * 60_000);
+            });
+            expect(screen.getByText('Preparando · 5 min')).toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('M-4: groups sends by kitchen batch, even inside the same minute', () => {
+        const sentAt = new Date(Date.now() - 5 * 60_000).toISOString();
+        render(<FullTicketScreen {...baseProps} serverLines={[line(1, 'Pizza', { sentAt, kitchenBatchId: 1 }), line(2, 'Cola', { sentAt, kitchenBatchId: 2 })]} actions={noActions} />);
+        expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent?.slice(0, 7))).toEqual(['Envío 2', 'Envío 1']);
+    });
+
+    it('M-5: Más acciones sheet has a title and close button; Descuento is reachable from the full ticket', () => {
+        const onDiscount = vi.fn();
+        render(<FullTicketScreen {...baseProps} serverLines={[]} actions={{ ...noActions, canDiscount: true, onDiscount }} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Más acciones' }));
+        const sheet = screen.getByRole('dialog', { name: 'Más acciones' });
+        expect(within(sheet).getByRole('heading', { name: 'Más acciones' })).toBeInTheDocument();
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Descuento' }));
+        expect(onDiscount).toHaveBeenCalled();
+        expect(screen.queryByRole('dialog', { name: 'Más acciones' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Más acciones' }));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'Más acciones' })).getByRole('button', { name: 'Cerrar' }));
+        expect(screen.queryByRole('dialog', { name: 'Más acciones' })).toBeNull();
     });
 });
 

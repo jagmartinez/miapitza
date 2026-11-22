@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { InventoryHome } from './InventoryHome';
 import { NewCountScreen } from './NewCountScreen';
 import { OfflineError } from './inventoryApi';
@@ -84,6 +84,25 @@ describe('InventoryHome', () => {
         expect(within(card).getByText(/4 a recontar/)).toBeInTheDocument();
         expect(within(card).getByRole('button', { name: 'Continuar' })).toBeInTheDocument();
         expect(screen.getByTestId('recent-row')).toHaveTextContent('4 a recontar');
+    });
+
+    it('a slow category answer for the previous warehouse is ignored after switching warehouse', async () => {
+        let resolveA!: (v: WarehouseCategory[]) => void;
+        const catsB: WarehouseCategory[] = [{ categoryId: 9, name: 'Licores', productCount: 3 }];
+        const api = {
+            warehouses: vi.fn().mockResolvedValue([wh({ id: 1, name: 'Bodega A' }), wh({ id: 2, name: 'Bodega B' })]),
+            categories: vi.fn((id: number) => (id === 1 ? new Promise<WarehouseCategory[]>((r) => { resolveA = r; }) : Promise.resolve(catsB))),
+            start: vi.fn(),
+        };
+        render(<NewCountScreen api={api} onStarted={vi.fn()} onBack={vi.fn()} />);
+        fireEvent.click(await screen.findByRole('button', { name: /Bodega A/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Elegir categorías' }));
+        fireEvent.click(screen.getByRole('button', { name: /Bodega B/ }));
+        const grid = await screen.findByTestId('category-grid');
+        expect(within(grid).getByRole('checkbox', { name: /Licores/ })).toBeInTheDocument();
+        await act(async () => { resolveA(cats); });
+        expect(within(screen.getByTestId('category-grid')).getAllByRole('checkbox')).toHaveLength(1);
+        expect(screen.queryByRole('checkbox', { name: /Lácteos/ })).toBeNull();
     });
 
     it('load error shows inline retry, never an empty list', async () => {

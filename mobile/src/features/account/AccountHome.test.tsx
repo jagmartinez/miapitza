@@ -116,6 +116,19 @@ describe('AccountHome', () => {
         expect(await screen.findByText('No disponible')).toBeInTheDocument();
     });
 
+    it('the loan tile says Cargando… while loading and reports a failed read instead of "No disponible"', async () => {
+        let resolve!: (v: unknown) => void;
+        const pending = new Promise((r) => { resolve = r; });
+        const { unmount } = renderHome(linked, hrWith(today, { loanPolicy: vi.fn(() => pending) }));
+        expect(await screen.findByRole('button', { name: /^Préstamo(?!s)/ })).toHaveTextContent('Cargando…');
+        expect(screen.queryByText('No disponible')).toBeNull();
+        resolve({ currency: 'USD', maxAmount: '500', eligible: true });
+        unmount();
+        renderHome(linked, hrWith(today, { loanPolicy: vi.fn().mockRejectedValue(new Error('x')) }));
+        await waitFor(() => expect(screen.getByRole('button', { name: /^Préstamo(?!s)/ })).toHaveTextContent('No se pudo cargar'));
+        expect(screen.queryByText('No disponible')).toBeNull();
+    });
+
     it('an eligible employee with no cap sees "Disponible", not "No disponible"', async () => {
         renderHome(linked, hrWith(today, { loanPolicy: vi.fn().mockResolvedValue({ currency: 'USD', maxAmount: null, eligible: true }) }));
         expect(await screen.findByText('Disponible')).toBeInTheDocument();

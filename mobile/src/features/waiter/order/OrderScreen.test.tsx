@@ -267,7 +267,7 @@ describe('OrderScreen fix round 1', () => {
         expect(await within(ticket()).findByRole('button', { name: /Enviado · 1/ })).toBeInTheDocument();
     });
 
-    it('I4: the footer total is the server total, with unsent lines on a separate line', async () => {
+    it('I4: the footer total includes unsent lines, with a muted note of what is unsent', async () => {
         const api = makeApi();
         api.orderDetail.mockResolvedValue(orderOf([serverItem(1, 4, 'Ensalada')], { total: '236.00' }));
         setup({ api });
@@ -275,8 +275,22 @@ describe('OrderScreen fix round 1', () => {
         await waitFor(() => expect(foot).toHaveTextContent('C$ 236'));
         expect(foot.querySelector('.ticket-unsent')).toBeNull();
         fireEvent.click(await product('Pizza Margarita'));
-        await waitFor(() => expect(foot.querySelector('.ticket-unsent')).toHaveTextContent('+ C$ 100 sin enviar'));
-        expect(foot.querySelector('.ticket-total strong')).toHaveTextContent('C$ 236');
+        await waitFor(() => expect(foot.querySelector('.ticket-unsent')).toHaveTextContent('C$ 100 sin enviar'));
+        expect(foot.querySelector('.ticket-total strong')).toHaveTextContent('C$ 336');
+    });
+
+    it('the send button shows no count when there is nothing to send', async () => {
+        setup();
+        expect(await screen.findByRole('button', { name: 'Enviar a cocina' })).toBeDisabled();
+    });
+
+    it('a sent product stops being highlighted in the grid', async () => {
+        const api = makeApi();
+        api.orderDetail.mockResolvedValue(orderOf([serverItem(1, 1, 'Pizza Margarita')]));
+        setup({ api });
+        const pizza = await within(screen.getByRole('region', { name: 'Productos' })).findByRole('button', { name: /^Pizza Margarita/ });
+        expect(pizza).not.toHaveAttribute('data-in-ticket');
+        expect(pizza).not.toHaveTextContent('×');
     });
 
     it('I5: a temp order becomes the real one once its create syncs', async () => {

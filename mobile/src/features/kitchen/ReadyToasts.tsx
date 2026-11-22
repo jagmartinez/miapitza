@@ -71,7 +71,7 @@ export function ReadyToasts({ pending, failures, onUndo, onDismiss }: Props) {
         <div className="kitchen-toasts" data-testid="kitchen-toasts" aria-live="polite">
             {shown.map((p) => (
                 <div className={`kitchen-toast${shown.length === 1 ? ' is-solo' : ''}`} key={`p-${p.key}`} role="status">
-                    <span>{`${p.label || 'Comanda'} lista · aviso a ${p.waiter}`}</span>
+                    <span>{`${p.label || 'Comanda'} lista${p.waiter ? ` · aviso a ${p.waiter}` : ''}`}</span>
                     <button type="button" onClick={() => onUndo(p.key)}>
                         {`Deshacer ${Math.max(0, Math.ceil((p.deadline - now) / 1000))}`}
                     </button>

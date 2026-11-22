@@ -195,6 +195,20 @@ describe('KitchenBoard', () => {
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
+    it('Iniciar that never gets a session back ends in a failure toast and a usable button', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const { api } = setup({ queue: async () => [mk(1, { status: 'SENT_TO_KITCHEN' })] });
+            api.start.mockRejectedValue(new KitchenActionError('auth', 'Sesión expirada'));
+            fireEvent.click(await screen.findByRole('button', { name: 'Iniciar' }));
+            await act(async () => { await vi.advanceTimersByTimeAsync(130_000); });
+            expect(await screen.findByText(/No se pudo/)).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Iniciar' })).toBeEnabled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('a rejected Listo commit names the table, never the raw key', async () => {
         const { api } = setup({ undoMs: 10 });
         api.ready.mockRejectedValueOnce(new KitchenActionError('rejected', 'Ya no existe'));

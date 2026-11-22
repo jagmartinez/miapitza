@@ -119,6 +119,29 @@ describe('useReadyCommit', () => {
         expect(hook.result.current.committed).toHaveLength(1);
     });
 
+    it('gives up a commit stuck on authentication (no session ever returns): restores the card and reports a failure', async () => {
+        const { api, hook } = setup();
+        api.ready.mockRejectedValue(new KitchenActionError('auth', 'x'));
+        authStatus = 'renewing';
+        act(() => hook.result.current.markReady(mk(1)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(hook.result.current.hiddenKeys.has('1:1')).toBe(true);
+        await act(async () => { await vi.advanceTimersByTimeAsync(125_000); });
+        expect(hook.result.current.hiddenKeys.size).toBe(0);
+        expect(hook.result.current.failures).toHaveLength(1);
+        expect(hook.result.current.failures[0]).toMatchObject({ key: '1:1', label: 'M1' });
+    });
+
+    it('a batch that leaves the queue during the undo window is dropped, never marked ready', async () => {
+        const { api, hook } = setup();
+        act(() => hook.result.current.markReady(mk(1)));
+        act(() => hook.result.current.syncQueue(new Set()));
+        await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+        expect(api.ready).not.toHaveBeenCalled();
+        expect(hook.result.current.pending).toHaveLength(0);
+        expect(hook.result.current.failures[0]).toMatchObject({ key: '1:1', label: 'M1' });
+    });
+
     it('rejected restores the card and reports a failure', async () => {
         const { api, hook } = setup();
         api.ready.mockRejectedValueOnce(new KitchenActionError('rejected', 'No se puede'));

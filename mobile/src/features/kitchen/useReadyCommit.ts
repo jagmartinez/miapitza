@@ -62,13 +62,27 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number; sessionKe
         if (mounted.current) setVersion((v) => v + 1);
     }, []);
 
+    // `fail` is defined below; the give-up timer reaches it through this ref.
+    const failRef = useRef<(entry: Entry, message: string) => void>(() => undefined);
+
     const waitForOnline = useCallback(
         (entry: Entry, backoff: number, resume: (next: number) => void) => {
-            const cancel = onSessionWake(() => resume(MIN_BACKOFF_MS));
+            // Bounded: a renewal that never reaches "online" must not leave the card hidden forever.
+            const left = GIVE_UP_MS - (Date.now() - (entry.failingSince ?? Date.now()));
+            let cancel: () => void = () => undefined;
+            const giveUp = setTimeout(() => {
+                cancel();
+                failRef.current(entry, 'sin sesión con el servidor');
+            }, Math.max(0, left));
+            const proceed = (next: number) => {
+                clearTimeout(giveUp);
+                resume(next);
+            };
+            cancel = onSessionWake(() => proceed(MIN_BACKOFF_MS));
             // Already online (the 401 outran the status event): retry with the same growing backoff.
             if (kitchenAuthStatus() === 'online') {
                 cancel();
-                entry.timer = setTimeout(() => resume(Math.min(backoff * 2, MAX_BACKOFF_MS)), backoff);
+                entry.timer = setTimeout(() => proceed(Math.min(backoff * 2, MAX_BACKOFF_MS)), backoff);
             }
         },
         [onSessionWake],
@@ -82,6 +96,7 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number; sessionKe
         },
         [bump],
     );
+    failRef.current = fail;
 
     const run = useCallback(
         async (entry: Entry, backoff = MIN_BACKOFF_MS): Promise<void> => {
@@ -100,7 +115,7 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number; sessionKe
                         continue;
                     }
                     if (err.kind === 'auth') {
-                        entry.failingSince = null;
+                        entry.failingSince ??= Date.now();
                         waitForOnline(entry, backoff, (next) => void run(entry, next));
                         return;
                     }
@@ -176,11 +191,22 @@ export function useReadyCommit(api: ReadyApi, opts: { undoMs?: number; sessionKe
     const syncQueue = useCallback(
         (queueKeys: ReadonlySet<string>) => {
             let changed = false;
+            const dropped: Entry[] = [];
             for (const [key, entry] of entries.current) {
-                if (entry.phase === 'done' && !queueKeys.has(key)) {
+                if (queueKeys.has(key)) continue;
+                if (entry.phase === 'done') {
                     entries.current.delete(key);
                     changed = true;
+                } else if (entry.phase === 'pending') {
+                    // Cancelled or released elsewhere during the undo window: never mark a gone batch ready.
+                    if (entry.timer) clearTimeout(entry.timer);
+                    entries.current.delete(key);
+                    dropped.push(entry);
+                    changed = true;
                 }
+            }
+            if (dropped.length > 0 && mounted.current) {
+                setFailures((f) => [...f, ...dropped.map((e) => ({ key: e.key, label: e.label || 'Comanda', message: 'ya no está en la cola (cancelada o entregada)' }))]);
             }
             if (changed) bump();
         },

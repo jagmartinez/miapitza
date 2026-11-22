@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { InventoryApi } from './inventoryApi';
 import { OfflineError } from './inventoryApi';
 import { IconCircleCheck, IconX } from '../../ui/Icon';
@@ -45,16 +45,20 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
         loadWarehouses();
     }, [loadWarehouses]);
 
+    // Only the latest request may write: a slow answer for the previous warehouse is dropped.
+    const catRequest = useRef(0);
     const loadCategories = useCallback(
         (id: number) => {
+            const mine = ++catRequest.current;
             setCatFailed(false);
             setCategories(null);
             api.categories(id).then(
                 (list) => {
+                    if (mine !== catRequest.current) return;
                     setCategories(list);
                     setPicked(new Set(list.map(keyOf)));
                 },
-                () => setCatFailed(true),
+                () => mine === catRequest.current && setCatFailed(true),
             );
         },
         [api],
@@ -66,6 +70,8 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
         if (w.id === warehouseId) return;
         setWarehouseId(w.id);
         setMessage(null);
+        catRequest.current++;
+        setCatFailed(false);
         setCategories(null);
         setPicked(new Set());
         if (scope === 'some') loadCategories(w.id);

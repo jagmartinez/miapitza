@@ -302,7 +302,8 @@ export function OrderScreen(props: OrderScreenProps) {
     const quantities = useMemo(() => {
         const map = new Map<number, number>();
         for (const l of draft.lines) map.set(l.menuItemId, (map.get(l.menuItemId) ?? 0) + l.quantity);
-        for (const l of serverLines) map.set(l.menuItemId, (map.get(l.menuItemId) ?? 0) + l.quantity);
+        // Only what is still to send marks a product: once it went to the kitchen the highlight clears.
+        for (const l of serverLines) if (l.state === 'new') map.set(l.menuItemId, (map.get(l.menuItemId) ?? 0) + l.quantity);
         return map;
     }, [draft.lines, serverLines]);
 

@@ -88,6 +88,31 @@
     grid-column: 2 / 4;
 }
 
+/* Items being charged: compact, muted, scrolls when long. */
+.pay-lines {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 6px;
+    max-height: 120px;
+    overflow-y: auto;
+    font-size: 13px;
+}
+
+.pay-lines li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-lines li > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Summary: product count and IVA rows (12-14px), a hairline, then the one 26px figure. */
 .pay-totals {
     margin: 0;
@@ -202,6 +227,16 @@
     color: var(--on-text);
 }
 
+.pay-cap-gap {
+    margin-top: 10px;
+}
+
+/* An odd last cell spans the row: no orphan gap beside it. */
+.pay-methods > :last-child:nth-child(odd),
+.pay-quick > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+}
+
 .pay-quick {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -209,7 +244,7 @@
 }
 
 .pay-quick .btn {
-    min-height: 48px;
+    min-height: 56px;
     font-size: 14px;
     font-weight: 400;
     font-variant-numeric: tabular-nums;

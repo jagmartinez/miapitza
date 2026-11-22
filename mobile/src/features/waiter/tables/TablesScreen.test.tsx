@@ -1,7 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { TablesScreen } from './TablesScreen';
 import { makeApi, makeRealtime, planData, result, userSession, type FakeTablesApi } from './testkit';
-import { numSize } from './TableTile';
 
 function setup(opts: { api?: FakeTablesApi; permissions?: string[] } = {}) {
     const api = opts.api ?? makeApi();
@@ -65,10 +66,10 @@ describe('TablesScreen', () => {
         expect(screen.getByText('Esta área no tiene mesas.')).toBeInTheDocument();
     });
 
-    it('long table names shrink instead of being cut', () => {
-        expect(numSize('12')).toBe('');
-        expect(numSize('FIL1MES1')).toBe(' tile-num-long');
-        expect(numSize('TERRAZA-12')).toBe(' tile-num-xlong');
+    it('every table name has one size: long names wrap and clamp instead of shrinking', () => {
+        const css = readFileSync(resolve(__dirname, 'tables.css'), 'utf8');
+        expect(css).not.toMatch(/tile-num-(x?long)/);
+        expect(css).toMatch(/\.tile-line\.tile-num\s*\{[^}]*-webkit-line-clamp:\s*2/);
     });
 
     it('header shows the branch and the active table count', async () => {
@@ -87,14 +88,14 @@ describe('TablesScreen', () => {
             for (const line of lines) expect(line.textContent).not.toMatch(/\n/);
         }
         // the very long waiter name lives in one clipped line, not extra lines
-        expect(within(tile(3)).getByText(/Luis Gomez Hernandez/)).toHaveClass('tile-line');
+        expect(within(tile(3)).getByText('Luis')).toHaveClass('tile-line');
     });
 
     it('shows guests, elapsed time and the waiter on an occupied tile', async () => {
         setup();
         await screen.findByTestId('tile-2');
         expect(within(tile(2)).getByText('3 · 25 min')).toBeInTheDocument();
-        expect(within(tile(2)).getByText('Ana Perez')).toBeInTheDocument();
+        expect(within(tile(2)).getByText('Ana')).toBeInTheDocument();
     });
 
     it('ORDER_UPDATE triggers one debounced refetch', async () => {
@@ -182,13 +183,13 @@ describe('TablesScreen', () => {
     it('a PIN switch shows only the new user data, never the previous user tables', async () => {
         const first = setup();
         await screen.findByTestId('tile-2');
-        expect(within(tile(2)).getByText('Ana Perez')).toBeInTheDocument();
+        expect(within(tile(2)).getByText('Ana')).toBeInTheDocument();
         cleanup(); // lock: WaiterHome unmounts
         const other = makeApi({ activeOrders: vi.fn().mockResolvedValue(result([])) });
         render(<TablesScreen session={{ ...userSession(), user: { ...userSession().user, id: 9, name: 'Luis Gomez' } }} api={other} realtime={makeRealtime()} queue={null} invalidate={vi.fn().mockResolvedValue(undefined)} onOpenOrder={vi.fn()} onSwitchUser={vi.fn()} />);
         await screen.findByTestId('tile-1');
-        expect(within(tile(2)).queryByText('Ana Perez')).toBeNull();
-        expect(screen.queryByText('Ana Perez', { selector: '.tile-line' })).toBeNull();
+        expect(within(tile(2)).queryByText('Ana')).toBeNull();
+        expect(screen.queryByText('Ana', { selector: '.tile-line' })).toBeNull();
         expect(first.api.activeOrders).toHaveBeenCalled();
     });
 

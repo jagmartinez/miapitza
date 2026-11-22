@@ -133,6 +133,14 @@ describe('CountScreen', () => {
         expect(screen.getByText('Sin resultados.')).toBeInTheDocument();
     });
 
+    it('with no row to count the display drops the previous unit', async () => {
+        renderCount(makeSheet());
+        await screen.findByText('Leche');
+        expect(screen.getByTestId('qty-display')).toHaveAttribute('data-unit', 'kg');
+        fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar producto' }), { target: { value: 'zzz' } });
+        expect(screen.getByTestId('qty-display')).not.toHaveAttribute('data-unit');
+    });
+
     it('unit selector lists base and conversions; default is the line unit or base', async () => {
         renderCount(makeSheet());
         await screen.findByText('Leche');

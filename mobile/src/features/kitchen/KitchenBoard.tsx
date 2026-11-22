@@ -25,13 +25,25 @@ const CONNECTION_TEXT: Record<KitchenConnection, string> = {
 };
 
 const MAX_AUTH_RETRIES = 5;
-/** Resolves when the session is usable again (auth back online / new session). */
+/** Each wait for a usable session is bounded, so Iniciar always ends in a retry or a failure toast. */
+const SESSION_WAIT_MS = 20_000;
+/** Resolves when the session is usable again (auth back online / new session) or after SESSION_WAIT_MS. */
 function waitForSession(wake: (resume: () => void) => () => void): Promise<void> {
     return new Promise((resolve) => {
-        const cancel = wake(resolve);
+        let giveUp: ReturnType<typeof setTimeout> | undefined;
+        const done = () => {
+            clearTimeout(giveUp);
+            resolve();
+        };
+        const cancel = wake(done);
+        giveUp = setTimeout(() => {
+            cancel();
+            resolve();
+        }, SESSION_WAIT_MS);
         // Already online (the 401 outran the status event): just retry shortly.
         if (kitchenAuthStatus() === 'online') {
             cancel();
+            clearTimeout(giveUp);
             setTimeout(resolve, 2000);
         }
     });

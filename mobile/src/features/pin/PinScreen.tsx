@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '../../core/session';
 import { httpStatus } from '../../core/httpErrors';
 import { IconBackspace } from '../../ui/Icon';
@@ -7,6 +7,9 @@ import './pin.css';
 
 const MIN_DIGITS = 4;
 const MAX_DIGITS = 6;
+const ROSTER_REFRESH_MS = 60_000;
+/** The server never says "locked" (anti-probing); after repeated failures the tablet hints at waiting instead. */
+const LOCKOUT_HINT_AFTER = 3;
 const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 interface Props {
@@ -35,30 +38,54 @@ export function PinScreen({ api, onLoggedIn, onRevoked, loadPending, branchName:
     const [selected, setSelected] = useState<RosterUser | null>(null);
     const [pin, setPin] = useState('');
     const [error, setError] = useState(false);
+    const [failures, setFailures] = useState(0);
     const [busy, setBusy] = useState(false);
 
-    const loadRoster = useCallback(() => {
-        let alive = true;
-        setLoadFailed(false);
-        api.roster().then(
-            (users) => {
-                if (!alive) return;
-                setRoster(users);
-                // Saved by roster(); a missing name (older server) keeps the plain title.
-                api.branchName?.().then((name) => alive && setStoredBranch(name), () => undefined);
-            },
-            (err) => {
-                if (!alive) return;
-                if (httpStatus(err) === 401) onRevoked();
-                else setLoadFailed(true);
-            },
-        );
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
         return () => {
-            alive = false;
+            mounted.current = false;
         };
-    }, [api, onRevoked]);
+    }, []);
 
-    useEffect(() => loadRoster(), [loadRoster]);
+    /** `silent` refreshes (interval, focus, after a failed login) keep what is on screen when they fail. */
+    const loadRoster = useCallback(
+        (silent = false) => {
+            if (!silent) setLoadFailed(false);
+            api.roster().then(
+                (users) => {
+                    if (!mounted.current) return;
+                    setRoster(users);
+                    setLoadFailed(false);
+                    // Saved by roster(); a missing name (older server) keeps the plain title.
+                    api.branchName?.().then((name) => mounted.current && setStoredBranch(name), () => undefined);
+                },
+                (err) => {
+                    if (!mounted.current) return;
+                    if (httpStatus(err) === 401) onRevoked();
+                    else if (!silent) setLoadFailed(true);
+                },
+            );
+        },
+        [api, onRevoked],
+    );
+
+    useEffect(() => {
+        loadRoster();
+        // Waiters added (or the device revoked) while this screen stays up: refetch periodically and on return to the app.
+        const timer = setInterval(() => loadRoster(true), ROSTER_REFRESH_MS);
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') loadRoster(true);
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        window.addEventListener('focus', onVisible);
+        return () => {
+            clearInterval(timer);
+            document.removeEventListener('visibilitychange', onVisible);
+            window.removeEventListener('focus', onVisible);
+        };
+    }, [loadRoster]);
 
     useEffect(() => {
         if (!loadPending) return undefined;
@@ -86,12 +113,16 @@ export function PinScreen({ api, onLoggedIn, onRevoked, loadPending, branchName:
         try {
             const session = await api.login(selected.id, pin);
             setPin('');
+            setFailures(0);
             onLoggedIn(session);
         } catch {
             // One generic message for every failure; never say which part was wrong.
             setError(true);
+            setFailures((n) => n + 1);
             setPin('');
             setBusy(false);
+            // A revoked device answers like a wrong PIN: re-check the roster so it can route to setup.
+            loadRoster(true);
         }
     }
 
@@ -104,10 +135,16 @@ export function PinScreen({ api, onLoggedIn, onRevoked, loadPending, branchName:
                     {loadFailed && (
                         <div className="form">
                             <p className="error" role="alert">No se pudo cargar la lista.</p>
-                            <button type="button" className="btn" onClick={loadRoster}>Reintentar</button>
+                            <button type="button" className="btn" onClick={() => loadRoster()}>Reintentar</button>
                         </div>
                     )}
                     {!loadFailed && roster === null && <p className="muted">Cargando…</p>}
+                    {!loadFailed && roster?.length === 0 && (
+                        <div className="form">
+                            <p className="muted">No hay usuarios con PIN en esta sucursal</p>
+                            <button type="button" className="btn" onClick={() => loadRoster()}>Reintentar</button>
+                        </div>
+                    )}
                     <div className="pin-grid">
                         {roster?.map((u) => (
                             <button
@@ -131,13 +168,13 @@ export function PinScreen({ api, onLoggedIn, onRevoked, loadPending, branchName:
                 </section>
 
                 <section className="pin-pad" aria-label="PIN">
-                    <p className="pin-pad-title">{selected ? `PIN de ${selected.name.split(' ')[0]}` : 'Elige un usuario'}</p>
+                    <p className="pin-pad-title">{selected ? `PIN de ${selected.name}` : 'Ingresa tu PIN'}</p>
                     <div className="pin-dots" data-testid="pin-dots" data-filled={pin.length}>
                         {Array.from({ length: MAX_DIGITS }, (_, i) => (
                             <span key={i} className={i < pin.length ? 'pin-dot on' : 'pin-dot'} />
                         ))}
                     </div>
-                    {error && <p className="error" role="alert" style={{ textAlign: 'center' }}>No se pudo iniciar sesión</p>}
+                    {error && <p className="error" role="alert" style={{ textAlign: 'center' }}>No se pudo iniciar sesión{failures >= LOCKOUT_HINT_AFTER ? '. Si sigue fallando, espera unos minutos o avisa al administrador.' : ''}</p>}
                     <div className="keypad">
                         {DIGITS.map((d) => (
                             <button key={d} type="button" className="key" disabled={!selected || busy} onClick={() => press(d)}>{d}</button>

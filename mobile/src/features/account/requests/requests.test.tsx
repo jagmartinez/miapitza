@@ -428,6 +428,25 @@ describe('MyRequests', () => {
     });
 });
 
+describe('MyRequests loan cancel reason', () => {
+    it('caps the optional loan reason at 500 (the server limit) and shows a counter', async () => {
+        const cancelLoanRequest = vi.fn().mockResolvedValue({});
+        const hr = api({
+            ...summaryBase,
+            myWorkforce: vi.fn().mockResolvedValue({ leaveRequests: [], corrections: [], vacationBalances: [], overtimeRequests: [] }),
+            mySwaps: vi.fn().mockResolvedValue([]),
+            myLoans: vi.fn().mockResolvedValue([{ id: 9, status: 'REQUESTED', currency: 'NIO', requestedAmount: '1000', createdAt: '2026-11-11T00:00:00Z' }]),
+            cancelLoanRequest,
+        });
+        mount(<MyRequests hr={hr} userId={7} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancelar solicitud' }));
+        const box = screen.getByLabelText('Motivo') as HTMLTextAreaElement;
+        expect(box.maxLength).toBe(500);
+        fireEvent.change(box, { target: { value: 'abc' } });
+        expect(screen.getByText('3/500')).toBeInTheDocument();
+    });
+});
+
 describe('PendingForYou failures', () => {
     it('failed sources show an error with retry, never the empty message', async () => {
         const mySwaps = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue([]);

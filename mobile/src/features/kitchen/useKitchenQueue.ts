@@ -19,6 +19,8 @@ export interface UseKitchenQueueOptions {
 export type KitchenQueueStatus = 'loading' | 'ready' | 'error';
 
 const SAFETY_REFETCH_MS = 60_000;
+/** Delay thresholds are admin-editable: refetch them now and then instead of once per app start. */
+const CONFIG_REFRESH_MS = 10 * 60_000;
 const REFETCH_TYPES = ['ORDER_SENT_TO_KITCHEN', 'ORDER_IN_PREPARATION', 'ORDER_READY', 'ORDER_UPDATE', 'CONNECTED'] as const;
 /** Edits to lines not yet sent to the kitchen; the full order payload is not batch-shaped. */
 const IGNORED_UPDATE_STATUSES = new Set(['ITEMS_CHANGED', 'GUESTS_CHANGED']);
@@ -30,12 +32,12 @@ function queueErrorText(cause: unknown): string {
     return getApiErrorMessage(cause) || 'No se pudo cargar la cola.';
 }
 
-/** Visible lines only; a batch with none left is hidden; oldest received first. */
+/** Voided lines stay (the cook sees what was withdrawn); a batch with no live line left is hidden; oldest received first. */
 function visibleBatches(raw: KitchenBatch[]): KitchenBatch[] {
     const out: KitchenBatch[] = [];
     for (const b of raw) {
-        const items = (b.items ?? []).filter((i) => !isVoidedOrderLine(i as Parameters<typeof isVoidedOrderLine>[0]));
-        if (items.length > 0) out.push({ ...b, items });
+        const items = b.items ?? [];
+        if (items.some((i) => !isVoidedOrderLine(i as Parameters<typeof isVoidedOrderLine>[0]))) out.push({ ...b, items });
     }
     const at = (b: KitchenBatch) => new Date(getKitchenReceivedAt(b)).getTime();
     return out.sort((a, b) => at(a) - at(b));
@@ -56,7 +58,7 @@ export function useKitchenQueue(api: KitchenApi, realtime: KitchenRealtime, opts
     const prevKeys = useRef<Set<string> | null>(null);
     const listeners = useRef(new Set<(fresh: KitchenBatch[]) => void>());
     const loading = useRef(false);
-    const configLoaded = useRef(false);
+    const configAt = useRef<number | null>(null);
     const apiRef = useRef(api);
     apiRef.current = api;
 
@@ -92,11 +94,11 @@ export function useKitchenQueue(api: KitchenApi, realtime: KitchenRealtime, opts
             setStatus('error');
             setError(queueErrorText(cause));
         }
-        if (!configLoaded.current) {
+        if (configAt.current === null || Date.now() - configAt.current >= CONFIG_REFRESH_MS) {
             try {
                 const cfg = await apiRef.current.config();
                 if (alive.current) {
-                    configLoaded.current = true;
+                    configAt.current = Date.now();
                     setConfig(cfg);
                 }
             } catch {

@@ -110,21 +110,23 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: 88px minmax(0, 1fr) minmax(320px, 36%);
+    /* Mockup ratios: rail ~8%, ticket ~26% of the width. */
+    grid-template-columns: clamp(88px, 8vw, 112px) minmax(0, 1fr) clamp(280px, 27%, 380px);
 }
 
 .rail {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 8px 6px;
+    padding: 8px 8px;
     overflow-y: auto;
     border-right: var(--hair) solid var(--line);
 }
 
 .rail-btn {
     min-height: 48px;
-    padding: 0 8px;
+    padding: 0 10px;
+    line-height: 1.2;
     font-size: 14px;
     text-align: left;
     color: var(--muted);
@@ -409,6 +411,28 @@
     min-height: 48px;
     font-size: 14px;
     font-weight: 400;
+}
+
+.ticket-sendrow {
+    display: flex;
+    gap: 6px;
+}
+
+.ticket-sendrow .ticket-send {
+    flex: 1;
+}
+
+.ticket-sendrow .icon-btn {
+    flex: none;
+    width: 48px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+}
+
+.ticket-secondary .icon-btn:only-child {
+    flex: 1;
+    width: auto;
 }
 
 .ticket-secondary .icon-btn {

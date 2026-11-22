@@ -61,4 +61,37 @@ describe('KitchenCard', () => {
         expect(screen.getByRole('button', { name: 'Iniciar' })).toBeDisabled();
         expect(screen.getByText('Sin permiso para marcar')).toBeInTheDocument();
     });
+
+    it('shows a "Más abajo" cue when the lines overflow the card, and hides it once scrolled to the end', () => {
+        const sh = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(600);
+        const ch = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+        try {
+            render(<KitchenCard batch={mk()} {...base} />);
+            expect(screen.getByTestId('kitchen-more')).toBeInTheDocument();
+            const lines = document.querySelector('.kitchen-card-lines') as HTMLElement;
+            lines.scrollTop = 300;
+            fireEvent.scroll(lines);
+            expect(screen.queryByTestId('kitchen-more')).toBeNull();
+        } finally {
+            sh.mockRestore();
+            ch.mockRestore();
+        }
+    });
+
+    it('gives no overflow cue when everything fits', () => {
+        render(<KitchenCard batch={mk()} {...base} />);
+        expect(screen.queryByTestId('kitchen-more')).toBeNull();
+    });
+
+    it('shows a voided line struck through with "Anulado" so the cook notices the withdrawal', () => {
+        const items = [
+            { id: 1, quantity: 1, menuItem: { name: 'Pizza' } },
+            { id: 2, quantity: 0, voidedQuantity: 2, voidedAt: '2026-11-21T10:08:00.000Z', menuItem: { name: 'Taco' } },
+        ];
+        render(<KitchenCard batch={mk({ items })} {...base} />);
+        const taco = screen.getByText(/2 × Taco/);
+        expect(taco.closest('li')).toHaveClass('is-void');
+        expect(screen.getByText('Anulado')).toBeInTheDocument();
+        expect(screen.getByText('1 × Pizza').closest('li')).not.toHaveClass('is-void');
+    });
 });

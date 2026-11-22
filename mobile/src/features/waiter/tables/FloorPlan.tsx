@@ -19,7 +19,7 @@ export interface FloorPlanProps {
 }
 
 export function tileLines(label: string, state: TableState, order: ActiveOrder | undefined, now: number): string[] {
-    const waiter = order?.user?.name ?? '';
+    const waiter = order?.user?.name?.trim().split(/\s+/)[0] ?? ''; // first name only, as in the mockup
     if (state === 'free' || !order) return [label, 'Libre'];
     const mins = formatElapsed(elapsedMinutes(order.createdAt, now));
     const guests = order.guests ? String(order.guests) : '';
@@ -37,8 +37,18 @@ export function FloorPlan({ plan, areaId, orders, now, onlyUserId, onlyState, ca
         () => buildUnits(plan.tables.filter((t) => (t.floorAreaId ?? null) === areaId)),
         [plan.tables, areaId],
     );
+    // Fit to the tables of this area (not the whole canvas): no empty bands around them.
+    const box = useMemo(() => {
+        if (units.length === 0) return { x: 0, y: 0, w: plan.canvasWidth, h: plan.canvasHeight };
+        const PAD = 24;
+        const x = Math.max(0, Math.min(...units.map((u) => u.x)) - PAD);
+        const y = Math.max(0, Math.min(...units.map((u) => u.y)) - PAD);
+        const x2 = Math.max(...units.map((u) => u.x + u.w)) + PAD;
+        const y2 = Math.max(...units.map((u) => u.y + u.h)) + PAD;
+        return { x, y, w: Math.max(1, x2 - x), h: Math.max(1, y2 - y) };
+    }, [units, plan.canvasWidth, plan.canvasHeight]);
     return (
-        <div className="plan" style={{ aspectRatio: `${plan.canvasWidth} / ${plan.canvasHeight}` }} data-testid="floor-plan">
+        <div className="plan" style={{ ['--ar' as string]: box.w / box.h, aspectRatio: `${box.w} / ${box.h}` }} data-testid="floor-plan">
             {units.map((unit) => {
                 const order = unitOrder(unit, orders);
                 if (onlyUserId != null && order?.user?.id !== onlyUserId) return null;
@@ -57,10 +67,10 @@ export function FloorPlan({ plan, areaId, orders, now, onlyUserId, onlyState, ca
                         dimmed={canPick ? !canPick(primary) : false}
                         lines={tileLines(label, state, order, now)}
                         style={{
-                            left: `${(unit.x / plan.canvasWidth) * 100}%`,
-                            top: `${(unit.y / plan.canvasHeight) * 100}%`,
-                            width: `${(unit.w / plan.canvasWidth) * 100}%`,
-                            height: `${(unit.h / plan.canvasHeight) * 100}%`,
+                            left: `${((unit.x - box.x) / box.w) * 100}%`,
+                            top: `${((unit.y - box.y) / box.h) * 100}%`,
+                            width: `${(unit.w / box.w) * 100}%`,
+                            height: `${(unit.h / box.h) * 100}%`,
                             borderRadius: primary.mapShape === 'ROUND' ? '50%' : undefined,
                         }}
                         onTap={() => onTap(primary, order, state)}

@@ -103,10 +103,10 @@
     box-shadow: inset 0 0 0 1px var(--ready);
     pointer-events: none;
 }
-/* Delay: soft red line on the top edge + red minutes. */
-.kitchen-card.time-warning,
+/* Delay: warning = amber top line + amber minutes; urgent = soft red line + red minutes. */
+.kitchen-card.time-warning { box-shadow: inset 0 2px 0 var(--ready); }
+.kitchen-card.time-warning .kitchen-card-min { color: var(--ready); }
 .kitchen-card.time-urgent { box-shadow: inset 0 2px 0 var(--alert); }
-.kitchen-card.time-warning .kitchen-card-min,
 .kitchen-card.time-urgent .kitchen-card-min { color: var(--alert); }
 
 .kitchen-card-head {
@@ -123,9 +123,14 @@
 .kitchen-card-min { margin-left: auto; color: var(--muted); font-size: 18px; font-variant-numeric: tabular-nums; }
 .kitchen-card-badge { font-size: 12px; padding: 2px 8px; border-radius: var(--radius-s); background: var(--surface-3); color: var(--muted); }
 
+.kitchen-card-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.kitchen-card-body.has-more::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: linear-gradient(to bottom, transparent, var(--surface-2)); pointer-events: none; }
+.kitchen-card-more { position: absolute; z-index: 1; left: 0; right: 0; bottom: 4px; text-align: center; font-size: 14px; color: var(--text); pointer-events: none; }
 .kitchen-card-lines { flex: 1; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; line-height: 1.5; }
 .kitchen-card-lines li { padding: 2px 0; }
 .kitchen-line-name { font-size: 18px; }
+.kitchen-card-lines li.is-void .kitchen-line-name { text-decoration: line-through; color: var(--muted); }
+.kitchen-line-void { text-decoration: none; display: inline-block; color: var(--alert); font-size: 14px; }
 .kitchen-line-mod { padding-left: 14px; color: var(--muted); font-size: 16px; }
 .kitchen-line-note { color: var(--ready); font-size: 16px; }
 

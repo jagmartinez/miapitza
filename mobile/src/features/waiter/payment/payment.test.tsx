@@ -66,6 +66,17 @@ afterEach(() => {
 });
 
 describe('single payment', () => {
+    it('lists the items being charged (name × qty and amount) in the summary', async () => {
+        setup();
+        await ready();
+        const list = within(screen.getByRole('region', { name: 'Resumen' })).getByRole('list', { name: 'Productos' });
+        const rows = within(list).getAllByRole('listitem');
+        expect(rows).toHaveLength(2);
+        expect(rows[0]).toHaveTextContent('Pizza Margarita × 1');
+        expect(rows[0]).toHaveTextContent('C$ 100');
+        expect(rows[1]).toHaveTextContent('Cola × 1');
+    });
+
     it('cash change is computed from the received amount (quick amount and keypad)', async () => {
         setup();
         await ready();

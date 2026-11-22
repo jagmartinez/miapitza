@@ -181,7 +181,16 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
         if (!plan) return 0;
         return plan.tables.filter((t) => tableState(t, byTable.get(t.id)) !== 'free').length;
     }, [plan, byTable]);
-    const dueCount = useMemo(() => (plan ? plan.tables.filter((t) => tableState(t, byTable.get(t.id)) === 'due').length : 0), [plan, byTable]);
+    // The chip filters the area on screen, so it counts that area only (a count from other areas would show an empty plan).
+    const dueCount = useMemo(() => {
+        if (!plan || !currentTab) return 0;
+        const areaOf = currentTab.id === NO_AREA ? null : currentTab.id;
+        return plan.tables.filter((t) => (t.floorAreaId ?? null) === areaOf && tableState(t, byTable.get(t.id)) === 'due').length;
+    }, [plan, byTable, currentTab]);
+    // Nothing left to collect: the hidden chip must not keep hiding the free tables.
+    useEffect(() => {
+        if (dueCount === 0) setDueOnly(false);
+    }, [dueCount]);
     const branchName = plan?.tables.find((t) => t.branch?.name)?.branch?.name ?? 'Sucursal';
 
     const areaNameOf = (table: PlanTable) => plan?.areas.find((x) => x.id === table.floorAreaId)?.name ?? 'Sin área';
@@ -349,7 +358,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                         orders={byTable}
                         now={now}
                         onlyUserId={mineOnly && !picking.mode ? session.user.id : null}
-                        onlyState={dueOnly && !picking.mode ? 'due' : null}
+                        onlyState={dueOnly && dueCount > 0 && !picking.mode ? 'due' : null}
                         onTap={handleTap}
                         canPick={picking.mode ? picking.canPick : undefined}
                         onLongPress={handleLongPress}

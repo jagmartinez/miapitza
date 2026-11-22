@@ -141,6 +141,8 @@ export interface ServerLine {
     finishedAt: string | null;
     /** When it went to the kitchen (groups the full ticket by send). */
     sentAt?: string | null;
+    /** Kitchen send this line went out in (groups the full ticket); null on older orders. */
+    kitchenBatchId?: number | null;
 }
 
 export function lineState(item: Json): LineState {
@@ -167,6 +169,7 @@ export function normalizeServerLines(order: unknown): ServerLine[] {
             state: lineState(i),
             finishedAt: i.finishedAt ?? null,
             sentAt: i.sentAt ?? null,
+            kitchenBatchId: typeof i.kitchenBatchId === 'number' ? i.kitchenBatchId : null,
         }));
 }
 

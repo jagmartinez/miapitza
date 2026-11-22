@@ -66,7 +66,11 @@ export function AccountHome({ session, hr, onLogout }: Props) {
     const facePending = summary.biometric?.status === 'PENDING' && today?.policy?.requireBiometric !== false;
     const shift = today?.scheduledShift ? shiftRange(today.scheduledShift.startAt, today.scheduledShift.endAt, today.timezone) : null;
     const branchLine = today?.targetBranch?.name ? `Marcaje en ${today.targetBranch.name}` : null;
-    const loanDatum = !loanPolicy?.eligible ? 'No disponible' : loanPolicy.maxAmount != null ? `Hasta ${formatHrMoney(loanPolicy.currency, loanPolicy.maxAmount)}` : 'Disponible';
+    const loanDatum = !loanPolicy && summary.failed.includes('loanPolicy')
+        ? 'No se pudo cargar'
+        : !loanPolicy && summary.status !== 'ready' && summary.status !== 'error'
+          ? 'Cargando…'
+          : !loanPolicy?.eligible ? 'No disponible' : loanPolicy.maxAmount != null ? `Hasta ${formatHrMoney(loanPolicy.currency, loanPolicy.maxAmount)}` : 'Disponible';
     const vacationDatum = vacation ? `${formatHrNumber(vacation.available)} días disponibles` : 'Sin saldo';
 
     return (

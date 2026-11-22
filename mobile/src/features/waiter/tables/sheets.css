@@ -34,7 +34,6 @@
 
 .sheet {
     width: 100%;
-    max-width: 640px;
     max-height: 90vh;
     overflow-y: auto;
     box-sizing: border-box;

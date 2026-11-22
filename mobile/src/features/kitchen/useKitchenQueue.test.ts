@@ -45,7 +45,7 @@ describe('useKitchenQueue', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
 
-    it('loads, orders oldest received first and hides voided lines and empty batches', async () => {
+    it('loads, orders oldest received first and keeps voided lines visible and hides batches with no live line', async () => {
         const newer = mk(1, 1, { items: [line({ sentAt: '2026-11-21T10:05:00.000Z' })] });
         const older = mk(2, 1, { items: [line({ sentAt: '2026-11-21T10:00:00.000Z' }), line({ id: 2, quantity: 0, voidedQuantity: 1 })] });
         const allVoided = mk(3, 1, { items: [line({ quantity: 0, voidedQuantity: 1 })] });
@@ -53,8 +53,17 @@ describe('useKitchenQueue', () => {
         await flush();
         expect(hook.result.current.status).toBe('ready');
         expect(hook.result.current.batches.map((b) => b.id)).toEqual([2, 1]);
-        expect(hook.result.current.batches[0].items).toHaveLength(1);
+        expect(hook.result.current.batches[0].items).toHaveLength(2);
         expect(hook.result.current.config).toEqual({ warningMinutes: 3, urgentMinutes: 10 });
+    });
+
+    it('refetches the delay thresholds after 10 minutes', async () => {
+        const { api } = setup(async () => [mk(1, 1)]);
+        await flush();
+        const cfg = api.config as unknown as ReturnType<typeof vi.fn>;
+        expect(cfg).toHaveBeenCalledTimes(1);
+        await tick(11 * 60_000);
+        expect(cfg.mock.calls.length).toBeGreaterThan(1);
     });
 
     it('debounces a burst of 5 events into one fetch within 250 ms', async () => {

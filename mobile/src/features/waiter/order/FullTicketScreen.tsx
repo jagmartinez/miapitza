@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TicketList, type ListRow } from './TicketList';
-import { IconCheck, IconX } from '../../../ui/Icon';
+import { IconCheck, IconDots, IconX } from '../../../ui/Icon';
 import { minutesSince, money, sumQuantity, type LineState, type ServerLine } from './orderModel';
-import { type TicketActions } from './TicketPanel';
+import { MoreActionsSheet, type TicketActions } from './TicketPanel';
 import type { QueuedLine } from '../../../data/offlineQueue';
 import type { DraftTicketLine } from './useOrderDraft';
 
@@ -27,6 +27,7 @@ interface FullRow {
     finishedAt?: string | null;
     /** Server id; only these can be delivered. */
     itemId?: number;
+    batchId?: number | null;
 }
 
 export interface FullTicketProps {
@@ -45,17 +46,26 @@ export interface FullTicketProps {
     sendCount: number;
     sending: boolean;
     error: string | null;
-    actions: Pick<TicketActions, 'canPay' | 'canSplit' | 'onPay' | 'onSplit'>;
+    actions: Pick<TicketActions, 'canPay' | 'canSplit' | 'onPay' | 'onSplit' | 'canDiscount' | 'onDiscount' | 'onMore'>;
     onDeliver: (itemIds: number[]) => void;
     onSend: () => void;
     onBack: () => void;
 }
+
+const CLOCK_TICK_MS = 30_000;
 
 const subOf = (modifiers: string[], notes: string) => [...modifiers, notes].filter(Boolean).join(' · ');
 
 /** Landscape, two panels: filters (with counts) and Dividir/Cobrar on the left; fixed-column list and footer on the right. */
 export function FullTicketScreen({ title, subtitle, total, drafts, serverLines, queued = [], canEdit, canDeliver, busy, sendCount, sending, error, actions, onDeliver, onSend, onBack }: FullTicketProps) {
     const [filter, setFilter] = useState<Filter>('all');
+    const [moreOpen, setMoreOpen] = useState(false);
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
+        return () => clearInterval(id);
+    }, []);
+    const showMore = (actions.canDiscount && !!actions.onDiscount) || !!actions.onMore;
 
     const all = useMemo<FullRow[]>(
         () => [
@@ -83,6 +93,7 @@ export function FullTicketScreen({ title, subtitle, total, drafts, serverLines, 
                 state: l.state,
                 price: l.subtotal,
                 itemId: l.id,
+                batchId: l.kitchenBatchId ?? null,
                 sentAt: l.sentAt,
                 finishedAt: l.finishedAt,
             })),
@@ -106,16 +117,23 @@ export function FullTicketScreen({ title, subtitle, total, drafts, serverLines, 
     // Groups: unsent lines first, then each send (Envío N, newest first), like the mockup.
     const rows = useMemo<ListRow[]>(() => {
         const visible = all.filter((r) => filter === 'all' || r.state === filter);
-        const sendKeys = [...new Set(all.filter((r) => r.state !== 'new' && r.sentAt).map((r) => (r.sentAt as string).slice(0, 16)))].sort();
-        const groupOf = (r: FullRow) => (r.state === 'new' ? 'new' : r.sentAt ? (r.sentAt as string).slice(0, 16) : 'old');
+        // One group per kitchen send: its batch id, or (older lines without one) the exact sentAt.
+        const groupOf = (r: FullRow) => (r.state === 'new' ? 'new' : r.batchId != null ? `b:${r.batchId}` : r.sentAt ? `t:${r.sentAt}` : 'old');
+        const firstSent = new Map<string, string>();
+        for (const r of all) {
+            const k = groupOf(r);
+            if (k === 'new' || k === 'old') continue;
+            const prev = firstSent.get(k);
+            if (!prev || (r.sentAt as string) < prev) firstSent.set(k, r.sentAt as string);
+        }
+        const sendKeys = [...firstSent.keys()].sort((a, b) => (firstSent.get(a) as string).localeCompare(firstSent.get(b) as string) || a.localeCompare(b));
         const order = ['new', ...[...sendKeys].reverse(), 'old'];
-        const now = Date.now();
         const out: ListRow[] = [];
         for (const g of order) {
             const members = visible.filter((r) => groupOf(r) === g);
             if (members.length === 0) continue;
             const idx = sendKeys.indexOf(g);
-            const label = g === 'new' ? 'Nuevo · sin enviar' : g === 'old' ? 'Enviado' : `Envío ${idx + 1} · ${new Date(members[0].sentAt as string).toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' })}`;
+            const label = g === 'new' ? 'Nuevo · sin enviar' : g === 'old' ? 'Enviado' : `Envío ${idx + 1} · ${new Date(firstSent.get(g) as string).toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' })}`;
             out.push({
                 key: `h:${g}`,
                 height: 32,
@@ -163,7 +181,7 @@ export function FullTicketScreen({ title, subtitle, total, drafts, serverLines, 
             }
         }
         return out;
-    }, [all, filter, canDeliver, busy, onDeliver]);
+    }, [all, filter, canDeliver, busy, onDeliver, now]);
 
     return (
         <section className="full" aria-label="Ticket completo">
@@ -200,7 +218,13 @@ export function FullTicketScreen({ title, subtitle, total, drafts, serverLines, 
                             Cobrar
                         </button>
                     )}
+                    {showMore && (
+                        <button type="button" className="btn btn-outline icon-btn" aria-label="Más acciones" onClick={() => setMoreOpen(true)}>
+                            <IconDots size={20} stroke={1.5} aria-hidden />
+                        </button>
+                    )}
                 </aside>
+                {moreOpen && <MoreActionsSheet actions={actions} onClose={() => setMoreOpen(false)} />}
                 <div className="full-main">
                     <TicketList rows={rows} testId="full-list" />
                     {error && (
@@ -216,7 +240,7 @@ export function FullTicketScreen({ title, subtitle, total, drafts, serverLines, 
                         )}
                         {canEdit && (
                             <button type="button" className="btn btn-primary" disabled={sendCount === 0 || sending} onClick={onSend}>
-                                {`Enviar a cocina · ${sendCount}`}
+                                {sendCount > 0 ? `Enviar a cocina · ${sendCount}` : 'Enviar a cocina'}
                             </button>
                         )}
                     </footer>

@@ -63,6 +63,17 @@ describe('open table', () => {
         await waitFor(() => expect(onOpenOrder).toHaveBeenCalledWith(555, undefined, 1, '1'));
     });
 
+    it('warns when the selected party exceeds the table capacity', async () => {
+        setup();
+        await screen.findByTestId('tile-1');
+        fireEvent.click(tile(1));
+        const sheet = await screen.findByRole('dialog', { name: /Abrir mesa 1/ });
+        fireEvent.click(within(sheet).getByRole('button', { name: '4' }));
+        expect(within(sheet).queryByText(/Supera la capacidad/)).toBeNull();
+        fireEvent.click(within(sheet).getByRole('button', { name: '6' }));
+        expect(within(sheet).getByText('Supera la capacidad de la mesa (4)')).toBeInTheDocument();
+    });
+
     it('an order created offline opens with its temp id', async () => {
         const api = makeApi({ createOrder: vi.fn().mockResolvedValue({ success: true, _offline: true, entityTempId: 'order-1700-abcd1234', queueId: 1 }) });
         const { onOpenOrder } = setup({ api });

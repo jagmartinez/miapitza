@@ -68,6 +68,7 @@ export function LoanRequestForm({ hr }: { hr: HrApi }) {
     const n = Number(count);
     const amountOk = cents !== null && cents > 0 && (maxCents === null || cents <= maxCents);
     const countOk = count !== '' && Number.isInteger(n) && n >= 1 && n <= maxCount;
+    const presets = [2, 4, 6, 8].filter((v) => v <= maxCount);
     const trimmed = purpose.trim();
     const canSubmit = amountOk && countOk && trimmed.length >= 1 && trimmed.length <= PURPOSE_MAX;
     const plan = amountOk && countOk ? installmentPlan(amount, n) : [];
@@ -102,17 +103,24 @@ export function LoanRequestForm({ hr }: { hr: HrApi }) {
                     El monto supera el máximo permitido.
                 </p>
             )}
-            <div className="rq-presets" role="group" aria-label="Cuotas frecuentes">
-                {[2, 4, 6, 8].filter((v) => v <= maxCount).map((v) => (
-                    <button key={v} type="button" className="key" aria-pressed={count === String(v)} onClick={() => setCount(String(v))}>
-                        {v}
-                    </button>
-                ))}
-            </div>
+            {presets.length > 0 && (
+                <div className="rq-presets" role="group" aria-label="Cuotas frecuentes">
+                    {presets.map((v) => (
+                        <button key={v} type="button" className="key" aria-pressed={countOk && n === v} onClick={() => setCount(String(v))}>
+                            {v}
+                        </button>
+                    ))}
+                </div>
+            )}
             <Field label="Cuotas">
                 <input type="number" inputMode="numeric" min={1} max={maxCount} step={1} value={count} onChange={(e) => setCount(e.target.value)} />
             </Field>
-            {count !== '' && (!Number.isInteger(n) || n < 1) && (
+            {count !== '' && Number.isFinite(n) && !Number.isInteger(n) && (
+                <p className="pf-error" role="alert">
+                    Ingresa un número entero de cuotas.
+                </p>
+            )}
+            {count !== '' && Number.isInteger(n) && n < 1 && (
                 <p className="pf-error" role="alert">
                     Ingresa al menos 1 cuota.
                 </p>

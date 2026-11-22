@@ -1,10 +1,10 @@
 /* PIN screen: one surface panel, roster | hairline | pad (landscape tablet). */
-.pin { min-height: 100vh; box-sizing: border-box; padding: 16px; display: flex; align-items: center; justify-content: center; }
+.pin { box-sizing: border-box; padding: 16px; display: flex; align-items: center; justify-content: center; }
 .pin .pin-panel { width: 100%; max-width: 960px; display: grid; grid-template-columns: 1fr minmax(280px, 340px); background: var(--surface); border: var(--hair) solid var(--line); border-radius: var(--radius-l); overflow: hidden; }
 .pin .pin-roster { display: block; padding: 24px; border-right: var(--hair) solid var(--line); }
 .pin .pin-title { margin: 0; font-size: 18px; font-weight: 500; }
 .pin .pin-sub { margin: 2px 0 0; font-size: 14px; color: var(--muted); }
-.pin .pin-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+.pin .pin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); justify-items: center; align-content: start; gap: 12px; margin-top: 18px; }
 .pin .avatar { width: auto; min-height: 48px; padding: 4px 0; gap: 8px; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: 14px; }
 .pin .avatar[aria-pressed='true'] { background: transparent; color: var(--text); }
 .pin .avatar-disc { width: 56px; height: 56px; background: var(--surface-3); color: var(--text); font-size: 17px; font-weight: 500; }

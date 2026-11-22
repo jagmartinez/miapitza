@@ -78,6 +78,14 @@ export function PaymentSummary(p: SummaryProps) {
     const [editing, setEditing] = useState(false);
     return (
         <section className="pay-col pay-summary" aria-label="Resumen">
+            <ul className="pay-lines muted" aria-label="Productos">
+                {p.lines.map((l) => (
+                    <li key={l.id}>
+                        <span>{`${l.name} × ${l.quantity}`}</span>
+                        <span>{money(l.subtotal)}</span>
+                    </li>
+                ))}
+            </ul>
             <dl className="pay-totals">
                 <div>
                     <dt>{plural(p.lines.reduce((n, l) => n + l.quantity, 0))}</dt>

@@ -63,6 +63,7 @@ export function OpenTableSheet({ table, areaName, canOpen, onClose, onOpen }: Op
                             </button>
                         )}
                     </div>
+                    {guests !== null && table.capacity > 0 && guests > table.capacity && <p className="error sheet-hint">{`Supera la capacidad de la mesa (${table.capacity})`}</p>}
                     {tooSmall && <p className="muted sheet-hint">Más de {table.capacity} sugiere unir con otra mesa</p>}
                     {error && <p className="error">{error}</p>}
                     <button type="button" className="btn btn-primary sheet-main" disabled={guests === null || busy} onClick={() => void submit()}>

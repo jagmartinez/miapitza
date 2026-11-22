@@ -122,3 +122,54 @@ describe('PinScreen pending offline work (ruling a)', () => {
         expect(await screen.findByText('AP')).toBeInTheDocument();
     });
 });
+
+describe('PinScreen roster freshness', () => {
+    it('explains an empty roster and refetches on Reintentar', async () => {
+        const rosterFn = vi.fn().mockResolvedValueOnce([]).mockResolvedValue(roster);
+        render(<PinScreen api={makeApi({ roster: rosterFn })} onLoggedIn={vi.fn()} onRevoked={vi.fn()} />);
+        expect(await screen.findByText('No hay usuarios con PIN en esta sucursal')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+        await screen.findByText('AP');
+        expect(screen.queryByText('No hay usuarios con PIN en esta sucursal')).toBeNull();
+    });
+
+    it('a failed login rechecks the roster: a revoked device goes to setup instead of looping the generic error', async () => {
+        const rosterFn = vi.fn().mockResolvedValueOnce(roster).mockRejectedValue(status(401));
+        const api = makeApi({ roster: rosterFn, login: vi.fn().mockRejectedValue(status(401)) });
+        const { onRevoked } = await ready(api);
+        fireEvent.click(screen.getByRole('button', { name: /Ana Perez/ }));
+        press('1', '2', '3', '4');
+        fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+        await waitFor(() => expect(onRevoked).toHaveBeenCalled());
+    });
+
+    it('refetches when the app regains focus, so a waiter added meanwhile appears', async () => {
+        const rosterFn = vi.fn().mockResolvedValueOnce([]).mockResolvedValue(roster);
+        render(<PinScreen api={makeApi({ roster: rosterFn })} onLoggedIn={vi.fn()} onRevoked={vi.fn()} />);
+        await screen.findByText('No hay usuarios con PIN en esta sucursal');
+        window.dispatchEvent(new Event('focus'));
+        await screen.findByText('AP');
+    });
+
+    it('confirms the full name of the selected user on the pad', async () => {
+        await ready(makeApi());
+        fireEvent.click(screen.getByRole('button', { name: /Ana Perez/ }));
+        expect(screen.getByText('PIN de Ana Perez')).toBeInTheDocument();
+    });
+});
+
+describe('PinScreen repeated failures (M5)', () => {
+    it('after 3 failed attempts the message also suggests waiting or calling the admin, without naming a lockout', async () => {
+        const api = makeApi({ login: vi.fn().mockRejectedValue(status(401)) });
+        await ready(api);
+        fireEvent.click(screen.getByRole('button', { name: /Ana Perez/ }));
+        for (let i = 0; i < 3; i++) {
+            press('1', '2', '3', '4');
+            fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+            await waitFor(() => expect(api.login).toHaveBeenCalledTimes(i + 1));
+            await screen.findByRole('alert');
+            if (i < 2) expect(screen.getByRole('alert')).not.toHaveTextContent('espera unos minutos');
+        }
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('espera unos minutos'));
+    });
+});
