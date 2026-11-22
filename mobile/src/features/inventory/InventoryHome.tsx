@@ -29,25 +29,41 @@ export function InventoryHome({ api, user, onNew, onContinue, onSwitchUser, onBa
     const [failed, setFailed] = useState(false);
     const [filter, setFilter] = useState<Filter>('all');
 
+    // "En curso" is fetched on its own: an open or returned sheet older than the first page of Recientes must still show.
+    const fetchAll = useCallback(
+        () =>
+            Promise.all([api.recent('all'), api.recent('open').catch(() => null)]).then(([list, openList]) => ({
+                list,
+                open: (openList ?? list).filter(isOpen),
+            })),
+        [api],
+    );
+    const [open, setOpen] = useState<RecentSheet[]>([]);
     const load = useCallback(() => {
         setFailed(false);
-        api.recent('all').then(
-            (list) => setSheets(list),
+        fetchAll().then(
+            (r) => {
+                setSheets(r.list);
+                setOpen(r.open);
+            },
             () => setFailed(true),
         );
-    }, [api]);
+    }, [fetchAll]);
     useEffect(() => {
         let alive = true;
-        api.recent('all').then(
-            (list) => alive && setSheets(list),
+        fetchAll().then(
+            (r) => {
+                if (!alive) return;
+                setSheets(r.list);
+                setOpen(r.open);
+            },
             () => alive && setFailed(true),
         );
         return () => {
             alive = false;
         };
-    }, [api]);
+    }, [fetchAll]);
 
-    const open = (sheets ?? []).filter(isOpen);
     const rows = (sheets ?? []).filter((s) => matches(s, filter));
 
     return (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LoginUser } from '../../core/session';
+import { useExtendedIdleLock } from '../../core/IdleLockBoundary';
 import { CategoryPicker } from './CategoryPicker';
 import { DecimalKeypad } from './DecimalKeypad';
 import { DropNotices } from './DropNotices';
@@ -121,6 +122,8 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
 
     const ordered = useMemo(() => (sheet ? orderLines(sheet.categories, lines) : []), [sheet, lines]);
     const editable = sheet?.status === 'DRAFT';
+    // The counter's hands are on the shelf, not on the screen: an open count gets the longer idle window, like the cash count.
+    useExtendedIdleLock(editable);
     const selected = ordered.find((l) => l.productId === selectedId) ?? null;
     const q = norm(query.trim());
     const visibleFor = (text: string, category: number | null, scope: Set<number> | null) => {

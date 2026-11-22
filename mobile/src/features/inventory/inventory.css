@@ -454,7 +454,8 @@
     z-index: 5;
     border: 1px solid var(--border);
     border-radius: 8px;
-    overflow: hidden;
+    max-height: 120px;
+    overflow-y: auto;
 }
 
 .cnt-main {

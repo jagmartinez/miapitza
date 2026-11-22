@@ -78,7 +78,7 @@ describe('InventoryHome', () => {
     });
 
     it('load error shows inline retry, never an empty list', async () => {
-        const recent = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce([sheet({ warehouseName: 'Bar' })]);
+        const recent = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue([sheet({ warehouseName: 'Bar' })]);
         render(<InventoryHome api={{ recent }} user={user} onNew={vi.fn()} onContinue={vi.fn()} onSwitchUser={vi.fn()} />);
         await screen.findByRole('alert');
         expect(screen.queryByText('Sin conteos.')).toBeNull();
@@ -257,5 +257,17 @@ describe('NewCountScreen', () => {
         expect(screen.queryByRole('button', { name: /Bodega Central/ })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
         expect(await screen.findByRole('button', { name: /Bodega Central/ })).toBeInTheDocument();
+    });
+});
+
+describe('InventoryHome open sheets (M13)', () => {
+    it('a returned sheet older than the first page still shows under En curso', async () => {
+        const old = sheet({ id: 3, warehouseName: 'Bodega vieja', displayStatus: 'DEVUELTO', status: 'DRAFT' } as Partial<RecentSheet>);
+        const recent = vi.fn((status?: string) => Promise.resolve(status === 'open' ? [old] : [sheet({ id: 90, warehouseName: 'Bar', displayStatus: 'APROBADO', status: 'APPROVED' } as Partial<RecentSheet>)]));
+        render(<InventoryHome api={{ recent }} user={user} onNew={vi.fn()} onContinue={vi.fn()} onSwitchUser={vi.fn()} />);
+        const card = await screen.findByTestId('open-sheet');
+        expect(within(card).getByText('Bodega vieja')).toBeInTheDocument();
+        expect(recent).toHaveBeenCalledWith('open');
+        expect(recent).toHaveBeenCalledWith('all');
     });
 });

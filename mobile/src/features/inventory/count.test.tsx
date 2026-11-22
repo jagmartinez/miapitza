@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { appEvents } from '../../core/events';
+import { IdleLockBoundary } from '../../core/IdleLockBoundary';
 import { useDroppedLines } from './useDroppedLines';
 import { CountScreen, LAYOUT } from './CountScreen';
 import { FinishCountScreen } from './FinishCountScreen';
@@ -54,6 +55,36 @@ function renderCount(sheet: CountSheet, extra: { saveLine?: (s: number, p: numbe
 }
 const press = (...keys: string[]) => keys.forEach((k) => fireEvent.click(screen.getByRole('button', { name: k })));
 const rows = () => screen.getAllByTestId('count-row');
+
+describe('CountScreen idle lock and toast', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('M12: an open count survives past the 2 minute lock, and still locks after the extended window', async () => {
+        vi.useFakeTimers();
+        const onLock = vi.fn();
+        render(
+            <IdleLockBoundary onLock={onLock}>
+                <CountScreen api={{ sheet: () => Promise.resolve(makeSheet()), saveLine: () => Promise.resolve('saved' as const) }} sheetId={7} user={{ name: 'Ana Perez' }} onFinish={vi.fn()} onExit={vi.fn()} />
+            </IdleLockBoundary>,
+        );
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(10);
+        });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(180_000);
+        });
+        expect(onLock).not.toHaveBeenCalled();
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(430_000);
+        });
+        expect(onLock).toHaveBeenCalled();
+    });
+
+    it('M18: the drop toast has a bounded height and scrolls inside', () => {
+        const css = readFileSync('src/features/inventory/inventory.css', 'utf8');
+        expect(/\.cnt-toast \{[^}]*max-height: \d+px;[^}]*overflow-y: auto/.test(css)).toBe(true);
+    });
+});
 
 describe('CountScreen', () => {
     it('header shows warehouse, Ciego tag, counter, start and Guardado', async () => {
