@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { TableTile } from './TableTile';
 import { buildUnits, elapsedMinutes, formatElapsed, tableState, unitOrder, type ActiveOrder, type Plan, type PlanTable, type TableState } from './tableState';
 
@@ -47,8 +47,27 @@ export function FloorPlan({ plan, areaId, orders, now, onlyUserId, onlyState, ca
         const y2 = Math.max(...units.map((u) => u.y + u.h)) + PAD;
         return { x, y, w: Math.max(1, x2 - x), h: Math.max(1, y2 - y) };
     }, [units, plan.canvasWidth, plan.canvasHeight]);
+    // Fit the plan inside the space left (contain), measured in px: no container-query units,
+    // which some Android WebViews resolve to 0 (the whole plan collapsed to a point).
+    const fitRef = useRef<HTMLDivElement>(null);
+    const [avail, setAvail] = useState<{ w: number; h: number } | null>(null);
+    useEffect(() => {
+        const el = fitRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return;
+        const measure = () => setAvail({ w: el.clientWidth, h: el.clientHeight });
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    const ratio = box.w / box.h;
+    const fitWidth = avail && avail.w > 0 && avail.h > 0 ? Math.min(avail.w, avail.h * ratio) : null;
+    const planStyle: CSSProperties = fitWidth
+        ? { width: `${fitWidth}px`, height: `${fitWidth / ratio}px` }
+        : { width: '100%', aspectRatio: `${box.w} / ${box.h}` };
     return (
-        <div className="plan" style={{ ['--ar' as string]: box.w / box.h, aspectRatio: `${box.w} / ${box.h}` }} data-testid="floor-plan">
+        <div className="plan-fit" ref={fitRef}>
+        <div className="plan" style={planStyle} data-testid="floor-plan">
             {units.map((unit) => {
                 const order = unitOrder(unit, orders);
                 if (onlyUserId != null && order?.user?.id !== onlyUserId) return null;
@@ -78,6 +97,7 @@ export function FloorPlan({ plan, areaId, orders, now, onlyUserId, onlyState, ca
                     />
                 );
             })}
+        </div>
         </div>
     );
 }
