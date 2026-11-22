@@ -185,6 +185,8 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 
 ## Siguiente
 - Prueba en emulador 2026-11-22: conteo ciego completo (iniciar → contar → enviar → aprobar → Aprobado) OK. Encontrado y corregido (0303e17): `FOR SHARE` no existe en MariaDB → `LOCK IN SHARE MODE` (fallaba aprobar y movimientos de inventario en MariaDB). Confirmar si producción es MySQL 8 o MariaDB.
+- Prueba Mesero+Caja en emulador tablet 1280x800dp (2026-11-22): abrir mesa → pedido → cocina → cobrar efectivo con apertura de turno → factura FAC-1-000009 → liberar mesa OK. Corregido: área vacía por defecto, nombres de mesa cortados, plurales. Pendiente: en teléfono (411dp alto) el ticket del pedido queda aplastado (Modo Mesero es para tablet); ANR al tocar durante el arranque en emulador con GPU por software (vigilar en tablet real Android 9).
+- Tablet en emulador: `adb shell wm size 2560x1600; adb shell wm density 320` (reset: `wm size reset; wm density reset`).
 - Emulador estable: `-no-snapshot-load -gpu swiftshader_indirect`; forzar horizontal con `settings put system user_rotation 1`.
 - Gates de dispositivo (Fases 0–5b): tablet de servicio, cocina, Mi cuenta, inventario.
 - Fase 5c (Push/FCM): necesita que el usuario cree un proyecto de Firebase.
