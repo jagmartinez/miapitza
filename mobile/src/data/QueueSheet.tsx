@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Sheet } from '../features/waiter/tables/Sheet';
-import { isSurveyItem, itemStatus, itemTime, itemTitle } from './queueLabels';
+import { isInventoryCountItem, isSurveyItem, itemStatus, itemTime, itemTitle } from './queueLabels';
 import type { OfflineQueue } from './offlineQueue';
 import type { SyncItem } from './types';
 import './queueSheet.css';
@@ -51,7 +51,7 @@ export default function QueueSheet({ queue, onClose }: { queue: OfflineQueue; on
                                     Reintentar
                                 </button>
                             )}
-                            {item.status !== 'processing' && !isSurveyItem(item) && (
+                            {item.status !== 'processing' && !isSurveyItem(item) && !isInventoryCountItem(item) && (
                                 <button type="button" className="btn" onClick={() => void act(() => queue.discard(item.id!))}>
                                     Descartar
                                 </button>

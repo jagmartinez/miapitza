@@ -14,7 +14,7 @@ import { createSurveyApi } from '../survey/surveyApi';
 import { TablesScreen, type OrderIntent } from './tables/TablesScreen';
 import { useReadyInbox } from './readyInbox';
 
-type Route = { name: 'tables' } | { name: 'cash' } | { name: 'cashCount'; shiftId: number; mode: 'partial' | 'close' } | { name: 'cashReport'; shiftId: number } | { name: 'survey'; orderId: number; waiterName: string } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
+type Route = { name: 'tables' } | { name: 'inventory' } | { name: 'cash' } | { name: 'cashCount'; shiftId: number; mode: 'partial' | 'close' } | { name: 'cashReport'; shiftId: number } | { name: 'survey'; orderId: number; waiterName: string } | { name: 'order'; orderId: OrderRef; intent?: OrderIntent; tableId?: number; tableNumber?: string };
 
 // The order screen is the biggest waiter chunk: it loads when the first order opens.
 const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ default: m.OrderScreen })));
@@ -23,6 +23,7 @@ const OrderScreen = lazy(() => import('./order/OrderScreen').then((m) => ({ defa
 const CashEntry = lazy(() => import('../cash/CashEntry'));
 const CountCloseEntry = lazy(() => import('../cash/CountCloseEntry'));
 const CloseReportEntry = lazy(() => import('../cash/CloseReportEntry'));
+const InventoryEntry = lazy(() => import('../inventory/InventoryEntry'));
 const SurveyScreen = lazy(() => import('../survey/SurveyScreen'));
 const loadingFallback = <main className="screen"><p className="muted">Cargando…</p></main>;
 
@@ -83,6 +84,14 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
                     Cambiar usuario
                 </button>
             </main>
+        );
+    }
+
+    if (route.name === 'inventory') {
+        return (
+            <Suspense fallback={loadingFallback}>
+                <InventoryEntry key={owner ?? ''} session={session} services={services} onSwitchUser={onSwitchUser} onBack={() => setRoute({ name: 'tables' })} />
+            </Suspense>
         );
     }
 
@@ -158,6 +167,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
             onOpenOrder={(orderId, intent, tableId, tableNumber) => setRoute({ name: 'order', orderId, intent, tableId, tableNumber })}
             onSwitchUser={onSwitchUser}
             onOpenCash={() => setRoute({ name: 'cash' })}
+            onOpenInventory={() => setRoute({ name: 'inventory' })}
         />
     );
 }

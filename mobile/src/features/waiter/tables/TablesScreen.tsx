@@ -35,6 +35,8 @@ export interface TablesScreenProps {
     onSwitchUser: () => void;
     /** Opens the caja (icon in the header, only for cash roles). */
     onOpenCash?: () => void;
+    /** Opens Inventario (blind count; button in the header, only with `inventory.count`). */
+    onOpenInventory?: () => void;
     /** "Pedido listo" notices of this session (kept by WaiterHome, so they survive a visit to another order). */
     ready?: ReadyNotice[];
     onDismissReady?: (orderId: number) => void;
@@ -67,7 +69,7 @@ function CashIcon() {
 
 const NO_NOTICES: ReadyNotice[] = [];
 
-export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser, onOpenCash, ready = NO_NOTICES, onDismissReady, printer = printOut }: TablesScreenProps) {
+export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser, onOpenCash, onOpenInventory, ready = NO_NOTICES, onDismissReady, printer = printOut }: TablesScreenProps) {
     const branchId = session.user.branchId;
     const [plan, setPlan] = useState<Plan | null>(null);
     const [orders, setOrders] = useState<ActiveOrder[]>([]);
@@ -285,6 +287,11 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 <button type="button" className="chip" aria-pressed={mineOnly} onClick={() => setMineOnly((v) => !v)}>
                     Mis mesas
                 </button>
+                {onOpenInventory && can(session.user, 'inventory.count') && (
+                    <button type="button" className="chip" onClick={onOpenInventory}>
+                        Inventario
+                    </button>
+                )}
                 {onOpenCash && isCashier(session.user) && (
                     <button type="button" className="btn icon-btn" aria-label="Caja" onClick={onOpenCash}>
                         <CashIcon />

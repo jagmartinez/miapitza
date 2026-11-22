@@ -6,6 +6,7 @@ import { applyOrientation } from '../core/orientation';
 import type { Services } from '../core/services';
 import type { DeviceType, Session } from '../core/session';
 import { IdleLockBoundary } from '../core/IdleLockBoundary';
+import { can } from '../core/permissions';
 import { AccountShell } from '../features/account/AccountShell';
 import { DeviceSetupScreen } from '../features/device/DeviceSetupScreen';
 import { PinScreen } from '../features/pin/PinScreen';
@@ -13,10 +14,21 @@ import { WaiterHome } from '../features/waiter/WaiterHome';
 import { loadWaiterData, wipeWaiterData } from '../data/loadWaiterData';
 
 // Split out of the main bundle: waiter and account tablets never need the kitchen board.
+// Inventory-only roles (BODEGA, CHEF) have no floor plan: they land on Inventario and never load the tables.
+const InventoryEntry = lazy(() => import('../features/inventory/InventoryEntry'));
 const KitchenHome = lazy(() => import('../features/kitchen/KitchenHome').then((m) => ({ default: m.KitchenHome })));
 
 /** Locks the waiter tablet back to the PIN screen after 2 minutes without touch (10 while a cash count has entries). */
 function WaiterSession({ session, services, onSwitchUser }: { session: Session; services: Services; onSwitchUser: () => void }) {
+    if (!can(session.user, 'tables.map.view') && can(session.user, 'inventory.count')) {
+        return (
+            <IdleLockBoundary onLock={onSwitchUser}>
+                <Suspense fallback={<main className="screen"><p className="muted">Cargando…</p></main>}>
+                    <InventoryEntry session={session} services={services} onSwitchUser={onSwitchUser} />
+                </Suspense>
+            </IdleLockBoundary>
+        );
+    }
     return (
         <IdleLockBoundary onLock={onSwitchUser}>
             <WaiterHome session={session} services={services} onSwitchUser={onSwitchUser} />

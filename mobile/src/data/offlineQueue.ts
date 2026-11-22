@@ -3,7 +3,7 @@ import { newIdempotencyKey } from '@web/utils/idempotency';
 import { appEvents } from '../core/events';
 import type { SessionStore } from '../core/session';
 import type { MobileDB } from './cache';
-import { isDefinitiveSurveyRejection, isSurveyItem } from './queueLabels';
+import { isDefinitiveCountRejection, isDefinitiveSurveyRejection, isInventoryCountItem, isSurveyItem } from './queueLabels';
 import { guarded, reportStorage, toStorageError } from './storage';
 import { isPermanentSyncFailure, ownerKeyOf, SessionChangedError, type SyncItem } from './types';
 
@@ -95,7 +95,7 @@ export function createOfflineQueue(deps: QueueDeps) {
     }
 
     // A row left 'processing' by a kill is as expired as any other: it must not be reset to pending and replayed.
-    const isStale = (r: SyncItem) => r.status !== 'failed' && !r.approvedStale && !isSurveyItem(r) && now() - r.timestamp > STALE_AFTER_MS;
+    const isStale = (r: SyncItem) => r.status !== 'failed' && !r.approvedStale && !isSurveyItem(r) && !isInventoryCountItem(r) && now() - r.timestamp > STALE_AFTER_MS;
 
     /** Marks the owner's items that waited past the service window as failed (never replayed by itself). */
     async function sweepStale(ownerKey: string): Promise<void> {
@@ -296,13 +296,14 @@ export function createOfflineQueue(deps: QueueDeps) {
                 }
                 const retryCount = item.retryCount + 1;
                 const survey = isSurveyItem(item);
-                if (survey && isDefinitiveSurveyRejection(status, err.response.data?.code)) {
+                const count = isInventoryCountItem(item);
+                if ((survey && isDefinitiveSurveyRejection(status, err.response.data?.code)) || (count && isDefinitiveCountRejection(status, err.response.data?.code))) {
                     // Nobody can fix it and nobody may discard it: it must not sit as an error on the PIN screen forever.
                     await db.syncQueue.delete(item.id!);
                     continue;
                 }
-                // A survey 404 is a missing route (deploy), not a verdict: it keeps retrying, capped by MAX_RETRIES.
-                const permanent = !(survey && status === 404) && isPermanentSyncFailure(status, err.response.data?.code);
+                // A survey or count 404 without its own code is a missing route (deploy), not a verdict: it keeps retrying, capped by MAX_RETRIES.
+                const permanent = !((survey || count) && status === 404) && isPermanentSyncFailure(status, err.response.data?.code);
                 if (retryCount >= MAX_RETRIES || permanent) {
                     const terminal = permanent ? `[${status}] ${lastError}` : lastError;
                     await db.syncQueue.update(item.id!, { retryCount, status: 'failed', lastError: terminal, nextAttemptAt: null });

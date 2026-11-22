@@ -220,6 +220,8 @@ export function createWaiterApi(deps: WaiterApiDeps) {
     return {
         /** Generic queued mutation, for features that own their route (customer survey). */
         mutate,
+        /** A cached GET for features that own their route (inventory count): network first when `ttlMs` has passed, the cache when the network fails. */
+        cachedRead: <T>(url: string, params: Record<string, unknown> | undefined, ttlMs: number): Promise<CacheResult<T>> => cached<T>(url, params, ttlMs, false),
         // ---- reads (cached) ----
         floorPlan: (branchId: number, onRefresh?: (d: Json) => void) => cached<Json>(`/tables/plan/${branchId}`, undefined, TTL.plan, true, onRefresh),
         activeOrders: (branchId: number) => cached<Json[]>('/orders/active', { branchId }, TTL.orders, false),
