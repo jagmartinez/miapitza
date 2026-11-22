@@ -16,6 +16,15 @@ export interface CostConversionResult extends ConversionResult {
     originalCost: number;
 }
 
+export interface AllowedUnit {
+    unitId: number;
+    abbreviation: string;
+    name: string;
+    conversionFactor: number;
+    isBase: boolean;
+    isDefault: boolean;
+}
+
 export class UnitConversionService {
     private static positiveFactor(value: unknown, context: string): number {
         const factor = Number(value);
@@ -527,30 +536,77 @@ export class UnitConversionService {
         };
     }
 
+    private static allowedUnitsInclude(companyId: number) {
+        return {
+            baseUnit: true,
+            allowedUnits: {
+                where: {
+                    companyId,
+                    active: true,
+                    unit: { companyId, active: true }
+                },
+                include: { unit: true },
+                orderBy: { isDefault: 'desc' as const }
+            }
+        };
+    }
+
     /**
      * Get all allowed units for a product, including its base unit.
      */
     static async getAllowedUnits(productId: number, companyId: number) {
         const product = await prisma.product.findFirst({
             where: { id: productId, companyId },
-            include: {
-                baseUnit: true,
-                allowedUnits: {
-                    where: {
-                        companyId,
-                        active: true,
-                        unit: { companyId, active: true }
-                    },
-                    include: { unit: true },
-                    orderBy: { isDefault: 'desc' }
-                }
-            }
+            include: this.allowedUnitsInclude(companyId)
         });
 
         if (!product) {
             throw new Error('Producto no encontrado');
         }
 
+        return this.buildAllowedUnits(product, companyId, prisma);
+    }
+
+    /**
+     * Allowed units of many products with a single product query plus one
+     * catalog query (same rule as getAllowedUnits, without N lookups).
+     */
+    static async getAllowedUnitsForProducts(productIds: number[], companyId: number, db: Tx | typeof prisma = prisma) {
+        const result = new Map<number, AllowedUnit[]>();
+        if (productIds.length === 0) return result;
+        const [products, catalog] = await Promise.all([
+            db.product.findMany({
+                where: { id: { in: productIds }, companyId },
+                include: this.allowedUnitsInclude(companyId)
+            }),
+            db.unitOfMeasure.findMany({ where: { companyId, active: true }, orderBy: { name: 'asc' } }),
+        ]);
+        for (const product of products) {
+            try {
+                result.set(product.id, await this.buildAllowedUnits(product, companyId, db, catalog));
+            } catch {
+                // A misconfigured product must not block the whole sheet: offer only its own legacy unit (1:1).
+                result.set(product.id, [{
+                    unitId: 0, abbreviation: product.unit, name: product.unit,
+                    conversionFactor: 1, isBase: true, isDefault: true
+                }]);
+            }
+        }
+        return result;
+    }
+
+    private static async buildAllowedUnits(
+        product: Prisma.ProductGetPayload<{ include: ReturnType<typeof UnitConversionService.allowedUnitsInclude> }>,
+        companyId: number,
+        db: Tx | typeof prisma,
+        catalog?: Array<Prisma.UnitOfMeasureGetPayload<object>>
+    ): Promise<AllowedUnit[]> {
+        const compatibleWith = async (measurementType: string) => catalog
+            ? catalog.filter((u) => u.measurementType === measurementType)
+            : db.unitOfMeasure.findMany({
+                where: { companyId, active: true, measurementType: measurementType as never },
+                orderBy: { name: 'asc' }
+            });
         let baseUnit = product.baseUnit;
         if (baseUnit && (
             (baseUnit.companyId != null && baseUnit.companyId !== companyId) ||
@@ -559,13 +615,13 @@ export class UnitConversionService {
             throw new Error(`La unidad base configurada para "${product.name}" no está activa o pertenece a otra empresa.`);
         }
         if (!baseUnit && product.baseUnitId) {
-            baseUnit = await prisma.unitOfMeasure.findFirst({
+            baseUnit = await db.unitOfMeasure.findFirst({
                 where: { id: product.baseUnitId, companyId, active: true }
             });
         }
 
         if (!baseUnit) {
-            const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, prisma);
+            const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, db);
 
             if (!inferredBase) {
                 return [{
@@ -593,14 +649,7 @@ export class UnitConversionService {
                 }];
             }
 
-            const compatibleUnits = await prisma.unitOfMeasure.findMany({
-                where: {
-                    companyId,
-                    active: true,
-                    measurementType: inferredBase.measurementType
-                },
-                orderBy: { name: 'asc' }
-            });
+            const compatibleUnits = await compatibleWith(inferredBase.measurementType);
 
             return compatibleUnits.map((u) => ({
                 unitId: u.id,
@@ -641,14 +690,7 @@ export class UnitConversionService {
         // so recipe/inventory selectors are not limited to manually configured rows.
         const compatibleUnits = baseUnit.measurementType === 'PACKAGE'
             ? []
-            : await prisma.unitOfMeasure.findMany({
-                where: {
-                    companyId,
-                    active: true,
-                    measurementType: baseUnit.measurementType
-                },
-                orderBy: { name: 'asc' }
-            });
+            : await compatibleWith(baseUnit.measurementType);
 
         const existingAbbr = new Set(units.map(u => u.abbreviation.toLowerCase()));
         for (const u of compatibleUnits) {

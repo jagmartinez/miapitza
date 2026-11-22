@@ -8,6 +8,7 @@ jest.mock('../../middlewares/auth', () => ({
     authMiddleware: (req: { user?: unknown }, _res: unknown, next: () => void) => { req.user = currentUser; next(); },
     extractAuthToken: () => 'session-token',
     requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+    requireRole: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 const prisma = require('../../utils/prisma').default as typeof import('../../utils/prisma').default;

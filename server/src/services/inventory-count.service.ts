@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { InventoryCountError } from './inventory-count-errors';
 import { assertBranchAccess, resolveBranchScope } from '../utils/branch-scope';
+import { UnitConversionService } from './unit-conversion.service';
 
 export interface InventoryCountActor {
     userId: number;
@@ -32,6 +33,27 @@ const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 const NO_CATEGORY = 'Sin categoría';
 const MAX_ID = 2147483647;
+const MAX_COUNTED_QUANTITY = 1_000_000_000;
+const MAX_UNIT_LENGTH = 20;
+
+function displayStatusOf(status: string, returnedAt: Date | null): CountDisplayStatus {
+    if (status === 'APPROVED') return 'APROBADO';
+    if (status === 'REJECTED') return 'RECHAZADO';
+    if (status === 'SUBMITTED') return 'EN_REVISION';
+    return returnedAt ? 'DEVUELTO' : 'EN_CURSO';
+}
+
+/** Counted quantity: a number with at most 3 decimals, 0 <= q <= MAX; `null` clears the line. */
+function parseCountedQuantity(value: unknown): number | null {
+    if (value === null) return null;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_COUNTED_QUANTITY) {
+        throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+    }
+    if (Math.abs(value * 1000 - Math.round(value * 1000)) > 1e-6) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+    return value;
+}
+
+const round6 = (value: number) => Math.round(value * 1e6) / 1e6;
 
 const asUser = (actor: InventoryCountActor) => actor as unknown as ReqUser;
 
@@ -209,7 +231,7 @@ export class InventoryCountService {
 
     static async list(actor: InventoryCountActor, filters: InventoryCountListFilters) {
         const statusKey = filters.status ?? 'open';
-        if (!(statusKey in STATUS_FILTERS)) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+        if (!Object.prototype.hasOwnProperty.call(STATUS_FILTERS, statusKey)) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
         const pageSize = Math.min(Math.max(filters.pageSize ?? DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
         const page = Math.max(filters.page ?? 1, 1);
         const status = STATUS_FILTERS[statusKey];
@@ -262,10 +284,7 @@ export class InventoryCountService {
 
         const items = sheets.map((s, index) => {
             const returned = s.status === 'DRAFT' && s.returnedAt !== null;
-            const displayStatus: CountDisplayStatus = s.status === 'APPROVED' ? 'APROBADO'
-                : s.status === 'REJECTED' ? 'RECHAZADO'
-                : s.status === 'SUBMITTED' ? 'EN_REVISION'
-                : returned ? 'DEVUELTO' : 'EN_CURSO';
+            const displayStatus = displayStatusOf(s.status, s.returnedAt);
             let result: { differences: number; value: number } | { recount: number } | null = null;
             if (s.status === 'APPROVED') {
                 const group = adjustedOf.get(s.id);
@@ -290,6 +309,180 @@ export class InventoryCountService {
             };
         });
         return { items, total };
+    }
+
+    /** Locks the sheet row (serializes line saves against submit) and loads it with the caller's access checked. */
+    private static async lockedSheet(tx: Prisma.TransactionClient, actor: InventoryCountActor, sheetId: number) {
+        await tx.$queryRaw`SELECT id FROM \`InventoryCountSheet\` WHERE id = ${sheetId} AND companyId = ${actor.companyId} FOR UPDATE`;
+        return InventoryCountService.loadSheet(tx, actor, sheetId);
+    }
+
+    private static async loadSheet(db: Db, actor: InventoryCountActor, sheetId: number) {
+        const sheet = await db.inventoryCountSheet.findFirst({
+            where: { id: sheetId, companyId: actor.companyId },
+            select: {
+                id: true, branchId: true, warehouseId: true, status: true, returnedAt: true, returnNote: true, startedAt: true,
+                scopeCategoryIds: true,
+                warehouse: { select: { id: true, name: true } },
+                startedBy: { select: { name: true } },
+            },
+        });
+        if (!sheet) throw new InventoryCountError('INVENTORY_COUNT_NOT_FOUND');
+        assertBranchAccess(asUser(actor), sheet.branchId, { allowGlobal: true });
+        return sheet;
+    }
+
+    /** Blind sheet for the counter: whitelisted fields only, never expected quantities, stock or costs. */
+    static async detail(actor: InventoryCountActor, sheetIdInput: unknown) {
+        const sheetId = intId(sheetIdInput);
+        const sheet = await InventoryCountService.loadSheet(prisma, actor, sheetId);
+        const lines = await prisma.inventoryCountLine.findMany({
+            where: { sheetId },
+            select: {
+                productId: true, categoryId: true, unit: true, countedQuantity: true, countedBaseQuantity: true, recountRequested: true,
+                product: { select: { name: true, sku: true, unit: true } },
+            },
+            orderBy: { product: { name: 'asc' } },
+        });
+        const categoryIds = [...new Set(lines.map((l) => l.categoryId).filter((id): id is number => id !== null))];
+        const [unitsByProduct, categories, scopeLabels] = await Promise.all([
+            UnitConversionService.getAllowedUnitsForProducts(lines.map((l) => l.productId), actor.companyId, prisma),
+            categoryIds.length === 0 ? [] : prisma.category.findMany({
+                where: { companyId: actor.companyId, id: { in: categoryIds } },
+                select: { id: true, name: true, sortOrder: true },
+            }),
+            InventoryCountService.scopeLabels(actor.companyId, [sheet.scopeCategoryIds]),
+        ]);
+        const named: Array<{ categoryId: number | null; name: string }> = [...categories]
+            .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'es'))
+            .map((c) => ({ categoryId: c.id, name: c.name }));
+        if (lines.some((l) => l.categoryId === null)) named.push({ categoryId: null, name: NO_CATEGORY });
+
+        return {
+            id: sheet.id,
+            status: sheet.status,
+            displayStatus: displayStatusOf(sheet.status, sheet.returnedAt),
+            warehouse: { id: sheet.warehouse.id, name: sheet.warehouse.name },
+            startedAt: sheet.startedAt.toISOString(),
+            startedByName: sheet.startedBy.name,
+            scopeLabel: scopeLabels[0],
+            returnNote: sheet.returnNote ?? null,
+            categories: named,
+            lines: lines.map((l) => {
+                const units = unitsByProduct.get(l.productId) ?? [];
+                return {
+                    productId: l.productId,
+                    name: l.product.name,
+                    sku: l.product.sku ?? null,
+                    categoryId: l.categoryId,
+                    baseUnit: units.find((u) => u.isBase)?.abbreviation ?? l.product.unit,
+                    units: units.map((u) => ({ abbreviation: u.abbreviation, name: u.name, factor: u.conversionFactor })),
+                    unit: l.unit,
+                    countedQuantity: l.countedQuantity === null ? null : Number(l.countedQuantity),
+                    counted: l.countedBaseQuantity !== null,
+                    recountRequested: l.recountRequested,
+                };
+            }),
+        };
+    }
+
+    /**
+     * Saves (or clears) one line. Stock is read here, when the server receives the save, so the later
+     * adjustment (counted - expected) respects sales made in between. Older client timestamps never win.
+     */
+    static async saveLine(
+        actor: InventoryCountActor,
+        sheetIdInput: unknown,
+        productIdInput: unknown,
+        input: { unit?: unknown; countedQuantity?: unknown; clientCountedAt?: unknown },
+    ) {
+        const sheetId = intId(sheetIdInput);
+        const productId = intId(productIdInput);
+        const quantity = parseCountedQuantity(input.countedQuantity ?? null);
+        const unit = typeof input.unit === 'string' ? input.unit.trim() : '';
+        if (unit.length === 0 || unit.length > MAX_UNIT_LENGTH) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+        const clientCountedAt = typeof input.clientCountedAt === 'string' ? new Date(input.clientCountedAt) : null;
+        if (!clientCountedAt || Number.isNaN(clientCountedAt.getTime())) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+
+        return prisma.$transaction(async (tx) => {
+            const sheet = await InventoryCountService.lockedSheet(tx, actor, sheetId);
+            if (sheet.status !== 'DRAFT') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
+            const line = await tx.inventoryCountLine.findUnique({
+                where: { sheetId_productId: { sheetId, productId } },
+                select: { id: true, countedBaseQuantity: true, clientCountedAt: true },
+            });
+            if (!line) throw new InventoryCountError('INVENTORY_COUNT_NOT_FOUND', 'El producto no está en este conteo');
+            const counted = line.countedBaseQuantity !== null;
+            if (line.clientCountedAt && clientCountedAt.getTime() <= line.clientCountedAt.getTime()) {
+                return { productId, counted, applied: false };
+            }
+            // Only a strictly newer client timestamp may overwrite the stored line.
+            const newer = { id: line.id, OR: [{ clientCountedAt: null }, { clientCountedAt: { lt: clientCountedAt } }] };
+
+            if (quantity === null) {
+                const cleared = await tx.inventoryCountLine.updateMany({
+                    where: newer,
+                    data: {
+                        unit: null, countedQuantity: null, countedBaseQuantity: null, expectedAtCount: null,
+                        countedById: null, countedAt: null, clientCountedAt, recountRequested: false,
+                    },
+                });
+                return { productId, counted: false, applied: cleared.count > 0 };
+            }
+
+            const allowed = (await UnitConversionService.getAllowedUnitsForProducts([productId], actor.companyId, tx)).get(productId) ?? [];
+            const match = allowed.find((u) => u.abbreviation.toLowerCase() === unit.toLowerCase());
+            if (!match) throw new InventoryCountError('INVENTORY_COUNT_UNIT_INVALID');
+            let baseQuantity = 0;
+            if (quantity > 0) {
+                try {
+                    baseQuantity = round6((await UnitConversionService.convert(productId, actor.companyId, quantity, match.abbreviation, tx)).baseQuantity);
+                } catch {
+                    throw new InventoryCountError('INVENTORY_COUNT_UNIT_INVALID');
+                }
+            }
+            const stock = await tx.stock.findFirst({
+                where: { warehouseId: sheet.warehouseId, productId, companyId: actor.companyId },
+                select: { quantity: true },
+            });
+            const saved = await tx.inventoryCountLine.updateMany({
+                where: newer,
+                data: {
+                    unit: match.abbreviation,
+                    countedQuantity: quantity,
+                    countedBaseQuantity: baseQuantity,
+                    expectedAtCount: Number(stock?.quantity ?? 0),
+                    countedById: actor.userId,
+                    countedAt: new Date(),
+                    clientCountedAt,
+                    recountRequested: false,
+                    notCounted: false,
+                },
+            });
+            return { productId, counted: true, applied: saved.count > 0 };
+        });
+    }
+
+    /** Sends the sheet to review: uncounted lines are flagged `notCounted` (they are never adjusted). */
+    static async submit(actor: InventoryCountActor, sheetIdInput: unknown) {
+        const sheetId = intId(sheetIdInput);
+        return prisma.$transaction(async (tx) => {
+            const sheet = await InventoryCountService.lockedSheet(tx, actor, sheetId);
+            if (sheet.status !== 'DRAFT') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
+            const lines = await tx.inventoryCountLine.findMany({
+                where: { sheetId },
+                select: { countedBaseQuantity: true, recountRequested: true },
+            });
+            if (lines.some((l) => l.recountRequested)) throw new InventoryCountError('INVENTORY_COUNT_RECOUNT_PENDING');
+            const counted = lines.filter((l) => l.countedBaseQuantity !== null).length;
+            if (counted === 0) throw new InventoryCountError('INVENTORY_COUNT_EMPTY');
+            await tx.inventoryCountLine.updateMany({ where: { sheetId, countedBaseQuantity: null }, data: { notCounted: true } });
+            await tx.inventoryCountSheet.update({
+                where: { id: sheetId },
+                data: { status: 'SUBMITTED', submittedById: actor.userId, submittedAt: new Date(), returnNote: null },
+            });
+            return { id: sheetId, status: 'SUBMITTED' as const, counted, notCounted: lines.length - counted };
+        });
     }
 
     /** "Todo", the category name(s), or "N categorías" for each sheet scope. */

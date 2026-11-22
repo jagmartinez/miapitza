@@ -3,6 +3,7 @@ import { authMiddleware, requirePermission } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { InventoryCountService } from '../services/inventory-count.service';
 import { InventoryCountError } from '../services/inventory-count-errors';
+import { requireIdempotencyKey } from './inventory-movement.routes';
 
 const router = Router();
 
@@ -66,5 +67,21 @@ router.get('/', requirePermission('inventory.count', 'SUPERADMIN', 'ADMIN', 'BOD
         page: positiveInt(q(req).page),
         pageSize: positiveInt(q(req).pageSize),
     })));
+
+router.get('/:id', requirePermission('inventory.count', 'SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'), handle(200, (req) =>
+    InventoryCountService.detail(actorOf(req), positiveInt(req.params.id))));
+
+router.put('/:id/lines/:productId', requirePermission('inventory.count', 'SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'), requireIdempotencyKey, validate({
+    body: {
+        unit: { type: 'string', required: true, min: 1, max: 20 },
+        // countedQuantity (number >= 0 with up to 3 decimals, or null to clear) is checked strictly in the service.
+        countedQuantity: { type: 'number' },
+        clientCountedAt: { type: 'date', required: true },
+    },
+}), handle(200, (req) =>
+    InventoryCountService.saveLine(actorOf(req), positiveInt(req.params.id), positiveInt(req.params.productId), req.body ?? {})));
+
+router.post('/:id/submit', requirePermission('inventory.count', 'SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'), handle(200, (req) =>
+    InventoryCountService.submit(actorOf(req), positiveInt(req.params.id))));
 
 export default router;

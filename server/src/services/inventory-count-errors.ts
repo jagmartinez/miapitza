@@ -28,9 +28,9 @@ const INVENTORY_COUNT_ERROR_MESSAGE: Record<InventoryCountErrorCode, string> = {
     INVENTORY_COUNT_NOT_FOUND: 'Conteo no encontrado',
     INVENTORY_COUNT_WAREHOUSE_BUSY: 'La bodega ya tiene un conteo abierto',
     INVENTORY_COUNT_NOT_EDITABLE: 'El conteo ya no se puede modificar',
-    INVENTORY_COUNT_INVALID: 'Datos de conteo invalidos',
-    INVENTORY_COUNT_UNIT_INVALID: 'La unidad no es valida para este producto',
-    INVENTORY_COUNT_EMPTY: 'No hay ningun producto contado',
+    INVENTORY_COUNT_INVALID: 'Datos de conteo inválidos',
+    INVENTORY_COUNT_UNIT_INVALID: 'La unidad no es válida para este producto',
+    INVENTORY_COUNT_EMPTY: 'No hay ningún producto contado',
     INVENTORY_COUNT_RECOUNT_PENDING: 'Hay productos pendientes de reconteo',
     INVENTORY_COUNT_COST_MISSING: 'Faltan costos para ajustar algunos productos',
 };
