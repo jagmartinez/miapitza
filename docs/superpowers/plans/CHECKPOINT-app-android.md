@@ -211,3 +211,13 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - 1432bfb: Cocina muestra mesas con nombre tal cual («FDC», no «MFDC»); selects con el estilo de los inputs (48px).
 - Emulador: registro de tablet de cocina con selectores OK; KDS muestra la comanda, Iniciar → Listo → «Sin comandas», Recientes (1). Emulador queda registrado como tablet de servicio «Servicio 1».
 - Pendiente: 5c Push/FCM (archivos de Firebase), pruebas en hardware real (Android 9), motor de BD de producción y binlog.
+
+## 2026-11-22 (tarde) — Alineación al mockup + revisión funcional
+
+- Mockups de diseño (20-nov) recuperados del transcript a `scratchpad/mock/` (HTML + PNG renderizados con Edge headless). Auditoría Opus: 92 diferencias.
+- Commits: 485acd3 (tema monocromo, botones, selección, seg, Tabler icons 3.52.0), 8c59c5c (todas las pantallas), 523578f (nombre de sucursal vía device-roster/device-login), f087cfe (correcciones funcionales + visual ronda 1), 18f4270 (plano en px con ResizeObserver — container units colapsaban el plano en el WebView; PIN arriba), + ronda 2 (total estable con IVA de la empresa, KDS altura/sonido, Mi cuenta).
+- Revisión funcional (Opus/Fable): 0 Critical; Importantes corregidos (filtro Por cobrar, roster PIN, Listo colgado, overflow KDS). M-6 (cerrar turno con mesas sin cobrar) queda como decisión de producto (falta API de conteo).
+- Revisión visual por capturas del emulador (Fable x2): los High corregidos y verificados en emulador (barra de estado oscura, nombres uniformes, total C$ 667 antes y después de enviar, plano arriba).
+- Lección: las pruebas jsdom no detectan layout; verificar SIEMPRE en el emulador. Evitar container query units y `align-content` en bloques (Chrome nuevo lo aplica).
+- KDS: umbrales vienen del servidor (kds_warning_minutes=3, kds_urgent_minutes=10 por defecto) — ajustar en configuración web si se desea.
+- Pendiente: 5c Push/FCM (archivos Firebase), hardware real Android 9 (WebView viejo: aspect-ratio/cq no soportados — el plano ya usa px), M-6.
