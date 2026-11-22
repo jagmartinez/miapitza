@@ -36,6 +36,8 @@ export {
     IconSearch,
     IconTrash,
     IconUser,
+    IconVolume,
+    IconVolumeOff,
     IconX,
 } from '@tabler/icons-react';
 export type { TablerIcon } from '@tabler/icons-react';

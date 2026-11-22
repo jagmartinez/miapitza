@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { IconHistory } from '../../ui/Icon';
+import { IconHistory, IconVolume, IconVolumeOff } from '../../ui/Icon';
 import { newIdempotencyKey } from '@web/utils/idempotency';
 import { kitchenAuthStatus } from '../../core/kitchenAuth';
 import { KitchenActionError, type KitchenApi } from './kitchenApi';
@@ -184,8 +184,8 @@ export function KitchenBoard({ api, realtime, canManage, branchName, connection,
                     {CONNECTION_TEXT[connection]}
                 </span>
                 <span className="kitchen-spacer" />
-                <button type="button" className="kitchen-link" aria-pressed={sound} onClick={toggleSound}>
-                    {sound ? 'Sonido: sí' : 'Sonido: no'}
+                <button type="button" className="kitchen-link" aria-pressed={sound} aria-label={sound ? 'Sonido: sí' : 'Sonido: no'} onClick={toggleSound}>
+                    {sound ? <IconVolume size={20} stroke={1.5} aria-hidden /> : <IconVolumeOff size={20} stroke={1.5} aria-hidden />}
                 </button>
                 <button type="button" className="kitchen-link" onClick={() => {
                         refreshRecent();

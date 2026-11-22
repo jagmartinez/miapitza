@@ -3,7 +3,7 @@ import { formatHrMoney, formatHrNumber } from '@web/utils/hrFormat';
 import { isCompanyAdmin, isWaiter } from '../../core/permissions';
 import type { Session } from '../../core/session';
 import { Card } from '../../ui/Card';
-import { IconArrowsExchange, IconBeach, IconCash, IconChevronRight, IconClockPlus, IconEdit, IconFingerprint } from '../../ui/Icon';
+import { IconArrowsExchange, IconBeach, IconBuildingBank, IconCash, IconChevronRight, IconClipboardCheck, IconClipboardList, IconClockPlus, IconEdit, IconFileInvoice, IconFingerprint, IconUser, type TablerIcon } from '../../ui/Icon';
 import { useAccountNav, type AccountSection } from './AccountNav';
 import type { HrApi } from './hrApi';
 import { useMyService } from './useMyService';
@@ -33,6 +33,16 @@ function shiftRange(startAt: string, endAt: string, timeZone?: string): string |
 
 const PENDING_SECTION: Record<PendingItem['kind'], AccountSection> = { schedule: 'schedule', receipt: 'payroll', swap: 'pending' };
 
+function NavRow({ icon: Icon, title, onClick }: { icon: TablerIcon; title: string; onClick: () => void }) {
+    return (
+        <button type="button" className="ah-tile ah-tile-row ah-navrow" onClick={onClick}>
+            <Icon size={20} stroke={1.5} aria-hidden />
+            <span className="ah-tile-text"><b>{title}</b></span>
+            <IconChevronRight size={18} stroke={1.5} aria-hidden />
+        </button>
+    );
+}
+
 export function AccountHome({ session, hr, onLogout }: Props) {
     const { navigate } = useAccountNav();
     const linked = session.user.accountType === 'INTERNAL' && session.user.employeeId != null;
@@ -53,8 +63,8 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                 {header}
                 <div className="ah-body">
                     <p className="muted">{UNLINKED}</p>
-                    <Card title="Mi información" onClick={() => navigate('info')} />
-                    {isCompanyAdmin(session.user) && <Card title="Por aprobar" onClick={() => navigate('approvals')} />}
+                    <NavRow icon={IconUser} title="Mi información" onClick={() => navigate('info')} />
+                    {isCompanyAdmin(session.user) && <NavRow icon={IconClipboardCheck} title="Por aprobar" onClick={() => navigate('approvals')} />}
                 </div>
             </main>
         );
@@ -202,11 +212,11 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                             )}
                         </Card>
                     )}
-                    <Card title="Mi horario" onClick={() => navigate('schedule')} />
-                    <Card title="Mi nómina" onClick={() => navigate('payroll')} />
-                    <Card title="Préstamos" onClick={() => navigate('loans')} />
-                    <Card title="Mi información" onClick={() => navigate('info')} />
-                    {isCompanyAdmin(session.user) && <Card title="Por aprobar" onClick={() => navigate('approvals')} />}
+                    <NavRow icon={IconClipboardList} title="Mi horario" onClick={() => navigate('schedule')} />
+                    <NavRow icon={IconFileInvoice} title="Mi nómina" onClick={() => navigate('payroll')} />
+                    <NavRow icon={IconBuildingBank} title="Préstamos" onClick={() => navigate('loans')} />
+                    <NavRow icon={IconUser} title="Mi información" onClick={() => navigate('info')} />
+                    {isCompanyAdmin(session.user) && <NavRow icon={IconClipboardCheck} title="Por aprobar" onClick={() => navigate('approvals')} />}
                 </div>
             </div>
             {cancel.sheet}

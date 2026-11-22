@@ -110,8 +110,8 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    /* Mockup ratios: rail ~8%, ticket ~26% of the width. */
-    grid-template-columns: clamp(88px, 8vw, 112px) minmax(0, 1fr) clamp(280px, 27%, 380px);
+    /* Mockup ratios: rail ~8%, ticket ~22% of the width. */
+    grid-template-columns: clamp(88px, 8vw, 112px) minmax(0, 1fr) clamp(280px, 22%, 360px);
 }
 
 .rail {
@@ -411,6 +411,15 @@
     min-height: 48px;
     font-size: 14px;
     font-weight: 400;
+}
+
+.ticket-unsent-ghost {
+    min-height: 1.2em;
+    font-size: 13px;
+}
+
+.ticket-pricing-ghost {
+    visibility: hidden;
 }
 
 .ticket-sendrow {

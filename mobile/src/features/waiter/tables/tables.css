@@ -269,7 +269,7 @@
     flex: 1;
     min-height: 0;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
 }
 
@@ -353,7 +353,9 @@
 /* One size for every name: long ones wrap to two lines, then ellipsis. */
 .tile-line.tile-num {
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
+    word-break: normal;
+    text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;

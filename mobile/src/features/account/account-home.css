@@ -4,7 +4,8 @@
 .ah-logout { min-height: 48px; min-width: 48px; padding: 0 4px; background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; }
 .ah-body { display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 32px; }
 .ah-punch { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
-.ah-shift { margin: 0; font-size: 14px; }
+.ah-shift { margin: 0; font-size: 22px; font-weight: 500; line-height: 1.25; }
+.ah-punch > .muted { margin: 0; font-size: 15px; }
 .ah-mark { min-height: 56px; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .ah-geo { margin: 0; font-size: 12px; color: var(--muted); text-align: center; }
 .ah-h { margin: 16px 0 0; font-size: 13px; font-weight: 400; color: var(--muted); }
@@ -14,7 +15,10 @@
 .ah-tile b { font-size: 14px; font-weight: 500; }
 .ah-tile span { font-size: 12px; color: var(--muted); }
 .ah-tile-row { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 12px; }
-.ah-tile-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.ah-tile-text { flex: 1; display: flex; flex-direction: column; gap: 2px; color: var(--text); }
+.ah-tile-text b { color: var(--text); }
+.ah-tile-text > span { color: var(--muted); }
+.ah-navrow svg:last-child { color: var(--muted); }
 .ah-list { display: flex; flex-direction: column; gap: 8px; }
 .ah .ui-card { background: var(--surface-2); border: 0; border-radius: 10px; padding: 12px; }
 .ah .ui-card-title { font-size: 14px; font-weight: 500; }

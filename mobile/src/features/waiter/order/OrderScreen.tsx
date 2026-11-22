@@ -41,7 +41,7 @@ import '../tables/sheets.css';
 
 export type OrderApi = Pick<
     WaiterApi,
-    'menu' | 'menuItem' | 'categories' | 'topSellers' | 'promotions' | 'orderDetail' | 'activeOrders' | 'addItem' | 'sendToKitchen' | 'createOrder' | 'updateItem' | 'removeItem' | 'deliverItems' | 'pricing' | 'authorizeDiscount' | 'supervisors' | 'discountLimit' | 'validateCoupon'
+    'menu' | 'menuItem' | 'categories' | 'topSellers' | 'promotions' | 'orderDetail' | 'activeOrders' | 'addItem' | 'sendToKitchen' | 'createOrder' | 'updateItem' | 'removeItem' | 'deliverItems' | 'pricing' | 'authorizeDiscount' | 'supervisors' | 'discountLimit' | 'validateCoupon' | 'settings'
 > &
     PaymentApi;
 
@@ -253,6 +253,22 @@ export function OrderScreen(props: OrderScreenProps) {
     }, []);
 
     // ---- catalog (cache first; refreshed in the background) ----
+    // Company tax rate (percent), loaded once: prices unsent lines like the server will. Failure keeps the "antes de IVA" fallback.
+    const [companyRate, setCompanyRate] = useState<number | null>(null);
+    useEffect(() => {
+        let live = true;
+        Promise.resolve(api.settings?.()).then(
+            (s) => {
+                const raw = s?.taxRate ?? s?.tax_rate;
+                const n = raw == null || raw === '' ? NaN : Number(raw);
+                if (live && Number.isFinite(n)) setCompanyRate(n);
+            },
+            () => undefined,
+        );
+        return () => {
+            live = false;
+        };
+    }, [api]);
     useEffect(() => {
         if (branchId == null) return undefined;
         let live = true;
@@ -453,6 +469,7 @@ export function OrderScreen(props: OrderScreenProps) {
         discount: orderDiscount,
         tax: order?.tax != null ? Number(order.tax) || 0 : null,
         tip: Number(order?.tipAmount) || 0,
+        companyRate,
         label: orderDiscount > 0 ? (order?.discountCode ? `Cupón ${String(order.discountCode)}` : String(order?.discountReason || 'Manual')) : null,
     };
     const elapsed = order?.createdAt ? `${minutesSince(order.createdAt, now)} min` : '';

@@ -135,6 +135,7 @@
     border: 0;
     border-radius: var(--radius-s);
     cursor: pointer;
+    white-space: nowrap;
 }
 
 .seg-item[aria-pressed='true'],

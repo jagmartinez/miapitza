@@ -27,6 +27,8 @@ export interface TicketPricing {
     tip: number;
     /** Reason chip (or "Cupón X"); null when there is no discount. */
     label: string | null;
+    /** Company tax rate in percent (settings); used while the order has no tax of its own. */
+    companyRate?: number | null;
 }
 
 export interface TicketPanelProps {
@@ -130,15 +132,36 @@ export function MoreActionsSheet({ actions, onClose }: { actions: Pick<TicketAct
     );
 }
 
+/** Unsent lines carry the order's own tax rate (server tax over taxable base) so Total is the same before and after sending. */
+export function unsentWithTax(pricing: TicketPricing | undefined, unsent: number): { unsentGross: number; rateKnown: boolean } {
+    if (unsent <= 0) return { unsentGross: 0, rateKnown: true };
+    if (!pricing) return { unsentGross: unsent, rateKnown: false };
+    const base = pricing.subtotal - pricing.discount;
+    let rate: number | null = null;
+    if (base > 0 && pricing.tax != null) rate = Math.max(0, pricing.tax) / base;
+    else if (pricing.companyRate != null && pricing.companyRate >= 0) rate = pricing.companyRate / 100;
+    if (rate == null) return { unsentGross: unsent, rateKnown: false };
+    return { unsentGross: Math.round((unsent + Math.round(unsent * rate * 100 + 1e-9) / 100) * 100) / 100, rateKnown: true };
+}
+
 type FooterProps = Pick<TicketPanelProps, 'total' | 'pricing' | 'unsentTotal' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>;
 
 /** Pinned footer: total, one primary "Enviar a cocina · N" and the outlined secondary row (Cobrar | Dividir | ···). Never scrolls with the list. */
 export function TicketFooter({ total, pricing, unsentTotal, sendCount, sending, canEdit, actions, onSend }: FooterProps) {
     const [moreOpen, setMoreOpen] = useState(false);
     const showMore = (actions.canDiscount && !!actions.onDiscount) || !!actions.onMore;
+    const { unsentGross, rateKnown } = unsentWithTax(pricing, unsentTotal);
+    const hasPricing = !!pricing && pricing.subtotal > 0;
     return (
         <footer className="ticket-foot">
-            {pricing && pricing.subtotal > 0 && (
+            {/* Same rows in every state: without sent lines the block is a hidden placeholder so the buttons never jump. */}
+            {!hasPricing && (
+                <div className="ticket-pricing ticket-pricing-ghost" aria-hidden="true">
+                    <div className="ticket-line"><span>Subtotal</span><span>&nbsp;</span></div>
+                    <div className="ticket-line"><span>IVA</span><span>&nbsp;</span></div>
+                </div>
+            )}
+            {pricing && hasPricing && (
                 <div className="ticket-pricing">
                     <div className="ticket-line">
                         <span>Subtotal</span>
@@ -165,10 +188,11 @@ export function TicketFooter({ total, pricing, unsentTotal, sendCount, sending, 
             )}
             <div className="ticket-total">
                 <span className="muted">Total</span>
-                <strong>{money(total + unsentTotal)}</strong>
+                <strong>{money(total + unsentGross)}</strong>
             </div>
-            {sending && <span className="ticket-unsent muted" role="status">Enviando…</span>}
-            {unsentTotal > 0 && <span className="ticket-unsent muted">{`${money(unsentTotal)} sin enviar`}</span>}
+            <span className={sending || unsentTotal > 0 ? 'ticket-unsent muted' : 'ticket-unsent-ghost'} role={sending ? 'status' : undefined}>
+                {sending ? 'Enviando…' : unsentTotal > 0 ? `${money(unsentGross)} sin enviar${rateKnown ? '' : ' (antes de IVA)'}` : ' '}
+            </span>
             {(() => {
                 const moreBtn = (
                     <button type="button" className="btn btn-outline icon-btn" aria-label="Más acciones" onClick={() => setMoreOpen(true)}>

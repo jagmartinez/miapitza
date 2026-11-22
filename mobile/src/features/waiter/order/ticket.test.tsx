@@ -270,3 +270,20 @@ describe('ticket fix round 1', () => {
         expect(within(ticket()).getByRole('button', { name: 'Enviar a cocina · 40' })).toBeVisible();
     });
 });
+
+describe('unsentWithTax', () => {
+    it('applies the order tax rate to unsent lines (580 -> 667)', async () => {
+        const { unsentWithTax } = await import('./TicketPanel');
+        const pricing = { subtotal: 1155, discount: 0, tax: 173.25, tip: 0, label: null };
+        expect(unsentWithTax(pricing, 580)).toEqual({ unsentGross: 667, rateKnown: true });
+        expect(unsentWithTax(undefined, 580)).toEqual({ unsentGross: 580, rateKnown: false });
+    });
+});
+
+describe('unsentWithTax company rate', () => {
+    it('uses the company rate while the order has no tax: 580 -> 667 at 15%', async () => {
+        const { unsentWithTax } = await import('./TicketPanel');
+        const pricing = { subtotal: 0, discount: 0, tax: null, tip: 0, label: null, companyRate: 15 };
+        expect(unsentWithTax(pricing, 580)).toEqual({ unsentGross: 667, rateKnown: true });
+    });
+});
