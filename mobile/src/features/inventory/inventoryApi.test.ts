@@ -1,5 +1,6 @@
+import { appEvents } from '../../core/events';
 import { createCache } from '../../data/cache';
-import { createOfflineQueue, STALE_AFTER_MS } from '../../data/offlineQueue';
+import { createOfflineQueue, MAX_RETRIES, STALE_AFTER_MS } from '../../data/offlineQueue';
 import { makeEnv, sessionFor } from '../../data/testkit';
 import { createWaiterApi } from '../../data/waiterApi';
 import { COUNT_URL, createInventoryApi, OfflineError } from './inventoryApi';
@@ -194,5 +195,41 @@ describe('inventory data layer', () => {
         expect(env.seen[1].data).toEqual({ warehouseId: 2 });
         expect(await env.inventory.recent('review')).toEqual([{ id: 9 }]);
         expect(await env.inventory.warehouses()).toEqual([{ id: 2 }]);
+    });
+});
+
+describe('count lines are never left failed', () => {
+    async function queued() {
+        const env = await setup();
+        const dropped: unknown[] = [];
+        const off = appEvents.on('inventory-line-dropped', (p) => dropped.push(p));
+        env.setOnline(false);
+        await env.inventory.saveLine(9, 11, { unit: 'L', countedQuantity: 8 });
+        env.setOnline(true);
+        return { env, dropped, off };
+    }
+
+    it.each([[400], [422]])('a codeless %s is dropped with an event and pendingLines goes to 0', async (status) => {
+        const { env, dropped, off } = await queued();
+        env.reply(() => ({ status }));
+        await env.queue.process();
+        off();
+        expect(await env.db.syncQueue.count()).toBe(0);
+        expect(await env.inventory.pendingLines(9)).toBe(0);
+        expect(dropped).toEqual([{ sheetId: 9, productId: 11 }]);
+    });
+
+    it('a plain 404 retries and is dropped (with the event) after MAX_RETRIES', async () => {
+        const { env, dropped, off } = await queued();
+        env.reply(() => ({ status: 404, code: 'ROUTE_NOT_FOUND' }));
+        await env.queue.process();
+        expect(await env.db.syncQueue.count()).toBe(1);
+        expect(dropped).toEqual([]);
+        await env.db.syncQueue.toCollection().modify({ retryCount: MAX_RETRIES - 1, nextAttemptAt: null });
+        await env.queue.process();
+        off();
+        expect(await env.db.syncQueue.count()).toBe(0);
+        expect(await env.inventory.pendingLines(9)).toBe(0);
+        expect(dropped).toEqual([{ sheetId: 9, productId: 11 }]);
     });
 });

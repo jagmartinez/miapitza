@@ -297,13 +297,27 @@ export function createOfflineQueue(deps: QueueDeps) {
                 const retryCount = item.retryCount + 1;
                 const survey = isSurveyItem(item);
                 const count = isInventoryCountItem(item);
-                if ((survey && isDefinitiveSurveyRejection(status, err.response.data?.code)) || (count && isDefinitiveCountRejection(status, err.response.data?.code))) {
+                if (count) {
+                    // A count line is never left failed (nobody may discard it and the sheet could not be sent): any verdict or exhausted retries drops it.
+                    // A 404 without its own code is a missing route (deploy): it retries first, capped by MAX_RETRIES.
+                    const verdict = isDefinitiveCountRejection(status, err.response.data?.code) || (status !== 404 && isPermanentSyncFailure(status, err.response.data?.code));
+                    if (verdict || retryCount >= MAX_RETRIES) {
+                        await db.syncQueue.delete(item.id!);
+                        const [, sheetId, productId] = /^\/v1\/inventory-counts\/(\d+)\/lines\/(\d+)/.exec(item.url) ?? [];
+                        appEvents.emit('inventory-line-dropped', { sheetId: Number(sheetId), productId: Number(productId) });
+                        await refreshCounts();
+                        continue;
+                    }
+                    await db.syncQueue.update(item.id!, { retryCount, status: 'pending', lastError, nextAttemptAt: now() + backoffMs(retryCount) });
+                    continue;
+                }
+                if (survey && isDefinitiveSurveyRejection(status, err.response.data?.code)) {
                     // Nobody can fix it and nobody may discard it: it must not sit as an error on the PIN screen forever.
                     await db.syncQueue.delete(item.id!);
                     continue;
                 }
-                // A survey or count 404 without its own code is a missing route (deploy), not a verdict: it keeps retrying, capped by MAX_RETRIES.
-                const permanent = !((survey || count) && status === 404) && isPermanentSyncFailure(status, err.response.data?.code);
+                // A survey 404 without its own code is a missing route (deploy), not a verdict: it keeps retrying, capped by MAX_RETRIES.
+                const permanent = !(survey && status === 404) && isPermanentSyncFailure(status, err.response.data?.code);
                 if (retryCount >= MAX_RETRIES || permanent) {
                     const terminal = permanent ? `[${status}] ${lastError}` : lastError;
                     await db.syncQueue.update(item.id!, { retryCount, status: 'failed', lastError: terminal, nextAttemptAt: null });
