@@ -171,10 +171,22 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - **Migraciones:** las 4 nuevas (`20261120`…`20261123`) se ensayaron en la copia `miapitza_costeo_restore_test` sin errores ni diferencias de esquema, y se aplicaron a la base de prueba `miapitza_costeo_20261119`.
 - **Pendiente:** instalar el APK en la tablet o el celular por USB (`adb install`), emparejar el dispositivo desde la web y hacer los gates de dispositivo de las Fases 0–5a. La base de prueba no tiene órdenes pagadas.
 
+## Fase 5b (Inventario: conteo ciego + aprobación) — ✅ código terminado y revisado (2026-11-21)
+- Plan: `docs/superpowers/plans/2026-11-24-app-android-fase-5b-inventario.md` (decisiones del controlador al final). Bitácora con rulings R1–R15: `.superpowers/sdd/2026-11-24-app-android-fase-5b-inventario/progress.md` (no versionada).
+- Commits: a0f396d (plan) → c29591d, 103392b, 1e00f5d, ba62c04 (servidor) · 3fe48f2, ed03e27, f9494c7, 9ba73cd, 15dd2b5, 42b73a2 (app) · 2185069 (web) · ola final bcd8590, d09e414, 7e92eb2, fc83964, eaf6a5e, 78c3e7d, 96c2c6f.
+- Clave: aprobar aplica Δ = contado − existencia al contar (sobre la existencia actual), transacción READ COMMITTED, faltantes pueden dejar existencia negativa; el conteo físico web se bloquea (409 COUNT_SHEET_OPEN) con hoja abierta; el admin puede cancelar un borrador; la app envía la edad del conteo (`X-Counted-Age-Ms`), no la hora del dispositivo; la cola es de referencia contada (abrir Inventario desde Mesas ya no la detiene).
+- Revisiones: tarea por tarea + refutador en T3/T6 (encontraron 1 crítico y 8 importantes, todos corregidos); final Opus + Fable (4 importantes, corregidos en una ola; re-revisión limpia).
+- Pruebas: servidor 210 suites / 1909; web 99 / 494; app 109 / 1004; JS inicial 90 KB gzip.
+- Migración `20261124_inventory_count_sheet`: ensayada en `miapitza_costeo_restore_test` sin drift (solo `face_templates` preexistente) y aplicada a la BD de prueba local.
+- **Checklist de despliegue:** MySQL `binlog_format` debe ser ROW o MIXED (la aprobación usa READ COMMITTED); local = MIXED.
+- Verificado en vivo (API local): iniciar hoja, hoja ciega sin existencias, guardar 4 líneas, enviar (4 contados / 1 sin contar). Hoja #1 SUBMITTED en BOD Bamboo queda para probar la revisión web.
+- Pendiente de verificación manual: revisión visual de `/inventario/conteos` (aprobar/reconteo/cancelar) y la pantalla de conteo en tablet/emulador a ~360 dp. Usuario de prueba `bodega1` (Luis Ramírez) con PIN en `server/.env.local` (`LOCAL_TEST_BODEGA_PIN`).
+- Menores diferidos (bitácora): avisos contradictorios cuando el servidor conserva un valor más nuevo (N1), aviso de cancelación poco claro para el contador (N3), Kardex ignora `?movementId`.
+
 ## Siguiente
-- Gates de dispositivo.
-- Fase 5b (Inventario: conteo ciego y aprobación): plan por escribir.
+- Gates de dispositivo (Fases 0–5b): tablet de servicio, cocina, Mi cuenta, inventario.
 - Fase 5c (Push/FCM): necesita que el usuario cree un proyecto de Firebase.
+- Emulador: AVD `Medium_Phone_API_37.0`; a veces la ventana queda fuera de pantalla o la imagen en negro (problema de video del emulador).
 
 ## Reglas para la Fase 2 (de las revisiones)
 - Toda acción de la Fase 2 se protege con `can()`/`canAny()` desde el inicio.
