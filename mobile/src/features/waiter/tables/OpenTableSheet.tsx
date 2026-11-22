@@ -40,17 +40,16 @@ export function OpenTableSheet({ table, areaName, canOpen, onClose, onOpen }: Op
     };
 
     return (
-        <Sheet label={`Abrir mesa ${table.number}`} onClose={onClose}>
-            <h2 className="sheet-title">{`Mesa ${table.number} · ${areaName} · capacidad ${table.capacity}`}</h2>
+        <Sheet label={`Abrir mesa ${table.number}`} title={`Mesa ${table.number}`} subtitle={`${areaName} · capacidad ${table.capacity}`} onClose={onClose}>
             {canOpen ? (
                 <>
-                    <p className="muted sheet-sub">¿Cuántas personas?</p>
+                    <p className="muted sheet-cap">Personas</p>
                     <div className="guest-grid">
                         {numbers.map((n) => (
                             <button
                                 key={n}
                                 type="button"
-                                className="btn guest"
+                                className="btn-ghost guest"
                                 aria-pressed={guests === n}
                                 data-over-capacity={n > table.capacity ? 'true' : undefined}
                                 onClick={() => setGuests(n)}
@@ -59,13 +58,12 @@ export function OpenTableSheet({ table, areaName, canOpen, onClose, onOpen }: Op
                             </button>
                         ))}
                         {!more && (
-                            <button type="button" className="btn guest" onClick={() => setMore(true)}>
+                            <button type="button" className="btn-ghost guest guest-more" onClick={() => setMore(true)}>
                                 Más
                             </button>
                         )}
                     </div>
-                    {tooSmall && <p className="muted sheet-sub">Más de {table.capacity} personas: considera unir mesas.</p>}
-                    {guests !== null && guests > table.capacity && <p className="sheet-sub">Supera la capacidad de la mesa ({table.capacity}).</p>}
+                    {tooSmall && <p className="muted sheet-hint">Más de {table.capacity} sugiere unir con otra mesa</p>}
                     {error && <p className="error">{error}</p>}
                     <button type="button" className="btn btn-primary sheet-main" disabled={guests === null || busy} onClick={() => void submit()}>
                         Abrir y tomar pedido

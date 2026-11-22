@@ -1,3 +1,4 @@
+import { IconBackspace } from '../../ui/Icon';
 import type { Key } from './countMath';
 
 const row = (keys: Key[]): Key[] => keys;
@@ -22,7 +23,7 @@ export function DecimalKeypad({ onKey, onSave, disabled, saveDisabled }: Decimal
         <div className="cnt-keypad" role="group" aria-label="Teclado">
             {ROWS[0].map(digit)}
             <button type="button" className="cnt-key cnt-key-aux" disabled={disabled} aria-label="Borrar" onClick={() => onKey('back')}>
-                ⌫
+                <IconBackspace size={22} stroke={1.5} aria-hidden />
             </button>
             {ROWS[1].map(digit)}
             <button type="button" className="cnt-key cnt-key-aux" disabled={disabled} aria-label="Limpiar" onClick={() => onKey('clear')}>

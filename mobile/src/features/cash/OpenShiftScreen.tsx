@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { ActionOpts, CashApi } from '../../data/cashApi';
 import { CashError, type CashRegisterRow } from '../../data/cashTypes';
 import { useOnline } from '../../data/useOnline';
@@ -156,9 +157,9 @@ export function OpenShiftScreen({ api, openShift, onOpened, onBack, title = 'Abr
         <main className="cash" data-testid="open-shift">
             <header className="cash-bar">
                 {onBack && (
-                    <button type="button" className="btn" aria-label="Volver" disabled={pending} onClick={onBack}>
-                        ←
-                    </button>
+                    <button type="button" className="cash-back" aria-label="Volver" disabled={pending} onClick={onBack}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                 )}
                 <strong className="cash-title">{title}</strong>
                 {!online && (

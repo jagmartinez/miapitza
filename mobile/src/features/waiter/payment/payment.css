@@ -1,48 +1,58 @@
-/* Cobro: dark, flat, tokens only. Full-screen landscape, three columns (spec 7.3.1). */
+/* Cobro: dark, flat, tokens only. Full-screen landscape, three columns (spec 7.3.1). Mockup: one surface panel, hairlines, grey keys. */
 .pay {
     position: fixed;
     inset: 0;
     z-index: 15;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
+    background: var(--surface);
     color: var(--text);
 }
 
 .pay-bar-top {
     flex: none;
     box-sizing: border-box;
-    height: 48px;
+    min-height: 64px;
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 0 12px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    border-bottom: var(--hair) solid var(--line);
 }
 
-.pay-bar-top .btn {
-    min-height: 44px;
+.pay-back {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-m);
+}
+
+.pay-back:disabled {
+    opacity: 0.4;
 }
 
 .pay-title {
-    font-size: 18px;
+    font-size: 16px;
+    font-weight: 500;
     white-space: nowrap;
 }
 
+/* Mode switch: the global .seg at the right of the header. */
 .pay-modes {
     margin-left: auto;
-    display: flex;
-    gap: 8px;
+    flex: none;
 }
 
-.pay-modes .btn,
-.pay-seg .btn {
+.pay-modes .seg-item,
+.pay-seg .seg-item {
     white-space: nowrap;
-}
-
-.pay .btn[aria-pressed='true'] {
-    border-color: var(--text);
+    padding: 0 16px;
 }
 
 .pay-notice {
@@ -55,51 +65,41 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(300px, 34%) 1fr minmax(260px, 30%);
+    grid-template-columns: minmax(300px, 31%) 1fr minmax(260px, 30%);
     grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .pay-body[data-mode='split'] {
-    grid-template-columns: minmax(280px, 28%) minmax(240px, 26%) 1fr;
+    grid-template-columns: minmax(280px, 30%) minmax(240px, 26%) 1fr;
 }
 
 .pay-col {
     min-height: 0;
     overflow-y: auto;
     box-sizing: border-box;
-    padding: 12px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    border-right: 1px solid var(--border);
+    border-right: var(--hair) solid var(--line);
 }
 
 .pay-wide {
     grid-column: 2 / 4;
 }
 
-.pay-lines {
-    list-style: none;
+/* Summary: product count and IVA rows (12-14px), a hairline, then the one 26px figure. */
+.pay-totals {
     margin: 0;
-    padding: 0;
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    font-size: 14px;
 }
 
-.pay-lines li,
 .pay-totals div {
     display: flex;
     justify-content: space-between;
     gap: 8px;
     padding: 4px 0;
     font-variant-numeric: tabular-nums;
-}
-
-.pay-totals {
-    margin: 0;
-    border-top: 1px solid var(--border);
-    padding-top: 8px;
 }
 
 .pay-totals dt {
@@ -112,61 +112,117 @@
 
 .pay-total {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: 8px;
+    border-top: var(--hair) solid var(--line);
+}
+
+.pay-total .muted {
+    font-size: 13px;
 }
 
 .pay-total strong {
-    font-size: 36px;
+    font-size: 26px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
 
+.pay-spacer {
+    flex: 1;
+}
+
+.pay-cap {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.pay-customer-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Filled grey row: name left, "Cambiar" text link right. */
 .pay-customer {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 8px;
+    min-height: 48px;
+    padding: 0 4px 0 12px;
+    background: var(--surface-2);
+    border-radius: var(--radius-m);
 }
 
-.pay-customer > div {
-    display: flex;
-    flex-direction: column;
+.pay-customer strong {
+    font-size: 14px;
+}
+
+.pay-link {
+    min-height: 48px;
+    padding: 0 12px;
+    font-size: 13px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
 }
 
 .pay-note {
     margin: 0;
-    font-size: 13px;
+    font-size: 12px;
+}
+
+.pay-tip {
+    min-height: 48px;
+    font-size: 14px;
 }
 
 .pay-methods {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 6px;
 }
 
 .pay-method {
-    min-height: 64px;
+    min-height: 56px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 14px;
+    font-size: 15px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
+}
+
+.pay-method svg {
+    color: var(--muted-2);
+}
+
+.pay-method[aria-pressed='true'] svg {
+    color: var(--on-text);
 }
 
 .pay-quick {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 6px;
 }
 
 .pay-quick .btn {
-    min-height: 52px;
+    min-height: 48px;
+    font-size: 14px;
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
+}
+
+.pay-quick .btn[aria-pressed='true'] {
+    font-weight: 500;
 }
 
 .pay-readout {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .pay-readout > div {
@@ -175,8 +231,13 @@
     align-items: baseline;
 }
 
+.pay-readout .muted {
+    font-size: 13px;
+}
+
 .pay-readout strong {
-    font-size: 32px;
+    font-size: 18px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
 
@@ -185,15 +246,19 @@
     color: var(--ready);
 }
 
+/* Keys stretch to fill the column, borderless grey. */
 .pay-keys {
+    flex: 1;
+    min-height: 0;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    grid-auto-rows: minmax(48px, 1fr);
+    gap: 6px;
 }
 
-.pay-keys .btn {
-    min-height: 56px;
-    font-size: 22px;
+.pay-keys .key {
+    font-size: 18px;
+    padding: 0;
 }
 
 .pay-blocked {
@@ -201,50 +266,53 @@
     flex-direction: column;
     gap: 8px;
     padding: 12px;
+    background: var(--surface-2);
     border: 1px solid var(--alert);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
 }
 
 .pay-blocked strong {
     color: var(--alert);
-    font-size: 20px;
+    font-size: 16px;
 }
 
 .pay-foot {
     grid-column: 1 / -1;
     box-sizing: border-box;
-    min-height: 72px;
+    min-height: 64px;
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 16px;
-    padding: 0 16px;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
+    padding: 0 14px;
+    border-top: var(--hair) solid var(--line);
 }
 
 .pay-foot-split {
     justify-content: space-between;
+    font-size: 14px;
     font-variant-numeric: tabular-nums;
 }
 
 .pay-charge {
-    min-height: 56px;
+    min-height: 48px;
     min-width: 280px;
-    font-size: 20px;
+    font-size: 15px;
+    font-weight: 500;
 }
 
 .pay-leg {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 8px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    border-radius: 10px;
 }
 
 .pay-leg[data-selected='true'] {
-    border-color: var(--text);
+    border-color: var(--line-strong);
 }
 
 .pay-leg-row {
@@ -263,11 +331,11 @@
 .pay-leg select,
 .pay-person select {
     min-height: 48px;
-    font-size: 16px;
+    font-size: 15px;
     color: var(--text);
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 0;
+    border-radius: var(--radius-m);
 }
 
 .pay-leg-amount {
@@ -280,25 +348,26 @@
     min-height: 48px;
     box-sizing: border-box;
     padding: 0 12px;
-    font-size: 16px;
+    font-size: 15px;
     color: var(--text);
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 0;
+    border-radius: var(--radius-m);
 }
 
 .pay-bar {
     display: flex;
     align-items: center;
     gap: 12px;
+    font-size: 13px;
     font-variant-numeric: tabular-nums;
 }
 
 .pay-bar-track {
     flex: 1;
-    height: 8px;
-    background: var(--surface-2);
-    border-radius: 4px;
+    height: 4px;
+    background: var(--line);
+    border-radius: 2px;
     overflow: hidden;
 }
 
@@ -313,22 +382,17 @@
 
 .pay-paid {
     color: var(--muted);
-    font-weight: 600;
+    font-size: 12px;
 }
 
 .pay-seg {
     display: flex;
-    gap: 8px;
-}
-
-.pay-seg .btn {
-    flex: 1;
-    padding: 0 8px;
 }
 
 .pay-h {
     margin: 0 0 4px;
-    font-size: 16px;
+    font-size: 12px;
+    font-weight: 400;
     color: var(--muted);
 }
 
@@ -339,7 +403,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
 }
 
 .pay-line {
@@ -348,27 +412,32 @@
     justify-content: space-between;
     gap: 8px;
     text-align: left;
+    font-size: 14px;
     font-variant-numeric: tabular-nums;
 }
 
 .pay-people {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-auto-rows: min-content;
     align-content: start;
+    gap: 8px;
     border-right: 0;
 }
 
+/* Person card: filled grey, borderless; the paid one keeps a 1px outline. */
 .pay-person {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    border-radius: 10px;
 }
 
 .pay-person[data-paid='true'] {
-    opacity: 0.7;
+    border-color: var(--line-strong);
 }
 
 .pay-person-head {
@@ -386,6 +455,33 @@
     justify-content: space-between;
     align-items: center;
     gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.pay-x {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+}
+
+.pay-add {
+    min-height: 76px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px dashed var(--line-strong);
+    border-radius: 10px;
 }
 
 .pay-person-total {
@@ -394,8 +490,13 @@
     align-items: baseline;
 }
 
+.pay-person-total .muted {
+    font-size: 12px;
+}
+
 .pay-person-total strong {
-    font-size: 22px;
+    font-size: 16px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
 
@@ -419,7 +520,7 @@
     gap: 12px;
     padding: 16px;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: var(--hair) solid var(--line);
     border-radius: 12px;
 }
 
@@ -444,7 +545,8 @@
 
 .pay-done h1 {
     margin: 0;
-    font-size: 28px;
+    font-size: 22px;
+    font-weight: 500;
 }
 
 .pay-done p {
@@ -452,13 +554,13 @@
 }
 
 .pay-done-check {
-    width: 72px;
-    height: 72px;
+    width: 56px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 40px;
-    border: 2px solid var(--text);
+    font-size: 28px;
+    border: 1px solid var(--text);
     border-radius: 50%;
 }
 
@@ -470,7 +572,8 @@
 }
 
 .pay-done-change strong {
-    font-size: 56px;
+    font-size: 32px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
 
@@ -488,13 +591,13 @@
 
 .pay-done-share .btn {
     min-width: 140px;
-    min-height: 56px;
+    min-height: 48px;
 }
 
 /* "Pedir opinión": outlined, so "Liberar mesa y volver" stays the primary action. */
 .pay-done .pay-survey {
-    min-height: 56px;
+    min-height: 48px;
     background: transparent;
-    border: 1px solid var(--border);
+    border: 1px solid var(--line-strong);
     color: var(--text);
 }

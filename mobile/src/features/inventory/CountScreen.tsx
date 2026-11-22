@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LoginUser } from '../../core/session';
 import { useExtendedIdleLock } from '../../core/IdleLockBoundary';
+import { IconArrowLeft, IconCheck, IconCloudCheck, IconEyeOff, IconSearch } from '../../ui/Icon';
+import { IconChevronDown, IconChevronUp } from './inventoryIcons';
 import { CategoryPicker } from './CategoryPicker';
 import { DecimalKeypad } from './DecimalKeypad';
 import { DropNotices } from './DropNotices';
@@ -204,20 +206,29 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
 
     const header = (
         <header className="cnt-header">
-            <button type="button" className="btn cnt-back" aria-label="Volver" onClick={onExit}>
-                ←
+            <button type="button" className="btn btn-ghost cnt-back" aria-label="Volver" onClick={onExit}>
+                <IconArrowLeft size={20} stroke={1.5} aria-hidden />
             </button>
-            <strong className="cnt-title">{sheet?.warehouse.name ?? 'Conteo'}</strong>
-            {sheet && <span className="cnt-blind">Ciego</span>}
+            <strong className="cnt-title">
+                {sheet && <span className="muted cnt-title-pre">Conteo · </span>}
+                <span>{sheet?.warehouse.name ?? 'Conteo'}</span>
+            </strong>
+            {sheet && (
+                <span className="cnt-blind">
+                    <IconEyeOff size={14} stroke={1.5} aria-hidden />
+                    Ciego
+                </span>
+            )}
             {sheet && (
                 <span className="cnt-meta muted">
-                    {user.name} · Inicio {startedText(sheet.startedAt)}
+                    {user.name} · desde {startedText(sheet.startedAt)}
                 </span>
             )}
             <span className="grow" />
             {sheet && !editable && <span className="inv-badge">{STATUS_LABEL[sheet.displayStatus]}</span>}
             {editable && (
                 <span className="cnt-saved" role="status" data-state={indicator}>
+                    {indicator === 'saved' && <IconCloudCheck size={16} stroke={1.5} aria-hidden />}
                     {INDICATOR_LABEL[indicator]}
                 </span>
             )}
@@ -252,13 +263,23 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
                 <section className="cnt-left">
                     <div className="cnt-controls">
                         <button type="button" className="cnt-catbtn" aria-haspopup="listbox" aria-expanded={pickerOpen} disabled={q !== ''} onClick={() => setPickerOpen((o) => !o)}>
-                            {current ? `${current.name} ${current.counted}/${current.total}` : 'Categoría'} ▾
+                            {current ? (
+                                <>
+                                    {current.name} <span className="muted cnt-catcount">{`${current.counted}/${current.total}`}</span>
+                                </>
+                            ) : (
+                                'Categoría'
+                            )}
+                            {pickerOpen ? <IconChevronUp size={16} stroke={1.5} aria-hidden /> : <IconChevronDown className="muted" size={16} stroke={1.5} aria-hidden />}
                         </button>
-                        <input className="cnt-search" type="search" aria-label="Buscar producto" placeholder="Buscar producto" value={query} onChange={(e) => changeQuery(e.target.value)} />
+                        <div className="cnt-search-wrap">
+                            <IconSearch className="muted" size={18} stroke={1.5} aria-hidden />
+                            <input className="cnt-search" type="search" aria-label="Buscar producto" placeholder="Buscar producto" value={query} onChange={(e) => changeQuery(e.target.value)} />
+                        </div>
                         {focus && (
                             <button
                                 type="button"
-                                className="btn"
+                                className="btn btn-outline"
                                 onClick={() => {
                                     setFocus(null);
                                     retarget(visibleFor(query, categoryId, null));
@@ -287,7 +308,7 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
                                 <li key={l.productId}>
                                     <button type="button" className="cnt-row" data-testid="count-row" aria-current={l.productId === selectedId} data-counted={l.counted} onClick={() => select(l)}>
                                         <span className="cnt-row-check" aria-label={l.counted ? 'Contado' : undefined}>
-                                            {l.counted ? '✓' : ''}
+                                            {l.counted && <IconCheck size={16} stroke={1.5} aria-hidden />}
                                         </span>
                                         <span className="cnt-row-name">{l.name}</span>
                                         {l.recountRequested && <span className="inv-badge inv-badge-returned">Recontar</span>}
@@ -301,14 +322,19 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
                         {pickerOpen && <CategoryPicker items={items} selectedId={categoryId} onPick={pickCategory} />}
                     </div>
                     <footer className="cnt-footer">
-                        <div className="inv-progress cnt-total" role="progressbar" aria-label="Avance general" aria-valuemin={0} aria-valuemax={overall.total} aria-valuenow={overall.counted}>
-                            <div className="inv-progress-fill" style={{ width: `${overall.total > 0 ? Math.round((overall.counted / overall.total) * 100) : 0}%` }} />
+                        <div className="cnt-total">
+                            <div className="cnt-total-line">
+                                <span className="cnt-total-label">Avance general</span>
+                                <span className="cnt-total-text">
+                                    {overall.counted} de {overall.total}
+                                </span>
+                            </div>
+                            <div className="inv-progress" role="progressbar" aria-label="Avance general" aria-valuemin={0} aria-valuemax={overall.total} aria-valuenow={overall.counted}>
+                                <div className="inv-progress-fill" style={{ width: `${overall.total > 0 ? Math.round((overall.counted / overall.total) * 100) : 0}%` }} />
+                            </div>
                         </div>
-                        <span className="cnt-total-text">
-                            {overall.counted} de {overall.total}
-                        </span>
                         {editable && (
-                            <button type="button" className="btn btn-primary" onClick={onFinish}>
+                            <button type="button" className="btn btn-outline" onClick={onFinish}>
                                 Terminar conteo
                             </button>
                         )}
@@ -324,7 +350,7 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
                                     </button>
                                 ))}
                             </div>
-                            <div className="cnt-display" data-testid="qty-display" data-empty={text === ''}>
+                            <div className="cnt-display" data-testid="qty-display" data-empty={text === ''} data-unit={unit || undefined}>
                                 {text === '' ? '0' : text}
                             </div>
                             <DecimalKeypad onKey={onKey} onSave={save} disabled={!target} saveDisabled={parseQty(text) === null} />

@@ -54,7 +54,7 @@ describe('open table', () => {
         await screen.findByTestId('tile-1');
         fireEvent.click(tile(1));
         const sheet = await screen.findByRole('dialog', { name: /Abrir mesa 1/ });
-        expect(within(sheet).getByText('Mesa 1 · Salón · capacidad 4')).toBeInTheDocument();
+        expect(within(sheet).getByText('Salón · capacidad 4')).toBeInTheDocument();
         const open = within(sheet).getByRole('button', { name: 'Abrir y tomar pedido' });
         expect(open).toBeDisabled(); // pick the guests first
         fireEvent.click(within(sheet).getByRole('button', { name: '3' }));
@@ -101,7 +101,7 @@ describe('open table', () => {
         const sheet = await screen.findByRole('dialog');
         expect(within(sheet).getByRole('button', { name: '4' })).not.toHaveAttribute('data-over-capacity');
         expect(within(sheet).getByRole('button', { name: '5' })).toHaveAttribute('data-over-capacity', 'true');
-        expect(within(sheet).getByText(/unir mesas/i)).toBeInTheDocument();
+        expect(within(sheet).getByText(/unir con otra mesa/i)).toBeInTheDocument();
         fireEvent.click(within(sheet).getByRole('button', { name: 'Más' }));
         expect(within(sheet).getByRole('button', { name: '9' })).toBeInTheDocument();
     });
@@ -140,10 +140,10 @@ describe('table actions', () => {
         await longPress(tile(2));
         const sheet = await screen.findByRole('dialog', { name: /Acciones de la mesa 2/ });
         expect(onOpenOrder).not.toHaveBeenCalled(); // the release after a long press is not a tap
-        expect(within(sheet).getByText('Mesa 2 · Salón')).toBeInTheDocument();
-        expect(within(sheet).getByText('Ana Perez')).toBeInTheDocument();
+        expect(within(sheet).getByText('Salón · Ana Perez')).toBeInTheDocument();
+        expect(within(sheet).getByText('Mesa 2')).toBeInTheDocument();
         expect(await within(sheet).findByText('C$ 350')).toBeInTheDocument();
-        for (const chip of ['3 pers', '25 min', '3 productos', '1 en cocina']) expect(within(sheet).getByText(chip)).toBeInTheDocument();
+        for (const chip of ['3 personas', '25 min', '3 productos', '1 en cocina']) expect(within(sheet).getByText(chip)).toBeInTheDocument();
     });
 
     it('subtracts payments from the unpaid total', async () => {

@@ -1,3 +1,4 @@
+import { IconCheck } from '../../ui/Icon';
 import type { CountCategory } from './inventoryTypes';
 
 export interface CategoryPickerItem extends CountCategory {
@@ -25,9 +26,9 @@ export function CategoryPicker({ items, selectedId, onPick }: CategoryPickerProp
                                 {c.counted}/{c.total}
                             </span>
                             <span className="cnt-cat-check" aria-label={done ? 'Completa' : undefined}>
-                                {done ? '✓' : ''}
+                                {done && <IconCheck size={16} stroke={1.5} aria-hidden />}
                             </span>
-                            <span className="inv-progress cnt-cat-bar" aria-hidden="true">
+                            <span className="inv-progress cnt-cat-bar" data-done={done} aria-hidden="true">
                                 <span className="inv-progress-fill" style={{ width: `${c.total > 0 ? Math.round((c.counted / c.total) * 100) : 0}%`, display: 'block' }} />
                             </span>
                         </button>

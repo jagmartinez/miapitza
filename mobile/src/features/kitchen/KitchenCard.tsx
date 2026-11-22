@@ -22,6 +22,7 @@ export function KitchenCard({ batch, config, now, canManage, starting, onStart, 
         <article className={cls} data-testid="kitchen-card">
             <header className="kitchen-card-head">
                 <strong className="kitchen-card-table">{kitchenLabel(batch)}</strong>
+                {batch.user?.name && <span className="kitchen-card-sep" aria-hidden="true">·</span>}
                 <span className="kitchen-card-waiter">{batch.user?.name ?? ''}</span>
                 <span className="kitchen-card-min">{minutes} min</span>
                 {seq > 1 && <span className="kitchen-card-badge">Tanda {seq}</span>}
@@ -29,7 +30,7 @@ export function KitchenCard({ batch, config, now, canManage, starting, onStart, 
             <ul className="kitchen-card-lines">
                 {batch.items.map((line) => (
                     <li key={line.id}>
-                        <div className="kitchen-line-name">{`${line.quantity}× ${line.menuItem?.name ?? ''}`}</div>
+                        <div className="kitchen-line-name">{`${line.quantity} × ${line.menuItem?.name ?? ''}`}</div>
                         {(line.modifiers ?? []).map((m, i) => (
                             <div className="kitchen-line-mod" key={i}>
                                 {m.name}

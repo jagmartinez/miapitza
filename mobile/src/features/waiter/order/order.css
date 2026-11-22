@@ -1,4 +1,4 @@
-/* Order screen (POS): dark, flat, tokens only. Rail | products | ticket. */
+/* Order screen (POS): dark, flat, tokens only. Narrow rail | grey product cards | ticket. */
 .pos {
     height: 100vh;
     display: flex;
@@ -10,29 +10,96 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 6px 16px;
-    min-height: 64px;
+    padding: 0 12px;
+    min-height: 56px;
     box-sizing: border-box;
-    border-bottom: 1px solid var(--border);
+    border-bottom: var(--hair) solid var(--line);
+}
+
+/* Muted arrow, no chrome; the 48dp hit area is the button itself. */
+.pos-back {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-m);
 }
 
 .pos-table {
-    font-size: 18px;
+    font-size: 16px;
+    font-weight: 500;
+    white-space: nowrap;
 }
 
+.pos-meta {
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+/* Borderless grey pill with a leading icon (mockup: 12px muted "Buscar"). */
 .pos-search {
     flex: 1;
     min-width: 120px;
-    max-width: 320px;
+    max-width: 280px;
     margin-left: auto;
     min-height: 48px;
     box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 0 12px;
-    font-size: 16px;
+    color: var(--muted);
+    background: var(--surface-2);
+    border-radius: var(--radius-m);
+}
+
+.pos-search input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    font-size: 14px;
     color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background: transparent;
+    border: 0;
+    outline: 0;
+}
+
+.pos-search input::placeholder {
+    color: var(--muted);
+}
+
+.pos-ready {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 48px;
+    min-height: 48px;
+    justify-content: center;
+    padding: 0 12px;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 0;
+    border-radius: var(--radius-m);
+}
+
+.pos-avatar {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--surface-3);
+    border-radius: 50%;
 }
 
 .pos-notice {
@@ -43,42 +110,42 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: 150px minmax(0, 1fr) minmax(320px, 38%);
+    grid-template-columns: 88px minmax(0, 1fr) minmax(320px, 36%);
 }
 
 .rail {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px;
+    gap: 2px;
+    padding: 8px 6px;
     overflow-y: auto;
-    border-right: 1px solid var(--border);
+    border-right: var(--hair) solid var(--line);
 }
 
 .rail-btn {
-    min-height: 52px;
-    padding: 0 10px;
-    font-size: 16px;
+    min-height: 48px;
+    padding: 0 8px;
+    font-size: 14px;
     text-align: left;
     color: var(--muted);
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 8px;
+    border: 0;
+    border-radius: var(--radius-m);
 }
 
 .rail-btn[aria-pressed='true'] {
     color: var(--text);
     background: var(--surface-2);
-    border-color: var(--text);
+    font-weight: 500;
 }
 
 .products {
-    padding: 12px;
+    padding: 8px;
     overflow-y: auto;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    grid-auto-rows: 96px;
-    gap: 10px;
+    grid-auto-rows: 80px;
+    gap: 8px;
     align-content: start;
 }
 
@@ -86,6 +153,7 @@
     grid-column: 1 / -1;
 }
 
+/* Borderless grey card; "in ticket" is a 1px white outline (the transparent border keeps the size). */
 .product {
     display: flex;
     flex-direction: column;
@@ -94,9 +162,9 @@
     padding: 10px 12px;
     text-align: left;
     color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-m);
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
@@ -112,7 +180,8 @@
 }
 
 .product-name {
-    font-size: 16px;
+    font-size: 15px;
+    font-weight: 500;
     line-height: 1.2;
     overflow: hidden;
     display: -webkit-box;
@@ -123,26 +192,27 @@
 .product-foot {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 14px;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
 }
 
-.product-price {
+.product-price,
+.product-qty {
     color: var(--muted);
+}
+
+.product-qty::before {
+    content: '· ';
 }
 
 .product-promo {
     padding: 1px 6px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--ready);
-    border: 1px solid var(--ready);
-    border-radius: 8px;
-}
-
-.product-qty {
-    margin-left: auto;
-    font-weight: 600;
+    background: var(--ready-bg);
+    border-radius: var(--radius-s);
 }
 
 .mod-group {
@@ -162,10 +232,10 @@
     gap: 8px;
 }
 
-.mod-option[aria-pressed='true'] {
-    border-color: var(--text);
-    background: var(--surface-2);
-    font-weight: 600;
+.more-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 /* Ticket */
@@ -174,7 +244,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    border-left: 1px solid var(--border);
+    border-left: var(--hair) solid var(--line);
     background: var(--surface);
 }
 
@@ -182,8 +252,12 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
+    padding: 8px 12px 8px 14px;
+    border-bottom: var(--hair) solid var(--line);
+}
+
+.ticket-head .muted {
+    font-size: 12px;
 }
 
 .ticket-body {
@@ -192,12 +266,25 @@
     overflow-y: auto;
 }
 
+/* Caption: 12px muted sentence case with a grey count pill at the right. */
 .ticket-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin: 0;
-    padding: 10px 14px 4px;
-    font-size: 13px;
-    font-weight: 600;
+    padding: 8px 14px 4px;
+    font-size: 12px;
+    font-weight: 400;
     color: var(--muted);
+}
+
+.count-pill {
+    padding: 1px 7px;
+    font-size: 11px;
+    color: var(--muted-2);
+    background: var(--surface-2);
+    border-radius: var(--radius-s);
+    font-variant-numeric: tabular-nums;
 }
 
 .ticket-list {
@@ -221,23 +308,25 @@
     height: 56px;
     box-sizing: border-box;
     padding: 0 14px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: var(--hair) solid var(--divider);
 }
 
 .row[data-highlighted='true'] {
     background: var(--surface-2);
 }
 
+/* Filled grey badge, no border. */
 .qty-badge {
     flex: none;
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     display: grid;
     place-items: center;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    background: var(--surface-2);
+    border-radius: var(--radius-s);
 }
 
 .row-main {
@@ -255,11 +344,11 @@
 }
 
 .row-name {
-    font-size: 16px;
+    font-size: 15px;
 }
 
 .row-sub {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--muted);
 }
 
@@ -267,6 +356,8 @@
     flex: none;
     min-width: 72px;
     text-align: right;
+    font-size: 14px;
+    color: var(--muted);
     font-variant-numeric: tabular-nums;
 }
 
@@ -278,23 +369,12 @@
     color: var(--ready);
 }
 
-.stepper {
-    display: flex;
-    gap: 4px;
-}
-
-.stepper .btn {
-    min-width: 48px;
-    padding: 0;
-    font-size: 20px;
-}
-
 .ticket-foot {
     display: flex;
     flex-direction: column;
     gap: 8px;
     padding: 10px 14px 12px;
-    border-top: 1px solid var(--border);
+    border-top: var(--hair) solid var(--line);
 }
 
 .ticket-total {
@@ -303,21 +383,38 @@
     align-items: baseline;
 }
 
+.ticket-total .muted {
+    font-size: 13px;
+}
+
 .ticket-total strong {
-    font-size: 24px;
+    font-size: 20px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
 
 .ticket-send {
-    min-height: 56px;
-    font-size: 18px;
+    min-height: 52px;
+    font-size: 16px;
+    font-weight: 500;
 }
 
 .ticket-secondary {
     display: flex;
-    gap: 8px;
+    gap: 6px;
 }
 
-.ticket-secondary .btn:not(.icon-btn) {
+.ticket-secondary .btn {
     flex: 1;
+    min-height: 48px;
+    font-size: 14px;
+    font-weight: 400;
+}
+
+.ticket-secondary .icon-btn {
+    flex: none;
+    width: 48px;
+    padding: 0;
+    display: grid;
+    place-items: center;
 }

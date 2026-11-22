@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { ActionOpts, CashApi } from '../../data/cashApi';
 import type { CashMovementRow, CashShiftInfo, MovementInput, ShiftSummary } from '../../data/cashTypes';
 import type { Session } from '../../core/session';
@@ -113,9 +114,9 @@ export function ActiveShiftScreen({ api, session, shift, requiresClose = false, 
     return (
         <main className="cash" data-testid="active-shift">
             <header className="cash-bar">
-                <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
-                    ←
-                </button>
+                <button type="button" className="cash-back" aria-label="Volver" onClick={onBack}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                 <div className="cash-head">
                     <strong className="cash-title">{`${register} · Abierto`}</strong>
                     <span className="muted cash-num">{`${who ?? ''}${who ? ' · ' : ''}desde ${timeOf(shift.startDate)}`}</span>

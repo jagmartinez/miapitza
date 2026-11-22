@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { CashApi } from '../../data/cashApi';
 import { OpenShiftScreen } from './OpenShiftScreen';
 
@@ -21,9 +22,9 @@ export default function OpenShiftFlow({ loadCash, onOpened, onBack }: { loadCash
         return (
             <main className="cash" data-testid="open-shift">
                 <header className="cash-bar">
-                    <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
-                        ←
-                    </button>
+                    <button type="button" className="cash-back" aria-label="Volver" onClick={onBack}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                 </header>
                 <p className={failed ? 'error cash-notice' : 'muted cash-notice'}>{failed ? 'No se pudo preparar la caja.' : 'Cargando caja…'}</p>
             </main>

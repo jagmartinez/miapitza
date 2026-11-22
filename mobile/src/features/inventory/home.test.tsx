@@ -65,7 +65,8 @@ describe('InventoryHome', () => {
         const rows = await screen.findAllByTestId('recent-row');
         expect(rows[0]).toHaveTextContent('Sin diferencias');
         expect(rows[1]).toHaveTextContent(/3 diferencias · C\$\s?1,250/);
-        expect(rows[2].querySelectorAll('td')[3].textContent).toBe('—');
+        expect(rows[2]).not.toHaveTextContent('diferencia');
+        expect(rows[2]).toHaveTextContent('En revisión');
     });
 
     it('Devuelto sheet appears as En curso with Recontar count', async () => {
@@ -88,12 +89,12 @@ describe('InventoryHome', () => {
         expect(screen.queryByRole('alert')).toBeNull();
     });
 
-    it('recent table has Bodega, Fecha · quién, Productos, Resultado, Estado and no Alcance', async () => {
+    it('recent counts are cards with warehouse, date · who · products, result and status', async () => {
         renderHome([sheet({ id: 2, status: 'APPROVED', displayStatus: 'APROBADO', startedByName: 'Luis', productCount: 33, result: { differences: 1, value: 20 } })]);
         const row = await screen.findByTestId('recent-row');
-        expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Bodega', 'Fecha · quién', 'Productos', 'Resultado', 'Estado']);
-        expect(row.querySelectorAll('td')[1].textContent).toMatch(/· Luis$/);
-        expect(row.querySelectorAll('td')[2].textContent).toBe('33');
+        expect(screen.queryByRole('table')).toBeNull();
+        expect(row).toHaveTextContent(/· Luis · 33 productos/);
+        expect(row).toHaveTextContent('Aprobado');
         expect(row).toHaveTextContent(/1 diferencia · C\$\s?20/);
     });
 
@@ -190,7 +191,6 @@ describe('NewCountScreen', () => {
         const card = await screen.findByRole('button', { name: /Bodega Central/ });
         expect(card).toHaveTextContent('40 productos');
         expect(card).toHaveTextContent(/Último conteo .*2026/);
-        expect(card.querySelector('.inv-wh-icon')).not.toBeNull();
         expect(screen.getByRole('button', { name: /Bar/ })).toHaveTextContent('Sin conteos');
     });
 

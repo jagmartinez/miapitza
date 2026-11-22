@@ -1,3 +1,4 @@
+import { IconCheck } from '../../../ui/Icon';
 import { agoLabel, sumQuantity, type ServerLine } from './orderModel';
 
 /** Amber-bordered card above the ticket: what the kitchen finished and nobody has taken to the table. */
@@ -13,15 +14,18 @@ export function ReadyCard({ lines, now, busy, onDeliver }: { lines: ServerLine[]
                 {lines.map((l) => (
                     <li key={l.id} className="ready-card-row">
                         <span className="ready-card-name">{`${l.quantity} × ${l.name}`}</span>
-                        <button type="button" className="btn check-btn" aria-label={`Entregar ${l.name}`} disabled={busy} onClick={() => onDeliver([l.id])}>
-                            ✓
+                        <button type="button" className="ready-deliver" aria-label={`Entregar ${l.name}`} disabled={busy} onClick={() => onDeliver([l.id])}>
+                            <IconCheck size={18} stroke={1.5} aria-hidden />
+                            Entregar
                         </button>
                     </li>
                 ))}
             </ul>
-            <button type="button" className="btn btn-primary ready-card-all" disabled={busy} onClick={() => onDeliver(lines.map((l) => l.id))}>
-                {`Entregar todo · ${total}`}
-            </button>
+            {lines.length > 1 && (
+                <button type="button" className="btn ready-card-all" disabled={busy} onClick={() => onDeliver(lines.map((l) => l.id))}>
+                    {`Entregar todo · ${total}`}
+                </button>
+            )}
         </section>
     );
 }

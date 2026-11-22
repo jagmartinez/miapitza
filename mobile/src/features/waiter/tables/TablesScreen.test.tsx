@@ -93,7 +93,7 @@ describe('TablesScreen', () => {
     it('shows guests, elapsed time and the waiter on an occupied tile', async () => {
         setup();
         await screen.findByTestId('tile-2');
-        expect(within(tile(2)).getByText('3 pers · 25 min')).toBeInTheDocument();
+        expect(within(tile(2)).getByText('3 · 25 min')).toBeInTheDocument();
         expect(within(tile(2)).getByText('Ana Perez')).toBeInTheDocument();
     });
 
@@ -216,7 +216,7 @@ describe('ready notices inbox on the tables screen (Fable I6)', () => {
         );
         await screen.findByTestId('tile-1');
         const banners = screen.getAllByRole('button', { name: /Pedido listo/ });
-        expect(banners.map((b) => b.textContent)).toEqual(['Pedido listo · Mesa 4', 'Pedido listo · Mesa 3']);
+        expect(banners.map((b) => b.textContent)).toEqual(['Pedido listo · Mesa 4Ver', 'Pedido listo · Mesa 3Ver']);
         fireEvent.click(banners[1]);
         expect(onOpenOrder).toHaveBeenCalledWith(103, undefined, 3, '3');
         fireEvent.click(screen.getAllByRole('button', { name: 'Descartar aviso' })[0]);

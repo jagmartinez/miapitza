@@ -1,6 +1,19 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { OrderScreen } from '../order/OrderScreen';
 import { makeApi, makeDrafts, makeRealtime, orderOf, serverItem, userSession } from '../order/testkit';
+
+// The lazy DiscountSheet chunk and a busy machine (full runs) can exceed the 1 s default of findBy*/waitFor.
+configure({ asyncUtilTimeout: 4000 });
+beforeAll(async () => {
+    await import('./DiscountSheet'); // warm the lazy chunk so the first test does not pay for it
+}, 30000);
+vi.setConfig({ testTimeout: 15000 });
+
+/** Descuento lives in the "···" sheet of the ticket footer. */
+const pressDescuento = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Más acciones' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Descuento' }));
+};
 
 const EDIT_ONLY = ['orders.view', 'orders.edit'];
 const WITH_APPLY = ['orders.view', 'orders.edit', 'orders.discount.apply'];
@@ -34,7 +47,7 @@ function setup(opts: { api?: ReturnType<typeof makeApi>; permissions?: string[];
 }
 
 const openSheet = async () => {
-    fireEvent.click(await screen.findByRole('button', { name: 'Descuento' }));
+    await pressDescuento();
     return screen.findByRole('dialog', { name: 'Promociones y descuentos' });
 };
 const pick = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
@@ -178,18 +191,19 @@ describe('discount sheet', () => {
 
     it('the Descuento button needs orders.edit (every discount route does); apply alone does not show it', async () => {
         setup({ permissions: EDIT_ONLY });
+        fireEvent.click(await screen.findByRole('button', { name: 'Más acciones' }));
         expect(await screen.findByRole('button', { name: 'Descuento' })).toBeInTheDocument();
         for (const permissions of [['orders.view', 'orders.discount.apply'], ['orders.view']]) {
             cleanup();
             setup({ permissions });
             await screen.findByRole('region', { name: 'Productos' });
-            expect(screen.queryByRole('button', { name: 'Descuento' })).toBeNull();
+            expect(screen.queryByRole('button', { name: 'Más acciones' })).toBeNull();
         }
     });
 
     it('an order that has not synced does not open the sheet and says why', async () => {
         const { api } = setup({ orderId: 'order-123-abcd' });
-        fireEvent.click(await screen.findByRole('button', { name: 'Descuento' }));
+        await pressDescuento();
         expect(await screen.findByText('Sincronizando pedido… los descuentos requieren conexión.')).toBeInTheDocument();
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(api.pricing).not.toHaveBeenCalled();
@@ -197,6 +211,7 @@ describe('discount sheet', () => {
 
     it('offline does not open the sheet and says Requiere conexión', async () => {
         setup();
+        fireEvent.click(await screen.findByRole('button', { name: 'Más acciones' }));
         const button = await screen.findByRole('button', { name: 'Descuento' });
         vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
         fireEvent.click(button);

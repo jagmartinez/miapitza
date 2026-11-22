@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { Session } from '../../core/session';
 import type { Services } from '../../core/services';
 import type { CashApi } from '../../data/cashApi';
@@ -25,9 +26,9 @@ export default function CountCloseEntry({ session, services, shiftId, mode, onBa
         return (
             <main className="cash" data-testid="cash-count">
                 <header className="cash-bar">
-                    <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
-                        ←
-                    </button>
+                    <button type="button" className="cash-back" aria-label="Volver" onClick={onBack}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                     <strong className="cash-title">{mode === 'close' ? 'Cerrar turno' : 'Arqueo parcial'}</strong>
                 </header>
                 <p className={failed ? 'error cash-notice' : 'muted cash-notice'}>{failed ? 'No se pudo preparar la caja.' : 'Cargando caja…'}</p>

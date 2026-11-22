@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { money, type ServerLine } from '../order/orderModel';
+
+const plural = (n: number) => `${n} ${n === 1 ? 'producto' : 'productos'}`;
 import type { FiscalCustomer } from './paymentFlow';
 
 export interface SummaryProps {
@@ -76,17 +78,9 @@ export function PaymentSummary(p: SummaryProps) {
     const [editing, setEditing] = useState(false);
     return (
         <section className="pay-col pay-summary" aria-label="Resumen">
-            <ul className="pay-lines">
-                {p.lines.map((l) => (
-                    <li key={l.id}>
-                        <span>{`${l.quantity} × ${l.name}`}</span>
-                        <span>{money(l.subtotal)}</span>
-                    </li>
-                ))}
-            </ul>
             <dl className="pay-totals">
                 <div>
-                    <dt>Subtotal</dt>
+                    <dt>{plural(p.lines.reduce((n, l) => n + l.quantity, 0))}</dt>
                     <dd>{money(p.subtotal)}</dd>
                 </div>
                 {p.discount > 0 && (
@@ -107,7 +101,7 @@ export function PaymentSummary(p: SummaryProps) {
                 )}
             </dl>
             {p.tipRate != null && p.tipRate > 0 && (
-                <button type="button" className="btn pay-tip" aria-pressed={p.tipOn} disabled={p.frozen || p.busy} onClick={p.onToggleTip}>
+                <button type="button" className="btn btn-outline pay-tip" aria-pressed={p.tipOn} disabled={p.frozen || p.busy} onClick={p.onToggleTip}>
                     {`Propina ${p.tipRate} %`}
                 </button>
             )}
@@ -115,16 +109,17 @@ export function PaymentSummary(p: SummaryProps) {
                 <span className="muted">Total</span>
                 <strong data-testid="pay-total">{money(p.total)}</strong>
             </div>
-            <div className="pay-customer">
-                <div>
-                    <span className="muted">Factura a nombre de</span>
+            <span className="pay-spacer" />
+            <div className="pay-customer-block">
+                <span className="pay-cap">Factura a nombre de</span>
+                <div className="pay-customer">
                     <strong>{p.customerName}</strong>
+                    {!p.frozen && (
+                        <button type="button" className="pay-link" onClick={() => setEditing(true)}>
+                            Cambiar
+                        </button>
+                    )}
                 </div>
-                {!p.frozen && (
-                    <button type="button" className="btn" onClick={() => setEditing(true)}>
-                        Cambiar
-                    </button>
-                )}
             </div>
             <p className="muted pay-note">La factura se emite al confirmar el pago total.</p>
             {editing && (

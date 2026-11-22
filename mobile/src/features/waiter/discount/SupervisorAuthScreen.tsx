@@ -3,6 +3,7 @@ import { getApiErrorMessage } from '@web/utils/apiError';
 import { httpStatus } from '../../../core/httpErrors';
 import { isOnline } from '../../../data/useOnline';
 import type { Json, OrderRef, WaiterApi } from '../../../data/waiterApi';
+import { IconBackspace } from '../../../ui/Icon';
 import { money } from '../order/orderModel';
 import './discount.css';
 
@@ -129,19 +130,19 @@ export function SupervisorAuthScreen({ api, orderId, request, onCancel, onAuthor
                         </div>
                         <dl className="dauth-facts">
                             <div>
-                                <dt className="muted">Motivo</dt>
+                                <dt>Motivo</dt>
                                 <dd>{request.reason}</dd>
                             </div>
                             <div>
-                                <dt className="muted">Subtotal</dt>
+                                <dt>Subtotal</dt>
                                 <dd>{money(request.subtotal)}</dd>
                             </div>
                             <div>
-                                <dt className="muted">Descuento</dt>
+                                <dt>Descuento</dt>
                                 <dd>{`− ${money(request.amount)}`}</dd>
                             </div>
                             <div>
-                                <dt className="muted">Nuevo total</dt>
+                                <dt>Nuevo total</dt>
                                 <dd>
                                     <strong>{money(request.total)}</strong>
                                 </dd>
@@ -175,7 +176,7 @@ export function SupervisorAuthScreen({ api, orderId, request, onCancel, onAuthor
                                         setError(null);
                                     }}
                                 >
-                                    <span className="avatar-disc" style={s.color ? { background: s.color } : undefined}>
+                                    <span className="avatar-disc">
                                         {s.initials}
                                     </span>
                                     <span>{s.name.split(' ')[0]}</span>
@@ -194,14 +195,14 @@ export function SupervisorAuthScreen({ api, orderId, request, onCancel, onAuthor
                         )}
                         <div className="keypad">
                             {DIGITS.map((d) => (
-                                <button key={d} type="button" className="btn" aria-label={d} disabled={selected == null || busy} onClick={() => press(d)}>
+                                <button key={d} type="button" className="key" aria-label={d} disabled={selected == null || busy} onClick={() => press(d)}>
                                     {d}
                                 </button>
                             ))}
-                            <button type="button" className="btn" aria-label="Borrar" disabled={selected == null || busy || !pin} onClick={() => setPin((p) => p.slice(0, -1))}>
-                                ⌫
+                            <button type="button" className="key" aria-label="Borrar" disabled={selected == null || busy || !pin} onClick={() => setPin((p) => p.slice(0, -1))}>
+                                <IconBackspace size={22} stroke={1.5} aria-hidden />
                             </button>
-                            <button type="button" className="btn" aria-label="0" disabled={selected == null || busy} onClick={() => press('0')}>
+                            <button type="button" className="key" aria-label="0" disabled={selected == null || busy} onClick={() => press('0')}>
                                 0
                             </button>
                             <span />
@@ -209,7 +210,7 @@ export function SupervisorAuthScreen({ api, orderId, request, onCancel, onAuthor
                     </section>
                 </div>
                 <footer className="dsheet-foot">
-                    <button type="button" className="btn" disabled={busy} onClick={cancel}>
+                    <button type="button" className="btn btn-outline" disabled={busy} onClick={cancel}>
                         Cancelar
                     </button>
                     <button type="button" className="btn btn-primary" disabled={busy || selected == null || pin.length < MIN_DIGITS} onClick={() => void authorize()}>

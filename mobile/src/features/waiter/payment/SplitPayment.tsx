@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiErrorMessage } from '@web/utils/apiError';
 import { hasUniqueNormalizedPayerNames, moneyToCents, normalizePayerName, summarizePaymentAllocation } from '@web/utils/payment';
+import { IconPlus, IconX } from '../../../ui/Icon';
 import { money, type ServerLine } from '../order/orderModel';
 import { parseTyped } from './controls';
 import { cashChange, isCashType, type Leg, type ModeCtx } from './paymentFlow';
@@ -170,9 +171,9 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
     return (
         <>
             <section className="pay-col pay-center" aria-label="Dividir cuenta">
-                <div className="pay-seg" role="group" aria-label="Forma de dividir">
+                <div className="seg pay-seg" role="group" aria-label="Forma de dividir">
                     {STRATEGIES.map((s) => (
-                        <button key={s.id} type="button" className="btn" aria-pressed={strategy === s.id} disabled={locked} onClick={() => changeStrategy(s.id)}>
+                        <button key={s.id} type="button" className="seg-item" aria-pressed={strategy === s.id} disabled={locked} onClick={() => changeStrategy(s.id)}>
                             {s.label}
                         </button>
                     ))}
@@ -187,7 +188,7 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
                                 const label = l.quantity > 1 ? `${l.name} · ${left} de ${l.quantity}` : l.name;
                                 return (
                                     <li key={l.id}>
-                                        <button type="button" className="btn pay-line" aria-label={label} aria-pressed={selectedLine === l.id} disabled={locked} onClick={() => setSelectedLine(l.id)}>
+                                        <button type="button" className="btn-ghost pay-line" aria-label={label} aria-pressed={selectedLine === l.id} disabled={locked} onClick={() => setSelectedLine(l.id)}>
                                             <span>{label}</span>
                                             <span>{money((l.subtotal / l.quantity) * left)}</span>
                                         </button>
@@ -221,14 +222,14 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
                             <div className="pay-person-head">
                                 <input aria-label={`Nombre de la persona ${index + 1}`} value={p.name} maxLength={60} disabled={locked} onChange={(e) => patch(p.id, { name: e.target.value })} />
                                 {!locked && persons.length > 2 && (
-                                    <button type="button" className="btn icon-btn" aria-label={`Quitar a ${p.name}`} onClick={() => removePerson(p.id)}>
-                                        ✕
+                                    <button type="button" className="pay-x" aria-label={`Quitar a ${p.name}`} onClick={() => removePerson(p.id)}>
+                                        <IconX size={18} stroke={1.5} aria-hidden />
                                     </button>
                                 )}
                             </div>
                             {strategy === 'items' && (
                                 <>
-                                    <button type="button" className="btn" aria-label={`Asignar a ${p.name}`} disabled={locked || selectedLine == null} onClick={() => assignTo(p.id)}>
+                                    <button type="button" className="btn btn-outline" aria-label={`Asignar a ${p.name}`} disabled={locked || selectedLine == null} onClick={() => assignTo(p.id)}>
                                         Asignar aquí
                                     </button>
                                     <ul className="pay-mine">
@@ -236,8 +237,8 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
                                             <li key={line.id}>
                                                 <span>{n > 1 ? `${line.name} ×${n}` : line.name}</span>
                                                 {!locked && (
-                                                    <button type="button" className="btn icon-btn" aria-label={`Quitar ${line.name} de ${p.name}`} onClick={() => unassign(line, p.id)}>
-                                                        ✕
+                                                    <button type="button" className="pay-x" aria-label={`Quitar ${line.name} de ${p.name}`} onClick={() => unassign(line, p.id)}>
+                                                        <IconX size={18} stroke={1.5} aria-hidden />
                                                     </button>
                                                 )}
                                             </li>
@@ -292,8 +293,9 @@ export function SplitPayment({ ctx }: { ctx: ModeCtx }) {
                     );
                 })}
                 {!locked && persons.length < MAX_PEOPLE && (
-                    <button type="button" className="btn" onClick={addPerson}>
-                        + Persona
+                    <button type="button" className="pay-add" aria-label="+ Persona" onClick={addPerson}>
+                        <IconPlus size={18} stroke={1.5} aria-hidden />
+                        Persona
                     </button>
                 )}
             </section>

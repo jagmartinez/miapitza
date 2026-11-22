@@ -5,6 +5,7 @@ import type { LoginUser } from '../../../core/session';
 import { httpStatus } from '../../../core/httpErrors';
 import { isOnline } from '../../../data/useOnline';
 import type { Json, OrderRef, WaiterApi } from '../../../data/waiterApi';
+import { IconBackspace, IconX } from '../../../ui/Icon';
 import { money, type ServerLine } from '../order/orderModel';
 import { amountToPercent, clampDiscount, inferTaxRate, newTotal, percentToAmount, QUICK_PERCENTS, REASONS, type Reason } from './discountMath';
 import { fmtPercent, SupervisorAuthScreen } from './SupervisorAuthScreen';
@@ -13,7 +14,7 @@ import './discount.css';
 export type DiscountApi = Pick<WaiterApi, 'pricing' | 'authorizeDiscount' | 'supervisors' | 'discountLimit' | 'validateCoupon'>;
 
 /** Fixed sizes (dp) so the sheet fits 1024×600 and 1280×800 with no page scroll; tests add them up. */
-export const LAYOUT = { header: 56, footer: 72, left: 250, segmented: 48, quick: 52, reasons: 112, summary: 56, display: 72, keypad: 216, keypadActions: 52 } as const;
+export const LAYOUT = { header: 56, footer: 64, left: 250, segmented: 54, quick: 48, reasons: 104, summary: 56, display: 72, keypad: 216, keypadActions: 48 } as const;
 const fixed = (height: number) => ({ 'data-fixed': height, style: { height } });
 
 interface Props {
@@ -201,16 +202,23 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
         <div className="dsheet-backdrop">
             <div className="dsheet" role="dialog" aria-modal="true" aria-label="Promociones y descuentos" data-no-page-scroll="true">
                 <header className="dsheet-head" data-part="header" {...fixed(LAYOUT.header)}>
-                    <h2 className="sheet-title">Promociones y descuentos</h2>
-                    <button type="button" className="btn icon-btn" aria-label="Cerrar" onClick={onClose}>
-                        ✕
+                    <h2 className="dsheet-title">
+                        Promociones y descuentos
+                        {order?.table && typeof order.table === 'object' && (order.table as Json).number ? <span className="muted">{`Mesa ${String((order.table as Json).number)}`}</span> : null}
+                    </h2>
+                    <span className="dsheet-subtotal">
+                        <span className="muted">Subtotal</span>
+                        <strong>{money(subtotal)}</strong>
+                    </span>
+                    <button type="button" className="dsheet-close" aria-label="Cerrar" onClick={onClose}>
+                        <IconX size={20} stroke={1.5} aria-hidden />
                     </button>
                 </header>
                 <div className="dsheet-body">
                     <section className="dsheet-left" data-part="left" data-width={LAYOUT.left} aria-label="Promociones" style={{ width: LAYOUT.left }}>
                         {(currentDiscount > 0 || currentCode) && (
                             <div className="dsheet-card">
-                                <span className="muted">Aplicado ahora</span>
+                                <span className="dsheet-cap">Aplicado ahora</span>
                                 <strong>{currentCode ? `Cupón ${currentCode}` : `${money(currentDiscount)}${order?.discountReason ? ` · ${String(order.discountReason)}` : ''}`}</strong>
                             </div>
                         )}
@@ -219,7 +227,7 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                                 {replaceWarning}
                             </p>
                         )}
-                        <h3 className="dsheet-h">Vigentes</h3>
+                        <h3 className="dsheet-h">Disponibles</h3>
                         <ul className="dsheet-promos">
                             {promoNames(promotions).map((n) => (
                                 <li key={n}>{n}</li>
@@ -227,8 +235,8 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                             {promoNames(promotions).length === 0 && <li className="muted">Sin promociones vigentes.</li>}
                         </ul>
                         <div className="dsheet-coupon">
-                            <label className="field">
-                                Código de cupón
+                            <label className="dsheet-field">
+                                <span className="dsheet-cap">Código de cupón</span>
                                 <input
                                     value={coupon}
                                     maxLength={40}
@@ -250,7 +258,7 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                                     Aplicar cupón
                                 </button>
                             ) : (
-                                <button type="button" className="btn" disabled={busy || !code} onClick={validate}>
+                                <button type="button" className="btn btn-outline" disabled={busy || !code} onClick={validate}>
                                     Validar
                                 </button>
                             )}
@@ -260,12 +268,12 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                     <section className="dsheet-right" data-part="right" aria-label="Descuento manual">
                         {typed === null ? (
                             <>
-                                <div className="dsheet-seg" role="group" aria-label="Tipo" {...fixed(LAYOUT.segmented)}>
+                                <div className="seg dsheet-seg" role="group" aria-label="Tipo" {...fixed(LAYOUT.segmented)}>
                                     {(['percent', 'amount'] as const).map((m) => (
                                         <button
                                             key={m}
                                             type="button"
-                                            className="btn"
+                                            className="seg-item"
                                             aria-pressed={mode === m}
                                             onClick={() => {
                                                 setMode(m);
@@ -282,7 +290,7 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                                         <button
                                             key={p}
                                             type="button"
-                                            className="btn"
+                                            className="btn btn-outline"
                                             aria-pressed={mode === 'percent' && !custom && value === p}
                                             onClick={() => {
                                                 setMode('percent');
@@ -294,7 +302,7 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                                             {`${p} %`}
                                         </button>
                                     ))}
-                                    <button type="button" className="btn" aria-pressed={custom} onClick={() => setKeypad('')}>
+                                    <button type="button" className="btn btn-outline" aria-pressed={custom} onClick={() => setKeypad('')}>
                                         {otherLabel}
                                     </button>
                                 </div>
@@ -303,7 +311,7 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                                         <button
                                             key={r}
                                             type="button"
-                                            className="btn"
+                                            className="btn btn-outline"
                                             aria-pressed={reason === r}
                                             onClick={() => {
                                                 setReason(r);
@@ -329,13 +337,13 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                                 </div>
                                 <div className="dsheet-keys" {...fixed(LAYOUT.keypad)}>
                                     {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '<'].map((k) => (
-                                        <button key={k} type="button" className="btn" aria-label={k === '<' ? 'Borrar' : k} onClick={() => pressKey(k)}>
-                                            {k === '<' ? '⌫' : k}
+                                        <button key={k} type="button" className="key" aria-label={k === '<' ? 'Borrar' : k} onClick={() => pressKey(k)}>
+                                            {k === '<' ? <IconBackspace size={22} stroke={1.5} aria-hidden /> : k}
                                         </button>
                                     ))}
                                 </div>
                                 <div className="dsheet-keyactions" {...fixed(LAYOUT.keypadActions)}>
-                                    <button type="button" className="btn" onClick={() => setKeypad(null)}>
+                                    <button type="button" className="btn btn-outline" onClick={() => setKeypad(null)}>
                                         Cancelar
                                     </button>
                                     <button type="button" className="btn btn-primary" onClick={keypadDone}>
@@ -357,7 +365,7 @@ export function DiscountSheet({ api, user, orderId, branchId, order, lines, prom
                         <strong>{money(amount > 0 ? total : num(order?.total))}</strong>
                     </div>
                     {(currentDiscount > 0 || currentCode) && (
-                        <button type="button" className="btn" disabled={busy} onClick={remove}>
+                        <button type="button" className="btn btn-outline" disabled={busy} onClick={remove}>
                             Quitar descuento
                         </button>
                     )}

@@ -1,6 +1,6 @@
 import type { RailEntry } from './orderModel';
 
-/** Vertical rail: text only, no colour. The selected entry is the one with a full border. */
+/** Narrow vertical rail: 12-14px muted text; the selected entry is a filled grey block with weight 500, no border. */
 export function CategoryRail({ entries, selected, onSelect }: { entries: RailEntry[]; selected: RailEntry['id'] | null; onSelect: (id: RailEntry['id']) => void }) {
     return (
         <nav className="rail" aria-label="Categorías">

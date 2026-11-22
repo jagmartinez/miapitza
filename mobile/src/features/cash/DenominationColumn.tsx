@@ -25,9 +25,9 @@ export function DenominationColumn({ title, groups, onSelect, footer }: Denomina
                 <div key={g.heading ?? i} className="cash-dlist">
                     {g.heading && <span className="muted cash-dgroup">{g.heading}</span>}
                     {g.rows.map((r) => (
-                        <button key={r.key} type="button" className="btn cash-drow" aria-pressed={r.selected} aria-label={r.name} onClick={() => onSelect(r.key)}>
+                        <button key={r.key} type="button" className="cash-drow" aria-pressed={r.selected} aria-label={r.name} onClick={() => onSelect(r.key)}>
                             <span className="cash-num">{r.label}</span>
-                            <strong className="cash-num">{`× ${r.count}`}</strong>
+                            <strong className="cash-num cash-cnt" data-zero={r.count === 0 ? 'true' : undefined}>{`× ${r.count}`}</strong>
                             <span className="muted cash-num cash-dsub">{r.subtotal}</span>
                         </button>
                     ))}

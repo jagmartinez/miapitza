@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { CashApi } from '../../data/cashApi';
 import type { CashShiftInfo } from '../../data/cashTypes';
 import { money } from '../waiter/order/orderModel';
@@ -56,9 +57,9 @@ export function ShiftHistoryScreen({ api, onOpen, onBack, now = () => new Date()
     return (
         <main className="cash" data-testid="cash-history">
             <header className="cash-bar">
-                <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
-                    ←
-                </button>
+                <button type="button" className="cash-back" aria-label="Volver" onClick={onBack}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                 <strong className="cash-title">Caja › Historial de turnos</strong>
                 <span className="grow" />
                 <div className="cash-chips" role="group" aria-label="Período">

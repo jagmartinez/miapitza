@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { CashApi } from '../../data/cashApi';
 import { CashError } from '../../data/cashApi';
 import type { ClosePayload, ClosePreview, ShiftSummary } from '../../data/cashTypes';
@@ -217,9 +218,9 @@ function CountClose({ api, session, shiftId, mode, onBack, onClosed, onCloseAtte
     return (
         <main className="cash" data-testid="cash-count" data-mode={mode}>
             <header className="cash-bar">
-                <button type="button" className="btn" aria-label="Volver" disabled={pending !== null} onClick={leave}>
-                    ←
-                </button>
+                <button type="button" className="cash-back" aria-label="Volver" disabled={pending !== null} onClick={leave}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                 <div className="cash-head">
                     <strong className="cash-title">{`${title} · ${register}`}</strong>
                     <span className="muted cash-num">{cashier}</span>

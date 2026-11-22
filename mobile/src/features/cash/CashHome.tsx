@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { CashApi } from '../../data/cashApi';
 import type { Session } from '../../core/session';
 import { isCashAdmin } from '../../core/permissions';
@@ -97,9 +98,9 @@ export function CashHome({ session, api, onBack, onCount, onHistory, onOpenShift
         return (
             <main className="cash">
                 <header className="cash-bar">
-                    <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
-                        ←
-                    </button>
+                    <button type="button" className="cash-back" aria-label="Volver" onClick={onBack}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                     <strong className="cash-title">Caja</strong>
                 </header>
                 <p className="error cash-notice" role="alert">

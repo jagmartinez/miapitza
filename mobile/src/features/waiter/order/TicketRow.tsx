@@ -1,7 +1,8 @@
+import { IconNote, IconTrash } from '../../../ui/Icon';
 import { money } from './orderModel';
 
 export const ROW_HEIGHT = 56;
-export const EXPANDED_HEIGHT = 152;
+export const EXPANDED_HEIGHT = 132;
 
 export interface RowData {
     key: string;
@@ -50,18 +51,20 @@ export function TicketRow({ data, testId, expanded, highlighted, editable, busy,
             {editable && expanded && (
                 <div className="trow-edit">
                     <div className="stepper stepper-big">
-                        <button type="button" className="btn" aria-label="Menos" disabled={busy} onClick={() => onQuantity(data.quantity - 1)}>
+                        <button type="button" className="stepper-btn" aria-label="Menos" disabled={busy} onClick={() => onQuantity(data.quantity - 1)}>
                             −
                         </button>
                         <span className="stepper-n">{data.quantity}</span>
-                        <button type="button" className="btn" aria-label="Más" disabled={busy} onClick={() => onQuantity(data.quantity + 1)}>
+                        <button type="button" className="stepper-btn" aria-label="Más" disabled={busy} onClick={() => onQuantity(data.quantity + 1)}>
                             +
                         </button>
                     </div>
-                    <button type="button" className="btn" disabled={busy} onClick={onNote}>
+                    <button type="button" className="row-link" disabled={busy} onClick={onNote}>
+                        <IconNote size={18} stroke={1.5} aria-hidden />
                         Nota
                     </button>
-                    <button type="button" className="btn" disabled={busy} onClick={onRemove}>
+                    <button type="button" className="row-link" disabled={busy} onClick={onRemove}>
+                        <IconTrash size={18} stroke={1.5} aria-hidden />
                         Quitar
                     </button>
                 </div>

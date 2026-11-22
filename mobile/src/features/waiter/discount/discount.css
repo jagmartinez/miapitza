@@ -1,4 +1,5 @@
-/* Promociones y descuentos + autorización de supervisor: dark, flat, tokens only. Full-screen landscape sheet. */
+/* Promociones y descuentos + autorización de supervisor: dark, flat, tokens only. Full-screen landscape sheet.
+   Mockup: grey filled rows, outlined option buttons (white fill when chosen), keys without borders. */
 .dsheet-backdrop {
     position: fixed;
     inset: 0;
@@ -12,7 +13,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg);
+    background: var(--surface);
 }
 
 .dsheet-head,
@@ -23,34 +24,72 @@
     align-items: center;
     gap: 12px;
     padding: 0 16px;
-    background: var(--surface);
 }
 
 .dsheet-head {
-    justify-content: space-between;
-    border-bottom: 1px solid var(--border);
+    border-bottom: var(--hair) solid var(--line);
+}
+
+.dsheet-title {
+    margin: 0 auto 0 0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.dsheet-title .muted {
+    font-size: 14px;
+    font-weight: 400;
+}
+
+.dsheet-subtotal {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+}
+
+.dsheet-close {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
 }
 
 .dsheet-foot {
     justify-content: flex-end;
-    border-top: 1px solid var(--border);
+    border-top: var(--hair) solid var(--line);
 }
 
 .dsheet-foot .btn {
-    min-height: 52px;
+    min-height: 48px;
     min-width: 160px;
-    font-size: 17px;
+    font-size: 15px;
 }
 
 .dsheet-newtotal {
     margin-right: auto;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
     font-variant-numeric: tabular-nums;
 }
 
+.dsheet-newtotal .muted {
+    font-size: 14px;
+}
+
 .dsheet-newtotal strong {
-    font-size: 24px;
+    font-size: 16px;
+    font-weight: 500;
 }
 
 .dsheet-body {
@@ -67,8 +106,7 @@
     gap: 10px;
     padding: 12px;
     overflow-y: auto;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
+    border-right: var(--hair) solid var(--line);
 }
 
 .dsheet-right {
@@ -82,23 +120,29 @@
     overflow-y: auto;
 }
 
-.dsheet-h {
+.dsheet-h,
+.dsheet-cap {
     margin: 0;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 400;
     color: var(--muted);
 }
 
+/* Applied: borderless grey row. */
 .dsheet-card {
     display: flex;
     flex-direction: column;
     gap: 2px;
     padding: 8px 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     background: var(--surface-2);
 }
 
+.dsheet-card strong {
+    font-size: 14px;
+}
+
+/* Available: outlined rows. */
 .dsheet-promos {
     flex: 1;
     min-height: 0;
@@ -112,10 +156,38 @@
     font-size: 14px;
 }
 
+.dsheet-promos li {
+    padding: 10px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-m);
+}
+
+.dsheet-promos li.muted {
+    border-color: transparent;
+    padding-left: 0;
+}
+
 .dsheet-coupon {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.dsheet-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dsheet-field input {
+    min-height: 48px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 0;
+    border-radius: var(--radius-m);
 }
 
 .dsheet-note {
@@ -132,8 +204,15 @@
     gap: 8px;
 }
 
+/* % / Monto: the global segmented control, at the right. */
 .dsheet-seg {
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    align-self: flex-end;
+    box-sizing: border-box;
+}
+
+.dsheet-seg .seg-item {
+    min-width: 72px;
 }
 
 .dsheet-quick {
@@ -148,27 +227,25 @@
     flex: none;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(2, 52px);
+    grid-template-rows: repeat(2, 48px);
     gap: 8px;
 }
 
-.dsheet-seg .btn,
 .dsheet-quick .btn,
 .dsheet-reasons .btn,
 .dsheet-keyactions .btn {
     height: 100%;
     padding: 0 8px;
-    font-size: 16px;
+    font-size: 14px;
+    font-weight: 400;
 }
 
-.dsheet-seg .btn[aria-pressed='true'],
 .dsheet-quick .btn[aria-pressed='true'],
 .dsheet-reasons .btn[aria-pressed='true'] {
-    border-color: var(--text);
-    background: var(--surface);
-    font-weight: 600;
+    font-weight: 500;
 }
 
+/* Summary: filled grey strip. */
 .dsheet-summary {
     flex: none;
     box-sizing: border-box;
@@ -176,7 +253,10 @@
     flex-direction: column;
     justify-content: center;
     gap: 2px;
-    font-size: 15px;
+    padding: 0 12px;
+    font-size: 14px;
+    background: var(--surface-2);
+    border-radius: var(--radius-m);
     font-variant-numeric: tabular-nums;
 }
 
@@ -190,16 +270,14 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    align-items: flex-end;
-    padding: 0 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface);
+    align-items: flex-start;
+    padding: 0 4px;
     font-variant-numeric: tabular-nums;
 }
 
 .dsheet-display strong {
     font-size: 32px;
+    font-weight: 500;
 }
 
 .dsheet-keys {
@@ -208,12 +286,13 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(4, 48px);
-    gap: 8px;
+    gap: 6px;
 }
 
-.dsheet-keys .btn {
+.dsheet-keys .key {
     height: 100%;
-    font-size: 22px;
+    font-size: 18px;
+    padding: 0;
 }
 
 /* Supervisor authorization */
@@ -226,31 +305,32 @@
     flex-direction: column;
     gap: 10px;
     overflow-y: auto;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
+    border-right: var(--hair) solid var(--line);
 }
 
 .dauth-kicker {
     margin: 0;
+    font-size: 13px;
     color: var(--muted);
 }
 
 .dauth-big {
-    font-size: 56px;
+    font-size: 36px;
+    font-weight: 500;
     line-height: 1;
     font-variant-numeric: tabular-nums;
 }
 
 .dauth-bar {
     display: flex;
-    height: 12px;
-    border-radius: 6px;
+    height: 5px;
+    border-radius: 3px;
     overflow: hidden;
-    background: var(--border);
+    background: var(--line);
 }
 
 .dauth-bar-ok {
-    background: var(--text);
+    background: var(--muted);
 }
 
 .dauth-bar-over {
@@ -260,7 +340,8 @@
 .dauth-legend {
     display: flex;
     justify-content: space-between;
-    font-size: 14px;
+    font-size: 12px;
+    color: var(--muted);
 }
 
 .dauth-facts {
@@ -268,12 +349,20 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: var(--surface-2);
+    border-radius: 10px;
     font-variant-numeric: tabular-nums;
 }
 
 .dauth-facts div {
     display: flex;
     justify-content: space-between;
+}
+
+.dauth-facts dt {
+    color: var(--muted);
 }
 
 .dauth-facts dd {

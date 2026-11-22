@@ -3,7 +3,7 @@ import { formatHrMoney, formatHrNumber } from '@web/utils/hrFormat';
 import { isCompanyAdmin, isWaiter } from '../../core/permissions';
 import type { Session } from '../../core/session';
 import { Card } from '../../ui/Card';
-import { ScreenHeader } from '../../ui/ScreenHeader';
+import { IconArrowsExchange, IconBeach, IconCash, IconChevronRight, IconClockPlus, IconEdit, IconFingerprint } from '../../ui/Icon';
 import { useAccountNav, type AccountSection } from './AccountNav';
 import type { HrApi } from './hrApi';
 import { useMyService } from './useMyService';
@@ -19,6 +19,18 @@ interface Props {
 
 const UNLINKED = 'Tu usuario no está vinculado a un empleado. Pide a RH que lo vincule.';
 
+const firstName = (full: string) => full.trim().split(/\s+/)[0] ?? full;
+
+/** "4:00 p. m. – 11:00 p. m." in the branch's own timezone. */
+function shiftRange(startAt: string, endAt: string, timeZone?: string): string | null {
+    try {
+        const f = new Intl.DateTimeFormat('es-NI', { hour: 'numeric', minute: '2-digit', timeZone });
+        return `${f.format(new Date(startAt))} – ${f.format(new Date(endAt))}`;
+    } catch {
+        return null;
+    }
+}
+
 const PENDING_SECTION: Record<PendingItem['kind'], AccountSection> = { schedule: 'schedule', receipt: 'payroll', swap: 'pending' };
 
 export function AccountHome({ session, hr, onLogout }: Props) {
@@ -28,7 +40,12 @@ export function AccountHome({ session, hr, onLogout }: Props) {
     const service = useMyService(hr, linked && isWaiter(session.user));
     const cancel = useCancelFlow(hr, summary.reload);
 
-    const header = <ScreenHeader title={session.user.name} right={<button type="button" className="btn ah-logout" onClick={onLogout}>Salir</button>} />;
+    const header = (
+        <header className="ah-top">
+            <span className="ah-hello">Hola, {firstName(session.user.name)}</span>
+            <button type="button" className="ah-logout" onClick={onLogout}>Salir</button>
+        </header>
+    );
 
     if (!linked) {
         return (
@@ -47,6 +64,8 @@ export function AccountHome({ session, hr, onLogout }: Props) {
     const actions = today?.availableActions ?? [];
     const stale = today?.blockingIssue?.code === 'STALE_OPEN_ATTENDANCE';
     const facePending = summary.biometric?.status === 'PENDING' && today?.policy?.requireBiometric !== false;
+    const shift = today?.scheduledShift ? shiftRange(today.scheduledShift.startAt, today.scheduledShift.endAt, today.timezone) : null;
+    const branchLine = today?.targetBranch?.name ? `Marcaje en ${today.targetBranch.name}` : null;
     const loanDatum = !loanPolicy?.eligible ? 'No disponible' : loanPolicy.maxAmount != null ? `Hasta ${formatHrMoney(loanPolicy.currency, loanPolicy.maxAmount)}` : 'Disponible';
     const vacationDatum = vacation ? `${formatHrNumber(vacation.available)} días disponibles` : 'Sin saldo';
 
@@ -62,41 +81,65 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                         </p>
                     ))}
 
-                <section aria-label="Marcar">
-                    <Card title="Marcar">
-                        {summary.status === 'loading' && !today && <p className="muted">Cargando…</p>}
-                        {!today && summary.failed.includes('today') ? (
-                            <p className="error" role="alert">
-                                No se pudo cargar tu marcaje. <button type="button" className="ah-link" onClick={summary.reload}>Reintentar</button>
-                            </p>
-                        ) : stale ? (
-                            <>
-                                <p>Tienes una jornada abierta sin cerrar</p>
-                                <button type="button" className="btn btn-primary ah-wide" onClick={() => navigate('correction', { stale: true })}>
-                                    Corregir marcaje
-                                </button>
-                            </>
-                        ) : facePending ? (
-                            <p className="muted">Registro facial pendiente de aprobación</p>
-                        ) : actions.length > 0 ? (
-                            actions.map((action, i) => (
-                                <button key={action} type="button" className={`btn ${i === 0 ? 'btn-primary ' : ''}ah-wide`} onClick={() => navigate('punch', { action })}>
-                                    {ATTENDANCE_ACTION_LABELS[action]}
-                                </button>
-                            ))
-                        ) : (
-                            today && <p className="muted">No tienes marcajes disponibles ahora.</p>
-                        )}
-                    </Card>
+                <section aria-label="Marcar" className="ah-punch">
+                    {shift && <p className="ah-shift">Turno {shift}</p>}
+                    {summary.status === 'loading' && !today && <p className="muted">Cargando…</p>}
+                    {!today && summary.failed.includes('today') ? (
+                        <p className="error" role="alert">
+                            No se pudo cargar tu marcaje. <button type="button" className="ah-link" onClick={summary.reload}>Reintentar</button>
+                        </p>
+                    ) : stale ? (
+                        <>
+                            <p>Tienes una jornada abierta sin cerrar</p>
+                            <button type="button" className="btn btn-primary ah-wide ah-mark" onClick={() => navigate('correction', { stale: true })}>
+                                Corregir marcaje
+                            </button>
+                        </>
+                    ) : facePending ? (
+                        <p className="muted">Registro facial pendiente de aprobación</p>
+                    ) : actions.length > 0 ? (
+                        actions.map((action, i) => (
+                            <button key={action} type="button" className={`btn ${i === 0 ? 'btn-primary ah-mark' : ''} ah-wide`} onClick={() => navigate('punch', { action })}>
+                                {i === 0 && <IconFingerprint size={20} stroke={1.5} aria-hidden />}
+                                {i === 0 && (action === 'CHECK_IN' || action === 'CHECK_OUT') ? `Marcar ${ATTENDANCE_ACTION_LABELS[action].toLowerCase()}` : ATTENDANCE_ACTION_LABELS[action]}
+                            </button>
+                        ))
+                    ) : (
+                        today && <p className="muted">No tienes marcajes disponibles ahora.</p>
+                    )}
+                    {branchLine && actions.length > 0 && !stale && !facePending && <p className="ah-geo">{branchLine}</p>}
                 </section>
 
                 <h2 className="ah-h">Solicitar</h2>
                 <div className="ah-grid">
-                    <Card title="Permiso / vacaciones" onClick={() => navigate('leave')}>{vacationDatum}</Card>
-                    <Card title="Horas extra" onClick={() => navigate('overtime')} />
-                    <Card title="Corregir marcaje" onClick={() => navigate('correction')} />
-                    <Card title="Cambio de turno" onClick={() => navigate('swap')} />
-                    <Card title="Préstamo" onClick={() => navigate('loanRequest')}>{loanDatum}</Card>
+                    <button type="button" className="ah-tile" onClick={() => navigate('leave')}>
+                        <IconBeach size={20} stroke={1.5} aria-hidden />
+                        <b>Permiso</b>
+                        <span>{vacationDatum}</span>
+                    </button>
+                    <button type="button" className="ah-tile" onClick={() => navigate('loanRequest')}>
+                        <IconCash size={20} stroke={1.5} aria-hidden />
+                        <b>Préstamo</b>
+                        <span>{loanDatum}</span>
+                    </button>
+                    <button type="button" className="ah-tile" onClick={() => navigate('overtime')}>
+                        <IconClockPlus size={20} stroke={1.5} aria-hidden />
+                        <b>Horas extra</b>
+                        <span>Registrar tiempo</span>
+                    </button>
+                    <button type="button" className="ah-tile" onClick={() => navigate('swap')}>
+                        <IconArrowsExchange size={20} stroke={1.5} aria-hidden />
+                        <b>Cambio de turno</b>
+                        <span>Con un compañero</span>
+                    </button>
+                    <button type="button" className="ah-tile ah-tile-row" onClick={() => navigate('correction')}>
+                        <IconEdit size={20} stroke={1.5} aria-hidden />
+                        <span className="ah-tile-text">
+                            <b>Corregir marcaje</b>
+                            <span>Olvidé marcar o hubo un error</span>
+                        </span>
+                        <IconChevronRight size={18} stroke={1.5} aria-hidden />
+                    </button>
                 </div>
 
                 {summary.pendingForYou.length > 0 && (
@@ -115,17 +158,21 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                 {summary.myRequests.length > 0 && (
                     <>
                         <h2 className="ah-h">Mis solicitudes</h2>
-                        <button type="button" className="ah-link" onClick={() => navigate('requests')}>Ver todas</button>
+                        <button type="button" className="ah-link ah-all" onClick={() => navigate('requests')}>Ver todas</button>
                         <div className="ah-list">
                             {summary.myRequests.map((r) => (
-                                <Card key={r.id} title={r.title} badge={r.statusLabel} badgeTone={r.tone}>
-                                    <span>{r.detail}</span>
+                                <section key={r.id} className="ah-req">
+                                    <div className="ah-req-head">
+                                        <b>{r.title}</b>
+                                        <span className={`ah-status ah-status-${r.tone}`}>{r.statusLabel}</span>
+                                    </div>
+                                    <span className="ah-req-detail">{r.detail}</span>
                                     {r.cancellable && (
-                                        <button type="button" className="btn ah-cancel" onClick={() => cancel.ask(r)}>
-                                            Cancelar
+                                        <button type="button" className="ah-req-cancel" onClick={() => cancel.ask(r)}>
+                                            Cancelar solicitud
                                         </button>
                                     )}
-                                </Card>
+                                </section>
                             ))}
                         </div>
                     </>

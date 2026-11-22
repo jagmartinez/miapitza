@@ -26,9 +26,9 @@ export function OpeningCount({ onUse, onCancel }: { onUse: (total: number) => vo
         const n = counts[group][String(denom)] ?? 0;
         const kind = group === 'nioBills' ? 'Billete' : 'Moneda';
         return (
-            <button key={`${group}-${denom}`} type="button" className="btn cash-denom" aria-pressed={sel?.group === group && sel.denom === denom} aria-label={`${kind} C$ ${label(denom)}`} onClick={() => setSel({ group, denom })}>
+            <button key={`${group}-${denom}`} type="button" className="cash-denom" aria-pressed={sel?.group === group && sel.denom === denom} aria-label={`${kind} C$ ${label(denom)}`} onClick={() => setSel({ group, denom })}>
                 <span className="cash-num">{`C$ ${label(denom)}`}</span>
-                <strong className="cash-num">{`× ${n}`}</strong>
+                <strong className="cash-num cash-cnt" data-zero={n === 0 ? 'true' : undefined}>{`× ${n}`}</strong>
             </button>
         );
     };

@@ -209,10 +209,10 @@ describe('summary reload', () => {
         const hr = homeApi({ createLeave: vi.fn().mockResolvedValue({ id: 1 }) });
         const today = hr.attendanceToday as unknown as ReturnType<typeof vi.fn>;
         mount(<Switch hr={hr} />);
-        await screen.findByText('Permiso / vacaciones');
+        await screen.findByText('Permiso');
         await waitFor(() => expect(today).toHaveBeenCalled());
         const before = today.mock.calls.length;
-        fireEvent.click(screen.getByText('Permiso / vacaciones'));
+        fireEvent.click(screen.getByText('Permiso'));
         await screen.findByRole('option', { name: 'Permiso personal' });
         fillLeave();
         fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));

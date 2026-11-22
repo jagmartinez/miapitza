@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { calculateAutomaticPaymentRemainder, canUsePaymentMethodInMixed, moneyToCents, summarizePaymentAllocation, splitTotalEvenly } from '@web/utils/payment';
 import { money } from '../order/orderModel';
+import { IconX } from '../../../ui/Icon';
 import { ChargeButton, Keypad, parseTyped, typeKey } from './controls';
 import { cashChange, isCashType, type Leg, type ModeCtx } from './paymentFlow';
 
@@ -116,8 +117,8 @@ export function MixedPayment({ ctx }: { ctx: ModeCtx }) {
                                 ) : (
                                     rows.length > 2 &&
                                     !locked && (
-                                        <button type="button" className="btn icon-btn" aria-label={`Quitar tramo ${i + 1}`} onClick={() => remove(i)}>
-                                            ✕
+                                        <button type="button" className="pay-x" aria-label={`Quitar tramo ${i + 1}`} onClick={() => remove(i)}>
+                                            <IconX size={18} stroke={1.5} aria-hidden />
                                         </button>
                                     )
                                 )}
@@ -136,7 +137,7 @@ export function MixedPayment({ ctx }: { ctx: ModeCtx }) {
                     );
                 })}
                 {!locked && rows.length < MAX_LEGS && usable.some((m) => !methodIds.includes(m.id)) && (
-                    <button type="button" className="btn" onClick={add}>
+                    <button type="button" className="btn btn-outline" onClick={add}>
                         + Agregar método
                     </button>
                 )}

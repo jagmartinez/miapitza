@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { CashApi } from '../../data/cashApi';
 import type { CashRegisterRow } from '../../data/cashTypes';
 import { useOnline } from '../../data/useOnline';
@@ -42,9 +43,9 @@ export function OpenShiftsScreen({ api, onBack, onCount }: { api: Pick<CashApi, 
     return (
         <main className="cash" data-testid="open-shifts">
             <header className="cash-bar">
-                <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
-                    ←
-                </button>
+                <button type="button" className="cash-back" aria-label="Volver" onClick={onBack}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                 <strong className="cash-title">Caja › Turnos abiertos</strong>
                 {!online && (
                     <span className="cash-offline" role="status">

@@ -15,6 +15,7 @@ import { FloorPlan } from './FloorPlan';
 import { OpenTableSheet } from './OpenTableSheet';
 import { ReadyBanner, type ReadyNotice } from './ReadyBanner';
 import { TableActionsSheet, type SheetAction } from './TableActionsSheet';
+import { IconCash, IconClipboardList, IconLock, IconUser, IconX } from '../../../ui/Icon';
 import { printOut, type PrintOut } from '../../print/printOut';
 import { useTablePicking } from './useTablePicking';
 import { initialsOf, normalizeOrders, normalizePlan, ordersByTable, tableState, type ActiveOrder, type Plan, type PlanTable, type TableState } from './tableState';
@@ -50,24 +51,6 @@ const REFETCH_DEBOUNCE_MS = 300;
 const CLOCK_TICK_MS = 30_000;
 const NO_AREA = -1;
 
-function LockIcon() {
-    return (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="5" y="11" width="14" height="9" rx="2" />
-            <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-        </svg>
-    );
-}
-
-function CashIcon() {
-    return (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="3" y="6" width="18" height="12" rx="2" />
-            <circle cx="12" cy="12" r="2.5" />
-        </svg>
-    );
-}
-
 const NO_NOTICES: ReadyNotice[] = [];
 
 export function TablesScreen({ session, api, realtime, queue, invalidate, onOpenOrder, onSwitchUser, onOpenCash, onOpenInventory, ready = NO_NOTICES, onDismissReady, printer = printOut }: TablesScreenProps) {
@@ -77,6 +60,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
     const [error, setError] = useState<string | null>(null);
     const [areaId, setAreaId] = useState<number | null>(null);
     const [mineOnly, setMineOnly] = useState(false);
+    const [dueOnly, setDueOnly] = useState(false);
     const [now, setNow] = useState(() => Date.now());
     const [sheet, setSheet] = useState<{ kind: 'open'; table: PlanTable } | { kind: 'actions'; table: PlanTable; order: ActiveOrder } | null>(null);
     const [toast, setToast] = useState<string | null>(null);
@@ -197,6 +181,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
         if (!plan) return 0;
         return plan.tables.filter((t) => tableState(t, byTable.get(t.id)) !== 'free').length;
     }, [plan, byTable]);
+    const dueCount = useMemo(() => (plan ? plan.tables.filter((t) => tableState(t, byTable.get(t.id)) === 'due').length : 0), [plan, byTable]);
     const branchName = plan?.tables.find((t) => t.branch?.name)?.branch?.name ?? 'Sucursal';
 
     const areaNameOf = (table: PlanTable) => plan?.areas.find((x) => x.id === table.floorAreaId)?.name ?? 'Sin área';
@@ -286,21 +271,32 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 </div>
                 <span className="grow" />
                 <OfflineIndicator queue={queue} />
-                <button type="button" className="chip" aria-pressed={mineOnly} onClick={() => setMineOnly((v) => !v)}>
-                    Mis mesas
+                {dueCount > 0 && (
+                    <button type="button" className="hchip" aria-pressed={dueOnly} onClick={() => setDueOnly((v) => !v)}>
+                        <span className="hchip-inner">
+                            <span className="hchip-dot" aria-hidden="true" />
+                            {`Por cobrar ${dueCount}`}
+                        </span>
+                    </button>
+                )}
+                <button type="button" className="hchip" aria-pressed={mineOnly} onClick={() => setMineOnly((v) => !v)}>
+                    <span className="hchip-inner">
+                        <IconUser size={14} stroke={1.5} aria-hidden />
+                        Mis mesas
+                    </span>
                 </button>
                 {onOpenInventory && can(session.user, 'inventory.count') && (
-                    <button type="button" className="chip" onClick={onOpenInventory}>
-                        Inventario
+                    <button type="button" className="ib" aria-label="Inventario" onClick={onOpenInventory}>
+                        <IconClipboardList size={18} stroke={1.5} aria-hidden />
                     </button>
                 )}
                 {onOpenCash && isCashier(session.user) && (
-                    <button type="button" className="btn icon-btn" aria-label="Caja" onClick={onOpenCash}>
-                        <CashIcon />
+                    <button type="button" className="ib" aria-label="Caja" onClick={onOpenCash}>
+                        <IconCash size={18} stroke={1.5} aria-hidden />
                     </button>
                 )}
-                <button type="button" className="btn icon-btn" aria-label="Cambiar usuario" onClick={onSwitchUser}>
-                    <LockIcon />
+                <button type="button" className="ib" aria-label="Cambiar usuario" onClick={onSwitchUser}>
+                    <IconLock size={18} stroke={1.5} aria-hidden />
                 </button>
             </header>
 
@@ -319,7 +315,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                 <div className="toast" role="status">
                     <span>{toast}</span>
                     <button type="button" className="ready-banner-close" aria-label="Cerrar aviso" onClick={() => setToast(null)}>
-                        ×
+                        <IconX size={16} stroke={1.5} aria-hidden />
                     </button>
                 </div>
             )}
@@ -353,6 +349,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                         orders={byTable}
                         now={now}
                         onlyUserId={mineOnly && !picking.mode ? session.user.id : null}
+                        onlyState={dueOnly && !picking.mode ? 'due' : null}
                         onTap={handleTap}
                         canPick={picking.mode ? picking.canPick : undefined}
                         onLongPress={handleLongPress}

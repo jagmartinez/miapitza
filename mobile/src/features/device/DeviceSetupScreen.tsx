@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DeviceType, LoginUser } from '../../core/session';
 import { httpMessage, httpStatus } from '../../core/httpErrors';
 import type { DeviceApi, SetupBranch } from './deviceApi';
+import './device.css';
 
 interface Props {
     api: DeviceApi;
@@ -148,9 +149,18 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
             <main className="screen">
                 <form className="form" onSubmit={(e) => e.preventDefault()}>
                     <h1>¿Qué es este dispositivo?</h1>
-                    <button type="button" className="btn" onClick={() => void choose('SERVICE_TABLET')}>Tablet de servicio</button>
-                    <button type="button" className="btn" onClick={() => void choose('KITCHEN_TABLET')}>Tablet de cocina</button>
-                    <button type="button" className="btn" onClick={() => void choose('PERSONAL')}>Personal</button>
+                    <button type="button" className="dev-opt" onClick={() => void choose('SERVICE_TABLET')}>
+                        <b>Tablet de servicio</b>
+                        <span>Mesas, pedidos y cobro</span>
+                    </button>
+                    <button type="button" className="dev-opt" onClick={() => void choose('KITCHEN_TABLET')}>
+                        <b>Tablet de cocina</b>
+                        <span>Pantalla de pedidos en cocina</span>
+                    </button>
+                    <button type="button" className="dev-opt" onClick={() => void choose('PERSONAL')}>
+                        <b>Personal</b>
+                        <span>Mi cuenta y marcaje</span>
+                    </button>
                     {error && <p className="error" role="alert">{error}</p>}
                 </form>
             </main>

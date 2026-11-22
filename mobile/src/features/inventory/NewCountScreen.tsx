@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { InventoryApi } from './inventoryApi';
 import { OfflineError } from './inventoryApi';
+import { IconX } from '../../ui/Icon';
+import { IconCircleCheck } from './inventoryIcons';
 import { dayText, plural } from './inventoryFormat';
 import { COUNT_ERROR, type CountWarehouse, type WarehouseCategory } from './inventoryTypes';
 import './inventory.css';
@@ -111,8 +113,8 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
     return (
         <main className="inv" data-testid="new-count">
             <header className="inv-bar">
-                <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
-                    ←
+                <button type="button" className="btn btn-ghost inv-ib" aria-label="Volver" onClick={onBack}>
+                    <IconX size={20} stroke={1.5} aria-hidden />
                 </button>
                 <strong className="inv-title">Nuevo conteo</strong>
             </header>
@@ -138,13 +140,11 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
                                         return (
                                             <div key={w.id} className="inv-wh-card" data-selected={w.id === warehouseId} data-disabled={review}>
                                                 <button type="button" className="inv-wh-pick" aria-pressed={w.id === warehouseId} disabled={review || draft} onClick={() => choose(w)}>
-                                                    <span className="inv-wh-icon" aria-hidden="true">
-                                                        ▦
-                                                    </span>
                                                     <strong>{w.name}</strong>
                                                     <span className="muted">{plural(w.productCount, 'producto', 'productos')}</span>
                                                     <span className="muted">{w.lastCountAt ? `Último conteo ${dayText(w.lastCountAt)}` : 'Sin conteos'}</span>
                                                     {review && <span className="inv-badge inv-badge-en_revision">En revisión</span>}
+                                                    {w.id === warehouseId && <IconCircleCheck className="inv-wh-check" size={20} stroke={1.5} aria-hidden />}
                                                 </button>
                                                 {draft && w.openSheet && (
                                                     <button type="button" className="btn btn-primary" onClick={() => onStarted(w.openSheet!.id)}>
@@ -158,11 +158,11 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
                             </section>
                             <section className="inv-section" aria-label="Qué contar">
                                 <h2>Qué contar</h2>
-                                <div className="inv-scope">
-                                    <button type="button" className="inv-chip" aria-pressed={scope === 'all'} onClick={() => chooseScope('all')}>
+                                <div className="seg inv-scope">
+                                    <button type="button" className="seg-item" aria-pressed={scope === 'all'} onClick={() => chooseScope('all')}>
                                         Todo
                                     </button>
-                                    <button type="button" className="inv-chip" aria-pressed={scope === 'some'} onClick={() => chooseScope('some')}>
+                                    <button type="button" className="seg-item" aria-pressed={scope === 'some'} onClick={() => chooseScope('some')}>
                                         Elegir categorías
                                     </button>
                                 </div>
@@ -178,10 +178,10 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
                                 {scope === 'some' && warehouse && !catFailed && categories === null && <p className="muted">Cargando…</p>}
                                 {scope === 'some' && categories && (
                                     <>
-                                        <button type="button" className="inv-link" onClick={() => setPicked(new Set(categories.map(keyOf)))}>
-                                            Seleccionar todas
-                                        </button>
                                         <div className="inv-cats" data-testid="category-grid">
+                                            <button type="button" className="inv-cat inv-cat-all" onClick={() => setPicked(new Set(categories.map(keyOf)))}>
+                                                Seleccionar todas
+                                            </button>
                                             {categories.map((c) => (
                                                 <button key={keyOf(c)} type="button" role="checkbox" aria-checked={picked.has(keyOf(c))} className="inv-cat" onClick={() => toggle(keyOf(c))}>
                                                     <span className="inv-check" aria-hidden="true">

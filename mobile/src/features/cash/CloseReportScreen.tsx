@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { IconArrowLeft } from '../../ui/Icon';
 import type { CashApi } from '../../data/cashApi';
 import type { ShiftReport } from '../../data/cashTypes';
 import type { Session } from '../../core/session';
@@ -104,9 +105,9 @@ export function CloseReportScreen({ api, session, shiftId, onDone, onBack, print
         <main className="cash" data-testid="cash-report" data-shift={shiftId}>
             <header className="cash-bar">
                 {onBack && (
-                    <button type="button" className="btn" aria-label="Volver" onClick={onBack}>
-                        ←
-                    </button>
+                    <button type="button" className="cash-back" aria-label="Volver" onClick={onBack}>
+<IconArrowLeft size={22} stroke={1.5} aria-hidden />
+</button>
                 )}
                 <div className="cash-head">
                     <strong className="cash-title">{v ? `${v.register}${v.shiftNo != null ? ` · Turno #${v.shiftNo}` : ''}` : 'Reporte de cierre'}</strong>

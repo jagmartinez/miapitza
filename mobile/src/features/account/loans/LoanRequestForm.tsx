@@ -89,7 +89,7 @@ export function LoanRequestForm({ hr }: { hr: HrApi }) {
             }
         >
             <Field label="Monto">
-                <input type="text" inputMode="decimal" value={formatHrDecimalInput(amount)} onChange={(e) => setAmount(normalizeHrDecimalInput(e.target.value))} />
+                <input className="rq-big" type="text" inputMode="decimal" value={formatHrDecimalInput(amount)} onChange={(e) => setAmount(normalizeHrDecimalInput(e.target.value))} />
             </Field>
             {maxCents !== null && <p className="muted">Máximo {money(String(policy.maxAmount))}</p>}
             {amount !== '' && (cents === null || cents <= 0) && (
@@ -102,6 +102,13 @@ export function LoanRequestForm({ hr }: { hr: HrApi }) {
                     El monto supera el máximo permitido.
                 </p>
             )}
+            <div className="rq-presets" role="group" aria-label="Cuotas frecuentes">
+                {[2, 4, 6, 8].filter((v) => v <= maxCount).map((v) => (
+                    <button key={v} type="button" className="key" aria-pressed={count === String(v)} onClick={() => setCount(String(v))}>
+                        {v}
+                    </button>
+                ))}
+            </div>
             <Field label="Cuotas">
                 <input type="number" inputMode="numeric" min={1} max={maxCount} step={1} value={count} onChange={(e) => setCount(e.target.value)} />
             </Field>
@@ -123,7 +130,7 @@ export function LoanRequestForm({ hr }: { hr: HrApi }) {
             )}
             {policy.maxPaymentPercent != null && <p className="muted">Máximo {Number(policy.maxPaymentPercent)}% de tu salario por cuota</p>}
             <Field label="Motivo">
-                <textarea className="rq-text" rows={3} maxLength={PURPOSE_MAX} value={purpose} onChange={(e) => setPurpose(e.target.value)} />
+                <textarea className="rq-text rq-underline" rows={3} maxLength={PURPOSE_MAX} value={purpose} onChange={(e) => setPurpose(e.target.value)} />
             </Field>
             <label className="field">
                 <input type="checkbox" checked={payroll} onChange={(e) => setPayroll(e.target.checked)} /> Descontar de planilla

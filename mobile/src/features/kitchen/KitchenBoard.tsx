@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { IconHistory } from '../../ui/Icon';
 import { newIdempotencyKey } from '@web/utils/idempotency';
 import { kitchenAuthStatus } from '../../core/kitchenAuth';
 import { KitchenActionError, type KitchenApi } from './kitchenApi';
@@ -162,19 +163,21 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs, ses
         <div className="kitchen">
             <header className="kitchen-bar">
                 <strong className="kitchen-title" {...kiosk.handlers}>Cocina</strong>
+                <span className="kitchen-queue">{`· ${visible.length} en cola`}</span>
                 <span className="kitchen-clock">{clock(now)}</span>
                 <span className={`kitchen-conn ${dot}`} role="status">
                     <i aria-hidden="true" />
                     {CONNECTION_TEXT[connection]}
                 </span>
                 <span className="kitchen-spacer" />
-                <button type="button" className="kitchen-btn" aria-pressed={sound} onClick={toggleSound}>
+                <button type="button" className="kitchen-link" aria-pressed={sound} onClick={toggleSound}>
                     {sound ? 'Sonido: sí' : 'Sonido: no'}
                 </button>
-                <button type="button" className="kitchen-btn" onClick={() => {
+                <button type="button" className="kitchen-link" onClick={() => {
                         refreshRecent();
                         setShowRecent(true);
                     }}>
+                    <IconHistory size={18} stroke={1.5} aria-hidden />
                     {`Recientes (${recent.length})`}
                 </button>
             </header>

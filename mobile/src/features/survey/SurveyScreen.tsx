@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { IconHeart } from '../../ui/Icon';
 import { useIdleLock } from '../../core/useIdleLock';
 import { surveyKey, type SurveyInput } from './surveyApi';
 import { useBackBlock } from './useBackBlock';
@@ -23,6 +24,8 @@ type Area = 'waiterRating' | 'foodRating' | 'waitRating' | 'ambienceRating';
 export interface SurveyScreenProps {
     orderId: number;
     waiterName: string;
+    /** Shown after the brand on the kicker line when the caller knows it. */
+    branchName?: string | null;
     submit: (input: SurveyInput, idempotencyKey: string) => Promise<unknown>;
     /** Ends the survey: the caller locks and revokes the session. */
     onDone: () => void;
@@ -46,7 +49,7 @@ function Stars({ label, value, onChange }: { label: string; value: Rating; onCha
 }
 
 /** Customer survey on the waiter's tablet: locked (no Back, no exit) until it is sent or 60 s pass untouched. */
-export default function SurveyScreen({ orderId, waiterName, submit, onDone }: SurveyScreenProps) {
+export default function SurveyScreen({ orderId, waiterName, branchName, submit, onDone }: SurveyScreenProps) {
     const [step, setStep] = useState<'nps' | 'details' | 'thanks'>('nps');
     const [nps, setNps] = useState<number | null>(null);
     const [ratings, setRatings] = useState<Record<Area, Rating>>({ waiterRating: null, foodRating: null, waitRating: null, ambienceRating: null });
@@ -71,6 +74,7 @@ export default function SurveyScreen({ orderId, waiterName, submit, onDone }: Su
 
     const first = waiterName.trim().split(/\s+/)[0];
     const waiterLabel = first ? `Atención de ${first}` : 'Atención del mesero';
+    const kicker = branchName ? `La Mia Pitza · ${branchName}` : 'La Mia Pitza';
 
     /** Starts the one submit (a double tap or idle after Enviar reuses it). Failures never reach the customer. */
     const send = (): void => {
@@ -118,8 +122,12 @@ export default function SurveyScreen({ orderId, waiterName, submit, onDone }: Su
 
     if (step === 'thanks') {
         return (
-            <main className="sv" data-testid="survey" aria-label="Encuesta">
+            <main className="sv sv-center" data-testid="survey" aria-label="Encuesta">
+                <span className="sv-heart" aria-hidden="true">
+                    <IconHeart size={26} stroke={1.5} />
+                </span>
                 <h1 className="sv-thanks">¡Gracias por tu opinión!</h1>
+                <p className="sv-sub">Por favor devuelve la tablet a tu mesero</p>
             </main>
         );
     }
@@ -127,52 +135,66 @@ export default function SurveyScreen({ orderId, waiterName, submit, onDone }: Su
     if (step === 'nps') {
         return (
             <main className="sv" data-testid="survey" aria-label="Encuesta">
-                <h1 className="sv-q">¿Qué tan probable es que nos recomiendes a un amigo?</h1>
-                <div className="sv-nps">
-                    {Array.from({ length: 11 }, (_, n) => (
-                        <button
-                            key={n}
-                            type="button"
-                            className="sv-key"
-                            onClick={() => {
-                                setNps(n);
-                                setSettling(true);
-                                setStep('details');
-                            }}
-                        >
-                            {n}
-                        </button>
-                    ))}
+                <div className="sv-body sv-center">
+                    <p className="sv-kicker">{kicker}</p>
+                    <h1 className="sv-q">¿Qué tan probable es que nos recomiendes a un amigo?</h1>
+                    <div className="sv-nps">
+                        {Array.from({ length: 11 }, (_, n) => (
+                            <button
+                                key={n}
+                                type="button"
+                                className="sv-key"
+                                onClick={() => {
+                                    setNps(n);
+                                    setSettling(true);
+                                    setStep('details');
+                                }}
+                            >
+                                {n}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="sv-legend">
+                        <span>Nada probable</span>
+                        <span>Muy probable</span>
+                    </div>
                 </div>
-                <div className="sv-legend">
-                    <span>Nada probable</span>
-                    <span>Muy probable</span>
-                </div>
+                <footer className="sv-foot">
+                    <span>1 de 3</span>
+                    <span>Toma menos de 30 segundos</span>
+                </footer>
             </main>
         );
     }
 
     return (
-        <main className={`sv sv-details${settling ? ' sv-settling' : ''}`} data-testid="survey" aria-label="Encuesta">
-            <section className="sv-col">
-                <Stars label={waiterLabel} value={ratings.waiterRating} onChange={(v) => setRatings((r) => ({ ...r, waiterRating: v }))} />
-                <Stars label="Comida" value={ratings.foodRating} onChange={(v) => setRatings((r) => ({ ...r, foodRating: v }))} />
-                <Stars label="Tiempo de espera" value={ratings.waitRating} onChange={(v) => setRatings((r) => ({ ...r, waitRating: v }))} />
-                <Stars label="Ambiente y limpieza" value={ratings.ambienceRating} onChange={(v) => setRatings((r) => ({ ...r, ambienceRating: v }))} />
-            </section>
-            <section className="sv-col">
-                <label className="sv-field" htmlFor="sv-comment">
-                    Comentario (opcional)
-                </label>
-                <textarea id="sv-comment" className="sv-input" rows={3} maxLength={500} value={comment} onChange={(e) => setComment(e.target.value)} />
-                <label className="sv-field" htmlFor="sv-phone">
-                    Teléfono (opcional, si quieres que te contactemos)
-                </label>
-                <input id="sv-phone" className="sv-input" type="tel" inputMode="tel" maxLength={30} value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <main className={`sv${settling ? ' sv-settling' : ''}`} data-testid="survey" aria-label="Encuesta">
+            <div className="sv-body sv-details">
+                <section className="sv-col">
+                    <Stars label={waiterLabel} value={ratings.waiterRating} onChange={(v) => setRatings((r) => ({ ...r, waiterRating: v }))} />
+                    <Stars label="Comida" value={ratings.foodRating} onChange={(v) => setRatings((r) => ({ ...r, foodRating: v }))} />
+                    <Stars label="Tiempo de espera" value={ratings.waitRating} onChange={(v) => setRatings((r) => ({ ...r, waitRating: v }))} />
+                    <Stars label="Ambiente y limpieza" value={ratings.ambienceRating} onChange={(v) => setRatings((r) => ({ ...r, ambienceRating: v }))} />
+                </section>
+                <section className="sv-col sv-col-form">
+                    <label className="sv-field" htmlFor="sv-comment">
+                        Comentario (opcional)
+                    </label>
+                    <textarea id="sv-comment" className="sv-input" rows={3} maxLength={500} value={comment} onChange={(e) => setComment(e.target.value)} />
+                    <div className="sv-phone">
+                        <label className="sv-field" htmlFor="sv-phone">
+                            Teléfono (opcional, si quieres que te contactemos)
+                        </label>
+                        <input id="sv-phone" className="sv-input sv-input-line" type="tel" inputMode="tel" maxLength={30} placeholder="Teléfono" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    </div>
+                </section>
+            </div>
+            <footer className="sv-foot sv-foot-line">
+                <span>2 de 3</span>
                 <button type="button" className="btn btn-primary sv-send" onClick={submitNow}>
-                    Enviar
+                    Enviar opinión
                 </button>
-            </section>
+            </footer>
         </main>
     );
 }

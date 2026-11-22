@@ -9,6 +9,7 @@ import type { PaymentPlans } from '../../../data/paymentPlans';
 import { isOnline } from '../../../data/useOnline';
 import type { Json, OrderRef, WaiterApi } from '../../../data/waiterApi';
 import { money, normalizeServerLines, type ServerLine } from '../order/orderModel';
+import { IconArrowLeft } from '../../../ui/Icon';
 import { MixedPayment } from './MixedPayment';
 import { PaymentDone, type DoneData } from './PaymentDone';
 import { createPaymentFlow, LegError, matchPaidLegs, type ChargeFn, type ChargeMeta, type FiscalCustomer, type FlowApi, type FlowState, type Method, type ModeCtx, type PaymentFlow } from './paymentFlow';
@@ -298,8 +299,8 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         return (
             <main className="pay" data-testid="payment-screen">
                 <header className="pay-bar-top">
-                    <button type="button" className="btn" aria-label="Volver" onClick={onClose}>
-                        ←
+                    <button type="button" className="pay-back" aria-label="Volver" onClick={onClose}>
+                        <IconArrowLeft size={22} stroke={1.5} aria-hidden />
                     </button>
                     <strong>Cobrar</strong>
                 </header>
@@ -350,13 +351,13 @@ export default function PaymentScreen({ api, user, orderId, initialMode = 'singl
         <>
         <main className="pay" data-testid="payment-screen" data-mode={mode}>
             <header className="pay-bar-top" data-fixed={48}>
-                <button type="button" className="btn" aria-label="Volver" disabled={busy} onClick={() => void leave()}>
-                    ←
+                <button type="button" className="pay-back" aria-label="Volver" disabled={busy} onClick={() => void leave()}>
+                    <IconArrowLeft size={22} stroke={1.5} aria-hidden />
                 </button>
                 <strong className="pay-title">{`Cobrar · ${tableLabel}`}</strong>
-                <div className="pay-modes" role="group" aria-label="Modo de cobro">
+                <div className="seg pay-modes" role="group" aria-label="Modo de cobro">
                     {MODES.filter((m) => m.id !== 'split' || canSplit).map((m) => (
-                        <button key={m.id} type="button" className="btn" aria-pressed={mode === m.id} disabled={locked && mode !== m.id} onClick={() => setMode(m.id)}>
+                        <button key={m.id} type="button" className="seg-item" aria-pressed={mode === m.id} disabled={locked && mode !== m.id} onClick={() => setMode(m.id)}>
                             {m.label}
                         </button>
                     ))}

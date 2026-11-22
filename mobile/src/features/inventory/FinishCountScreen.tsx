@@ -1,3 +1,4 @@
+import { IconArrowLeft } from '../../ui/Icon';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOnline } from '../../data/useOnline';
 import type { InventoryApi } from './inventoryApi';
@@ -83,8 +84,8 @@ export function FinishCountScreen({ api, sheetId, onRecount, onSubmitted, onBack
         <main className="cnt-finish" data-testid="finish-screen">
             <header className="cnt-header">
                 {onBack && (
-                    <button type="button" className="btn cnt-back" aria-label="Volver" onClick={onBack}>
-                        ←
+                    <button type="button" className="btn btn-ghost cnt-back" aria-label="Volver" onClick={onBack}>
+                        <IconArrowLeft size={20} stroke={1.5} aria-hidden />
                     </button>
                 )}
                 <strong className="cnt-title">Terminar conteo</strong>
@@ -126,7 +127,7 @@ export function FinishCountScreen({ api, sheetId, onRecount, onSubmitted, onBack
                         )}
                         <div className="cnt-finish-actions">
                             {totals.notCounted > 0 && (
-                                <button type="button" className="btn" onClick={onRecount}>
+                                <button type="button" className="btn btn-outline" onClick={onRecount}>
                                     Volver a contarlos
                                 </button>
                             )}

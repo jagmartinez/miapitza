@@ -171,7 +171,8 @@ describe('OrderScreen', () => {
         setup({ permissions: ['orders.view', 'orders.edit', 'payments.process', 'invoices.issue', 'bills.split'], handlers });
         fireEvent.click(await screen.findByRole('button', { name: 'Cobrar' }));
         fireEvent.click(screen.getByRole('button', { name: 'Dividir' }));
-        // orders.edit alone shows Descuento: the waiter can ask a supervisor to authorize (spec 7.3.0)
+        // orders.edit alone shows Descuento (inside "···"): the waiter can ask a supervisor to authorize (spec 7.3.0)
+        fireEvent.click(screen.getByRole('button', { name: 'Más acciones' }));
         fireEvent.click(screen.getByRole('button', { name: 'Descuento' }));
         expect(handlers.onPay).toHaveBeenCalledTimes(1);
         expect(handlers.onSplit).toHaveBeenCalledTimes(1);

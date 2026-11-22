@@ -38,7 +38,7 @@ export function SinglePayment({ ctx }: { ctx: ModeCtx }) {
         <>
             <section className="pay-col pay-center" aria-label="Método y montos">
                 <MethodTiles methods={methods} selected={methodId} disabledIds={ctx.pending.includes(SINGLE_LEG_ID) ? methods.filter((m) => m.id !== methodId).map((m) => m.id) : []} onSelect={(id) => { setMethodId(id); setTyped(''); }} />
-                {cash && !blocked && <QuickAmounts amounts={quick} onPick={(a, i) => setTyped(i === 0 ? '' : String(a))} />}
+                {cash && !blocked && <QuickAmounts amounts={quick} selectedIndex={typed === '' ? 0 : quick.findIndex((a, i) => i > 0 && String(a) === typed)} onPick={(a, i) => setTyped(i === 0 ? '' : String(a))} />}
             </section>
             <section className="pay-col pay-right" aria-label="Recibido">
                 {blocked ? (

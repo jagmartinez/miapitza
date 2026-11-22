@@ -17,6 +17,7 @@ import type { OrderIntent } from '../tables/TablesScreen';
 import { CategoryRail } from './CategoryRail';
 import { FullTicketScreen } from './FullTicketScreen';
 import { ModifierSheet, type ModifierChoice } from './ModifierSheet';
+import { IconArrowLeft, IconSearch } from '../../../ui/Icon';
 import { ProductGrid } from './ProductGrid';
 import { TicketPanel, type TicketPricing } from './TicketPanel';
 import {
@@ -465,22 +466,24 @@ export function OrderScreen(props: OrderScreenProps) {
     return (
         <main className="pos" data-testid="pos-screen" data-order-id={String(orderId)}>
             <header className="pos-bar">
-                <button type="button" className="btn" aria-label="Volver a mesas" onClick={onBack}>
-                    ←
+                <button type="button" className="pos-back" aria-label="Volver a mesas" onClick={onBack}>
+                    <IconArrowLeft size={22} stroke={1.5} aria-hidden />
                 </button>
                 <strong className="pos-table">{tableLabel}</strong>
-                {guests != null && <span className="muted">{`${guests} pers`}</span>}
-                {elapsed && <span className="muted">{elapsed}</span>}
+                <span className="muted pos-meta">{[guests != null ? `${guests} personas` : '', elapsed].filter(Boolean).join(' · ')}</span>
                 {isTemp(orderId) && <span className="muted">Sincronizando…</span>}
-                <input className="pos-search" type="search" aria-label="Buscar producto" placeholder="Buscar producto" value={search} onChange={(e) => setSearch(e.target.value)} />
+                <label className="pos-search">
+                    <IconSearch size={18} stroke={1.5} aria-hidden />
+                    <input type="search" aria-label="Buscar producto" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
+                </label>
                 <OfflineIndicator queue={queue} />
                 {(props.readyCount ?? 0) > 0 && (
-                    <button type="button" className="chip ready-chip" aria-label={`Pedidos listos: ${props.readyCount}`} onClick={onBack}>
+                    <button type="button" className="pos-ready" aria-label={`Pedidos listos: ${props.readyCount}`} onClick={onBack}>
                         <span className="ready-dot" aria-hidden="true" />
                         {props.readyCount}
                     </button>
                 )}
-                <span className="avatar-disc small" title={user.name} aria-label={`Usuario ${user.name}`}>
+                <span className="pos-avatar" title={user.name} aria-label={`Usuario ${user.name}`}>
                     {initials}
                 </span>
             </header>
@@ -524,7 +527,9 @@ export function OrderScreen(props: OrderScreenProps) {
             </div>
             {full && (
                 <FullTicketScreen
-                    title={`${tableLabel}${guests != null ? ` · ${guests} pers` : ''}`}
+                    title={tableLabel}
+                    subtitle={guests != null ? `${guests} personas` : undefined}
+                    total={sentTotal}
                     drafts={draft.lines}
                     serverLines={serverLines}
                     queued={queuedLines}

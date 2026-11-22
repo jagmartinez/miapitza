@@ -24,7 +24,7 @@ describe('KitchenCard', () => {
         expect(screen.getByText('M4')).toBeInTheDocument();
         expect(screen.getByText('Ana')).toBeInTheDocument();
         expect(screen.getByText('5 min')).toBeInTheDocument();
-        expect(screen.getByText('2× Pizza')).toBeInTheDocument();
+        expect(screen.getByText('2 × Pizza')).toBeInTheDocument();
         expect(screen.getByText('Extra queso')).toBeInTheDocument();
         expect(screen.getByText('sin cebolla')).toBeInTheDocument();
         expect(screen.getByText('Tanda 2')).toBeInTheDocument();

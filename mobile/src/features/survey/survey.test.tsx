@@ -53,7 +53,7 @@ describe('SurveyScreen', () => {
         expect(screen.getByText('¿Qué tan probable es que nos recomiendes a un amigo?')).toBeInTheDocument();
         expect(screen.getByText('Nada probable')).toBeInTheDocument();
         expect(screen.getByText('Muy probable')).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Enviar' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Enviar opinión' })).toBeNull();
         nps(9);
         expect(screen.getByText('Atención de Ana')).toBeInTheDocument();
         expect(screen.getByText('Comida')).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe('SurveyScreen', () => {
         expect(screen.getByText('Ambiente y limpieza')).toBeInTheDocument();
         expect(screen.getByText('Comentario (opcional)')).toBeInTheDocument();
         expect(screen.getByText('Teléfono (opcional, si quieres que te contactemos)')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Enviar' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Enviar opinión' })).toBeInTheDocument();
     });
 
     it('submits answers with stable idempotency key per order', async () => {
@@ -71,7 +71,7 @@ describe('SurveyScreen', () => {
         stars('Comida', 4);
         stars('Tiempo de espera', 3);
         stars('Ambiente y limpieza', 2);
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await flush();
         expect(submit).toHaveBeenCalledTimes(1);
         expect(submit).toHaveBeenCalledWith({ orderId: 102, nps: 10, waiterRating: 5, foodRating: 4, waitRating: 3, ambienceRating: 2, comment: null, contactPhone: null }, surveyKey(102));
@@ -85,7 +85,7 @@ describe('SurveyScreen', () => {
         nps(7);
         fireEvent.change(screen.getByLabelText('Comentario (opcional)'), { target: { value: '  Todo bien  ' } });
         fireEvent.change(screen.getByLabelText('Teléfono (opcional, si quieres que te contactemos)'), { target: { value: '  8888-1234 ' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await flush();
         expect(submit.mock.calls[0][0]).toMatchObject({ comment: 'Todo bien', contactPhone: '8888-1234', waiterRating: null, foodRating: null });
     });
@@ -94,7 +94,7 @@ describe('SurveyScreen', () => {
         const { submit } = setup();
         nps(0);
         fireEvent.change(screen.getByLabelText('Comentario (opcional)'), { target: { value: '   ' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await flush();
         expect(submit.mock.calls[0][0]).toMatchObject({ nps: 0, comment: null, contactPhone: null });
     });
@@ -102,7 +102,7 @@ describe('SurveyScreen', () => {
     it('double tap Enviar submits once', async () => {
         const { submit } = setup({ submit: () => new Promise(() => undefined) });
         nps(8);
-        const send = screen.getByRole('button', { name: 'Enviar' });
+        const send = screen.getByRole('button', { name: 'Enviar opinión' });
         fireEvent.click(send);
         fireEvent.click(send);
         await flush();
@@ -112,7 +112,7 @@ describe('SurveyScreen', () => {
     it('thanks then onDone after 5s', async () => {
         const { onDone } = setup();
         nps(9);
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await flush();
         expect(onDone).not.toHaveBeenCalled();
         await act(async () => {
@@ -128,7 +128,7 @@ describe('SurveyScreen', () => {
     it('a failing submit (domain error) still thanks and locks', async () => {
         const { onDone } = setup({ submit: async () => Promise.reject(Object.assign(new Error('x'), { response: { status: 409 } })) });
         nps(9);
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await flush();
         expect(screen.getByText('¡Gracias por tu opinión!')).toBeInTheDocument();
         await act(async () => {
@@ -141,7 +141,7 @@ describe('SurveyScreen', () => {
         let release: () => void = () => undefined;
         const { onDone } = setup({ submit: () => new Promise((r) => (release = () => r({}))) });
         nps(9);
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await act(async () => {
             await vi.advanceTimersByTimeAsync(5100);
         });
@@ -156,7 +156,7 @@ describe('SurveyScreen', () => {
     it('locks anyway when the submit never settles', async () => {
         const { onDone } = setup({ submit: () => new Promise(() => undefined) });
         nps(9);
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await act(async () => {
             await vi.advanceTimersByTimeAsync(20_000);
         });
@@ -264,7 +264,7 @@ describe('fix round 1', () => {
         });
         render(<SurveyScreen orderId={9} waiterName="Ana" submit={api.submit} onDone={onDone} />);
         nps(9);
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await act(async () => {
             await vi.advanceTimersByTimeAsync(20_000);
         });
@@ -286,7 +286,7 @@ describe('fix round 1', () => {
         const { submit } = setup();
         nps(8);
         fireEvent.change(screen.getByLabelText('Teléfono (opcional, si quieres que te contactemos)'), { target: { value: '12-ab' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await flush();
         expect(submit.mock.calls[0][0]).toMatchObject({ contactPhone: null });
     });
@@ -319,7 +319,7 @@ describe('fix round 1', () => {
         nps(5);
         stars('Comida', 4);
         stars('Comida', 4);
-        fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enviar opinión' }));
         await flush();
         expect(submit.mock.calls[0][0]).toMatchObject({ foodRating: 4 });
     });

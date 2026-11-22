@@ -50,7 +50,7 @@ const today = { availableActions: ['CHECK_IN', 'CHECK_OUT'], blockingIssue: null
 describe('AccountHome', () => {
     it('shows the primary mark button from availableActions and opens punch', async () => {
         renderHome(linked, hrWith(today));
-        const btn = await screen.findByRole('button', { name: 'Entrada' });
+        const btn = await screen.findByRole('button', { name: 'Marcar entrada' });
         fireEvent.click(btn);
         expect(screen.getByTestId('where')).toHaveTextContent('punch');
     });
@@ -75,12 +75,12 @@ describe('AccountHome', () => {
     it('PENDING face enrollment replaces the mark button', async () => {
         renderHome(linked, hrWith(today, { biometricStatus: vi.fn().mockResolvedValue({ status: 'PENDING' }) }));
         expect(await screen.findByText('Registro facial pendiente de aprobación')).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Entrada' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Marcar entrada' })).toBeNull();
     });
 
     it('home hides Por aprobar for non-admin', async () => {
         renderHome(linked, hrWith(today));
-        await screen.findByRole('button', { name: 'Entrada' });
+        await screen.findByRole('button', { name: 'Marcar entrada' });
         expect(screen.queryByText('Por aprobar')).toBeNull();
     });
 
@@ -133,7 +133,7 @@ describe('AccountHome', () => {
             }),
         });
         renderHome(linked, hr);
-        fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancelar solicitud' }));
         const confirm = screen.getByRole('button', { name: 'Confirmar cancelación' });
         expect(confirm).toBeDisabled();
         fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Ya no la necesito' } });
@@ -146,7 +146,7 @@ describe('AccountHome', () => {
 
     it('links navigate to sections', async () => {
         renderHome(linked, hrWith(today));
-        await screen.findByRole('button', { name: 'Entrada' });
+        await screen.findByRole('button', { name: 'Marcar entrada' });
         fireEvent.click(screen.getByText('Mi nómina'));
         expect(screen.getByTestId('where')).toHaveTextContent('payroll');
     });
@@ -162,12 +162,12 @@ describe('AccountHome', () => {
         expect(await screen.findByText(/No se pudo cargar tu marcaje/)).toBeInTheDocument();
         expect(screen.getByText('Solicitar')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
-        expect(await screen.findByRole('button', { name: 'Entrada' })).toBeInTheDocument();
+        expect(await screen.findByRole('button', { name: 'Marcar entrada' })).toBeInTheDocument();
     });
 
     it('myWorkforce failing shows an inline error but keeps the other parts', async () => {
         renderHome(linked, hrWith(today, { myWorkforce: vi.fn().mockRejectedValue(new Error('x')) }));
         expect(await screen.findByText(/No se pudo cargar tus permisos y horas extra/)).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Entrada' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Marcar entrada' })).toBeInTheDocument();
     });
 });

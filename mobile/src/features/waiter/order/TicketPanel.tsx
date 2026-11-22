@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Sheet } from '../tables/Sheet';
+import { IconArrowsMaximize, IconChevronRight, IconDots } from '../../../ui/Icon';
 import { ReadyCard } from './ReadyCard';
 import { TicketList, type ListRow } from './TicketList';
 import { EXPANDED_HEIGHT, ROW_HEIGHT, TicketRow } from './TicketRow';
@@ -96,14 +97,16 @@ export const STATE_LABEL: Record<Exclude<LineState, 'new'>, string> = { ready: '
 
 type FooterProps = Pick<TicketPanelProps, 'total' | 'pricing' | 'unsentTotal' | 'sendCount' | 'sending' | 'canEdit' | 'actions' | 'onSend'>;
 
-/** Pinned footer: total, "Enviar a cocina · N" and the secondary actions. Never scrolls with the list. */
+/** Pinned footer: total, one primary "Enviar a cocina · N" and the outlined secondary row (Cobrar | Dividir | ···). Never scrolls with the list. */
 export function TicketFooter({ total, pricing, unsentTotal, sendCount, sending, canEdit, actions, onSend }: FooterProps) {
+    const [moreOpen, setMoreOpen] = useState(false);
+    const showMore = (actions.canDiscount && !!actions.onDiscount) || !!actions.onMore;
     return (
         <footer className="ticket-foot">
             {pricing && pricing.subtotal > 0 && (
                 <div className="ticket-pricing">
                     <div className="ticket-line">
-                        <span className="muted">Subtotal</span>
+                        <span>Subtotal</span>
                         <span>{money(pricing.subtotal)}</span>
                     </div>
                     {pricing.discount > 0 && (
@@ -114,12 +117,12 @@ export function TicketFooter({ total, pricing, unsentTotal, sendCount, sending, 
                     )}
                     {/* IVA is the server field; an order without one shows what is left between subtotal, discount, tip and total. */}
                     <div className="ticket-line">
-                        <span className="muted">IVA</span>
+                        <span>IVA</span>
                         <span>{money(pricing.tax ?? Math.max(0, total - (pricing.subtotal - pricing.discount) - pricing.tip))}</span>
                     </div>
                     {pricing.tip > 0 && (
                         <div className="ticket-line">
-                            <span className="muted">Propina</span>
+                            <span>Propina</span>
                             <span>{money(pricing.tip)}</span>
                         </div>
                     )}
@@ -138,26 +141,53 @@ export function TicketFooter({ total, pricing, unsentTotal, sendCount, sending, 
             )}
             <div className="ticket-secondary">
                 {actions.canPay && (
-                    <button type="button" className="btn" disabled={!actions.onPay} onClick={actions.onPay}>
+                    <button type="button" className="btn btn-outline" disabled={!actions.onPay} onClick={actions.onPay}>
                         Cobrar
                     </button>
                 )}
                 {actions.canSplit && (
-                    <button type="button" className="btn" disabled={!actions.onSplit} onClick={actions.onSplit}>
+                    <button type="button" className="btn btn-outline" disabled={!actions.onSplit} onClick={actions.onSplit}>
                         Dividir
                     </button>
                 )}
-                {actions.canDiscount && (
-                    <button type="button" className="btn" disabled={!actions.onDiscount} onClick={actions.onDiscount}>
-                        Descuento
-                    </button>
-                )}
-                {actions.onMore && (
-                    <button type="button" className="btn icon-btn" aria-label="Más acciones" onClick={actions.onMore}>
-                        ⋯
+                {showMore && (
+                    <button type="button" className="btn btn-outline icon-btn" aria-label="Más acciones" onClick={() => setMoreOpen(true)}>
+                        <IconDots size={20} stroke={1.5} aria-hidden />
                     </button>
                 )}
             </div>
+            {moreOpen && (
+                <Sheet label="Más acciones" onClose={() => setMoreOpen(false)}>
+                    <h2 className="sheet-title">Más acciones</h2>
+                    <div className="more-actions">
+                        {actions.canDiscount && (
+                            <button
+                                type="button"
+                                className="btn btn-ghost"
+                                disabled={!actions.onDiscount}
+                                onClick={() => {
+                                    setMoreOpen(false);
+                                    actions.onDiscount?.();
+                                }}
+                            >
+                                Descuento
+                            </button>
+                        )}
+                        {actions.onMore && (
+                            <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => {
+                                    setMoreOpen(false);
+                                    actions.onMore?.();
+                                }}
+                            >
+                                Acciones de la mesa
+                            </button>
+                        )}
+                    </div>
+                </Sheet>
+            )}
         </footer>
     );
 }
@@ -180,7 +210,14 @@ export function NoteSheet({ initial, onSave, onClose }: { initial: string; onSav
     );
 }
 
-const subOf = (modifiers: string[], notes: string) => [...modifiers, notes].filter(Boolean).join(' · ');
+const SectionCaption = ({ label, count }: { label: string; count: number }) => (
+    <h3 className="ticket-section">
+        <span>{label}</span>
+        <span className="count-pill">{count}</span>
+    </h3>
+);
+
+const subOf =(modifiers: string[], notes: string) => [...modifiers, notes].filter(Boolean).join(' · ');
 
 export function TicketPanel(props: TicketPanelProps) {
     const { title, subtitle, drafts, highlightKey, serverLines, now, error, canEdit, canDeliver, busy, sending } = props;
@@ -205,7 +242,7 @@ export function TicketPanel(props: TicketPanelProps) {
             setScrollReq((r) => ({ key, n: r.n + 1 }));
         };
         if (drafts.length + unsent.length > 0) {
-            out.push({ key: 'h-new', height: 32, node: <h3 className="ticket-section">Nuevo · sin enviar</h3> });
+            out.push({ key: 'h-new', height: 32, node: <SectionCaption label="Nuevo" count={sumQuantity(unsent) + drafts.reduce((n, d) => n + d.quantity, 0)} /> });
         }
         for (const l of drafts) {
             const key = `d:${l.key}`;
@@ -267,18 +304,23 @@ export function TicketPanel(props: TicketPanelProps) {
             const parts = (['ready', 'preparing', 'delivered'] as const).map((s) => ({ s, n: by(s) })).filter((p) => p.n > 0);
             out.push({
                 key: 'sent-card',
-                height: 56 + parts.length * 32,
+                height: 72 + parts.length * 40,
                 node: (
                     <button type="button" className="sent-card" onClick={props.onOpenFull}>
                         <span className="sent-card-head">
                             <strong>{`Enviado · ${sumQuantity(sent)}`}</strong>
-                            <span className="muted" aria-hidden="true">
-                                Ver ›
+                            <span className="muted sent-ver" aria-hidden="true">
+                                Ver
+                                <IconArrowsMaximize size={16} stroke={1.5} />
                             </span>
                         </span>
                         {parts.map((p) => (
-                            <span key={p.s} className="sent-line" data-state={p.s}>
-                                {`${STATE_LABEL[p.s]} · ${p.n}`}
+                            <span key={p.s} className="sent-row" data-state={p.s}>
+                                <i className="sent-dot" aria-hidden="true" />
+                                <span className="sent-line" data-state={p.s}>
+                                    {`${STATE_LABEL[p.s]} · ${p.n}`}
+                                </span>
+                                <IconChevronRight size={16} stroke={1.5} aria-hidden />
                             </span>
                         ))}
                     </button>
@@ -305,8 +347,8 @@ export function TicketPanel(props: TicketPanelProps) {
                     <strong>{title}</strong>
                     <span className="muted">{subtitle}</span>
                 </div>
-                <button type="button" className="btn icon-btn" aria-label="Ver ticket completo" onClick={props.onOpenFull}>
-                    ⤢
+                <button type="button" className="btn btn-ghost icon-btn" aria-label="Ver ticket completo" onClick={props.onOpenFull}>
+                    <IconArrowsMaximize size={20} stroke={1.5} aria-hidden />
                 </button>
             </header>
             {canDeliver && <ReadyCard lines={ready} now={now} busy={busy} onDeliver={props.onDeliver} />}

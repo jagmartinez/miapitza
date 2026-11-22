@@ -68,7 +68,7 @@ export function TableTile({ id, label, state, lines, style, grouped, dimmed, onT
             }}
         >
             {lines.slice(0, 3).map((text, i) => (
-                <span key={i} className={`tile-line${i === 0 ? ` tile-num${numSize(text)}` : ''}`}>
+                <span key={i} className={`tile-line${i === 0 ? ` tile-num${numSize(text)}` : i === 1 ? ' tile-status' : ''}`}>
                     {text}
                 </span>
             ))}

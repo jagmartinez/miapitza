@@ -10,6 +10,8 @@ export interface FloorPlanProps {
     now: number;
     /** When set, only units whose order belongs to this user are drawn. */
     onlyUserId?: number | null;
+    /** When set, only units in this state are drawn (the "Por cobrar" filter). */
+    onlyState?: TableState | null;
     /** Picking mode: returns whether a table may be chosen as the destination. */
     canPick?: (table: PlanTable) => boolean;
     onTap: (table: PlanTable, order: ActiveOrder | undefined, state: TableState) => void;
@@ -20,16 +22,17 @@ export function tileLines(label: string, state: TableState, order: ActiveOrder |
     const waiter = order?.user?.name ?? '';
     if (state === 'free' || !order) return [label, 'Libre'];
     const mins = formatElapsed(elapsedMinutes(order.createdAt, now));
-    const guests = order.guests ? `${order.guests} pers` : '';
-    const status = order.pendingSync ? 'Sin sincronizar' : state === 'ready' ? 'Listo' : state === 'due' ? 'Por cobrar' : '';
-    const second = [status || guests, mins].filter(Boolean).join(' · ');
+    const guests = order.guests ? String(order.guests) : '';
+    // Mockup: "Listo" / "Por cobrar" stand alone (coloured); an ordinary table reads "4 · 38 min".
+    const statusOnly = !order.pendingSync && (state === 'ready' || state === 'due');
+    const second = statusOnly ? (state === 'ready' ? 'Listo' : 'Por cobrar') : [order.pendingSync ? 'Sin sincronizar' : guests, mins].filter(Boolean).join(' · ');
     const lines = [label, second];
     if (waiter) lines.push(waiter);
     return lines;
 }
 
 /** Read-only floor plan scaled to the available width (positions and sizes in canvas units, as percentages). */
-export function FloorPlan({ plan, areaId, orders, now, onlyUserId, canPick, onTap, onLongPress }: FloorPlanProps) {
+export function FloorPlan({ plan, areaId, orders, now, onlyUserId, onlyState, canPick, onTap, onLongPress }: FloorPlanProps) {
     const units = useMemo(
         () => buildUnits(plan.tables.filter((t) => (t.floorAreaId ?? null) === areaId)),
         [plan.tables, areaId],
@@ -41,8 +44,9 @@ export function FloorPlan({ plan, areaId, orders, now, onlyUserId, canPick, onTa
                 if (onlyUserId != null && order?.user?.id !== onlyUserId) return null;
                 const { primary } = unit;
                 const state = tableState(primary, order);
+                if (onlyState != null && state !== onlyState) return null;
                 const grouped = unit.tables.length > 1;
-                const label = grouped ? unit.tables.map((t) => t.number).join('+') : primary.number;
+                const label = grouped ? unit.tables.map((t) => t.number).join(' + ') : primary.number;
                 return (
                     <TableTile
                         key={unit.key}

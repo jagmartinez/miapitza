@@ -92,7 +92,7 @@ describe('CountScreen', () => {
         renderCount(makeSheet());
         await screen.findByText('Bodega Central');
         expect(screen.getByText('Ciego')).toBeInTheDocument();
-        expect(screen.getByText(/Ana Perez · Inicio/)).toBeInTheDocument();
+        expect(screen.getByText(/Ana Perez · desde/)).toBeInTheDocument();
         expect(screen.getByRole('status')).toHaveTextContent('Guardado');
     });
 

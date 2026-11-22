@@ -3,6 +3,8 @@ import { getApiErrorMessage } from '@web/utils/apiError';
 import { isAmbiguousMutationFailure } from '@web/utils/idempotency';
 import { can } from '../../../core/permissions';
 import type { LoginUser } from '../../../core/session';
+import { plural } from '../../../core/text';
+import { IconArrowRight, IconFileInvoice, IconLink } from '../../../ui/Icon';
 import { money } from '../order/orderModel';
 import { Sheet } from './Sheet';
 import { elapsedMinutes, formatElapsed, type ActiveOrder, type PlanTable } from './tableState';
@@ -57,7 +59,7 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
     const inKitchen = items.filter((i) => i.sentAt && i.status !== 'DONE').reduce((sum, i) => sum + num(i.quantity), 0);
     const minutes = elapsedMinutes(order.createdAt, now);
     const chips = [
-        order.guests ? `${order.guests} pers` : null,
+        order.guests ? plural(order.guests, 'persona', 'personas') : null,
         minutes !== null ? formatElapsed(minutes) : null,
         `${products} ${products === 1 ? 'producto' : 'productos'}`,
         `${inKitchen} en cocina`,
@@ -87,17 +89,18 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
     };
 
     return (
-        <Sheet label={`Acciones de la mesa ${table.number}`} onClose={onClose}>
-            <div className="actions-head">
-                <div>
-                    <h2 className="sheet-title">{`Mesa ${table.number} · ${areaName}`}</h2>
-                    {order.user?.name && <p className="muted sheet-sub">{order.user.name}</p>}
-                </div>
+        <Sheet
+            label={`Acciones de la mesa ${table.number}`}
+            title={`Mesa ${table.number}`}
+            subtitle={[areaName, order.user?.name].filter(Boolean).join(' · ')}
+            aside={
                 <div className="actions-total">
-                    <span className="muted">Sin cobrar</span>
                     <strong>{unpaid === null ? '—' : money(unpaid)}</strong>
+                    <span className="muted">sin cobrar</span>
                 </div>
-            </div>
+            }
+            onClose={onClose}
+        >
             <div className="info-chips">
                 {chips.map((c) => (
                     <span key={c} className="info-chip">
@@ -122,19 +125,22 @@ export function TableActionsSheet({ table, areaName, order, user, online, now, l
             {(canTransfer || canGroup || canInvoice) && (
                 <div className="actions-grid">
                     {canTransfer && (
-                        <button type="button" className="btn action-tile" disabled={!online} onClick={() => onAction('transfer')}>
+                        <button type="button" className="btn-ghost action-tile" disabled={!online} onClick={() => onAction('transfer')}>
+                            <IconArrowRight size={20} stroke={1.5} aria-hidden />
                             <span>Trasladar</span>
                             {!online && <small className="muted">requiere conexión</small>}
                         </button>
                     )}
                     {canGroup && (
-                        <button type="button" className="btn action-tile" disabled={!online} onClick={() => onAction('group')}>
+                        <button type="button" className="btn-ghost action-tile" disabled={!online} onClick={() => onAction('group')}>
+                            <IconLink size={20} stroke={1.5} aria-hidden />
                             <span>Unir</span>
                             {!online && <small className="muted">requiere conexión</small>}
                         </button>
                     )}
                     {canInvoice && (
-                        <button type="button" className="btn action-tile" disabled={!online || invoiceBusy} onClick={() => void openInvoice()}>
+                        <button type="button" className="btn-ghost action-tile" disabled={!online || invoiceBusy} onClick={() => void openInvoice()}>
+                            <IconFileInvoice size={20} stroke={1.5} aria-hidden />
                             <span>{invoiceBusy ? 'Abriendo…' : 'Factura'}</span>
                             {!online && <small className="muted">requiere conexión</small>}
                         </button>

@@ -8,11 +8,11 @@
 .tables-head {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 16px;
-    min-height: 64px;
+    gap: 14px;
+    padding: 0 14px;
+    min-height: 56px;
     box-sizing: border-box;
-    border-bottom: 1px solid var(--border);
+    border-bottom: var(--hair) solid var(--line);
 }
 
 .tables-user {
@@ -26,14 +26,169 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    font-size: 13px;
+    font-size: 11px;
+    line-height: 1.25;
 }
 
 .tables-user-text strong {
-    font-size: 15px;
+    font-size: 13px;
+    font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.tables-head .avatar-disc.small {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--surface-3);
+    flex: none;
+}
+
+.tables-sep {
+    width: var(--hair);
+    height: 28px;
+    background: var(--line);
+    flex: none;
+}
+
+.grow {
+    flex: 1;
+}
+
+.tabs {
+    display: flex;
+    gap: 18px;
+    overflow-x: auto;
+}
+
+.tab {
+    min-height: 56px;
+    padding: 0 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    white-space: nowrap;
+}
+
+.tab[aria-selected='true'] {
+    color: var(--text);
+    font-weight: 500;
+    box-shadow: inset 0 -2px 0 var(--text);
+}
+
+.tab-count {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
+    background: var(--surface-2);
+    border-radius: var(--radius-s);
+    padding: 1px 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Small pill used by the ready chip of the order header (OrderScreen). */
+.chip {
+    min-height: 48px;
+    padding: 0 16px;
+    font-size: 15px;
+    color: var(--text);
+    background: transparent;
+    border: var(--hair) solid var(--line-strong);
+    border-radius: 24px;
+}
+
+.chip[aria-pressed='true'] {
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--on-text);
+}
+
+.hchip {
+    min-height: 48px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    font-size: 12px;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    white-space: nowrap;
+}
+
+/* The visible pill is slimmer than the 48dp touch target. */
+.hchip::before {
+    content: '';
+    position: absolute;
+    inset: 7px 0;
+    border: var(--hair) solid var(--line-strong);
+    border-radius: 16px;
+}
+.hchip > * {
+    position: relative;
+    z-index: 1;
+}
+.hchip-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+}
+
+.hchip[aria-pressed='true']::before {
+    background: var(--text);
+    border-color: var(--text);
+}
+.hchip[aria-pressed='true'] {
+    color: var(--on-text);
+    font-weight: 500;
+}
+
+.hchip-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--alert);
+    flex: none;
+}
+
+/* 34px visible square, 48dp hit area. */
+.ib {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+}
+.ib::before {
+    content: '';
+    position: absolute;
+    inset: 7px;
+    background: var(--surface-2);
+    border-radius: var(--radius-m);
+}
+.ib > svg {
+    position: relative;
+}
+
+/* Shared with other screens (order header, ticket): keep. */
+.icon-btn {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    width: 48px;
 }
 
 .avatar-disc.small {
@@ -43,80 +198,17 @@
     flex: none;
 }
 
-.tables-sep {
-    width: 1px;
-    align-self: stretch;
-    background: var(--border);
-}
-
-.grow {
-    flex: 1;
-}
-
-.tabs {
-    display: flex;
-    gap: 4px;
-    overflow-x: auto;
-}
-
-.tab {
-    min-height: 48px;
-    padding: 0 14px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 16px;
-    color: var(--muted);
-    background: transparent;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    white-space: nowrap;
-}
-
-.tab[aria-selected='true'] {
-    color: var(--text);
-    border-bottom-color: var(--text);
-}
-
-.tab-count {
-    font-size: 13px;
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-}
-
-.chip {
-    min-height: 48px;
-    padding: 0 16px;
-    font-size: 15px;
-    color: var(--text);
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 24px;
-}
-
-.chip[aria-pressed='true'] {
-    background: var(--surface-2);
-    border-color: var(--text);
-}
-
-.icon-btn {
-    display: grid;
-    place-items: center;
-    padding: 0;
-    width: 48px;
-}
-
 .pad {
     padding: 12px 16px;
 }
 
+/* No border: grey strip, amber dot, bold "Ver" on the right. */
 .ready-banner {
     display: flex;
     align-items: center;
-    margin: 8px 16px 0;
+    margin: 10px 14px 0;
     background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-m);
 }
 
 .ready-banner-main {
@@ -124,27 +216,41 @@
     min-height: 48px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 10px;
-    padding: 0 14px;
-    font-size: 16px;
+    padding: 0 12px;
+    font-size: 12px;
     color: var(--text);
     background: transparent;
     border: 0;
     text-align: left;
 }
 
-.ready-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--ready);
+.ready-banner-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
+.ready-banner-ver {
+    font-weight: 500;
+}
+
+.ready-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ready);
+    flex: none;
+}
+
+/* Not in the mockup, kept so an unopened notice can still be dismissed: small and muted. */
 .ready-banner-close {
     min-width: 48px;
     min-height: 48px;
-    font-size: 22px;
-    color: var(--muted);
+    display: grid;
+    place-items: center;
+    color: var(--faint);
     background: transparent;
     border: 0;
 }
@@ -167,26 +273,30 @@
     box-sizing: border-box;
     min-width: 48px;
     min-height: 48px;
-    padding: 2px 4px;
+    padding: 4px 6px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1px;
+    gap: 2px;
     overflow: hidden;
+    line-height: 1.2;
+    text-align: center;
     color: var(--text);
-    background: var(--surface);
-    border: 2px solid var(--muted);
-    border-radius: 10px;
-    font-size: clamp(10px, 1.2cqw, 15px);
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-m);
+    font-size: clamp(11px, 1.45cqw, 16px);
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
 }
 
+/* Free tables recede: transparent, nearly invisible outline. */
 .tile[data-state='free'] {
-    border-color: var(--muted);
+    background: transparent;
+    border-color: var(--surface-3);
     color: var(--muted);
 }
 .tile[data-state='occupied'] {
@@ -199,11 +309,6 @@
     border-color: var(--alert);
 }
 
-.tile-grouped {
-    border-radius: 14px;
-    background: var(--surface-2);
-}
-
 .tile-dim {
     opacity: 0.3;
 }
@@ -214,20 +319,31 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 0.85em;
+    font-weight: 400;
+    color: var(--muted);
     font-variant-numeric: tabular-nums;
 }
 
-.tile-num {
-    font-size: 1.5em;
-    font-weight: 600;
+.tile-line.tile-num {
+    font-size: 1em;
+    font-weight: 500;
+    color: inherit;
+}
+
+.tile[data-state='ready'] .tile-status {
+    color: var(--ready);
+}
+.tile[data-state='due'] .tile-status {
+    color: var(--alert);
 }
 
 .tile-num.tile-num-long {
-    font-size: 1.1em;
+    font-size: 0.9em;
 }
 
 .tile-num.tile-num-xlong {
-    font-size: 0.95em;
+    font-size: 0.8em;
 }
 
 .ready-chip {

@@ -139,6 +139,8 @@ export interface ServerLine {
     state: LineState;
     /** When the kitchen finished it (drives "hace X min"). */
     finishedAt: string | null;
+    /** When it went to the kitchen (groups the full ticket by send). */
+    sentAt?: string | null;
 }
 
 export function lineState(item: Json): LineState {
@@ -164,6 +166,7 @@ export function normalizeServerLines(order: unknown): ServerLine[] {
             modifiers: (Array.isArray(i.modifiers) ? i.modifiers : []).map((m: Json) => String(m.modifier?.name ?? m.name ?? '')).filter(Boolean),
             state: lineState(i),
             finishedAt: i.finishedAt ?? null,
+            sentAt: i.sentAt ?? null,
         }));
 }
 
