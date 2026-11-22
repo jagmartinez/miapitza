@@ -14,13 +14,19 @@ export function resultText(result: RecentResult): string {
     if (!result) return '—';
     if ('recount' in result) return `${result.recount} a recontar`;
     if (result.differences === 0) return 'Sin diferencias';
-    return `${result.differences} ${result.differences === 1 ? 'diferencia' : 'diferencias'} · ${money(result.value)}`;
+    return `${result.differences} diferencias · ${money(result.value)}`;
 }
 
 export function startedText(iso: string): string {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';
     return d.toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Date only, for the warehouse cards. */
+export function dayText(iso: string): string {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export const initialsOf = (name: string): string =>

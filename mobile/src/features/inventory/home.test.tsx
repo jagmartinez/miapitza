@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { InventoryHome } from './InventoryHome';
 import { NewCountScreen } from './NewCountScreen';
@@ -64,7 +65,7 @@ describe('InventoryHome', () => {
         const rows = await screen.findAllByTestId('recent-row');
         expect(rows[0]).toHaveTextContent('Sin diferencias');
         expect(rows[1]).toHaveTextContent(/3 diferencias · C\$\s?1,250/);
-        expect(rows[2].querySelectorAll('td')[4].textContent).toBe('—');
+        expect(rows[2].querySelectorAll('td')[3].textContent).toBe('—');
     });
 
     it('Devuelto sheet appears as En curso with Recontar count', async () => {
@@ -85,6 +86,23 @@ describe('InventoryHome', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
         await screen.findByTestId('open-sheet');
         expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('recent table has Bodega, Fecha · quién, Productos, Resultado, Estado and no Alcance', async () => {
+        renderHome([sheet({ id: 2, status: 'APPROVED', displayStatus: 'APROBADO', startedByName: 'Luis', productCount: 33, result: { differences: 1, value: 20 } })]);
+        const row = await screen.findByTestId('recent-row');
+        expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Bodega', 'Fecha · quién', 'Productos', 'Resultado', 'Estado']);
+        expect(row.querySelectorAll('td')[1].textContent).toMatch(/· Luis$/);
+        expect(row.querySelectorAll('td')[2].textContent).toBe('33');
+        expect(row).toHaveTextContent(/1 diferencias · C\$\s?20/);
+    });
+
+    it('En curso card has a progress bar', async () => {
+        renderHome([sheet({ productCount: 40, countedCount: 10 })]);
+        const bar = await screen.findByRole('progressbar');
+        expect(bar).toHaveAttribute('aria-valuenow', '10');
+        expect(bar).toHaveAttribute('aria-valuemax', '40');
+        expect((bar.firstChild as HTMLElement).style.width).toBe('25%');
     });
 
     it('header: Nuevo conteo, lock, and Mesas only with onBack', async () => {
@@ -137,10 +155,10 @@ describe('NewCountScreen', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Elegir categorías' }));
         const grid = await screen.findByTestId('category-grid');
         expect(api.categories).toHaveBeenCalledWith(1);
-        expect(within(grid).getAllByRole('button')).toHaveLength(3);
+        expect(within(grid).getAllByRole('checkbox')).toHaveLength(3);
         expect(screen.getByRole('button', { name: 'Seleccionar todas' })).toBeInTheDocument();
         expect(screen.getByText('3 categorías · 35 productos')).toBeInTheDocument();
-        fireEvent.click(within(grid).getByRole('button', { name: /Carnes/ }));
+        fireEvent.click(within(grid).getByRole('checkbox', { name: /Carnes/ }));
         expect(screen.getByText('2 categorías · 15 productos')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Seleccionar todas' }));
         expect(screen.getByText('3 categorías · 35 productos')).toBeInTheDocument();
@@ -160,11 +178,49 @@ describe('NewCountScreen', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Bodega Central/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Elegir categorías' }));
         const grid = await screen.findByTestId('category-grid');
-        fireEvent.click(within(grid).getByRole('button', { name: /Lácteos/ }));
-        fireEvent.click(within(grid).getByRole('button', { name: /Carnes/ }));
+        fireEvent.click(within(grid).getByRole('checkbox', { name: /Lácteos/ }));
+        fireEvent.click(within(grid).getByRole('checkbox', { name: /Carnes/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Iniciar conteo' }));
         await waitFor(() => expect(onStarted).toHaveBeenCalledWith(77));
         expect(api.start).toHaveBeenCalledWith({ warehouseId: 1, categoryIds: [null] });
+    });
+
+    it('warehouse cards show icon, product count and last count date', async () => {
+        renderNew([wh({ lastCountAt: '2026-11-10T12:00:00.000Z' }), wh({ id: 2, name: 'Bar', lastCountAt: null })]);
+        const card = await screen.findByRole('button', { name: /Bodega Central/ });
+        expect(card).toHaveTextContent('40 productos');
+        expect(card).toHaveTextContent(/Último conteo .*2026/);
+        expect(card.querySelector('.inv-wh-icon')).not.toBeNull();
+        expect(screen.getByRole('button', { name: /Bar/ })).toHaveTextContent('Sin conteos');
+    });
+
+    it('category cells show a visible checkbox state', async () => {
+        renderNew([wh({})]);
+        fireEvent.click(await screen.findByRole('button', { name: /Bodega Central/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Elegir categorías' }));
+        const grid = await screen.findByTestId('category-grid');
+        const carnes = within(grid).getByRole('checkbox', { name: /Carnes/ });
+        expect(carnes).toHaveAttribute('aria-checked', 'true');
+        expect(carnes.querySelector('.inv-check')).toHaveTextContent('✓');
+        fireEvent.click(carnes);
+        expect(carnes).toHaveAttribute('aria-checked', 'false');
+        expect(carnes.querySelector('.inv-check')).toHaveTextContent('');
+    });
+
+    it('compact layout: choices scroll on their own and the summary with Iniciar conteo stays out of that scroll', async () => {
+        renderNew([wh({})]);
+        const button = await screen.findByRole('button', { name: 'Iniciar conteo' });
+        const aside = button.closest('aside') as HTMLElement;
+        const main = document.querySelector('.inv-new-main') as HTMLElement;
+        expect(aside.parentElement).toBe(main.parentElement);
+        expect(main.contains(aside)).toBe(false);
+        expect(main.parentElement).toHaveClass('inv-body', 'inv-new');
+        const css = readFileSync('src/features/inventory/inventory.css', 'utf8');
+        const rule = (sel: string) => css.match(new RegExp(`\n${sel.replace('.', '\\.')} \\{([^}]*)\\}`))?.[1] ?? '';
+        expect(rule('.inv-new')).toMatch(/overflow:\s*hidden/);
+        expect(rule('.inv-new-main')).toMatch(/overflow-y:\s*auto/);
+        expect(rule('.inv-summary')).toMatch(/flex:\s*none/);
+        expect(css).toMatch(/@media \(max-height: 520px\)/);
     });
 
     it('Iniciar conteo disabled with zero categories', async () => {
@@ -172,7 +228,7 @@ describe('NewCountScreen', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Bodega Central/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Elegir categorías' }));
         const grid = await screen.findByTestId('category-grid');
-        for (const b of within(grid).getAllByRole('button')) fireEvent.click(b);
+        for (const b of within(grid).getAllByRole('checkbox')) fireEvent.click(b);
         expect(screen.getByText('0 categorías · 0 productos')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Iniciar conteo' })).toBeDisabled();
     });

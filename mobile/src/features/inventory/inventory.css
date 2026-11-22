@@ -165,11 +165,15 @@
 .inv-new {
     flex-direction: row;
     align-items: stretch;
+    overflow: hidden;
 }
 
+/* The choices scroll on their own; the summary with "Iniciar conteo" never leaves the screen. */
 .inv-new-main {
     flex: 1;
     min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -177,6 +181,8 @@
 
 .inv-summary {
     flex: none;
+    min-height: 0;
+    overflow-y: auto;
     width: 260px;
     box-sizing: border-box;
     display: flex;
@@ -259,8 +265,56 @@
     border-radius: 12px;
 }
 
-.inv-cat[aria-pressed='true'] {
+.inv-cat {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+}
+
+.inv-cat[aria-checked='true'] {
     border-color: var(--ready);
+}
+
+.inv-cat-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.inv-check {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--muted);
+    border-radius: 4px;
+    font-size: 15px;
+    line-height: 1;
+}
+
+.inv-cat[aria-checked='true'] .inv-check {
+    background: var(--ready);
+    border-color: var(--ready);
+    color: #14110a;
+}
+
+.inv-wh-icon {
+    font-size: 20px;
+    color: var(--muted);
+}
+
+.inv-progress {
+    height: 6px;
+    margin-top: 4px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.inv-progress-fill {
+    height: 100%;
+    background: var(--ready);
 }
 
 @media (max-height: 520px) {
@@ -276,5 +330,10 @@
 
     .inv-summary {
         padding: 8px 12px;
+        gap: 6px;
+    }
+
+    .inv-summary h2 {
+        margin: 0;
     }
 }

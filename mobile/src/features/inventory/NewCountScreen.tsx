@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { InventoryApi } from './inventoryApi';
 import { OfflineError } from './inventoryApi';
+import { dayText } from './inventoryFormat';
 import { COUNT_ERROR, type CountWarehouse, type WarehouseCategory } from './inventoryTypes';
 import './inventory.css';
 
@@ -137,8 +138,12 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
                                         return (
                                             <div key={w.id} className="inv-wh-card" data-selected={w.id === warehouseId} data-disabled={review}>
                                                 <button type="button" className="inv-wh-pick" aria-pressed={w.id === warehouseId} disabled={review || draft} onClick={() => choose(w)}>
+                                                    <span className="inv-wh-icon" aria-hidden="true">
+                                                        ▦
+                                                    </span>
                                                     <strong>{w.name}</strong>
                                                     <span className="muted">{w.productCount} productos</span>
+                                                    <span className="muted">{w.lastCountAt ? `Último conteo ${dayText(w.lastCountAt)}` : 'Sin conteos'}</span>
                                                     {review && <span className="inv-badge inv-badge-en_revision">En revisión</span>}
                                                 </button>
                                                 {draft && w.openSheet && (
@@ -178,9 +183,14 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
                                         </button>
                                         <div className="inv-cats" data-testid="category-grid">
                                             {categories.map((c) => (
-                                                <button key={keyOf(c)} type="button" className="inv-cat" aria-pressed={picked.has(keyOf(c))} onClick={() => toggle(keyOf(c))}>
-                                                    <strong>{c.name}</strong>
-                                                    <span className="muted">{c.productCount} productos</span>
+                                                <button key={keyOf(c)} type="button" role="checkbox" aria-checked={picked.has(keyOf(c))} className="inv-cat" onClick={() => toggle(keyOf(c))}>
+                                                    <span className="inv-check" aria-hidden="true">
+                                                        {picked.has(keyOf(c)) ? '✓' : ''}
+                                                    </span>
+                                                    <span className="inv-cat-text">
+                                                        <strong>{c.name}</strong>
+                                                        <span className="muted">{c.productCount} productos</span>
+                                                    </span>
                                                 </button>
                                             ))}
                                         </div>

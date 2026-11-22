@@ -97,6 +97,9 @@ export function InventoryHome({ api, user, onNew, onContinue, onSwitchUser, onBa
                                                     {s.countedCount} de {s.productCount} contados
                                                     {s.result && 'recount' in s.result ? ` · ${resultText(s.result)}` : ''}
                                                 </span>
+                                                <div className="inv-progress" role="progressbar" aria-label="Avance del conteo" aria-valuemin={0} aria-valuemax={s.productCount} aria-valuenow={s.countedCount}>
+                                                    <div className="inv-progress-fill" style={{ width: `${s.productCount > 0 ? Math.min(100, Math.round((s.countedCount / s.productCount) * 100)) : 0}%` }} />
+                                                </div>
                                             </div>
                                             {s.displayStatus === 'DEVUELTO' && <span className="inv-badge inv-badge-returned">Devuelto</span>}
                                             <button type="button" className="btn btn-primary" onClick={() => onContinue(s.id)}>
@@ -125,22 +128,24 @@ export function InventoryHome({ api, user, onNew, onContinue, onSwitchUser, onBa
                                     <thead>
                                         <tr>
                                             <th>Bodega</th>
-                                            <th>Inicio</th>
-                                            <th>Alcance</th>
-                                            <th>Estado</th>
+                                            <th>Fecha · quién</th>
+                                            <th>Productos</th>
                                             <th>Resultado</th>
+                                            <th>Estado</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {rows.map((s) => (
                                             <tr key={s.id} data-testid="recent-row">
                                                 <td>{s.warehouseName}</td>
-                                                <td>{startedText(s.startedAt)}</td>
-                                                <td>{s.scopeLabel}</td>
+                                                <td>
+                                                    {startedText(s.startedAt)} · {s.startedByName}
+                                                </td>
+                                                <td>{s.productCount}</td>
+                                                <td>{resultText(s.result)}</td>
                                                 <td>
                                                     <span className={`inv-badge inv-badge-${s.displayStatus.toLowerCase()}`}>{STATUS_LABEL[s.displayStatus]}</span>
                                                 </td>
-                                                <td>{resultText(s.result)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
