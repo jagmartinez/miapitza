@@ -157,6 +157,7 @@ model Company {
   kitchenNotifications            KitchenNotification[]
   operationalDevices              OperationalDevice[]
   surveyResponses                 SurveyResponse[]
+  inventoryCountSheets            InventoryCountSheet[]
 }
 
 enum CostingMethod {
@@ -233,6 +234,7 @@ model Branch {
   kitchenNotifications            KitchenNotification[]
   operationalDevices              OperationalDevice[]
   surveyResponses                 SurveyResponse[]
+  inventoryCountSheets            InventoryCountSheet[]
   travelRequests                  HrTravelRequest[]
   inventoryWarehouseRoutes        InventoryWarehouseRoute[]
   promotionBranches               PromotionBranch[]
@@ -451,6 +453,11 @@ model User {
   kitchenOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceKitchenUser")
   createdOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceCreatedBy")
   waiterSurveyResponses             SurveyResponse[]                   @relation("SurveyWaiter")
+  countSheetsStarted                InventoryCountSheet[]              @relation("CountStartedBy")
+  countSheetsSubmitted              InventoryCountSheet[]              @relation("CountSubmittedBy")
+  countSheetsApproved               InventoryCountSheet[]              @relation("CountApprovedBy")
+  countSheetsRejected               InventoryCountSheet[]              @relation("CountRejectedBy")
+  countLinesCounted                 InventoryCountLine[]               @relation("CountLineCountedBy")
   revokedOperationalDevices         OperationalDevice[]                @relation("OperationalDeviceRevokedBy")
   cashShifts                        CashShift[]                        @relation("CashShiftOpenedBy")
   cashShiftsClosed                  CashShift[]                        @relation("CashShiftClosedBy")
@@ -3420,6 +3427,7 @@ model Category {
   products                 Product[] // Categories for inventory products too
   inventoryWarehouseRoutes InventoryWarehouseRoute[]
   promotionTargets         PromotionTarget[]
+  inventoryCountLines      InventoryCountLine[]
 
   @@unique([companyId, name])
   @@unique([companyId, codePrefix])
@@ -3594,6 +3602,7 @@ model Product {
 
   stocks                   Stock[]
   inventoryMovements       InventoryMovement[]
+  inventoryCountLines      InventoryCountLine[]
   inventoryBatches         InventoryBatch[]
   purchaseOrderItems       PurchaseOrderItem[]
   recipes                  Recipe[]
@@ -3682,6 +3691,7 @@ model Warehouse {
   fiscalInvoiceCancellations FiscalInvoiceCancellation[]
   settlementPayments         Payment[]                   @relation("PaymentSettlementWarehouse")
   inventoryRoutes            InventoryWarehouseRoute[]
+  inventoryCountSheets       InventoryCountSheet[]
 
   @@unique([companyId, code])
   @@unique([companyId, branchId, name])
@@ -3780,6 +3790,7 @@ model InventoryMovement {
   openedBatches       InventoryBatch[]    @relation("InventoryMovementBatches")
   costHistory         ProductCostHistory? @relation("InventoryMovementCostHistory")
   reversedCostHistory ProductCostHistory? @relation("InventoryMovementCostHistoryReversal")
+  countLines          InventoryCountLine[]
 
   @@unique([reversalOfId], map: "InvMove_reversalOf_key")
   @@index([productId])
@@ -5316,4 +5327,83 @@ model SurveyResponse {
   @@index([companyId, branchId, createdAt])
   @@index([waiterUserId, createdAt])
   @@index([operationalDeviceId])
+}
+
+// Blind inventory count (Android app, phase 5b). One open sheet per warehouse:
+// openWarehouseId = warehouseId while DRAFT/SUBMITTED, NULL once APPROVED or
+// REJECTED, so the unique index serialises concurrent starts.
+enum InventoryCountStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model InventoryCountSheet {
+  id               Int                  @id @default(autoincrement())
+  companyId        Int
+  branchId         Int?
+  warehouseId      Int
+  status           InventoryCountStatus @default(DRAFT)
+  scopeCategoryIds Json?
+  openWarehouseId  Int?                 @unique
+  startedById      Int
+  startedAt        DateTime             @default(now())
+  submittedById    Int?
+  submittedAt      DateTime?
+  returnedAt       DateTime?
+  returnNote       String?              @db.VarChar(500)
+  approvedById     Int?
+  approvedAt       DateTime?
+  rejectedById     Int?
+  rejectedAt       DateTime?
+  rejectReason     String?              @db.VarChar(500)
+
+  company     Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch      Branch?              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse            @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  startedBy   User                 @relation("CountStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
+  submittedBy User?                @relation("CountSubmittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
+  approvedBy  User?                @relation("CountApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  rejectedBy  User?                @relation("CountRejectedBy", fields: [rejectedById], references: [id], onDelete: Restrict)
+  lines       InventoryCountLine[]
+
+  @@index([companyId, branchId, status])
+  @@index([warehouseId, status])
+  @@index([startedById])
+  @@index([submittedById])
+  @@index([approvedById])
+  @@index([rejectedById])
+  @@index([branchId])
+}
+
+model InventoryCountLine {
+  id                  Int       @id @default(autoincrement())
+  sheetId             Int
+  productId           Int
+  categoryId          Int?
+  unit                String?   @db.VarChar(20)
+  countedQuantity     Decimal?  @db.Decimal(18, 6)
+  countedBaseQuantity Decimal?  @db.Decimal(18, 6)
+  expectedAtCount     Decimal?  @db.Decimal(18, 6)
+  clientCountedAt     DateTime?
+  countedById         Int?
+  countedAt           DateTime?
+  notCounted          Boolean   @default(false)
+  recountRequested    Boolean   @default(false)
+  previousCountedBase Decimal?  @db.Decimal(18, 6)
+  movementId          Int?
+  adjustmentValue     Decimal?  @db.Decimal(18, 2)
+
+  sheet     InventoryCountSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  product   Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  category  Category?           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  countedBy User?               @relation("CountLineCountedBy", fields: [countedById], references: [id], onDelete: Restrict)
+  movement  InventoryMovement?  @relation(fields: [movementId], references: [id], onDelete: Restrict)
+
+  @@unique([sheetId, productId])
+  @@index([productId])
+  @@index([categoryId])
+  @@index([countedById])
+  @@index([movementId])
 }

@@ -108,6 +108,7 @@ async function main() {
     const kdsPermissions = ['kds.view', 'kds.manage'];
     const devicePermissions = ['devices.manage'];
     const surveyPermissions = ['surveys.view'];
+    const inventoryCountPermissions = ['inventory.count'];
     const operationalPermissions = [
         'orders.view',
         'orders.create',
@@ -131,6 +132,7 @@ async function main() {
         ...kdsPermissions,
         ...devicePermissions,
         ...surveyPermissions,
+        ...inventoryCountPermissions,
         ...operationalPermissions,
         ...hrPermissions,
     ];
@@ -152,7 +154,7 @@ async function main() {
         SUPERADMIN: permissions,
         // Branch administrators receive only non-sensitive HR visibility by
         // default. Employee mutation/read and geofence mutation remain explicit.
-        ADMIN: [...basePermissions, ...tablePermissions, ...kdsPermissions, ...devicePermissions, ...surveyPermissions, ...operationalPermissions, 'hr.dashboard.read', 'hr.catalog.read', 'hr.geofence.read', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
+        ADMIN: [...basePermissions, ...tablePermissions, ...kdsPermissions, ...devicePermissions, ...surveyPermissions, ...inventoryCountPermissions, ...operationalPermissions, 'hr.dashboard.read', 'hr.catalog.read', 'hr.geofence.read', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Cashier: manage orders + read-only menu/reports
         CAJERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports', 'tables.map.view', 'tables.consolidate', 'orders.view', 'orders.create', 'orders.deliver', 'invoices.issue', 'invoices.view', 'payments.process', 'orders.discount.apply', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Waiter: take and edit orders
@@ -160,9 +162,9 @@ async function main() {
         // Kitchen: read orders only
         COCINA: ['view_orders', 'view_menu', 'orders.view', ...kdsPermissions, 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Chef: kitchen execution plus recipe/menu and stock maintenance.
-        CHEF: ['view_orders', 'view_menu', 'create_menu', 'edit_menu', 'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports', 'orders.view', ...kdsPermissions, 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
+        CHEF: ['view_orders', 'view_menu', 'create_menu', 'edit_menu', 'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports', 'orders.view', ...kdsPermissions, ...inventoryCountPermissions, 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Warehouse: inventory custody without access to users, orders or destructive catalog operations.
-        BODEGA: ['view_menu', 'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports', 'orders.view', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
+        BODEGA: ['view_menu', 'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports', 'orders.view', ...inventoryCountPermissions, 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Host/receptionist: read orders + menu
         HOST: ['view_orders', 'view_menu', 'tables.map.view', 'tables.edit', 'tables.status.manage', 'tables.group.manage', 'orders.view', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
     };

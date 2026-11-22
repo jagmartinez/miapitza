@@ -8,6 +8,7 @@ import { generateApiKey } from '../utils/apiKeyGenerator';
 import hrRoutes from './hr.routes';
 import operationalDeviceRoutes from './operational-device.routes';
 import surveyRoutes from './survey.routes';
+import inventoryCountRoutes from './inventory-count.routes';
 import { createFaceVerificationProvider } from '../services/hr-face-provider';
 import { checkStorageReadiness } from '../services/storage-identity.service';
 
@@ -268,6 +269,7 @@ v1.use(globalLimiter);
 v1.use('/hr', hrRoutes);
 v1.use('/operational-devices', operationalDeviceRoutes);
 v1.use('/surveys', surveyRoutes);
+v1.use('/inventory-counts', inventoryCountRoutes);
 
 // ── API info endpoint ──
 v1.get('/', (_req: Request, res: Response) => {

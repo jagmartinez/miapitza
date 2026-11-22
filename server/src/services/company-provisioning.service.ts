@@ -35,6 +35,7 @@ const TABLE_PERMISSIONS = [
 const KDS_PERMISSIONS = ['kds.view', 'kds.manage'];
 const DEVICE_PERMISSIONS = ['devices.manage'];
 const SURVEY_PERMISSIONS = ['surveys.view'];
+const INVENTORY_COUNT_PERMISSIONS = ['inventory.count'];
 
 const OPERATIONAL_PERMISSIONS = [
     'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver',
@@ -66,7 +67,7 @@ const TENANT_ADMIN_HR = [
 
 const ROLE_PERMISSION_MAP: Record<string, string[]> = {
     [ROLES.ADMIN]: [
-        ...BASE_PERMISSIONS, ...TABLE_PERMISSIONS, ...KDS_PERMISSIONS, ...DEVICE_PERMISSIONS, ...SURVEY_PERMISSIONS, ...OPERATIONAL_PERMISSIONS,
+        ...BASE_PERMISSIONS, ...TABLE_PERMISSIONS, ...KDS_PERMISSIONS, ...DEVICE_PERMISSIONS, ...SURVEY_PERMISSIONS, ...INVENTORY_COUNT_PERMISSIONS, ...OPERATIONAL_PERMISSIONS,
         ...TENANT_ADMIN_HR, ...SELF_SERVICE_HR,
     ],
     [ROLES.CAJERO]: [
@@ -86,11 +87,11 @@ const ROLE_PERMISSION_MAP: Record<string, string[]> = {
     [ROLES.CHEF]: [
         'view_orders', 'view_menu', 'create_menu', 'edit_menu',
         'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports',
-        'orders.view', ...KDS_PERMISSIONS, ...SELF_SERVICE_HR,
+        'orders.view', ...KDS_PERMISSIONS, ...INVENTORY_COUNT_PERMISSIONS, ...SELF_SERVICE_HR,
     ],
     [ROLES.BODEGA]: [
         'view_menu', 'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports',
-        'orders.view', ...SELF_SERVICE_HR,
+        'orders.view', ...INVENTORY_COUNT_PERMISSIONS, ...SELF_SERVICE_HR,
     ],
     [ROLES.HOST]: [
         'view_orders', 'view_menu', 'tables.map.view', 'tables.edit', 'tables.status.manage', 'tables.group.manage',
