@@ -27,7 +27,8 @@
     color: var(--muted);
 }
 
-.field input {
+.field input,
+.field select {
     min-height: 48px;
     box-sizing: border-box;
     padding: 0 12px;
