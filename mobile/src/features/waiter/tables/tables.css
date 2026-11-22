@@ -222,6 +222,14 @@
     font-weight: 600;
 }
 
+.tile-num.tile-num-long {
+    font-size: 1.1em;
+}
+
+.tile-num.tile-num-xlong {
+    font-size: 0.95em;
+}
+
 .ready-chip {
     display: inline-flex;
     align-items: center;

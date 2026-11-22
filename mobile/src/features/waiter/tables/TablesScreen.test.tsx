@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { TablesScreen } from './TablesScreen';
-import { makeApi, makeRealtime, result, userSession, type FakeTablesApi } from './testkit';
+import { makeApi, makeRealtime, planData, result, userSession, type FakeTablesApi } from './testkit';
+import { numSize } from './TableTile';
 
 function setup(opts: { api?: FakeTablesApi; permissions?: string[] } = {}) {
     const api = opts.api ?? makeApi();
@@ -52,6 +53,22 @@ describe('TablesScreen', () => {
         fireEvent.click(screen.getByRole('tab', { name: 'Terraza 2' }));
         expect(screen.getByTestId('tile-5')).toBeInTheDocument();
         expect(screen.queryByTestId('tile-1')).toBeNull();
+    });
+
+    it('opens on the first area that has tables and says when an area is empty', async () => {
+        const plan = { ...planData, areas: [{ id: 9, name: 'Salón 2', kind: 'DINING' }, ...planData.areas] };
+        setup({ api: makeApi({ floorPlan: vi.fn().mockResolvedValue(result(plan)) }) });
+        await screen.findByTestId('tile-1');
+        expect(screen.getByRole('tab', { name: 'Salón 5' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.queryByText('Esta área no tiene mesas.')).toBeNull();
+        fireEvent.click(screen.getByRole('tab', { name: 'Salón 2 0' }));
+        expect(screen.getByText('Esta área no tiene mesas.')).toBeInTheDocument();
+    });
+
+    it('long table names shrink instead of being cut', () => {
+        expect(numSize('12')).toBe('');
+        expect(numSize('FIL1MES1')).toBe(' tile-num-long');
+        expect(numSize('TERRAZA-12')).toBe(' tile-num-xlong');
     });
 
     it('header shows the branch and the active table count', async () => {

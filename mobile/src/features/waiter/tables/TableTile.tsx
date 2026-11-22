@@ -68,10 +68,17 @@ export function TableTile({ id, label, state, lines, style, grouped, dimmed, onT
             }}
         >
             {lines.slice(0, 3).map((text, i) => (
-                <span key={i} className={`tile-line${i === 0 ? ' tile-num' : ''}`}>
+                <span key={i} className={`tile-line${i === 0 ? ` tile-num${numSize(text)}` : ''}`}>
                     {text}
                 </span>
             ))}
         </button>
     );
+}
+
+/** Long table names ("FIL1MES1") shrink instead of being cut to "FIL1M…": the waiter must tell tables apart. */
+export function numSize(name: string): string {
+    if (name.length > 8) return ' tile-num-xlong';
+    if (name.length > 5) return ' tile-num-long';
+    return '';
 }

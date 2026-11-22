@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { plural } from '../../../core/text';
 import { getApiErrorMessage } from '@web/utils/apiError';
 import { can } from '../../../core/permissions';
 import type { Realtime } from '../../../core/realtime';
@@ -494,7 +495,7 @@ export function OrderScreen(props: OrderScreenProps) {
                 <ProductGrid products={shown} quantities={quantities} promos={promoMap} disabled={!canEdit || !draft.loaded || draft.sending} busyId={loadingId} onTap={(p) => void tap(p)} onHold={(p) => void hold(p)} />
                 <TicketPanel
                     title="Ticket"
-                    subtitle={`${tableLabel}${guests != null ? ` · ${guests} pers` : ''} · ${productCount} productos`}
+                    subtitle={`${tableLabel}${guests != null ? ` · ${guests} pers` : ''} · ${plural(productCount, 'producto', 'productos')}`}
                     drafts={draft.lines}
                     highlightKey={draft.highlightKey}
                     serverLines={serverLines}

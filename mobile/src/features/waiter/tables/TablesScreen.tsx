@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { plural } from '../../../core/text';
 import { getApiErrorMessage } from '@web/utils/apiError';
 import { can, isCashier } from '../../../core/permissions';
 import type { Realtime } from '../../../core/realtime';
@@ -190,7 +191,8 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
         return list;
     }, [plan]);
 
-    const currentTab = tabs.find((t) => t.id === areaId) ?? tabs[0];
+    // Until the user picks one, open on the first area that has tables: an empty first area would show a blank floor.
+    const currentTab = tabs.find((t) => t.id === areaId) ?? tabs.find((t) => t.count > 0) ?? tabs[0];
     const activeCount = useMemo(() => {
         if (!plan) return 0;
         return plan.tables.filter((t) => tableState(t, byTable.get(t.id)) !== 'free').length;
@@ -262,7 +264,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                     </span>
                     <div className="tables-user-text">
                         <strong>{session.user.name}</strong>
-                        <span className="muted">{plan ? `${branchName} · ${activeCount} mesas activas` : 'Cargando…'}</span>
+                        <span className="muted">{plan ? `${branchName} · ${plural(activeCount, 'mesa activa', 'mesas activas')}` : 'Cargando…'}</span>
                     </div>
                 </div>
                 <span className="tables-sep" aria-hidden="true" />
@@ -356,6 +358,7 @@ export function TablesScreen({ session, api, realtime, queue, invalidate, onOpen
                         onLongPress={handleLongPress}
                     />
                 )}
+                {plan && currentTab && currentTab.count === 0 && <p className="muted pad">Esta área no tiene mesas.</p>}
                 {plan && !currentTab && !error && <p className="muted pad">No hay mesas configuradas.</p>}
             </div>
 
