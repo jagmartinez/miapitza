@@ -143,7 +143,7 @@ describe('kitchen mode', () => {
         let n = 0;
         const api = fakeApi((config) =>
             pathOf(config) === 'POST /auth/device-login'
-                ? { data: { success: true, data: { token: `k-${++n}`, user: kitchenUser } } }
+                ? { data: { success: true, data: { token: `k-${++n}`, user: kitchenUser, branch: { id: 1, name: 'Bamboo' } } } }
                 : { data: { success: true, data: [] } },
         );
         const { services } = build();
@@ -160,9 +160,10 @@ describe('kitchen mode', () => {
         await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'false'));
         expect(home).toBeInTheDocument();
         expect(screen.getByTestId('kitchen-home')).toBe(home); // same instance, never unmounted
-        await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'true'), { timeout: 4000 });
+        await waitFor(() => expect(home).toHaveAttribute('data-has-session', 'true'), { timeout: 8000 });
         expect(screen.getByTestId('kitchen-home')).toBe(home);
         expect(n).toBe(2);
+        expect(await screen.findByText('Cocina Bamboo')).toBeInTheDocument();
     });
 });
 

@@ -15,5 +15,7 @@ export default defineConfig({
         environment: 'jsdom',
         globals: true,
         setupFiles: ['./src/test/setup.ts'],
+        // Same reason as asyncUtilTimeout in setup.ts: a test that loads a lazy chunk and waits on real timers (the kitchen relogin gap is 2 s).
+        testTimeout: 20_000,
     },
 });

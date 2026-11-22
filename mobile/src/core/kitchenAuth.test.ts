@@ -35,6 +35,18 @@ describe('kitchenAuth', () => {
         auth.stop();
     });
 
+    it('keeps the branch name from the device login; an older server leaves it untouched', async () => {
+        const { auth, sessions } = setup([ok('k-1', { branch: { id: 1, name: 'Bamboo' } }), ok('k-2')]);
+        await sessions.saveDeviceToken('dev-1');
+        await auth.start();
+        expect(await sessions.branchName()).toBe('Bamboo');
+        await sessions.clear();
+        appEvents.emit('session-expired');
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(await sessions.branchName()).toBe('Bamboo');
+        auth.stop();
+    });
+
     it('silently re-runs device-login on session-expired', async () => {
         const { auth, sessions, calls } = setup([ok('k-1'), ok('k-2')]);
         await sessions.saveDeviceToken('dev-1');

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AxiosError } from 'axios';
 import { PinScreen } from './PinScreen';
 import type { PinApi } from './pinApi';
@@ -37,6 +37,15 @@ describe('PinScreen', () => {
         await ready(makeApi());
         expect(screen.getByRole('button', { name: /Ana Perez/ })).toHaveTextContent('AP');
         expect(screen.getByText('LG')).toBeInTheDocument();
+    });
+
+    it('titles the screen with the branch from the roster, or from the prop; falls back without it', async () => {
+        await ready(makeApi({ branchName: vi.fn().mockResolvedValue('Bamboo') }));
+        expect(await screen.findByRole('heading', { name: 'Bamboo' })).toBeInTheDocument();
+        expect(screen.getByText('Elige tu usuario')).toBeInTheDocument();
+        cleanup();
+        await ready(makeApi());
+        expect(screen.getByRole('heading', { name: 'Elige tu usuario' })).toBeInTheDocument();
     });
 
     it('submits on Entrar with at least 4 digits; Entrar is disabled below 4 and never auto-submits', async () => {

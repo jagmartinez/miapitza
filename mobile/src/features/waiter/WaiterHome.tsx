@@ -29,7 +29,7 @@ const loadingFallback = <main className="screen"><p className="muted">Cargandoâ€
 
 const STALE_URLS = ['/orders/active', '/tables/plan'];
 
-export function WaiterHome({ session, services, onSwitchUser }: { session: Session; services: Pick<Services, 'http' | 'sessions' | 'realtime'>; onSwitchUser: () => void }) {
+export function WaiterHome({ session, services, onSwitchUser, branchName }: { session: Session; services: Pick<Services, 'http' | 'sessions' | 'realtime'>; onSwitchUser: () => void; branchName?: string | null }) {
     const [data, setData] = useState<WaiterData | null>(null);
     const [failed, setFailed] = useState(false);
     const [route, setRoute] = useState<Route>({ name: 'tables' });
@@ -90,7 +90,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
     if (route.name === 'inventory') {
         return (
             <Suspense fallback={loadingFallback}>
-                <InventoryEntry key={owner ?? ''} session={session} services={services} onSwitchUser={onSwitchUser} onBack={() => setRoute({ name: 'tables' })} />
+                <InventoryEntry key={owner ?? ''} session={session} services={services} onSwitchUser={onSwitchUser} onBack={() => setRoute({ name: 'tables' })} branchName={branchName} />
             </Suspense>
         );
     }
@@ -123,7 +123,7 @@ export function WaiterHome({ session, services, onSwitchUser }: { session: Sessi
         return (
             <Suspense fallback={loadingFallback}>
                 <SurveyBoundary onFail={onSwitchUser}>
-                    <SurveyScreen orderId={route.orderId} waiterName={route.waiterName} submit={surveySubmit} onDone={onSwitchUser} />
+                    <SurveyScreen orderId={route.orderId} waiterName={route.waiterName} branchName={branchName} submit={surveySubmit} onDone={onSwitchUser} />
                 </SurveyBoundary>
             </Suspense>
         );

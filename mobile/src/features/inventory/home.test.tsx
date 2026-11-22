@@ -31,6 +31,14 @@ function renderHome(list: RecentSheet[], extra: Partial<Parameters<typeof Invent
 }
 
 describe('InventoryHome', () => {
+    it('shows the branch next to Inventario, and plain Inventario without it', async () => {
+        renderHome([], { branchName: 'Bamboo' });
+        expect(await screen.findByText('Inventario · Bamboo')).toBeInTheDocument();
+        cleanup();
+        renderHome([]);
+        expect(await screen.findByText('Inventario')).toBeInTheDocument();
+    });
+
     it('home shows En curso card with warehouse, start, scope, progress and Continuar', async () => {
         const { onContinue } = renderHome([sheet({ id: 5, scopeLabel: 'Lácteos, Carnes' })]);
         const card = await screen.findByTestId('open-sheet');

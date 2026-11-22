@@ -203,8 +203,9 @@ export class AuthController {
 
     static async deviceRoster(req: Request, res: Response, next: NextFunction) {
         try {
-            const roster = await AuthService.deviceRoster(AuthController.deviceTokenOf(req));
-            res.json({ success: true, data: roster });
+            const { roster, branch } = await AuthService.deviceRosterWithBranch(AuthController.deviceTokenOf(req));
+            // `data` stays the bare array (older apps); `branch` is additive.
+            res.json({ success: true, data: roster, branch });
         } catch (error) {
             AuthController.handleDeviceAuthError('Device roster', error, req, next);
         }

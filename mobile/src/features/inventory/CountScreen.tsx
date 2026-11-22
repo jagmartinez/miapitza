@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LoginUser } from '../../core/session';
 import { useExtendedIdleLock } from '../../core/IdleLockBoundary';
-import { IconArrowLeft, IconCheck, IconCloudCheck, IconEyeOff, IconSearch } from '../../ui/Icon';
-import { IconChevronDown, IconChevronUp } from './inventoryIcons';
+import { IconArrowLeft, IconCheck, IconChevronDown, IconChevronUp, IconCloudCheck, IconEyeOff, IconSearch } from '../../ui/Icon';
 import { CategoryPicker } from './CategoryPicker';
 import { DecimalKeypad } from './DecimalKeypad';
 import { DropNotices } from './DropNotices';

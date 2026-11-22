@@ -19,19 +19,19 @@ const InventoryEntry = lazy(() => import('../features/inventory/InventoryEntry')
 const KitchenHome = lazy(() => import('../features/kitchen/KitchenHome').then((m) => ({ default: m.KitchenHome })));
 
 /** Locks the waiter tablet back to the PIN screen after 2 minutes without touch (10 while a cash count has entries). */
-function WaiterSession({ session, services, onSwitchUser }: { session: Session; services: Services; onSwitchUser: () => void }) {
+function WaiterSession({ session, services, onSwitchUser, branchName }: { session: Session; services: Services; onSwitchUser: () => void; branchName: string | null }) {
     if (!can(session.user, 'tables.map.view') && can(session.user, 'inventory.count')) {
         return (
             <IdleLockBoundary onLock={onSwitchUser}>
                 <Suspense fallback={<main className="screen"><p className="muted">Cargando…</p></main>}>
-                    <InventoryEntry session={session} services={services} onSwitchUser={onSwitchUser} />
+                    <InventoryEntry session={session} services={services} onSwitchUser={onSwitchUser} branchName={branchName} />
                 </Suspense>
             </IdleLockBoundary>
         );
     }
     return (
         <IdleLockBoundary onLock={onSwitchUser}>
-            <WaiterHome session={session} services={services} onSwitchUser={onSwitchUser} />
+            <WaiterHome session={session} services={services} onSwitchUser={onSwitchUser} branchName={branchName} />
         </IdleLockBoundary>
     );
 }
@@ -41,6 +41,7 @@ export function Router({ services }: { services: Services }) {
     // undefined while the secure store is still being read.
     const [deviceType, setDeviceType] = useState<DeviceType | null | undefined>(undefined);
     const [session, setSession] = useState<Session | null>(null);
+    const [branchName, setBranchName] = useState<string | null>(null);
     const mode = deviceType === undefined ? null : resolveMode(deviceType);
     // Queued offline work per user, so the PIN screen can call its author back (ruling a). Loads the data layer lazily.
     const loadPending = useCallback(async () => (await loadWaiterData(services)).queue.pendingByUser(), [services]);
@@ -82,6 +83,16 @@ export function Router({ services }: { services: Services }) {
             alive = false;
         };
     }, [sessions, realtime, services.http]);
+
+    // Branch name saved by the roster / kitchen login; absent with an older server.
+    useEffect(() => {
+        if (!session) return;
+        let alive = true;
+        sessions.branchName().then((name) => alive && setBranchName(name), () => undefined);
+        return () => {
+            alive = false;
+        };
+    }, [session, sessions]);
 
     useEffect(() => {
         if (mode) void applyOrientation(mode);
@@ -141,7 +152,7 @@ export function Router({ services }: { services: Services }) {
             return <DeviceSetupScreen api={deviceApi} onDone={setDeviceType} />;
         case 'waiter':
             return session ? (
-                <WaiterSession session={session} services={services} onSwitchUser={switchUser} />
+                <WaiterSession session={session} services={services} onSwitchUser={switchUser} branchName={branchName} />
             ) : (
                 <PinScreen api={pinApi} onLoggedIn={setSession} onRevoked={handleRevoked} loadPending={loadPending} />
             );
@@ -149,7 +160,7 @@ export function Router({ services }: { services: Services }) {
             // Mounted regardless of the session: a renewal must not unmount the board.
             return (
                 <Suspense fallback={<main className="screen"><p className="muted">Conectando…</p></main>}>
-                    <KitchenHome session={session} services={services} />
+                    <KitchenHome session={session} services={services} branchName={branchName} />
                 </Suspense>
             );
         case 'account':

@@ -79,6 +79,8 @@ export function createKitchenAuth(deps: Deps) {
             const res = await http.post('/auth/device-login');
             const { token, user } = res.data.data;
             if (stopped) return;
+            const branch = res.data.data.branch?.name;
+            if (typeof branch === 'string' && branch.trim()) await sessions.saveBranchName(branch.trim());
             const session: Session = { token, user, issuedAt: Date.now() };
             // Save first, then (re)connect: the socket AUTH reads the stored token.
             await sessions.save(session);

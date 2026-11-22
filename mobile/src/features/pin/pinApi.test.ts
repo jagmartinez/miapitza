@@ -23,6 +23,15 @@ describe('pinApi', () => {
         expect(await pin.roster()).toEqual(roster);
     });
 
+    it('roster keeps the branch name for the session screens; an older server leaves it absent', async () => {
+        const withBranch = setup(() => ({ data: { success: true, data: [], branch: { id: 1, name: ' Bamboo ' } } }));
+        await withBranch.pin.roster();
+        expect(await withBranch.pin.branchName?.()).toBe('Bamboo');
+        const older = setup(() => ({ data: { success: true, data: [] } }));
+        await older.pin.roster();
+        expect(await older.pin.branchName?.()).toBeNull();
+    });
+
     it('login saves the session BEFORE reconnecting realtime', async () => {
         const { pin, log, sessions } = setup(() => ({ data: { success: true, data: { token: 'tok-new', user } } }));
         const result = await pin.login(7, '1234');

@@ -21,11 +21,12 @@ export interface InventoryHomeProps {
     onNew: () => void;
     onContinue: (sheetId: number) => void;
     onSwitchUser: () => void;
+    branchName?: string | null;
     /** Only when opened from the tables. */
     onBack?: () => void;
 }
 
-export function InventoryHome({ api, user, onNew, onContinue, onSwitchUser, onBack }: InventoryHomeProps) {
+export function InventoryHome({ api, user, onNew, onContinue, onSwitchUser, onBack, branchName }: InventoryHomeProps) {
     const [sheets, setSheets] = useState<RecentSheet[] | null>(null);
     const [failed, setFailed] = useState(false);
     const [filter, setFilter] = useState<Filter>('all');
@@ -75,7 +76,7 @@ export function InventoryHome({ api, user, onNew, onContinue, onSwitchUser, onBa
                 </span>
                 <div className="inv-who">
                     <div className="inv-who-name">{user.name}</div>
-                    <div className="inv-who-sub">Inventario</div>
+                    <div className="inv-who-sub">{branchName ? `Inventario · ${branchName}` : 'Inventario'}</div>
                 </div>
                 <span className="grow" />
                 {onBack && (

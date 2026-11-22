@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { appEvents } from '../../core/events';
 import { KitchenActionError } from './kitchenApi';
@@ -35,7 +35,7 @@ function fakeRealtime() {
     };
 }
 
-function setup(over: { queue?: () => Promise<KitchenBatch[]>; recent?: KitchenBatch[]; canManage?: boolean; start?: () => Promise<void>; undoMs?: number } = {}) {
+function setup(over: { branchName?: string | null; queue?: () => Promise<KitchenBatch[]>; recent?: KitchenBatch[]; canManage?: boolean; start?: () => Promise<void>; undoMs?: number } = {}) {
     const api = {
         queue: vi.fn(over.queue ?? (async () => [mk(1), mk(2)])),
         config: vi.fn(async () => ({ warningMinutes: 5, urgentMinutes: 10 })),
@@ -45,7 +45,7 @@ function setup(over: { queue?: () => Promise<KitchenBatch[]>; recent?: KitchenBa
         release: vi.fn(async () => {}),
     };
     const realtime = fakeRealtime();
-    const utils = render(<KitchenBoard api={api as never} realtime={realtime} canManage={over.canManage ?? true} connection="online" undoMs={over.undoMs ?? 60_000} />);
+    const utils = render(<KitchenBoard api={api as never} realtime={realtime} canManage={over.canManage ?? true} branchName={over.branchName} connection="online" undoMs={over.undoMs ?? 60_000} />);
     return { api, realtime, ...utils };
 }
 
@@ -68,6 +68,14 @@ describe('KitchenBoard', () => {
         api.queue.mockResolvedValueOnce([mk(1)]);
         fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
         expect(await screen.findByText('M1')).toBeInTheDocument();
+    });
+
+    it('titles the header with the branch, or plain Cocina without it', async () => {
+        setup({ branchName: 'Bamboo' });
+        expect(await screen.findByText('Cocina Bamboo')).toBeInTheDocument();
+        cleanup();
+        setup();
+        expect(await screen.findByText('Cocina')).toBeInTheDocument();
     });
 
     it('Listo hides card and shows undo toast with mesero', async () => {

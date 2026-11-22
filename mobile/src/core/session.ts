@@ -86,6 +86,7 @@ export function nativeSecureStore(): SecureStore {
 const SESSION_KEY = 'session';
 const DEVICE_TOKEN_KEY = 'deviceToken';
 const DEVICE_TYPE_KEY = 'deviceType';
+const BRANCH_NAME_KEY = 'branchName';
 
 export type DeviceType = 'SERVICE_TABLET' | 'KITCHEN_TABLET' | 'PERSONAL';
 const DEVICE_TYPES: readonly string[] = ['SERVICE_TABLET', 'KITCHEN_TABLET', 'PERSONAL'];
@@ -150,9 +151,12 @@ export function createSessionStore(store: SecureStore) {
             return value && DEVICE_TYPES.includes(value) ? (value as DeviceType) : null;
         },
         saveDeviceType: (type: DeviceType): Promise<void> => write(DEVICE_TYPE_KEY, type),
-        /** Unpairs the device (revoked or reset): token and type go together. */
+        /** Branch name of this paired device (display only); null when the server never sent it. */
+        branchName: (): Promise<string | null> => read(BRANCH_NAME_KEY),
+        saveBranchName: (name: string): Promise<void> => write(BRANCH_NAME_KEY, name),
+        /** Unpairs the device (revoked or reset): token, type and branch go together. */
         async clearDevice(): Promise<void> {
-            await Promise.all([remove(DEVICE_TOKEN_KEY), remove(DEVICE_TYPE_KEY)]);
+            await Promise.all([remove(DEVICE_TOKEN_KEY), remove(DEVICE_TYPE_KEY), remove(BRANCH_NAME_KEY)]);
         },
     };
 }

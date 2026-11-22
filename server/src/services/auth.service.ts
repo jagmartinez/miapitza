@@ -504,7 +504,7 @@ export class AuthService {
         deviceToken: string;
         ip?: string;
         userAgent?: string;
-    }): Promise<LoginResult> {
+    }): Promise<LoginResult & { branch: { id: number; name: string } | null }> {
         const device = await OperationalDeviceService.resolveActive(input.deviceToken);
         if (!device || device.type !== 'KITCHEN_TABLET' || !device.kitchenUserId) {
             throw new DeviceAuthError('DEVICE_NOT_ACTIVE');
@@ -524,7 +524,8 @@ export class AuthService {
             throw new DeviceAuthError('KITCHEN_ACCOUNT_UNAVAILABLE');
         }
 
-        return AuthService.issueSession(user, {
+        const branch = await AuthService.deviceBranch(device);
+        const session = await AuthService.issueSession(user, {
             ip: input.ip,
             userAgent: input.userAgent,
             idleTimeoutMinutes: KITCHEN_SESSION_IDLE_MINUTES,
@@ -538,6 +539,8 @@ export class AuthService {
                 }
             },
         });
+        // Additive: older apps ignore `branch`.
+        return { ...session, branch };
     }
 
     /**
@@ -547,6 +550,14 @@ export class AuthService {
     static async deviceRoster(deviceToken: string): Promise<Array<{
         id: number; name: string; initials: string; color: string | null;
     }>> {
+        return (await AuthService.deviceRosterWithBranch(deviceToken)).roster;
+    }
+
+    /** Roster plus the device's branch `{ id, name }` (null if the branch cannot be read). */
+    static async deviceRosterWithBranch(deviceToken: string): Promise<{
+        roster: Array<{ id: number; name: string; initials: string; color: string | null }>;
+        branch: { id: number; name: string } | null;
+    }> {
         const device = await OperationalDeviceService.resolveActive(deviceToken);
         if (!device || device.type !== 'SERVICE_TABLET') throw new Error(GENERIC_AUTH_ERROR);
 
@@ -565,12 +576,21 @@ export class AuthService {
             select: { id: true, name: true, color: true },
             orderBy: { name: 'asc' },
         });
-        return users.map((user) => ({
+        const roster = users.map((user) => ({
             id: user.id,
             name: user.name,
             initials: initialsOf(user.name),
             color: user.color ?? null,
         }));
+        return { roster, branch: await AuthService.deviceBranch(device) };
+    }
+
+    private static async deviceBranch(device: { branchId: number; companyId: number }): Promise<{ id: number; name: string } | null> {
+        const branch = await prisma.branch.findFirst({
+            where: { id: device.branchId, companyId: device.companyId },
+            select: { id: true, name: true },
+        });
+        return branch ? { id: branch.id, name: branch.name } : null;
     }
 
     static async changePassword(userId: number, oldPassword: string, newPassword: string) {

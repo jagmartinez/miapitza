@@ -18,7 +18,7 @@ export type InventoryRoute = { name: 'home' } | { name: 'new' } | { name: 'count
  * Lazy entry of Inventario: loads the waiter data layer (queue included, so queued line saves replay while this screen is up),
  * then shows the count screens. `onBack` exists only when it was opened from the tables.
  */
-export default function InventoryEntry({ session, services, onSwitchUser, onBack }: { session: Session; services: Pick<Services, 'http' | 'sessions'>; onSwitchUser: () => void; onBack?: () => void }) {
+export default function InventoryEntry({ session, services, onSwitchUser, onBack, branchName }: { session: Session; services: Pick<Services, 'http' | 'sessions'>; onSwitchUser: () => void; onBack?: () => void; branchName?: string | null }) {
     const [data, setData] = useState<WaiterData | null>(null);
     const [failed, setFailed] = useState(false);
     const [route, setRoute] = useState<InventoryRoute>({ name: 'home' });
@@ -57,7 +57,7 @@ export default function InventoryEntry({ session, services, onSwitchUser, onBack
     if (data && api && route.name === 'home')
         return (
             <>
-                <InventoryHome api={api} user={session.user} onNew={() => setRoute({ name: 'new' })} onContinue={(sheetId) => setRoute({ name: 'count', sheetId })} onSwitchUser={onSwitchUser} onBack={onBack} />
+                <InventoryHome api={api} user={session.user} onNew={() => setRoute({ name: 'new' })} onContinue={(sheetId) => setRoute({ name: 'count', sheetId })} onSwitchUser={onSwitchUser} onBack={onBack} branchName={branchName} />
                 {toast}
             </>
         );

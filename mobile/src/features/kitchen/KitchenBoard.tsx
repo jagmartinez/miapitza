@@ -51,6 +51,8 @@ interface Props {
     api: KitchenApi;
     realtime: KitchenRealtime;
     canManage: boolean;
+    /** Device branch shown after "Cocina"; absent with an older server. */
+    branchName?: string | null;
     connection: KitchenConnection;
     undoMs?: number;
     /** False until the kitchen has had a session: no queue request goes out unauthenticated. Default true. */
@@ -59,7 +61,7 @@ interface Props {
     sessionKey?: string | null;
 }
 
-export function KitchenBoard({ api, realtime, canManage, connection, undoMs, sessionReady = true, sessionKey = null }: Props) {
+export function KitchenBoard({ api, realtime, canManage, branchName, connection, undoMs, sessionReady = true, sessionKey = null }: Props) {
     const kiosk = useKioskExit();
     const queue = useKitchenQueue(api, realtime, { enabled: sessionReady });
     const commit = useReadyCommit(api, undoMs === undefined ? { sessionKey } : { undoMs, sessionKey });
@@ -162,7 +164,7 @@ export function KitchenBoard({ api, realtime, canManage, connection, undoMs, ses
     return (
         <div className="kitchen">
             <header className="kitchen-bar">
-                <strong className="kitchen-title" {...kiosk.handlers}>Cocina</strong>
+                <strong className="kitchen-title" {...kiosk.handlers}>{branchName ? `Cocina ${branchName}` : 'Cocina'}</strong>
                 <span className="kitchen-queue">{`· ${visible.length} en cola`}</span>
                 <span className="kitchen-clock">{clock(now)}</span>
                 <span className={`kitchen-conn ${dot}`} role="status">

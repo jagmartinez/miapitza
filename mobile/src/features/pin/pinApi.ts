@@ -13,6 +13,8 @@ export interface RosterUser {
 
 export interface PinApi {
     roster(): Promise<RosterUser[]>;
+    /** Branch name the last roster reported (kept for the session screens); null with an older server. */
+    branchName?(): Promise<string | null>;
     login(userId: number, pin: string): Promise<Session>;
     logout(): Promise<void>;
 }
@@ -24,8 +26,12 @@ export function createPinApi(deps: { http: AxiosInstance; sessions: SessionStore
     return {
         async roster() {
             const res = await http.get('/auth/device-roster');
+            const name = res.data?.branch?.name;
+            if (typeof name === 'string' && name.trim()) await sessions.saveBranchName(name.trim());
             return res.data.data as RosterUser[];
         },
+
+        branchName: () => sessions.branchName(),
 
         async login(userId, pin) {
             const res = await http.post('/auth/pin-login', { userId, pin });

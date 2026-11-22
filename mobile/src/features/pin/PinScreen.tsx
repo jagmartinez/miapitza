@@ -26,7 +26,9 @@ const pendingText = ({ pending, failed }: { pending: number; failed: number }): 
     return [waiting, broken].filter(Boolean).join(' · ') || null;
 };
 
-export function PinScreen({ api, onLoggedIn, onRevoked, loadPending, branchName }: Props) {
+export function PinScreen({ api, onLoggedIn, onRevoked, loadPending, branchName: branchProp }: Props) {
+    const [storedBranch, setStoredBranch] = useState<string | null>(null);
+    const branchName = branchProp ?? storedBranch ?? undefined;
     const [pendingBy, setPendingBy] = useState<Record<number, { pending: number; failed: number }>>({});
     const [roster, setRoster] = useState<RosterUser[] | null>(null);
     const [loadFailed, setLoadFailed] = useState(false);
@@ -39,7 +41,12 @@ export function PinScreen({ api, onLoggedIn, onRevoked, loadPending, branchName 
         let alive = true;
         setLoadFailed(false);
         api.roster().then(
-            (users) => alive && setRoster(users),
+            (users) => {
+                if (!alive) return;
+                setRoster(users);
+                // Saved by roster(); a missing name (older server) keeps the plain title.
+                api.branchName?.().then((name) => alive && setStoredBranch(name), () => undefined);
+            },
             (err) => {
                 if (!alive) return;
                 if (httpStatus(err) === 401) onRevoked();

@@ -215,8 +215,21 @@ describe('AuthService.pinLogin', () => {
 });
 
 describe('AuthService.deviceRoster', () => {
+    it('deviceRosterWithBranch adds the device branch {id, name} and null when it is unreadable', async () => {
+        jest.spyOn(OperationalDeviceService, 'resolveActive').mockResolvedValue(device() as never);
+        jest.spyOn(prisma.user, 'findMany').mockResolvedValue([] as never);
+        const branch = jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 3, name: 'Bamboo', code: 'X' } as never);
+
+        await expect(AuthService.deviceRosterWithBranch('tok')).resolves.toEqual({ roster: [], branch: { id: 3, name: 'Bamboo' } });
+        expect(JSON.stringify(branch.mock.calls[0][0])).toContain('"companyId":5');
+
+        branch.mockResolvedValue(null as never);
+        await expect(AuthService.deviceRosterWithBranch('tok')).resolves.toMatchObject({ branch: null });
+    });
+
     it('returns only id, name, initials and color, filtered to PIN-capable users of the branch', async () => {
         jest.spyOn(OperationalDeviceService, 'resolveActive').mockResolvedValue(device() as never);
+        jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 1, name: 'Bamboo' } as never);
         const find = jest.spyOn(prisma.user, 'findMany').mockResolvedValue([
             { id: 21, name: 'Ana María Pérez', color: null },
         ] as never);

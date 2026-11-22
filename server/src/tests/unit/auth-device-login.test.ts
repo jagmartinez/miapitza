@@ -49,6 +49,7 @@ function mockInfra(opts: { deviceActiveInTx?: boolean } = {}) {
 
 const setup = (user: unknown, device: unknown = kitchenDevice()) => {
     jest.spyOn(OperationalDeviceService, 'resolveActive').mockResolvedValue(device as never);
+    jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 1, name: 'Bamboo' } as never);
     return jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(user as never);
 };
 
@@ -65,6 +66,7 @@ describe('AuthService.deviceLogin', () => {
         expect(data.idleTimeoutMinutes).toBe(1440);
         expect(data.device).toBe('op-device:11');
         expect(result.sessionTimeoutMinutes).toBe(1440);
+        expect(result.branch).toEqual({ id: 1, name: 'Bamboo' });
         expect((jwt.decode(result.token) as { userId: number }).userId).toBe(40);
         expect(JSON.stringify(auditCreate.mock.calls)).toContain('DEVICE_LOGIN');
         expect(JSON.stringify([sessionCreate.mock.calls, auditCreate.mock.calls])).not.toContain('tok"');

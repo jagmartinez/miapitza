@@ -23,8 +23,8 @@ export function connectionOf(auth: KitchenAuthStatus, realtimeOnline: boolean, h
  * Always mounted in kitchen mode: a renewed session (`session` briefly null) must not reset the board.
  * Keeps the last non-null session so permission checks keep working while reconnecting.
  */
-export function KitchenHome(props: { session: Session | null; services: Services }) {
-    const { session, services } = props;
+export function KitchenHome(props: { session: Session | null; services: Services; branchName?: string | null }) {
+    const { session, services, branchName } = props;
     const lastSession = useRef<Session | null>(session);
     if (session) lastSession.current = session;
     const [auth, setAuth] = useState<KitchenAuthStatus>(kitchenAuthStatus());
@@ -61,6 +61,7 @@ export function KitchenHome(props: { session: Session | null; services: Services
     return (
         <main data-testid="kitchen-home" data-has-session={session ? 'true' : 'false'}>
             <KitchenBoard
+                branchName={branchName}
                 api={api}
                 realtime={services.realtime}
                 canManage={!!user && can(user, 'kds.manage')}

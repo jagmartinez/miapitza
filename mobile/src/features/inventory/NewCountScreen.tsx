@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { InventoryApi } from './inventoryApi';
 import { OfflineError } from './inventoryApi';
-import { IconX } from '../../ui/Icon';
-import { IconCircleCheck } from './inventoryIcons';
+import { IconCircleCheck, IconX } from '../../ui/Icon';
 import { dayText, plural } from './inventoryFormat';
 import { COUNT_ERROR, type CountWarehouse, type WarehouseCategory } from './inventoryTypes';
 import './inventory.css';
