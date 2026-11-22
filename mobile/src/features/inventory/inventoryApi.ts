@@ -2,7 +2,8 @@ import type { AxiosInstance } from 'axios';
 import { isAmbiguousMutationFailure } from '@web/utils/idempotency';
 import { isQueuedOffline } from '../../data/waiterApi';
 import type { WaiterData } from '../../data/waiterData';
-import { INVENTORY_COUNT_URL_RE } from '../../data/queueLabels';
+import { COUNTED_AGE_HEADER, INVENTORY_COUNT_URL_RE } from '../../data/queueLabels';
+import { appEvents } from '../../core/events';
 import { isOnline } from '../../data/useOnline';
 import type { SyncItem } from '../../data/types';
 import { COUNT_ERROR, type CountLine, type CountSheet, type CountWarehouse, type RecentFilter, type RecentSheet, type StartedSheet, type SubmittedSheet, type WarehouseCategory } from './inventoryTypes';
@@ -75,15 +76,25 @@ export function createInventoryApi(data: InventoryApiData, http: AxiosInstance, 
 
     const read = async <T>(url: string, params: Record<string, unknown> | undefined, ttlMs: number): Promise<T> => (await api.cachedRead<T>(url, params, ttlMs)).data;
 
-    /** One save: the count is stamped now; a lost answer is queued with the same stamp and key. */
-    async function send(sheetId: number, productId: number, input: CountLineInput): Promise<'saved' | 'queued'> {
+    /**
+     * One save: the count is stamped now; a lost answer is queued with the same stamp and key. The count's AGE (not the device
+     * clock) is what the server trusts: it travels in a header measured for this attempt, and the queue measures it again per replay.
+     */
+    async function send(sheetId: number, productId: number, input: CountLineInput): Promise<'saved' | 'queued' | 'ignored'> {
         const clientCountedAt = new Date().toISOString();
-        const key = `count-${sheetId}-${productId}-${Date.parse(clientCountedAt)}`;
+        const typedAt = Date.parse(clientCountedAt);
+        const key = `count-${sheetId}-${productId}-${typedAt}`;
         const queue = { operationType: 'GENERIC_MUTATION' as const, meta: { label: COUNT_LINE_LABEL } };
         const spec = { method: 'PUT' as const, url: lineUrl(sheetId, productId), data: { unit: input.unit, countedQuantity: input.countedQuantity, clientCountedAt }, key };
         try {
-            const res = await api.mutate({ ...spec, queue });
-            return isQueuedOffline(res) ? 'queued' : 'saved';
+            const res = await api.mutate({ ...spec, config: { headers: { [COUNTED_AGE_HEADER]: String(Math.max(0, Date.now() - typedAt)) } }, queue });
+            if (isQueuedOffline(res)) return 'queued';
+            // The server answered but kept a newer value: tell the counter like a dropped line (the sheet reloads and the product is counted again).
+            if ((res as { applied?: unknown } | null)?.applied === false) {
+                appEvents.emit('inventory-line-dropped', { sheetId, productId });
+                return 'ignored';
+            }
+            return 'saved';
         } catch (error) {
             // The server's own verdict (sheet closed, bad unit...) is for the counter to see; only a lost answer is queued, with the same stamp and key.
             if (codeOf(error).startsWith('INVENTORY_COUNT_') || !isAmbiguousMutationFailure(error)) throw error;
@@ -114,7 +125,7 @@ export function createInventoryApi(data: InventoryApiData, http: AxiosInstance, 
          * Saves (or, with `countedQuantity: null`, clears) one line. The count is stamped with the device clock now: a queued save
          * keeps that stamp, so the server keeps the last thing the counter typed and captures expected stock as of that moment.
          */
-        saveLine(sheetId: number, productId: number, input: CountLineInput): Promise<'saved' | 'queued'> {
+        saveLine(sheetId: number, productId: number, input: CountLineInput): Promise<'saved' | 'queued' | 'ignored'> {
             return track(sheetId, send(sheetId, productId, input));
         },
 

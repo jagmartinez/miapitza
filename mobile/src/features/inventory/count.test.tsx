@@ -45,7 +45,7 @@ const makeSheet = (o: Partial<CountSheet> = {}): CountSheet => ({
     ...o,
 });
 
-function renderCount(sheet: CountSheet, extra: { saveLine?: (s: number, p: number, i: { unit: string; countedQuantity: number | null }) => Promise<'saved' | 'queued'>; props?: Partial<Parameters<typeof CountScreen>[0]> } = {}) {
+function renderCount(sheet: CountSheet, extra: { saveLine?: (s: number, p: number, i: { unit: string; countedQuantity: number | null }) => Promise<'saved' | 'queued' | 'ignored'>; props?: Partial<Parameters<typeof CountScreen>[0]> } = {}) {
     const saveLine = vi.fn(extra.saveLine ?? (() => Promise.resolve('saved' as const)));
     const sheetFn = vi.fn(() => Promise.resolve(sheet));
     const props = { onFinish: vi.fn(), onExit: vi.fn(), ...extra.props };
@@ -159,6 +159,16 @@ describe('CountScreen', () => {
         await screen.findByText('Leche');
         expect(rows()[0]).toHaveTextContent('4');
         expect(rows()[0]).toHaveAttribute('data-counted', 'true');
+    });
+
+    it('a save the server ignored (applied:false) is not shown as Guardado and the sheet reloads', async () => {
+        const saveLine = vi.fn(() => Promise.resolve('ignored' as const));
+        const { sheetFn } = renderCount(makeSheet(), { saveLine });
+        await screen.findByText('Leche');
+        press('4');
+        fireEvent.click(screen.getByRole('button', { name: 'Guardar y siguiente' }));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No se pudo guardar'));
+        await waitFor(() => expect(sheetFn.mock.calls.length).toBeGreaterThan(1));
     });
 
     it('recount lines are marked Recontar', async () => {

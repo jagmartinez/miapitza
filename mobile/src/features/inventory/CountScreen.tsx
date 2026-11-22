@@ -181,6 +181,12 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
         setIndicator('saving');
         api.saveLine(sheetId, productId, { unit, countedQuantity: quantity }).then(
             (result) => {
+                if (result === 'ignored') {
+                    // The server kept a newer value: not "Guardado". The sheet reloads and the entry's notice says to count it again.
+                    if (token === saveSeq.current) setIndicator('error');
+                    void load(productId);
+                    return;
+                }
                 if (token === saveSeq.current) setIndicator(result);
             },
             () => {

@@ -276,3 +276,74 @@ describe('fix round 1: in-flight saves and outages', () => {
         expect(dropped).toEqual([]);
     });
 });
+
+describe('R13: count age instead of the device clock', () => {
+    const ageOf = (config: { headers: { get: (n: string) => unknown } }) => config.headers.get('X-Counted-Age-Ms');
+
+    it('a live save sends the age of the count in a header, outside the body', async () => {
+        const env = await setup();
+        let age: unknown = null;
+        env.reply((_req, config) => {
+            age = ageOf(config);
+            return {};
+        });
+        await env.inventory.saveLine(9, 11, { unit: 'L', countedQuantity: 1 });
+        expect(Number(age)).toBeGreaterThanOrEqual(0);
+        expect(Number(age)).toBeLessThan(2000);
+        expect(Object.keys(env.seen[0].data as object).sort()).toEqual(['clientCountedAt', 'countedQuantity', 'unit']);
+    });
+
+    it('each replay measures the age again, so a queued count is as old as it really is when it is sent', async () => {
+        const env = await setup();
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+            vi.setSystemTime(new Date('2026-11-24T10:00:00.000Z'));
+            const queue = createOfflineQueue({ db: env.db, http: env.http, sessions: env.sessions, isOnline: env.isOnline });
+            const api = createWaiterApi({ http: env.http, sessions: env.sessions, cache: createCache(env.db), queue, isOnline: env.isOnline });
+            const inventory = createInventoryApi({ api, queue, db: env.db }, env.http, env.isOnline);
+            env.setOnline(false);
+            await inventory.saveLine(9, 11, { unit: 'L', countedQuantity: 8 });
+            env.setOnline(true);
+            const ages: unknown[] = [];
+            env.reply((_req, config) => {
+                ages.push(ageOf(config));
+                return ages.length === 1 ? { network: true } : {};
+            });
+            vi.setSystemTime(new Date('2026-11-24T10:01:30.000Z'));
+            await queue.process();
+            expect(ages).toEqual(['90000']);
+            await env.db.syncQueue.toCollection().modify({ nextAttemptAt: null });
+            vi.setSystemTime(new Date('2026-11-24T10:05:00.000Z'));
+            await queue.process();
+            expect(ages).toEqual(['90000', '300000']);
+            expect(await env.db.syncQueue.count()).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('applied:false on a live save reloads through the dropped-line path and is not reported as saved', async () => {
+        const env = await setup();
+        const dropped: unknown[] = [];
+        const off = appEvents.on('inventory-line-dropped', (p) => dropped.push(p));
+        env.reply(() => ({ data: { success: true, data: { productId: 11, counted: true, applied: false } } }));
+        const result = await env.inventory.saveLine(9, 11, { unit: 'L', countedQuantity: 1 });
+        off();
+        expect(result).toBe('ignored');
+        expect(dropped).toEqual([{ sheetId: 9, productId: 11 }]);
+    });
+
+    it('applied:false on a replayed save emits the same event and clears the row', async () => {
+        const env = await setup();
+        const dropped: unknown[] = [];
+        const off = appEvents.on('inventory-line-dropped', (p) => dropped.push(p));
+        env.setOnline(false);
+        await env.inventory.saveLine(9, 11, { unit: 'L', countedQuantity: 8 });
+        env.setOnline(true);
+        env.reply(() => ({ data: { success: true, data: { productId: 11, counted: true, applied: false } } }));
+        await env.queue.process();
+        off();
+        expect(await env.db.syncQueue.count()).toBe(0);
+        expect(dropped).toEqual([{ sheetId: 9, productId: 11 }]);
+    });
+});

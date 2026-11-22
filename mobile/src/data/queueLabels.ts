@@ -16,6 +16,14 @@ export const INVENTORY_COUNT_URL_RE = /^\/v1\/inventory-counts\/\d+\/lines\/\d+$
 /** A queued count line: like the survey it never expires and its owner cannot discard it (the count must reach the sheet as typed). */
 export const isInventoryCountItem = (item: Pick<SyncItem, 'url'>): boolean => INVENTORY_COUNT_URL_RE.test(item.url.split('?')[0]);
 
+/** Header carrying how old a count is at the moment of THIS attempt (ms since it was typed). The server derives the count moment from it, so the device clock never has to agree with the server's. Outside the body on purpose: the idempotency fingerprint covers the body and must not change between retries. */
+export const COUNTED_AGE_HEADER = 'X-Counted-Age-Ms';
+export function countAgeHeader(item: Pick<SyncItem, 'url' | 'data'>, nowMs: number): Record<string, string> {
+    if (!isInventoryCountItem(item)) return {};
+    const typedAt = Date.parse(String((item.data as { clientCountedAt?: unknown } | null)?.clientCountedAt));
+    return Number.isFinite(typedAt) ? { [COUNTED_AGE_HEADER]: String(Math.max(0, Math.round(nowMs - typedAt))) } : {};
+}
+
 /** The server answered a replayed count line with a verdict no retry changes (its own INVENTORY_COUNT_* code, e.g. the sheet is no longer editable, or the device is not allowed): the row is dropped. */
 export function isDefinitiveCountRejection(status: number | undefined, code: unknown): boolean {
     const c = typeof code === 'string' ? code : '';

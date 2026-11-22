@@ -3,7 +3,7 @@ import { newIdempotencyKey } from '@web/utils/idempotency';
 import { appEvents } from '../core/events';
 import type { SessionStore } from '../core/session';
 import type { MobileDB } from './cache';
-import { isDefinitiveCountRejection, isDefinitiveSurveyRejection, isInventoryCountItem, isSurveyItem } from './queueLabels';
+import { countAgeHeader, isDefinitiveCountRejection, isDefinitiveSurveyRejection, isInventoryCountItem, isSurveyItem } from './queueLabels';
 import { guarded, reportStorage, toStorageError } from './storage';
 import { isPermanentSyncFailure, ownerKeyOf, SessionChangedError, type SyncItem } from './types';
 
@@ -267,7 +267,11 @@ export function createOfflineQueue(deps: QueueDeps) {
                     url: item.url,
                     method: item.method,
                     data: item.data,
-                    headers: { Authorization: `Bearer ${session.token}`, 'X-Idempotency-Key': item.idempotencyKey || newIdempotencyKey() },
+                    headers: {
+                        Authorization: `Bearer ${session.token}`,
+                        'X-Idempotency-Key': item.idempotencyKey || newIdempotencyKey(),
+                        ...countAgeHeader(item, now()),
+                    },
                 });
             } catch (error: unknown) {
                 const err = error as { response?: { status?: number; data?: { message?: string; code?: unknown } }; message?: string };
@@ -335,6 +339,11 @@ export function createOfflineQueue(deps: QueueDeps) {
                 await db.syncQueue.update(item.id!, { status: 'failed', lastError: message, nextAttemptAt: null });
                 await failDependents(ownerKey, item.entityTempId, message);
                 continue;
+            }
+            // A count save the server answered but did not apply (a newer value was already there) is told like a dropped line.
+            if (isInventoryCountItem(item) && (res.data?.data as { applied?: unknown } | undefined)?.applied === false) {
+                const [, sheetId, productId] = /^\/v1\/inventory-counts\/(\d+)\/lines\/(\d+)/.exec(item.url) ?? [];
+                appEvents.emit('inventory-line-dropped', { sheetId: Number(sheetId), productId: Number(productId) });
             }
             // The server applied it. Bookkeeping failures are storage problems, not network errors:
             // the item stays queued and its idempotency key makes the resend safe.
