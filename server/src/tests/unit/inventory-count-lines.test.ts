@@ -21,8 +21,9 @@ app.use('/api/v1/inventory-counts', inventoryCountRoutes);
 app.use(errorHandler);
 
 const bodega = { userId: 9, companyId: 5, branchId: 1, role: 'BODEGA', roles: ['BODEGA'], permissions: [] };
-const T1 = '2026-11-24T10:00:00.000Z';
-const T2 = '2026-11-24T10:05:00.000Z';
+// Relative to now: client timestamps beyond now + 5 min are clamped to server time.
+const T1 = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+const T2 = new Date(Date.now() - 55 * 60 * 1000).toISOString();
 const KEY = { 'X-Idempotency-Key': 'count-70-10-1234567890' };
 
 const units = [

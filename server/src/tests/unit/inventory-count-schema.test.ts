@@ -71,7 +71,12 @@ describe('inventory count schema (Phase 5b Task 1)', () => {
     it('the router is mounted at /inventory-counts and every counter route requires inventory.count', () => {
         expect(read('src/routes/v1.router.ts')).toContain("v1.use('/inventory-counts', inventoryCountRoutes)");
         const routes = read('src/routes/inventory-count.routes.ts');
-        const counterRoutes = routes.split('\n').filter((l) => /^router\.(get|post|put)\(/.test(l.trim()));
+        const routeLines = routes.split('\n').filter((l) => /^router\.(get|post|put)\(/.test(l.trim()));
+        const reviewRoutes = routeLines.filter((l) => l.includes('requireRole(...REVIEWERS)'));
+        const counterRoutes = routeLines.filter((l) => !reviewRoutes.includes(l));
+        // Review routes are admin-only by role (no inventory.count permission).
+        expect(reviewRoutes.length).toBe(5);
+        expect(routes).toContain("const REVIEWERS = ['SUPERADMIN', 'ADMIN']");
         expect(counterRoutes.length).toBeGreaterThanOrEqual(4);
         for (const l of counterRoutes) expect(l).toContain("requirePermission('inventory.count'");
         expect(routes).toContain("'SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'");

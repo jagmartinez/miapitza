@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware, requirePermission } from '../middlewares/auth';
+import { authMiddleware, requirePermission, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { InventoryCountService } from '../services/inventory-count.service';
 import { InventoryCountError } from '../services/inventory-count-errors';
@@ -67,6 +67,35 @@ router.get('/', requirePermission('inventory.count', 'SUPERADMIN', 'ADMIN', 'BOD
         page: positiveInt(q(req).page),
         pageSize: positiveInt(q(req).pageSize),
     })));
+
+const REVIEWERS = ['SUPERADMIN', 'ADMIN'] as const;
+
+// Review routes (static `/review` before `/:id`).
+router.get('/review', requireRole(...REVIEWERS), handle(200, (req) =>
+    InventoryCountService.reviewList(actorOf(req), {
+        status: q(req).status,
+        branchId: positiveInt(q(req).branchId),
+        dateFrom: q(req).dateFrom,
+        dateTo: q(req).dateTo,
+        page: positiveInt(q(req).page),
+    })));
+
+router.get('/:id/review', requireRole(...REVIEWERS), handle(200, (req) =>
+    InventoryCountService.reviewDetail(actorOf(req), positiveInt(req.params.id))));
+
+router.post('/:id/recount', requireRole(...REVIEWERS), validate({
+    body: {
+        productIds: { type: 'array', required: true },
+        note: { type: 'string', max: 500 },
+    },
+}), handle(200, (req) => InventoryCountService.recount(actorOf(req), positiveInt(req.params.id), req.body ?? {})));
+
+router.post('/:id/reject', requireRole(...REVIEWERS), validate({
+    body: { reason: { type: 'string', required: true, min: 3, max: 500 } },
+}), handle(200, (req) => InventoryCountService.reject(actorOf(req), positiveInt(req.params.id), req.body ?? {})));
+
+router.post('/:id/approve', requireRole(...REVIEWERS), requireIdempotencyKey, handle(200, (req) =>
+    InventoryCountService.approve(actorOf(req), positiveInt(req.params.id))));
 
 router.get('/:id', requirePermission('inventory.count', 'SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'), handle(200, (req) =>
     InventoryCountService.detail(actorOf(req), positiveInt(req.params.id))));

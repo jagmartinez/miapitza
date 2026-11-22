@@ -1,8 +1,11 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { InventoryCountError } from './inventory-count-errors';
-import { assertBranchAccess, resolveBranchScope } from '../utils/branch-scope';
+import { assertBranchAccess, isCompanyWide, resolveBranchScope } from '../utils/branch-scope';
 import { UnitConversionService } from './unit-conversion.service';
+import { InventoryMovementService, ProductCostMissingError } from './inventory-movement.service';
+import { InventoryEngineService } from './inventory-engine.service';
+import { resolveEffectiveUnitCost } from '../utils/product-cost';
 
 export interface InventoryCountActor {
     userId: number;
@@ -35,6 +38,13 @@ const NO_CATEGORY = 'Sin categoría';
 const MAX_ID = 2147483647;
 const MAX_COUNTED_QUANTITY = 1_000_000_000;
 const MAX_UNIT_LENGTH = 20;
+/** A device clock further ahead than this is ignored (server time is used) so it cannot block later saves. */
+const MAX_CLIENT_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const EPSILON = 1e-9;
+const REVIEW_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'] as const;
+const APPROVAL_TX_OPTIONS = { timeout: 120_000, maxWait: 10_000 };
+const MAX_NOTE_LENGTH = 500;
+const MIN_REASON_LENGTH = 3;
 
 function displayStatusOf(status: string, returnedAt: Date | null): CountDisplayStatus {
     if (status === 'APPROVED') return 'APROBADO';
@@ -54,6 +64,37 @@ function parseCountedQuantity(value: unknown): number | null {
 }
 
 const round6 = (value: number) => Math.round(value * 1e6) / 1e6;
+type AllowedUnits = Awaited<ReturnType<typeof UnitConversionService.getAllowedUnitsForProducts>>;
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+type CostFields = {
+    currentAverageCost: unknown; averageCostKnown: unknown; cost: unknown; referenceCostKnown: unknown;
+    lastPurchaseCost: unknown; lastPurchaseCostKnown: unknown;
+};
+const COST_SELECT = {
+    currentAverageCost: true, averageCostKnown: true, cost: true, referenceCostKnown: true,
+    lastPurchaseCost: true, lastPurchaseCostKnown: true,
+} as const;
+
+/** Informational unit cost used by the review screens: effective cost with last purchase cost as fallback; null when unknown. */
+function reviewUnitCost(product: CostFields): number | null {
+    const current = resolveEffectiveUnitCost(product.currentAverageCost, product.cost, {
+        averageCostKnown: product.averageCostKnown,
+        referenceCostKnown: product.referenceCostKnown,
+    });
+    if (current.known) return current.value;
+    const last = Number(product.lastPurchaseCost);
+    if (product.lastPurchaseCostKnown === true || (Number.isFinite(last) && last > 0)) return Number.isFinite(last) && last >= 0 ? last : null;
+    return null;
+}
+
+function parseDate(value: unknown): Date | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value !== 'string') throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+    return date;
+}
 
 const asUser = (actor: InventoryCountActor) => actor as unknown as ReqUser;
 
@@ -401,8 +442,10 @@ export class InventoryCountService {
         const quantity = parseCountedQuantity(input.countedQuantity ?? null);
         const unit = typeof input.unit === 'string' ? input.unit.trim() : '';
         if (unit.length === 0 || unit.length > MAX_UNIT_LENGTH) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
-        const clientCountedAt = typeof input.clientCountedAt === 'string' ? new Date(input.clientCountedAt) : null;
+        let clientCountedAt = typeof input.clientCountedAt === 'string' ? new Date(input.clientCountedAt) : null;
         if (!clientCountedAt || Number.isNaN(clientCountedAt.getTime())) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+        // A far-future device clock would otherwise make every later (honest) save look "older" and be ignored.
+        if (clientCountedAt.getTime() > Date.now() + MAX_CLIENT_CLOCK_SKEW_MS) clientCountedAt = new Date();
 
         return prisma.$transaction(async (tx) => {
             const sheet = await InventoryCountService.lockedSheet(tx, actor, sheetId);
@@ -483,6 +526,339 @@ export class InventoryCountService {
             });
             return { id: sheetId, status: 'SUBMITTED' as const, counted, notCounted: lines.length - counted };
         });
+    }
+
+    // ---------------------------------------------------------------- review (ADMIN / SUPERADMIN)
+
+    private static async reviewSheet(db: Db, actor: InventoryCountActor, sheetId: number) {
+        const sheet = await db.inventoryCountSheet.findFirst({
+            where: { id: sheetId, companyId: actor.companyId },
+            select: {
+                id: true, branchId: true, warehouseId: true, status: true, startedAt: true, submittedAt: true,
+                returnedAt: true, returnNote: true, approvedAt: true, rejectedAt: true, rejectReason: true, scopeCategoryIds: true,
+                branch: { select: { name: true } },
+                warehouse: { select: { id: true, name: true } },
+                startedBy: { select: { name: true } },
+                submittedBy: { select: { name: true } },
+                approvedBy: { select: { name: true } },
+            },
+        });
+        if (!sheet) throw new InventoryCountError('INVENTORY_COUNT_NOT_FOUND');
+        assertBranchAccess(asUser(actor), sheet.branchId, { allowGlobal: true });
+        return sheet;
+    }
+
+    /** Difference facts of lines: delta = counted - expected, valued at the informational cost (or the stored one when approved). */
+    private static async lineFacts(
+        db: Db,
+        companyId: number,
+        sheetStatus: string,
+        lines: Array<{
+            productId: number; countedBaseQuantity: unknown; expectedAtCount: unknown; notCounted: boolean;
+            adjustmentValue: unknown; movementId: number | null;
+        }>,
+    ) {
+        const products = lines.length === 0 ? [] : await db.product.findMany({
+            where: { companyId, id: { in: lines.map((l) => l.productId) } },
+            select: { id: true, ...COST_SELECT },
+        });
+        const productOf = new Map(products.map((p) => [p.id, p]));
+        return lines.map((l) => {
+            const counted = l.countedBaseQuantity === null ? null : Number(l.countedBaseQuantity);
+            const expected = l.expectedAtCount === null ? null : Number(l.expectedAtCount);
+            const diffQuantity = !l.notCounted && counted !== null && expected !== null ? round6(counted - expected) : null;
+            const hasDiff = diffQuantity !== null && Math.abs(diffQuantity) > EPSILON;
+            const product = productOf.get(l.productId);
+            let unitCost = product ? reviewUnitCost(product) : null;
+            let diffValue: number | null = null;
+            if (sheetStatus === 'APPROVED') {
+                diffValue = l.adjustmentValue === null ? 0 : Number(l.adjustmentValue);
+                if (hasDiff && l.movementId !== null) unitCost = round6(diffValue / (diffQuantity as number));
+            } else if (diffQuantity !== null) {
+                diffValue = !hasDiff ? 0 : unitCost === null ? null : round2(diffQuantity * unitCost);
+            }
+            return { counted, expected, diffQuantity, hasDiff, unitCost, diffValue };
+        });
+    }
+
+    static async reviewList(actor: InventoryCountActor, filters: {
+        status?: unknown; branchId?: number; dateFrom?: unknown; dateTo?: unknown; page?: number;
+    }) {
+        const status = filters.status === undefined || filters.status === '' ? 'SUBMITTED' : filters.status;
+        if (typeof status !== 'string' || !(REVIEW_STATUSES as readonly string[]).includes(status)) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+        const dateFrom = parseDate(filters.dateFrom);
+        const dateToRaw = parseDate(filters.dateTo);
+        // A date-only upper bound includes the whole day.
+        const dateTo = dateToRaw && typeof filters.dateTo === 'string' && filters.dateTo.length <= 10
+            ? new Date(dateToRaw.getTime() + 24 * 3600 * 1000) : dateToRaw;
+        const page = Math.max(filters.page ?? 1, 1);
+        const branchWhere = isCompanyWide(asUser(actor)) && filters.branchId !== undefined
+            ? { branchId: filters.branchId }
+            : branchFilter(actor);
+        const where: Prisma.InventoryCountSheetWhereInput = {
+            companyId: actor.companyId,
+            status: status as (typeof REVIEW_STATUSES)[number],
+            ...branchWhere,
+            ...((dateFrom || dateTo) && {
+                startedAt: { ...(dateFrom && { gte: dateFrom }), ...(dateTo && { lt: dateTo }) },
+            }),
+        };
+        const [sheets, total] = await Promise.all([
+            prisma.inventoryCountSheet.findMany({
+                where,
+                select: {
+                    id: true, status: true, startedAt: true, submittedAt: true, returnedAt: true,
+                    branch: { select: { name: true } },
+                    warehouse: { select: { name: true } },
+                    startedBy: { select: { name: true } },
+                },
+                orderBy: [{ submittedAt: 'desc' }, { startedAt: 'desc' }, { id: 'desc' }],
+                skip: (page - 1) * DEFAULT_PAGE_SIZE,
+                take: DEFAULT_PAGE_SIZE,
+            }),
+            prisma.inventoryCountSheet.count({ where }),
+        ]);
+        if (sheets.length === 0) return { items: [], total };
+        const lines = await prisma.inventoryCountLine.findMany({
+            where: { sheetId: { in: sheets.map((s) => s.id) } },
+            select: {
+                sheetId: true, productId: true, countedBaseQuantity: true, expectedAtCount: true, notCounted: true,
+                adjustmentValue: true, movementId: true,
+            },
+        });
+        const items = [];
+        for (const sheet of sheets) {
+            const own = lines.filter((l) => l.sheetId === sheet.id);
+            const facts = await InventoryCountService.lineFacts(prisma, actor.companyId, sheet.status, own);
+            items.push({
+                id: sheet.id,
+                branchName: sheet.branch?.name ?? null,
+                warehouseName: sheet.warehouse.name,
+                startedByName: sheet.startedBy.name,
+                startedAt: sheet.startedAt.toISOString(),
+                submittedAt: sheet.submittedAt?.toISOString() ?? null,
+                status: sheet.status,
+                displayStatus: displayStatusOf(sheet.status, sheet.returnedAt),
+                productCount: own.length,
+                countedCount: own.filter((l) => l.countedBaseQuantity !== null).length,
+                differences: facts.filter((f) => f.hasDiff).length,
+                netValue: round2(facts.reduce((sum, f) => sum + (f.hasDiff ? f.diffValue ?? 0 : 0), 0)),
+            });
+        }
+        return { items, total };
+    }
+
+    static async reviewDetail(actor: InventoryCountActor, sheetIdInput: unknown) {
+        const sheetId = intId(sheetIdInput);
+        const sheet = await InventoryCountService.reviewSheet(prisma, actor, sheetId);
+        const lines = await prisma.inventoryCountLine.findMany({
+            where: { sheetId },
+            select: {
+                productId: true, unit: true, countedQuantity: true, countedBaseQuantity: true, expectedAtCount: true,
+                notCounted: true, recountRequested: true, previousCountedBase: true, countedAt: true, movementId: true,
+                adjustmentValue: true,
+                product: { select: { name: true, unit: true, baseUnit: { select: { abbreviation: true } } } },
+                category: { select: { name: true } },
+                countedBy: { select: { name: true } },
+            },
+            orderBy: { product: { name: 'asc' } },
+        });
+        const facts = await InventoryCountService.lineFacts(prisma, actor.companyId, sheet.status, lines);
+        let shortageValue = 0;
+        let surplusValue = 0;
+        const out = lines.map((l, i) => {
+            const f = facts[i];
+            if (f.hasDiff && f.diffValue !== null) {
+                if (f.diffValue < 0) shortageValue += -f.diffValue; else surplusValue += f.diffValue;
+            }
+            return {
+                productId: l.productId,
+                name: l.product.name,
+                categoryName: l.category?.name ?? NO_CATEGORY,
+                baseUnit: l.product.baseUnit?.abbreviation ?? l.product.unit,
+                unit: l.unit,
+                countedQuantity: l.countedQuantity === null ? null : Number(l.countedQuantity),
+                countedBaseQuantity: f.counted,
+                expectedAtCount: f.expected,
+                diffQuantity: f.diffQuantity,
+                unitCost: f.unitCost,
+                diffValue: f.diffValue,
+                notCounted: l.notCounted,
+                recountRequested: l.recountRequested,
+                previousCountedBase: l.previousCountedBase === null ? null : Number(l.previousCountedBase),
+                countedByName: l.countedBy?.name ?? null,
+                countedAt: l.countedAt?.toISOString() ?? null,
+                movementId: l.movementId,
+            };
+        });
+        const scopeLabels = await InventoryCountService.scopeLabels(actor.companyId, [sheet.scopeCategoryIds]);
+        return {
+            id: sheet.id,
+            status: sheet.status,
+            displayStatus: displayStatusOf(sheet.status, sheet.returnedAt),
+            branchName: sheet.branch?.name ?? null,
+            warehouse: { id: sheet.warehouse.id, name: sheet.warehouse.name },
+            startedAt: sheet.startedAt.toISOString(),
+            startedByName: sheet.startedBy.name,
+            submittedAt: sheet.submittedAt?.toISOString() ?? null,
+            submittedByName: sheet.submittedBy?.name ?? null,
+            approvedAt: sheet.approvedAt?.toISOString() ?? null,
+            approvedByName: sheet.approvedBy?.name ?? null,
+            rejectedAt: sheet.rejectedAt?.toISOString() ?? null,
+            rejectReason: sheet.rejectReason ?? null,
+            returnNote: sheet.returnNote ?? null,
+            scopeLabel: scopeLabels[0],
+            lines: out,
+            totals: {
+                differences: facts.filter((f) => f.hasDiff).length,
+                shortageValue: round2(shortageValue),
+                surplusValue: round2(surplusValue),
+                netValue: round2(surplusValue - shortageValue),
+                notCounted: lines.filter((l) => l.notCounted).length,
+            },
+        };
+    }
+
+    /** Sends chosen lines back to the counter: each is cleared (previous count kept) and the sheet returns to DRAFT. */
+    static async recount(actor: InventoryCountActor, sheetIdInput: unknown, input: { productIds?: unknown; note?: unknown }) {
+        const sheetId = intId(sheetIdInput);
+        if (!Array.isArray(input.productIds) || input.productIds.length === 0 || input.productIds.length > 5000) {
+            throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+        }
+        const productIds = [...new Set(input.productIds.map((id) => intId(id)))];
+        if (input.note !== undefined && input.note !== null && (typeof input.note !== 'string' || input.note.length > MAX_NOTE_LENGTH)) {
+            throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+        }
+        const note = typeof input.note === 'string' && input.note.trim() !== '' ? input.note.trim() : null;
+        return prisma.$transaction(async (tx) => {
+            const sheet = await InventoryCountService.lockedSheet(tx, actor, sheetId);
+            if (sheet.status !== 'SUBMITTED') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
+            const lines = await tx.inventoryCountLine.findMany({
+                where: { sheetId, productId: { in: productIds } },
+                select: { id: true, countedBaseQuantity: true, previousCountedBase: true },
+            });
+            if (lines.length !== productIds.length) {
+                throw new InventoryCountError('INVENTORY_COUNT_INVALID', 'Algún producto no está en este conteo');
+            }
+            for (const line of lines) {
+                await tx.inventoryCountLine.update({
+                    where: { id: line.id },
+                    data: {
+                        previousCountedBase: line.countedBaseQuantity ?? line.previousCountedBase,
+                        unit: null, countedQuantity: null, countedBaseQuantity: null, expectedAtCount: null,
+                        countedById: null, countedAt: null, notCounted: false, recountRequested: true,
+                    },
+                });
+            }
+            await tx.inventoryCountSheet.update({
+                where: { id: sheetId },
+                data: { status: 'DRAFT', returnedAt: new Date(), returnNote: note },
+            });
+            return { id: sheetId, status: 'DRAFT' as const, recountCount: lines.length };
+        });
+    }
+
+    static async reject(actor: InventoryCountActor, sheetIdInput: unknown, input: { reason?: unknown }) {
+        const sheetId = intId(sheetIdInput);
+        const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+        if (reason.length < MIN_REASON_LENGTH || reason.length > MAX_NOTE_LENGTH) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+        return prisma.$transaction(async (tx) => {
+            const sheet = await InventoryCountService.lockedSheet(tx, actor, sheetId);
+            if (sheet.status !== 'SUBMITTED') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
+            await tx.inventoryCountSheet.update({
+                where: { id: sheetId },
+                data: { status: 'REJECTED', rejectedById: actor.userId, rejectedAt: new Date(), rejectReason: reason, openWarehouseId: null },
+            });
+            return { id: sheetId, status: 'REJECTED' as const };
+        });
+    }
+
+    /**
+     * Approves a submitted sheet in ONE transaction. Each counted line posts
+     * (counted - expected) on top of the CURRENT stock, so sales made after the
+     * count are respected. The sheet row lock serializes concurrent/retried
+     * approvals: the loser sees APPROVED and gets NOT_EDITABLE with no movements.
+     * Any missing cost aborts everything (all products are reported at once).
+     */
+    static async approve(actor: InventoryCountActor, sheetIdInput: unknown) {
+        const sheetId = intId(sheetIdInput);
+        return prisma.$transaction(async (tx) => {
+            const sheet = await InventoryCountService.lockedSheet(tx, actor, sheetId);
+            if (sheet.status !== 'SUBMITTED') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
+            const lines = await tx.inventoryCountLine.findMany({
+                where: { sheetId },
+                select: {
+                    id: true, productId: true, unit: true, countedBaseQuantity: true, expectedAtCount: true,
+                    notCounted: true, recountRequested: true,
+                },
+                orderBy: { productId: 'asc' },
+            });
+            if (lines.some((l) => l.recountRequested)) throw new InventoryCountError('INVENTORY_COUNT_RECOUNT_PENDING');
+            const counted = lines.filter((l) => !l.notCounted && l.countedBaseQuantity !== null);
+            if (counted.some((l) => l.expectedAtCount === null)) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+            const productIds = counted.map((l) => l.productId);
+
+            await InventoryEngineService.lockInventoryScope(tx, actor.companyId, [sheet.warehouseId], productIds);
+
+            const [products, unitsByProduct] = await Promise.all([
+                productIds.length === 0 ? [] : tx.product.findMany({ where: { companyId: actor.companyId, id: { in: productIds } }, select: { id: true, name: true } }),
+                productIds.length === 0 ? (new Map() as AllowedUnits) : UnitConversionService.getAllowedUnitsForProducts(productIds, actor.companyId, tx),
+            ]);
+            const nameOf = new Map(products.map((p) => [p.id, p.name]));
+
+            let adjustments = 0;
+            let netValue = 0;
+            const missingCost: string[] = [];
+            for (const line of counted) {
+                const delta = round6(Number(line.countedBaseQuantity) - Number(line.expectedAtCount));
+                if (Math.abs(delta) <= EPSILON) continue;
+                const name = nameOf.get(line.productId) ?? `#${line.productId}`;
+                const units = unitsByProduct.get(line.productId) ?? [];
+                const unit = units.find((u) => u.abbreviation.toLowerCase() === (line.unit ?? '').toLowerCase())
+                    ?? units.find((u) => u.isBase);
+                try {
+                    const posted = await InventoryMovementService.postCountAdjustmentTx(tx, actor.companyId, {
+                        warehouseId: sheet.warehouseId,
+                        productId: line.productId,
+                        userId: actor.userId,
+                        productName: name,
+                        deltaBase: delta,
+                        reason: `Conteo físico: hoja #${sheetId}`,
+                        reference: `CONTEO-${sheetId}`,
+                        originalUnit: unit?.abbreviation ?? line.unit ?? 'u',
+                        conversionFactor: unit && unit.conversionFactor > 0 ? unit.conversionFactor : 1,
+                        audit: {
+                            kind: 'INVENTORY_COUNT_SHEET',
+                            sheetId,
+                            productId: line.productId,
+                            warehouseId: sheet.warehouseId,
+                            countedBaseQuantity: Number(line.countedBaseQuantity),
+                            expectedAtCount: Number(line.expectedAtCount),
+                            delta,
+                        },
+                    });
+                    const adjustmentValue = round2(delta * (posted.unitCost ?? 0));
+                    await tx.inventoryCountLine.update({
+                        where: { id: line.id },
+                        data: { movementId: posted.movementId, adjustmentValue },
+                    });
+                    adjustments += 1;
+                    netValue += adjustmentValue;
+                } catch (error) {
+                    if (error instanceof ProductCostMissingError) missingCost.push(error.productName);
+                    else throw error;
+                }
+            }
+            if (missingCost.length > 0) {
+                // Throwing rolls back every movement posted above.
+                throw new InventoryCountError('INVENTORY_COUNT_COST_MISSING', undefined, { products: missingCost });
+            }
+            await tx.inventoryCountSheet.update({
+                where: { id: sheetId },
+                data: { status: 'APPROVED', approvedById: actor.userId, approvedAt: new Date(), openWarehouseId: null },
+            });
+            return { id: sheetId, status: 'APPROVED' as const, adjustments, netValue: round2(netValue) };
+        }, APPROVAL_TX_OPTIONS);
     }
 
     /** "Todo", the category name(s), or "N categorías" for each sheet scope. */

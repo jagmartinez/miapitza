@@ -19,6 +19,17 @@ function assertManualReferenceAllowed(reference?: string | null): void {
     }
 }
 
+/** A surplus adjustment needs a known cost; `productName` lets callers report which product lacks one. */
+export class ProductCostMissingError extends Error {
+    constructor(readonly productName: string) {
+        super(
+            `PRODUCT_COST_MISSING: "${productName}" no tiene costo promedio ni último costo de compra; ` +
+            'registre una entrada valorizada antes de ajustar el conteo al alza'
+        );
+        this.name = 'ProductCostMissingError';
+    }
+}
+
 export class InventoryMovementService {
     private static movementDirection(movement: { type: string; direction?: string | null; reason?: string | null }): 'IN' | 'OUT' {
         if (movement.direction === 'IN' || movement.direction === 'OUT') return movement.direction;
@@ -341,6 +352,105 @@ export class InventoryMovementService {
     }
 
     /**
+     * Posts one count adjustment inside a transaction whose Warehouse -> Product
+     * locks the CALLER already holds (it takes none). Shared by the single
+     * physical count and the blind-count sheet approval:
+     *   - |delta| <= 1e-9: no movement, the count is still audited;
+     *   - delta < 0: ADJUSTMENT/OUT valued by the engine;
+     *   - delta > 0: ADJUSTMENT/IN at the current average cost (fallback: last
+     *     purchase cost), folded into the moving average.
+     * `audit` is stored as the AuditLog details with `movementId` appended.
+     */
+    static async postCountAdjustmentTx(tx: Prisma.TransactionClient, companyId: number, input: {
+        warehouseId: number;
+        productId: number;
+        userId: number;
+        productName: string;
+        deltaBase: number;
+        reason: string;
+        reference?: string;
+        originalUnit: string;
+        conversionFactor: number;
+        audit: Record<string, unknown>;
+        /** AuditLog entityId when no movement is posted (defaults to the product id). */
+        auditEntityFallbackId?: number;
+    }): Promise<{ movementId: number | null; direction: 'IN' | 'OUT' | null; unitCost: number | null }> {
+        const delta = input.deltaBase;
+        const factor = input.conversionFactor > 0 ? input.conversionFactor : 1;
+        let movementId: number | null = null;
+        let direction: 'IN' | 'OUT' | null = null;
+        let postedUnitCost: number | null = null;
+        if (Math.abs(delta) > 1e-9) {
+            direction = delta > 0 ? 'IN' : 'OUT';
+            const quantity = Math.abs(delta);
+            let unitCost: number | undefined;
+            let previousGlobalStock: number | null = null;
+            if (direction === 'IN') {
+                const locked = await tx.product.findFirst({
+                    where: { id: input.productId, companyId },
+                    select: {
+                        currentAverageCost: true, averageCostKnown: true,
+                        cost: true, referenceCostKnown: true,
+                        lastPurchaseCost: true, lastPurchaseCostKnown: true
+                    }
+                });
+                const current = resolveEffectiveUnitCost(locked?.currentAverageCost, locked?.cost, {
+                    averageCostKnown: locked?.averageCostKnown,
+                    referenceCostKnown: locked?.referenceCostKnown
+                });
+                const lastCost = Number(locked?.lastPurchaseCost);
+                if (current.known) {
+                    unitCost = current.value;
+                } else if (locked?.lastPurchaseCostKnown || (Number.isFinite(lastCost) && lastCost > 0)) {
+                    unitCost = Number.isFinite(lastCost) && lastCost >= 0 ? lastCost : undefined;
+                }
+                if (unitCost == null) throw new ProductCostMissingError(input.productName);
+                const global = await tx.stock.aggregate({
+                    where: { productId: input.productId, companyId },
+                    _sum: { quantity: true }
+                });
+                previousGlobalStock = Number(global._sum.quantity ?? 0);
+            }
+            const result = await InventoryEngineService.applyMovement(tx, {
+                type: 'ADJUSTMENT',
+                direction,
+                companyId,
+                warehouseId: input.warehouseId,
+                productId: input.productId,
+                userId: input.userId,
+                quantity,
+                unitCost,
+                reason: input.reason,
+                reference: input.reference,
+                originalQuantity: quantity / factor,
+                originalUnit: input.originalUnit,
+                conversionFactor: factor,
+                sourceType: 'ADJUSTMENT',
+                origin: 'MANUAL',
+                productName: input.productName
+            });
+            movementId = result.movementId;
+            postedUnitCost = result.unitCost;
+            if (previousGlobalStock != null) {
+                await CostingService.applyProductionCost(
+                    tx, input.productId, companyId, quantity, result.unitCost,
+                    previousGlobalStock, undefined, result.movementId
+                );
+            }
+        }
+
+        await AuditLogService.log({
+            companyId, userId: input.userId,
+            entityType: 'InventoryCount',
+            entityId: movementId ?? input.auditEntityFallbackId ?? input.productId,
+            action: 'UPDATE',
+            details: { ...input.audit, movementId }
+        }, tx);
+
+        return { movementId, direction, unitCost: postedUnitCost };
+    }
+
+    /**
      * Physical count (D10). The user enters the COUNTED quantity (in any
      * configured unit); the server converts it to base, reads the current stock
      * under the canonical Warehouse -> Product lock and posts the difference:
@@ -399,77 +509,18 @@ export class InventoryMovementService {
             const delta = countedBase - previousQuantity;
             const countReason = `Conteo físico: ${reason}`;
 
-            let movementId: number | null = null;
-            let direction: 'IN' | 'OUT' | null = null;
-            if (Math.abs(delta) > 1e-9) {
-                direction = delta > 0 ? 'IN' : 'OUT';
-                const quantity = Math.abs(delta);
-                let unitCost: number | undefined;
-                let previousGlobalStock: number | null = null;
-                if (direction === 'IN') {
-                    const locked = await tx.product.findFirst({
-                        where: { id: data.productId, companyId },
-                        select: {
-                            currentAverageCost: true, averageCostKnown: true,
-                            cost: true, referenceCostKnown: true,
-                            lastPurchaseCost: true, lastPurchaseCostKnown: true
-                        }
-                    });
-                    const current = resolveEffectiveUnitCost(locked?.currentAverageCost, locked?.cost, {
-                        averageCostKnown: locked?.averageCostKnown,
-                        referenceCostKnown: locked?.referenceCostKnown
-                    });
-                    const lastCost = Number(locked?.lastPurchaseCost);
-                    if (current.known) {
-                        unitCost = current.value;
-                    } else if (locked?.lastPurchaseCostKnown || (Number.isFinite(lastCost) && lastCost > 0)) {
-                        unitCost = Number.isFinite(lastCost) && lastCost >= 0 ? lastCost : undefined;
-                    }
-                    if (unitCost == null) {
-                        throw new Error(
-                            `PRODUCT_COST_MISSING: "${product.name}" no tiene costo promedio ni último costo de compra; ` +
-                            'registre una entrada valorizada antes de ajustar el conteo al alza'
-                        );
-                    }
-                    const global = await tx.stock.aggregate({
-                        where: { productId: data.productId, companyId },
-                        _sum: { quantity: true }
-                    });
-                    previousGlobalStock = Number(global._sum.quantity ?? 0);
-                }
-                const result = await InventoryEngineService.applyMovement(tx, {
-                    type: 'ADJUSTMENT',
-                    direction,
-                    companyId,
-                    warehouseId: data.warehouseId,
-                    productId: data.productId,
-                    userId: data.userId,
-                    quantity,
-                    unitCost,
-                    reason: countReason,
-                    reference: data.reference,
-                    originalQuantity: quantity / factor,
-                    originalUnit: conv.originalUnit,
-                    conversionFactor: factor,
-                    sourceType: 'ADJUSTMENT',
-                    origin: 'MANUAL',
-                    productName: product.name
-                });
-                movementId = result.movementId;
-                if (previousGlobalStock != null) {
-                    await CostingService.applyProductionCost(
-                        tx, data.productId, companyId, quantity, result.unitCost,
-                        previousGlobalStock, undefined, result.movementId
-                    );
-                }
-            }
-
-            await AuditLogService.log({
-                companyId, userId: data.userId,
-                entityType: 'InventoryCount',
-                entityId: movementId ?? stock?.id ?? data.productId,
-                action: 'UPDATE',
-                details: {
+            const { movementId, direction } = await InventoryMovementService.postCountAdjustmentTx(tx, companyId, {
+                warehouseId: data.warehouseId,
+                productId: data.productId,
+                userId: data.userId,
+                productName: product.name,
+                deltaBase: delta,
+                reason: countReason,
+                reference: data.reference,
+                originalUnit: conv.originalUnit,
+                conversionFactor: factor,
+                auditEntityFallbackId: stock?.id,
+                audit: {
                     kind: 'PHYSICAL_COUNT',
                     productId: data.productId,
                     warehouseId: data.warehouseId,
@@ -478,10 +529,9 @@ export class InventoryMovementService {
                     countedBaseQuantity: countedBase,
                     previousQuantity,
                     delta,
-                    movementId,
                     reason
                 }
-            }, tx);
+            });
 
             return {
                 adjusted: movementId != null,
