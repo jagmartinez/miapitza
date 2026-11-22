@@ -343,7 +343,7 @@ export function createOfflineQueue(deps: QueueDeps) {
             // A count save the server answered but did not apply (a newer value was already there) is told like a dropped line.
             if (isInventoryCountItem(item) && (res.data?.data as { applied?: unknown } | undefined)?.applied === false) {
                 const [, sheetId, productId] = /^\/v1\/inventory-counts\/(\d+)\/lines\/(\d+)/.exec(item.url) ?? [];
-                appEvents.emit('inventory-line-dropped', { sheetId: Number(sheetId), productId: Number(productId) });
+                appEvents.emit('inventory-line-dropped', { sheetId: Number(sheetId), productId: Number(productId), superseded: true });
             }
             // The server applied it. Bookkeeping failures are storage problems, not network errors:
             // the item stays queued and its idempotency key makes the resend safe.

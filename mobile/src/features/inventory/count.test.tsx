@@ -3,6 +3,7 @@ import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } f
 import { appEvents } from '../../core/events';
 import { IdleLockBoundary } from '../../core/IdleLockBoundary';
 import { useDroppedLines } from './useDroppedLines';
+import { DropNotices } from './DropNotices';
 import { CountScreen, LAYOUT } from './CountScreen';
 import { FinishCountScreen } from './FinishCountScreen';
 import { OfflineError } from './inventoryApi';
@@ -458,5 +459,25 @@ describe('useDroppedLines', () => {
         expect(screen.getAllByRole('button')).toHaveLength(1);
         fireEvent.click(screen.getByRole('button', { name: '7:Res' }));
         expect(screen.queryAllByRole('button')).toHaveLength(0);
+    });
+});
+
+describe('R15: superseded saves get a neutral notice', () => {
+    it('a superseded line says the newer value was kept; a real drop keeps its text', () => {
+        render(<DropNotices drops={[{ key: '7-1', sheetId: 7, productId: 1, name: 'Leche', superseded: true }, { key: '7-2', sheetId: 7, productId: 2, name: 'Queso' }]} onDismiss={vi.fn()} />);
+        const texts = screen.getAllByRole('alert').map((a) => a.textContent ?? '');
+        expect(texts[0]).toContain('Se conservó un valor más reciente de «Leche»');
+        expect(texts[0]).not.toContain('no se guardó');
+        expect(texts[1]).toContain('«Queso» no se guardó: hay que contarlo de nuevo.');
+    });
+
+    it('the hook keeps the superseded flag from the event', async () => {
+        function Probe() {
+            const { drops } = useDroppedLines({ sheet: () => Promise.resolve(makeSheet()) });
+            return <>{drops.map((d) => <i key={d.key} data-testid="d">{String(d.superseded ?? false)}</i>)}</>;
+        }
+        render(<Probe />);
+        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 3, superseded: true }));
+        expect(await screen.findByTestId('d')).toHaveTextContent('true');
     });
 });

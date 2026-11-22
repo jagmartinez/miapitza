@@ -7,6 +7,8 @@ export interface DroppedLine {
     sheetId: number;
     productId: number;
     name: string;
+    /** The server kept a newer value (applied:false): not a loss, a neutral notice. */
+    superseded?: boolean;
 }
 
 /**
@@ -21,7 +23,7 @@ export function useDroppedLines(api: Pick<InventoryApi, 'sheet'> | null) {
         alive.current = true;
         if (!api) return undefined;
         const off = appEvents.on('inventory-line-dropped', (payload) => {
-            const p = payload as { sheetId?: unknown; productId?: unknown } | undefined;
+            const p = payload as { sheetId?: unknown; productId?: unknown; superseded?: unknown } | undefined;
             const sheetId = Number(p?.sheetId);
             const productId = Number(p?.productId);
             if (!Number.isInteger(sheetId) || !Number.isInteger(productId)) return;
@@ -33,7 +35,7 @@ export function useDroppedLines(api: Pick<InventoryApi, 'sheet'> | null) {
                     () => 'Un producto',
                 )
                 .then((name) => {
-                    if (alive.current) setDrops((prev) => (prev.some((d) => d.key === key) ? prev : [...prev, { key, sheetId, productId, name }]));
+                    if (alive.current) setDrops((prev) => (prev.some((d) => d.key === key) ? prev : [...prev, { key, sheetId, productId, name, ...(p?.superseded === true && { superseded: true }) }]));
                 });
         });
         return () => {

@@ -6,7 +6,7 @@ export function DropNotices({ drops, onDismiss }: { drops: DroppedLine[]; onDism
         <>
             {drops.map((d) => (
                 <p key={d.key} className="cnt-notice" role="alert">
-                    <span>«{d.name}» no se guardó: hay que contarlo de nuevo.</span>
+                    <span>{d.superseded ? `Se conservó un valor más reciente de «${d.name}».` : `«${d.name}» no se guardó: hay que contarlo de nuevo.`}</span>
                     <button type="button" className="btn" onClick={() => onDismiss(d.key)}>
                         Entendido
                     </button>

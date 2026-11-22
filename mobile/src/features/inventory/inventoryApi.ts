@@ -91,7 +91,7 @@ export function createInventoryApi(data: InventoryApiData, http: AxiosInstance, 
             if (isQueuedOffline(res)) return 'queued';
             // The server answered but kept a newer value: tell the counter like a dropped line (the sheet reloads and the product is counted again).
             if ((res as { applied?: unknown } | null)?.applied === false) {
-                appEvents.emit('inventory-line-dropped', { sheetId, productId });
+                appEvents.emit('inventory-line-dropped', { sheetId, productId, superseded: true });
                 return 'ignored';
             }
             return 'saved';

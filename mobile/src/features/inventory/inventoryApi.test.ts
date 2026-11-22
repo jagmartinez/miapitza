@@ -330,7 +330,7 @@ describe('R13: count age instead of the device clock', () => {
         const result = await env.inventory.saveLine(9, 11, { unit: 'L', countedQuantity: 1 });
         off();
         expect(result).toBe('ignored');
-        expect(dropped).toEqual([{ sheetId: 9, productId: 11 }]);
+        expect(dropped).toEqual([{ sheetId: 9, productId: 11, superseded: true }]);
     });
 
     it('applied:false on a replayed save emits the same event and clears the row', async () => {
@@ -344,6 +344,6 @@ describe('R13: count age instead of the device clock', () => {
         await env.queue.process();
         off();
         expect(await env.db.syncQueue.count()).toBe(0);
-        expect(dropped).toEqual([{ sheetId: 9, productId: 11 }]);
+        expect(dropped).toEqual([{ sheetId: 9, productId: 11, superseded: true }]);
     });
 });
