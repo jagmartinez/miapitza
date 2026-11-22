@@ -105,10 +105,16 @@ router.put('/:id/lines/:productId', requirePermission('inventory.count', 'SUPERA
         unit: { type: 'string', required: true, min: 1, max: 20 },
         // countedQuantity (number >= 0 with up to 3 decimals, or null to clear) is checked strictly in the service.
         countedQuantity: { type: 'number' },
-        clientCountedAt: { type: 'date', required: true },
+        // The device sends the count's age (header X-Counted-Age-Ms, outside the idempotency fingerprint, or body countedAgeMs);
+        // clientCountedAt is the legacy fallback. The service requires one of them.
+        clientCountedAt: { type: 'date' },
+        countedAgeMs: { type: 'number' },
     },
 }), handle(200, (req) =>
-    InventoryCountService.saveLine(actorOf(req), positiveInt(req.params.id), positiveInt(req.params.productId), req.body ?? {})));
+    InventoryCountService.saveLine(actorOf(req), positiveInt(req.params.id), positiveInt(req.params.productId), {
+        ...(req.body ?? {}),
+        ...(req.header('x-counted-age-ms') !== undefined && { countedAgeMs: req.header('x-counted-age-ms') }),
+    })));
 
 router.post('/:id/submit', requirePermission('inventory.count', 'SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'), handle(200, (req) =>
     InventoryCountService.submit(actorOf(req), positiveInt(req.params.id))));

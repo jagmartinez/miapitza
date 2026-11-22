@@ -6,6 +6,7 @@ import { UnitConversionService } from './unit-conversion.service';
 import { InventoryMovementService, ProductCostMissingError } from './inventory-movement.service';
 import { InventoryEngineService } from './inventory-engine.service';
 import { resolveEffectiveUnitCost } from '../utils/product-cost';
+import { AuditLogService } from './audit-log.service';
 
 export interface InventoryCountActor {
     userId: number;
@@ -438,21 +439,35 @@ export class InventoryCountService {
         actor: InventoryCountActor,
         sheetIdInput: unknown,
         productIdInput: unknown,
-        input: { unit?: unknown; countedQuantity?: unknown; clientCountedAt?: unknown },
+        input: { unit?: unknown; countedQuantity?: unknown; clientCountedAt?: unknown; countedAgeMs?: unknown },
     ) {
         const sheetId = intId(sheetIdInput);
         const productId = intId(productIdInput);
         const quantity = parseCountedQuantity(input.countedQuantity ?? null);
         const unit = typeof input.unit === 'string' ? input.unit.trim() : '';
         if (unit.length === 0 || unit.length > MAX_UNIT_LENGTH) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
-        let clientCountedAt = typeof input.clientCountedAt === 'string' ? new Date(input.clientCountedAt) : null;
-        if (!clientCountedAt || Number.isNaN(clientCountedAt.getTime())) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
-        // A far-future device clock would otherwise make every later (honest) save look "older" and be ignored.
-        if (clientCountedAt.getTime() > Date.now() + MAX_CLIENT_CLOCK_SKEW_MS) clientCountedAt = new Date();
+        const receivedAt = Date.now();
+        // The device reports how OLD the count is (ms between typing it and sending this attempt). The server derives the moment from
+        // its own clock, so a slow, fast or stepped device clock cannot shift the count. The absolute `clientCountedAt` is only the
+        // fallback for clients that do not send an age.
+        const hasAge = input.countedAgeMs !== undefined && input.countedAgeMs !== null && input.countedAgeMs !== '';
+        const ageMs = hasAge ? Number(input.countedAgeMs) : null;
+        if (hasAge && (ageMs === null || !Number.isFinite(ageMs))) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+        let legacyCountedAt: Date | null = null;
+        if (!hasAge) {
+            legacyCountedAt = typeof input.clientCountedAt === 'string' ? new Date(input.clientCountedAt) : null;
+            if (!legacyCountedAt || Number.isNaN(legacyCountedAt.getTime())) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
+            // A far-future device clock would otherwise make every later (honest) save look "older" and be ignored.
+            if (legacyCountedAt.getTime() > receivedAt + MAX_CLIENT_CLOCK_SKEW_MS) legacyCountedAt = new Date(receivedAt);
+        }
 
         return prisma.$transaction(async (tx) => {
             const sheet = await InventoryCountService.lockedSheet(tx, actor, sheetId);
             if (sheet.status !== 'DRAFT') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
+            // Age clamped to [0, time since the sheet started]: never in the future, never before the sheet existed.
+            const clientCountedAt = ageMs !== null
+                ? new Date(receivedAt - Math.min(Math.max(ageMs, 0), Math.max(receivedAt - sheet.startedAt.getTime(), 0)))
+                : (legacyCountedAt as Date);
             const line = await tx.inventoryCountLine.findUnique({
                 where: { sheetId_productId: { sheetId, productId } },
                 select: { id: true, countedBaseQuantity: true, expectedAtCount: true, clientCountedAt: true },
@@ -784,11 +799,16 @@ export class InventoryCountService {
         if (reason.length < MIN_REASON_LENGTH || reason.length > MAX_NOTE_LENGTH) throw new InventoryCountError('INVENTORY_COUNT_INVALID');
         return prisma.$transaction(async (tx) => {
             const sheet = await InventoryCountService.lockedSheet(tx, actor, sheetId);
-            if (sheet.status !== 'SUBMITTED') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
+            // A DRAFT can be cancelled too (R12): it is the only way to release a warehouse held by an abandoned count.
+            if (sheet.status !== 'SUBMITTED' && sheet.status !== 'DRAFT') throw new InventoryCountError('INVENTORY_COUNT_NOT_EDITABLE');
             await tx.inventoryCountSheet.update({
                 where: { id: sheetId },
                 data: { status: 'REJECTED', rejectedById: actor.userId, rejectedAt: new Date(), rejectReason: reason, openWarehouseId: null },
             });
+            await AuditLogService.log({
+                companyId: actor.companyId, userId: actor.userId, entityType: 'InventoryCountSheet', entityId: sheetId, action: 'CANCEL',
+                details: { fromStatus: sheet.status, warehouseId: sheet.warehouseId, reason },
+            }, tx);
             return { id: sheetId, status: 'REJECTED' as const };
         });
     }

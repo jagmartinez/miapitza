@@ -342,6 +342,45 @@ describe('POST /inventory-counts/:id/reject', () => {
     });
 });
 
+describe('POST /inventory-counts/:id/reject on a DRAFT sheet (R12)', () => {
+    it('cancels a DRAFT sheet, releases the warehouse and writes an audit entry', async () => {
+        const { state, apply, sheetUpdate, audit } = setup({ status: 'DRAFT' });
+
+        const res = await request(app).post('/api/v1/inventory-counts/70/reject').send({ reason: 'Bodega equivocada' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ id: 70, status: 'REJECTED' });
+        expect(state.status).toBe('REJECTED');
+        expect(state.openWarehouseId).toBeNull();
+        expect(sheetUpdate).toHaveBeenCalledWith({
+            where: { id: 70 },
+            data: expect.objectContaining({ status: 'REJECTED', rejectedById: 2, rejectReason: 'Bodega equivocada', openWarehouseId: null }),
+        });
+        expect(audit).toHaveBeenCalledWith(
+            expect.objectContaining({ companyId: 5, userId: 2, entityType: 'InventoryCountSheet', entityId: 70, action: 'CANCEL', details: expect.objectContaining({ fromStatus: 'DRAFT', reason: 'Bodega equivocada' }) }),
+            expect.anything(),
+        );
+        expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('a counter cannot cancel it and an APPROVED sheet still cannot be rejected', async () => {
+        setup({ status: 'DRAFT' });
+        currentUser = bodega;
+        expect((await request(app).post('/api/v1/inventory-counts/70/reject').send({ reason: 'Bodega equivocada' })).status).toBe(403);
+        jest.restoreAllMocks();
+        setup({ status: 'APPROVED' });
+        expect((await request(app).post('/api/v1/inventory-counts/70/reject').send({ reason: 'Bodega equivocada' })).status).toBe(409);
+    });
+
+    it('the review list accepts status DRAFT', async () => {
+        setup({ status: 'DRAFT' });
+        jest.spyOn(prisma.inventoryCountSheet, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.inventoryCountSheet, 'count').mockResolvedValue(0 as never);
+        const res = await request(app).get('/api/v1/inventory-counts/review?status=DRAFT');
+        expect(res.status).toBe(200);
+    });
+});
+
 describe('review reads', () => {
     const reviewSheet = (over: Record<string, unknown> = {}) => ({
         id: 70, branchId: 1, warehouseId: 3, status: 'SUBMITTED', startedAt: new Date('2026-11-24T09:00:00.000Z'),

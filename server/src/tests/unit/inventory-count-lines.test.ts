@@ -169,6 +169,54 @@ describe('expected capture (fix round 1)', () => {
     });
 });
 
+describe('PUT line: count age instead of the device clock (R13)', () => {
+    const putAge = (age: number | string, body: Record<string, unknown> = {}) =>
+        request(app).put('/api/v1/inventory-counts/70/lines/10').set(KEY).set('X-Counted-Age-Ms', String(age))
+            .send({ unit: 'kg', countedQuantity: 8, ...body });
+    // A sheet started an hour ago, so ages up to 60 min are not clamped by the sheet start.
+    const startedHourAgo = () => sheetRow({ startedAt: new Date(Date.now() - 60 * 60 * 1000) });
+
+    it('derives the count moment from server now minus the age, ignoring a wildly wrong clientCountedAt', async () => {
+        const { updateLine, movements } = setup({ sheet: startedHourAgo(), stock: { quantity: 7 } });
+        movements.mockResolvedValue([{ type: 'OUT', direction: 'OUT', quantity: decimal('3'), reason: 'Venta' }] as never);
+        const before = Date.now();
+        // device clock 10 minutes slow: its absolute stamp says 10 minutes before the real moment
+        await putAge(2 * 60_000, { clientCountedAt: new Date(before - 12 * 60_000).toISOString() }).expect(200);
+        const stamped = (dataOf(updateLine).clientCountedAt as Date).getTime();
+        expect(stamped).toBeGreaterThanOrEqual(before - 2 * 60_000 - 50);
+        expect(stamped).toBeLessThanOrEqual(Date.now() - 2 * 60_000 + 50);
+        const cutoff = (movements.mock.calls[0][0] as { where: { createdAt: { gt: Date } } }).where.createdAt.gt.getTime();
+        expect(cutoff).toBe(stamped); // stock as of the derived moment, not 10 minutes earlier
+    });
+
+    it('works without clientCountedAt and clamps a negative age to now', async () => {
+        const { updateLine } = setup({ sheet: startedHourAgo() });
+        const before = Date.now();
+        await putAge(-5000, { clientCountedAt: undefined }).expect(200);
+        const stamped = (dataOf(updateLine).clientCountedAt as Date).getTime();
+        expect(stamped).toBeGreaterThanOrEqual(before - 50);
+        expect(stamped).toBeLessThanOrEqual(Date.now() + 50);
+    });
+
+    it('never goes earlier than the sheet start', async () => {
+        const started = new Date(Date.now() - 10 * 60_000);
+        const { updateLine } = setup({ sheet: sheetRow({ startedAt: started }) });
+        await putAge(3 * 3600_000).expect(200);
+        expect((dataOf(updateLine).clientCountedAt as Date).getTime()).toBe(started.getTime());
+    });
+
+    it('accepts the age in the body too and rejects a non numeric age', async () => {
+        setup({ sheet: startedHourAgo() });
+        await request(app).put('/api/v1/inventory-counts/70/lines/10').set(KEY).send({ unit: 'kg', countedQuantity: 8, countedAgeMs: 1000 }).expect(200);
+        await putAge('abc').expect(400);
+    });
+
+    it('still requires an age or a clientCountedAt', async () => {
+        setup();
+        await request(app).put('/api/v1/inventory-counts/70/lines/10').set(KEY).send({ unit: 'kg', countedQuantity: 8 }).expect(400);
+    });
+});
+
 describe('PUT /inventory-counts/:id/lines/:productId', () => {
     it('save converts unit to base and captures expected at save time', async () => {
         const { updateLine, convert, findStock } = setup();
