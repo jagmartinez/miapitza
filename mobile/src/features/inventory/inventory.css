@@ -399,23 +399,62 @@
     color: var(--alert);
 }
 
+/* Notices and the reviewer note sit in the LEFT panel (between controls and list): the right panel never loses height. */
 .cnt-notices {
     flex: none;
+    max-height: 96px;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
+    border-bottom: 1px solid var(--border);
 }
 
 .cnt-notice {
     margin: 0;
-    padding: 4px 12px;
+    padding: 2px 8px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px;
     font-size: 14px;
     color: var(--ready);
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
+}
+
+.cnt-notice .btn {
+    min-height: 36px;
+    padding: 0 10px;
+}
+
+.cnt-note {
+    padding: 2px 8px;
+    background: var(--surface);
+}
+
+.cnt-note-toggle {
+    min-height: 32px;
+    padding: 0;
+    font-size: 13px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+}
+
+.cnt-note-text {
+    margin: 0 0 4px;
+    font-size: 14px;
+    color: var(--ready);
+}
+
+.cnt-toast {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 5;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .cnt-main {

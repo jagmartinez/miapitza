@@ -298,10 +298,10 @@ export function createOfflineQueue(deps: QueueDeps) {
                 const survey = isSurveyItem(item);
                 const count = isInventoryCountItem(item);
                 if (count) {
-                    // A count line is never left failed (nobody may discard it and the sheet could not be sent): any verdict or exhausted retries drops it.
-                    // A 404 without its own code is a missing route (deploy): it retries first, capped by MAX_RETRIES.
+                    // A count line is never left failed (nobody may discard it and the sheet could not be sent): a definitive 4xx verdict (or a plain 404 after MAX_RETRIES) drops it.
+                    // A 404 without its own code is a missing route (deploy): it retries first, capped by MAX_RETRIES. 5xx, 408, 429 and the like are outages: the row keeps retrying with capped backoff and is never dropped.
                     const verdict = isDefinitiveCountRejection(status, err.response.data?.code) || (status !== 404 && isPermanentSyncFailure(status, err.response.data?.code));
-                    if (verdict || retryCount >= MAX_RETRIES) {
+                    if (verdict || (status === 404 && retryCount >= MAX_RETRIES)) {
                         await db.syncQueue.delete(item.id!);
                         const [, sheetId, productId] = /^\/v1\/inventory-counts\/(\d+)\/lines\/(\d+)/.exec(item.url) ?? [];
                         appEvents.emit('inventory-line-dropped', { sheetId: Number(sheetId), productId: Number(productId) });

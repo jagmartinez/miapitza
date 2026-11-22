@@ -3,6 +3,8 @@ import { useOnline } from '../../data/useOnline';
 import type { InventoryApi } from './inventoryApi';
 import { OfflineError } from './inventoryApi';
 import { COUNT_ERROR, type SubmittedSheet } from './inventoryTypes';
+import { DropNotices } from './DropNotices';
+import type { DroppedLine } from './useDroppedLines';
 import './inventory.css';
 
 const codeOf = (e: unknown): string => String((e as { response?: { data?: { code?: unknown } } } | null)?.response?.data?.code ?? '');
@@ -16,9 +18,13 @@ export interface FinishCountScreenProps {
     onSubmitted: (result: SubmittedSheet) => void;
     /** Back to the count as it was. */
     onBack?: () => void;
+    /** Lines the queue dropped (from the entry): shown here, and the totals are recomputed when `dropTick` goes up. */
+    drops?: DroppedLine[];
+    onDismissDrop?: (key: string) => void;
+    dropTick?: number;
 }
 
-export function FinishCountScreen({ api, sheetId, onRecount, onSubmitted, onBack }: FinishCountScreenProps) {
+export function FinishCountScreen({ api, sheetId, onRecount, onSubmitted, onBack, drops = [], onDismissDrop, dropTick = 0 }: FinishCountScreenProps) {
     const online = useOnline();
     const [totals, setTotals] = useState<{ counted: number; notCounted: number } | null>(null);
     const [failed, setFailed] = useState(false);
@@ -37,13 +43,14 @@ export function FinishCountScreen({ api, sheetId, onRecount, onSubmitted, onBack
             () => setFailed(true),
         );
     }, [api, sheetId]);
-    useEffect(load, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(load, [load, dropTick]);
 
     // Saves still on the device block the sending; look again while there are any (and when the connection changes).
     const refreshPending = useCallback(() => api.pendingLines(sheetId).then(setPending, () => undefined), [api, sheetId]);
     useEffect(() => {
         void refreshPending();
-    }, [refreshPending, online]);
+    }, [refreshPending, online, dropTick]);
     useEffect(() => {
         if (pending === 0) return undefined;
         const t = setInterval(() => void refreshPending(), RECHECK_MS);
@@ -83,6 +90,11 @@ export function FinishCountScreen({ api, sheetId, onRecount, onSubmitted, onBack
                 <strong className="cnt-title">Terminar conteo</strong>
             </header>
             <div className="cnt-finish-body">
+                {drops.filter((x) => x.sheetId === sheetId).length > 0 && (
+                    <div className="cnt-notices">
+                        <DropNotices drops={drops.filter((x) => x.sheetId === sheetId)} onDismiss={(key) => onDismissDrop?.(key)} />
+                    </div>
+                )}
                 {failed && (
                     <div className="inv-error" role="alert">
                         <p className="error">No se pudo cargar el conteo.</p>

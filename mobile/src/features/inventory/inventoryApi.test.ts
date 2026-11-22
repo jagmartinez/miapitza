@@ -233,3 +233,46 @@ describe('count lines are never left failed', () => {
         expect(dropped).toEqual([{ sheetId: 9, productId: 11 }]);
     });
 });
+
+describe('fix round 1: in-flight saves and outages', () => {
+    it('pendingLines counts a save still in flight and submit waits for it', async () => {
+        const env = await setup();
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>((r) => (release = r));
+        env.reply(async (req) => {
+            if (req.method === 'PUT') await gate;
+            return sheetReply({ id: 9, status: 'SUBMITTED', counted: 1, notCounted: 1 });
+        });
+        const saving = env.inventory.saveLine(9, 11, { unit: 'L', countedQuantity: 3 });
+        await vi.waitFor(() => expect(env.seen).toHaveLength(1));
+        expect(await env.inventory.pendingLines(9)).toBe(1);
+        expect(await env.inventory.pendingLines(10)).toBe(0);
+        const submitting = env.inventory.submit(9);
+        await new Promise((r) => setTimeout(r, 20));
+        expect(env.seen.filter((s) => s.method === 'POST')).toHaveLength(0);
+        release();
+        await saving;
+        await submitting;
+        expect(env.seen.map((s) => s.method)).toEqual(['PUT', 'POST']);
+        expect(await env.inventory.pendingLines(9)).toBe(0);
+    });
+
+    it.each([[500], [502], [503], [408], [429]])('a %s never drops a queued count line, however many times it repeats', async (status) => {
+        const env = await setup();
+        const dropped: unknown[] = [];
+        const off = appEvents.on('inventory-line-dropped', (p) => dropped.push(p));
+        env.setOnline(false);
+        await env.inventory.saveLine(9, 11, { unit: 'L', countedQuantity: 8 });
+        env.setOnline(true);
+        env.reply(() => ({ status }));
+        for (let i = 0; i < MAX_RETRIES + 3; i++) {
+            await env.db.syncQueue.toCollection().modify({ nextAttemptAt: null });
+            await env.queue.process();
+        }
+        off();
+        expect(await env.db.syncQueue.count()).toBe(1);
+        const [row] = await env.db.syncQueue.toArray();
+        expect(row.status).toBe('pending');
+        expect(dropped).toEqual([]);
+    });
+});

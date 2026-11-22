@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { appEvents } from '../../core/events';
+import { useDroppedLines } from './useDroppedLines';
 import { CountScreen, LAYOUT } from './CountScreen';
 import { FinishCountScreen } from './FinishCountScreen';
 import { OfflineError } from './inventoryApi';
@@ -200,17 +201,80 @@ describe('CountScreen', () => {
         expect(saveLine).not.toHaveBeenCalled();
     });
 
-    it('a dropped queued line reloads the sheet and says the product must be counted again', async () => {
-        const dropped = makeSheet();
-        const { sheetFn } = renderCount(makeSheet({ lines: makeSheet().lines.map((l) => (l.productId === 1 ? { ...l, counted: true, unit: 'kg', countedQuantity: 4 } : l)) }));
+    it('a drop tick reloads the sheet as the server has it', async () => {
+        const counted = makeSheet({ lines: makeSheet().lines.map((l) => (l.productId === 1 ? { ...l, counted: true, unit: 'kg', countedQuantity: 4 } : l)) });
+        const { sheetFn, rerender, saveLine } = renderCount(counted, { props: { dropTick: 0 } });
         await screen.findByText('Leche');
         expect(rows()[0]).toHaveAttribute('data-counted', 'true');
-        sheetFn.mockResolvedValue(dropped);
-        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 1 }));
-        expect(await screen.findByRole('alert')).toHaveTextContent('«Leche» no se guardó: hay que contarlo de nuevo.');
+        sheetFn.mockResolvedValue(makeSheet());
+        rerender(<CountScreen api={{ sheet: sheetFn, saveLine }} sheetId={7} user={{ name: 'Ana Perez' }} onFinish={vi.fn()} onExit={vi.fn()} dropTick={1} />);
         await waitFor(() => expect(rows()[0]).toHaveAttribute('data-counted', 'false'));
-        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 99, productId: 2 }));
-        expect(screen.getAllByRole('alert')).toHaveLength(1);
+    });
+
+    it('notices and the reviewer note live in the left panel, never above the right one', async () => {
+        const drops = [
+            { key: '7-1', sheetId: 7, productId: 1, name: 'Leche' },
+            { key: '7-2', sheetId: 7, productId: 2, name: 'Queso' },
+            { key: '99-3', sheetId: 99, productId: 3, name: 'Otra hoja' },
+        ];
+        const onDismissDrop = vi.fn();
+        const { container } = renderCount(makeSheet({ returnNote: 'Revisa lacteos, la leche parece mal contada y el queso tambien falta.' }), { props: { drops, onDismissDrop } });
+        await screen.findByText('Leche');
+        const notices = container.querySelectorAll('.cnt-notices');
+        expect(notices).toHaveLength(1);
+        expect(notices[0].closest('.cnt-left')).not.toBeNull();
+        expect(container.querySelector('.cnt-right .cnt-notices')).toBeNull();
+        expect(container.querySelector('.cnt > .cnt-notices')).toBeNull();
+        expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual([expect.stringContaining('«Leche» no se guardó'), expect.stringContaining('«Queso» no se guardó')]);
+        fireEvent.click(within(screen.getAllByRole('alert')[0]).getByRole('button', { name: 'Entendido' }));
+        expect(onDismissDrop).toHaveBeenCalledWith('7-1');
+        expect(screen.getByText(/Revisa lacteos/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /Nota del revisor/ }));
+        expect(screen.queryByText(/Revisa lacteos/)).toBeNull();
+        const css = readFileSync('src/features/inventory/inventory.css', 'utf8');
+        expect(css).toMatch(/\.cnt-notices \{[^}]*max-height: \d+px[^}]*overflow-y: auto/);
+    });
+
+    it('the first key on a prefilled value replaces it', async () => {
+        renderCount(makeSheet());
+        await screen.findByText('Leche');
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'pollo' } });
+        fireEvent.click(rows()[0]);
+        expect(screen.getByTestId('qty-display')).toHaveTextContent('500');
+        press('7');
+        expect(screen.getByTestId('qty-display')).toHaveTextContent(/^7$/);
+        press('5');
+        expect(screen.getByTestId('qty-display')).toHaveTextContent(/^75$/);
+    });
+
+    it('keypad and Guardar are disabled while the selected row is hidden, and a filter selects the first visible uncounted row', async () => {
+        const { saveLine } = renderCount(makeSheet());
+        await screen.findByText('Leche');
+        const keys = () => within(screen.getByRole('group', { name: 'Teclado' })).getAllByRole('button') as HTMLButtonElement[];
+        expect(keys().filter((k) => k.disabled).map((k) => k.textContent)).toEqual(['Guardar y siguiente']);
+        const box = screen.getByRole('searchbox');
+        fireEvent.change(box, { target: { value: 'pollo' } });
+        expect(keys().every((k) => k.disabled)).toBe(true);
+        fireEvent.click(rows()[0]);
+        expect(keys().filter((k) => k.disabled)).toEqual([]);
+        fireEvent.change(box, { target: { value: 'queso' } });
+        expect(rows()[0]).toHaveAttribute('aria-current', 'true');
+        press('3');
+        fireEvent.click(screen.getByRole('button', { name: 'Guardar y siguiente' }));
+        expect(saveLine).toHaveBeenCalledWith(7, 2, { unit: 'kg', countedQuantity: 3 });
+    });
+
+    it('the open category picker disables the keypad; picking a category selects its first uncounted row', async () => {
+        renderCount(makeSheet());
+        await screen.findByText('Leche');
+        fireEvent.click(screen.getByRole('button', { name: /Lácteos 0\/2/ }));
+        press('5');
+        expect(screen.getByTestId('qty-display')).toHaveTextContent(/^0$/);
+        fireEvent.click(within(screen.getByRole('listbox')).getByRole('option', { name: /Carnes/ }));
+        expect(rows()[0]).toHaveTextContent('Res');
+        expect(rows()[0]).toHaveAttribute('aria-current', 'true');
+        press('5');
+        expect(screen.getByTestId('qty-display')).toHaveTextContent(/^5$/);
     });
 
     it('Terminar conteo calls onFinish and uncountedOnly lists only what is left', async () => {
@@ -287,6 +351,19 @@ describe('FinishCountScreen', () => {
         await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(submitted));
     });
 
+    it('a dropped line recomputes the totals', async () => {
+        let current = makeSheet({ lines: makeSheet().lines.map((l) => ({ ...l, counted: true, unit: 'kg', countedQuantity: 1 })) });
+        const sheet = vi.fn(() => Promise.resolve(current));
+        const pendingLines = vi.fn(() => Promise.resolve(0));
+        const mk = (tick: number) => <FinishCountScreen api={{ sheet, pendingLines, submit: vi.fn() }} sheetId={7} onRecount={vi.fn()} onSubmitted={vi.fn()} dropTick={tick} />;
+        const { rerender } = render(mk(0));
+        await waitFor(() => expect(screen.getByTestId('total-counted')).toHaveTextContent('4'));
+        current = makeSheet({ lines: current.lines.map((l) => (l.productId === 1 ? { ...l, counted: false, countedQuantity: null } : l)) });
+        rerender(mk(1));
+        await waitFor(() => expect(screen.getByTestId('total-counted')).toHaveTextContent('3'));
+        expect(screen.getByTestId('total-uncounted')).toHaveTextContent('1');
+    });
+
     it('a failed submit shows the error and allows trying again', async () => {
         const submit = vi.fn().mockRejectedValueOnce(new OfflineError()).mockResolvedValueOnce(submitted);
         const { onSubmitted } = renderFinish({ submit });
@@ -296,5 +373,33 @@ describe('FinishCountScreen', () => {
         expect(await screen.findByRole('alert')).toHaveTextContent('Requiere conexión');
         fireEvent.click(send());
         await waitFor(() => expect(onSubmitted).toHaveBeenCalled());
+    });
+});
+
+describe('useDroppedLines', () => {
+    function Probe({ sheet }: { sheet: (id: number) => Promise<CountSheet> }) {
+        const { drops, tick, dismiss } = useDroppedLines({ sheet });
+        return (
+            <div>
+                <span data-testid="tick">{tick}</span>
+                {drops.map((d) => (
+                    <button key={d.key} type="button" onClick={() => dismiss(d.key)}>
+                        {d.sheetId}:{d.name}
+                    </button>
+                ))}
+            </div>
+        );
+    }
+
+    it('collects dropped lines from any route with the product name, bumps the tick and can dismiss', async () => {
+        const sheet = vi.fn(() => Promise.resolve(makeSheet()));
+        render(<Probe sheet={sheet} />);
+        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 3 }));
+        expect(await screen.findByRole('button', { name: '7:Res' })).toBeInTheDocument();
+        expect(screen.getByTestId('tick')).toHaveTextContent('1');
+        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 3 }));
+        expect(screen.getAllByRole('button')).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: '7:Res' }));
+        expect(screen.queryAllByRole('button')).toHaveLength(0);
     });
 });

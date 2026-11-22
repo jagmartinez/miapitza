@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { appEvents } from '../../core/events';
 import type { LoginUser } from '../../core/session';
 import { CategoryPicker } from './CategoryPicker';
 import { DecimalKeypad } from './DecimalKeypad';
+import { DropNotices } from './DropNotices';
 import { applyKey, nextLine, orderLines, parseQty, progress, type Key } from './countMath';
 import type { InventoryApi } from './inventoryApi';
 import { STATUS_LABEL, startedText } from './inventoryFormat';
 import type { CountLine, CountSheet } from './inventoryTypes';
+import type { DroppedLine } from './useDroppedLines';
 import './inventory.css';
 
 /** Short landscape screens (~360 dp): everything fits without scrolling. Kept in sync with inventory.css (a test pins the sum). */
@@ -36,11 +37,16 @@ export interface CountScreenProps {
     user: Pick<LoginUser, 'name'>;
     /** Back from "Terminar" with "Volver a contarlos": only what is still uncounted is listed. */
     uncountedOnly?: boolean;
+    /** Lines the queue dropped (from the entry); only this sheet's are shown, in the left panel. */
+    drops?: DroppedLine[];
+    onDismissDrop?: (key: string) => void;
+    /** Goes up when a line is dropped: the sheet is reloaded as the server has it. */
+    dropTick?: number;
     onFinish: () => void;
     onExit: () => void;
 }
 
-export function CountScreen({ api, sheetId, user, uncountedOnly = false, onFinish, onExit }: CountScreenProps) {
+export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops = [], onDismissDrop, dropTick = 0, onFinish, onExit }: CountScreenProps) {
     const [sheet, setSheet] = useState<CountSheet | null>(null);
     const [lines, setLines] = useState<CountLine[]>([]);
     const [failed, setFailed] = useState(false);
@@ -51,7 +57,8 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, onFinis
     const [text, setText] = useState('');
     const [unit, setUnit] = useState('');
     const [indicator, setIndicator] = useState<Indicator>('saved');
-    const [dropped, setDropped] = useState<string[]>([]);
+    const [noteOpen, setNoteOpen] = useState(true);
+    const [fresh, setFresh] = useState(false);
     const [focus, setFocus] = useState<Set<number> | null>(null);
     const saveSeq = useRef(0);
     const firstLoad = useRef(true);
@@ -62,6 +69,8 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, onFinis
         setSelectedId(l.productId);
         setText(qtyText(l.countedQuantity));
         setUnit(l.unit ?? l.baseUnit);
+        // The first key on a saved value types over it.
+        setFresh(l.countedQuantity !== null);
     }, []);
 
     /** Loads the sheet. The first load picks the starting line; later ones refresh the lines (and the open one if it is among `resync`). */
@@ -100,28 +109,36 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, onFinis
         void load();
     }, [load]);
 
-    // A queued save the server turned down for good was dropped by the queue: show the sheet as the server has it and say so.
-    useEffect(
-        () =>
-            appEvents.on('inventory-line-dropped', (payload) => {
-                const p = payload as { sheetId?: number; productId?: number } | undefined;
-                if (!p || p.sheetId !== sheetId || p.productId === undefined) return;
-                const productId = p.productId;
-                void load(productId).then((s) => {
-                    const name = s?.lines.find((l) => l.productId === productId)?.name ?? 'Un producto';
-                    setDropped((prev) => (prev.includes(name) ? prev : [...prev, name]));
-                });
-            }),
-        [sheetId, load],
-    );
+    // A queued save the server turned down for good was dropped by the queue (the entry says which): show the sheet as the server has it.
+    const lastTick = useRef(dropTick);
+    useEffect(() => {
+        if (dropTick === lastTick.current) return;
+        lastTick.current = dropTick;
+        void load(selectedRef.current ?? undefined);
+    }, [dropTick, load]);
 
     const ordered = useMemo(() => (sheet ? orderLines(sheet.categories, lines) : []), [sheet, lines]);
     const editable = sheet?.status === 'DRAFT';
     const selected = ordered.find((l) => l.productId === selectedId) ?? null;
     const q = norm(query.trim());
-    const visible = q
-        ? ordered.filter((l) => norm(l.name).includes(q) || norm(l.sku ?? '').includes(q))
-        : ordered.filter((l) => l.categoryId === categoryId && (!focus || focus.has(l.productId)));
+    const visibleFor = (text: string, category: number | null, scope: Set<number> | null) => {
+        const needle = norm(text.trim());
+        return needle ? ordered.filter((l) => norm(l.name).includes(needle) || norm(l.sku ?? '').includes(needle)) : ordered.filter((l) => l.categoryId === category && (!scope || scope.has(l.productId)));
+    };
+    const visible = visibleFor(query, categoryId, focus);
+    /** The keypad only writes to a row the counter can see. */
+    const target = editable && !pickerOpen && selected !== null && visible.some((l) => l.productId === selected.productId) ? selected : null;
+    /** After a filter changes: the first uncounted row on screen is the target; with none, nothing is. */
+    const retarget = (list: CountLine[]) => {
+        const first = list.find((l) => !l.counted);
+        if (first) select(first);
+        else {
+            setSelectedId(null);
+            setText('');
+            setFresh(false);
+        }
+    };
+    const sheetDrops = drops.filter((d) => d.sheetId === sheetId);
     const items = (sheet?.categories ?? []).map((c) => ({ ...c, ...progress(ordered, c.categoryId) }));
     const current = items.find((c) => c.categoryId === categoryId);
     const overall = progress(ordered);
@@ -130,25 +147,35 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, onFinis
         setCategoryId(id);
         setPickerOpen(false);
         setQuery('');
-        const first = ordered.find((l) => l.categoryId === id && (!focus || focus.has(l.productId)));
-        if (first) select(first);
+        retarget(visibleFor('', id, focus));
     };
 
-    const onKey = (k: Key) => setText((t) => applyKey(t, k));
+    const changeQuery = (value: string) => {
+        setQuery(value);
+        retarget(visibleFor(value, categoryId, focus));
+    };
+
+    const onKey = (k: Key) => {
+        if (!target) return;
+        const typesOver = fresh && k !== 'back' && k !== 'clear';
+        setText((t) => applyKey(typesOver ? '' : t, k));
+        setFresh(false);
+    };
 
     const save = () => {
-        if (!selected || !editable) return;
+        if (!target) return;
+        const selected = target;
         const quantity = parseQty(text);
         if (quantity === null) return;
         const { productId } = selected;
         const updated = lines.map((l) => (l.productId === productId ? { ...l, unit, countedQuantity: quantity, counted: true } : l));
         setLines(updated);
         const next = nextLine(orderLines(sheet?.categories ?? [], updated), productId, selected.categoryId);
-        const target = next === null ? null : updated.find((l) => l.productId === next);
-        if (target) {
-            setCategoryId(target.categoryId);
+        const nextRow = next === null ? null : updated.find((l) => l.productId === next);
+        if (nextRow) {
+            setCategoryId(nextRow.categoryId);
             setQuery('');
-            select(target);
+            select(nextRow);
         }
         const token = ++saveSeq.current;
         setIndicator('saving');
@@ -209,32 +236,39 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, onFinis
     return (
         <main className="cnt" data-testid="count-screen" data-readonly={!editable}>
             {header}
-            {(dropped.length > 0 || sheet.returnNote) && (
-                <div className="cnt-notices">
-                    {sheet.returnNote && editable && <p className="cnt-notice">Nota del revisor: {sheet.returnNote}</p>}
-                    {dropped.map((name) => (
-                        <p key={name} className="cnt-notice" role="alert">
-                            «{name}» no se guardó: hay que contarlo de nuevo.
-                            <button type="button" className="btn" onClick={() => setDropped((prev) => prev.filter((n) => n !== name))}>
-                                Entendido
-                            </button>
-                        </p>
-                    ))}
-                </div>
-            )}
             <div className="cnt-main">
                 <section className="cnt-left">
                     <div className="cnt-controls">
                         <button type="button" className="cnt-catbtn" aria-haspopup="listbox" aria-expanded={pickerOpen} disabled={q !== ''} onClick={() => setPickerOpen((o) => !o)}>
                             {current ? `${current.name} ${current.counted}/${current.total}` : 'Categoría'} ▾
                         </button>
-                        <input className="cnt-search" type="search" aria-label="Buscar producto" placeholder="Buscar producto" value={query} onChange={(e) => setQuery(e.target.value)} />
+                        <input className="cnt-search" type="search" aria-label="Buscar producto" placeholder="Buscar producto" value={query} onChange={(e) => changeQuery(e.target.value)} />
                         {focus && (
-                            <button type="button" className="btn" onClick={() => setFocus(null)}>
+                            <button
+                                type="button"
+                                className="btn"
+                                onClick={() => {
+                                    setFocus(null);
+                                    retarget(visibleFor(query, categoryId, null));
+                                }}
+                            >
                                 Ver todos
                             </button>
                         )}
                     </div>
+                    {(sheetDrops.length > 0 || (sheet.returnNote && editable)) && (
+                        <div className="cnt-notices">
+                            {sheet.returnNote && editable && (
+                                <div className="cnt-note">
+                                    <button type="button" className="cnt-note-toggle" aria-expanded={noteOpen} onClick={() => setNoteOpen((o) => !o)}>
+                                        Nota del revisor {noteOpen ? '\u25BE' : '\u25B8'}
+                                    </button>
+                                    {noteOpen && <p className="cnt-note-text">{sheet.returnNote}</p>}
+                                </div>
+                            )}
+                            <DropNotices drops={sheetDrops} onDismiss={(key) => onDismissDrop?.(key)} />
+                        </div>
+                    )}
                     <div className="cnt-listwrap">
                         <ul className="cnt-list" data-dim={pickerOpen} aria-label="Productos">
                             {visible.map((l) => (
@@ -273,7 +307,7 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, onFinis
                         <>
                             <div className="cnt-units" role="group" aria-label="Unidad de conteo">
                                 {units.map((u) => (
-                                    <button key={u} type="button" className="cnt-unit" aria-pressed={u === unit} disabled={!selected} onClick={() => setUnit(u)}>
+                                    <button key={u} type="button" className="cnt-unit" aria-pressed={u === unit} disabled={!target} onClick={() => setUnit(u)}>
                                         {u}
                                     </button>
                                 ))}
@@ -281,7 +315,7 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, onFinis
                             <div className="cnt-display" data-testid="qty-display" data-empty={text === ''}>
                                 {text === '' ? '0' : text}
                             </div>
-                            <DecimalKeypad onKey={onKey} onSave={save} saveDisabled={!selected || parseQty(text) === null} />
+                            <DecimalKeypad onKey={onKey} onSave={save} disabled={!target} saveDisabled={parseQty(text) === null} />
                         </>
                     ) : (
                         <p className="cnt-readonly">Conteo {STATUS_LABEL[sheet.displayStatus].toLowerCase()}: solo lectura.</p>

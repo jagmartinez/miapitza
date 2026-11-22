@@ -56,7 +56,41 @@ function overlay(sheet: CountSheet, saves: SyncItem[]): CountSheet {
 export function createInventoryApi(data: InventoryApiData, http: AxiosInstance, online: () => boolean = isOnline) {
     const { api, db } = data;
 
+    /** Online saves still waiting for the server's answer, per sheet: not in the queue yet, but the sheet must not be sent before they settle. */
+    const inFlight = new Map<number, Set<Promise<unknown>>>();
+    const track = <T>(sheetId: number, p: Promise<T>): Promise<T> => {
+        const set = inFlight.get(sheetId) ?? new Set<Promise<unknown>>();
+        inFlight.set(sheetId, set);
+        const settled = p.then(
+            () => undefined,
+            () => undefined,
+        );
+        set.add(settled);
+        void settled.then(() => {
+            set.delete(settled);
+            if (set.size === 0) inFlight.delete(sheetId);
+        });
+        return p;
+    };
+
     const read = async <T>(url: string, params: Record<string, unknown> | undefined, ttlMs: number): Promise<T> => (await api.cachedRead<T>(url, params, ttlMs)).data;
+
+    /** One save: the count is stamped now; a lost answer is queued with the same stamp and key. */
+    async function send(sheetId: number, productId: number, input: CountLineInput): Promise<'saved' | 'queued'> {
+        const clientCountedAt = new Date().toISOString();
+        const key = `count-${sheetId}-${productId}-${Date.parse(clientCountedAt)}`;
+        const queue = { operationType: 'GENERIC_MUTATION' as const, meta: { label: COUNT_LINE_LABEL } };
+        const spec = { method: 'PUT' as const, url: lineUrl(sheetId, productId), data: { unit: input.unit, countedQuantity: input.countedQuantity, clientCountedAt }, key };
+        try {
+            const res = await api.mutate({ ...spec, queue });
+            return isQueuedOffline(res) ? 'queued' : 'saved';
+        } catch (error) {
+            // The server's own verdict (sheet closed, bad unit...) is for the counter to see; only a lost answer is queued, with the same stamp and key.
+            if (codeOf(error).startsWith('INVENTORY_COUNT_') || !isAmbiguousMutationFailure(error)) throw error;
+            await api.mutate({ ...spec, queue: { ...queue, forceQueue: true } });
+            return 'queued';
+        }
+    }
 
     return {
         warehouses: () => read<CountWarehouse[]>(`${COUNT_URL}/warehouses`, undefined, LIVE_TTL_MS),
@@ -80,25 +114,13 @@ export function createInventoryApi(data: InventoryApiData, http: AxiosInstance, 
          * Saves (or, with `countedQuantity: null`, clears) one line. The count is stamped with the device clock now: a queued save
          * keeps that stamp, so the server keeps the last thing the counter typed and captures expected stock as of that moment.
          */
-        async saveLine(sheetId: number, productId: number, input: CountLineInput): Promise<'saved' | 'queued'> {
-            const clientCountedAt = new Date().toISOString();
-            const key = `count-${sheetId}-${productId}-${Date.parse(clientCountedAt)}`;
-            const queue = { operationType: 'GENERIC_MUTATION' as const, meta: { label: COUNT_LINE_LABEL } };
-            const spec = { method: 'PUT' as const, url: lineUrl(sheetId, productId), data: { unit: input.unit, countedQuantity: input.countedQuantity, clientCountedAt }, key };
-            try {
-                const res = await api.mutate({ ...spec, queue });
-                return isQueuedOffline(res) ? 'queued' : 'saved';
-            } catch (error) {
-                // The server's own verdict (sheet closed, bad unit...) is for the counter to see; only a lost answer is queued, with the same stamp and key.
-                if (codeOf(error).startsWith('INVENTORY_COUNT_') || !isAmbiguousMutationFailure(error)) throw error;
-                await api.mutate({ ...spec, queue: { ...queue, forceQueue: true } });
-                return 'queued';
-            }
+        saveLine(sheetId: number, productId: number, input: CountLineInput): Promise<'saved' | 'queued'> {
+            return track(sheetId, send(sheetId, productId, input));
         },
 
-        /** Saves of this sheet still on the device (any owner), failed ones included: the sheet cannot be sent while there are any. */
+        /** Saves of this sheet still on the device (any owner, failed ones included) plus the ones still in flight: the sheet cannot be sent while there are any. */
         async pendingLines(sheetId: number): Promise<number> {
-            return (await queuedSaves(db, sheetId)).length;
+            return (await queuedSaves(db, sheetId)).length + (inFlight.get(sheetId)?.size ?? 0);
         },
 
         /**
@@ -107,6 +129,8 @@ export function createInventoryApi(data: InventoryApiData, http: AxiosInstance, 
          */
         async submit(sheetId: number): Promise<SubmittedSheet> {
             if (!online()) throw new OfflineError();
+            // A save still on its way would reach the server after the sheet is closed: let those settle first.
+            await Promise.all([...(inFlight.get(sheetId) ?? [])]);
             try {
                 return (await api.mutate<SubmittedSheet>({ method: 'POST', url: `${COUNT_URL}/${sheetId}/submit` })) as SubmittedSheet;
             } catch (error) {

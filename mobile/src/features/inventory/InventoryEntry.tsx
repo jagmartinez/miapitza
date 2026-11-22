@@ -5,9 +5,11 @@ import { loadWaiterData } from '../../data/loadWaiterData';
 import type { WaiterData } from '../../data/waiterData';
 import { InventoryHome } from './InventoryHome';
 import { CountScreen } from './CountScreen';
+import { DropNotices } from './DropNotices';
 import { FinishCountScreen } from './FinishCountScreen';
 import { NewCountScreen } from './NewCountScreen';
 import { createInventoryApi } from './inventoryApi';
+import { useDroppedLines } from './useDroppedLines';
 
 /** Internal routes of the blind count. The screens of each one arrive with their own task; the entry owns which one is up. */
 export type InventoryRoute = { name: 'home' } | { name: 'new' } | { name: 'count'; sheetId: number; uncountedOnly?: boolean } | { name: 'finish'; sheetId: number };
@@ -44,10 +46,28 @@ export default function InventoryEntry({ session, services, onSwitchUser, onBack
 
     const api = useMemo(() => (data ? createInventoryApi(data, services.http) : null), [data, services.http]);
 
+    // Lines the queue dropped for good are told on whichever screen is up: inside the count and finish screens, as a toast elsewhere.
+    const { drops, tick, dismiss } = useDroppedLines(api);
+    const toast = drops.length > 0 && (
+        <div className="cnt-toast">
+            <DropNotices drops={drops} onDismiss={dismiss} />
+        </div>
+    );
+
     if (data && api && route.name === 'home')
-        return <InventoryHome api={api} user={session.user} onNew={() => setRoute({ name: 'new' })} onContinue={(sheetId) => setRoute({ name: 'count', sheetId })} onSwitchUser={onSwitchUser} onBack={onBack} />;
+        return (
+            <>
+                <InventoryHome api={api} user={session.user} onNew={() => setRoute({ name: 'new' })} onContinue={(sheetId) => setRoute({ name: 'count', sheetId })} onSwitchUser={onSwitchUser} onBack={onBack} />
+                {toast}
+            </>
+        );
     if (data && api && route.name === 'new')
-        return <NewCountScreen api={api} onStarted={(sheetId) => setRoute({ name: 'count', sheetId })} onBack={() => setRoute({ name: 'home' })} />;
+        return (
+            <>
+                <NewCountScreen api={api} onStarted={(sheetId) => setRoute({ name: 'count', sheetId })} onBack={() => setRoute({ name: 'home' })} />
+                {toast}
+            </>
+        );
 
     if (data && api && route.name === 'count')
         return (
@@ -57,6 +77,9 @@ export default function InventoryEntry({ session, services, onSwitchUser, onBack
                 sheetId={route.sheetId}
                 user={session.user}
                 uncountedOnly={route.uncountedOnly}
+                drops={drops}
+                onDismissDrop={dismiss}
+                dropTick={tick}
                 onFinish={() => setRoute({ name: 'finish', sheetId: route.sheetId })}
                 onExit={() => setRoute({ name: 'home' })}
             />
@@ -66,6 +89,9 @@ export default function InventoryEntry({ session, services, onSwitchUser, onBack
             <FinishCountScreen
                 api={api}
                 sheetId={route.sheetId}
+                drops={drops}
+                onDismissDrop={dismiss}
+                dropTick={tick}
                 onBack={() => setRoute({ name: 'count', sheetId: route.sheetId })}
                 onRecount={() => setRoute({ name: 'count', sheetId: route.sheetId, uncountedOnly: true })}
                 onSubmitted={() => setRoute({ name: 'home' })}
