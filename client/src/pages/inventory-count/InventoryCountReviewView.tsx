@@ -213,12 +213,15 @@ export interface InventoryCountDetailViewProps {
     onRecount: () => void;
     onReject: () => void;
     onApprove: () => void;
+    /** Admin cancels a count still in progress (DRAFT), releasing its warehouse. */
+    onCancelDraft?: () => void;
 }
 
 export function InventoryCountDetailView({
-    detail, onlyDifferences, onToggleOnlyDifferences, selected, onToggleSelected, onToggleAllVisible, busy, actionError, onRecount, onReject, onApprove,
+    detail, onlyDifferences, onToggleOnlyDifferences, selected, onToggleSelected, onToggleAllVisible, busy, actionError, onRecount, onReject, onApprove, onCancelDraft,
 }: InventoryCountDetailViewProps) {
     const reviewable = detail.status === 'SUBMITTED';
+    const cancellable = detail.status === 'DRAFT' && onCancelDraft !== undefined;
     const approved = detail.status === 'APPROVED';
     const lines = visibleLines(detail.lines, onlyDifferences);
     const allChecked = lines.length > 0 && lines.every((l) => selected.includes(l.productId));
@@ -291,6 +294,11 @@ export function InventoryCountDetailView({
                     <input type="checkbox" checked={onlyDifferences} onChange={(e) => onToggleOnlyDifferences(e.target.checked)} />
                     Solo diferencias
                 </label>
+                {cancellable && (
+                    <div className="count-actions">
+                        <button type="button" className="btn btn-danger btn-md" disabled={busy} onClick={onCancelDraft}>Cancelar conteo</button>
+                    </div>
+                )}
                 {reviewable && (
                     <div className="count-actions">
                         <button type="button" className="btn btn-secondary btn-md" disabled={busy || !canRecount(selected)} onClick={onRecount}>

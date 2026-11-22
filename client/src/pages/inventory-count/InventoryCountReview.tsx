@@ -4,7 +4,7 @@ import PageHeader from '../../components/PageHeader';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { branchesAPI, inventoryCountsAPI } from '../../services/api';
-import { getIdempotentAttempt, type IdempotentAttempt } from '../../utils/idempotency';
+import { getIdempotentAttempt, isAmbiguousMutationFailure, type IdempotentAttempt } from '../../utils/idempotency';
 import type { Branch } from '../../types';
 import {
     DEFAULT_STATUS_FILTER, InventoryCountDetailView, InventoryCountListView, approveConfirmMessage, canRecount,
@@ -14,7 +14,7 @@ import {
 const PAGE_SIZE = 20;
 const REASON_MIN = 3;
 
-type Dialog = 'recount' | 'reject' | 'approve' | null;
+type Dialog = 'recount' | 'reject' | 'cancel' | 'approve' | null;
 
 export default function InventoryCountReview() {
     const [filters, setFilters] = useState<CountListFilters>({ status: DEFAULT_STATUS_FILTER, branchId: '', dateFrom: '', dateTo: '' });
@@ -101,7 +101,7 @@ export default function InventoryCountReview() {
             onDone();
         } catch (e) {
             // A definitive server answer ends the attempt; only a lost response keeps the key for a safe retry.
-            if ((e as { response?: unknown })?.response) approveAttempt.current = null;
+            if (!isAmbiguousMutationFailure(e)) approveAttempt.current = null;
             setActionError(reviewErrorMessage(e, fallback));
             // A stale sheet (already approved/rejected elsewhere) is refreshed so the actions disappear.
             if (openId !== null) void loadDetail(openId);
@@ -135,6 +135,12 @@ export default function InventoryCountReview() {
     const reject = () => {
         if (!detail || text.trim().length < REASON_MIN) return;
         void run(() => inventoryCountsAPI.reject(detail.id, text.trim()), 'No se pudo rechazar el conteo', back);
+    };
+
+    // A count still in progress is cancelled through the same endpoint (reason required, audited); it frees the warehouse.
+    const cancelDraft = () => {
+        if (!detail || text.trim().length < REASON_MIN) return;
+        void run(() => inventoryCountsAPI.reject(detail.id, text.trim()), 'No se pudo cancelar el conteo', back);
     };
 
     const toggleSelected = (productId: number) =>
@@ -171,6 +177,7 @@ export default function InventoryCountReview() {
                         onRecount={() => setDialog('recount')}
                         onReject={() => setDialog('reject')}
                         onApprove={() => setDialog('approve')}
+                        onCancelDraft={() => setDialog('cancel')}
                     />
                 )}
                 <Modal
@@ -206,6 +213,24 @@ export default function InventoryCountReview() {
                     <div className="count-dialog-field">
                         <label htmlFor="count-reject-reason">Motivo</label>
                         <textarea id="count-reject-reason" className="filter-input" maxLength={500} value={text} onChange={(e) => setText(e.target.value)} />
+                    </div>
+                </Modal>
+                <Modal
+                    isOpen={dialog === 'cancel'}
+                    onClose={closeDialog}
+                    title="Cancelar conteo"
+                    size="sm"
+                    footer={(
+                        <div className="count-dialog-actions">
+                            <button type="button" className="btn btn-secondary btn-md" onClick={closeDialog}>Volver</button>
+                            <button type="button" className="btn btn-danger btn-md" disabled={busy || text.trim().length < REASON_MIN} onClick={cancelDraft}>Cancelar conteo</button>
+                        </div>
+                    )}
+                >
+                    <div className="count-dialog-field">
+                        <p>El conteo sigue en curso. Al cancelarlo se descarta lo contado y la bodega queda libre para un conteo nuevo.</p>
+                        <label htmlFor="count-cancel-reason">Motivo</label>
+                        <textarea id="count-cancel-reason" className="filter-input" maxLength={500} value={text} onChange={(e) => setText(e.target.value)} />
                     </div>
                 </Modal>
                 <ConfirmDialog

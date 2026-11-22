@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
     DEFAULT_STATUS_FILTER, InventoryCountDetailView, InventoryCountListView, approveConfirmMessage, canRecount, reviewErrorMessage,
@@ -122,5 +123,33 @@ describe('InventoryCountReview detail', () => {
         expect(html).not.toContain('Pedir reconteo');
         expect(html).not.toContain('Rechazar');
         expect(html).not.toContain('type="checkbox" aria-label="Recontar');
+    });
+});
+
+describe('InventoryCountReview cancel a DRAFT sheet (R12)', () => {
+    const draft = detail({ status: 'DRAFT', displayStatus: 'EN_CURSO', submittedAt: null });
+
+    it('a DRAFT sheet offers Cancelar conteo and none of the review actions', () => {
+        const html = renderDetail(draft, { onCancelDraft: noop });
+        expect(html).toContain('Cancelar conteo');
+        expect(html).not.toContain('Aprobar y ajustar');
+        expect(html).not.toContain('Pedir reconteo');
+        expect(html).not.toContain('Rechazar');
+        expect(html).not.toContain('Seleccionar todos para recontar');
+    });
+
+    it('a SUBMITTED sheet keeps its review actions and has no Cancelar conteo', () => {
+        const html = renderDetail(detail(), { onCancelDraft: noop });
+        expect(html).not.toContain('Cancelar conteo');
+        expect(html).toContain('Aprobar y ajustar');
+    });
+
+    it('the page asks for a reason and cancels through the reject endpoint; approve key rule uses isAmbiguousMutationFailure', () => {
+        const page = readFileSync('src/pages/inventory-count/InventoryCountReview.tsx', 'utf8');
+        expect(page).toContain("dialog === 'cancel'");
+        expect(page).toContain('title="Cancelar conteo"');
+        expect(page).toMatch(/inventoryCountsAPI\.reject\(detail\.id, text\.trim\(\)\)/);
+        expect(page).toContain('isAmbiguousMutationFailure(e)');
+        expect(page).not.toMatch(/\(e as \{ response\?: unknown \}\)\?\.response\) approveAttempt/);
     });
 });
