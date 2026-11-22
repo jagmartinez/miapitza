@@ -203,3 +203,11 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 1. `git checkout feat/app-android`
 2. Pedir a Claude: "retoma la app Android desde el punto de control".
 3. Claude lee este archivo y la bitácora, y continúa con la siguiente tarea pendiente.
+
+## 2026-11-22 — Selectores de registro y prueba de Cocina (KDS)
+
+- a5143a0: `GET /v1/operational-devices/setup-options` + selectores Sucursal / Usuario de cocina en la app (reemplazan los campos de ID). Register rechaza sucursales inactivas; 401/403 al cargar opciones vuelve al login. Revisado por refutador (Fable): 1 Important + 6 Minor, todos corregidos.
+- 51f551c: ticket del mesero usable en pantallas bajas (lista min 140px, panel con scroll y pie fijo bajo max-height 480px).
+- 1432bfb: Cocina muestra mesas con nombre tal cual («FDC», no «MFDC»); selects con el estilo de los inputs (48px).
+- Emulador: registro de tablet de cocina con selectores OK; KDS muestra la comanda, Iniciar → Listo → «Sin comandas», Recientes (1). Emulador queda registrado como tablet de servicio «Servicio 1».
+- Pendiente: 5c Push/FCM (archivos de Firebase), pruebas en hardware real (Android 9), motor de BD de producción y binlog.
