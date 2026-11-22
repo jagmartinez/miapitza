@@ -94,7 +94,7 @@ describe('InventoryHome', () => {
         expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Bodega', 'Fecha · quién', 'Productos', 'Resultado', 'Estado']);
         expect(row.querySelectorAll('td')[1].textContent).toMatch(/· Luis$/);
         expect(row.querySelectorAll('td')[2].textContent).toBe('33');
-        expect(row).toHaveTextContent(/1 diferencias · C\$\s?20/);
+        expect(row).toHaveTextContent(/1 diferencia · C\$\s?20/);
     });
 
     it('En curso card has a progress bar', async () => {

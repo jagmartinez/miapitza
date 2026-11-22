@@ -4,11 +4,13 @@ import type { Session } from '../../core/session';
 import { loadWaiterData } from '../../data/loadWaiterData';
 import type { WaiterData } from '../../data/waiterData';
 import { InventoryHome } from './InventoryHome';
+import { CountScreen } from './CountScreen';
+import { FinishCountScreen } from './FinishCountScreen';
 import { NewCountScreen } from './NewCountScreen';
 import { createInventoryApi } from './inventoryApi';
 
 /** Internal routes of the blind count. The screens of each one arrive with their own task; the entry owns which one is up. */
-export type InventoryRoute = { name: 'home' } | { name: 'new' } | { name: 'count'; sheetId: number } | { name: 'finish'; sheetId: number };
+export type InventoryRoute = { name: 'home' } | { name: 'new' } | { name: 'count'; sheetId: number; uncountedOnly?: boolean } | { name: 'finish'; sheetId: number };
 
 /**
  * Lazy entry of Inventario: loads the waiter data layer (queue included, so queued line saves replay while this screen is up),
@@ -47,7 +49,30 @@ export default function InventoryEntry({ session, services, onSwitchUser, onBack
     if (data && api && route.name === 'new')
         return <NewCountScreen api={api} onStarted={(sheetId) => setRoute({ name: 'count', sheetId })} onBack={() => setRoute({ name: 'home' })} />;
 
-    // Loading, or a route whose screen arrives with a later task.
+    if (data && api && route.name === 'count')
+        return (
+            <CountScreen
+                key={`${route.sheetId}-${route.uncountedOnly ? 'u' : 'a'}`}
+                api={api}
+                sheetId={route.sheetId}
+                user={session.user}
+                uncountedOnly={route.uncountedOnly}
+                onFinish={() => setRoute({ name: 'finish', sheetId: route.sheetId })}
+                onExit={() => setRoute({ name: 'home' })}
+            />
+        );
+    if (data && api && route.name === 'finish')
+        return (
+            <FinishCountScreen
+                api={api}
+                sheetId={route.sheetId}
+                onBack={() => setRoute({ name: 'count', sheetId: route.sheetId })}
+                onRecount={() => setRoute({ name: 'count', sheetId: route.sheetId, uncountedOnly: true })}
+                onSubmitted={() => setRoute({ name: 'home' })}
+            />
+        );
+
+    // Loading.
     return (
         <main className="screen inventory" data-testid="inventory-entry" data-route={route.name}>
             <header className="inventory-bar">
