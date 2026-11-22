@@ -22,6 +22,7 @@
     "@capacitor/filesystem": "6.0.4",
     "@capacitor/screen-orientation": "^6.0.4",
     "@capacitor/share": "6.0.4",
+    "@tabler/icons-react": "3.52.0",
     "axios": "^1.18.1",
     "dexie": "4.2.1",
     "react": "^18.2.0",

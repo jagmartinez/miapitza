@@ -11,7 +11,7 @@
 
 .screen h1 {
     font-size: 20px;
-    font-weight: 600;
+    font-weight: 500;
     margin: 0;
 }
 
@@ -44,21 +44,109 @@
     min-width: 48px;
     padding: 0 16px;
     font-size: 16px;
+    font-weight: 400;
     color: var(--text);
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background: transparent;
+    border: var(--hair) solid var(--line-strong);
+    border-radius: var(--radius-m);
+    cursor: pointer;
 }
 
 .btn:disabled {
     opacity: 0.4;
 }
 
+/* Alias: outlined secondary (same as .btn). */
+.btn-outline {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 0 16px;
+    font-size: 16px;
+    color: var(--text);
+    background: transparent;
+    border: var(--hair) solid var(--line-strong);
+    border-radius: var(--radius-m);
+}
+
+.btn-outline:disabled {
+    opacity: 0.4;
+}
+
+/* Primary: monochrome off-white. Amber is for state only. */
 .btn-primary {
-    background: var(--ready);
-    border-color: var(--ready);
-    color: #14110a;
-    font-weight: 600;
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--on-text);
+    font-weight: 500;
+}
+
+/* Borderless grey fill: keypad keys, tiles, option cells. */
+.btn-ghost,
+.key {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 0 12px;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 0;
+    border-radius: var(--radius-m);
+    cursor: pointer;
+}
+
+.btn-ghost:disabled,
+.key:disabled {
+    opacity: 0.4;
+}
+
+/* Global selected state: solid white fill, dark text. */
+.is-selected,
+.is-on,
+.btn[aria-pressed='true'],
+.btn-outline[aria-pressed='true'],
+.btn-ghost[aria-pressed='true'],
+.key[aria-pressed='true'],
+.btn-ghost.is-on,
+.key.is-on {
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--on-text);
+    font-weight: 500;
+}
+
+/* Segmented control: <div class="seg" role="group"><button class="seg-item" aria-pressed>.. */
+.seg {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--surface-2);
+    border-radius: var(--radius-m);
+}
+
+.seg-item {
+    flex: 1;
+    min-height: 48px;
+    padding: 0 12px;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-s);
+    cursor: pointer;
+}
+
+.seg-item[aria-pressed='true'],
+.seg-item.is-on {
+    background: var(--text);
+    color: var(--on-text);
+    font-weight: 500;
+}
+
+strong,
+b {
+    font-weight: 500;
 }
 
 .error {
@@ -121,7 +209,7 @@
     display: grid;
     place-items: center;
     font-size: 20px;
-    font-weight: 600;
+    font-weight: 500;
     color: #0E0F10;
     background: var(--muted);
 }
