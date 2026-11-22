@@ -199,7 +199,8 @@ describe('CountScreen', () => {
         await screen.findByText('Leche');
         press('4');
         fireEvent.click(screen.getByRole('button', { name: 'Guardar y siguiente' }));
-        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No se pudo guardar'));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Se conservó un valor más reciente'));
+        expect(screen.getByRole('status')).not.toHaveTextContent('No se pudo guardar');
         await waitFor(() => expect(sheetFn.mock.calls.length).toBeGreaterThan(1));
     });
 
@@ -479,5 +480,40 @@ describe('R15: superseded saves get a neutral notice', () => {
         render(<Probe />);
         act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 3, superseded: true }));
         expect(await screen.findByTestId('d')).toHaveTextContent('true');
+    });
+
+    it('N2: a real drop replaces a neutral notice for the same product', async () => {
+        function Probe() {
+            const { drops } = useDroppedLines({ sheet: () => Promise.resolve(makeSheet()) });
+            return <>{drops.map((d) => <i key={d.key} data-testid="d">{String(d.superseded ?? false)}</i>)}</>;
+        }
+        render(<Probe />);
+        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 3, superseded: true }));
+        expect(await screen.findByTestId('d')).toHaveTextContent('true');
+        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 3 }));
+        await waitFor(() => expect(screen.getByTestId('d')).toHaveTextContent('false'));
+        expect(screen.getAllByTestId('d')).toHaveLength(1);
+        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 3, superseded: true }));
+        await act(async () => {});
+        expect(screen.getByTestId('d')).toHaveTextContent('false');
+    });
+});
+
+describe('N3: a line dropped because the count was closed says so', () => {
+    it('the hook flags lines of a sheet that is no longer a draft', async () => {
+        function Probe() {
+            const { drops } = useDroppedLines({ sheet: () => Promise.resolve(makeSheet({ status: 'REJECTED', displayStatus: 'RECHAZADO' })) });
+            return <>{drops.map((d) => <i key={d.key} data-testid="d">{String(d.closed ?? false)}</i>)}</>;
+        }
+        render(<Probe />);
+        act(() => appEvents.emit('inventory-line-dropped', { sheetId: 7, productId: 3 }));
+        expect(await screen.findByTestId('d')).toHaveTextContent('true');
+    });
+
+    it('a closed-sheet drop does not ask to count again', () => {
+        render(<DropNotices drops={[{ key: '7-1', sheetId: 7, productId: 1, name: 'Leche', closed: true }]} onDismiss={vi.fn()} />);
+        const text = screen.getByRole('alert').textContent ?? '';
+        expect(text).toContain('«Leche» no se guardó: este conteo ya fue cerrado.');
+        expect(text).not.toContain('contarlo de nuevo');
     });
 });

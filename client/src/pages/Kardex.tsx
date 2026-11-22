@@ -9,6 +9,7 @@ import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
+import { kardexUrlFilters } from '../utils/kardexLink';
 import { FileText, Download, Calendar, Filter, ArrowLeft } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import './Kardex.css';
@@ -174,12 +175,13 @@ export default function Kardex() {
         void loadProducts();
         void loadSettings();
 
-        const params = new URLSearchParams(window.location.search);
-        const productId = params.get('productId');
-        if (productId) {
+        const fromUrl = kardexUrlFilters(window.location.search);
+        if (fromUrl.productId) {
             urlHadProductIdRef.current = true;
-            setSelectedProduct(parseInt(productId, 10));
+            setSelectedProduct(fromUrl.productId);
         }
+        if (fromUrl.warehouseId) setSelectedWarehouse(fromUrl.warehouseId);
+        if (fromUrl.dateFrom) setDateFrom(fromUrl.dateFrom);
     }, [loadWarehouses, loadProducts, loadSettings]);
 
     // When entering without an explicit productId in the URL, preselect the

@@ -181,7 +181,7 @@ Pruebas: `cd mobile && npx vitest run` 89/89; `tsc` limpio; JS inicial 76 KB gzi
 - **Checklist de despliegue:** MySQL `binlog_format` debe ser ROW o MIXED (la aprobación usa READ COMMITTED); local = MIXED.
 - Verificado en vivo (API local): iniciar hoja, hoja ciega sin existencias, guardar 4 líneas, enviar (4 contados / 1 sin contar). Hoja #1 SUBMITTED en BOD Bamboo queda para probar la revisión web.
 - Pendiente de verificación manual: revisión visual de `/inventario/conteos` (aprobar/reconteo/cancelar) y la pantalla de conteo en tablet/emulador a ~360 dp. Usuario de prueba `bodega1` (Luis Ramírez) con PIN en `server/.env.local` (`LOCAL_TEST_BODEGA_PIN`).
-- Menores diferidos (bitácora): avisos contradictorios cuando el servidor conserva un valor más nuevo (N1), aviso de cancelación poco claro para el contador (N3), Kardex ignora `?movementId`.
+- Menores diferidos N1–N3 y enlace al Kardex: ✅ corregidos (2026-11-22): indicador neutro «Se conservó un valor más reciente», una pérdida real reemplaza al aviso neutro, aviso «este conteo ya fue cerrado» si la hoja no es borrador, y el enlace del movimiento abre el Kardex con producto, bodega y fecha de aprobación. Pruebas: client 498, mobile 1007.
 
 ## Siguiente
 - Gates de dispositivo (Fases 0–5b): tablet de servicio, cocina, Mi cuenta, inventario.

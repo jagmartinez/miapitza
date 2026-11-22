@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
+import { kardexHref } from '../../utils/kardexLink';
 import './InventoryCountReview.css';
 
 export type CountStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -248,7 +249,7 @@ export function InventoryCountDetailView({
         { key: 'by', header: 'Contó', render: (l) => l.countedByName ?? '—' },
         ...(approved ? [{
             key: 'movement', header: 'Movimiento',
-            render: (l: CountReviewLine) => (l.movementId === null ? '—' : <Link to={`/kardex?movementId=${l.movementId}`}>Mov. #{l.movementId}</Link>),
+            render: (l: CountReviewLine) => (l.movementId === null ? '—' : <Link to={kardexHref({ productId: l.productId, warehouseId: detail.warehouse.id, from: detail.approvedAt ? new Date(detail.approvedAt) : null })}>Mov. #{l.movementId}</Link>),
         }] : []),
     ];
 

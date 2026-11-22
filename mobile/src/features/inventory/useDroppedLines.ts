@@ -9,6 +9,8 @@ export interface DroppedLine {
     name: string;
     /** The server kept a newer value (applied:false): not a loss, a neutral notice. */
     superseded?: boolean;
+    /** The sheet is no longer a draft (submitted, approved or cancelled): counting again is not possible. */
+    closed?: boolean;
 }
 
 /**
@@ -29,13 +31,22 @@ export function useDroppedLines(api: Pick<InventoryApi, 'sheet'> | null) {
             if (!Number.isInteger(sheetId) || !Number.isInteger(productId)) return;
             setTick((t) => t + 1);
             const key = `${sheetId}-${productId}`;
+            const superseded = p?.superseded === true;
             api.sheet(sheetId)
                 .then(
-                    (s) => s.lines.find((l) => l.productId === productId)?.name ?? 'Un producto',
-                    () => 'Un producto',
+                    (s) => ({ name: s.lines.find((l) => l.productId === productId)?.name ?? 'Un producto', closed: s.status !== 'DRAFT' }),
+                    () => ({ name: 'Un producto', closed: false }),
                 )
-                .then((name) => {
-                    if (alive.current) setDrops((prev) => (prev.some((d) => d.key === key) ? prev : [...prev, { key, sheetId, productId, name, ...(p?.superseded === true && { superseded: true }) }]));
+                .then(({ name, closed }) => {
+                    if (!alive.current) return;
+                    const drop: DroppedLine = { key, sheetId, productId, name, ...(superseded && { superseded: true }), ...(closed && { closed: true }) };
+                    setDrops((prev) => {
+                        const existing = prev.find((d) => d.key === key);
+                        if (!existing) return [...prev, drop];
+                        // A real loss outranks a neutral "newer value kept" notice for the same product; never the other way round.
+                        if (existing.superseded && !superseded) return prev.map((d) => (d.key === key ? drop : d));
+                        return prev;
+                    });
                 });
         });
         return () => {

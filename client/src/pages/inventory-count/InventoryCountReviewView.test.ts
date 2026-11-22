@@ -117,7 +117,7 @@ describe('InventoryCountReview detail', () => {
             lines: [line({ movementId: 55 })],
         });
         const html = renderDetail(approved);
-        expect(html).toContain('href="/kardex?movementId=55"');
+        expect(html).toMatch(/href="\/kardex\?productId=1&amp;warehouseId=1&amp;dateFrom=2026-11-2[45]"/);
         expect(html).toContain('Mov. #55');
         expect(html).not.toContain('Aprobar y ajustar');
         expect(html).not.toContain('Pedir reconteo');

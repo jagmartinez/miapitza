@@ -19,11 +19,12 @@ export const LAYOUT = {
     usableHeight: 336,
 } as const;
 
-type Indicator = 'saved' | 'saving' | 'queued' | 'error';
+type Indicator = 'saved' | 'saving' | 'queued' | 'kept' | 'error';
 const INDICATOR_LABEL: Record<Indicator, string> = {
     saved: 'Guardado',
     saving: 'Guardando…',
     queued: 'Sin conexión · se guardará',
+    kept: 'Se conservó un valor más reciente',
     error: 'No se pudo guardar',
 };
 
@@ -187,8 +188,8 @@ export function CountScreen({ api, sheetId, user, uncountedOnly = false, drops =
         api.saveLine(sheetId, productId, { unit, countedQuantity: quantity }).then(
             (result) => {
                 if (result === 'ignored') {
-                    // The server kept a newer value: not "Guardado". The sheet reloads and the entry's notice says to count it again.
-                    if (token === saveSeq.current) setIndicator('error');
+                    // The server kept a newer value: not "Guardado" and not a failure. The sheet reloads to show the value kept.
+                    if (token === saveSeq.current) setIndicator('kept');
                     void load(productId);
                     return;
                 }
