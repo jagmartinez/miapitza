@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { InventoryApi } from './inventoryApi';
 import { OfflineError } from './inventoryApi';
-import { dayText } from './inventoryFormat';
+import { dayText, plural } from './inventoryFormat';
 import { COUNT_ERROR, type CountWarehouse, type WarehouseCategory } from './inventoryTypes';
 import './inventory.css';
 
@@ -142,7 +142,7 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
                                                         ▦
                                                     </span>
                                                     <strong>{w.name}</strong>
-                                                    <span className="muted">{w.productCount} productos</span>
+                                                    <span className="muted">{plural(w.productCount, 'producto', 'productos')}</span>
                                                     <span className="muted">{w.lastCountAt ? `Último conteo ${dayText(w.lastCountAt)}` : 'Sin conteos'}</span>
                                                     {review && <span className="inv-badge inv-badge-en_revision">En revisión</span>}
                                                 </button>
@@ -189,13 +189,13 @@ export function NewCountScreen({ api, onStarted, onBack }: NewCountScreenProps) 
                                                     </span>
                                                     <span className="inv-cat-text">
                                                         <strong>{c.name}</strong>
-                                                        <span className="muted">{c.productCount} productos</span>
+                                                        <span className="muted">{plural(c.productCount, 'producto', 'productos')}</span>
                                                     </span>
                                                 </button>
                                             ))}
                                         </div>
                                         <p className="muted">
-                                            {chosenCats.length} categorías · {productCount} productos
+                                            {plural(chosenCats.length, 'categoría', 'categorías')} · {plural(productCount, 'producto', 'productos')}
                                         </p>
                                     </>
                                 )}

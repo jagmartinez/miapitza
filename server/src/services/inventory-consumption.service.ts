@@ -687,7 +687,7 @@ export class InventoryConsumptionService {
         const findFirst = (tx as unknown as { warehouse?: { findFirst?: unknown } }).warehouse?.findFirst;
         const hasRawQuery = typeof (tx as unknown as { $queryRaw?: unknown }).$queryRaw === 'function';
         for (const id of warehouseIds) {
-            const rows = hasRawQuery ? await tx.$queryRaw<Array<{ id: number; branchId: number | null; type: string }>>`SELECT id, branchId, type FROM \`Warehouse\` WHERE id = ${id} AND companyId = ${companyId} FOR SHARE` : [];
+            const rows = hasRawQuery ? await tx.$queryRaw<Array<{ id: number; branchId: number | null; type: string }>>`SELECT id, branchId, type FROM \`Warehouse\` WHERE id = ${id} AND companyId = ${companyId} LOCK IN SHARE MODE` : [];
             const row = Array.isArray(rows) ? rows[0] : undefined;
             if (row && row.type != null) {
                 result.set(id, { branchId: row.branchId == null ? null : Number(row.branchId), type: String(row.type) });

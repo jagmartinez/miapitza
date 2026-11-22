@@ -39,3 +39,12 @@ describe('countMath', () => {
         expect(progress(lines)).toEqual({ counted: 2, total: 3 });
     });
 });
+
+describe('plural', () => {
+    it('uses the singular only for exactly one', async () => {
+        const { plural } = await import('./inventoryFormat');
+        expect(plural(1, 'producto', 'productos')).toBe('1 producto');
+        expect(plural(0, 'producto', 'productos')).toBe('0 productos');
+        expect(plural(3, 'categoría', 'categorías')).toBe('3 categorías');
+    });
+});

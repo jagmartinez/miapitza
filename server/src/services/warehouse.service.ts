@@ -115,7 +115,7 @@ export class WarehouseService {
             // the inventory engine). Read it with a locking read so a concurrent
             // method switch (Company FOR UPDATE first) is either fully before or
             // fully after this insert.
-            const companyRows = await tx.$queryRaw<Array<{ costingMethod: string }>>`SELECT costingMethod FROM \`Company\` WHERE id = ${companyId} FOR SHARE`;
+            const companyRows = await tx.$queryRaw<Array<{ costingMethod: string }>>`SELECT costingMethod FROM \`Company\` WHERE id = ${companyId} LOCK IN SHARE MODE`;
             const costingMethod = companyRows[0]?.costingMethod === 'FIFO' ? 'FIFO' : 'WEIGHTED_AVERAGE';
             return tx.warehouse.create({
                 data: {

@@ -190,7 +190,7 @@ export class InventoryEngineService {
             if (warehouseMode === 'UPDATE') {
                 await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR UPDATE`;
             } else {
-                await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR SHARE`;
+                await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} LOCK IN SHARE MODE`;
             }
         }
         const sortedProducts = [...new Set(productIds)].sort((a, b) => a - b);
@@ -235,7 +235,7 @@ export class InventoryEngineService {
         // reads themselves. Under REPEATABLE READ a plain read after a lock
         // returns the transaction snapshot (taken at its first non-locking
         // read), so two concurrent movements could otherwise lose an update.
-        const warehouseRows = await tx.$queryRaw<Array<{ id: number; costingMethod?: string | null }>>`SELECT id, costingMethod FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR SHARE`;
+        const warehouseRows = await tx.$queryRaw<Array<{ id: number; costingMethod?: string | null }>>`SELECT id, costingMethod FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} LOCK IN SHARE MODE`;
         // Product.currentAverageCost is company-wide while stock/layers are per
         // warehouse. Lock the product before touching any warehouse layer so two
         // concurrent FIFO movements in different warehouses cannot publish stale,
@@ -1362,7 +1362,7 @@ export class InventoryEngineService {
         companyId: number,
         warehouseId: number
     ): Promise<'FIFO' | 'WEIGHTED_AVERAGE'> {
-        const rows = await tx.$queryRaw<Array<{ costingMethod?: string | null }>>`SELECT costingMethod FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR SHARE`;
+        const rows = await tx.$queryRaw<Array<{ costingMethod?: string | null }>>`SELECT costingMethod FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} LOCK IN SHARE MODE`;
         const method = Array.isArray(rows) ? rows[0]?.costingMethod : undefined;
         if (method === 'FIFO' || method === 'WEIGHTED_AVERAGE') return method;
         return this.readCostingMethod(tx, companyId);

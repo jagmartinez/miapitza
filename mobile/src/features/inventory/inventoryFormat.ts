@@ -36,3 +36,8 @@ export const initialsOf = (name: string): string =>
         .slice(0, 2)
         .map((w) => w[0]?.toUpperCase() ?? '')
         .join('');
+
+/** "1 producto", "3 productos": Spanish plural for a count label. */
+export function plural(n: number, one: string, many: string): string {
+    return `${n} ${n === 1 ? one : many}`;
+}

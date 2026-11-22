@@ -43,7 +43,7 @@ describe('InventoryEngineService.lockInventoryScope', () => {
         expect(calls.map((call) => [call.table, call.ids[0]])).toEqual([
             ['Warehouse', 3], ['Warehouse', 9], ['Product', 2], ['Product', 5], ['Product', 8]
         ]);
-        expect(calls.filter((call) => call.table === 'Warehouse').every((call) => call.sql.includes('FOR SHARE'))).toBe(true);
+        expect(calls.filter((call) => call.table === 'Warehouse').every((call) => call.sql.includes('LOCK IN SHARE MODE'))).toBe(true);
         expect(calls.filter((call) => call.table === 'Product').every((call) => call.sql.includes('FOR UPDATE'))).toBe(true);
     });
 });
