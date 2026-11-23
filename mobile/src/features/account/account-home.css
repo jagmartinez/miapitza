@@ -22,7 +22,9 @@
 .ah-list { display: flex; flex-direction: column; gap: 8px; }
 .ah .ui-card { background: var(--surface-2); border: 0; border-radius: 10px; padding: 12px; }
 .ah .ui-card-title { font-size: 14px; font-weight: 500; }
-.ah .ui-card-body { font-size: 13px; }
+/* Card content stacks with breathing room: rows, notes and actions never touch. */
+.ah .ui-card-body { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; font-size: 13px; }
+.ah .ui-card-body > p { margin: 0; }
 .ah-req { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: var(--surface-2); border-radius: 10px; font-size: 13px; }
 .ah-req-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .ah-req-head b { font-size: 14px; font-weight: 500; }

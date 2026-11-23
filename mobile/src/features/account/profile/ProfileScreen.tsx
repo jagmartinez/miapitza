@@ -120,7 +120,7 @@ export function ProfileScreen({ hr, accountApi, onPasswordChanged, onLogout }: P
                 )}
                 {form && (
                     <Card title="Mis datos de contacto">
-                        <div className="pf-sheet" style={{ padding: 0 }}>
+                        <div className="pf-form">
                             <label className="field">Teléfono
                                 <input type="tel" value={form.phone} onChange={set('phone')} />
                             </label>
