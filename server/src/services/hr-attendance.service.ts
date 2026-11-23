@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Prisma, type AttendanceEnforcementMode } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
-import { decryptBiometricTemplate } from '../utils/hr-biometric-crypto';
+import { decryptBiometricTemplate, isBiometricTemplateReadable } from '../utils/hr-biometric-crypto';
 import { AuditLogService } from './audit-log.service';
 import {
     AttendancePolicyService, BIOMETRIC_ENROLLMENT_PENDING_APPROVAL, BiometricService, HrAttendanceError, livenessActionFromNonce,
@@ -893,7 +893,13 @@ export class AttendanceService {
                 // A template issued by another adapter (e.g. dev "fake" -> "http")
                 // is meaningless to the current provider; never send it for matching.
                 biometricProfileId = profile.id;
-                biometric = check('FAILED', 'Tu perfil biométrico fue creado con otro proveedor facial; debes volver a enrolarte en “Mi biometría”', 'BIOMETRIC_REENROLL_REQUIRED');
+                biometric = check('FAILED', 'Tu perfil biométrico fue creado con otro proveedor facial; debes volver a registrar tu rostro', 'BIOMETRIC_REENROLL_REQUIRED');
+            } else if (!isBiometricTemplateReadable(profile.templateRef)) {
+                // Encrypted with another key (rotation or data copied between
+                // environments): reporting it as a provider outage would leave
+                // the employee retrying forever.
+                biometricProfileId = profile.id;
+                biometric = check('FAILED', 'Tu registro facial ya no es válido; debes volver a registrar tu rostro', 'BIOMETRIC_REENROLL_REQUIRED');
             } else {
                 biometricProfileId = profile.id;
                 try {

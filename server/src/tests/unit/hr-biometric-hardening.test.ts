@@ -101,7 +101,10 @@ describe('biometric hardening', () => {
         }));
     });
 
-    it('requires re-enrollment instead of matching a template issued by another provider', async () => {
+    it.each([
+        ['a template issued by another provider', 'fake', () => encryptBiometricTemplate('f'.repeat(64))],
+        ['a template the current key cannot decrypt', 'http', () => encryptBiometricTemplate('f'.repeat(64), { HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64) })],
+    ])('requires re-enrollment instead of matching %s', async (_label, profileProvider, templateRef) => {
         process.env.HR_BIOMETRIC_ENCRYPTION_KEY = 'a'.repeat(64);
         jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue(policy as never);
         jest.spyOn(BiometricService, 'consumeChallenge').mockResolvedValue({ id: 'challenge', nonce: 'nonce' } as never);
@@ -125,9 +128,9 @@ describe('biometric hardening', () => {
         } as never);
         jest.spyOn(prisma.attendanceEvent, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(prisma.biometricProfile, 'findFirst').mockResolvedValue({
-            id: 3, companyId: 4, userId: 8, status: 'ACTIVE', provider: 'fake',
+            id: 3, companyId: 4, userId: 8, status: 'ACTIVE', provider: profileProvider,
             consentVersion: 'v1', retentionExpiresAt: new Date('2027-07-13T00:00:00Z'),
-            templateRef: encryptBiometricTemplate('f'.repeat(64)),
+            templateRef: templateRef(),
         } as never);
         const create = jest.fn(async (args: { data: Record<string, unknown> }) => ({
             ...args.data, id: 70, createdAt: new Date(),

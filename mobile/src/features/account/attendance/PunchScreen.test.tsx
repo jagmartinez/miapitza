@@ -177,6 +177,31 @@ describe('PunchScreen', () => {
         expect(screen.queryByRole('alert')).toBeNull();
     });
 
+    it('REJECTED for a template that must be renewed leads to face registration', async () => {
+        setup({
+            punch: vi.fn().mockResolvedValue({
+                decision: 'REJECTED',
+                message: 'Tu registro facial ya no es válido; debes volver a registrar tu rostro',
+                checks: { biometric: { status: 'FAILED', reasonCode: 'BIOMETRIC_REENROLL_REQUIRED', message: 'x' } },
+            }),
+        });
+        await start();
+        fireEvent.click(await screen.findByRole('button', { name: 'Volver a registrar mi rostro' }));
+        await waitFor(() => expect(nav.section).toBe('face'));
+    });
+
+    it('REJECTED for other reasons keeps plain retry', async () => {
+        setup({
+            punch: vi.fn().mockResolvedValue({
+                decision: 'REJECTED', message: 'No coincide',
+                checks: { biometric: { status: 'FAILED', reasonCode: 'FACE_NOT_MATCHED', message: 'x' } },
+            }),
+        });
+        await start();
+        expect(await screen.findByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Volver a registrar mi rostro' })).toBeNull();
+    });
+
     it('FACE_PROVIDER_UNAVAILABLE message', async () => {
         setup({ punch: vi.fn().mockRejectedValue(new HrError('x', { code: 'FACE_PROVIDER_UNAVAILABLE', status: 503, isAmbiguous: true })) });
         await start();

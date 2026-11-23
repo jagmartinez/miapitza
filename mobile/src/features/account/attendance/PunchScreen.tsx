@@ -36,6 +36,12 @@ type View =
     | { k: 'result'; result: HrAttendancePunchResult }
     | { k: 'error'; msg: string; resend: boolean };
 
+/** Rejections the employee fixes by registering the face again, not by retrying. */
+const REENROLL_CODES = new Set([
+    'BIOMETRIC_REENROLL_REQUIRED', 'BIOMETRIC_RETENTION_EXPIRED', 'BIOMETRIC_CONSENT_STALE',
+    'TEMPLATE_NOT_FOUND', 'TEMPLATE_REVOKED', 'TEMPLATE_EXPIRED', 'TEMPLATE_MODEL_MISMATCH',
+]);
+
 function formatTime(iso: string | undefined, timeZone: string): string {
     const d = iso ? new Date(iso) : new Date();
     try {
@@ -245,7 +251,7 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
                         )}
                     </>
                 )}
-                {view.k === 'result' && <ResultView result={view.result} action={action} tz={tz} onRetry={() => void run()} onDone={back} />}
+                {view.k === 'result' && <ResultView result={view.result} action={action} tz={tz} onRetry={() => void run()} onDone={back} onReenroll={() => navigate('face')} />}
                 {view.k === 'error' && (
                     <>
                         <p role="alert" className="att-error">{view.msg}</p>
@@ -259,7 +265,7 @@ export function PunchScreen({ hr }: { hr: HrApi }) {
     );
 }
 
-function ResultView({ result, action, tz, onRetry, onDone }: { result: HrAttendancePunchResult; action?: HrAttendanceAction; tz: string; onRetry: () => void; onDone: () => void }) {
+function ResultView({ result, action, tz, onRetry, onDone, onReenroll }: { result: HrAttendancePunchResult; action?: HrAttendanceAction; tz: string; onRetry: () => void; onDone: () => void; onReenroll: () => void }) {
     if (result.decision === 'ACCEPTED') {
         const act = result.punch?.action ?? result.event?.action ?? action ?? 'CHECK_IN';
         const when = formatTime(result.punch?.occurredAt ?? result.event?.occurredAt, tz);
@@ -286,6 +292,7 @@ function ResultView({ result, action, tz, onRetry, onDone }: { result: HrAttenda
         );
     }
     const failed = presentAttendanceChecks(result.checks).filter((c) => c.check.status === 'FAILED' || c.check.status === 'REVIEW');
+    const reenroll = failed.some((c) => REENROLL_CODES.has(c.check.reasonCode ?? ''));
     return (
         <>
             <div className="att-result" data-tone="rejected">
@@ -301,7 +308,11 @@ function ResultView({ result, action, tz, onRetry, onDone }: { result: HrAttenda
                     </ul>
                 )}
             </div>
-            <button type="button" className="btn btn-primary" onClick={onRetry}>Reintentar</button>
+            {reenroll ? (
+                <button type="button" className="btn btn-primary" onClick={onReenroll}>Volver a registrar mi rostro</button>
+            ) : (
+                <button type="button" className="btn btn-primary" onClick={onRetry}>Reintentar</button>
+            )}
         </>
     );
 }

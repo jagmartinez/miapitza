@@ -52,6 +52,12 @@ describe('FaceSetupScreen', () => {
         expect(screen.getByText(/Registrado desde el/)).toBeInTheDocument();
     });
 
+    it('active can register the face again', async () => {
+        renderFace(hrWith({ status: 'ACTIVE', approvedAt: '2026-11-20T15:00:00Z' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Volver a registrar mi rostro' }));
+        expect(await screen.findByRole('button', { name: 'Registrar mi rostro' })).toBeInTheDocument();
+    });
+
     it('a policy without face says it is not required', async () => {
         renderFace(hrWith({ status: 'NOT_ENROLLED' }, { ...policy, requireBiometric: false }));
         expect(await screen.findByText('No se requiere registro facial')).toBeInTheDocument();

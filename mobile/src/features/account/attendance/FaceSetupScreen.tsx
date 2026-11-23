@@ -13,7 +13,7 @@ type View =
     | { k: 'disabled' }
     | { k: 'enroll'; policy: HrAttendancePolicy }
     | { k: 'pending' }
-    | { k: 'active'; profile: HrBiometricProfile };
+    | { k: 'active'; profile: HrBiometricProfile; policy: HrAttendancePolicy };
 
 function formatDate(iso: string | null | undefined): string | null {
     if (!iso) return null;
@@ -45,7 +45,7 @@ export function FaceSetupScreen({ hr }: { hr: HrApi }) {
         try {
             const [policy, bio] = await Promise.all([hr.attendancePolicy(), hr.biometricStatus()]);
             if (!mounted.current) return;
-            if (bio.status === 'ACTIVE') return show({ k: 'active', profile: bio });
+            if (bio.status === 'ACTIVE') return show({ k: 'active', profile: bio, policy });
             if (bio.status === 'PENDING') return show({ k: 'pending' });
             if (policy.requireBiometric === false) return show({ k: 'disabled' });
             show({ k: 'enroll', policy });
@@ -93,6 +93,10 @@ export function FaceSetupScreen({ hr }: { hr: HrApi }) {
                         <h2>Registro facial activo</h2>
                         <p className="muted">{since ? `Registrado desde el ${since}. ` : ''}Al marcar, la app verifica tu rostro.</p>
                     </div>
+                )}
+                {view.k === 'active' && (
+                    // Renewal when the app or RH asks for it (template no longer valid, new phone, changed look).
+                    <button type="button" className="btn" onClick={() => show({ k: 'enroll', policy: view.policy })}>Volver a registrar mi rostro</button>
                 )}
                 {view.k === 'enroll' && (
                     <EnrollScreen hr={hr} policy={view.policy} onDone={(profile) => (profile.status === 'PENDING' ? show({ k: 'pending' }) : void load())} />
