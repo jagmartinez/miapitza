@@ -21,6 +21,7 @@ import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import PendingBiometricEnrollmentsPanel from '../../components/hr/PendingBiometricEnrollmentsPanel';
 import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
 import {
+  MIN_LOCATION_ACCURACY_M,
   validateAttendanceDevice,
   validateAttendancePolicy,
   validateBiometricRevocation,
@@ -607,7 +608,7 @@ export default function AttendanceSettings() {
                     Precisión máxima GPS (m)
                     <input
                       type="number"
-                      min={1}
+                      min={MIN_LOCATION_ACCURACY_M}
                       max={5000}
                       step={1}
                       value={policy.maxLocationAccuracyM}

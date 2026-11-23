@@ -5,6 +5,7 @@ import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
 import { BranchService } from './branch.service';
 import { isValidWeeklyRestDays, normalizeWeeklyRestDays } from '../utils/hr-rest-days';
+import { MIN_LOCATION_ACCURACY_M } from '../utils/hr-location';
 
 /** undefined = untouched; null = clear (legal default Sunday); otherwise a sorted ISO weekday list. */
 export function weeklyRestDaysInput(value: unknown): number[] | null | undefined {
@@ -926,8 +927,8 @@ function validateGeofenceValues(values: {
     if (geofenceRadiusM !== null && (!Number.isInteger(geofenceRadiusM) || geofenceRadiusM < 10 || geofenceRadiusM > 10000)) {
         throw new HrDomainError('geofenceRadiusM debe estar entre 10 y 10000 metros');
     }
-    if (maxLocationAccuracyM !== null && (!Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < 1 || maxLocationAccuracyM > 5000)) {
-        throw new HrDomainError('maxLocationAccuracyM debe estar entre 1 y 5000 metros');
+    if (maxLocationAccuracyM !== null && (!Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < MIN_LOCATION_ACCURACY_M || maxLocationAccuracyM > 5000)) {
+        throw new HrDomainError(`La precisión GPS máxima debe estar entre ${MIN_LOCATION_ACCURACY_M} y 5000 metros`);
     }
     if (!isValidTimeZone(timezone)) throw new HrDomainError('Zona horaria inválida');
 }

@@ -549,7 +549,7 @@ export const createBranch: ValidationSchema = {
         latitude: { type: 'number', required: true, min: -90, max: 90 },
         longitude: { type: 'number', required: true, min: -180, max: 180 },
         geofenceRadiusM: { type: 'number', required: true, min: 10, max: 10000, integer: true },
-        maxLocationAccuracyM: { type: 'number', required: true, min: 1, max: 5000, integer: true },
+        maxLocationAccuracyM: { type: 'number', required: true, min: 10, max: 5000, integer: true },
         timezone: { type: 'string', max: 64 },
         attendanceEnabled: { type: 'boolean' },
         status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },

@@ -14,6 +14,7 @@ import {
     type FaceCaptureEvidence,
     type FaceVerificationProvider,
 } from './hr-face-provider';
+import { effectiveLocationAccuracyLimit } from '../utils/hr-location';
 
 const ACTIONS = ['CHECK_IN', 'BREAK_START', 'BREAK_END', 'CHECK_OUT'] as const;
 type Action = typeof ACTIONS[number];
@@ -473,7 +474,7 @@ export function evaluateGeofence(input: { latitude: number | null; longitude: nu
         locationAccuracy: check('REVIEW', 'No se pudo validar la precisión contra la sucursal', 'GEOFENCE_NOT_CONFIGURED'),
         distanceM: null,
     };
-    const accuracyLimit = Math.min(policy.maxLocationAccuracyM, branch.maxLocationAccuracyM || policy.maxLocationAccuracyM);
+    const accuracyLimit = effectiveLocationAccuracyLimit(policy.maxLocationAccuracyM, branch.maxLocationAccuracyM);
     const distanceM = haversineDistanceM(input.latitude, input.longitude, Number(branch.latitude), Number(branch.longitude));
     const geofenceFits = distanceM + input.accuracyM <= branch.geofenceRadiusM;
     const centerIsInside = distanceM <= branch.geofenceRadiusM;
@@ -687,9 +688,7 @@ export class AttendanceService {
         const branchGeofenceRadius = targetBranch && 'geofenceRadiusM' in targetBranch && typeof targetBranch.geofenceRadiusM === 'number'
             ? targetBranch.geofenceRadiusM
             : null;
-        const effectiveAccuracyLimit = branchAccuracyLimit
-            ? Math.min(policy.maxLocationAccuracyM, branchAccuracyLimit)
-            : policy.maxLocationAccuracyM;
+        const effectiveAccuracyLimit = effectiveLocationAccuracyLimit(policy.maxLocationAccuracyM, branchAccuracyLimit);
         const sessionEvents = open?.[1]
             || (scheduledShift ? history.filter((event) => event.scheduledShiftId === scheduledShift.id) : []);
         const stale = staleOpenSession(open, openShift, policy, now);

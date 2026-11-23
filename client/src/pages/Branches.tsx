@@ -16,6 +16,7 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { getApiErrorMessage } from '../utils/apiError';
 import { notifyError } from '../services/notify';
+import { MIN_LOCATION_ACCURACY_M } from '../components/hr/attendanceSettingsRules';
 import './Branches.css';
 
 interface BranchFormData {
@@ -134,8 +135,8 @@ export default function Branches() {
             setActiveTab('ubicacion');
             return;
         }
-        if (latitude !== null && (maxLocationAccuracyM === null || !Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < 1 || maxLocationAccuracyM > 5000)) {
-            showError('Define una precisión GPS máxima entera entre 1 y 5000 metros.');
+        if (latitude !== null && (maxLocationAccuracyM === null || !Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < MIN_LOCATION_ACCURACY_M || maxLocationAccuracyM > 5000)) {
+            showError(`Define una precisión GPS máxima entera entre ${MIN_LOCATION_ACCURACY_M} y 5000 metros. Los teléfonos rara vez garantizan menos de ${MIN_LOCATION_ACCURACY_M} m.`);
             setActiveTab('ubicacion');
             return;
         }
@@ -822,7 +823,7 @@ export default function Branches() {
                                             <input
                                                 id="branch-max-accuracy"
                                                 type="number"
-                                                min="1"
+                                                min={MIN_LOCATION_ACCURACY_M}
                                                 max="5000"
                                                 step="1"
                                                 className="modal-standard-input"
@@ -834,10 +835,10 @@ export default function Branches() {
                                         </div>
                                     </div>
 
-                                    {formData.attendanceEnabled && Number(formData.maxLocationAccuracyM) < 10 && (
+                                    {formData.attendanceEnabled && Number(formData.maxLocationAccuracyM) < 20 && (
                                         <div className="branch-geofence-warning" role="status">
                                             <AlertTriangle size={17} aria-hidden="true" />
-                                            <span><strong>Configuración GPS demasiado estricta.</strong> Los teléfonos normalmente no garantizan menos de 10 m. Usa 20–30 m como punto de partida y valida en el local.</span>
+                                            <span><strong>Configuración GPS estricta.</strong> Los teléfonos normalmente no garantizan menos de 10–15 m. Usa 20–30 m como punto de partida y valida en el local.</span>
                                         </div>
                                     )}
                                     {formData.attendanceEnabled && Number(formData.geofenceRadiusM) < 50 && (

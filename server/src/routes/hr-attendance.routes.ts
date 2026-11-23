@@ -67,7 +67,7 @@ router.get('/attendance/policy', selfAttendance, validate({ query: {
 router.put('/attendance/policy', ownerManage, allowHrBodyFields(policyFields), validate({ body: {
     branchId: { type: 'number', integer: true, min: 1 }, timezone: { type: 'string', max: 64 },
     requireBiometric: { type: 'boolean' }, requireLiveness: { type: 'boolean' }, requireGeolocation: { type: 'boolean' },
-    maxLocationAccuracyM: { type: 'number', integer: true, min: 1, max: 5000 },
+    maxLocationAccuracyM: { type: 'number', integer: true, min: 10, max: 5000 },
     earlyCheckInMinutes: { type: 'number', integer: true, min: 0, max: 1440 },
     lateCheckInToleranceM: { type: 'number', integer: true, min: 0, max: 1440 },
     earlyCheckOutToleranceM: { type: 'number', integer: true, min: 0, max: 1440 },
