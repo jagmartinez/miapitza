@@ -183,4 +183,28 @@ describe('AccountHome', () => {
         expect(await screen.findByText(/No se pudo cargar tus permisos y horas extra/)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Marcar entrada' })).toBeInTheDocument();
     });
+
+    it('no actions without a shift explains that RH must assign a schedule', async () => {
+        renderHome(linked, hrWith({ availableActions: [], blockingIssue: null, punches: [], targetBranch: { id: 1, name: 'Bamboo' }, scheduledShift: null, policy: { allowUnscheduledPunch: false } }));
+        expect(await screen.findByText(/No tienes un turno programado ahora/)).toBeInTheDocument();
+    });
+
+    it('no actions without a branch says to ask RH for one', async () => {
+        renderHome(linked, hrWith({ availableActions: [], blockingIssue: null, punches: [], targetBranch: null, scheduledShift: null, policy: {} }));
+        expect(await screen.findByText(/No tienes una sucursal asignada/)).toBeInTheDocument();
+    });
+
+    it('Registro facial row shows the enrollment status and opens the face section', async () => {
+        renderHome(linked, hrWith(today, { biometricStatus: vi.fn().mockResolvedValue({ status: 'NOT_ENROLLED' }) }));
+        const row = await screen.findByRole('button', { name: /Registro facial/ });
+        await waitFor(() => expect(row).toHaveTextContent('Sin registrar'));
+        fireEvent.click(row);
+        expect(screen.getByTestId('where')).toHaveTextContent('face');
+    });
+
+    it('Registro facial row is hidden when the policy does not use the face', async () => {
+        renderHome(linked, hrWith({ ...today, policy: { requireBiometric: false } }));
+        await screen.findByRole('button', { name: 'Marcar entrada' });
+        expect(screen.queryByRole('button', { name: /Registro facial/ })).toBeNull();
+    });
 });

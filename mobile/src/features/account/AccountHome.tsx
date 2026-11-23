@@ -3,9 +3,10 @@ import { formatHrMoney, formatHrNumber } from '@web/utils/hrFormat';
 import { isCompanyAdmin, isWaiter } from '../../core/permissions';
 import type { Session } from '../../core/session';
 import { Card } from '../../ui/Card';
-import { IconArrowsExchange, IconBeach, IconBuildingBank, IconCash, IconChevronRight, IconClipboardCheck, IconClipboardList, IconClockPlus, IconEdit, IconFileInvoice, IconFingerprint, IconUser, type TablerIcon } from '../../ui/Icon';
+import { IconArrowsExchange, IconBeach, IconBuildingBank, IconCash, IconChevronRight, IconClipboardCheck, IconClipboardList, IconClockPlus, IconEdit, IconFaceId, IconFileInvoice, IconFingerprint, IconUser, type TablerIcon } from '../../ui/Icon';
 import { useAccountNav, type AccountSection } from './AccountNav';
 import type { HrApi } from './hrApi';
+import type { HrTodayAttendance } from '@web/types/hr-attendance';
 import { useMyService } from './useMyService';
 import { useCancelFlow } from './requests/common';
 import { PART_LABELS, useAccountSummary, type PendingItem } from './useAccountSummary';
@@ -33,14 +34,28 @@ function shiftRange(startAt: string, endAt: string, timeZone?: string): string |
 
 const PENDING_SECTION: Record<PendingItem['kind'], AccountSection> = { schedule: 'schedule', receipt: 'payroll', swap: 'pending' };
 
-function NavRow({ icon: Icon, title, onClick }: { icon: TablerIcon; title: string; onClick: () => void }) {
+function NavRow({ icon: Icon, title, detail, onClick }: { icon: TablerIcon; title: string; detail?: string; onClick: () => void }) {
     return (
         <button type="button" className="ah-tile ah-tile-row ah-navrow" onClick={onClick}>
             <Icon size={20} stroke={1.5} aria-hidden />
-            <span className="ah-tile-text"><b>{title}</b></span>
+            <span className="ah-tile-text"><b>{title}</b>{detail && <span>{detail}</span>}</span>
             <IconChevronRight size={18} stroke={1.5} aria-hidden />
         </button>
     );
+}
+
+const FACE_STATUS: Record<string, string> = {
+    ACTIVE: 'Activo',
+    PENDING: 'Pendiente de aprobación',
+    NOT_ENROLLED: 'Sin registrar',
+    REVOKED: 'Debes registrarte de nuevo',
+};
+
+/** Why the Marcar card has no button: the employee should know what to ask RH for. */
+export function noPunchReason(today: HrTodayAttendance): string {
+    if (!today.targetBranch) return 'No tienes una sucursal asignada. Pide a RH que te asigne una para poder marcar.';
+    if (!today.scheduledShift && !today.policy?.allowUnscheduledPunch) return 'No tienes un turno programado ahora. Podrás marcar cuando RH te asigne un horario.';
+    return 'No tienes marcajes disponibles ahora.';
 }
 
 export function AccountHome({ session, hr, onLogout }: Props) {
@@ -119,7 +134,7 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                             </button>
                         ))
                     ) : (
-                        today && <p className="muted">No tienes marcajes disponibles ahora.</p>
+                        today && <p className="muted">{noPunchReason(today)}</p>
                     )}
                     {branchLine && actions.length > 0 && !stale && !facePending && <p className="ah-geo">{branchLine}</p>}
                 </section>
@@ -211,6 +226,9 @@ export function AccountHome({ session, hr, onLogout }: Props) {
                                 </>
                             )}
                         </Card>
+                    )}
+                    {today?.policy?.requireBiometric !== false && (
+                        <NavRow icon={IconFaceId} title="Registro facial" detail={FACE_STATUS[summary.biometric?.status ?? ''] ?? undefined} onClick={() => navigate('face')} />
                     )}
                     <NavRow icon={IconClipboardList} title="Mi horario" onClick={() => navigate('schedule')} />
                     <NavRow icon={IconFileInvoice} title="Mi nómina" onClick={() => navigate('payroll')} />

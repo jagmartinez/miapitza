@@ -8,6 +8,7 @@ import { AccountHome } from './AccountHome';
 import { ApprovalsScreen } from './approvals/ApprovalsScreen';
 import { AccountNavProvider, useAccountNav, type AccountSection } from './AccountNav';
 import { PunchScreen } from './attendance/PunchScreen';
+import { FaceSetupScreen } from './attendance/FaceSetupScreen';
 import { LoanRequestForm } from './loans/LoanRequestForm';
 import { LoansScreen } from './loans/LoansScreen';
 import { PayrollScreen } from './payroll/PayrollScreen';
@@ -24,6 +25,7 @@ import { createHrApi, type HrApi } from './hrApi';
 
 const TITLES: Record<Exclude<AccountSection, 'home'>, string> = {
     punch: 'Marcar',
+    face: 'Registro facial',
     schedule: 'Mi horario',
     payroll: 'Mi nómina',
     info: 'Mi información',
@@ -53,6 +55,7 @@ function Screens({ session, hr, accountApi, onLogout, onPasswordChanged }: { ses
     const { section } = useAccountNav();
     if (section === 'home') return <AccountHome session={session} hr={hr} onLogout={onLogout} />;
     if (section === 'punch') return <PunchScreen hr={hr} />;
+    if (section === 'face') return <FaceSetupScreen hr={hr} />;
     if (section === 'schedule') return <ScheduleScreen hr={hr} />;
     if (section === 'payroll') return <PayrollScreen hr={hr} userId={session.user.id} />;
     if (section === 'info') return <ProfileScreen hr={hr} accountApi={accountApi} onPasswordChanged={onPasswordChanged} onLogout={onLogout} />;

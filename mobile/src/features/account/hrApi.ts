@@ -260,7 +260,8 @@ export function createHrApi(http: AxiosInstance) {
         receiptPdf: (id: number) => call<Blob>(`${H}/payroll/me/receipts/${id}/pdf`, { responseType: 'blob' }),
 
         // ---- workforce ----
-        myWorkforce: (range: { dateFrom?: string; dateTo?: string; limit?: number } = {}) => call<HrMyWorkforce>(`${H}/me/workforce`, { params: range }),
+        /** `summaries: false` skips the server's per-day attendance recalculation (requests and balances only). */
+        myWorkforce: (range: { dateFrom?: string; dateTo?: string; limit?: number; summaries?: boolean } = {}) => call<HrMyWorkforce>(`${H}/me/workforce`, { params: range }),
         leaveTypes: () => list<HrLeaveType>(`${H}/leave/types`),
         /** Creates a DRAFT then submits it; both steps are idempotent under the same actionId. */
         async createLeave(body: HrLeaveRequestPayload, opts: ActionOpts = {}): Promise<HrLeaveRequest> {

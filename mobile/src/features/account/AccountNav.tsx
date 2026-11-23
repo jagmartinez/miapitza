@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 export type AccountSection =
     | 'home'
     | 'punch'
+    | 'face'
     | 'schedule'
     | 'payroll'
     | 'info'

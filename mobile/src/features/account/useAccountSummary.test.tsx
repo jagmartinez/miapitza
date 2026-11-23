@@ -193,4 +193,11 @@ describe('useAccountSummary', () => {
         await waitFor(() => expect(result.current.status).toBe('ready'));
         expect(result.current.myRequests.map((r) => r.refId)).toEqual([3]);
     });
+
+    it('asks the server to skip the slow daily attendance summaries it does not use', async () => {
+        const hr = api();
+        const { result } = renderHook(() => useAccountSummary(hr, { userId: 7 }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(hr.myWorkforce).toHaveBeenCalledWith(expect.objectContaining({ summaries: false }));
+    });
 });

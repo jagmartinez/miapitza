@@ -268,7 +268,7 @@ export function useAccountSummary(hr: HrApi, opts: { userId: number; enabled?: b
             hr.mySchedule(nextWeek),
             hr.myReceipts({ limit: 5 }),
             hr.mySwaps(),
-            hr.myWorkforce({ dateFrom: from, dateTo: to }),
+            hr.myWorkforce({ dateFrom: from, dateTo: to, summaries: false }),
             hr.myLoans(),
             hr.loanPolicy(),
             Promise.resolve().then(() => hr.biometricStatus()),

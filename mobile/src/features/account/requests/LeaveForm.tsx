@@ -41,7 +41,7 @@ export function LeaveForm({ hr }: { hr: HrApi }) {
             (e) => alive && setLoadError(toHrError(e).message),
         );
         // The balance is a nicety: without it the form still works.
-        Promise.resolve(hr.myWorkforce()).then(
+        Promise.resolve(hr.myWorkforce({ summaries: false })).then(
             (w) => alive && setVacation(selectVacationBalance(w?.vacationBalances)),
             () => undefined,
         );

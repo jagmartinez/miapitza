@@ -2228,10 +2228,13 @@ export class WorkforcePortalService {
         dateTo?: string;
         page?: number;
         limit?: number;
-    }) {
+    }, options: { includeSummaries?: boolean } = {}) {
         await ensureUser(companyId, userId);
         const bounded = { ...filters, userId, limit: Math.min(filters.limit || 100, 100) };
-        const attendance = await AttendanceDerivedService.list(companyId, bounded);
+        // Recalculating the daily summaries walks every day of the range; skip it when not wanted.
+        const attendance = options.includeSummaries === false
+            ? { items: [] as Awaited<ReturnType<typeof AttendanceDerivedService.list>>['items'] }
+            : await AttendanceDerivedService.list(companyId, bounded);
         const [incidents, corrections, overtime, leave, balances, ledger] = await Promise.all([
             AttendanceIncidentService.list(companyId, bounded),
             AttendanceCorrectionService.list(companyId, bounded),

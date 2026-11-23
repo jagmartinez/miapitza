@@ -180,6 +180,8 @@ router.post('/vacation/adjustments', ownerManage, allowHrBodyFields(['userId', '
 
 router.get('/me/attendance/summary', selfWorkforce, validate({ query: commonQuery }), HrWorkforceController.myAttendanceSummaries);
 router.get('/me/employee', selfWorkforce, HrWorkforceController.myEmployee);
-router.get('/me/workforce', selfWorkforce, validate({ query: commonQuery }), HrWorkforceController.myWorkforce);
+// summaries=false skips the per-day attendance recalculation (slow on long ranges) for callers
+// that only need requests and balances, such as the mobile account home.
+router.get('/me/workforce', selfWorkforce, validate({ query: { ...commonQuery, summaries: { type: 'boolean' } } }), HrWorkforceController.myWorkforce);
 
 export default router;

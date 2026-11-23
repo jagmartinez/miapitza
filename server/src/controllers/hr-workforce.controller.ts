@@ -388,6 +388,7 @@ export class HrWorkforceController {
                 selfUserId(req),
                 req.user!.timezone,
                 filters(req),
+                { includeSummaries: !['false', '0'].includes(String(req.query.summaries)) },
             );
             res.json({ success: true, data });
         } catch (error) { handleError(error, res, next); }

@@ -26,6 +26,7 @@ export {
     IconEdit,
     IconEyeOff,
     IconFileInvoice,
+    IconFaceId,
     IconFingerprint,
     IconHeart,
     IconHistory,
