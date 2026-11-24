@@ -174,7 +174,9 @@ export class PaymentService {
         const candidateTableId = candidate?.tableId ?? null;
 
         // ALL validation and writes inside a single transaction to prevent race conditions
-        return await transactionWithP2034Retry(async (tx) => {
+        let deliverAfterCommit = false;
+        const settled = await transactionWithP2034Retry(async (tx) => {
+            deliverAfterCommit = false;
             // Pessimistic lock in the shared Table -> Order order: prevents
             // concurrent payments on the same order and lock-order deadlocks
             // against prefactura/invoice/order creation on the same table.
@@ -359,12 +361,10 @@ export class PaymentService {
                 });
 
                 // A settled order whose kitchen work is fully released is handed
-                // over now: consume its stock in this same transaction (already
-                // holding Table -> Order). Not-yet-released orders are delivered
-                // automatically by the kitchen release instead.
-                if (order.status === 'READY') {
-                    await OrderService.autoDeliverIfSettledWithTransaction(tx, order.id, companyId, userId);
-                }
+                // over right after this payment commits (its own transaction, so
+                // an inventory problem never blocks the charge). Not-yet-released
+                // orders are delivered automatically by the kitchen release.
+                deliverAfterCommit = order.status === 'READY';
 
                 if (order.tableId) {
                     // Full payment, not fiscal issuance, releases the account.
@@ -387,6 +387,10 @@ export class PaymentService {
 
             return payment;
         }, SETTLEMENT_TRANSACTION_OPTIONS);
+        if (deliverAfterCommit) {
+            await OrderService.autoDeliverIfSettled(data.orderId, companyId, userId);
+        }
+        return settled;
     }
 
     static async delete(id: number, companyId: number, userId: number, reversalReason?: string) {

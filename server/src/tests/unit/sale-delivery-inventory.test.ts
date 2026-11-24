@@ -54,18 +54,28 @@ describe('1a. automatic delivery of settled, kitchen-released orders', () => {
         };
     }
 
-    it('rolls back only the delivery (savepoint) when inventory is not ready, keeping payment/release alive', async () => {
+    it('never issues raw SAVEPOINT SQL (MySQL rejects it as a prepared statement, error 1295)', async () => {
+        jest.spyOn(OrderService, 'completeWithTransaction')
+            .mockRejectedValue(new Error('PRODUCT_COST_MISSING: el producto 4 no tiene costo'));
+        const tx = autoTx(settledOrder(), [{ id: 5 }]);
+
+        await expect(OrderService.autoDeliverIfSettledWithTransaction(tx as never, 9, 1, 7))
+            .rejects.toThrow('PRODUCT_COST_MISSING');
+        expect(tx.$executeRawUnsafe).not.toHaveBeenCalled();
+    });
+
+    it('autoDeliverIfSettled swallows an inventory failure in its own transaction and audits it', async () => {
         jest.spyOn(OrderService, 'completeWithTransaction')
             .mockRejectedValue(new Error('PRODUCT_COST_MISSING: el producto 4 no tiene costo'));
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         const tx = autoTx(settledOrder(), [{ id: 5 }]);
+        jest.spyOn(prisma, '$transaction').mockImplementation((async (cb: (db: unknown) => unknown) => cb(tx)) as never);
+        const audit = jest.spyOn(prisma.auditLog, 'create').mockResolvedValue({} as never);
 
-        const result = await OrderService.autoDeliverIfSettledWithTransaction(tx as never, 9, 1, 7);
+        const result = await OrderService.autoDeliverIfSettled(9, 1, 7);
 
         expect(result).toEqual({ delivered: false, reason: 'INVENTORY_NOT_READY' });
-        const sql = tx.$executeRawUnsafe.mock.calls.map((c) => c[0]);
-        expect(sql).toEqual(['SAVEPOINT auto_deliver', 'ROLLBACK TO SAVEPOINT auto_deliver']);
-        expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+        expect(audit).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ action: 'AUTO_DELIVER_SKIPPED', details: expect.objectContaining({ reason: 'INVENTORY_NOT_READY' }) })
         }));
     });
@@ -168,26 +178,26 @@ describe('1a. automatic delivery of settled, kitchen-released orders', () => {
         };
     }
 
-    it('auto-delivers inside the payment transaction when the final payment settles a READY order', async () => {
+    it('auto-delivers after the payment commits when the final payment settles a READY order', async () => {
         jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
         const tx = paymentTx('READY');
         jest.spyOn(prisma, '$transaction').mockImplementation((async (cb: (db: unknown) => unknown) => cb(tx)) as never);
-        const auto = jest.spyOn(OrderService, 'autoDeliverIfSettledWithTransaction')
-            .mockResolvedValue({ delivered: true } as never);
+        const auto = jest.spyOn(OrderService, 'autoDeliverIfSettled')
+            .mockResolvedValue({ delivered: true });
 
         await PaymentService.create(1, { orderId: 9, paymentMethodId: 2, amount: 60 }, 7);
 
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ financialStatus: 'PAID' })
         }));
-        expect(auto).toHaveBeenCalledWith(tx as never, 9, 1, 7);
+        expect(auto).toHaveBeenCalledWith(9, 1, 7);
     });
 
     it('leaves an in-kitchen paid order for the kitchen release to deliver', async () => {
         jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
         const tx = paymentTx('IN_PREPARATION');
         jest.spyOn(prisma, '$transaction').mockImplementation((async (cb: (db: unknown) => unknown) => cb(tx)) as never);
-        const auto = jest.spyOn(OrderService, 'autoDeliverIfSettledWithTransaction');
+        const auto = jest.spyOn(OrderService, 'autoDeliverIfSettled');
 
         await PaymentService.create(1, { orderId: 9, paymentMethodId: 2, amount: 60 }, 7);
 
@@ -213,12 +223,12 @@ describe('1a. automatic delivery of settled, kitchen-released orders', () => {
             auditLog: { create: fn(async () => ({})) }
         };
         jest.spyOn(prisma, '$transaction').mockImplementation((async (cb: (db: unknown) => unknown) => cb(tx)) as never);
-        const auto = jest.spyOn(OrderService, 'autoDeliverIfSettledWithTransaction')
-            .mockResolvedValue({ delivered: true } as never);
+        const auto = jest.spyOn(OrderService, 'autoDeliverIfSettled')
+            .mockResolvedValue({ delivered: true });
 
         const result = await OrderService.releaseFromKitchen(9, 1, 7, 3);
 
-        expect(auto).toHaveBeenCalledWith(tx as never, 9, 1, 7);
+        expect(auto).toHaveBeenCalledWith(9, 1, 7);
         expect(result).toEqual(expect.objectContaining({ changed: true, autoDelivered: true }));
     });
 });

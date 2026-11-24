@@ -2515,41 +2515,51 @@ export class OrderService {
             });
             return { delivered: false, reason: saleWarehouse.reason };
         }
-        const saleWarehouseId = saleWarehouse.warehouseId;
-        // Auto-delivery is a side effect of payment / kitchen release: an
-        // inventory problem (missing cost, unit conversion, FIFO mismatch) must
-        // never block collecting money or releasing the kitchen. Run it inside a
-        // SAVEPOINT so a failure undoes only the delivery and leaves the order
-        // READY for the explicit "Entregar". Deadlocks / lock timeouts abort the
-        // whole MySQL transaction, so those still propagate to the retry wrapper.
-        await tx.$executeRawUnsafe('SAVEPOINT auto_deliver');
+        // Any inventory failure propagates and rolls back this transaction;
+        // callers run it apart from the payment/release (autoDeliverIfSettled).
+        const updated = await this.completeWithTransaction(tx, order.id, companyId, saleWarehouse.warehouseId, actorUserId, { automatic: true });
+        return { delivered: true, order: updated };
+    }
+
+    /**
+     * Best-effort auto-delivery in its OWN transaction, run after the payment or
+     * kitchen release has committed. An inventory problem (missing cost, unit
+     * conversion, FIFO mismatch) must never block collecting money or releasing
+     * the kitchen: on failure the order stays READY for the explicit "Entregar".
+     * (A SAVEPOINT inside the settlement transaction is not an option: Prisma
+     * sends raw SQL as prepared statements and MySQL rejects SAVEPOINT there,
+     * error 1295.)
+     */
+    static async autoDeliverIfSettled(
+        orderId: number,
+        companyId: number,
+        actorUserId: number
+    ): Promise<{ delivered: boolean; reason?: string }> {
         try {
-            const updated = await this.completeWithTransaction(tx, order.id, companyId, saleWarehouseId, actorUserId, { automatic: true });
-            await tx.$executeRawUnsafe('RELEASE SAVEPOINT auto_deliver');
-            return { delivered: true, order: updated };
+            const result = await transactionWithP2034Retry(
+                (tx) => this.autoDeliverIfSettledWithTransaction(tx, orderId, companyId, actorUserId),
+                SETTLEMENT_TRANSACTION_OPTIONS,
+            );
+            return { delivered: result.delivered, ...(result.reason && { reason: result.reason }) };
         } catch (error) {
-            if (isRetryableTransactionError(error)) throw error;
-            try {
-                await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT auto_deliver');
-            } catch {
-                // The savepoint is gone only when MySQL already rolled back the
-                // whole transaction (e.g. a deadlock surfaced without a Prisma
-                // code): propagate the original cause so the caller can retry.
-                throw error;
-            }
             const message = error instanceof Error ? error.message : String(error);
-            await tx.auditLog.create({
-                data: {
-                    companyId,
-                    entityType: 'Order',
-                    entityId: order.id,
-                    action: 'AUTO_DELIVER_SKIPPED',
-                    userId: actorUserId,
-                    details: { reason: 'INVENTORY_NOT_READY', message: message.slice(0, 500), warehouseId: saleWarehouseId },
-                },
-            });
-            console.warn('[ORDER] Auto-delivery skipped; order stays READY for explicit delivery', { orderId: order.id, companyId, message });
-            return { delivered: false, reason: 'INVENTORY_NOT_READY' };
+            const reason = isRetryableTransactionError(error) ? 'LOCK_CONFLICT' : 'INVENTORY_NOT_READY';
+            try {
+                await prisma.auditLog.create({
+                    data: {
+                        companyId,
+                        entityType: 'Order',
+                        entityId: orderId,
+                        action: 'AUTO_DELIVER_SKIPPED',
+                        userId: actorUserId,
+                        details: { reason, message: message.slice(0, 500) },
+                    },
+                });
+            } catch (auditError) {
+                console.error('[ORDER] Could not record AUTO_DELIVER_SKIPPED', { orderId, companyId, auditError });
+            }
+            console.warn('[ORDER] Auto-delivery skipped; order stays READY for explicit delivery', { orderId, companyId, reason, message });
+            return { delivered: false, reason };
         }
     }
 
@@ -3681,11 +3691,6 @@ export class OrderService {
                     }
                 }
             });
-            // An already-settled order whose last batch was just released is
-            // physically handed over now: consume its stock atomically.
-            const autoDelivery = nextStatus === 'READY'
-                ? await this.autoDeliverIfSettledWithTransaction(tx, orderId, companyId, actorUserId)
-                : { delivered: false };
             const updatedBatch = await tx.kitchenBatch.findUnique({
                 where: { id: batch.id },
                 include: kitchenBatchOrderInclude,
@@ -3696,10 +3701,16 @@ export class OrderService {
                 branchId: order.branchId,
                 order: this.withPersistentKitchenBatch(updatedBatch),
                 kitchenBatchId: batch.id,
-                autoDelivered: autoDelivery.delivered,
+                becameReady: nextStatus === 'READY',
             };
         }, SETTLEMENT_TRANSACTION_OPTIONS);
-        return result;
+        // An already-settled order whose last batch was just released is
+        // physically handed over now, after the release has committed.
+        const { becameReady, ...released } = result as typeof result & { becameReady?: boolean };
+        const autoDelivery = becameReady
+            ? await this.autoDeliverIfSettled(orderId, companyId, actorUserId)
+            : { delivered: false };
+        return { ...released, autoDelivered: autoDelivery.delivered };
     }
 
     /** Batches released in the last 12 h (newest first) for the tablet's "recientes" list. */

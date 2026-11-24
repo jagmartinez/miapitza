@@ -35,6 +35,8 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         });
         const firstTx = makeTx(43);
         const secondTx = makeTx(44);
+        // Auto-delivery runs in its own transaction after the payment commits.
+        const autoDeliver = jest.spyOn(OrderService, 'autoDeliverIfSettled').mockResolvedValue({ delivered: true });
         const transaction = jest.spyOn(prisma, '$transaction')
             .mockImplementationOnce((async (callback: (db: typeof firstTx) => unknown) => {
                 await callback(firstTx);
@@ -58,6 +60,7 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         expect(secondTx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ financialStatus: 'PAID' })
         }));
+        expect(autoDeliver).toHaveBeenCalledTimes(1);
     });
 
     it('does not retry or hide a non-retryable payment-domain failure', async () => {
