@@ -6,13 +6,6 @@ import ProductionDashboard from './ProductionDashboard';
 
 const mocks = vi.hoisted(() => ({ dashboard: vi.fn(), branches: vi.fn() }));
 
-vi.mock('recharts', () => {
-  const Box = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
-  return {
-    ResponsiveContainer: Box, BarChart: Box, Bar: Box, XAxis: Box, YAxis: Box, CartesianGrid: Box, Tooltip: Box,
-    PieChart: Box, Pie: Box, Cell: Box, Legend: Box, ComposedChart: Box, Area: Box, Line: Box,
-  };
-});
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 1, role: 'ADMIN', roles: ['ADMIN'] } }) }));
 vi.mock('../services/api', () => ({
   productionReportsAPI: { getDashboard: (...a: unknown[]) => mocks.dashboard(...a) },

@@ -12,10 +12,8 @@ import {
 } from '@/ui';
 import type { Branch } from '../types';
 import { Building2, Package, RefreshCw, Users } from 'lucide-react';
-import {
-    ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-    PieChart, Pie, Cell, Legend, ComposedChart, Area, Line
-} from 'recharts';
+import { DonutChart, ParetoBars, TrendChart } from '@/ui/charts';
+import { toPareto } from './dashboardCharts';
 import s from './Production.module.css';
 
 interface Kpis {
@@ -57,11 +55,11 @@ interface DashboardData {
 }
 
 const STATUS_META: Record<string, { label: string; color: string; tone: Tone }> = {
-    DRAFT: { label: 'Borrador', color: '#94a3b8', tone: 'neutral' },
-    PENDING: { label: 'Pendiente', color: '#f59e0b', tone: 'warning' },
-    IN_PROGRESS: { label: 'En proceso', color: '#3b82f6', tone: 'primary' },
-    FINISHED: { label: 'Finalizada', color: '#22c55e', tone: 'success' },
-    CANCELLED: { label: 'Anulada', color: '#ef4444', tone: 'neutral' }
+    DRAFT: { label: 'Borrador', color: 'var(--ui-text-muted)', tone: 'neutral' },
+    PENDING: { label: 'Pendiente', color: 'var(--ui-warning)', tone: 'warning' },
+    IN_PROGRESS: { label: 'En proceso', color: 'var(--ui-primary)', tone: 'primary' },
+    FINISHED: { label: 'Finalizada', color: 'var(--ui-success)', tone: 'success' },
+    CANCELLED: { label: 'Anulada', color: 'var(--ui-danger)', tone: 'neutral' }
 };
 
 const fmtDay = (d: string) => {
@@ -146,13 +144,6 @@ export default function ProductionDashboard() {
 
     const kpis = data?.kpis;
     const prev = data?.previous ?? null;
-    const tooltipStyle = {
-        backgroundColor: 'var(--ui-surface)',
-        border: '1px solid var(--ui-border)',
-        borderRadius: '8px',
-        color: 'var(--ui-text)',
-        fontSize: '12px'
-    };
     const unitOf = (o: RecentRow) => o.product?.baseUnit?.abbreviation || o.product?.unit || '';
 
     const producedColumns: Column<ProducedRow>[] = [
@@ -311,26 +302,23 @@ export default function ProductionDashboard() {
                             {data.timeSeries.length === 0 ? (
                                 <EmptyState title="Sin producciones finalizadas en el período" />
                             ) : (
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <ComposedChart data={data.timeSeries} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
-                                        <defs>
-                                            <linearGradient id="prodArea" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
-                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--ui-border)" />
-                                        <XAxis dataKey="date" tickFormatter={fmtDay} tick={{ fontSize: 11 }} />
-                                        <YAxis yAxisId="left" allowDecimals={false} tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(Number(v), 0)} />
-                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(Number(v), 0)} />
-                                        <Tooltip contentStyle={tooltipStyle} labelFormatter={(l) => `Día ${fmtDay(String(l))}`}
-                                            formatter={(value: number, name: string) => [name === 'Órdenes finalizadas' ? formatNumber(Number(value), 0) : formatMoney(Number(value)), name]} />
-                                        <Legend wrapperStyle={{ fontSize: '12px' }} />
-                                        <Area yAxisId="left" type="monotone" dataKey="orders" name="Órdenes finalizadas" stroke="#3b82f6" strokeWidth={2} fill="url(#prodArea)" />
-                                        <Line yAxisId="right" type="monotone" dataKey="estimatedCost" name="Costo estimado" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 4" dot={false} />
-                                        <Line yAxisId="right" type="monotone" dataKey="realCost" name="Costo real" stroke="#22c55e" strokeWidth={2} dot={{ r: 2 }} />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
+                                <>
+                                    <TrendChart
+                                        buckets={data.timeSeries.map((d) => fmtDay(d.date))}
+                                        current={data.timeSeries.map((d) => d.realCost)}
+                                        previous={data.timeSeries.map((d) => d.estimatedCost)}
+                                        previousLabel="Costo estimado"
+                                        format={(v) => `${symbol}${formatNumber(v, 0)}`}
+                                        ariaLabel="Costo real frente al estimado por día"
+                                    />
+                                    <TrendChart
+                                        buckets={data.timeSeries.map((d) => fmtDay(d.date))}
+                                        current={data.timeSeries.map((d) => d.orders)}
+                                        previousLabel="Sin comparación"
+                                        format={(v) => formatNumber(v, 0)}
+                                        ariaLabel="Órdenes finalizadas por día"
+                                    />
+                                </>
                             )}
                         </section>
 
@@ -339,19 +327,14 @@ export default function ProductionDashboard() {
                             {kpis.total === 0 ? (
                                 <EmptyState title="Sin órdenes" />
                             ) : (
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <PieChart>
-                                        <Pie data={data.statusBreakdown.filter(st => st.count > 0)} dataKey="count" nameKey="status"
-                                            cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                                            {data.statusBreakdown.filter(st => st.count > 0).map((st) => (
-                                                <Cell key={st.status} fill={STATUS_META[st.status]?.color || '#94a3b8'} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip contentStyle={tooltipStyle}
-                                            formatter={(value: number, name: string) => [formatNumber(Number(value), 0), STATUS_META[name]?.label || name]} />
-                                        <Legend wrapperStyle={{ fontSize: '12px' }} formatter={(v) => STATUS_META[v]?.label || v} />
-                                    </PieChart>
-                                </ResponsiveContainer>
+                                <DonutChart
+                                    ariaLabel="Órdenes por estado"
+                                    segments={data.statusBreakdown.filter(st => st.count > 0).map((st) => ({
+                                        label: STATUS_META[st.status]?.label || st.status,
+                                        share: st.count,
+                                        tone: STATUS_META[st.status]?.color || 'var(--ui-text-muted)',
+                                    }))}
+                                />
                             )}
                         </section>
                     </div>
@@ -380,19 +363,18 @@ export default function ProductionDashboard() {
                                     <div><dt>Costo real</dt><dd>{formatMoney(data.branchComparison[0].realCost)}</dd></div>
                                 </dl>
                             ) : (
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <BarChart data={data.branchComparison} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--ui-border)" />
-                                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                                        <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(Number(v), 0)} />
-                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(Number(v), 0)} />
-                                        <Tooltip contentStyle={tooltipStyle}
-                                            formatter={(value: number, name: string) => [name === 'Órdenes finalizadas' ? formatNumber(Number(value), 0) : formatMoney(Number(value)), name]} />
-                                        <Legend wrapperStyle={{ fontSize: '12px' }} />
-                                        <Bar yAxisId="left" dataKey="orders" name="Órdenes finalizadas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                        <Bar yAxisId="right" dataKey="realCost" name="Costo real" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                                    </BarChart>
-                                </ResponsiveContainer>
+                                <>
+                                    <ParetoBars
+                                        ariaLabel="Órdenes finalizadas por sucursal"
+                                        items={toPareto(data.branchComparison.map((b) => ({ name: b.name, value: b.orders })), 50)}
+                                        format={(v) => `${formatNumber(v, 0)} órdenes`}
+                                    />
+                                    <ParetoBars
+                                        ariaLabel="Costo real por sucursal"
+                                        items={toPareto(data.branchComparison.map((b) => ({ name: b.name, value: b.realCost })), 50)}
+                                        format={(v) => formatMoney(v)}
+                                    />
+                                </>
                             )}
                         </section>
 
