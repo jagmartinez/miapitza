@@ -10,6 +10,10 @@ type Props = {
   pageSizeOptions?: number[];
   onChange(page: number, pageSize: number): void;
   label?: string;
+  /** Oculta el selector de filas por página (adaptadores heredados sin cambio de tamaño). */
+  hidePageSize?: boolean;
+  /** Reemplaza el texto de rango. */
+  infoText?: string;
 };
 
 /** Hasta 7 elementos: números y elipsis (null). */
@@ -20,7 +24,7 @@ function pageItems(page: number, pages: number): (number | null)[] {
   return [1, null, page - 1, page, page + 1, null, pages];
 }
 
-export function Pagination({ page, pageSize, total, pageSizeOptions = [10, 25, 50, 100], onChange, label = 'Paginación' }: Props) {
+export function Pagination({ page, pageSize, total, pageSizeOptions = [10, 25, 50, 100], onChange, label = 'Paginación', hidePageSize, infoText }: Props) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(total, page * pageSize);
@@ -28,14 +32,16 @@ export function Pagination({ page, pageSize, total, pageSizeOptions = [10, 25, 5
 
   return (
     <nav className="ui-pagination" aria-label={label}>
-      <span className="ui-pagination__info" aria-live="polite">{text}</span>
-      <SegmentedControl
-        size="sm"
-        ariaLabel="Filas por página"
-        options={pageSizeOptions.map((n) => ({ value: String(n), label: String(n) }))}
-        value={String(pageSize)}
-        onChange={(v) => onChange(1, Number(v))}
-      />
+      <span className="ui-pagination__info" aria-live="polite">{infoText ?? text}</span>
+      {hidePageSize ? null : (
+        <SegmentedControl
+          size="sm"
+          ariaLabel="Filas por página"
+          options={pageSizeOptions.map((n) => ({ value: String(n), label: String(n) }))}
+          value={String(pageSize)}
+          onChange={(v) => onChange(1, Number(v))}
+        />
+      )}
       <div className="ui-pagination__pages">
         <IconButton size="sm" icon={ChevronLeft} label="Página anterior" disabled={page <= 1} onClick={() => onChange(page - 1, pageSize)} />
         {pageItems(page, pages).map((p, i) =>

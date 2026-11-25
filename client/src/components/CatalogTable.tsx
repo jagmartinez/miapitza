@@ -1,6 +1,5 @@
-import { useMemo, useState, useEffect, type ReactNode } from 'react';
-import Pagination from './Pagination';
-import './CatalogView.css';
+import { useMemo, type ReactNode } from 'react';
+import { DataTable, type Column } from '@/ui';
 
 export interface CatalogColumn<T> {
     /** Unique key for the column. */
@@ -18,63 +17,61 @@ interface CatalogTableProps<T> {
     rows: T[];
     rowKey: (row: T) => string | number;
     pageSize?: number;
+    /** Ignorado: DataTable usa `rowTone`; ninguna pantalla lo usa hoy. */
     rowClassName?: (row: T) => string | undefined;
     /** Optional dependency: when it changes, pagination resets to page 1. */
     resetKey?: unknown;
+    /** Paginación de servidor: `rows` ya es la página actual. */
+    pagination?: { page: number; pageSize: number; total: number; onPageChange: (page: number) => void };
 }
 
-const alignClass = (align?: 'left' | 'right' | 'center') =>
-    align === 'right' ? 'col-right' : align === 'center' ? 'col-center' : '';
+const PAGE_SIZES = [10, 25, 50, 100];
 
-/** Generic, paginated catalog table driven by a column config. */
+/** Adaptador heredado: misma API de siempre sobre `DataTable`. */
 export default function CatalogTable<T>({
     columns,
     rows,
     rowKey,
     pageSize = 10,
-    rowClassName,
-    resetKey
+    resetKey,
+    pagination,
 }: CatalogTableProps<T>) {
-    const [page, setPage] = useState(1);
+    // Como antes, cambiar resetKey o el número de filas vuelve a la página 1.
+    const resetToken = useMemo(() => ({}), [resetKey, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    useEffect(() => {
-        setPage(1);
-    }, [resetKey, rows.length]);
-
-    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
-    const safePage = Math.min(page, totalPages);
-    const paged = useMemo(
-        () => rows.slice((safePage - 1) * pageSize, safePage * pageSize),
-        [rows, safePage, pageSize]
+    const uiColumns = useMemo<Column<T>[]>(
+        () =>
+            columns.map((c) => ({
+                key: c.key,
+                header: c.header,
+                render: c.render,
+                // `type` solo aplica la alineación numérica; el contenido sale de `render`.
+                type: c.align === 'right' ? 'number' : 'text',
+            })),
+        [columns],
     );
+    const sizes = PAGE_SIZES.includes(pageSize) ? PAGE_SIZES : [...PAGE_SIZES, pageSize].sort((a, b) => a - b);
 
     return (
-        <div className="catalog-table-wrapper">
-            <table className="catalog-table">
-                <thead>
-                    <tr>
-                        {columns.map(col => (
-                            <th key={col.key} className={alignClass(col.align)}>{col.header}</th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {paged.map(row => (
-                        <tr key={rowKey(row)} className={rowClassName?.(row)}>
-                            {columns.map(col => (
-                                <td key={col.key} className={alignClass(col.align)}>{col.render(row)}</td>
-                            ))}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-            <Pagination
-                page={safePage}
-                totalPages={totalPages}
-                totalItems={rows.length}
-                pageSize={pageSize}
-                onPageChange={setPage}
-            />
-        </div>
+        <DataTable
+            columns={uiColumns}
+            rows={rows}
+            rowKey={rowKey}
+            ariaLabel="Tabla de catálogo"
+            defaultPageSize={pageSize}
+            pageSizeOptions={pagination ? [pagination.pageSize] : sizes}
+            resetKey={resetToken}
+            pagination={
+                pagination
+                    ? {
+                          mode: 'server',
+                          page: pagination.page,
+                          pageSize: pagination.pageSize,
+                          total: pagination.total,
+                          onChange: (page) => pagination.onPageChange(page),
+                      }
+                    : { mode: 'client' }
+            }
+        />
     );
 }

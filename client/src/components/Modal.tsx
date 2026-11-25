@@ -1,5 +1,7 @@
 import { ReactNode, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { FullScreenModal } from '@/ui';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import './Modal.css';
 
@@ -29,17 +31,26 @@ export default function Modal({
     footer,
 }: ModalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const { titleId, descriptionId } = useDialogA11y(isOpen, onClose, containerRef, { closeOnEscape });
+    const compact = variant === 'center' && size === 'sm';
+    // Los formularios (md/lg y sidebar) viven en el modal a pantalla completa; solo "sm" queda centrado.
+    const { titleId, descriptionId } = useDialogA11y(isOpen && compact, onClose, containerRef, { closeOnEscape });
 
     if (!isOpen) return null;
 
-    const containerClass = variant === 'sidebar'
-        ? `modal-sidebar modal-${size}`
-        : `modal-container modal-${size}`;
+    if (!compact) {
+        return (
+            <FullScreenModal isOpen onClose={onClose} title={title} footer={footer}>
+                {description && <div className="modal-description">{description}</div>}
+                {children}
+            </FullScreenModal>
+        );
+    }
 
-    return (
+    const containerClass = 'modal-container modal-sm';
+
+    return createPortal(
         <div
-            className={`modal-overlay ${variant === 'sidebar' ? 'modal-overlay-sidebar' : ''}`}
+            className="modal-overlay"
             onClick={closeOnBackdrop ? onClose : undefined}
         >
             <div
@@ -64,6 +75,7 @@ export default function Modal({
                 </div>
                 {footer && <div className="modal-actions">{footer}</div>}
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

@@ -1,6 +1,7 @@
 import { ReactNode, useCallback, useId, useRef, useState } from 'react';
-import Select, { CSSObjectWithLabel, GroupBase, Props as SelectProps } from 'react-select';
-import { getReactSelectThemeStyles, mergeReactSelectStyles } from '../utils/reactSelectTheme';
+import Select, { CSSObjectWithLabel, GroupBase, Props as SelectProps, StylesConfig } from 'react-select';
+import { appSelectStyles } from '@/ui';
+import { mergeReactSelectStyles } from '../utils/reactSelectTheme';
 import './Select.css';
 
 const MENU_ESTIMATED_HEIGHT = 240;
@@ -90,7 +91,7 @@ export default function CustomSelect<
         ? (menuPortalTarget ?? (typeof document !== 'undefined' ? document.body : undefined))
         : menuPortalTarget;
 
-    const themeStyles = getReactSelectThemeStyles<Option, IsMulti, Group>(variant);
+    const themeStyles = appSelectStyles as StylesConfig<Option, IsMulti, Group>;
     const mergedStyles = mergeReactSelectStyles(themeStyles, styles);
 
     const resolvedStyles = isModal

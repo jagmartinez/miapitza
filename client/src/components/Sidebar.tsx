@@ -1,59 +1,27 @@
-import { ReactNode, useLayoutEffect, useRef } from 'react';
-import { X } from 'lucide-react';
-import { useDialogA11y } from '../hooks/useDialogA11y';
-import './Sidebar.css';
+import type { ReactNode } from 'react';
+import { FullScreenModal } from '@/ui';
 
 interface SidebarProps {
     isOpen: boolean;
     onClose: () => void;
     title: string;
     children: ReactNode;
+    /** Ignorado: el panel ahora es a pantalla completa. */
     width?: 'normal' | 'large' | 'wide' | 'full';
+    /** Ignorado: el modal a pantalla completa no tiene fondo clicable. */
     closeOnBackdrop?: boolean;
+    /** Ignorado: Esc siempre pide confirmación si hay cambios y cierra si no. */
     closeOnEscape?: boolean;
     description?: ReactNode;
     footer?: ReactNode;
 }
 
-export default function Sidebar({ isOpen, onClose, title, children, width = 'normal', closeOnBackdrop = true, closeOnEscape = true, description, footer }: SidebarProps) {
-    const panelRef = useRef<HTMLDivElement>(null);
-    const { titleId, descriptionId } = useDialogA11y(isOpen, onClose, panelRef, { closeOnEscape });
-
-    // React 18's DOM types do not expose `inert` yet. Layout timing removes it
-    // before the shared focus-management effect runs when the panel opens.
-    useLayoutEffect(() => {
-        const panel = panelRef.current;
-        if (!panel) return;
-        if (isOpen) panel.removeAttribute('inert');
-        else panel.setAttribute('inert', '');
-    }, [isOpen]);
-
+/** Adaptador heredado sobre `FullScreenModal`. */
+export default function Sidebar({ isOpen, onClose, title, children, description, footer }: SidebarProps) {
     return (
-        <>
-            {isOpen && <div className="sidebar-overlay" onClick={closeOnBackdrop ? onClose : undefined} aria-hidden="true" />}
-
-            <div
-                ref={panelRef}
-                className={`sidebar-panel sidebar-${width} ${isOpen ? 'sidebar-open' : ''}`}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
-                aria-describedby={description ? descriptionId : undefined}
-                aria-hidden={!isOpen}
-                tabIndex={-1}
-            >
-                <div className="sidebar-header">
-                    <h2 id={titleId}>{title}</h2>
-                    <button type="button" className="sidebar-close" onClick={onClose} aria-label={`Cerrar ${title}`}>
-                        <X size={24} aria-hidden="true" />
-                    </button>
-                </div>
-                <div className="sidebar-body">
-                    {description && <div id={descriptionId} className="sidebar-description">{description}</div>}
-                    {children}
-                </div>
-                {footer && <div className="sidebar-actions">{footer}</div>}
-            </div>
-        </>
+        <FullScreenModal isOpen={isOpen} onClose={onClose} title={title} footer={footer}>
+            {description ? <div className="modal-description">{description}</div> : null}
+            {children}
+        </FullScreenModal>
     );
 }
