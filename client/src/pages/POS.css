@@ -1239,3 +1239,9 @@
 .pos-embedded .pos-header-new {
     padding-top: max(var(--spacing-md), env(safe-area-inset-top));
 }
+
+/* Plan 04: objetivos táctiles de 52 px para Pagar / Cocina / Imprimir */
+.header-action-btn { min-height: 52px; }
+.product-card-new { min-height: 88px; }
+
+.pos-order-type { margin-bottom: 0.75rem; min-width: 0; overflow-x: auto; }

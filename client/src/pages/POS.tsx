@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
 import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI, warehousesAPI, invoicesAPI } from '../services/api';
 import { offlineManager } from '../services/offlineManager';
@@ -22,7 +21,7 @@ import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
-import Select from '../components/Select';
+import { AppSelect, Field, SegmentedControl, formatNumber } from '@/ui';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
@@ -134,6 +133,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [brands, setBrands] = useState<Brand[]>([]);
     const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+    // DELIVERY is created from the delivery flow, not from the POS.
+    const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEOUT'>('DINE_IN');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [showMobileCart, setShowMobileCart] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -549,6 +550,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const buildOrderPayload = useCallback(() => ({
         tableId: selectedTable?.id,
         branchId: selectedTable?.branchId,
+        orderType,
         customerName: customerName || undefined,
         customerTaxId: fiscalCustomer.taxId || undefined,
         customerTaxIdType: fiscalCustomer.taxIdType || undefined,
@@ -562,7 +564,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             notes: item.notes || '',
             modifierIds: item.modifiers.map(mod => mod.id)
         }))
-    }), [selectedTable, customerName, fiscalCustomer, cart]);
+    }), [selectedTable, orderType, customerName, fiscalCustomer, cart]);
 
     const syncOrderContext = useCallback(async (orderId: number) => {
         if (!offlineManager.getStatus()) {
@@ -1205,6 +1207,19 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                             </button>
                         </div>
                     )}
+                    {selectedTable && !currentOrderId && !activeTableOrder && (
+                        <div className="pos-order-type">
+                            <SegmentedControl
+                                ariaLabel="Tipo de orden"
+                                value={orderType}
+                                onChange={setOrderType}
+                                options={[
+                                    { value: 'DINE_IN', label: 'Comer aquí' },
+                                    { value: 'TAKEOUT', label: 'Para llevar' },
+                                ]}
+                            />
+                        </div>
+                    )}
                     {selectedTable && activeTableOrder && (
                         <div style={{
                             marginBottom: '1rem',
@@ -1254,7 +1269,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                     </div>
                                 </div>
                                 <div style={{ fontWeight: 700 }}>
-                                    {currencySymbol}{activeOrderTotal.toFixed(2)}
+                                    {currencySymbol}{formatNumber(activeOrderTotal)}
                                 </div>
                             </div>
                         </div>
@@ -1338,7 +1353,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             <div className="mobile-cart-summary">
                 <div className="cart-total-preview">
                     <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Total:</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{currencySymbol}{displayTotal.toFixed(2)}</span>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{currencySymbol}{formatNumber(displayTotal)}</span>
                 </div>
                 <button className="mobile-cart-btn" onClick={() => setShowMobileCart(true)}>
                     <span>Ver Orden ({cart.reduce((acc, item) => acc + item.quantity, 0) || activeTableOrder?.items?.length || 0})</span>
@@ -1441,15 +1456,15 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     )}
                 >
                         <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
-                        <Select<WarehouseOption>
-                            variant="modal"
-                            label="Bodega operativa"
-                            placeholder="Seleccionar bodega…"
-                            options={warehouseOptions}
-                            value={warehouseOptions.find((option) => option.value === operationalWarehouseId) ?? null}
-                            onChange={(option: SingleValue<WarehouseOption>) => setOperationalWarehouseId(option?.value ?? null)}
-                            isSearchable={warehouseOptions.length > 6}
-                        />
+                        <Field label="Bodega operativa" htmlFor="pos-operational-warehouse">
+                            <AppSelect
+                                inputId="pos-operational-warehouse"
+                                placeholder="Seleccionar bodega…"
+                                options={warehouseOptions}
+                                value={operationalWarehouseId}
+                                onChange={setOperationalWarehouseId}
+                            />
+                        </Field>
                         {branchWarehouses.length === 0 && (
                             <p className="shift-warning-note">No hay una bodega tipo sucursal configurada para completar esta operación.</p>
                         )}
@@ -1589,7 +1604,7 @@ function ModifierSelectorModal({
                 <>
                     <div className="pos-modifier-subtotal">
                         <span>Subtotal</span>
-                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
+                        <strong>{currencySymbol}{formatNumber(subtotal)}</strong>
                     </div>
                     <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
                     <Button type="button" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
@@ -1628,7 +1643,7 @@ function ModifierSelectorModal({
                                                     <span className="pos-modifier-option-name">{mod.name}</span>
                                                     {Number(mod.price) > 0 && (
                                                         <span className="pos-modifier-option-price">
-                                                            +{currencySymbol}{Number(mod.price).toFixed(2)}
+                                                            +{currencySymbol}{formatNumber(Number(mod.price))}
                                                         </span>
                                                     )}
                                                 </button>

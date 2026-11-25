@@ -9,7 +9,7 @@ describe('PaymentModal contract', () => {
         expect(source).toContain('Pago único');
         expect(source).toContain('Pago mixto');
         expect(source).toContain('Dividir cuenta');
-        expect(source).toContain('<CustomSelect<MethodOption>');
+        expect(source).toContain('<AppSelect<number>');
         expect(source).not.toContain('<select');
     });
 
@@ -54,7 +54,7 @@ describe('PaymentModal contract', () => {
         expect(source).toContain('modeHelp');
         expect(styles).toContain('width: min(1180px, 100%)');
         expect(styles).toContain('grid-template-columns: 310px minmax(0, 1fr)');
-        expect(styles).toContain('.payment-dialog .select-group.modal .react-select__control');
+        expect(styles).toContain('.payment-dialog .app-select__control');
         expect(styles).toContain('min-height: 46px');
         expect(source).toContain('scrollAreaRef.current?.scrollTo({ top: 0 })');
         expect(source).not.toContain('payment-footer-mode');

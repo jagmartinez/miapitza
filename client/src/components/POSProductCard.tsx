@@ -1,3 +1,4 @@
+import { formatNumber } from '@/ui';
 import React, { memo, useRef } from 'react';
 import type { MenuItem } from '../types';
 
@@ -64,7 +65,7 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
             )}
             <div className="product-info-overlay">
                 <div className="product-name-new">{item.name}</div>
-                <div className="product-price-new">{currencySymbol}{Number(item.price).toFixed(2)}</div>
+                <div className="product-price-new">{currencySymbol}{formatNumber(Number(item.price))}</div>
             </div>
         </div>
     );

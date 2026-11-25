@@ -9,6 +9,7 @@ import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Edit, Percent, DollarSign, Ticket, XCircle, Calendar, FileText } from 'lucide-react';
 import { useCurrency } from '../hooks/useCurrency';
+import { PageHeader } from '@/ui';
 import './Promotions.css';
 
 interface PromotionRow {
@@ -157,18 +158,18 @@ export default function Promotions() {
 
     return (
         <div className="promotions-page">
-            <div className="promo-header">
-                <div>
-                    <h1><Ticket size={28} /> Promociones</h1>
-                    <p>Gestiona códigos de descuento y ofertas especiales</p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <ViewToggle value={viewMode} onChange={setViewMode} />
-                    <Button onClick={() => handleOpen()}>
-                        <Plus size={18} /> Nueva Promoción
-                    </Button>
-                </div>
-            </div>
+            <PageHeader
+                title="Promociones"
+                description="Gestiona códigos de descuento y ofertas especiales"
+                actions={
+                    <div className="ui-page-actions">
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        <Button onClick={() => handleOpen()}>
+                            <Plus size={18} /> Nueva Promoción
+                        </Button>
+                    </div>
+                }
+            />
 
             {viewMode === 'table' && promotions.length > 0 && (
                 <CatalogTable<PromotionRow>

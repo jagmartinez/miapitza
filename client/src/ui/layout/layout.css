@@ -84,3 +84,4 @@
   /* El idioma se cambia desde Perfil › Preferencias en pantallas angostas. */
   .ui-topbar__controls .language-selector-wrapper { display: none; }
 }
+.ui-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
