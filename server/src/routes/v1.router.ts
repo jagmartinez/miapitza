@@ -6,6 +6,7 @@ import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { generateApiKey } from '../utils/apiKeyGenerator';
 import hrRoutes from './hr.routes';
+import biRoutes from './bi.routes';
 
 const v1 = Router();
 
@@ -87,6 +88,7 @@ v1.get('/health', async (_req: Request, res: Response) => {
 // behind the same proxy must not consume the orchestrator's release probes.
 v1.use(globalLimiter);
 v1.use('/hr', hrRoutes);
+v1.use('/bi', biRoutes);
 
 // ── API info endpoint ──
 v1.get('/', (_req: Request, res: Response) => {
