@@ -274,3 +274,13 @@
 
 .table-map-zone-filter { min-width: 0; flex: 1 1 14rem; max-width: 100%; overflow-x: auto; }
 .map-table-consumption { font-size: 10px; font-weight: 700; color: var(--color-text); }
+
+/* La barra del mapa reparte sus controles en varias líneas en lugar de aplastarlos. */
+.table-map-toolbar { flex-wrap: wrap; row-gap: var(--spacing-sm, 8px); }
+.table-map-actions { flex-wrap: wrap; row-gap: 8px; }
+.table-map-actions button { white-space: nowrap; }
+.table-map-status-filter, .table-map-area-selector { min-width: 10rem; }
+.table-map-branch-control { min-width: 11rem; }
+.table-map-zone-filter { flex: 0 1 auto; }
+.table-map-zone-filter .ui-segmented { flex-wrap: nowrap; }
+.table-map-zone-filter .ui-segmented button { white-space: nowrap; }
