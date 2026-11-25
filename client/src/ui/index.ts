@@ -30,3 +30,7 @@ export { EmptyState } from './data/EmptyState';
 export { TableToolbar } from './data/TableToolbar';
 export { useTablePagination } from './data/useTablePagination';
 export { columnTemplate } from './data/columnTemplate';
+export { FullScreenModal } from './overlays/FullScreenModal';
+export type { FullScreenModalProps, ModalTab } from './overlays/FullScreenModal';
+export { ConfirmDialog } from './overlays/ConfirmDialog';
+export { Drawer } from './overlays/Drawer';
