@@ -1414,27 +1414,27 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         <div className="pos-fiscal-grid">
                             <label>
                                 Nombre o razón social
-                                <input className="input" value={customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setCustomerName(event.target.value)} />
+                                <input value={customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setCustomerName(event.target.value)} />
                             </label>
                             <label>
                                 Tipo de identificación
-                                <input className="input" value={fiscalCustomer.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
+                                <input value={fiscalCustomer.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
                             </label>
                             <label>
                                 Identificación tributaria
-                                <input className="input" value={fiscalCustomer.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxId: event.target.value }))} />
+                                <input value={fiscalCustomer.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxId: event.target.value }))} />
                             </label>
                             <label>
                                 Teléfono
-                                <input className="input" value={fiscalCustomer.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, phone: event.target.value }))} />
+                                <input value={fiscalCustomer.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, phone: event.target.value }))} />
                             </label>
                             <label className="pos-fiscal-span-full">
                                 Dirección fiscal
-                                <textarea className="input" rows={2} value={fiscalCustomer.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, fiscalAddress: event.target.value }))} />
+                                <textarea rows={2} value={fiscalCustomer.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, fiscalAddress: event.target.value }))} />
                             </label>
                             <label className="pos-fiscal-span-full">
                                 Correo
-                                <input className="input" type="email" value={fiscalCustomer.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, email: event.target.value }))} />
+                                <input type="email" value={fiscalCustomer.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, email: event.target.value }))} />
                             </label>
                         </div>
                         {activeTableOrder?.invoiceNumber && (

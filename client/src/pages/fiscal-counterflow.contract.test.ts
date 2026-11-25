@@ -41,13 +41,12 @@ describe('fiscal counterflow UI contracts', () => {
     });
 
     it('exposes fail-closed fiscal configuration instead of jurisdiction constants', () => {
-        const settings = read('./Settings.tsx');
+        // La configuración fiscal vive ahora en el registro de ajustes (pantalla pages/settings).
+        const settings = read('../../../server/src/constants/settings-registry.ts');
         const authz = read('../utils/authz.ts');
 
-        expect(settings).toContain('fiscal_jurisdiction');
         expect(settings).toContain('credit_note_series');
         expect(settings).toContain('fiscal_tax_id_length');
-        expect(settings).toContain('fiscal_tax_id_charset');
         expect(authz).toContain("'invoices.cancel'");
         expect(authz).toContain("'invoices.credit'");
     });

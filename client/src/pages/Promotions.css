@@ -344,7 +344,7 @@
 
     /* Full-width primary button */
     .promo-header > button,
-    .promo-header .btn {
+    .promo-header .ui-button {
         width: 100%;
         padding: 14px;
         font-size: var(--font-size-base);
@@ -409,7 +409,7 @@
     }
 
     .promo-form-actions button,
-    .promo-form-actions .btn {
+    .promo-form-actions .ui-button {
         width: 100%;
     }
 

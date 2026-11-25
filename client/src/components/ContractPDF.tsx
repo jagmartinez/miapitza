@@ -1,4 +1,5 @@
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { formatNumber } from '../ui/format/number';
 
 // Register fonts for a more professional look
 Font.register({
@@ -348,7 +349,7 @@ const ContractPDF = ({ event, settings = {} }: ContractProps) => {
                             <View key={`s-${i}`} style={styles.tableRow}>
                                 <View style={styles.tableColMain}><Text>{s.service?.name || s.notes || 'Servicio'}</Text></View>
                                 <View style={styles.tableColSmall}><Text>{s.quantity}</Text></View>
-                                <View style={[styles.tableColPrice, { color: '#718096' }]}><Text>{settings.currency_symbol || '$'}{Number(s.unitPrice).toFixed(2)}</Text></View>
+                                <View style={[styles.tableColPrice, { color: '#718096' }]}><Text>{settings.currency_symbol || '$'}{formatNumber(s.unitPrice, 2)}</Text></View>
                                 <View style={styles.tableColPrice}><Text>{settings.currency_symbol || '$'}{(Number(s.quantity) * Number(s.unitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text></View>
                             </View>
                         ))}
@@ -361,7 +362,7 @@ const ContractPDF = ({ event, settings = {} }: ContractProps) => {
                                     {m.notes && <Text style={{ fontSize: 7, color: '#a0aec0' }}>{m.notes}</Text>}
                                 </View>
                                 <View style={styles.tableColSmall}><Text>{m.quantity}</Text></View>
-                                <View style={[styles.tableColPrice, { color: '#718096' }]}><Text>{settings.currency_symbol || '$'}{Number(m.unitPrice).toFixed(2)}</Text></View>
+                                <View style={[styles.tableColPrice, { color: '#718096' }]}><Text>{settings.currency_symbol || '$'}{formatNumber(m.unitPrice, 2)}</Text></View>
                                 <View style={styles.tableColPrice}><Text>{settings.currency_symbol || '$'}{(Number(m.quantity) * Number(m.unitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text></View>
                             </View>
                         ))}

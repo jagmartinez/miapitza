@@ -4,7 +4,6 @@ import App from './App.tsx'
 import './ui/tokens.css'
 import './ui/base.css'
 import './index.css'
-import './components/Button.css'
 import { retireLegacyAppCache } from './utils/legacy-cache.ts'
 
 void retireLegacyAppCache()

@@ -6,10 +6,7 @@ import {
     Grid3x3, List, CalendarDays, ChevronLeft, ChevronRight, Phone,
     Eye
 } from 'lucide-react';
-import { AppSelect, Field, PageHeader } from '@/ui';
-import Button from '../components/Button';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
-import Sidebar from '../components/Sidebar';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, PageHeader, type Column } from '@/ui';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, warehousesAPI } from '../services/api';
 import { getCateringStatusOptions, isCateringStatusTerminal } from '../utils/cateringStatus';
@@ -605,7 +602,7 @@ export default function Catering() {
         }
     };
 
-    const tableColumns: CatalogColumn<CateringEvent>[] = [
+    const tableColumns: Column<CateringEvent>[] = [
         {
             key: 'event',
             header: 'Evento',
@@ -633,7 +630,6 @@ export default function Catering() {
         {
             key: 'people',
             header: 'Personas',
-            align: 'center',
             render: (event) => event.peopleCount,
         },
         {
@@ -644,7 +640,7 @@ export default function Catering() {
         {
             key: 'total',
             header: 'Total',
-            align: 'right',
+            type: 'number',
             render: (event) => formatMoney(Number(event.totalAmount || 0)),
         },
         {
@@ -667,7 +663,7 @@ export default function Catering() {
         {
             key: 'actions',
             header: 'Acciones',
-            align: 'right',
+            type: 'number',
             render: (event) => (
                 <div className="catalog-table-actions">
                     <button
@@ -831,7 +827,7 @@ export default function Catering() {
                         </button>
                     </div>
                     {canManageCatering && (
-                        <Button onClick={() => handleOpenSidebar()}>
+                        <Button variant="primary" onClick={() => handleOpenSidebar()}>
                             <Plus size={20} />
                             Nuevo Evento
                         </Button>
@@ -1050,11 +1046,12 @@ export default function Catering() {
                 </div>
             ) : viewMode === 'table' ? (
                 <div className="catering-events-table">
-                    <CatalogTable<CateringEvent>
+                    <DataTable<CateringEvent>
+                        ariaLabel="Eventos de catering"
                         rows={filteredEvents}
                         rowKey={(event) => event.id}
                         columns={tableColumns}
-                        resetKey={`${filterStatus}-${searchQuery}`}
+                        resetKey={`${filterStatus}-${searchQuery}-${filteredEvents.length}`}
                     />
                 </div>
             ) : (
@@ -1139,11 +1136,10 @@ export default function Catering() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo Evento de Catering'}
-                width="medium"
             >
                 <div className="premium-modal-content catering-modal-content catering-event-modal-content">
                     <div className="modal-tabs" role="tablist" aria-label="Secciones del evento de catering">
@@ -1716,7 +1712,7 @@ export default function Catering() {
                                             Factura <strong>{selectedEvent.fiscalInvoice.number}</strong> · {selectedEvent.fiscalInvoice.status === 'CREDITED' ? 'Acreditada' : 'Emitida'}
                                         </p>
                                     ) : (
-                                        <Button
+                                        <Button variant="primary"
                                             type="button"
                                             onClick={handleIssueFiscalInvoice}
                                             disabled={!canManageCatering || fiscalBusy || !['PAID', 'FINISHED'].includes(selectedEvent.status)}
@@ -1796,7 +1792,7 @@ export default function Catering() {
                                             />
                                         </Field>
                                         <div className="modal-input-group" style={{ marginBottom: 0 }}>
-                                            <Button type="button" onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
+                                            <Button variant="primary" type="button" onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
                                                 Agregar Pago
                                             </Button>
                                         </div>
@@ -1852,14 +1848,14 @@ export default function Catering() {
                         </div>
                         <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
                         {canManageCatering && (
-                            <Button type="submit" disabled={savingEvent}>
+                            <Button variant="primary" type="submit" disabled={savingEvent}>
                                 {savingEvent ? 'Guardando...' : selectedEvent ? 'Guardar Cambios' : 'Crear Evento'}
                             </Button>
                         )}
                     </div>
                     </form>
                 </div>
-            </Sidebar >
+            </FullScreenModal>
         </div >
     );
 }

@@ -1,11 +1,6 @@
 {
   "nativeSelect": [],
   "rawTable": [],
-  "reactSelectImport": [
-    "src/components/Select.tsx",
-    "src/pages/Dashboard.tsx"
-  ],
-  "toFixedInJsx": [
-    "src/components/ContractPDF.tsx"
-  ]
+  "reactSelectImport": [],
+  "toFixedInJsx": []
 }

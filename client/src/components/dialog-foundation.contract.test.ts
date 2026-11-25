@@ -7,7 +7,6 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 describe('shared dialog foundation', () => {
   it('portals every top-level dialog surface outside transformed page containers', () => {
     for (const path of [
-      './Modal.tsx',
       '../ui/overlays/FullScreenModal.tsx',
       '../ui/overlays/ConfirmDialog.tsx',
       './PaymentModal.tsx',
@@ -32,30 +31,25 @@ describe('shared dialog foundation', () => {
   });
 
   it('keeps modal react-select menus inside the active dialog and clear of its footer', () => {
-    // Select delega en AppSelect: el menú se monta en el diálogo que lo contiene.
+    // AppSelect: el menú se monta en el diálogo que lo contiene.
     const source = read('../ui/forms/AppSelect.tsx');
-    const modal = read('./Modal.tsx');
     const payment = read('./PaymentModal.tsx');
     expect(source).toContain("closest<HTMLElement>('[role=\"dialog\"]')");
     expect(source).toContain('setPortalTarget(dialog ?? document.body)');
-    expect(modal).toContain('ref={containerRef}\n            className="modal-overlay"');
     expect(payment).toContain('ref={dialogRef}\n            className="payment-overlay"');
     expect(payment).not.toContain('ref={dialogRef}\n                className={`payment-dialog');
   });
 
   it('uses the same flat operational surfaces across shared and specialized dialogs', () => {
     const tokens = read('../index.css');
-    const sharedModal = read('./Modal.css');
     const payment = read('./PaymentModal.css');
-    const sidebar = read('./Sidebar.css');
 
     expect(tokens).toContain('--dialog-panel-bg: var(--ui-surface)');
     expect(tokens).toContain('--dialog-content-bg: var(--ui-surface)');
     expect(tokens).toContain('--dialog-header-bg: var(--ui-surface)');
     expect(tokens).toContain('--dialog-accent: var(--ui-primary)');
-    expect(sharedModal).toContain('var(--dialog-panel-bg');
     expect(payment).toContain('var(--dialog-panel-bg');
-    for (const stylesheet of [sharedModal, payment, sidebar]) {
+    for (const stylesheet of [payment]) {
       expect(stylesheet).not.toContain('linear-gradient');
       expect(stylesheet).not.toContain('radial-gradient');
     }
@@ -67,7 +61,7 @@ describe('shared dialog foundation', () => {
     expect(pos).not.toContain('pos-modifier-overlay');
     expect(pos).not.toContain('<select');
     expect(pos).toContain('<AppSelect');
-    expect(pos.match(/<Modal/g)).toHaveLength(4);
+    expect(pos.match(/<FullScreenModal/g)).toHaveLength(4);
     expect(pos).toContain("closest('[role=\"dialog\"], [role=\"alertdialog\"]')");
   });
 });

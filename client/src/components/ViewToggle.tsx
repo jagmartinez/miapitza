@@ -1,6 +1,7 @@
 import { LayoutGrid, List } from 'lucide-react';
 import type { ViewMode } from '../hooks/useViewMode';
-import './CatalogView.css';
+import './ViewToggle.css';
+import './catalog-cells.css';
 
 interface ViewToggleProps {
     value: ViewMode;

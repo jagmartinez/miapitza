@@ -3,11 +3,8 @@ import {
     Plus, Trash2, Edit2,
     ClipboardList, FileText, BadgeDollarSign
 } from 'lucide-react';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { cateringAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -15,7 +12,7 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import { useCurrency } from '../hooks/useCurrency';
-import { PageHeader, formatNumber } from '@/ui';
+import { Button, DataTable, FullScreenModal, PageHeader, formatNumber, type Column } from '@/ui';
 import './CateringMod.css';
 
 interface CateringServiceRow {
@@ -172,7 +169,7 @@ export default function CateringServices() {
                 actions={
                     <div className="ui-page-actions">
                         <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
+                        <Button variant="primary" onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
                             <Plus size={20} />
                             Nuevo Servicio
                         </Button>
@@ -203,10 +200,11 @@ export default function CateringServices() {
                     <p>No hay servicios registrados en el catálogo</p>
                 </div>
             ) : viewMode === 'table' ? (
-                <CatalogTable<CateringServiceRow>
+                <DataTable<CateringServiceRow>
+                    ariaLabel="Servicios de catering"
                     rows={filteredServices}
                     rowKey={(s) => s.id}
-                    resetKey={searchQuery}
+                    resetKey={`${searchQuery}-${filteredServices.length}`}
                     columns={[
                         {
                             key: 'name',
@@ -218,13 +216,13 @@ export default function CateringServices() {
                                 </div>
                             )
                         },
-                        { key: 'cost', header: 'Costo', align: 'right', render: (s) => money(s.internalCost) },
-                        { key: 'sale', header: 'Venta', align: 'right', render: (s) => <span style={{ color: 'var(--ui-success)' }}>{money(s.salePrice)}</span> },
-                        { key: 'margin', header: 'Margen', align: 'right', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{formatNumber(m, 1)}%</span>; } },
+                        { key: 'cost', header: 'Costo', type: 'number', render: (s) => money(s.internalCost) },
+                        { key: 'sale', header: 'Venta', type: 'number', render: (s) => <span style={{ color: 'var(--ui-success)' }}>{money(s.salePrice)}</span> },
+                        { key: 'margin', header: 'Margen', type: 'number', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{formatNumber(m, 1)}%</span>; } },
                         ...(canManageCatering ? [{
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right' as const,
+                            type: 'number',
                             render: (s: CateringServiceRow) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => handleOpenSidebar(s)} title="Editar"><Edit2 size={16} /></button>
@@ -232,7 +230,7 @@ export default function CateringServices() {
                                 </div>
                             )
                         }] : [])
-                    ] as CatalogColumn<CateringServiceRow>[]}
+                    ] as Column<CateringServiceRow>[]}
                 />
             ) : (
                 <div className="catalog-cards" style={{ marginTop: '24px' }}>
@@ -261,11 +259,10 @@ export default function CateringServices() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={editingService ? `Editar: ${editingService.name}` : 'Nuevo Servicio de Catering'}
-                width="normal"
             >
                 <div className="premium-modal-content catering-modal-content catering-service-modal-content">
                     <div className="modal-tabs" role="tablist" aria-label="Secciones del servicio de catering">
@@ -403,13 +400,13 @@ export default function CateringServices() {
 
                         <div className="modal-footer">
                             <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={!canManageCatering || saving}>
+                            <Button variant="primary" type="submit" disabled={!canManageCatering || saving}>
                             {saving ? 'Guardando...' : editingService ? 'Actualizar Servicio' : 'Guardar Servicio'}
                             </Button>
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

@@ -5,10 +5,8 @@ import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import Input from '../components/Input';
-import { AppSelect, DataTable, Field, PageHeader } from '@/ui';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, Input, PageHeader } from '@/ui';
+
 import {
     Settings, Zap, Link2, RefreshCw, CheckCircle, XCircle,
     Package, AlertTriangle, Clock, ArrowRightLeft, Search, Plus, Trash2
@@ -246,27 +244,33 @@ export default function PedidosYaIntegration() {
                                 <h3>Credenciales OAuth2</h3>
                             </div>
                             <div className="form-row">
-                                <Input
-                                    label="Client ID"
-                                    value={config.clientId || ''}
-                                    onChange={e => setConfig({ ...config, clientId: e.target.value })}
-                                    placeholder="Tu Client ID de PedidosYa"
-                                />
-                                <Input
-                                    label="Client Secret"
-                                    type="password"
-                                    value={config.clientSecret || ''}
-                                    onChange={e => setConfig({ ...config, clientSecret: e.target.value })}
-                                    placeholder={config.clientSecretSet ? 'Configurado; escribe para reemplazar' : '••••••••'}
-                                />
+                                <Field label="Client ID" htmlFor="pedidosya-input-1">
+                                    <Input
+                                    id="pedidosya-input-1"
+                                        value={config.clientId || ''}
+                                        onChange={e => setConfig({ ...config, clientId: e.target.value })}
+                                        placeholder="Tu Client ID de PedidosYa"
+                                    />
+                                </Field>
+                                <Field label="Client Secret" htmlFor="pedidosya-input-2">
+                                    <Input
+                                    id="pedidosya-input-2"
+                                        type="password"
+                                        value={config.clientSecret || ''}
+                                        onChange={e => setConfig({ ...config, clientSecret: e.target.value })}
+                                        placeholder={config.clientSecretSet ? 'Configurado; escribe para reemplazar' : '••••••••'}
+                                    />
+                                </Field>
                             </div>
                             <div className="form-row">
-                                <Input
-                                    label="Restaurant ID"
-                                    value={config.restaurantId || ''}
-                                    onChange={e => setConfig({ ...config, restaurantId: e.target.value })}
-                                    placeholder="ID del restaurante en PedidosYa"
-                                />
+                                <Field label="Restaurant ID" htmlFor="pedidosya-input-3">
+                                    <Input
+                                    id="pedidosya-input-3"
+                                        value={config.restaurantId || ''}
+                                        onChange={e => setConfig({ ...config, restaurantId: e.target.value })}
+                                        placeholder="ID del restaurante en PedidosYa"
+                                    />
+                                </Field>
                                 <Field label="Ambiente" htmlFor="pedidosya-select-1">
                                     <AppSelect
                                         inputId="pedidosya-select-1"
@@ -328,12 +332,14 @@ export default function PedidosYaIntegration() {
                                 <AlertTriangle size={20} />
                                 <h3>Webhook</h3>
                             </div>
-                            <Input
-                                label="Webhook Secret"
-                                value={config.webhookSecret || ''}
-                                onChange={e => setConfig({ ...config, webhookSecret: e.target.value })}
-                                placeholder={config.webhookSecretSet ? 'Configurado; escribe para reemplazar' : 'Secret para validar firmas HMAC'}
-                            />
+                            <Field label="Webhook Secret" htmlFor="pedidosya-input-4">
+                                <Input
+                                id="pedidosya-input-4"
+                                    value={config.webhookSecret || ''}
+                                    onChange={e => setConfig({ ...config, webhookSecret: e.target.value })}
+                                    placeholder={config.webhookSecretSet ? 'Configurado; escribe para reemplazar' : 'Secret para validar firmas HMAC'}
+                                />
+                            </Field>
                             <div className="webhook-url-display">
                                 <label className="input-label">URL del Webhook (configura en PedidosYa)</label>
                                 <code>{webhookUrl}</code>
@@ -460,7 +466,7 @@ export default function PedidosYaIntegration() {
             </div>
 
             {/* ── MAPPING SIDEBAR ── */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={mappingSidebarOpen}
                 onClose={() => setMappingSidebarOpen(false)}
                 title="Nuevo Mapeo de Producto"
@@ -519,7 +525,7 @@ export default function PedidosYaIntegration() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

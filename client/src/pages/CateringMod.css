@@ -980,54 +980,6 @@
     padding: 10px 12px;
 }
 
-/* Custom React-Select Overrides to match theme */
-.catering-page .react-select-container .react-select__control {
-    border-color: var(--ui-border) !important;
-    border-radius: var(--radius-md) !important;
-    /*min-height: 42px !important;*/
-    box-shadow: none !important;
-    background-color: var(--ui-surface-2) !important;
-    /* Darkest */
-    color: var(--ui-bg) !important;
-}
-
-.catering-page .react-select-container .react-select__single-value {
-    color: var(--ui-bg) !important;
-}
-
-.catering-page .react-select-container .react-select__input-container {
-    color: var(--ui-bg) !important;
-}
-
-.catering-page .react-select-container .react-select__control--is-focused {
-    border-color: var(--ui-primary) !important;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 20%, transparent) !important;
-}
-
-.catering-page .react-select-container .react-select__menu {
-    border-radius: var(--radius-md) !important;
-    box-shadow: var(--shadow-lg) !important;
-    border: 1px solid var(--ui-border) !important;
-    z-index: 100 !important;
-    background-color: var(--ui-surface-2) !important;
-    /* Dark Surface */
-}
-
-.catering-page .react-select-container .react-select__option {
-    background-color: var(--ui-surface-2) !important;
-    color: var(--ui-bg) !important;
-}
-
-.catering-page .react-select-container .react-select__option--is-focused {
-    background-color: var(--ui-surface-2) !important;
-    /* Hover state */
-}
-
-.catering-page .react-select-container .react-select__option--is-selected {
-    background-color: var(--ui-primary) !important;
-    color: white !important;
-}
-
 /* Data Tables (Services & Menu) */
 .catering-page .items-table {
     background: var(--ui-surface);
@@ -1392,7 +1344,7 @@
     flex-wrap: wrap;
 }
 
-.catering-modal-footer > .btn {
+.catering-modal-footer > .ui-button {
     min-width: max-content;
     white-space: nowrap;
 }
@@ -1449,7 +1401,7 @@
         order: -1;
     }
 
-    .catering-modal-footer > .btn,
+    .catering-modal-footer > .ui-button,
     .catering-modal-footer > button {
         flex: 1 1 0;
     }
@@ -1523,30 +1475,6 @@
     background: var(--ui-bg) !important;
     color: var(--ui-text) !important;
     border: 1px solid var(--ui-border) !important;
-}
-
-/* React Select Theme Overrides */
-.catering-page .react-select-container .react-select__control {
-    background-color: var(--ui-surface) !important;
-    border-color: var(--ui-border) !important;
-}
-
-.catering-page .react-select-container .react-select__single-value {
-    color: var(--ui-text) !important;
-}
-
-.catering-page .react-select-container .react-select__menu {
-    background-color: var(--ui-surface) !important;
-    border: 1px solid var(--ui-border) !important;
-}
-
-.catering-page .react-select-container .react-select__option {
-    background-color: var(--ui-surface) !important;
-    color: var(--ui-text) !important;
-}
-
-.catering-page .react-select-container .react-select__option--is-focused {
-    background-color: var(--ui-bg) !important;
 }
 
 /* AGGRESSIVE COMPACT OVERRIDES */

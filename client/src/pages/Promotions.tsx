@@ -2,14 +2,11 @@ import { useState, useEffect } from 'react';
 import { promotionsAPI } from '../services/api';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Edit, Percent, DollarSign, Ticket, XCircle, Calendar, FileText } from 'lucide-react';
 import { useCurrency } from '../hooks/useCurrency';
-import { PageHeader } from '@/ui';
+import { Button, DataTable, FullScreenModal, PageHeader, type Column } from '@/ui';
 import './Promotions.css';
 
 interface PromotionRow {
@@ -164,7 +161,7 @@ export default function Promotions() {
                 actions={
                     <div className="ui-page-actions">
                         <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button onClick={() => handleOpen()}>
+                        <Button variant="primary" onClick={() => handleOpen()}>
                             <Plus size={18} /> Nueva Promoción
                         </Button>
                     </div>
@@ -172,7 +169,9 @@ export default function Promotions() {
             />
 
             {viewMode === 'table' && promotions.length > 0 && (
-                <CatalogTable<PromotionRow>
+                <DataTable<PromotionRow>
+                    ariaLabel="Promociones"
+                    resetKey={promotions.length}
                     rows={promotions}
                     rowKey={(p) => p.id}
                     columns={[
@@ -187,9 +186,9 @@ export default function Promotions() {
                             )
                         },
                         { key: 'type', header: 'Tipo', render: (p) => p.type === 'PERCENTAGE' ? 'Porcentaje' : 'Monto Fijo' },
-                        { key: 'value', header: 'Valor', align: 'right', render: (p) => p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : formatMoney(Number(p.value)) },
+                        { key: 'value', header: 'Valor', type: 'number', render: (p) => p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : formatMoney(Number(p.value)) },
                         { key: 'validity', header: 'Vigencia', render: (p) => `${formatDate(p.validFrom)} — ${formatDate(p.validTo)}` },
-                        { key: 'usage', header: 'Usos', align: 'center', render: (p) => `${p.usageCount || 0}${p.usageLimit ? ` / ${p.usageLimit}` : ''}` },
+                        { key: 'usage', header: 'Usos', render: (p) => `${p.usageCount || 0}${p.usageLimit ? ` / ${p.usageLimit}` : ''}` },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -202,7 +201,7 @@ export default function Promotions() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right',
+                            type: 'number',
                             render: (p) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => handleOpen(p)} title="Editar">
@@ -216,7 +215,7 @@ export default function Promotions() {
                                 </div>
                             )
                         }
-                    ] as CatalogColumn<PromotionRow>[]}
+                    ] as Column<PromotionRow>[]}
                 />
             )}
 
@@ -299,7 +298,7 @@ export default function Promotions() {
                 </div>
             ) : null}
 
-            <Sidebar isOpen={isSidebarOpen} onClose={() => { setIsSidebarOpen(false); setActiveTab('identidad'); }} title={editing ? 'Editar Promoción' : 'Nueva Promoción'}>
+            <FullScreenModal isOpen={isSidebarOpen} onClose={() => { setIsSidebarOpen(false); setActiveTab('identidad'); }} title={editing ? 'Editar Promoción' : 'Nueva Promoción'}>
                 <div className="premium-modal-content">
                     <div className="modal-tabs" role="tablist" aria-label="Secciones de la promoción">
                         <button
@@ -440,7 +439,7 @@ export default function Promotions() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

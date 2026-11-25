@@ -78,12 +78,12 @@
   border-top: 1px solid var(--ui-border);
 }
 
-.hr-modal-form-footer .btn {
+.hr-modal-form-footer .ui-button {
   min-width: 118px;
 }
 
 @media (max-width: 680px) {
-  .hr-modal-form-footer .btn {
+  .hr-modal-form-footer .ui-button {
     flex: 1 1 8rem;
     min-width: 0;
   }

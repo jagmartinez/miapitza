@@ -614,7 +614,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   .modal-tab-content { padding: var(--spacing-md); }
   .modal-footer { gap: var(--spacing-sm); padding-inline: var(--spacing-md); }
   .modal-footer > button,
-  .modal-footer > .btn { flex: 1 1 0; }
+  .modal-footer > .ui-button { flex: 1 1 0; }
 }
 
 /* Animations */
@@ -1557,7 +1557,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     justify-content: stretch;
   }
 
-  .filter-actions .btn { flex: 1; }
+  .filter-actions .ui-button { flex: 1; }
 
   .page-header-bar {
     flex-direction: column;

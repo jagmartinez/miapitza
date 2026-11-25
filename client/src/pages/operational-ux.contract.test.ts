@@ -35,7 +35,7 @@ describe('operational UX contracts', () => {
 
     it('keeps catalog actions aligned and secondary routes out of the primary menu', () => {
         const toggleSource = read('../components/ViewToggle.tsx');
-        const toggleStyles = read('../components/CatalogView.css');
+        const toggleStyles = read('../components/ViewToggle.css');
         const layoutSource = read('../components/Layout.tsx');
 
         expect(toggleSource).toContain('view-toggle catalog-view-toggle');
@@ -52,21 +52,17 @@ describe('operational UX contracts', () => {
         expect(kitchenStyles).toContain('grid-column: 1 / -1');
         expect(cateringSource).toContain("type CateringViewMode = 'grid' | 'table' | 'calendar'");
         expect(cateringSource).toContain("activeTab === 'logistics'");
-        expect(cateringSource).toContain('<CatalogTable<CateringEvent>');
+        expect(cateringSource).toContain('<DataTable<CateringEvent>');
     });
 
     it('keeps modal content flush without nested section cards or reserved scrollbar space', () => {
         const sharedStyles = read('../index.css');
-        const modalStyles = read('../components/Modal.css');
-        const sidebarStyles = read('../components/Sidebar.css');
         const modalSection = sharedStyles.slice(
             sharedStyles.indexOf('.modal-section,'),
             sharedStyles.indexOf('.modal-section-header {'),
         );
 
         expect(sharedStyles).not.toContain('scrollbar-gutter: stable');
-        expect(modalStyles).not.toContain('scrollbar-gutter: stable');
-        expect(sidebarStyles).not.toContain('scrollbar-gutter: stable');
         expect(modalSection).toContain('width: 100%');
         expect(modalSection).not.toContain('padding:');
         expect(modalSection).not.toContain('border:');
@@ -82,10 +78,10 @@ describe('operational UX contracts', () => {
         expect(source).toContain('modal-content-group catering-event-section');
         expect(source).toContain('catering-info-layout');
         expect(source).not.toContain('width="wide"');
-        expect(source).toContain('width="medium"');
+        expect(source).toContain('<FullScreenModal');
         expect(source).toContain('aria-label="Verificar inventario"');
         expect(source).toContain('className="modal-form-new"');
-        expect(source).toContain('<Button type="submit" disabled={savingEvent}>');
+        expect(source).toContain('<Button variant="primary" type="submit" disabled={savingEvent}>');
         expect(styles).not.toContain('--catering-control-height: 46px');
         expect(styles).toContain('.catering-event-section');
         expect(styles).toContain('minmax(180px, .7fr) minmax(260px, 1.3fr)');
