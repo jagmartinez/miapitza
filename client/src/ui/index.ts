@@ -41,3 +41,7 @@ export { PageHeader } from './layout/PageHeader';
 export { PageContent } from './layout/PageContent';
 export { StatCard } from './layout/StatCard';
 export { Tabs } from './layout/Tabs';
+export { SettingsRow } from './settings/SettingsRow';
+export type { SettingsRowProps, SettingsScope } from './settings/SettingsRow';
+export { ScopeSelector } from './settings/ScopeSelector';
+export { UnsavedChangesBar } from './settings/UnsavedChangesBar';
