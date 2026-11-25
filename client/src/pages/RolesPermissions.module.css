@@ -1,0 +1,7 @@
+.muted { color: var(--color-text-secondary); font-size: 0.875rem; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.badge { padding: 2px 8px; border-radius: 999px; background: var(--color-bg-secondary); color: var(--color-text-secondary); font-size: 12px; }
+.actions { display: flex; gap: 4px; justify-content: flex-end; }
+.permList { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.permItem { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+.footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; }

@@ -1,0 +1,131 @@
+/* ===== Auto PO suggestions (dark-mode safe) ===== */
+
+.poSuggestionToolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.poSuggestionCount {
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+}
+
+.poSuggestionToolbarActions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.poSuggestionList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 420px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.poSuggestionEmpty {
+    padding: 1.25rem;
+    text-align: center;
+    color: var(--color-text-secondary);
+    background: var(--color-surface);
+    border: 1px dashed var(--color-border);
+    border-radius: 12px;
+    font-size: 0.9rem;
+}
+
+.poSuggestionCard {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.poSuggestionCard:hover {
+    border-color: var(--color-primary);
+}
+
+.poSuggestionCard.isSelected {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 1px var(--color-primary);
+    background: rgba(37, 99, 235, 0.08);
+}
+
+:global(.dark) .poSuggestionCard.isSelected {
+    background: rgba(59, 130, 246, 0.12);
+}
+
+.poSuggestionCard.isUrgent {
+    border-left: 3px solid #dc2626;
+}
+
+.poSuggestionCheckbox {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+}
+
+.poSuggestionBody {
+    min-width: 0;
+}
+
+.poSuggestionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.poSuggestionName {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--color-text);
+}
+
+.poSuggestionTags {
+    margin-top: 6px;
+}
+
+.poSuggestionMetrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-top: 8px;
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+}
+
+.poSuggestionMetrics strong {
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+.poSuggestionCost {
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.poSuggestionCostValue {
+    display: block;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--color-text);
+}
+
+.poSuggestionCostLabel {
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+}

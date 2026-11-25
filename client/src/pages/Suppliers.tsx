@@ -5,19 +5,13 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
-import Select from '../components/Select';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
-import type { SingleValue } from 'react-select';
 import { Plus, Trash2, Phone, Mail, MapPin, Truck, Search, Users, Info, Building2, Tag, History, X, Edit2 } from 'lucide-react'; // Tag kept for use inside modal
 import type { Supplier } from '../types';
 import './Suppliers.css';
+import { AppSelect, Button, DataTable, FullScreenModal, PageHeader, type Column } from '@/ui';
 
-type SupplyTypeOption = { value: string; label: string };
 
 interface PriceHistoryRow {
     productName: string;
@@ -182,12 +176,11 @@ export default function Suppliers() {
         <div className="suppliers-page">
             <PageHeader
                 title="Proveedores"
-                icon={Truck}
                 actions={(
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
                         {canManageSupplier && (
-                            <Button onClick={() => handleOpenModal()}>
+                            <Button variant="primary" onClick={() => handleOpenModal()}>
                                 <Plus size={20} />
                                 Nuevo Proveedor
                             </Button>
@@ -222,16 +215,7 @@ export default function Suppliers() {
                 </div>
 
                 <div className="supplier-filter-group">
-                    <Select<SupplyTypeOption>
-                        isClearable
-                        isSearchable={false}
-                        placeholder="Todos los tipos"
-                        options={supplyTypes.map(type => ({ value: type, label: type }))}
-                        value={supplyTypeFilter ? { value: supplyTypeFilter, label: supplyTypeFilter } : null}
-                        onChange={(option: SingleValue<SupplyTypeOption>) =>
-                            setSupplyTypeFilter(option?.value ?? null)}
-                        aria-label="Filtrar por tipo de suministro"
-                    />
+                    <AppSelect options={supplyTypes.map(type => ({ value: type, label: type }))} value={(supplyTypeFilter ? { value: supplyTypeFilter, label: supplyTypeFilter } : null)?.value ?? null} onChange={(__v) => { const option = (supplyTypes.map(type => ({ value: type, label: type }))).find((o) => o.value === __v) ?? null; return setSupplyTypeFilter(option?.value ?? null); }} placeholder="Todos los tipos" isClearable aria-label="Filtrar por tipo de suministro" />
                 </div>
 
                 <div className="supplier-results-info">
@@ -254,7 +238,8 @@ export default function Suppliers() {
 
             {/* Table view */}
             {viewMode === 'table' && filteredSuppliers.length > 0 && (
-                <CatalogTable<Supplier>
+                <DataTable<Supplier>
+                    ariaLabel="Listado de proveedores"
                     rows={filteredSuppliers}
                     rowKey={(s) => s.id}
                     resetKey={`${searchTerm}|${supplyTypeFilter}`}
@@ -276,7 +261,7 @@ export default function Suppliers() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right',
+                            type: 'actions',
                             render: (s) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => viewPriceHistory(s)} title="Historial de Precios">
@@ -295,7 +280,7 @@ export default function Suppliers() {
                                 </div>
                             )
                         }
-                    ] as CatalogColumn<Supplier>[]}
+                    ] as Column<Supplier>[]}
                 />
             )}
 
@@ -382,14 +367,14 @@ export default function Suppliers() {
                 <div className="no-suppliers-message">
                     <Truck size={48} />
                     <p>No se encontraron proveedores</p>
-                    <Button onClick={() => { setSearchTerm(''); setSupplyTypeFilter(null); }}>
+                    <Button variant="primary" onClick={() => { setSearchTerm(''); setSupplyTypeFilter(null); }}>
                         Limpiar filtros
                     </Button>
                 </div>
             )}
 
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 title={editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
@@ -523,53 +508,41 @@ export default function Suppliers() {
                             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button type="submit" disabled={saving}>
+                            <Button variant="primary" type="submit" disabled={saving}>
                                 {saving ? 'Guardando...' : editingSupplier ? 'Actualizar Proveedor' : 'Guardar Proveedor'}
                             </Button>
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
             {/* Price History Sidebar */}
-            <Sidebar isOpen={showPriceHistory} onClose={() => setShowPriceHistory(false)}
-                title={`Historial de Precios - ${priceHistorySupplier?.name || ''}`} width="wide">
+            <FullScreenModal isOpen={showPriceHistory} onClose={() => setShowPriceHistory(false)}
+                title={`Historial de Precios - ${priceHistorySupplier?.name || ''}`}>
                 <div className="premium-modal-content">
                     <div className="modal-tab-content">
                         {priceHistoryLoading ? (
                             <p className="stock-empty-message">Cargando...</p>
                         ) : priceHistory.length > 0 ? (
-                            <div className="price-history-table-wrap">
-                                <table className="price-history-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Producto</th>
-                                            <th className="text-right">Precio Unit.</th>
-                                            <th className="text-right">Cantidad</th>
-                                            <th className="text-right">Subtotal</th>
-                                            <th>Fecha</th>
-                                            <th>OC#</th>
-                                            <th>Sucursal</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {priceHistory.map((item, idx: number) => (
-                                            <tr key={idx}>
-                                                <td>
-                                                    <div className="product-cell-name">{item.productName}</div>
-                                                    {item.productSku && <div className="product-cell-sku">{item.productSku}</div>}
-                                                </td>
-                                                <td className="text-right" style={{ fontWeight: 600 }}>{formatCurrency(item.unitCost, settings)}/{item.unit}</td>
-                                                <td className="text-right">{item.quantity.toFixed(2)}</td>
-                                                <td className="text-right">{formatCurrency(item.subtotal, settings)}</td>
-                                                <td>{new Date(item.date).toLocaleDateString('es-ES')}</td>
-                                                <td>#{item.purchaseOrderId}</td>
-                                                <td>{item.branchName || '-'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                            <DataTable
+                                ariaLabel="Historial de precios"
+                                rows={priceHistory}
+                                rowKey={(item) => `${item.purchaseOrderId}-${item.productName}-${item.date}`}
+                                columns={[
+                                    { key: 'product', header: 'Producto', render: (item) => (
+                                        <div>
+                                            <div className="product-cell-name">{item.productName}</div>
+                                            {item.productSku && <div className="product-cell-sku">{item.productSku}</div>}
+                                        </div>
+                                    ) },
+                                    { key: 'unitCost', header: 'Precio Unit.', type: 'money', render: (item) => `${formatCurrency(item.unitCost, settings)}/${item.unit}` },
+                                    { key: 'quantity', header: 'Cantidad', type: 'qty', accessor: (item) => item.quantity },
+                                    { key: 'subtotal', header: 'Subtotal', type: 'money', render: (item) => formatCurrency(item.subtotal, settings) },
+                                    { key: 'date', header: 'Fecha', type: 'date', accessor: (item) => item.date },
+                                    { key: 'po', header: 'OC#', render: (item) => `#${item.purchaseOrderId}` },
+                                    { key: 'branch', header: 'Sucursal', render: (item) => item.branchName || '-' },
+                                ] as Column<(typeof priceHistory)[number]>[]}
+                            />
                         ) : (
                             <p className="stock-empty-message">
                                 No hay historial de precios para este proveedor
@@ -577,7 +550,7 @@ export default function Suppliers() {
                         )}
                     </div>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

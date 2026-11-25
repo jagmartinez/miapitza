@@ -1,24 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { warehousesAPI, reportsAPI, settingsAPI, productsAPI } from '../services/api';
-import Select from '../components/Select';
-import Button from '../components/Button';
-import Pagination from '../components/Pagination';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { FileText, Download, Calendar, Filter, ArrowLeft } from 'lucide-react';
-import type { SingleValue } from 'react-select';
 import './Kardex.css';
+import { AppSelect, Button, Field, DataTable, PageHeader, formatNumber, type Column } from '@/ui';
 
 interface WarehouseRow {
     id: number;
     name: string;
 }
 
-type WarehouseSelectOption = { value: number | null; label: string };
-type StrOption = { value: string; label: string };
 
 interface KardexMovement {
     id: number;
@@ -87,7 +82,6 @@ const num = (value: number | string | null | undefined) => {
     return Number.isFinite(n) ? n : 0;
 };
 
-type ProductSelectOption = { value: number; label: string };
 
 export default function Kardex() {
     const navigate = useNavigate();
@@ -110,7 +104,6 @@ export default function Kardex() {
     const [dateFrom, setDateFrom] = useState(monthStartStr);
     const [dateTo, setDateTo] = useState(todayStr);
     const [movementType, setMovementType] = useState<string>('');
-    const [currentPage, setCurrentPage] = useState(1);
     const [settings, setSettings] = useState<CurrencySettings>({});
 
     const loadSettings = useCallback(async () => {
@@ -159,7 +152,6 @@ export default function Kardex() {
 
             const res = await reportsAPI.getKardex(params);
             setKardexData(res.data);
-            setCurrentPage(1);
         } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Error al cargar kardex';
             showErrorRef.current(msg);
@@ -199,16 +191,21 @@ export default function Kardex() {
         }
     }, [loadKardex, selectedProduct]);
 
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [dateFrom, dateTo, movementType, selectedWarehouse, kardexData?.movements.length]);
-
     const movements = kardexData?.movements ?? [];
     // Stock/balances are kept in the product's base unit; prefer its real
     // abbreviation and fall back to the legacy `unit` field.
     const unitLabel = kardexData?.baseUnitAbbr || kardexData?.product.unit || '';
-    const totalPages = Math.max(1, Math.ceil(movements.length / PAGE_SIZE));
-    const pagedMovements = movements.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    // Muestra la unidad/cantidad original cuando difiere de la unidad base del kardex.
+    const originalHint = (movement: (typeof movements)[number]) => {
+        const showOriginal = !!movement.originalUnit
+            && movement.originalUnit !== unitLabel
+            && movement.originalQuantity != null;
+        return showOriginal ? (
+            <span className="kardex-original-unit" style={{ display: 'block', fontSize: '11px', color: 'var(--color-neutral-500)' }}>
+                ({movement.originalQuantity} {movement.originalUnit})
+            </span>
+        ) : null;
+    };
 
     const handleExport = async () => {
         if (!selectedProduct) {
@@ -250,47 +247,38 @@ export default function Kardex() {
             </button>
 
             {/* Header */}
-            <div className="kardex-header">
-                <div className="header-title-section">
-                    <h1>
-                        <FileText size={32} />
-                        Kardex de Inventario {kardexData ? `: ${kardexData.product.name}` : ''}
-                    </h1>
-                    <p className="header-subtitle">Reporte detallado de movimientos</p>
-                </div>
-            </div>
+            <PageHeader
+                title={`Kardex de Inventario${kardexData ? `: ${kardexData.product.name}` : ''}`}
+                description="Reporte detallado de movimientos"
+            />
 
             {/* Filters */}
             <div className="kardex-filters">
                 <div className="filter-row">
-                    <Select
-                        label="Producto"
-                        options={products.map((p) => ({
+                    <Field label="Producto" htmlFor="sel-266">
+<AppSelect inputId="sel-266" options={products.map((p) => ({
                             value: p.id,
                             label: `${p.name}${p.sku ? ` (${p.sku})` : ''}`,
-                        }))}
-                        value={
-                            selectedProduct
+                        }))} value={(selectedProduct
                                 ? {
                                     value: selectedProduct,
                                     label: products.find((p) => p.id === selectedProduct)?.name || `Producto #${selectedProduct}`,
                                 }
-                                : null
-                        }
-                        onChange={(option: SingleValue<ProductSelectOption>) => setSelectedProduct(option?.value ?? null)}
-                        placeholder="Selecciona un producto..."
-                        isClearable
-                    />
+                                : null)?.value ?? null} onChange={(__v) => { const option = (products.map((p) => ({
+                            value: p.id,
+                            label: `${p.name}${p.sku ? ` (${p.sku})` : ''}`,
+                        }))).find((o) => o.value === __v) ?? null; return setSelectedProduct(option?.value ?? null); }} placeholder="Selecciona un producto..." isClearable />
+</Field>
 
-                    <Select
-                        label="Almacén"
-                        options={[
+                    <Field label="Almacén" htmlFor="sel-285">
+<AppSelect inputId="sel-285" options={[
                             { value: null, label: 'Todos los almacenes' },
                             ...warehouses.map(w => ({ value: w.id, label: w.name }))
-                        ]}
-                        value={selectedWarehouse ? { value: selectedWarehouse, label: warehouses.find(w => w.id === selectedWarehouse)?.name || '' } : { value: null, label: 'Todos los almacenes' }}
-                        onChange={(option: SingleValue<WarehouseSelectOption>) => setSelectedWarehouse(option?.value ?? null)}
-                    />
+                        ]} value={(selectedWarehouse ? { value: selectedWarehouse, label: warehouses.find(w => w.id === selectedWarehouse)?.name || '' } : { value: null, label: 'Todos los almacenes' })?.value ?? null} onChange={(__v) => { const option = ([
+                            { value: null, label: 'Todos los almacenes' },
+                            ...warehouses.map(w => ({ value: w.id, label: w.name }))
+                        ]).find((o) => o.value === __v) ?? null; return setSelectedWarehouse(option?.value ?? null); }} />
+</Field>
 
                     <div className="date-filter">
                         <label><Calendar size={16} /> Desde</label>
@@ -310,20 +298,23 @@ export default function Kardex() {
                         />
                     </div>
 
-                    <Select
-                        label="Tipo"
-                        options={[
+                    <Field label="Tipo" htmlFor="sel-313">
+<AppSelect inputId="sel-313" options={[
                             { value: '', label: 'Todos' },
                             { value: 'IN', label: 'Entrada' },
                             { value: 'OUT', label: 'Salida' },
                             { value: 'ADJUSTMENT', label: 'Ajuste' },
                             { value: 'TRANSFER', label: 'Transferencia' }
-                        ]}
-                        value={{ value: movementType, label: movementType || 'Todos' }}
-                        onChange={(option: SingleValue<StrOption>) => setMovementType(option?.value || '')}
-                    />
+                        ]} value={movementType ?? null} onChange={(__v) => { const option = ([
+                            { value: '', label: 'Todos' },
+                            { value: 'IN', label: 'Entrada' },
+                            { value: 'OUT', label: 'Salida' },
+                            { value: 'ADJUSTMENT', label: 'Ajuste' },
+                            { value: 'TRANSFER', label: 'Transferencia' }
+                        ]).find((o) => o.value === __v) ?? null; return setMovementType(option?.value || ''); }} />
+</Field>
 
-                    <Button onClick={loadKardex} disabled={!selectedProduct || loading}>
+                    <Button variant="primary" onClick={loadKardex} disabled={!selectedProduct || loading}>
                         <Filter size={18} />
                         {loading ? 'Cargando...' : 'Aplicar'}
                     </Button>
@@ -341,23 +332,23 @@ export default function Kardex() {
                     <div className="balance-cards-row">
                         <div className="balance-card opening">
                             <span className="balance-label">Saldo Inicial</span>
-                            <span className="balance-qty">{num(kardexData.openingBalance.quantity).toFixed(3)} {unitLabel}</span>
+                            <span className="balance-qty">{formatNumber(num(kardexData.openingBalance.quantity), 3)} {unitLabel}</span>
                             <span className="balance-cost">{formatCurrency(kardexData.openingBalance.cost, settings)}</span>
                         </div>
 
                         <div className="balance-card total-in">
                             <span className="balance-label">Total Entradas</span>
-                            <span className="balance-value in">{num(kardexData.totals.totalIn).toFixed(3)} {unitLabel}</span>
+                            <span className="balance-value in">{formatNumber(num(kardexData.totals.totalIn), 3)} {unitLabel}</span>
                         </div>
 
                         <div className="balance-card total-out">
                             <span className="balance-label">Total Salidas</span>
-                            <span className="balance-value out">{num(kardexData.totals.totalOut).toFixed(3)} {unitLabel}</span>
+                            <span className="balance-value out">{formatNumber(num(kardexData.totals.totalOut), 3)} {unitLabel}</span>
                         </div>
 
                         <div className="balance-card closing">
                             <span className="balance-label">Saldo Final</span>
-                            <span className="balance-qty">{num(kardexData.closingBalance.quantity).toFixed(3)} {unitLabel}</span>
+                            <span className="balance-qty">{formatNumber(num(kardexData.closingBalance.quantity), 3)} {unitLabel}</span>
                             <span className="balance-cost">{formatCurrency(kardexData.closingBalance.cost, settings)}</span>
                         </div>
                     </div>
@@ -371,70 +362,38 @@ export default function Kardex() {
                         <span>Movimientos</span>
                         <span className="data-table-count">{movements.length} registros</span>
                     </div>
-                    <div className="data-table-scroll">
-                        <table className="data-table kardex-table">
-                            <thead>
-                                <tr>
-                                    <th>Fecha</th>
-                                    <th>Tipo</th>
-                                    <th>Referencia</th>
-                                    <th className="text-right">Entrada</th>
-                                    <th className="text-right">Salida</th>
-                                    <th className="text-right">Saldo</th>
-                                    <th className="text-right">Costo Unit.</th>
-                                    <th className="text-right">Costo Total</th>
-                                    <th>Almacén</th>
-                                    <th>Sucursal</th>
-                                    <th>Usuario</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pagedMovements.map((movement) => {
-                                    // Show the user-entered "original" unit/quantity when it
-                                    // differs from the base unit the kardex is expressed in.
-                                    const showOriginal = !!movement.originalUnit
-                                        && movement.originalUnit !== unitLabel
-                                        && movement.originalQuantity != null;
-                                    const originalHint = showOriginal ? (
-                                        <span className="kardex-original-unit" style={{ display: 'block', fontSize: '11px', color: 'var(--color-neutral-500)' }}>
-                                            ({movement.originalQuantity} {movement.originalUnit})
-                                        </span>
-                                    ) : null;
-                                    return (
-                                    <tr key={movement.id}>
-                                        <td>{new Date(movement.date).toLocaleDateString()}</td>
-                                        <td>
-                                            <span className={`movement-type ${movement.type.toLowerCase()}`}>
-                                                {movement.type}
-                                            </span>
-                                        </td>
-                                        <td>{movement.reference}</td>
-                                        <td className={`text-right ${movement.in ? 'movement-in' : ''}`}>
-                                            {movement.in ? `${num(movement.in).toFixed(3)} ${unitLabel}` : '-'}
-                                            {movement.in ? originalHint : null}
-                                        </td>
-                                        <td className={`text-right ${movement.out ? 'movement-out' : ''}`}>
-                                            {movement.out ? `${num(movement.out).toFixed(3)} ${unitLabel}` : '-'}
-                                            {movement.out ? originalHint : null}
-                                        </td>
-                                        <td className="text-right font-bold">{num(movement.balance).toFixed(3)} {unitLabel}</td>
-                                        <td className="text-right">{formatCurrency(movement.unitCost, settings)}</td>
-                                        <td className="text-right">{formatCurrency(movement.totalCost, settings)}</td>
-                                        <td>{movement.warehouse}</td>
-                                        <td>{movement.branch}</td>
-                                        <td>{movement.user}</td>
-                                    </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                    <Pagination
-                        page={currentPage}
-                        totalPages={totalPages}
-                        totalItems={movements.length}
-                        pageSize={PAGE_SIZE}
-                        onPageChange={setCurrentPage}
+                    <DataTable
+                        ariaLabel="Movimientos de kardex"
+                        rows={movements}
+                        rowKey={(movement) => movement.id}
+                        defaultPageSize={PAGE_SIZE}
+                        pageSizeOptions={[10, 20, 50, 100]}
+                        resetKey={kardexData}
+                        columns={[
+                            { key: 'date', header: 'Fecha', type: 'date' },
+                            { key: 'type', header: 'Tipo', render: (movement) => (
+                                <span className={`movement-type ${movement.type.toLowerCase()}`}>{movement.type}</span>
+                            ) },
+                            { key: 'reference', header: 'Referencia' },
+                            { key: 'in', header: 'Entrada', type: 'qty', render: (movement) => (
+                                <span className={movement.in ? 'movement-in' : ''}>
+                                    {movement.in ? `${formatNumber(num(movement.in), 3)} ${unitLabel}` : '-'}
+                                    {movement.in ? originalHint(movement) : null}
+                                </span>
+                            ) },
+                            { key: 'out', header: 'Salida', type: 'qty', render: (movement) => (
+                                <span className={movement.out ? 'movement-out' : ''}>
+                                    {movement.out ? `${formatNumber(num(movement.out), 3)} ${unitLabel}` : '-'}
+                                    {movement.out ? originalHint(movement) : null}
+                                </span>
+                            ) },
+                            { key: 'balance', header: 'Saldo', type: 'qty', render: (movement) => <strong>{formatNumber(num(movement.balance), 3)} {unitLabel}</strong> },
+                            { key: 'unitCost', header: 'Costo Unit.', type: 'money', render: (movement) => formatCurrency(movement.unitCost, settings) },
+                            { key: 'totalCost', header: 'Costo Total', type: 'money', render: (movement) => formatCurrency(movement.totalCost, settings) },
+                            { key: 'warehouse', header: 'Almacén' },
+                            { key: 'branch', header: 'Sucursal' },
+                            { key: 'user', header: 'Usuario' },
+                        ] as Column<(typeof movements)[number]>[]}
                     />
                 </div>
             ) : kardexData && kardexData.movements.length === 0 ? (

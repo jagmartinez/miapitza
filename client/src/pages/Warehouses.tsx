@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { warehousesAPI, inventoryMovementsAPI, branchesAPI, productsAPI, unitsAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
-import Select from '../components/Select';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
@@ -18,8 +13,8 @@ import {
     Eye, Trash2, Edit2, Search, Info
 } from 'lucide-react';
 import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse } from '../types';
-import type { SingleValue } from 'react-select';
 import './Inventory.css';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, PageHeader, type Column, formatNumber } from '@/ui';
 
 function axiosMessage(err: unknown, fallback: string): string {
     if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -29,8 +24,6 @@ function axiosMessage(err: unknown, fallback: string): string {
     return fallback;
 }
 
-type StrOption = { value: string; label?: string };
-type WarehouseTypeOption = { value: 'CENTRAL' | 'BRANCH'; label: string };
 
 interface StockItem {
     id: number;
@@ -268,7 +261,6 @@ export default function Warehouses() {
 
             <PageHeader
                 title="Gestión de Bodegas"
-                icon={WarehouseIcon}
                 actions={
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
@@ -281,7 +273,7 @@ export default function Warehouses() {
                             </Button>
                         )}
                         {canMutateWarehouse && (
-                            <Button onClick={openCreate}>
+                            <Button variant="primary" onClick={openCreate}>
                                 <Plus size={18} /> Nueva Bodega
                             </Button>
                         )}
@@ -309,7 +301,8 @@ export default function Warehouses() {
 
             {/* Table view */}
             {viewMode === 'table' && filteredWarehouses.length > 0 && (
-                <CatalogTable<Warehouse>
+                <DataTable<Warehouse>
+                    ariaLabel="Listado de bodegas"
                     rows={filteredWarehouses}
                     rowKey={(w) => w.id}
                     resetKey={warehouseTypeFilter}
@@ -325,12 +318,12 @@ export default function Warehouses() {
                             )
                         },
                         { key: 'location', header: 'Ubicación', render: (w) => w.type === 'CENTRAL' ? 'Bodega central' : (w.branch?.name || 'Sin sucursal') },
-                        { key: 'products', header: 'Productos', align: 'center', render: (w) => w._count?.stocks || 0 },
-                        { key: 'movements', header: 'Movimientos', align: 'center', render: (w) => w._count?.movements || 0 },
+                        { key: 'products', header: 'Productos', type: 'number', decimals: 0, render: (w) => w._count?.stocks || 0 },
+                        { key: 'movements', header: 'Movimientos', type: 'number', decimals: 0, render: (w) => w._count?.movements || 0 },
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right',
+                            type: 'actions',
                             render: (w) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => viewStock(w)} title="Ver Stock">
@@ -349,7 +342,7 @@ export default function Warehouses() {
                                 </div>
                             )
                         }
-                    ] as CatalogColumn<Warehouse>[]}
+                    ] as Column<Warehouse>[]}
                 />
             )}
 
@@ -403,13 +396,13 @@ export default function Warehouses() {
                     <WarehouseIcon size={48} />
                     <p>No hay bodegas registradas</p>
                     {canMutateWarehouse && (
-                        <Button onClick={openCreate}>Crear primera bodega</Button>
+                        <Button variant="primary" onClick={openCreate}>Crear primera bodega</Button>
                     )}
                 </div>
             )}
 
             {/* Create/Edit Warehouse */}
-            <Sidebar isOpen={showForm} onClose={() => setShowForm(false)} title={editingWarehouse ? 'Editar Bodega' : 'Nueva Bodega'}>
+            <FullScreenModal isOpen={showForm} onClose={() => setShowForm(false)} title={editingWarehouse ? 'Editar Bodega' : 'Nueva Bodega'}>
                 <div className="premium-modal-content">
                     <form onSubmit={handleCreateUpdate} className="modal-form-new">
                         <div className="modal-tab-content">
@@ -430,22 +423,22 @@ export default function Warehouses() {
                                         onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })} placeholder="Ej: CENTRAL-MAIN" required />
                                 </div>
                                 <div className="modal-input-group">
-                                    <Select variant="modal" label="Tipo" placeholder="Seleccionar tipo"
-                                        options={[
+                                    <Field label="Tipo" htmlFor="sel-410" required>
+<AppSelect isClearable={false} inputId="sel-410" options={[
                                             { value: 'BRANCH', label: 'Sucursal' },
                                             { value: 'CENTRAL', label: 'Central' }
-                                        ]}
-                                        value={{ value: formData.type, label: formData.type === 'CENTRAL' ? 'Central' : 'Sucursal' }}
-                                        onChange={(opt: SingleValue<WarehouseTypeOption>) =>
-                                            opt && setFormData({ ...formData, type: opt.value, branchId: opt.value === 'CENTRAL' ? '' : formData.branchId })} required />
+                                        ]} value={formData.type ?? null} onChange={(__v) => { const opt = ([
+                                            { value: 'BRANCH', label: 'Sucursal' },
+                                            { value: 'CENTRAL', label: 'Central' }
+                                        ]).find((o) => o.value === __v) ?? null; return opt && setFormData({ ...formData, type: opt.value as typeof formData.type, branchId: opt.value === 'CENTRAL' ? '' : formData.branchId }); }} placeholder="Seleccionar tipo" />
+</Field>
                                 </div>
                                 </div>
                                 {formData.type === 'BRANCH' && (
                                     <div className="modal-input-group">
-                                    <Select variant="modal" label="Sucursal" placeholder="Seleccionar sucursal"
-                                        options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
-                                        value={formData.branchId ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name } : null}
-                                        onChange={(opt: SingleValue<StrOption>) => opt && setFormData({ ...formData, branchId: opt.value })} required />
+                                    <Field label="Sucursal" htmlFor="sel-422" required>
+<AppSelect isClearable={false} inputId="sel-422" options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))} value={(formData.branchId ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name } : null)?.value ?? null} onChange={(__v) => { const opt = (branches.map((b) => ({ value: b.id.toString(), label: b.name }))).find((o) => o.value === __v) ?? null; return opt && setFormData({ ...formData, branchId: opt.value }); }} placeholder="Seleccionar sucursal" />
+</Field>
                                     </div>
                                 )}
                                 <p className="warehouse-form-hint"><Info size={14} /> El código identifica la bodega en movimientos y reportes.</p>
@@ -453,14 +446,14 @@ export default function Warehouses() {
                         </div>
                         <div className="modal-footer">
                             <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : editingWarehouse ? 'Guardar' : 'Crear'}</Button>
+                            <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando...' : editingWarehouse ? 'Guardar' : 'Crear'}</Button>
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
             {/* Stock View */}
-            <Sidebar isOpen={showStock} onClose={() => setShowStock(false)} title={`Stock - ${selectedWarehouse?.name || ''}`} width="large">
+            <FullScreenModal isOpen={showStock} onClose={() => setShowStock(false)} title={`Stock - ${selectedWarehouse?.name || ''}`}>
                 <div className="premium-modal-content">
                     <div className="modal-tab-content">
                         <div className="modal-input-group">
@@ -480,9 +473,9 @@ export default function Warehouses() {
                                         </div>
                                         <div className="stock-item-qty">
                                             <div className="stock-item-value">
-                                                {Number(s.quantity).toFixed(2)} {s.product.baseUnit?.abbreviation || s.product.unit}
+                                                {formatNumber(s.quantity)} {s.product.baseUnit?.abbreviation || s.product.unit}
                                             </div>
-                                            <div className="stock-item-min">MÃ­n. agregado: {Number(s.product.minStock)}</div>
+                                            <div className="stock-item-min">Mín. agregado: {Number(s.product.minStock)}</div>
                                         </div>
                                     </div>
                                 );
@@ -493,10 +486,10 @@ export default function Warehouses() {
                         </div>
                     </div>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
             {/* Transfer Modal */}
-            <Sidebar isOpen={showTransfer} onClose={() => setShowTransfer(false)} title="Nuevo Traslado entre Bodegas">
+            <FullScreenModal isOpen={showTransfer} onClose={() => setShowTransfer(false)} title="Nuevo Traslado entre Bodegas">
                 <div className="premium-modal-content">
                     <form onSubmit={handleTransfer} className="modal-form-new">
                         <div className="modal-tab-content">
@@ -507,16 +500,14 @@ export default function Warehouses() {
                                 </div>
                                 <div className="modal-form-row">
                                 <div className="modal-input-group">
-                                <Select variant="modal" label="Bodega Origen" placeholder="Seleccionar..."
-                                    options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))}
-                                    value={transferData.fromWarehouseId ? { value: transferData.fromWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.fromWarehouseId)?.name } : null}
-                                    onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, fromWarehouseId: opt.value })} required />
+                                <Field label="Bodega Origen" htmlFor="sel-488" required>
+<AppSelect isClearable={false} inputId="sel-488" options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))} value={(transferData.fromWarehouseId ? { value: transferData.fromWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.fromWarehouseId)?.name } : null)?.value ?? null} onChange={(__v) => { const opt = (warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))).find((o) => o.value === __v) ?? null; return opt && setTransferData({ ...transferData, fromWarehouseId: opt.value }); }} placeholder="Seleccionar..." />
+</Field>
                                 </div>
                                 <div className="modal-input-group">
-                                <Select variant="modal" label="Bodega Destino" placeholder="Seleccionar..."
-                                    options={warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))}
-                                    value={transferData.toWarehouseId ? { value: transferData.toWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.toWarehouseId)?.name } : null}
-                                    onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, toWarehouseId: opt.value })} required />
+                                <Field label="Bodega Destino" htmlFor="sel-494" required>
+<AppSelect isClearable={false} inputId="sel-494" options={warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))} value={(transferData.toWarehouseId ? { value: transferData.toWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.toWarehouseId)?.name } : null)?.value ?? null} onChange={(__v) => { const opt = (warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))).find((o) => o.value === __v) ?? null; return opt && setTransferData({ ...transferData, toWarehouseId: opt.value }); }} placeholder="Seleccionar..." />
+</Field>
                                 </div>
                                 </div>
                             </div>
@@ -526,10 +517,9 @@ export default function Warehouses() {
                                     <h3>Producto y cantidad</h3>
                                 </div>
                                 <div className="modal-input-group">
-                                <Select variant="modal" label="Producto" placeholder="Seleccionar producto..."
-                                    options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
-                                    value={transferData.productId ? { value: transferData.productId, label: products.find((p) => p.id.toString() === transferData.productId)?.name } : null}
-                                    onChange={(opt: SingleValue<StrOption>) => opt && handleTransferProductChange(opt.value)} required />
+                                <Field label="Producto" htmlFor="sel-507" required>
+<AppSelect isClearable={false} inputId="sel-507" options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))} value={(transferData.productId ? { value: transferData.productId, label: products.find((p) => p.id.toString() === transferData.productId)?.name } : null)?.value ?? null} onChange={(__v) => { const opt = (products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))).find((o) => o.value === __v) ?? null; return opt && handleTransferProductChange(opt.value); }} placeholder="Seleccionar producto..." />
+</Field>
                                 </div>
                                 <div className="modal-form-row">
                                 <div className="modal-input-group" style={{ flex: 2 }}>
@@ -539,16 +529,14 @@ export default function Warehouses() {
                                 </div>
                                 {transferUnits.length > 0 && (
                                     <div className="modal-input-group" style={{ flex: 1 }}>
-                                        <Select variant="modal" label="Unidad" placeholder="Unidad..."
-                                            options={transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))}
-                                            value={transferData.unit ? {
+                                        <Field label="Unidad" htmlFor="sel-520">
+<AppSelect isClearable={false} inputId="sel-520" options={transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))} value={(transferData.unit ? {
                                                 value: transferData.unit,
                                                 label: transferUnits.find(u => u.abbreviation === transferData.unit)
                                                     ? `${transferUnits.find(u => u.abbreviation === transferData.unit)!.name} (${transferData.unit})`
                                                     : transferData.unit
-                                            } : null}
-                                            onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, unit: opt.value })}
-                                            isSearchable={false} />
+                                            } : null)?.value ?? null} onChange={(__v) => { const opt = (transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))).find((o) => o.value === __v) ?? null; return opt && setTransferData({ ...transferData, unit: opt.value }); }} placeholder="Unidad..." />
+</Field>
                                     </div>
                                 )}
                                 </div>
@@ -561,14 +549,14 @@ export default function Warehouses() {
                         </div>
                         <div className="modal-footer">
                             <Button type="button" variant="ghost" onClick={() => setShowTransfer(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Realizar Traslado'}</Button>
+                            <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Realizar Traslado'}</Button>
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
             {/* Transfer History */}
-            <Sidebar isOpen={showHistory} onClose={() => setShowHistory(false)} title="Historial de Traslados" width="wide">
+            <FullScreenModal isOpen={showHistory} onClose={() => setShowHistory(false)} title="Historial de Traslados">
                 <div className="premium-modal-content">
                     <div className="modal-tab-content">
                         <div className="stock-items-list">
@@ -585,7 +573,7 @@ export default function Warehouses() {
                                             <div className="stock-item-name">{ordered[0]?.product?.name}</div>
                                             <div className="stock-item-sku">
                                                 {source?.warehouse?.name || 'Origen desconocido'} &rarr; {destination?.warehouse?.name || 'Destino desconocido'}
-                                                {' '}&middot; Cant: {Number(ordered[0]?.quantity || 0).toFixed(2)}
+                                                {' '}&middot; Cant: {formatNumber(ordered[0]?.quantity || 0)}
                                                 {' '}&middot; Por: {ordered[0]?.user?.name}
                                                 {ordered[0]?.reference && <> &middot; Ref: {ordered[0].reference}</>}
                                             </div>
@@ -599,7 +587,7 @@ export default function Warehouses() {
                                     <div style={{ flex: 1 }}>
                                         <div className="stock-item-name">{m.product?.name}</div>
                                         <div className="stock-item-sku">
-                                            {m.warehouse?.name} &middot; {m.type === 'TRANSFER' ? 'OUT' : 'IN'}: {Number(m.quantity).toFixed(2)}
+                                            {m.warehouse?.name} &middot; {m.type === 'TRANSFER' ? 'OUT' : 'IN'}: {formatNumber(m.quantity)}
                                             {' '}&middot; Por: {m.user?.name}
                                             {m.reference && <> &middot; Ref: {m.reference}</>}
                                         </div>
@@ -613,7 +601,7 @@ export default function Warehouses() {
                         </div>
                     </div>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

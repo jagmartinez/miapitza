@@ -4,15 +4,12 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Tags, Edit2, Trash2, List } from 'lucide-react';
 import type { MenuBrand } from '../types';
 import './Categories.css';
+import { Button, DataTable, FullScreenModal, PageHeader, type Column } from '@/ui';
 
 const DEFAULT_COLOR = '#2563eb';
 
@@ -128,8 +125,7 @@ export default function Brands() {
         <div className="categories-page">
             <PageHeader
                 title="Marcas"
-                subtitle={`${brands.length} marcas configuradas`}
-                icon={Tags}
+                description={`${brands.length} marcas configuradas`}
                 actions={(
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
@@ -144,7 +140,8 @@ export default function Brands() {
             />
 
             {viewMode === 'table' && brands.length > 0 && (
-                <CatalogTable<MenuBrand>
+                <DataTable<MenuBrand>
+                    ariaLabel="Listado de marcas"
                     rows={brands}
                     rowKey={(b) => b.id}
                     columns={[
@@ -160,8 +157,8 @@ export default function Brands() {
                                 </div>
                             )
                         },
-                        { key: 'items', header: 'Platos', align: 'center', render: (b) => b._count?.menuItems || 0 },
-                        { key: 'order', header: 'Orden', align: 'center', render: (b) => b.sortOrder ?? 0 },
+                        { key: 'items', header: 'Platos', type: 'number', decimals: 0, render: (b) => b._count?.menuItems || 0 },
+                        { key: 'order', header: 'Orden', type: 'number', decimals: 0, render: (b) => b.sortOrder ?? 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -170,7 +167,7 @@ export default function Brands() {
                         ...(canMutate ? [{
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right' as const,
+                            type: 'actions',
                             render: (b: MenuBrand) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
@@ -187,7 +184,7 @@ export default function Brands() {
                                 </div>
                             )
                         }] : [])
-                    ] as CatalogColumn<MenuBrand>[]}
+                    ] as Column<MenuBrand>[]}
                 />
             )}
 
@@ -253,12 +250,12 @@ export default function Brands() {
                     <Tags size={48} />
                     <p>No hay marcas configuradas</p>
                     {canMutate && (
-                        <Button onClick={() => openModal()}>Crear primera marca</Button>
+                        <Button variant="primary" onClick={() => openModal()}>Crear primera marca</Button>
                     )}
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={closeModal}
                 title={editing ? 'Editar Marca' : 'Nueva Marca'}
@@ -339,7 +336,7 @@ export default function Brands() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

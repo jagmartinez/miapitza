@@ -1,15 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import Select from '../components/Select';
 import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
 import type { User, Branch, Company, UserAccountType } from '../types';
-import type { SingleValue } from 'react-select';
 
 interface UserSavePayload {
     name: string;
@@ -30,6 +24,7 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import './Users.css';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, PageHeader, type Column } from '@/ui';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
     return payload as unknown as Record<string, unknown>;
@@ -83,6 +78,15 @@ export default function Users() {
         { value: 'all', label: 'Cualquier Estado' },
         { value: 'ACTIVE', label: 'Activos' },
         { value: 'INACTIVE', label: 'Inactivos' }
+    ];
+
+    const accountTypeOptions: Array<{ value: UserAccountType; label: string }> = [
+        { value: 'INTERNAL', label: 'Interno · ligado a personal' },
+        { value: 'EXTERNAL', label: 'Externo · solo acceso al sistema' },
+    ];
+    const accountStatusOptions = [
+        { value: 'ACTIVE', label: 'Activo' },
+        { value: 'INACTIVE', label: 'Inactivo' },
     ];
 
     const loadData = useCallback(async (companyId?: string, isInitial = false) => {
@@ -331,11 +335,10 @@ export default function Users() {
         <div className="users-page">
             <PageHeader
                 title="Gestión de Usuarios"
-                icon={UsersIcon}
                 actions={
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button onClick={() => handleOpenSidebar()}>
+                        <Button variant="primary" onClick={() => handleOpenSidebar()}>
                             <Plus size={20} />
                             Nuevo Usuario
                         </Button>
@@ -358,29 +361,18 @@ export default function Users() {
 
                 {/* Role Filter */}
                 <div className="filter-group-container">
-                    <Select
-                        options={roleOptions}
-                        value={roleOptions.find(opt => opt.value === roleFilter)}
-                        onChange={(opt: SingleValue<{ value: string; label: string }>) => opt && setRoleFilter(opt.value)}
-                        placeholder="Filtrar por Rol"
-                        isSearchable={false}
-                    />
+                    <AppSelect isClearable={false} options={roleOptions} value={roleFilter} onChange={(v) => { if (v) setRoleFilter(String(v)); }} placeholder="Filtrar por Rol" />
                 </div>
 
                 <div className="filter-group-container">
-                    <Select
-                        options={statusOptions}
-                        value={statusOptions.find(opt => opt.value === statusFilter)}
-                        onChange={(opt: SingleValue<{ value: string; label: string }>) => opt && setStatusFilter(opt.value)}
-                        placeholder="Estado"
-                        isSearchable={false}
-                    />
+                    <AppSelect isClearable={false} options={statusOptions} value={statusFilter} onChange={(v) => { if (v) setStatusFilter(String(v)); }} placeholder="Estado" />
                 </div>
             </div>
 
             {/* Table view */}
             {viewMode === 'table' && filteredUsers.length > 0 && (
-                <CatalogTable<User>
+                <DataTable<User>
+                    ariaLabel="Listado de usuarios"
                     rows={filteredUsers}
                     rowKey={(u) => u.id}
                     resetKey={`${searchQuery}|${roleFilter}|${statusFilter}`}
@@ -443,7 +435,7 @@ export default function Users() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right',
+                            type: 'actions',
                             render: (u) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => handleOpenSidebar(u)} title="Editar">
@@ -457,7 +449,7 @@ export default function Users() {
                                 </div>
                             )
                         }
-                    ] as CatalogColumn<User>[]}
+                    ] as Column<User>[]}
                 />
             )}
 
@@ -551,7 +543,7 @@ export default function Users() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => { setIsSidebarOpen(false); setActiveTab('perfil'); }}
                 title={editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
@@ -660,43 +652,24 @@ export default function Users() {
 
                                     {isSuperAdmin && !editingUser && (
                                         <div className="modal-input-group">
-                                            <Select
-                                                variant="modal"
-                                                label="Empresa"
-                                                placeholder="Seleccionar Empresa"
-                                                options={companies.map(c => ({ value: c.id, label: c.name }))}
-                                                value={(() => {
+                                            <Field label="Empresa" htmlFor="sel-660" required>
+<AppSelect isClearable={false} inputId="sel-660" options={companies.map(c => ({ value: c.id, label: c.name }))} value={((() => {
                                                     const c = companies.find(co => co.id.toString() === formData.companyId);
                                                     return c ? { value: c.id, label: c.name } : null;
-                                                })()}
-                                                onChange={(option: SingleValue<{ value: number; label: string }>) => {
+                                                })())?.value ?? null} onChange={(__v) => { const option = (companies.map(c => ({ value: c.id, label: c.name }))).find((o) => o.value === __v) ?? null; 
                                                     if (!option) return;
                                                     const cid = String(option.value);
                                                     setFormData({ ...formData, companyId: cid, branchId: '' });
                                                     loadData(cid);
-                                                }}
-                                                required
-                                            />
+                                                }} placeholder="Seleccionar Empresa" />
+</Field>
                                         </div>
                                     )}
 
                                     <div className="modal-input-group">
-                                        <Select
-                                            variant="modal"
-                                            label="Tipo de cuenta"
-                                            options={formData.accountType === 'INTERNAL'
-                                                ? [{ value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }]
-                                                : [{ value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' }]}
-                                            value={formData.accountType === 'INTERNAL'
-                                                ? { value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }
-                                                : { value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' }}
-                                            onChange={(option: SingleValue<{ value: UserAccountType; label: string }>) => {
-                                                if (!option) return;
-                                                setFormData({ ...formData, accountType: option.value });
-                                            }}
-                                            isDisabled
-                                            isSearchable={false}
-                                        />
+                                        <Field label="Tipo de cuenta" htmlFor="sel-681">
+<AppSelect isClearable={false} inputId="sel-681" options={accountTypeOptions.filter((o) => o.value === formData.accountType)} value={formData.accountType} onChange={() => undefined} isDisabled />
+</Field>
                                         <small style={{ color: 'var(--color-neutral-500)', lineHeight: 1.45 }}>
                                             {formData.accountType === 'INTERNAL'
                                                 ? editingUser?.employee
@@ -745,21 +718,9 @@ export default function Users() {
                                     </div>
 
                                     <div className="modal-form-row">
-                                        <Select
-                                            variant="modal"
-                                            label="Estado de Cuenta"
-                                            options={[
-                                                { value: 'ACTIVE', label: 'Activo' },
-                                                { value: 'INACTIVE', label: 'Inactivo' }
-                                            ]}
-                                            value={{
-                                                value: formData.status,
-                                                label: formData.status === 'ACTIVE' ? 'Activo' : 'Inactivo'
-                                            }}
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, status: option.value })}
-                                            isDisabled={!editingUser}
-                                            isSearchable={false}
-                                        />
+                                        <Field label="Estado de Cuenta" htmlFor="sel-745">
+<AppSelect isClearable={false} inputId="sel-745" options={accountStatusOptions} value={formData.status} onChange={(v) => { if (v) setFormData({ ...formData, status: String(v) as typeof formData.status }); }} isDisabled={!editingUser} />
+</Field>
 
                                         <div className="modal-input-group">
                                             <label className="modal-input-label" htmlFor="user-color"><Palette size={14} style={{ marginRight: 4 }} />Color Identificador</label>
@@ -821,33 +782,30 @@ export default function Users() {
                                                 <small style={{ color: 'var(--color-neutral-500)' }}>El usuario solo verá información de su sucursal activa. El superadmin rota la sucursal activa entre las permitidas.</small>
                                             </div>
 
-                                            <Select
-                                                variant="modal"
-                                                label="Sucursal activa"
-                                                placeholder="Ninguna (Global / Superadmin)"
-                                                options={[
+                                            <Field label="Sucursal activa" htmlFor="sel-821">
+<AppSelect isClearable={false} inputId="sel-821" options={[
                                                     { value: '', label: 'Ninguna (Global / Superadmin)' },
                                                     ...branches
                                                         .filter(b => formData.branchIds.includes(b.id.toString()))
                                                         .map(b => ({ value: b.id.toString(), label: b.name }))
-                                                ]}
-                                                value={formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Ninguna (Global / Superadmin)' }}
-                                                onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, branchId: option.value })}
-                                            />
+                                                ]} value={(formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Ninguna (Global / Superadmin)' })?.value ?? null} onChange={(__v) => { const option = ([
+                                                    { value: '', label: 'Ninguna (Global / Superadmin)' },
+                                                    ...branches
+                                                        .filter(b => formData.branchIds.includes(b.id.toString()))
+                                                        .map(b => ({ value: b.id.toString(), label: b.name }))
+                                                ]).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, branchId: option.value }); }} placeholder="Ninguna (Global / Superadmin)" />
+</Field>
                                         </>
                                     ) : (
-                                        <Select
-                                            variant="modal"
-                                            label="Sucursal activa"
-                                            placeholder="Seleccionar sucursal"
-                                            options={[
+                                        <Field label="Sucursal activa" htmlFor="sel-836">
+<AppSelect isClearable={false} inputId="sel-836" options={[
                                                 { value: '', label: 'Sin sucursal' },
                                                 ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
-                                            ]}
-                                            value={formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Sin sucursal' }}
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, branchId: option.value })}
-                                            isDisabled={!!editingUser}
-                                        />
+                                            ]} value={(formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Sin sucursal' })?.value ?? null} onChange={(__v) => { const option = ([
+                                                { value: '', label: 'Sin sucursal' },
+                                                ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
+                                            ]).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, branchId: option.value }); }} placeholder="Seleccionar sucursal" isDisabled={!!editingUser} />
+</Field>
                                     )}
                                 </div>
                             )}
@@ -863,7 +821,7 @@ export default function Users() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

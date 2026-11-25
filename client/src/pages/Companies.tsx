@@ -1,17 +1,13 @@
 import { useState, useEffect } from 'react';
 import { companiesAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import Select from '../components/Select';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { Plus, Building2, Edit2, CheckCircle, XCircle, FileText } from 'lucide-react';
-import type { SingleValue } from 'react-select';
 import { useAppToast } from '../context/ToastContext';
 import { resolveAssetUrl } from '../utils/assets';
 import './Companies.css';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, type Column, PageHeader } from '@/ui';
 
 interface Company {
     id: number;
@@ -138,19 +134,18 @@ export default function Companies() {
 
     return (
         <div className="companies-page">
-            {/* Modern Header */}
-            <div className="companies-header-new">
-                <div className="header-title-section">
-                    <h1><Building2 size={32} /> Gestión de Empresas</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <ViewToggle value={viewMode} onChange={setViewMode} />
-                    <Button variant="primary" onClick={() => openModal()}>
-                        <Plus size={20} />
-                        Nueva Empresa
-                    </Button>
-                </div>
-            </div>
+            <PageHeader
+                title="Gestión de Empresas"
+                actions={(
+                    <>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        <Button variant="primary" onClick={() => openModal()}>
+                            <Plus size={20} />
+                            Nueva Empresa
+                        </Button>
+                    </>
+                )}
+            />
 
             {/* Filters Row */}
             <div className="companies-filters-row">
@@ -179,7 +174,8 @@ export default function Companies() {
 
             {/* Table view */}
             {viewMode === 'table' && filteredCompanies.length > 0 && (
-                <CatalogTable<Company>
+                <DataTable<Company>
+                    ariaLabel="Listado de empresas"
                     rows={filteredCompanies}
                     rowKey={(c) => c.id}
                     resetKey={statusFilter}
@@ -194,8 +190,8 @@ export default function Companies() {
                                 </div>
                             )
                         },
-                        { key: 'branches', header: 'Sucursales', align: 'center', render: (c) => c._count?.branches || 0 },
-                        { key: 'users', header: 'Usuarios', align: 'center', render: (c) => c._count?.users || 0 },
+                        { key: 'branches', header: 'Sucursales', type: 'number', decimals: 0, render: (c) => c._count?.branches || 0 },
+                        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, render: (c) => c._count?.users || 0 },
                         {
                             key: 'taxRegime',
                             header: 'Perfil fiscal',
@@ -214,7 +210,7 @@ export default function Companies() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right',
+                            type: 'actions',
                             render: (c) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(c)} title="Editar">
@@ -230,7 +226,7 @@ export default function Companies() {
                                 </div>
                             )
                         }
-                    ] as CatalogColumn<Company>[]}
+                    ] as Column<Company>[]}
                 />
             )}
 
@@ -314,13 +310,13 @@ export default function Companies() {
                 <div className="no-companies-message">
                     <Building2 size={48} />
                     <p>No hay empresas {statusFilter !== null ? 'con este estado' : 'registradas'}</p>
-                    <Button onClick={() => statusFilter !== null ? setStatusFilter(null) : openModal()}>
+                    <Button variant="primary" onClick={() => statusFilter !== null ? setStatusFilter(null) : openModal()}>
                         {statusFilter !== null ? 'Ver todas' : 'Crear primera empresa'}
                     </Button>
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={closeModal}
                 title={editingCompany ? 'Editar Empresa' : 'Nueva Empresa'}
@@ -356,40 +352,40 @@ export default function Companies() {
                                             <p>Se administra aquí. Cada nueva versión legal toma estos datos y conserva una copia para auditoría.</p>
                                         </div>
                                     </div>
-                                    <Select
-                                        variant="modal"
-                                        label="Régimen tributario registrado"
-                                        options={TAX_REGIMES}
-                                        value={TAX_REGIMES.find((item) => item.value === formData.payrollTaxRegime)}
-                                        onChange={(option: SingleValue<{ value: TaxRegime; label: string }>) => {
-                                            if (!option) return;
-                                            const stopsWithholding = ['SIMPLIFIED_FIXED_QUOTA', 'EXEMPT'].includes(option.value);
-                                            setFormData({
+                                    <Field label="Régimen tributario registrado" htmlFor="company-tax-regime">
+                                        <AppSelect
+                                            inputId="company-tax-regime"
+                                            isClearable={false}
+                                            options={TAX_REGIMES}
+                                            value={formData.payrollTaxRegime ?? null}
+                                            onChange={(value) => {
+                                                if (!value) return;
+                                                const stopsWithholding = ['SIMPLIFIED_FIXED_QUOTA', 'EXEMPT'].includes(value);
+                                                setFormData({
+                                                    ...formData,
+                                                    payrollTaxRegime: value as TaxRegime,
+                                                    payrollIncomeTaxWithholding: stopsWithholding ? false : formData.payrollIncomeTaxWithholding,
+                                                    payrollIncomeTaxException: formData.payrollIncomeTaxException,
+                                                });
+                                            }}
+                                        />
+                                    </Field>
+                                    <Field label="Retención de IR laboral" htmlFor="company-ir-withholding">
+                                        <AppSelect
+                                            inputId="company-ir-withholding"
+                                            isClearable={false}
+                                            options={[
+                                                { value: 'true', label: 'Sí, la empresa retiene IR laboral' },
+                                                { value: 'false', label: 'No retiene IR laboral' },
+                                            ]}
+                                            value={formData.payrollIncomeTaxWithholding ? 'true' : 'false'}
+                                            onChange={(value) => setFormData({
                                                 ...formData,
-                                                payrollTaxRegime: option.value,
-                                                payrollIncomeTaxWithholding: stopsWithholding ? false : formData.payrollIncomeTaxWithholding,
-                                                payrollIncomeTaxException: formData.payrollIncomeTaxException,
-                                            });
-                                        }}
-                                        isSearchable={false}
-                                    />
-                                    <Select
-                                        variant="modal"
-                                        label="Retención de IR laboral"
-                                        options={[
-                                            { value: 'true', label: 'Sí, la empresa retiene IR laboral' },
-                                            { value: 'false', label: 'No retiene IR laboral' },
-                                        ]}
-                                        value={formData.payrollIncomeTaxWithholding
-                                            ? { value: 'true', label: 'Sí, la empresa retiene IR laboral' }
-                                            : { value: 'false', label: 'No retiene IR laboral' }}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setFormData({
-                                            ...formData,
-                                            payrollIncomeTaxWithholding: option?.value === 'true',
-                                            payrollIncomeTaxException: option?.value === 'true' ? '' : formData.payrollIncomeTaxException,
-                                        })}
-                                        isSearchable={false}
-                                    />
+                                                payrollIncomeTaxWithholding: value === 'true',
+                                                payrollIncomeTaxException: value === 'true' ? '' : formData.payrollIncomeTaxException,
+                                            })}
+                                        />
+                                    </Field>
                                     <div className="modal-input-group company-tax-reference">
                                         <label className="modal-input-label" htmlFor="company-tax-reference">Referencia o respaldo fiscal</label>
                                         <input
@@ -437,17 +433,15 @@ export default function Companies() {
                                 </div>
 
                                 {editingCompany && (
-                                    <Select
-                                        variant="modal"
-                                        label="Estado de la Empresa"
-                                        options={[
+                                    <Field label="Estado de la Empresa" htmlFor="sel-331">
+<AppSelect isClearable={false} inputId="sel-331" options={[
                                             { value: 'true', label: 'Activa' },
                                             { value: 'false', label: 'Inactiva' }
-                                        ]}
-                                        value={formData.active ? { value: 'true', label: 'Activa' } : { value: 'false', label: 'Inactiva' }}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setFormData({ ...formData, active: option?.value === 'true' })}
-                                        isSearchable={false}
-                                    />
+                                        ]} value={(formData.active ? { value: 'true', label: 'Activa' } : { value: 'false', label: 'Inactiva' })?.value ?? null} onChange={(__v) => { const option = ([
+                                            { value: 'true', label: 'Activa' },
+                                            { value: 'false', label: 'Inactiva' }
+                                        ]).find((o) => o.value === __v) ?? null; return setFormData({ ...formData, active: option?.value === 'true' }); }} />
+</Field>
                                 )}
                             </div>
                         </div>
@@ -462,7 +456,7 @@ export default function Companies() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }
