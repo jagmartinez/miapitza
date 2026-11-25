@@ -400,6 +400,7 @@ model User {
   nif                    String?
   address                String?
   phone                  String?
+  preferences            Json? // Per-user UI preferences (density, rows per page, home page, notifications)
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
