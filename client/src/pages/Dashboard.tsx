@@ -611,7 +611,7 @@ export default function Dashboard() {
                                 <div key={i} className="ord-row">
                                     <div className="ord-meta"><span className="ord-id">{p.name}</span></div>
                                     <div className="ord-right">
-                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--color-danger)' : 'var(--color-warning)' }}>{p.current} {p.unit}</span>
+                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--ui-danger)' : 'var(--ui-warning)' }}>{p.current} {p.unit}</span>
                                         <span className="ord-total" style={{ opacity: 0.5 }}>min: {p.min}</span>
                                     </div>
                                 </div>
@@ -670,7 +670,7 @@ export default function Dashboard() {
                                 <div key={i} className="ord-row">
                                     <div className="ord-meta"><span className="ord-id">{p.name}</span></div>
                                     <div className="ord-right">
-                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--color-danger)' : 'var(--color-warning)' }}>
+                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--ui-danger)' : 'var(--ui-warning)' }}>
                                             {p.current} {p.unit}
                                         </span>
                                         <span className="ord-total" style={{ opacity: 0.5 }}>min: {p.min}</span>
@@ -705,7 +705,7 @@ export default function Dashboard() {
                                         <span className="inv-meta">{m.reason || m.type}</span>
                                     </div>
                                     <div className="invoice-right">
-                                        <span className="inv-amount" style={{ color: m.type === 'IN' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                        <span className="inv-amount" style={{ color: m.type === 'IN' ? 'var(--ui-success)' : 'var(--ui-danger)' }}>
                                             {m.type === 'IN' ? '+' : '-'}{m.quantity} {m.unit}
                                         </span>
                                         <span className={`inv-status status-${m.type === 'IN' ? 'paid' : 'cancelled'}`}>{m.type}</span>
@@ -758,7 +758,7 @@ export default function Dashboard() {
                                     </div>
                                     <div className="ord-row">
                                         <div className="ord-meta"><span className="ord-id">Efectivo Acumulado</span></div>
-                                        <div className="ord-right"><span className="ord-total" style={{ color: 'var(--color-success)' }}>{formatCurrency(myStats.activeShift.cashAccumulated)}</span></div>
+                                        <div className="ord-right"><span className="ord-total" style={{ color: 'var(--ui-success)' }}>{formatCurrency(myStats.activeShift.cashAccumulated)}</span></div>
                                     </div>
                                     <div className="ord-row">
                                         <div className="ord-meta"><span className="ord-id">Apertura</span></div>
@@ -1109,13 +1109,13 @@ export default function Dashboard() {
                             >
                                 <Tooltip
                                     contentStyle={{
-                                        backgroundColor: 'var(--color-surface)',
+                                        backgroundColor: 'var(--ui-surface)',
                                         borderRadius: '8px',
-                                        border: '1px solid var(--color-border)',
+                                        border: '1px solid var(--ui-border)',
                                         boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                                        color: 'var(--color-text)'
+                                        color: 'var(--ui-text)'
                                     }}
-                                    itemStyle={{ color: 'var(--color-text)' }}
+                                    itemStyle={{ color: 'var(--ui-text)' }}
                                     formatter={(value: number, _name: string, props: { payload?: { name: string } }) => [
                                         `${Number(value).toFixed(0)} unidades`,
                                         props.payload?.name ?? ''

@@ -11,7 +11,7 @@
 
 .poSuggestionCount {
     font-size: 0.9rem;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .poSuggestionToolbarActions {
@@ -32,9 +32,9 @@
 .poSuggestionEmpty {
     padding: 1.25rem;
     text-align: center;
-    color: var(--color-text-secondary);
-    background: var(--color-surface);
-    border: 1px dashed var(--color-border);
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
+    border: 1px dashed var(--ui-border);
     border-radius: 12px;
     font-size: 0.9rem;
 }
@@ -46,34 +46,34 @@
     align-items: center;
     padding: 12px 14px;
     border-radius: 12px;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
+    border: 1px solid var(--ui-border);
+    background: var(--ui-surface);
     cursor: pointer;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .poSuggestionCard:hover {
-    border-color: var(--color-primary);
+    border-color: var(--ui-primary);
 }
 
 .poSuggestionCard.isSelected {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 1px var(--color-primary);
-    background: rgba(37, 99, 235, 0.08);
+    border-color: var(--ui-primary);
+    box-shadow: 0 0 0 1px var(--ui-primary);
+    background: color-mix(in srgb, var(--ui-primary) 8%, transparent);
 }
 
 :global(.dark) .poSuggestionCard.isSelected {
-    background: rgba(59, 130, 246, 0.12);
+    background: color-mix(in srgb, var(--ui-primary) 12%, transparent);
 }
 
 .poSuggestionCard.isUrgent {
-    border-left: 3px solid #dc2626;
+    border-left: 3px solid var(--ui-danger);
 }
 
 .poSuggestionCheckbox {
     width: 18px;
     height: 18px;
-    accent-color: var(--color-primary);
+    accent-color: var(--ui-primary);
     cursor: pointer;
 }
 
@@ -92,7 +92,7 @@
 .poSuggestionName {
     font-weight: 700;
     font-size: 0.95rem;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .poSuggestionTags {
@@ -105,11 +105,11 @@
     gap: 10px 14px;
     margin-top: 8px;
     font-size: 0.82rem;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .poSuggestionMetrics strong {
-    color: var(--color-text);
+    color: var(--ui-text);
     font-weight: 600;
 }
 
@@ -122,10 +122,10 @@
     display: block;
     font-weight: 700;
     font-size: 1rem;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .poSuggestionCostLabel {
     font-size: 0.78rem;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }

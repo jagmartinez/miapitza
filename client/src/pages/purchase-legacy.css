@@ -17,7 +17,7 @@
 .action-btn-mini {
     padding: 8px;
     border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     transition: all var(--transition-fast);
     display: flex;
     align-items: center;
@@ -26,22 +26,22 @@
 }
 
 .action-btn-mini:hover {
-    background: var(--color-neutral-100);
-    color: var(--color-primary);
+    background: var(--ui-surface-2);
+    color: var(--ui-primary);
 }
 
 .dark .action-btn-mini:hover {
-    background: var(--color-neutral-700);
+    background: var(--ui-text);
 }
 
 .action-btn-mini.edit:hover {
-    background: rgba(37, 99, 235, 0.1);
-    color: var(--color-primary);
+    background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
+    color: var(--ui-primary);
 }
 
 .action-btn-mini.delete:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--color-danger);
+    background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+    color: var(--ui-danger);
 }
 
 .action-btn-mini.delete:disabled {
@@ -50,23 +50,23 @@
 }
 
 .action-btn-mini.pdf {
-    background: rgba(59, 130, 246, 0.1);
-    color: var(--color-primary);
+    background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
+    color: var(--ui-primary);
     text-decoration: none;
 }
 
 .action-btn-mini.pdf:hover {
-    background: var(--color-primary);
+    background: var(--ui-primary);
     color: white;
 
 .action-btn-mini.payment {
-    color: var(--color-primary);
-    border-color: rgba(59, 130, 246, 0.3);
-    background: rgba(59, 130, 246, 0.08);
+    color: var(--ui-primary);
+    border-color: color-mix(in srgb, var(--ui-primary) 30%, transparent);
+    background: color-mix(in srgb, var(--ui-primary) 8%, transparent);
 }
 
 .action-btn-mini.payment:hover {
-    background: rgba(59, 130, 246, 0.15);
+    background: color-mix(in srgb, var(--ui-primary) 15%, transparent);
 }
 
 

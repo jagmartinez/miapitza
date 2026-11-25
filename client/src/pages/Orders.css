@@ -10,8 +10,8 @@
 .orders-warning {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
   padding: 10px 12px; margin-bottom: var(--spacing-md, 12px);
-  border: 1px solid var(--color-warning, #d97706); border-radius: var(--radius-md, 8px);
-  background: var(--color-warning-bg, transparent); color: var(--color-text);
+  border: 1px solid var(--ui-warning, var(--ui-warning)); border-radius: var(--radius-md, 8px);
+  background: var(--ui-warning-soft, transparent); color: var(--ui-text);
 }
 
 .order-detail-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -19,42 +19,42 @@
 .detail-info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; }
 .detail-info-item {
   display: flex; flex-direction: column; gap: 4px; min-width: 0;
-  background: var(--color-background); padding: 12px;
-  border-radius: var(--radius-md); border: 1px solid var(--color-border);
+  background: var(--ui-bg); padding: 12px;
+  border-radius: var(--radius-md); border: 1px solid var(--ui-border);
 }
 .detail-info-item.customer-item { grid-column: 1 / -1; }
-.detail-label { font-size: 11px; text-transform: uppercase; color: var(--color-text-tertiary); font-weight: 600; }
-.detail-value { font-size: 14px; color: var(--color-text); font-weight: 600; overflow-wrap: anywhere; }
+.detail-label { font-size: 11px; text-transform: uppercase; color: var(--ui-text-muted); font-weight: 600; }
+.detail-value { font-size: 14px; color: var(--ui-text); font-weight: 600; overflow-wrap: anywhere; }
 .detail-items { display: flex; flex-direction: column; gap: 8px; }
 .detail-item-row {
   display: flex; align-items: flex-start; gap: 12px; padding: 14px 12px;
-  border-bottom: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  border-bottom: 1px solid var(--ui-border); border-radius: var(--radius-sm);
 }
 .detail-item-row:last-child { border-bottom: none; }
-.item-qty { font-weight: 700; color: var(--color-primary); min-width: 30px; font-size: 14px; }
+.item-qty { font-weight: 700; color: var(--ui-primary); min-width: 30px; font-size: 14px; }
 .item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.item-name { font-size: 14px; color: var(--color-text); font-weight: 600; }
-.item-notes { font-size: 12px; color: var(--color-text-tertiary); font-style: italic; }
-.item-price { font-weight: 700; color: var(--color-text); font-size: 14px; text-align: right; }
+.item-name { font-size: 14px; color: var(--ui-text); font-weight: 600; }
+.item-notes { font-size: 12px; color: var(--ui-text-muted); font-style: italic; }
+.item-price { font-weight: 700; color: var(--ui-text); font-size: 14px; text-align: right; }
 .financials-section {
-  background: var(--color-background); padding: 20px; border-radius: 12px;
-  border: 1px solid var(--color-border);
+  background: var(--ui-bg); padding: 20px; border-radius: 12px;
+  border: 1px solid var(--ui-border);
 }
-.fin-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: var(--color-text-secondary); }
+.fin-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: var(--ui-text-muted); }
 .fin-row.total {
-  margin-top: 16px; padding-top: 16px; border-top: 2px dashed var(--color-border);
-  font-weight: 800; font-size: 20px; color: var(--color-text); margin-bottom: 0;
+  margin-top: 16px; padding-top: 16px; border-top: 2px dashed var(--ui-border);
+  font-weight: 800; font-size: 20px; color: var(--ui-text); margin-bottom: 0;
 }
 .action-bar-sticky {
-  position: sticky; bottom: 0; background: var(--color-surface); padding: 16px 0;
-  border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: 12px;
+  position: sticky; bottom: 0; background: var(--ui-surface); padding: 16px 0;
+  border-top: 1px solid var(--ui-border); display: flex; flex-wrap: wrap; gap: 12px;
 }
 
 .order-cancel-block {
     margin-top: 8px;
     padding: 10px;
     border-radius: 8px;
-    background: color-mix(in srgb, var(--color-error) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+    background: color-mix(in srgb, var(--ui-danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ui-danger) 30%, transparent);
 }
-.order-cancel-label { color: var(--color-error); }
+.order-cancel-label { color: var(--ui-danger); }

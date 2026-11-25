@@ -60,7 +60,7 @@
     align-items: center;
     height: 50vh;
     font-size: var(--font-size-xl);
-    color: var(--color-neutral-500);
+    color: var(--ui-text-muted);
 }
 
 .table-map-branch-required {
@@ -70,10 +70,10 @@
     justify-content: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-xl);
-    border: 2px dashed var(--color-border);
+    border: 2px dashed var(--ui-border);
     border-radius: var(--radius-xl);
-    color: var(--color-text-secondary);
-    background: var(--color-surface);
+    color: var(--ui-text-muted);
+    background: var(--ui-surface);
     text-align: center;
 }
 
@@ -82,7 +82,7 @@
     inset: 0;
     z-index: 1400;
     display: flex;
-    background: var(--color-background);
+    background: var(--ui-bg);
 }
 
 .table-pos-workspace .pos-container-new {

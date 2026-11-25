@@ -315,7 +315,7 @@ export default function Brands() {
                                         aria-labelledby="brand-active-label"
                                         className={`modal-toggle-card ${formData.active ? 'active' : ''}`}
                                         onClick={() => setFormData({ ...formData, active: !formData.active })}
-                                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)' }}
                                     >
                                         <div className="toggle-switch">
                                             <div className={`toggle-dot ${formData.active ? 'active' : ''}`} />

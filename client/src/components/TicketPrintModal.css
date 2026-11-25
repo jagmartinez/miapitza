@@ -6,12 +6,12 @@
 }
 
 .ticket-print-body > div[style*="color"] {
-  border: 1px solid color-mix(in srgb, var(--color-danger) 35%, transparent);
-  background: color-mix(in srgb, var(--color-danger) 9%, var(--color-surface)) !important;
+  border: 1px solid color-mix(in srgb, var(--ui-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--ui-danger) 9%, var(--ui-surface)) !important;
 }
 
 .ticket-print-body > div[style*="font-family"] {
   border-radius: var(--radius-xl) !important;
-  box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--color-border) 35%, transparent);
+  box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--ui-border) 35%, transparent);
   overscroll-behavior: contain;
 }

@@ -383,7 +383,7 @@ export default function Branches() {
                                     {(b._count?.warehouses ?? 0) === 0 && (
                                         <span
                                             className="cell-sub"
-                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--color-warning)', fontWeight: 600 }}
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--ui-warning)', fontWeight: 600 }}
                                             title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
                                         >
                                             <AlertTriangle size={12} /> Sin almacén
@@ -459,9 +459,9 @@ export default function Branches() {
                                             borderRadius: '999px',
                                             fontSize: '0.72rem',
                                             fontWeight: 700,
-                                            color: 'var(--color-warning)',
-                                            background: 'color-mix(in srgb, var(--color-warning) 15%, transparent)',
-                                            border: '1px solid var(--color-warning)'
+                                            color: 'var(--ui-warning)',
+                                            background: 'color-mix(in srgb, var(--ui-warning) 15%, transparent)',
+                                            border: '1px solid var(--ui-warning)'
                                         }}
                                         title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
                                     >
@@ -604,7 +604,7 @@ export default function Branches() {
                                         <div className="modal-input-group">
                                             <label className="modal-input-label" htmlFor="branch-phone">Teléfono</label>
                                             <div style={{ position: 'relative' }}>
-                                                <Phone size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
+                                                <Phone size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ui-text-muted)' }} />
                                                 <input
                                                     id="branch-phone"
                                                     type="text"
@@ -661,12 +661,12 @@ export default function Branches() {
                                         <h3>Geocerca para marcaje</h3>
                                     </div>
 
-                                    <p style={{ margin: 0, color: 'var(--color-neutral-500)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                                    <p style={{ margin: 0, color: 'var(--ui-text-muted)', fontSize: '0.85rem', lineHeight: 1.5 }}>
                                         Se validará la ubicación solo al realizar el marcaje. No se realiza seguimiento continuo ni se muestra un mapa.
                                     </p>
 
                                     {geofenceLoading && (
-                                        <div role="status" style={{ color: 'var(--color-neutral-500)', fontSize: '0.85rem' }}>
+                                        <div role="status" style={{ color: 'var(--ui-text-muted)', fontSize: '0.85rem' }}>
                                             Cargando configuración de geocerca…
                                         </div>
                                     )}
@@ -722,11 +722,11 @@ export default function Branches() {
                                                 gap: '8px',
                                                 padding: '10px 12px',
                                                 borderRadius: '8px',
-                                                border: '1px solid var(--color-border)',
-                                                background: 'var(--color-background)',
+                                                border: '1px solid var(--ui-border)',
+                                                background: 'var(--ui-bg)',
                                                 color: locationAccuracyM <= Number(formData.maxLocationAccuracyM || 0)
-                                                    ? 'var(--color-success)'
-                                                    : 'var(--color-warning)',
+                                                    ? 'var(--ui-success)'
+                                                    : 'var(--ui-warning)',
                                                 fontSize: '0.85rem',
                                             }}
                                         >
@@ -794,10 +794,10 @@ export default function Branches() {
                                             alignItems: 'flex-start',
                                             gap: '10px',
                                             padding: '12px',
-                                            border: '1px solid var(--color-border)',
+                                            border: '1px solid var(--ui-border)',
                                             borderRadius: '10px',
-                                            background: 'var(--color-background)',
-                                            color: 'var(--color-text)',
+                                            background: 'var(--ui-bg)',
+                                            color: 'var(--ui-text)',
                                             cursor: 'pointer',
                                         }}
                                     >
@@ -807,11 +807,11 @@ export default function Branches() {
                                             checked={formData.attendanceEnabled}
                                             disabled={!isSuperAdmin}
                                             onChange={e => setFormData({ ...formData, attendanceEnabled: e.target.checked })}
-                                            style={{ marginTop: '3px', accentColor: 'var(--color-primary)' }}
+                                            style={{ marginTop: '3px', accentColor: 'var(--ui-primary)' }}
                                         />
                                         <span>
                                             <strong style={{ display: 'block' }}>Habilitar validación de asistencia</strong>
-                                            <small style={{ color: 'var(--color-neutral-500)', lineHeight: 1.45 }}>
+                                            <small style={{ color: 'var(--ui-text-muted)', lineHeight: 1.45 }}>
                                                 Los marcajes de esta sucursal exigirán una ubicación dentro de la geocerca y con la precisión configurada.
                                             </small>
                                         </span>

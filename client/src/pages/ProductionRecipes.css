@@ -4,15 +4,15 @@
 .pr-helper-text {
     margin: 6px 0 0;
     font-size: var(--font-size-xs);
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
 }
 
 
 /* Cost panel */
 .pr-cost-panel {
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-lg);
-    background: var(--color-background);
+    background: var(--ui-bg);
     padding: var(--spacing-md);
 }
 
@@ -31,14 +31,14 @@
     gap: var(--spacing-md);
     align-items: center;
     font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     padding: 4px 0;
 }
 
 
 .pr-cost-line-name {
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -46,20 +46,20 @@
 
 
 .pr-cost-line-qty {
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
     font-size: var(--font-size-xs);
 }
 
 
 .pr-cost-line-total {
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
     text-align: right;
 }
 
 
 .pr-cost-totals {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--ui-border);
     padding-top: var(--spacing-sm);
     margin-top: var(--spacing-xs);
 }
@@ -71,18 +71,18 @@
     align-items: center;
     padding: 4px 0;
     font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 
 .pr-cost-total-row.highlight {
     font-size: var(--font-size-md);
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 
 .pr-cost-total-row.highlight strong {
-    color: var(--color-primary);
+    color: var(--ui-primary);
 }
 
 
@@ -90,15 +90,15 @@
 
 .pr-recipe-yield-summary { justify-content: center; }
 
-.pr-recipe-yield-summary > strong { color: var(--color-primary); }
+.pr-recipe-yield-summary > strong { color: var(--ui-primary); }
 
 
 .pr-detail-component-list {
     display: grid;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    background: var(--color-surface);
+    background: var(--ui-surface);
 }
 
 
@@ -108,7 +108,7 @@
     gap: var(--spacing-md);
     align-items: center;
     padding: 14px 16px;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--ui-border);
 }
 
 
@@ -121,8 +121,8 @@
     width: 30px;
     height: 30px;
     border-radius: 9px;
-    color: var(--color-primary);
-    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
+    color: var(--ui-primary);
+    background: color-mix(in srgb, var(--ui-primary) 12%, var(--ui-bg));
     font-size: var(--font-size-xs);
     font-weight: 800;
 }
@@ -137,7 +137,7 @@
 .pr-detail-component-identity span,
 .pr-detail-component-quantity span,
 .pr-detail-component-cost span {
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
@@ -147,7 +147,7 @@
 .pr-detail-component-quantity,
 .pr-detail-component-cost { text-align: right; }
 
-.pr-detail-component-cost strong { color: var(--color-primary); }
+.pr-detail-component-cost strong { color: var(--ui-primary); }
 
 
 @media (max-width: 768px) {

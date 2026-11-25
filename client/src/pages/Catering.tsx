@@ -1081,7 +1081,7 @@ export default function Catering() {
                                             <span>{event.customer.phone}</span>
                                         </div>
                                     )}
-                                    <div className="detail-item" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--color-border)', opacity: 0.8 }}>
+                                    <div className="detail-item" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--ui-border)', opacity: 0.8 }}>
                                         <Calendar size={14} />
                                         <span>{new Date(event.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} • {new Date(event.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>

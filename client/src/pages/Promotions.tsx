@@ -154,7 +154,7 @@ export default function Promotions() {
 
     const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
-    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)' }}>Cargando...</div>;
+    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--ui-text-muted)' }}>Cargando...</div>;
 
     return (
         <div className="promotions-page">

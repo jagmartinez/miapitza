@@ -289,7 +289,7 @@ export default function Settings() {
                                         aria-checked={formData.tipEnabled === 'true'}
                                         className={`settings-toggle ${formData.tipEnabled === 'true' ? 'active' : ''}`}
                                         onClick={() => setFormData({ ...formData, tipEnabled: formData.tipEnabled === 'true' ? 'false' : 'true' })}
-                                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)', marginTop: '4px' }}
+                                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)', marginTop: '4px' }}
                                     >
                                         <div className="toggle-switch">
                                             <div className={`toggle-dot ${formData.tipEnabled === 'true' ? 'active' : ''}`} />
@@ -458,7 +458,7 @@ export default function Settings() {
                                 <p>Cargando canales...</p>
                             ) : channels.length === 0 ? (
                                 <div>
-                                    <p style={{ marginBottom: '12px', color: 'var(--color-text-secondary)' }}>
+                                    <p style={{ marginBottom: '12px', color: 'var(--ui-text-muted)' }}>
                                         No hay canales configurados. Crea los canales predeterminados para comenzar.
                                     </p>
                                     <Button type="button" variant="primary" onClick={handleEnsureDefaults}>
@@ -470,7 +470,7 @@ export default function Settings() {
                                 <div className="channels-grid">
                                     {channels.map((ch, idx) => (
                                         <div key={ch.channel} className="channel-card" style={{
-                                            border: '1px solid var(--color-border)',
+                                            border: '1px solid var(--ui-border)',
                                             borderRadius: '8px',
                                             padding: '16px',
                                             marginBottom: '12px',

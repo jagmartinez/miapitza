@@ -9,12 +9,12 @@
 
 /* Card Visuals */
 .menu-item-card {
-  background: var(--color-surface);
+  background: var(--ui-surface);
   border-radius: var(--radius-xl);
   overflow: hidden;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: var(--shadow-sm);
-  border: 2px solid var(--color-border);
+  border: 2px solid var(--ui-border);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -32,7 +32,7 @@
   width: 100%;
   aspect-ratio: 16/9;
   overflow: hidden;
-  background: var(--color-neutral-100);
+  background: var(--ui-surface-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -40,7 +40,7 @@
 
 
 .item-placeholder-icon {
-  color: var(--color-neutral-300);
+  color: var(--ui-border);
   opacity: 0.5;
 }
 
@@ -56,8 +56,8 @@
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   box-shadow: var(--shadow-md);
   border-radius: 50%;
   width: 32px;
@@ -68,7 +68,7 @@
   cursor: pointer;
   opacity: 0.9;
   transition: all 0.2s;
-  color: var(--color-text);
+  color: var(--ui-text);
   z-index: 2;
 }
 
@@ -77,7 +77,7 @@
   background: white;
   transform: translateY(-50%) scale(1.1);
   opacity: 1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--ui-text) 25%, transparent);
 }
 
 
@@ -107,7 +107,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.5);
+  background: color-mix(in srgb, var(--ui-surface) 50%, transparent);
   transition: background 0.2s;
 }
 
@@ -130,7 +130,7 @@
 .item-name {
   font-size: 1.125rem;
   font-weight: 700;
-  color: var(--color-text);
+  color: var(--ui-text);
   margin: 0;
   line-height: 1.3;
 }
@@ -139,13 +139,13 @@
 .item-price-tag {
   font-size: 1.25rem;
   font-weight: 800;
-  color: var(--color-primary);
+  color: var(--ui-primary);
 }
 
 
 .item-description {
   font-size: 13px;
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
   margin: 6px 0 0 0;
   line-height: 1.4;
   overflow: hidden;
@@ -160,9 +160,9 @@
 /* Menu Card Actions Bar (EXACT CATERING STYLE) */
 .menu-card-actions {
   display: flex;
-  background: #1e293b;
+  background: var(--ui-surface-2);
   /* Dark Slate to match Image 0 */
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid color-mix(in srgb, var(--ui-surface) 5%, transparent);
 }
 
 
@@ -177,7 +177,7 @@
   padding: 10px 4px;
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: var(--ui-text-muted);
   /* Muted text */
   font-weight: 700;
   font-size: 8.5px;
@@ -185,7 +185,7 @@
   letter-spacing: 0.3px;
   cursor: pointer;
   transition: all 0.2s ease;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid color-mix(in srgb, var(--ui-surface) 8%, transparent);
   /* Vertical Separator */
 }
 
@@ -203,8 +203,8 @@
 
 
 .menu-action-btn:hover {
-  background: rgba(255, 255, 255, 0.03);
-  color: #ffffff;
+  background: color-mix(in srgb, var(--ui-surface) 3%, transparent);
+  color: var(--ui-primary-fg);
 }
 
 
@@ -221,8 +221,8 @@
 
 
 .menu-action-btn.delete:hover {
-  color: var(--color-danger);
-  background: rgba(239, 68, 68, 0.1);
+  color: var(--ui-danger);
+  background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
 }
 
 
@@ -233,7 +233,7 @@
   gap: 10px;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 2px solid var(--color-border);
+  border-bottom: 2px solid var(--ui-border);
 }
 
 
@@ -241,13 +241,13 @@
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: var(--color-neutral-900);
+  color: var(--ui-text);
   letter-spacing: -0.02em;
 }
 
 
 .section-header.sub {
-  border-bottom: 1px solid var(--color-neutral-200);
+  border-bottom: 1px solid var(--ui-border);
   padding-bottom: 8px;
   margin-bottom: 12px;
 }
@@ -257,7 +257,7 @@
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: var(--color-neutral-700);
+  color: var(--ui-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -329,7 +329,7 @@
   
     .item-price-tag {
       font-size: 1.05rem;
-      color: var(--color-primary);
+      color: var(--ui-primary);
       font-weight: 800;
     }
   
@@ -339,7 +339,7 @@
       -webkit-line-clamp: 1;
       line-clamp: 1;
       margin-top: 2px;
-      color: var(--color-text-secondary);
+      color: var(--ui-text-muted);
     }
   
   
@@ -349,7 +349,7 @@
       grid-column: 2;
       flex-direction: row;
       background: transparent;
-      border-top: 1px solid var(--color-border);
+      border-top: 1px solid var(--ui-border);
       margin-top: 0;
     }
   
@@ -359,8 +359,8 @@
       font-size: 10px !important;
       flex-direction: row !important;
       gap: 4px !important;
-      border-right: 1px solid var(--color-border);
-      color: var(--color-text-secondary);
+      border-right: 1px solid var(--ui-border);
+      color: var(--ui-text-muted);
     }
   
   
@@ -430,8 +430,8 @@
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface);
   transition: background 0.2s;
 }
 
@@ -442,7 +442,7 @@
 
 
 .recipe-ingredient-row:hover {
-  background: var(--color-background);
+  background: var(--ui-bg);
 }
 
 
@@ -457,7 +457,7 @@
 .recipe-unit-error {
   display: block;
   margin-top: 2px;
-  color: var(--color-danger);
+  color: var(--ui-danger);
   font-size: 10px;
   font-weight: 600;
 }
@@ -477,7 +477,7 @@
 
 
 .recipe-ingredient-measure {
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -530,9 +530,9 @@
   gap: 6px;
   padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-text);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -541,14 +541,14 @@
 
 
 .modifier-group-chip:hover {
-  border-color: var(--color-primary);
+  border-color: var(--ui-primary);
 }
 
 
 .modifier-group-chip.active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: #fff;
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  color: var(--ui-primary-fg);
 }
 
 
@@ -560,26 +560,26 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.12);
+  background: color-mix(in srgb, var(--ui-text) 12%, transparent);
   font-size: 11px;
 }
 
 
 .modifier-group-chip.active .modifier-group-chip-count {
-  background: rgba(255, 255, 255, 0.25);
+  background: color-mix(in srgb, var(--ui-surface) 25%, transparent);
 }
 
 
 .modifier-empty-hint {
   font-size: 13px;
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
 }
 
 
 .modifier-list {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 16px;
@@ -591,8 +591,8 @@
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface);
 }
 
 
@@ -610,13 +610,13 @@
 
 .modifier-list-name {
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--ui-text);
 }
 
 
 .modifier-list-price {
   font-size: 12px;
-  color: var(--color-primary);
+  color: var(--ui-primary);
   font-weight: 600;
 }
 
@@ -631,15 +631,15 @@
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: var(--color-text);
-  background: rgba(37, 99, 235, 0.1);
+  color: var(--ui-text);
+  background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
   border-radius: 6px;
   padding: 3px 8px;
 }
 
 
 .modifier-link-tag.muted {
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
   background: transparent;
 }
 
@@ -668,9 +668,9 @@
   align-items: center;
   gap: 12px;
   padding: 11px 13px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  background: var(--color-surface);
+  background: var(--ui-surface);
 }
 
 
@@ -680,8 +680,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
-  color: var(--color-primary);
+  background: color-mix(in srgb, var(--ui-primary) 14%, var(--ui-surface));
+  color: var(--ui-primary);
   font-size: 12px;
   font-weight: 800;
 }
@@ -697,14 +697,14 @@
 .menu-detail-price-grid span {
   display: block;
   margin-bottom: 3px;
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
   font-size: 11px;
 }
 
 
 .menu-detail-component strong {
   overflow-wrap: anywhere;
-  color: var(--color-text);
+  color: var(--ui-text);
   font-size: 13px;
 }
 
@@ -727,9 +727,9 @@
   justify-content: space-between;
   gap: 12px;
   padding: 11px 13px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  background: var(--color-surface);
+  background: var(--ui-surface);
 }
 
 
@@ -755,9 +755,9 @@
   overflow: hidden;
   aspect-ratio: 4 / 3;
   padding: 0;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  background: var(--color-background);
+  background: var(--ui-bg);
   cursor: zoom-in;
 }
 

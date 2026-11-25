@@ -201,7 +201,7 @@ export default function Kardex() {
             && movement.originalUnit !== unitLabel
             && movement.originalQuantity != null;
         return showOriginal ? (
-            <span className="kardex-original-unit" style={{ display: 'block', fontSize: '11px', color: 'var(--color-neutral-500)' }}>
+            <span className="kardex-original-unit" style={{ display: 'block', fontSize: '11px', color: 'var(--ui-text-muted)' }}>
                 ({movement.originalQuantity} {movement.originalUnit})
             </span>
         ) : null;

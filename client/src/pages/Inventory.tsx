@@ -942,7 +942,7 @@ export default function Inventory() {
                         ]}
                     />
 
-                    <div style={{ width: '1px', height: '24px', background: 'var(--color-border)', margin: '0 8px' }} />
+                    <div style={{ width: '1px', height: '24px', background: 'var(--ui-border)', margin: '0 8px' }} />
 
                     <div className="inventory-category-select-wrapper">
                         <AppSelect options={[
@@ -1003,9 +1003,9 @@ export default function Inventory() {
                                     {product.storageType && (
                                         <div className="detail-item">
                                             <span className="sku-tag" style={{
-                                                background: product.storageType === 'PERISHABLE' ? '#FEF2F2' : product.storageType === 'FROZEN' ? '#EFF6FF' : '#F0FDF4',
-                                                color: product.storageType === 'PERISHABLE' ? '#DC2626' : product.storageType === 'FROZEN' ? '#2563EB' : '#16A34A',
-                                                border: `1px solid ${product.storageType === 'PERISHABLE' ? '#FECACA' : product.storageType === 'FROZEN' ? '#BFDBFE' : '#BBF7D0'}`
+                                                background: product.storageType === 'PERISHABLE' ? 'var(--ui-danger-soft)' : product.storageType === 'FROZEN' ? 'var(--ui-primary-soft)' : 'var(--ui-success-soft)',
+                                                color: product.storageType === 'PERISHABLE' ? 'var(--ui-danger)' : product.storageType === 'FROZEN' ? 'var(--ui-primary)' : 'var(--ui-success)',
+                                                border: `1px solid ${product.storageType === 'PERISHABLE' ? 'var(--ui-danger)' : product.storageType === 'FROZEN' ? 'var(--ui-primary)' : 'var(--ui-success)'}`
                                             }}>
                                                 {{ 'PERISHABLE': 'Perecedero', 'FROZEN': 'Congelado', 'NON_PERISHABLE': 'No Perecedero' }[product.storageType]}
                                             </span>
@@ -1560,7 +1560,7 @@ export default function Inventory() {
                                             onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
                                             required
                                         />
-                                        <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                                        <small style={{ color: 'var(--ui-text-muted)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
                                             Se mostrará una alerta cuando el stock sea inferior a este valor. La cantidad
                                             está expresada en la <strong>unidad base</strong> del producto{formData.unit ? ` (${formData.unit})` : ''}.
                                         </small>

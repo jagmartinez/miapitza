@@ -51,10 +51,10 @@ describe('shared dialog foundation', () => {
     const sidebar = read('./Sidebar.css');
     const tableOrders = read('./TableOrdersModal.css');
 
-    expect(tokens).toContain('--dialog-panel-bg: var(--color-surface)');
-    expect(tokens).toContain('--dialog-content-bg: var(--color-surface)');
-    expect(tokens).toContain('--dialog-header-bg: var(--color-surface)');
-    expect(tokens).toContain('--dialog-accent: #3b82f6');
+    expect(tokens).toContain('--dialog-panel-bg: var(--ui-surface)');
+    expect(tokens).toContain('--dialog-content-bg: var(--ui-surface)');
+    expect(tokens).toContain('--dialog-header-bg: var(--ui-surface)');
+    expect(tokens).toContain('--dialog-accent: var(--ui-primary)');
     expect(sharedModal).toContain('var(--dialog-panel-bg');
     expect(payment).toContain('var(--dialog-panel-bg');
     for (const stylesheet of [sharedModal, payment, sidebar, tableOrders]) {

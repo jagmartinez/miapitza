@@ -4,7 +4,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: var(--dialog-overlay, rgba(15, 23, 42, 0.66));
+    background: var(--dialog-overlay, var(--ui-overlay));
     z-index: 999;
     backdrop-filter: blur(8px) saturate(0.85);
     animation: fadeIn 0.2s ease-out;
@@ -26,13 +26,13 @@
     right: -650px;
     width: 650px;
     height: 100vh;
-    background-color: var(--dialog-panel-bg, var(--color-surface));
+    background-color: var(--dialog-panel-bg, var(--ui-surface));
     box-shadow: var(--dialog-panel-shadow, -4px 0 20px rgba(0, 0, 0, 0.15));
     z-index: 1000;
     display: flex;
     flex-direction: column;
     transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border-left: 1px solid var(--dialog-panel-border, var(--color-border));
+    border-left: 1px solid var(--dialog-panel-border, var(--ui-border));
 }
 
 .sidebar-panel.sidebar-wide {
@@ -71,8 +71,8 @@
     justify-content: space-between;
     min-height: 76px;
     padding: var(--spacing-lg) var(--spacing-xl);
-    border-bottom: 1px solid var(--dialog-panel-border, var(--color-border));
-    background: var(--dialog-header-bg, var(--color-surface));
+    border-bottom: 1px solid var(--dialog-panel-border, var(--ui-border));
+    background: var(--dialog-header-bg, var(--ui-surface));
     gap: var(--spacing-md);
 }
 
@@ -91,7 +91,7 @@
     overflow-wrap: anywhere;
     font-weight: 750;
     letter-spacing: -0.02em;
-    color: var(--dialog-title-color, var(--color-text));
+    color: var(--dialog-title-color, var(--ui-text));
 }
 
 .sidebar-close {
@@ -101,21 +101,21 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--dialog-panel-bg, var(--color-surface)) 82%, transparent);
-    border: 1px solid var(--dialog-panel-border, var(--color-border));
-    color: var(--color-text-secondary);
+    background: color-mix(in srgb, var(--dialog-panel-bg, var(--ui-surface)) 82%, transparent);
+    border: 1px solid var(--dialog-panel-border, var(--ui-border));
+    color: var(--ui-text-muted);
     cursor: pointer;
     transition: all var(--transition-fast);
 }
 
 .sidebar-close:hover {
-    background-color: var(--color-surface-hover);
-    border-color: var(--color-text-secondary);
-    color: var(--color-text);
+    background-color: var(--ui-surface-2);
+    border-color: var(--ui-text-muted);
+    color: var(--ui-text);
 }
 
 .sidebar-close:focus-visible {
-    outline: 2px solid var(--dialog-accent, var(--color-primary));
+    outline: 2px solid var(--dialog-accent, var(--ui-primary));
     outline-offset: 2px;
 }
 
@@ -125,12 +125,12 @@
     padding: var(--spacing-xl);
     min-height: 0;
     overscroll-behavior: contain;
-    background: var(--dialog-content-bg, color-mix(in srgb, var(--color-surface) 96%, var(--color-background) 4%));
+    background: var(--dialog-content-bg, color-mix(in srgb, var(--ui-surface) 96%, var(--ui-bg) 4%));
 }
 
 .sidebar-description {
     margin: 0 0 var(--spacing-lg);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-size: var(--font-size-sm);
     line-height: 1.5;
 }
@@ -141,8 +141,8 @@
     justify-content: flex-end;
     gap: var(--spacing-md);
     padding: var(--spacing-lg) var(--spacing-xl);
-    border-top: 1px solid var(--dialog-panel-border, var(--color-border));
-    background: var(--dialog-muted-bg, var(--color-background));
+    border-top: 1px solid var(--dialog-panel-border, var(--ui-border));
+    background: var(--dialog-muted-bg, var(--ui-bg));
 }
 
 /* Subtle scrollbar for modal/sidebar scroll areas, matching the main sidebar. */
@@ -151,7 +151,7 @@
 .sidebar-body .modal-form-new,
 .sidebar-body textarea {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+    scrollbar-color: var(--ui-border) transparent;
 }
 
 .sidebar-body::-webkit-scrollbar,
@@ -173,7 +173,7 @@
 .sidebar-body .modal-tab-content::-webkit-scrollbar-thumb,
 .sidebar-body .modal-form-new::-webkit-scrollbar-thumb,
 .sidebar-body textarea::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+    background: var(--ui-border);
     border-radius: 3px;
 }
 
@@ -181,7 +181,7 @@
 .sidebar-body .modal-tab-content::-webkit-scrollbar-thumb:hover,
 .sidebar-body .modal-form-new::-webkit-scrollbar-thumb:hover,
 .sidebar-body textarea::-webkit-scrollbar-thumb:hover {
-    background: var(--color-neutral-400);
+    background: var(--ui-text-muted);
 }
 
 /* Exclude modals that already handle their own padding */

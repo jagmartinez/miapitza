@@ -93,7 +93,7 @@ export default function OrderCart({
                                                     justifyContent: 'space-between',
                                                     gap: '8px',
                                                     fontSize: '0.78rem',
-                                                    color: 'var(--color-text-secondary)'
+                                                    color: 'var(--ui-text-muted)'
                                                 }}
                                             >
                                                 <span>+ {mod.name}</span>
@@ -176,7 +176,7 @@ export default function OrderCart({
                                     type="checkbox"
                                     checked={tipEnabled}
                                     onChange={(e) => onTipToggle(e.target.checked)}
-                                    style={{ accentColor: 'var(--color-primary)' }}
+                                    style={{ accentColor: 'var(--ui-primary)' }}
                                 />
                                 <span>Propina ({tipRate}%):</span>
                             </label>
@@ -254,12 +254,12 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
             </div>
 
             {loadError && (
-                <div style={{ fontSize: '0.78rem', color: 'var(--color-error, #ef4444)', margin: '4px 0' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--ui-danger, #ef4444)', margin: '4px 0' }}>
                     No se pudieron cargar las promociones. Usa un código manual.
                 </div>
             )}
             {!loadError && !loading && promos.length === 0 && (
-                <div style={{ fontSize: '0.78rem', color: 'var(--color-neutral-500)', margin: '4px 0' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--ui-text-muted)', margin: '4px 0' }}>
                     No hay promociones activas disponibles.
                 </div>
             )}

@@ -419,7 +419,7 @@ export default function Companies() {
                                 <div className="modal-input-group">
                                     <label className="modal-input-label" htmlFor="company-ruc">RUC (Registro Único de Contribuyente)</label>
                                     <div style={{ position: 'relative' }}>
-                                        <FileText size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
+                                        <FileText size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ui-text-muted)' }} />
                                         <input
                                             id="company-ruc"
                                             type="text"

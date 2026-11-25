@@ -20,13 +20,13 @@
     gap: var(--spacing-md);
     font-size: var(--font-size-3xl);
     font-weight: 700;
-    color: var(--color-text);
+    color: var(--ui-text);
     margin: 0 0 var(--spacing-xs) 0;
 }
 
 .header-subtitle {
     font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     margin: 0;
 }
 
@@ -42,7 +42,7 @@
 .company-status-filters {
     display: flex;
     gap: var(--spacing-sm);
-    background: var(--color-surface);
+    background: var(--ui-surface);
     padding: var(--spacing-xs);
     border-radius: var(--radius-lg);
 }
@@ -56,11 +56,11 @@
     transition: all var(--transition-fast);
     font-size: var(--font-size-sm);
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .company-status-btn:hover {
-    background: var(--color-neutral-100);
+    background: var(--ui-surface-2);
 }
 
 .company-status-btn.active {
@@ -68,15 +68,15 @@
 }
 
 .company-status-btn.active:not(.active-filter):not(.inactive-filter) {
-    background: var(--color-primary);
+    background: var(--ui-primary);
 }
 
 .company-status-btn.active-filter.active {
-    background: var(--color-success);
+    background: var(--ui-success);
 }
 
 .company-status-btn.inactive-filter.active {
-    background: var(--color-danger);
+    background: var(--ui-danger);
 }
 
 /* ===== STATS COUNTS ===== */
@@ -91,17 +91,17 @@
     align-items: center;
     gap: var(--spacing-xs);
     padding: var(--spacing-sm) var(--spacing-md);
-    background: var(--color-background);
+    background: var(--ui-bg);
     border-radius: var(--radius-md);
     font-weight: 600;
 }
 
 .stat-count.active {
-    color: var(--color-success);
+    color: var(--ui-success);
 }
 
 .stat-count.inactive {
-    color: var(--color-danger);
+    color: var(--ui-danger);
 }
 
 .stat-count span {
@@ -114,11 +114,11 @@
 
 /* Status-based borders */
 .company-card-new.active {
-    border-color: var(--color-success);
+    border-color: var(--ui-success);
 }
 
 .company-card-new.inactive {
-    border-color: var(--color-danger);
+    border-color: var(--ui-danger);
     opacity: 0.8;
 }
 
@@ -140,21 +140,21 @@
 }
 
 .status-badge-new.active {
-    background: var(--color-success);
+    background: var(--ui-success);
 }
 
 .status-badge-new.inactive {
-    background: var(--color-danger);
+    background: var(--ui-danger);
 }
 
 /* Dark mode overrides */
 .dark .status-badge-new.active {
-    background: #059669;
+    background: var(--ui-success);
     /* Emerald 600 */
 }
 
 .dark .status-badge-new.inactive {
-    background: #dc2626;
+    background: var(--ui-danger);
     /* Red 600 */
 }
 
@@ -168,11 +168,11 @@
     width: 60px;
     height: 60px;
     border-radius: var(--radius-lg);
-    background: var(--color-background);
+    background: var(--ui-bg);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     overflow: hidden;
 }
 
@@ -185,15 +185,15 @@
 .company-name-new {
     font-size: var(--font-size-lg);
     font-weight: 700;
-    color: var(--color-text);
+    color: var(--ui-text);
     text-align: center;
     line-height: 1.2;
 }
 
 .company-ruc-new {
     font-size: 8.5px;
-    color: var(--color-text-secondary);
-    background: var(--color-background);
+    color: var(--ui-text-muted);
+    background: var(--ui-bg);
     padding: 2px 8px;
     border-radius: var(--radius-sm);
     font-weight: 600;
@@ -205,7 +205,7 @@
     grid-template-columns: repeat(2, 1fr);
     gap: var(--spacing-sm);
     padding-top: var(--spacing-sm);
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--ui-border);
     margin-top: auto;
     width: 100%;
 }
@@ -218,12 +218,12 @@
     display: block;
     font-size: var(--font-size-lg);
     font-weight: 700;
-    color: var(--color-primary);
+    color: var(--ui-primary);
 }
 
 .stat-label-new {
     font-size: 8.5px;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-weight: 500;
 }
 
@@ -231,13 +231,13 @@
    Company-specific deactivate/activate variants below. */
 
 .action-btn-new.deactivate:hover {
-    color: var(--color-danger);
-    background: rgba(239, 68, 68, 0.1);
+    color: var(--ui-danger);
+    background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
 }
 
 .action-btn-new.activate:hover {
-    color: var(--color-success);
-    background: rgba(16, 185, 129, 0.1);
+    color: var(--ui-success);
+    background: color-mix(in srgb, var(--ui-success) 10%, transparent);
 }
 
 /* ===== NO COMPANIES MESSAGE ===== */
@@ -248,10 +248,10 @@
     justify-content: center;
     padding: var(--spacing-3xl);
     text-align: center;
-    color: var(--color-text-secondary);
-    background: var(--color-background);
+    color: var(--ui-text-muted);
+    background: var(--ui-bg);
     border-radius: var(--radius-xl);
-    border: 2px dashed var(--color-border);
+    border: 2px dashed var(--ui-border);
 }
 
 .no-companies-message svg {
@@ -380,13 +380,13 @@
 }
 
 .company-status.active {
-    background: rgba(34, 197, 94, 0.1);
-    color: #22c55e;
+    background: color-mix(in srgb, var(--ui-success) 10%, transparent);
+    color: var(--ui-success);
 }
 
 .company-status.inactive {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+    color: var(--ui-danger);
 }
 
 .company-stats {
@@ -441,11 +441,11 @@
 }
 
 .action-btn.deactivate:hover {
-    background: #ef4444;
+    background: var(--ui-danger);
 }
 
 .action-btn.activate:hover {
-    background: #22c55e;
+    background: var(--ui-success);
 }
 
 .empty-state {
@@ -486,7 +486,7 @@
 
 .form-control {
     padding: 10px 12px;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--ui-border);
     border-radius: 6px;
     font-size: 14px;
     background: var(--bg-primary);
@@ -532,23 +532,23 @@
     gap: 2px;
     width: 100%;
     padding: 9px 10px;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-md);
-    background: var(--color-background);
+    background: var(--ui-bg);
     text-align: left;
 }
 
-.company-tax-profile-summary strong { color: var(--color-text); font-size: var(--font-size-sm); }
-.company-tax-profile-summary span { color: var(--color-text-secondary); font-size: 11px; }
+.company-tax-profile-summary strong { color: var(--ui-text); font-size: var(--font-size-sm); }
+.company-tax-profile-summary span { color: var(--ui-text-muted); font-size: 11px; }
 
 .company-tax-profile-form {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--spacing-md);
     padding: var(--spacing-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-lg);
-    background: var(--color-background);
+    background: var(--ui-bg);
 }
 
 .company-tax-profile-form > .modal-section-header,
@@ -556,7 +556,7 @@
 .company-tax-profile-form .modal-section-header { margin: 0; }
 .company-tax-profile-form .modal-section-header h3,
 .company-tax-profile-form .modal-section-header p { margin: 0; }
-.company-tax-profile-form .modal-section-header p { margin-top: 3px; color: var(--color-text-secondary); font-size: 12px; line-height: 1.4; }
+.company-tax-profile-form .modal-section-header p { margin-top: 3px; color: var(--ui-text-muted); font-size: 12px; line-height: 1.4; }
 
 @media (max-width: 620px) {
     .company-tax-profile-form { grid-template-columns: 1fr; }

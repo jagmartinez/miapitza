@@ -19,7 +19,7 @@
     display: flex;
     gap: 8px;
     margin-bottom: var(--spacing-2xl);
-    border-bottom: 2px solid var(--color-border);
+    border-bottom: 2px solid var(--ui-border);
     overflow-x: auto;
 }
 
@@ -31,7 +31,7 @@
     background: none;
     border: none;
     border-bottom: 3px solid transparent;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
@@ -39,13 +39,13 @@
 }
 
 .tab-btn:hover {
-    color: var(--color-primary);
-    background: var(--color-background);
+    color: var(--ui-primary);
+    background: var(--ui-bg);
 }
 
 .tab-btn.active {
-    color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
+    color: var(--ui-primary);
+    border-bottom-color: var(--ui-primary);
 }
 
 .settings-form {
@@ -59,20 +59,20 @@
 .settings-section h3 {
     font-size: 18px;
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
     margin-bottom: 20px;
 }
 
 .settings-section h4 {
     font-size: 16px;
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
     margin-bottom: 12px;
     margin-top: 24px;
 }
 
 .section-description {
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-size: 14px;
     margin-bottom: 16px;
     line-height: 1.5;
@@ -91,7 +91,7 @@
 .input-label {
     display: block;
     font-weight: 500;
-    color: var(--color-text);
+    color: var(--ui-text);
     margin-bottom: 8px;
     font-size: 14px;
 }
@@ -99,18 +99,18 @@
 .input {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: 6px;
     font-size: 14px;
-    background: var(--color-surface);
-    color: var(--color-text);
+    background: var(--ui-surface);
+    color: var(--ui-text);
     transition: all 0.2s;
 }
 
 .input:focus {
     outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    border-color: var(--ui-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 10%, transparent);
 }
 
 textarea.input {
@@ -131,13 +131,13 @@ textarea.input {
 .logo-preview {
     width: 120px;
     height: 120px;
-    border: 2px dashed var(--color-border);
+    border: 2px dashed var(--ui-border);
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background: var(--color-background);
+    background: var(--ui-bg);
 }
 
 .logo-preview img {
@@ -151,24 +151,24 @@ textarea.input {
     align-items: center;
     gap: 8px;
     padding: 10px 16px;
-    background: var(--color-background);
-    border: 1px solid var(--color-border);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s;
     font-size: 14px;
     font-weight: 500;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .upload-btn:hover {
-    background: #e5e7eb;
-    border-color: #9ca3af;
+    background: var(--ui-border);
+    border-color: var(--ui-border);
 }
 
 .system-actions {
     padding: 20px;
-    background: var(--color-background);
+    background: var(--ui-bg);
     border-radius: 8px;
     margin-top: 24px;
 }
@@ -177,7 +177,7 @@ textarea.input {
     display: flex;
     justify-content: flex-end;
     padding-top: 24px;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--ui-border);
 }
 
 input[type="checkbox"] {

@@ -7,7 +7,7 @@
 
 .table-selection-modal-toolbar {
     padding: var(--spacing-md) var(--spacing-xl) var(--spacing-md);
-    border-bottom: 1px solid var(--dialog-panel-border, var(--color-border));
+    border-bottom: 1px solid var(--dialog-panel-border, var(--ui-border));
     flex-shrink: 0;
 }
 
@@ -20,25 +20,25 @@
 .table-selection-search-icon {
     position: absolute;
     left: 12px;
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
     pointer-events: none;
 }
 
 .table-selection-search-input {
     width: 100%;
     padding: 10px 12px 10px 40px;
-    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    border: 1px solid var(--dialog-panel-border, var(--ui-border));
     border-radius: var(--radius-lg);
     font-size: 14px;
-    color: var(--color-text);
-    background: var(--color-background);
+    color: var(--ui-text);
+    background: var(--ui-bg);
     box-sizing: border-box;
 }
 
 .table-selection-search-input:focus {
     outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--dialog-focus-ring, rgba(37, 99, 235, 0.1));
+    border-color: var(--ui-primary);
+    box-shadow: 0 0 0 3px var(--dialog-focus-ring, color-mix(in srgb, var(--ui-primary) 10%, transparent));
 }
 
 .table-selection-modal-body {
@@ -47,7 +47,7 @@
     flex: 1;
     min-height: 0;
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+    scrollbar-color: var(--ui-border) transparent;
 }
 
 .table-selection-modal-body::-webkit-scrollbar {
@@ -59,17 +59,17 @@
 }
 
 .table-selection-modal-body::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+    background: var(--ui-border);
     border-radius: 3px;
 }
 
 .table-selection-modal-body::-webkit-scrollbar-thumb:hover {
-    background: var(--color-neutral-400);
+    background: var(--ui-text-muted);
 }
 
 .table-selection-empty {
     text-align: center;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-size: 14px;
     padding: var(--spacing-xl) 0;
 }
@@ -85,7 +85,7 @@
 .section-title {
     font-size: var(--font-size-lg);
     font-weight: 600;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     margin-bottom: var(--spacing-lg);
 }
 
@@ -98,8 +98,8 @@
 .table-card {
     position: relative;
     padding: var(--spacing-xl);
-    border: 2px solid var(--color-border);
-    background: var(--color-surface);
+    border: 2px solid var(--ui-border);
+    background: var(--ui-surface);
     border-radius: var(--radius-lg);
     cursor: pointer;
     transition: all var(--transition-fast);
@@ -112,39 +112,39 @@
 }
 
 .table-card:hover {
-    border-color: var(--color-text-secondary);
+    border-color: var(--ui-text-muted);
 }
 
 .table-card.available {
-    border-color: var(--color-success);
-    background: rgba(34, 197, 94, 0.05);
+    border-color: var(--ui-success);
+    background: color-mix(in srgb, var(--ui-success) 5%, transparent);
 }
 
 .table-card.available:hover {
-    border-color: var(--color-success);
-    background: rgba(34, 197, 94, 0.1);
+    border-color: var(--ui-success);
+    background: color-mix(in srgb, var(--ui-success) 10%, transparent);
 }
 
 .table-card.occupied {
-    border-color: var(--color-warning);
-    background: rgba(245, 158, 11, 0.05);
+    border-color: var(--ui-warning);
+    background: color-mix(in srgb, var(--ui-warning) 5%, transparent);
 }
 
 .table-card.occupied:hover {
-    border-color: var(--color-warning);
-    background: rgba(245, 158, 11, 0.1);
+    border-color: var(--ui-warning);
+    background: color-mix(in srgb, var(--ui-warning) 10%, transparent);
 }
 
 .table-number-large {
     font-size: var(--font-size-xl);
     font-weight: 700;
-    color: var(--color-text);
+    color: var(--ui-text);
     margin-bottom: var(--spacing-xs);
 }
 
 .table-capacity {
     font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .occupied-badge {
@@ -152,7 +152,7 @@
     top: var(--spacing-sm);
     right: var(--spacing-sm);
     padding: 2px 8px;
-    background: var(--color-warning);
+    background: var(--ui-warning);
     color: white;
     border-radius: var(--radius-full);
     font-size: var(--font-size-xs);

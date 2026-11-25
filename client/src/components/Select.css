@@ -12,7 +12,7 @@
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    color: var(--color-neutral-500);
+    color: var(--ui-text-muted);
     letter-spacing: 0.5px;
 }
 
@@ -26,22 +26,22 @@
 
 /* Standard Variant */
 .select-group.standard .react-select__control {
-    border: 1px solid var(--color-border);
-    background-color: var(--color-surface);
+    border: 1px solid var(--ui-border);
+    background-color: var(--ui-surface);
     min-height: 38px;
 }
 
 /* Modal Variant */
 .select-group.modal .react-select__control {
-    border: 1px solid var(--color-border);
-    background-color: var(--dialog-field-bg, var(--color-background));
+    border: 1px solid var(--ui-border);
+    background-color: var(--dialog-field-bg, var(--ui-bg));
     min-height: 42px;
 }
 
 .select-group .react-select__control--is-focused {
-    border-color: var(--color-primary) !important;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
-    background-color: var(--color-surface) !important;
+    border-color: var(--ui-primary) !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 10%, transparent) !important;
+    background-color: var(--ui-surface) !important;
 }
 
 .select-group.is-disabled .react-select__control {
@@ -50,7 +50,7 @@
 }
 
 .select-group.is-disabled .react-select__dropdown-indicator {
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
 }
 
 .select-group.modal .react-select__control--is-focused {
@@ -59,8 +59,8 @@
 }
 
 .select-group.modal .react-select__menu {
-    background-color: var(--dialog-panel-bg, var(--color-surface));
-    border-color: var(--dialog-panel-border, var(--color-border));
+    background-color: var(--dialog-panel-bg, var(--ui-surface));
+    border-color: var(--dialog-panel-border, var(--ui-border));
 }
 
 .select-group .react-select__value-container {
@@ -68,11 +68,11 @@
 }
 
 .select-group .react-select__placeholder {
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
 }
 
 .select-group .react-select__single-value {
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .select-group .react-select__indicator-separator {
@@ -80,17 +80,17 @@
 }
 
 .select-group .react-select__dropdown-indicator {
-    color: var(--color-neutral-500);
+    color: var(--ui-text-muted);
     padding: 8px 12px;
 }
 
 .select-group .react-select__menu {
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     box-shadow: var(--shadow-lg);
     border-radius: var(--radius-md);
     overflow: hidden;
     z-index: 100;
-    background-color: var(--color-surface);
+    background-color: var(--ui-surface);
 }
 
 .select-group .react-select__option {
@@ -98,22 +98,22 @@
     font-size: var(--font-size-base);
     cursor: pointer;
     transition: background-color 0.2s;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .select-group .react-select__option--is-focused {
-    background-color: var(--color-surface-hover);
-    color: var(--color-text);
+    background-color: var(--ui-surface-2);
+    color: var(--ui-text);
 }
 
 .select-group .react-select__option--is-selected {
-    background-color: var(--color-primary);
+    background-color: var(--ui-primary);
     color: white;
 }
 
 .select-error-message {
     font-size: var(--font-size-sm);
-    color: var(--color-danger);
+    color: var(--ui-danger);
     margin-top: 4px;
 }
 
@@ -122,28 +122,28 @@
  * Inline defaults from react-select must be overridden globally.
  */
 .react-select__menu-portal .react-select__menu {
-    background-color: var(--color-surface) !important;
-    border: 1px solid var(--color-border) !important;
-    color: var(--color-text) !important;
+    background-color: var(--ui-surface) !important;
+    border: 1px solid var(--ui-border) !important;
+    color: var(--ui-text) !important;
 }
 
 .react-select__menu-portal .react-select__option {
-    color: var(--color-text) !important;
+    color: var(--ui-text) !important;
     background-color: transparent !important;
 }
 
 .react-select__menu-portal .react-select__option--is-focused {
-    background-color: var(--color-surface-hover) !important;
-    color: var(--color-text) !important;
+    background-color: var(--ui-surface-2) !important;
+    color: var(--ui-text) !important;
 }
 
 .react-select__menu-portal .react-select__option--is-selected {
-    background-color: var(--select-accent, var(--color-primary)) !important;
-    color: #ffffff !important;
+    background-color: var(--select-accent, var(--ui-primary)) !important;
+    color: var(--ui-primary-fg) !important;
 }
 
 .react-select__menu-portal .react-select__menu-notice {
-    color: var(--color-text-secondary) !important;
+    color: var(--ui-text-muted) !important;
 }
 
 /* Shared react-select containers used outside CustomSelect */
@@ -151,16 +151,16 @@
 .category-select-container .react-select__menu,
 .branch-select-container .react-select__menu,
 .date-filter-group .react-select__menu {
-    background-color: var(--color-surface) !important;
-    border: 1px solid var(--color-border) !important;
-    color: var(--color-text) !important;
+    background-color: var(--ui-surface) !important;
+    border: 1px solid var(--ui-border) !important;
+    color: var(--ui-text) !important;
 }
 
 .react-select-container .react-select__option,
 .category-select-container .react-select__option,
 .branch-select-container .react-select__option,
 .date-filter-group .react-select__option {
-    color: var(--color-text) !important;
+    color: var(--ui-text) !important;
     background-color: transparent !important;
 }
 
@@ -168,30 +168,30 @@
 .category-select-container .react-select__option--is-focused,
 .branch-select-container .react-select__option--is-focused,
 .date-filter-group .react-select__option--is-focused {
-    background-color: var(--color-surface-hover) !important;
-    color: var(--color-text) !important;
+    background-color: var(--ui-surface-2) !important;
+    color: var(--ui-text) !important;
 }
 
 .react-select-container .react-select__option--is-selected,
 .category-select-container .react-select__option--is-selected,
 .branch-select-container .react-select__option--is-selected,
 .date-filter-group .react-select__option--is-selected {
-    background-color: var(--color-primary) !important;
-    color: #ffffff !important;
+    background-color: var(--ui-primary) !important;
+    color: var(--ui-primary-fg) !important;
 }
 
 .react-select-container .react-select__single-value,
 .category-select-container .react-select__single-value,
 .branch-select-container .react-select__single-value,
 .date-filter-group .react-select__single-value {
-    color: var(--color-text) !important;
+    color: var(--ui-text) !important;
 }
 
 .react-select-container .react-select__input-container,
 .category-select-container .react-select__input-container,
 .branch-select-container .react-select__input-container,
 .date-filter-group .react-select__input-container {
-    color: var(--color-text) !important;
+    color: var(--ui-text) !important;
 }
 
 .category-select-container,
@@ -216,7 +216,7 @@
  */
 .react-select__menu-list {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+    scrollbar-color: var(--ui-border) transparent;
 }
 
 .react-select__menu-list::-webkit-scrollbar {
@@ -229,10 +229,10 @@
 }
 
 .react-select__menu-list::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+    background: var(--ui-border);
     border-radius: 3px;
 }
 
 .react-select__menu-list::-webkit-scrollbar-thumb:hover {
-    background: var(--color-neutral-400);
+    background: var(--ui-text-muted);
 }

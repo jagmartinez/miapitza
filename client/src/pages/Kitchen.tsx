@@ -752,7 +752,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                                         </button>
                                                     )}
                                                     {item.status === 'DONE' && (
-                                                        <CheckCircle size={16} color="var(--color-success, #22c55e)" />
+                                                        <CheckCircle size={16} color="var(--ui-success, #22c55e)" />
                                                     )}
                                                 </>
                                             )}
@@ -774,7 +774,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 title="Reportar Problema"
                 size="sm"
             >
-                <p style={{ margin: '0 0 var(--spacing-md) 0', color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+                <p style={{ margin: '0 0 var(--spacing-md) 0', color: 'var(--ui-text-muted)', fontSize: 'var(--font-size-sm)' }}>
                     Orden #{selectedOrderId}
                 </p>
                 <textarea

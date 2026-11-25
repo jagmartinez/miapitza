@@ -2,10 +2,10 @@
 
 .view-toggle {
     display: inline-flex;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: 8px;
     overflow: hidden;
-    background: var(--color-surface);
+    background: var(--ui-surface);
 }
 
 .view-toggle .view-toggle-btn {
@@ -15,19 +15,19 @@
     padding: 8px 12px;
     border: none;
     background: transparent;
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .view-toggle .view-toggle-btn:hover {
-    color: var(--color-text);
-    background: var(--color-background);
+    color: var(--ui-text);
+    background: var(--ui-bg);
 }
 
 .view-toggle .view-toggle-btn.active {
-    background: var(--color-primary);
-    color: #fff;
+    background: var(--ui-primary);
+    color: var(--ui-primary-fg);
 }
 
 /* Match the default primary action height used beside catalog toggles. */
@@ -47,11 +47,11 @@
 /* ── Generic catalog table ── */
 .catalog-table-wrapper {
     overflow-x: auto;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-lg);
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+    scrollbar-color: var(--ui-border) transparent;
 }
 
 .catalog-table-wrapper::-webkit-scrollbar {
@@ -64,12 +64,12 @@
 }
 
 .catalog-table-wrapper::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+    background: var(--ui-border);
     border-radius: 3px;
 }
 
 .catalog-table-wrapper::-webkit-scrollbar-thumb:hover {
-    background: var(--color-neutral-400);
+    background: var(--ui-text-muted);
 }
 
 .catalog-table {
@@ -81,19 +81,19 @@
 .catalog-table thead th {
     position: sticky;
     top: 0;
-    background: var(--color-background);
-    color: var(--color-text-secondary);
+    background: var(--ui-bg);
+    color: var(--ui-text-muted);
     text-align: left;
     font-weight: 600;
     padding: 12px 14px;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--ui-border);
     white-space: nowrap;
 }
 
 .catalog-table tbody td {
     padding: 10px 14px;
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-text);
+    border-bottom: 1px solid var(--ui-border);
+    color: var(--ui-text);
     vertical-align: middle;
 }
 
@@ -102,7 +102,7 @@
 }
 
 .catalog-table tbody tr:hover {
-    background: var(--color-background);
+    background: var(--ui-bg);
 }
 
 .catalog-table .col-right {
@@ -122,7 +122,7 @@
 
 .catalog-cell-stack .cell-title {
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
     line-height: 1.25;
 }
 
@@ -130,7 +130,7 @@
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.3px;
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
 }
 
 /* Status pill */
@@ -144,38 +144,38 @@
 }
 
 .catalog-pill.ok {
-    background: #F0FDF4;
-    color: #16A34A;
+    background: var(--ui-success-soft);
+    color: var(--ui-success);
 }
 
 .catalog-pill.danger {
-    background: #FEF2F2;
-    color: #DC2626;
+    background: var(--ui-danger-soft);
+    color: var(--ui-danger);
 }
 
 .catalog-pill.warning {
-    background: #FFFBEB;
-    color: #D97706;
+    background: var(--ui-warning-soft);
+    color: var(--ui-warning);
 }
 
 .catalog-pill.neutral {
-    background: var(--color-background);
-    color: var(--color-text-secondary);
+    background: var(--ui-bg);
+    color: var(--ui-text-muted);
 }
 
 .dark .catalog-pill.ok {
-    background: rgba(22, 163, 74, 0.15);
-    color: #4ADE80;
+    background: color-mix(in srgb, var(--ui-success) 15%, transparent);
+    color: var(--ui-success);
 }
 
 .dark .catalog-pill.danger {
-    background: rgba(220, 38, 38, 0.15);
-    color: #F87171;
+    background: color-mix(in srgb, var(--ui-danger) 15%, transparent);
+    color: var(--ui-danger);
 }
 
 .dark .catalog-pill.warning {
-    background: rgba(217, 119, 6, 0.15);
-    color: #FBBF24;
+    background: color-mix(in srgb, var(--ui-warning) 15%, transparent);
+    color: var(--ui-warning);
 }
 
 /* Row action buttons */
@@ -191,22 +191,22 @@
     justify-content: center;
     width: 30px;
     height: 30px;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: 6px;
-    background: var(--color-surface);
-    color: var(--color-text-secondary);
+    background: var(--ui-surface);
+    color: var(--ui-text-muted);
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .catalog-action-btn:hover {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
+    color: var(--ui-primary);
+    border-color: var(--ui-primary);
 }
 
 .catalog-action-btn.danger:hover {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
+    color: var(--ui-danger);
+    border-color: var(--ui-danger);
 }
 
 .catalog-action-btn:disabled {
@@ -222,8 +222,8 @@
 }
 
 .catalog-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-lg);
     padding: 18px;
     display: flex;
@@ -233,19 +233,19 @@
 }
 
 .catalog-card:hover {
-    border-color: var(--color-primary);
+    border-color: var(--ui-primary);
     box-shadow: var(--shadow-sm);
 }
 
 .catalog-card .catalog-card-title {
     font-weight: 700;
     font-size: 1rem;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .catalog-card .catalog-card-sub {
     font-size: 0.82rem;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .catalog-card .catalog-card-rows {
@@ -263,12 +263,12 @@
 }
 
 .catalog-card .catalog-card-row .label {
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .catalog-card .catalog-card-row .value {
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .catalog-card .catalog-card-actions {
@@ -276,5 +276,5 @@
     gap: 8px;
     margin-top: auto;
     padding-top: 8px;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--ui-border);
 }

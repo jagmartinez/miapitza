@@ -20,13 +20,13 @@
     gap: var(--spacing-md);
     font-size: var(--font-size-3xl);
     font-weight: 700;
-    color: var(--color-text);
+    color: var(--ui-text);
     margin: 0 0 var(--spacing-xs) 0;
 }
 
 .header-subtitle {
     font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     margin: 0;
 }
 
@@ -42,7 +42,7 @@
 .branch-status-filters {
     display: flex;
     gap: var(--spacing-sm);
-    background: var(--color-surface);
+    background: var(--ui-surface);
     padding: var(--spacing-xs);
     border-radius: var(--radius-lg);
 }
@@ -56,11 +56,11 @@
     transition: all var(--transition-fast);
     font-size: var(--font-size-sm);
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .branch-status-btn:hover {
-    background: var(--color-neutral-100);
+    background: var(--ui-surface-2);
 }
 
 .branch-status-btn.active {
@@ -68,15 +68,15 @@
 }
 
 .branch-status-btn.active:not(.active-filter):not(.inactive-filter) {
-    background: var(--color-primary);
+    background: var(--ui-primary);
 }
 
 .branch-status-btn.active-filter.active {
-    background: var(--color-success);
+    background: var(--ui-success);
 }
 
 .branch-status-btn.inactive-filter.active {
-    background: var(--color-danger);
+    background: var(--ui-danger);
 }
 
 /* ===== STATS COUNTS ===== */
@@ -91,17 +91,17 @@
     align-items: center;
     gap: var(--spacing-xs);
     padding: var(--spacing-sm) var(--spacing-md);
-    background: var(--color-background);
+    background: var(--ui-bg);
     border-radius: var(--radius-md);
     font-weight: 600;
 }
 
 .stat-count.active {
-    color: var(--color-success);
+    color: var(--ui-success);
 }
 
 .stat-count.inactive {
-    color: var(--color-danger);
+    color: var(--ui-danger);
 }
 
 .stat-count span {
@@ -117,11 +117,11 @@
 
 /* Status-based borders */
 .branch-card-new.active {
-    border-color: var(--color-success);
+    border-color: var(--ui-success);
 }
 
 .branch-card-new.inactive {
-    border-color: var(--color-danger);
+    border-color: var(--ui-danger);
     opacity: 0.8;
 }
 
@@ -143,21 +143,21 @@
 }
 
 .status-badge-new.active {
-    background: var(--color-success);
+    background: var(--ui-success);
 }
 
 .status-badge-new.inactive {
-    background: var(--color-danger);
+    background: var(--ui-danger);
 }
 
 /* Dark mode overrides */
 .dark .status-badge-new.active {
-    background: #059669;
+    background: var(--ui-success);
     /* Emerald 600 */
 }
 
 .dark .status-badge-new.inactive {
-    background: #dc2626;
+    background: var(--ui-danger);
     /* Red 600 */
 }
 
@@ -170,7 +170,7 @@
 .branch-name-new {
     font-size: var(--font-size-xl);
     font-weight: 700;
-    color: var(--color-text);
+    color: var(--ui-text);
     margin-top: var(--spacing-sm);
 }
 
@@ -183,8 +183,8 @@
 
 .branch-code-new {
     font-size: var(--font-size-xs);
-    color: var(--color-text-secondary);
-    background: var(--color-background);
+    color: var(--ui-text-muted);
+    background: var(--ui-bg);
     padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: var(--radius-sm);
     font-weight: 500;
@@ -195,8 +195,8 @@
     align-items: center;
     gap: var(--spacing-xs);
     font-size: var(--font-size-xs);
-    color: var(--color-primary);
-    background: rgba(37, 99, 235, 0.1);
+    color: var(--ui-primary);
+    background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
     padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: var(--radius-sm);
     font-weight: 500;
@@ -213,7 +213,7 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-size: var(--font-size-xs);
 }
 
@@ -229,7 +229,7 @@
     grid-template-columns: repeat(3, 1fr);
     gap: var(--spacing-sm);
     padding-top: var(--spacing-md);
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--ui-border);
     margin-top: auto;
 }
 
@@ -241,12 +241,12 @@
     display: block;
     font-size: var(--font-size-xl);
     font-weight: 700;
-    color: var(--color-primary);
+    color: var(--ui-primary);
 }
 
 .stat-label-new {
     font-size: var(--font-size-xs);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-weight: 500;
 }
 
@@ -261,10 +261,10 @@
     justify-content: center;
     padding: var(--spacing-3xl);
     text-align: center;
-    color: var(--color-text-secondary);
-    background: var(--color-background);
+    color: var(--ui-text-muted);
+    background: var(--ui-bg);
     border-radius: var(--radius-xl);
-    border: 2px dashed var(--color-border);
+    border: 2px dashed var(--ui-border);
 }
 
 .no-branches-message svg {
@@ -312,11 +312,11 @@
 }
 
 .branch-card {
-    background: var(--color-surface);
+    background: var(--ui-surface);
     border-radius: 8px;
     padding: 1.5rem;
     box-shadow: var(--shadow-sm);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
@@ -335,13 +335,13 @@
 .branch-title h3 {
     margin: 0;
     font-size: 1.25rem;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .branch-code {
     font-size: 0.875rem;
-    color: var(--color-text-secondary);
-    background: var(--color-background);
+    color: var(--ui-text-muted);
+    background: var(--ui-bg);
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
     margin-top: 0.25rem;
@@ -357,13 +357,13 @@
 }
 
 .branch-status.active {
-    background: #d4edda;
-    color: #155724;
+    background: var(--ui-success-soft);
+    color: var(--ui-success);
 }
 
 .branch-status.inactive {
-    background: #f8d7da;
-    color: #721c24;
+    background: var(--ui-danger-soft);
+    color: var(--ui-danger);
 }
 
 .branch-details {
@@ -375,7 +375,7 @@
     align-items: center;
     gap: 0.75rem;
     margin-bottom: 0.5rem;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-size: 0.9rem;
 }
 
@@ -384,7 +384,7 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 0.5rem;
     padding-top: 1rem;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--ui-border);
     margin-bottom: 1rem;
 }
 
@@ -396,12 +396,12 @@
     display: block;
     font-size: 1.25rem;
     font-weight: 600;
-    color: var(--color-primary);
+    color: var(--ui-primary);
 }
 
 .stat-label {
     font-size: 0.75rem;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .branch-actions {
@@ -416,18 +416,18 @@
     cursor: pointer;
     padding: 0.5rem;
     border-radius: 4px;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     transition: all 0.2s;
 }
 
 .action-btn:hover {
-    background: var(--color-background);
-    color: var(--color-primary);
+    background: var(--ui-bg);
+    color: var(--ui-primary);
 }
 
 .action-btn.delete:hover {
-    color: #dc3545;
-    background: #f8d7da;
+    color: var(--ui-danger);
+    background: var(--ui-danger-soft);
 }
 
 /* Animations */

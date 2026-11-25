@@ -29,10 +29,10 @@
     height: 48px;
     display: grid;
     place-items: center;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: 50%;
-    color: var(--color-text);
-    background: var(--color-surface);
+    color: var(--ui-text);
+    background: var(--ui-surface);
     box-shadow: var(--shadow-md);
     cursor: pointer;
 }
@@ -46,10 +46,10 @@
     padding: 0 5px;
     display: grid;
     place-items: center;
-    border: 2px solid var(--color-surface);
+    border: 2px solid var(--ui-surface);
     border-radius: 999px;
-    background: var(--color-danger);
-    color: #fff;
+    background: var(--ui-danger);
+    color: var(--ui-primary-fg);
     font-size: 0.7rem;
     font-weight: 800;
 }
@@ -60,9 +60,9 @@
     margin-top: 10px;
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-lg);
-    background: var(--color-surface);
+    background: var(--ui-surface);
     box-shadow: var(--shadow-xl);
     overflow: hidden;
 }
@@ -72,36 +72,36 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--ui-border);
 }
 
 .kitchen-notification-panel header div { display: grid; gap: 2px; }
-.kitchen-notification-panel header small { color: var(--color-text-secondary); }
-.kitchen-notification-panel header button { border: 0; background: transparent; color: var(--color-text); cursor: pointer; }
+.kitchen-notification-panel header small { color: var(--ui-text-muted); }
+.kitchen-notification-panel header button { border: 0; background: transparent; color: var(--ui-text); cursor: pointer; }
 
 .kitchen-notification-list {
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+    scrollbar-color: var(--ui-border) transparent;
 }
 .kitchen-notification-list::-webkit-scrollbar { width: 6px; }
 .kitchen-notification-list::-webkit-scrollbar-track { background: transparent; }
-.kitchen-notification-list::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
-.kitchen-notification-list::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-400); }
-.kitchen-notification-empty { padding: 42px 16px; display: grid; place-items: center; gap: 8px; color: var(--color-text-secondary); }
+.kitchen-notification-list::-webkit-scrollbar-thumb { background: var(--ui-border); border-radius: 3px; }
+.kitchen-notification-list::-webkit-scrollbar-thumb:hover { background: var(--ui-text-muted); }
+.kitchen-notification-empty { padding: 42px 16px; display: grid; place-items: center; gap: 8px; color: var(--ui-text-muted); }
 
 .kitchen-notification-item {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 12px;
     padding: 14px 16px;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--ui-border);
 }
 
-.kitchen-notification-item.status-unread { border-left: 4px solid var(--color-primary); }
-.kitchen-notification-item p { margin: 4px 0; color: var(--color-text); font-size: 0.9rem; }
-.kitchen-notification-item time { color: var(--color-text-secondary); font-size: 0.75rem; }
+.kitchen-notification-item.status-unread { border-left: 4px solid var(--ui-primary); }
+.kitchen-notification-item p { margin: 4px 0; color: var(--ui-text); font-size: 0.9rem; }
+.kitchen-notification-item time { color: var(--ui-text-muted); font-size: 0.75rem; }
 .kitchen-notification-item > button {
     align-self: center;
     min-height: 44px;
@@ -109,10 +109,10 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    border: 1px solid var(--color-success);
+    border: 1px solid var(--ui-success);
     border-radius: var(--radius-md);
     background: transparent;
-    color: var(--color-success);
+    color: var(--ui-success);
     font-weight: 700;
     cursor: pointer;
 }

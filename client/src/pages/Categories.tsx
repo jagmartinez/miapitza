@@ -366,7 +366,7 @@ export default function Categories() {
                                             placeholder="Ej: CAR, BEB, VEG..."
                                             maxLength={10}
                                         />
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                        <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '4px' }}>
                                             Se usa para generar códigos automáticos en productos (ej: CAR-000001). Solo letras, máx 10 caracteres.
                                         </p>
                                     </div>
@@ -402,14 +402,14 @@ export default function Categories() {
                                             aria-labelledby="category-show-in-menu-label"
                                             className={`modal-toggle-card ${formData.showInMenu ? 'active' : ''}`}
                                             onClick={() => setFormData({ ...formData, showInMenu: !formData.showInMenu })}
-                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)' }}
                                         >
                                             <div className="toggle-switch">
                                                 <div className={`toggle-dot ${formData.showInMenu ? 'active' : ''}`} />
                                             </div>
                                             <span>{formData.showInMenu ? 'Visible en el menú / POS' : 'Oculta del menú / POS'}</span>
                                         </div>
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                        <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '4px' }}>
                                             Controla si la categoría aparece al crear platos y en el punto de venta.
                                         </p>
                                     </div>
@@ -423,20 +423,20 @@ export default function Categories() {
                                             aria-labelledby="category-show-in-inventory-label"
                                             className={`modal-toggle-card ${formData.showInInventory ? 'active' : ''}`}
                                             onClick={() => setFormData({ ...formData, showInInventory: !formData.showInInventory })}
-                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)' }}
                                         >
                                             <div className="toggle-switch">
                                                 <div className={`toggle-dot ${formData.showInInventory ? 'active' : ''}`} />
                                             </div>
                                             <span>{formData.showInInventory ? 'Visible en inventario' : 'Oculta del inventario'}</span>
                                         </div>
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                        <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '4px' }}>
                                             Controla si la categoría aparece al crear productos y en los filtros de inventario.
                                         </p>
                                     </div>
 
                                     {formData.active && !formData.showInMenu && !formData.showInInventory && (
-                                        <p style={{ fontSize: '12px', color: 'var(--color-danger)', margin: 0 }}>
+                                        <p style={{ fontSize: '12px', color: 'var(--ui-danger)', margin: 0 }}>
                                             Debe activar al menos una visibilidad (menú o inventario).
                                         </p>
                                     )}
@@ -450,14 +450,14 @@ export default function Categories() {
                                             aria-labelledby="category-active-label"
                                             className={`modal-toggle-card ${formData.active ? 'active' : ''}`}
                                             onClick={() => setFormData({ ...formData, active: !formData.active })}
-                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)' }}
                                         >
                                             <div className="toggle-switch">
                                                 <div className={`toggle-dot ${formData.active ? 'active' : ''}`} />
                                             </div>
                                             <span>{formData.active ? 'Categoría activa' : 'Categoría desactivada'}</span>
                                         </div>
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                        <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '4px' }}>
                                             Si se desactiva, la categoría no aparecerá en ningún lugar del sistema.
                                         </p>
                                     </div>
@@ -473,7 +473,7 @@ export default function Categories() {
                                                 onChange={e => setFormData({ ...formData, sortOrder: parseInt(e.target.value) })}
                                                 placeholder="0"
                                             />
-                                            <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '8px' }}>
+                                            <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '8px' }}>
                                                 Define la posición de esta categoría en los filtros del menú. Números menores aparecen primero.
                                             </p>
                                         </div>

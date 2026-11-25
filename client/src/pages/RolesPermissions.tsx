@@ -114,7 +114,7 @@ export default function RolesPermissions() {
         }));
     };
 
-    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)' }}>Cargando...</div>;
+    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--ui-text-muted)' }}>Cargando...</div>;
 
     const columns: Column<RoleRow>[] = [
         {

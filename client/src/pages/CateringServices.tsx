@@ -29,7 +29,7 @@ interface CateringServiceRow {
 const marginPct = (s: { internalCost: number; salePrice: number }) =>
     s.salePrice > 0 ? ((s.salePrice - s.internalCost) / s.salePrice) * 100 : 0;
 const marginColor = (pct: number) =>
-    pct >= 50 ? 'var(--color-success)' : pct >= 20 ? 'var(--color-warning)' : 'var(--color-danger)';
+    pct >= 50 ? 'var(--ui-success)' : pct >= 20 ? 'var(--ui-warning)' : 'var(--ui-danger)';
 export default function CateringServices() {
     const { user } = useAuth();
     const { formatMoney: money } = useCurrency();
@@ -219,7 +219,7 @@ export default function CateringServices() {
                             )
                         },
                         { key: 'cost', header: 'Costo', align: 'right', render: (s) => money(s.internalCost) },
-                        { key: 'sale', header: 'Venta', align: 'right', render: (s) => <span style={{ color: 'var(--color-success)' }}>{money(s.salePrice)}</span> },
+                        { key: 'sale', header: 'Venta', align: 'right', render: (s) => <span style={{ color: 'var(--ui-success)' }}>{money(s.salePrice)}</span> },
                         { key: 'margin', header: 'Margen', align: 'right', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{formatNumber(m, 1)}%</span>; } },
                         ...(canManageCatering ? [{
                             key: 'actions',
@@ -246,7 +246,7 @@ export default function CateringServices() {
                                 </div>
                                 <div className="catalog-card-rows">
                                     <div className="catalog-card-row"><span className="label">Costo</span><span className="value">{money(service.internalCost)}</span></div>
-                                    <div className="catalog-card-row"><span className="label">Venta</span><span className="value" style={{ color: 'var(--color-success)' }}>{money(service.salePrice)}</span></div>
+                                    <div className="catalog-card-row"><span className="label">Venta</span><span className="value" style={{ color: 'var(--ui-success)' }}>{money(service.salePrice)}</span></div>
                                     <div className="catalog-card-row"><span className="label">Margen</span><span className="value" style={{ color: marginColor(m) }}>{formatNumber(m, 1)}%</span></div>
                                 </div>
                                 {canManageCatering && (

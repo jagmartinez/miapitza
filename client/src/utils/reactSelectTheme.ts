@@ -7,33 +7,33 @@ export function getReactSelectThemeStyles<
     IsMulti extends boolean = false,
     Group extends GroupBase<Option> = GroupBase<Option>
 >(variant: SelectVariant = 'standard'): StylesConfig<Option, IsMulti, Group> {
-    const controlBg = variant === 'modal' ? 'var(--dialog-field-bg, var(--color-background))' : 'var(--color-surface)';
-    const accent = variant === 'modal' ? 'var(--dialog-accent)' : 'var(--color-primary)';
+    const controlBg = variant === 'modal' ? 'var(--dialog-field-bg, var(--ui-bg))' : 'var(--ui-surface)';
+    const accent = variant === 'modal' ? 'var(--dialog-accent)' : 'var(--ui-primary)';
     const focusRing = variant === 'modal' ? 'var(--dialog-focus-ring)' : 'rgba(37, 99, 235, 0.1)';
 
     return {
         control: (base, state) => ({
             ...base,
             backgroundColor: state.isDisabled
-                ? 'color-mix(in srgb, var(--color-background) 82%, var(--color-surface))'
-                : state.isFocused ? 'var(--color-surface)' : controlBg,
-            borderColor: state.isFocused ? accent : 'var(--color-border)',
+                ? 'color-mix(in srgb, var(--ui-bg) 82%, var(--ui-surface))'
+                : state.isFocused ? 'var(--ui-surface)' : controlBg,
+            borderColor: state.isFocused ? accent : 'var(--ui-border)',
             boxShadow: state.isFocused ? `0 0 0 3px ${focusRing}` : 'none',
             minHeight: variant === 'modal' ? 42 : 38,
             cursor: state.isDisabled ? 'not-allowed' : 'pointer',
             opacity: state.isDisabled ? 0.62 : 1,
             '&:hover': {
-                borderColor: state.isFocused ? accent : 'var(--color-border)',
+                borderColor: state.isFocused ? accent : 'var(--ui-border)',
             },
         }),
         menu: (base) => ({
             ...base,
-            backgroundColor: variant === 'modal' ? 'var(--dialog-panel-bg, var(--color-surface))' : 'var(--color-surface)',
-            border: `1px solid ${variant === 'modal' ? 'var(--dialog-panel-border, var(--color-border))' : 'var(--color-border)'}`,
+            backgroundColor: variant === 'modal' ? 'var(--dialog-panel-bg, var(--ui-surface))' : 'var(--ui-surface)',
+            border: `1px solid ${variant === 'modal' ? 'var(--dialog-panel-border, var(--ui-border))' : 'var(--ui-border)'}`,
             borderRadius: 8,
             boxShadow: 'var(--shadow-lg)',
             overflow: 'hidden',
-            color: 'var(--color-text)',
+            color: 'var(--ui-text)',
         }),
         menuList: (base) => ({
             ...base,
@@ -45,22 +45,22 @@ export function getReactSelectThemeStyles<
             backgroundColor: state.isSelected
                 ? accent
                 : state.isFocused
-                    ? 'var(--color-surface-hover)'
+                    ? 'var(--ui-surface-2)'
                     : 'transparent',
-            color: state.isSelected ? '#ffffff' : 'var(--color-text)',
+            color: state.isSelected ? '#ffffff' : 'var(--ui-text)',
             cursor: 'pointer',
         }),
         singleValue: (base) => ({
             ...base,
-            color: 'var(--color-text)',
+            color: 'var(--ui-text)',
         }),
         placeholder: (base) => ({
             ...base,
-            color: 'var(--color-text-tertiary)',
+            color: 'var(--ui-text-muted)',
         }),
         input: (base) => ({
             ...base,
-            color: 'var(--color-text)',
+            color: 'var(--ui-text)',
             margin: 0,
             padding: 0,
         }),
@@ -70,15 +70,15 @@ export function getReactSelectThemeStyles<
         }),
         dropdownIndicator: (base) => ({
             ...base,
-            color: 'var(--color-neutral-500)',
+            color: 'var(--ui-text-muted)',
             padding: '8px 12px',
         }),
         clearIndicator: (base) => ({
             ...base,
-            color: 'var(--color-neutral-500)',
+            color: 'var(--ui-text-muted)',
             padding: '8px 12px',
             ':hover': {
-                color: 'var(--color-text)',
+                color: 'var(--ui-text)',
             },
         }),
         indicatorSeparator: () => ({
@@ -86,25 +86,25 @@ export function getReactSelectThemeStyles<
         }),
         noOptionsMessage: (base) => ({
             ...base,
-            color: 'var(--color-text-secondary)',
+            color: 'var(--ui-text-muted)',
         }),
         loadingMessage: (base) => ({
             ...base,
-            color: 'var(--color-text-secondary)',
+            color: 'var(--ui-text-muted)',
         }),
         multiValue: (base) => ({
             ...base,
-            backgroundColor: 'var(--color-background)',
+            backgroundColor: 'var(--ui-bg)',
         }),
         multiValueLabel: (base) => ({
             ...base,
-            color: 'var(--color-text)',
+            color: 'var(--ui-text)',
         }),
         multiValueRemove: (base) => ({
             ...base,
-            color: 'var(--color-text-secondary)',
+            color: 'var(--ui-text-muted)',
             ':hover': {
-                backgroundColor: 'var(--color-danger)',
+                backgroundColor: 'var(--ui-danger)',
                 color: '#ffffff',
             },
         }),

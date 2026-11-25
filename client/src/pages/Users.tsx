@@ -482,7 +482,7 @@ export default function Users() {
                                 <div className="user-card-info">
                                     <h3 className="user-name">{user.name}</h3>
                                     {user.color && (
-                                        <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: user.color, marginLeft: '6px', verticalAlign: 'middle', border: '1px solid var(--color-neutral-300)' }} />
+                                        <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: user.color, marginLeft: '6px', verticalAlign: 'middle', border: '1px solid var(--ui-border)' }} />
                                     )}
                                 </div>
                             </div>
@@ -625,7 +625,7 @@ export default function Users() {
                                             {editingUser ? "Nueva Contraseña (dejar en blanco para no cambiar)" : "Contraseña"}
                                         </label>
                                         <div style={{ position: 'relative' }}>
-                                            <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
+                                            <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ui-text-muted)' }} />
                                             <input
                                                 id="user-password"
                                                 type="password"
@@ -670,7 +670,7 @@ export default function Users() {
                                         <Field label="Tipo de cuenta" htmlFor="sel-681">
 <AppSelect isClearable={false} inputId="sel-681" options={accountTypeOptions.filter((o) => o.value === formData.accountType)} value={formData.accountType} onChange={() => undefined} isDisabled />
 </Field>
-                                        <small style={{ color: 'var(--color-neutral-500)', lineHeight: 1.45 }}>
+                                        <small style={{ color: 'var(--ui-text-muted)', lineHeight: 1.45 }}>
                                             {formData.accountType === 'INTERNAL'
                                                 ? editingUser?.employee
                                                     ? `Vinculado al expediente ${editingUser.employee.employeeCode || editingUser.employee.employeeNumber || `#${editingUser.employee.id}`} · ${editingUser.employee.status}.`
@@ -688,9 +688,9 @@ export default function Users() {
                                                     <label key={r.id} style={{
                                                         display: 'flex', alignItems: 'center', gap: '6px',
                                                         padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                                                        background: isChecked ? getRoleColor(r.name) + '20' : 'var(--color-background)',
-                                                        border: `1.5px solid ${isChecked ? getRoleColor(r.name) : 'var(--color-border)'}`,
-                                                        color: 'var(--color-text)',
+                                                        background: isChecked ? getRoleColor(r.name) + '20' : 'var(--ui-bg)',
+                                                        border: `1.5px solid ${isChecked ? getRoleColor(r.name) : 'var(--ui-border)'}`,
+                                                        color: 'var(--ui-text)',
                                                         fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
                                                         transition: 'all 0.15s ease'
                                                     }}>
@@ -732,12 +732,12 @@ export default function Users() {
                                                     onChange={e => setFormData({ ...formData, color: e.target.value })}
                                                     style={{ width: '40px', height: '36px', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: 0 }}
                                                 />
-                                                <span style={{ fontSize: '0.85rem', color: 'var(--color-neutral-500)' }}>
+                                                <span style={{ fontSize: '0.85rem', color: 'var(--ui-text-muted)' }}>
                                                     {formData.color || 'Sin color'}
                                                 </span>
                                                 {formData.color && (
                                                     <button type="button" onClick={() => setFormData({ ...formData, color: '' })}
-                                                        style={{ fontSize: '0.75rem', color: 'var(--color-error)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                                        style={{ fontSize: '0.75rem', color: 'var(--ui-danger)', background: 'none', border: 'none', cursor: 'pointer' }}>
                                                         Quitar
                                                     </button>
                                                 )}
@@ -757,9 +757,9 @@ export default function Users() {
                                                             <label key={b.id} style={{
                                                                 display: 'flex', alignItems: 'center', gap: '6px',
                                                                 padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                                                                background: isChecked ? 'color-mix(in srgb, var(--color-primary) 18%, transparent)' : 'var(--color-background)',
-                                                                border: `1.5px solid ${isChecked ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                                                                color: isChecked ? 'var(--color-primary)' : 'var(--color-text)',
+                                                                background: isChecked ? 'color-mix(in srgb, var(--ui-primary) 18%, transparent)' : 'var(--ui-bg)',
+                                                                border: `1.5px solid ${isChecked ? 'var(--ui-primary)' : 'var(--ui-border)'}`,
+                                                                color: isChecked ? 'var(--ui-primary)' : 'var(--ui-text)',
                                                                 fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
                                                             }}>
                                                                 <input
@@ -779,7 +779,7 @@ export default function Users() {
                                                         );
                                                     })}
                                                 </div>
-                                                <small style={{ color: 'var(--color-neutral-500)' }}>El usuario solo verá información de su sucursal activa. El superadmin rota la sucursal activa entre las permitidas.</small>
+                                                <small style={{ color: 'var(--ui-text-muted)' }}>El usuario solo verá información de su sucursal activa. El superadmin rota la sucursal activa entre las permitidas.</small>
                                             </div>
 
                                             <Field label="Sucursal activa" htmlFor="sel-821">

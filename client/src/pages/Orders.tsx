@@ -587,7 +587,7 @@ export default function Orders() {
                                                     <span style={{
                                                         width: '10px', height: '10px', borderRadius: '50%',
                                                         backgroundColor: selectedOrder.user.color, flexShrink: 0,
-                                                        border: '1px solid var(--color-neutral-300)'
+                                                        border: '1px solid var(--ui-border)'
                                                     }} />
                                                 )}
                                                 {selectedOrder.user?.name || 'Sin asignar'}
