@@ -650,7 +650,7 @@ export const getResolvedSettings: ValidationSchema = {
 export const patchResolvedSettings: ValidationSchema = {
     body: {
         branchId: { type: 'number', integer: true, min: 1 },
-        version: { type: 'string' },
+        version: { type: 'string', required: true },
         changes: { type: 'object', required: true },
     },
 };

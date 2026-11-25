@@ -28,7 +28,7 @@ export class SettingConflictError extends Error {
     }
 }
 
-type Reader = Pick<Prisma.TransactionClient, 'setting' | 'branchSettingOverride'>;
+type Reader = Pick<Prisma.TransactionClient, 'setting' | 'branchSettingOverride' | 'company'>;
 
 const DEF_BY_KEY: ReadonlyMap<string, SettingDef> = new Map(SETTINGS_REGISTRY.map((d) => [d.key, d]));
 const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;
@@ -82,14 +82,17 @@ function comparable(def: SettingDef, stored: string): string {
 
 async function loadRows(reader: Reader, companyId: number, branchId: number | null) {
     const prefix = `${companyId}_`;
-    const [settingRows, overrideRows] = await Promise.all([
+    const [settingRows, overrideRows, companyRow] = await Promise.all([
         reader.setting.findMany({ where: { companyId, name: { startsWith: prefix } } }),
         branchId
             ? reader.branchSettingOverride.findMany({ where: { companyId, branchId } })
-            : Promise.resolve([] as { id: number; name: string; value: string; updatedAt: Date }[])
+            : Promise.resolve([] as { id: number; name: string; value: string; updatedAt: Date }[]),
+        reader.company.findUnique({ where: { id: companyId }, select: { ruc: true } })
     ]);
     const company = new Map<string, string>();
     for (const r of settingRows) company.set(r.name.substring(prefix.length), r.value);
+    // Single source of truth for the tax id is Company.ruc (same rule as SettingService.getAll).
+    if (companyRow?.ruc) company.set('ruc', companyRow.ruc);
     const overrides = new Map<string, string>();
     for (const r of overrideRows) overrides.set(r.name, r.value);
 
@@ -100,6 +103,8 @@ async function loadRows(reader: Reader, companyId: number, branchId: number | nu
     for (const r of [...overrideRows].sort((a, b) => a.name.localeCompare(b.name))) {
         hash.update(`o|${r.name}|${r.updatedAt.toISOString()}\n`);
     }
+    hash.update(`c|ruc|${companyRow?.ruc ?? ''}
+`);
     return { company, overrides, version: hash.digest('hex') };
 }
 
@@ -159,14 +164,29 @@ export class SettingsScopeService {
         if (Object.keys(errors).length > 0) throw new SettingValidationError(errors);
 
         await prisma.$transaction(async (tx) => {
+            // Serialize concurrent saves of the same company so the version check is reliable.
+            await tx.$queryRaw`SELECT id FROM \`Company\` WHERE id = ${companyId} FOR UPDATE`;
             const rows = await loadRows(tx, companyId, branchId);
             if (expectedVersion !== undefined && expectedVersion !== rows.version) throw new SettingConflictError();
+
+            if (branchId === null && (normalized.has('kds_warning_minutes') || normalized.has('kds_urgent_minutes'))) {
+                const effective = (key: string) => {
+                    const def = DEF_BY_KEY.get(key)!;
+                    return Number(normalized.get(key)?.value ?? rows.company.get(key) ?? def.default);
+                };
+                if (effective('kds_warning_minutes') >= effective('kds_urgent_minutes')) {
+                    throw new SettingValidationError({
+                        kds_warning_minutes: 'El aviso debe ser menor que el tiempo urgente'
+                    });
+                }
+            }
 
             for (const [key, { def, value }] of normalized) {
                 const currentCompany = rows.company.get(key) ?? def.default;
                 if (branchId === null) {
-                    // Unchanged (or still the pristine default): nothing to persist or audit.
-                    if (comparable(def, currentCompany) === value) continue;
+                    // Unchanged: nothing to persist or audit. With no stored row we always persist,
+                    // so an explicit choice is never a silent no-op.
+                    if (rows.company.has(key) && comparable(def, currentCompany) === value) continue;
                     await tx.setting.upsert({
                         where: { companyId_name: { companyId, name: `${companyId}_${key}` } },
                         update: { value },
@@ -209,14 +229,18 @@ export class SettingsScopeService {
         return { resolved: values, version };
     }
 
-    static async history(companyId: number, opts: { section?: string; key?: string; limit?: number } = {}) {
+    static async history(companyId: number, opts: { section?: string; key?: string; limit?: number; branchIds?: number[] } = {}) {
         const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 20) || 20, 1), 200);
         let names: string[] | undefined;
         if (opts.key) names = [opts.key];
         else if (opts.section) names = SETTINGS_REGISTRY.filter((d) => d.section === opts.section).map((d) => d.key);
 
         const rows = await prisma.settingAudit.findMany({
-            where: { companyId, ...(names ? { name: { in: names } } : {}) },
+            where: {
+                companyId,
+                ...(names ? { name: { in: names } } : {}),
+                ...(opts.branchIds ? { OR: [{ branchId: null }, { branchId: { in: opts.branchIds } }] } : {})
+            },
             orderBy: { createdAt: 'desc' },
             take: limit
         });

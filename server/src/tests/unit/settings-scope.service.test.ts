@@ -8,7 +8,8 @@ afterEach(() => { jest.restoreAllMocks(); });
 
 const d = (s: string) => new Date(s);
 
-function mockReads(opts: { company?: Record<string, string>; overrides?: Record<string, string> } = {}) {
+function mockReads(opts: { company?: Record<string, string>; overrides?: Record<string, string>; ruc?: string | null } = {}) {
+    jest.spyOn(prisma.company, 'findUnique').mockResolvedValue({ ruc: opts.ruc ?? null } as never);
     jest.spyOn(prisma.setting, 'findMany').mockResolvedValue(
         Object.entries(opts.company ?? {}).map(([k, value], i) => ({ id: i + 1, name: `1_${k}`, value, updatedAt: d('2026-01-01T00:00:00Z') })) as never
     );
@@ -25,7 +26,8 @@ function mockTx(opts: Parameters<typeof mockReads>[0] = {}) {
         setting: { findMany: prisma.setting.findMany, upsert: fn() },
         branchSettingOverride: { findMany: prisma.branchSettingOverride.findMany, upsert: fn(), delete: fn(), deleteMany: fn() },
         settingAudit: { create: fn() },
-        company: { update: fn() }
+        company: { findUnique: prisma.company.findUnique, update: fn() },
+        $queryRaw: fn()
     };
     jest.spyOn(prisma, '$transaction').mockImplementation((async (cb: (t: unknown) => unknown) => cb(tx)) as never);
     return tx;
@@ -135,5 +137,39 @@ describe('SettingsScopeService.getNumber', () => {
     it('returns the resolved number', async () => {
         mockReads({ company: { 'goal.foodCostPct': '32' }, overrides: { 'goal.foodCostPct': '34.00' } });
         await expect(SettingsScopeService.getNumber(1, 3, 'goal.foodCostPct')).resolves.toBe(34);
+    });
+});
+
+describe('SettingsScopeService.update review fixes', () => {
+    it('registry defaults match the runtime defaults', () => {
+        const def = (k: string) => SETTINGS_REGISTRY.find((x) => x.key === k)!.default;
+        expect(def('password_expiry_days')).toBe('90');
+        expect(def('session_timeout_minutes')).toBe('30');
+        expect(def('tipRate')).toBe('0');
+    });
+
+    it('persists an explicit value equal to the default when no row exists', async () => {
+        const tx = mockTx();
+        await SettingsScopeService.update(1, null, 9, { password_expiry_days: 0 });
+        expect(tx.setting.upsert).toHaveBeenCalledTimes(1);
+        expect(tx.settingAudit.create).toHaveBeenCalledTimes(1);
+        const again = mockTx({ company: { password_expiry_days: '0' } });
+        await SettingsScopeService.update(1, null, 9, { password_expiry_days: 0 });
+        expect(again.setting.upsert).not.toHaveBeenCalled();
+    });
+
+    it('rejects kds_warning_minutes >= kds_urgent_minutes using stored values', async () => {
+        const tx = mockTx({ company: { kds_urgent_minutes: '5' } });
+        await expect(SettingsScopeService.update(1, null, 9, { kds_warning_minutes: 20 })).rejects.toMatchObject({
+            errors: { kds_warning_minutes: expect.any(String) }
+        });
+        await expect(SettingsScopeService.update(1, null, 9, { kds_warning_minutes: 20, kds_urgent_minutes: 30 })).resolves.toBeDefined();
+        expect(tx.setting.upsert).toHaveBeenCalledTimes(2);
+    });
+
+    it('reads ruc from Company.ruc', async () => {
+        mockReads({ company: { ruc: 'OLD' }, ruc: 'J0310000000001' });
+        const out = await SettingsScopeService.resolve(1, null);
+        expect(out.ruc).toMatchObject({ value: 'J0310000000001', source: 'company' });
     });
 });

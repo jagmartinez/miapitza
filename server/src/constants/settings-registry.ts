@@ -54,11 +54,11 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     D({ key: 'tax_rate', type: 'number', default: '15', group: 'ventas', section: 'facturacion', label: 'Impuesto (IVA)', description: 'Tasa aplicada a las ventas.', min: 0, max: 100, suffix: '%' }),
     D({ key: 'invoicePrefix', type: 'string', default: 'F', group: 'ventas', section: 'facturacion', label: 'Prefijo de factura', description: 'Prefijo de la numeración de facturas.', max: 10 }),
     D({ key: 'credit_note_series', type: 'string', default: 'NC', group: 'ventas', section: 'facturacion', label: 'Serie de nota de crédito', description: 'Prefijo de la numeración de notas de crédito.', max: 10 }),
-    D({ key: 'invoiceFooter', type: 'string', default: '', group: 'ventas', section: 'facturacion', label: 'Pie del comprobante', description: 'Texto al final de tickets y facturas.', max: 300 }),
+    D({ key: 'invoiceFooter', type: 'string', default: '', group: 'ventas', section: 'facturacion', label: 'Pie del comprobante', description: 'Texto al final de tickets y facturas.', max: 191 }),
     D({ key: 'fiscal_tax_id_length', type: 'integer', default: '14', group: 'ventas', section: 'facturacion', label: 'Longitud del identificador fiscal', description: 'Caracteres esperados en la cédula o RUC del cliente.', min: 1, max: 40 }),
     // Propinas y cobro
     D({ key: 'tipEnabled', type: 'boolean', default: 'false', group: 'ventas', section: 'propinas', label: 'Propina sugerida', description: 'Agrega la propina sugerida a la cuenta.', branchable: true }),
-    D({ key: 'tipRate', type: 'number', default: '10', group: 'ventas', section: 'propinas', label: 'Porcentaje de propina', description: 'Porcentaje sobre el subtotal.', min: 0, max: 100, suffix: '%', branchable: true }),
+    D({ key: 'tipRate', type: 'number', default: '0', group: 'ventas', section: 'propinas', label: 'Porcentaje de propina', description: 'Porcentaje sobre el subtotal.', min: 0, max: 100, suffix: '%', branchable: true }),
     D({ key: 'pos.priceIncludesTax', type: 'boolean', default: 'true', group: 'ventas', section: 'propinas', label: 'Precios incluyen impuesto', description: 'Los precios del menú ya traen el impuesto.' }),
     D({ key: 'pos.cashRounding', type: 'enum', default: 'none', group: 'ventas', section: 'propinas', label: 'Redondeo en efectivo', description: 'Redondeo del total pagado en efectivo.', options: [{ value: 'none', label: 'Sin redondeo' }, { value: '0.50', label: 'A 0.50' }, { value: '1.00', label: 'A 1.00' }] }),
     // Canales
@@ -89,8 +89,8 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     // Finanzas
     D({ key: 'finance.fixedMonthlyExpenses', type: 'number', default: '0', group: 'metas', section: 'finanzas', label: 'Gastos fijos mensuales', description: 'Renta, servicios y otros gastos fijos.', min: 0, prefix: 'C$', branchable: true }),
     // Seguridad
-    D({ key: 'password_expiry_days', type: 'integer', default: '0', group: 'seguridad', section: 'seguridad', label: 'Vencimiento de contraseña', description: '0 desactiva el vencimiento.', min: 0, max: 3650, suffix: 'días' }),
-    D({ key: 'session_timeout_minutes', type: 'integer', default: '480', group: 'seguridad', section: 'seguridad', label: 'Cierre de sesión por inactividad', description: 'Minutos sin actividad.', min: 1, max: 1440, suffix: 'min' }),
+    D({ key: 'password_expiry_days', type: 'integer', default: '90', group: 'seguridad', section: 'seguridad', label: 'Vencimiento de contraseña', description: '0 desactiva el vencimiento; sin valor se usan 90 días.', min: 0, max: 3650, suffix: 'días' }),
+    D({ key: 'session_timeout_minutes', type: 'integer', default: '30', group: 'seguridad', section: 'seguridad', label: 'Cierre de sesión por inactividad', description: 'Minutos sin actividad.', min: 1, max: 1440, suffix: 'min' }),
     D({ key: 'security.twoFactorRequired', type: 'enum', default: 'none', group: 'seguridad', section: 'seguridad', label: 'Verificación en dos pasos', description: 'A quién se le exige.', options: [{ value: 'none', label: 'Nadie' }, { value: 'admins', label: 'Administradores' }, { value: 'all', label: 'Todos' }] }),
     D({ key: 'security.maxFailedLogins', type: 'integer', default: '5', group: 'seguridad', section: 'seguridad', label: 'Intentos fallidos de acceso', description: 'Intentos antes de bloquear la cuenta.', min: 1, max: 20 })
 ];

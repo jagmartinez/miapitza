@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { SettingService } from '../services/setting.service';
 import { getErrorMessage } from '../utils/error';
 import prisma from '../utils/prisma';
-import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
+import { assertBranchAccess, BranchScopeError, isCompanyWide } from '../utils/branch-scope';
 import { SETTINGS_REGISTRY, SETTINGS_SECTIONS } from '../constants/settings-registry';
 import { SettingConflictError, SettingsScopeService, SettingValidationError } from '../services/settings-scope.service';
 
@@ -85,6 +85,9 @@ export class SettingController {
     static async patchResolved(req: Request, res: Response, next: NextFunction) {
         try {
             const { branchId: rawBranchId, version, changes } = req.body ?? {};
+            if (typeof version !== 'string' || !version) {
+                return res.status(400).json({ success: false, message: 'Falta la versión de la configuración', errors: { version: 'Requerido' } });
+            }
             if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
                 return res.status(400).json({ success: false, message: 'Faltan los cambios a guardar', errors: { changes: 'Requerido' } });
             }
@@ -94,7 +97,7 @@ export class SettingController {
                 branchId,
                 req.user!.userId,
                 changes,
-                typeof version === 'string' ? version : undefined
+                version
             );
             res.json({ success: true, data: { values: result.resolved, version: result.version } });
         } catch (error: unknown) {
@@ -108,7 +111,9 @@ export class SettingController {
             const data = await SettingsScopeService.history(req.user!.companyId, {
                 section: typeof req.query.section === 'string' ? req.query.section : undefined,
                 key: typeof req.query.key === 'string' ? req.query.key : undefined,
-                limit: Number.isFinite(limit) ? limit : undefined
+                limit: Number.isFinite(limit) ? limit : undefined,
+                // Branch-pinned users only see company-wide entries and their own branch.
+                branchIds: isCompanyWide(req.user!) ? undefined : (req.user!.branchId ? [req.user!.branchId] : [])
             });
             res.json({ success: true, data });
         } catch (error: unknown) {
