@@ -16,10 +16,7 @@
     "src/components/PurchaseOrderImport.tsx",
     "src/pages/BankReconciliation.tsx",
     "src/pages/CashShift.tsx",
-    "src/pages/CostReport.tsx",
-    "src/pages/Inventory.tsx",
     "src/pages/InvoiceHistory.tsx",
-    "src/pages/Kardex.tsx",
     "src/pages/PedidosYaIntegration.tsx",
     "src/pages/ProductionDashboard.tsx",
     "src/pages/ProductionOrders.tsx",
@@ -27,7 +24,6 @@
     "src/pages/PurchaseOrderForm.tsx",
     "src/pages/PurchaseOrders.tsx",
     "src/pages/Reports.tsx",
-    "src/pages/WasteReport.tsx",
     "src/pages/hr/BenefitsManagement.tsx",
     "src/pages/hr/MyBenefits.tsx"
   ],
@@ -69,14 +65,10 @@
     "src/components/TicketPrintModal.tsx",
     "src/pages/CashShift.tsx",
     "src/pages/CateringServices.tsx",
-    "src/pages/CostReport.tsx",
-    "src/pages/Inventory.tsx",
-    "src/pages/Kardex.tsx",
     "src/pages/Menu.tsx",
     "src/pages/POS.tsx",
     "src/pages/ProductionOrders.tsx",
     "src/pages/PurchaseOrderForm.tsx",
-    "src/pages/PurchaseOrders.tsx",
-    "src/pages/WasteReport.tsx"
+    "src/pages/PurchaseOrders.tsx"
   ]
 }

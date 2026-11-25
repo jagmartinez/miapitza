@@ -1,10 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Select from '../components/Select';
-import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
-import Button from '../components/Button';
-import Pagination from '../components/Pagination';
-import Sidebar from '../components/Sidebar';
+import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
 // import Input from '../components/Input';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
@@ -17,14 +13,16 @@ import {
     Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, Printer,
     FlaskConical, Box, Eye
 } from 'lucide-react';
-import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
-import type { SingleValue } from 'react-select';
+import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import { formatCurrency, currencyInputPadding, type CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
 import { newIdempotencyKey } from '../utils/idempotency';
 import './Inventory.css';
+import { computeInventoryKpis } from '../utils/inventoryKpis';
+import { buildInventoryCountSheetHtml } from '../utils/inventoryCountSheet';
+import { AppSelect, Button, Field, FullScreenModal, Badge, DataTable, EmptyState, IconButton, PageHeader, StatCard, formatNumber, formatPercent, type Column } from '@/ui';
 
 interface CategoryRow {
     id: number;
@@ -40,19 +38,12 @@ interface CategoryRow {
     };
 }
 
-interface StockAlertSummaryState {
-    totalAlerts?: number;
-    criticalAlerts?: number;
-    warningAlerts?: number;
-}
-
 type ProductInventory = Product & {
     currentAverageCost?: number;
     lastPurchaseCost?: number;
     totalStock?: number;
 };
 
-type StrOption = SingleValue<{ value: string; label: string }>;
 function apiErrorMessage(error: unknown): string {
     if (typeof error === 'object' && error !== null && 'response' in error) {
         const m = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
@@ -99,7 +90,6 @@ export default function Inventory() {
     const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
         (localStorage.getItem('inventory_view_mode') as 'cards' | 'table') || 'cards'
     );
-    const [tablePage, setTablePage] = useState(1);
     const TABLE_PAGE_SIZE = 10;
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -110,8 +100,6 @@ export default function Inventory() {
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
     const [storageFilter, setStorageFilter] = useState<string>('all');
-    const [stockAlerts, setStockAlerts] = useState<StockAlertItem[]>([]);
-    const [stockAlertSummary, setStockAlertSummary] = useState<StockAlertSummaryState | null>(null);
     const [autoPurchaseSuggestions, setAutoPurchaseSuggestions] = useState<AutoPurchaseSuggestion[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -232,12 +220,10 @@ export default function Inventory() {
         const results = await Promise.allSettled([
             productsAPI.getAll({ active: true, limit: 500 }),
             productsAPI.getLowStock(),
-            stockAlertsAPI.getAll(),
-            stockAlertsAPI.getSummary(),
             autoPurchaseOrdersAPI.getSuggestions()
         ]);
 
-        const [productsRes, lowStockRes, alertsRes, alertSummaryRes, suggestionsRes] = results;
+        const [productsRes, lowStockRes, suggestionsRes] = results;
 
         if (productsRes.status === 'fulfilled') {
             setProducts(productsRes.value.data.data || []);
@@ -246,12 +232,6 @@ export default function Inventory() {
         }
         if (lowStockRes.status === 'fulfilled') {
             setLowStock(lowStockRes.value.data.data || []);
-        }
-        if (alertsRes.status === 'fulfilled') {
-            setStockAlerts(alertsRes.value.data.data || []);
-        }
-        if (alertSummaryRes.status === 'fulfilled') {
-            setStockAlertSummary(alertSummaryRes.value.data.data || null);
         }
         if (suggestionsRes.status === 'fulfilled') {
             setAutoPurchaseSuggestions(suggestionsRes.value.data.data?.suggestions || []);
@@ -597,108 +577,7 @@ export default function Inventory() {
     };
 
     const handlePrintInventory = () => {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('es-NI', { year: 'numeric', month: 'long', day: 'numeric' });
-        const timeStr = now.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' });
-
-        const lowStockCount = filteredProducts.filter(p => lowStock.some(lp => lp.id === p.id)).length;
-
-        const rowsByCategory = new Map<string, typeof filteredProducts>();
-        for (const p of filteredProducts) {
-            const cat = categories.find(c => c.id === p.categoryId)?.name || 'Sin categoría';
-            if (!rowsByCategory.has(cat)) rowsByCategory.set(cat, []);
-            rowsByCategory.get(cat)!.push(p);
-        }
-
-        const sortedCategories = [...rowsByCategory.keys()].sort((a, b) => a.localeCompare(b, 'es'));
-
-        const bodyRows = sortedCategories.map(cat => {
-            const items = rowsByCategory.get(cat)!;
-            const categoryHeader = `<tr class="category-row"><td colspan="8">${cat} (${items.length})</td></tr>`;
-            const itemRows = items.map(p => {
-                const stock = Number((p as ProductInventory).totalStock ?? 0);
-                const min = Number(p.minStock ?? 0);
-                const isLow = stock <= min;
-                const unit = p.baseUnit?.abbreviation || p.unit;
-                return `<tr class="${isLow ? 'low-row' : ''}">
-                    <td>${p.name}</td>
-                    <td>${p.sku || '—'}</td>
-                    <td>${unit}</td>
-                    <td class="num">${stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
-                    <td class="num">${min.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
-                    <td class="count-col"></td>
-                    <td class="obs-col"></td>
-                    <td class="status-col">${isLow ? '⚠ Bajo' : 'OK'}</td>
-                </tr>`;
-            }).join('');
-            return categoryHeader + itemRows;
-        }).join('');
-
-        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte de Inventario Físico</title>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; margin: 0; color: #1a1a1a; }
-  .page { padding: 24px 28px; max-width: 1100px; margin: 0 auto; }
-  .report-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1e293b; padding-bottom: 16px; margin-bottom: 20px; }
-  .report-header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-  .report-header .subtitle { margin: 4px 0 0; color: #64748b; font-size: 12px; }
-  .report-meta { text-align: right; font-size: 11px; color: #475569; line-height: 1.6; }
-  .stats { display: flex; gap: 12px; margin-bottom: 20px; }
-  .stat { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; background: #f8fafc; }
-  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600; }
-  .stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; color: #0f172a; }
-  .stat.warn .stat-value { color: #b45309; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: middle; }
-  th { background: #1e293b; color: #fff; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-  .category-row td { background: #e2e8f0; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #334155; border-color: #94a3b8; }
-  tr:nth-child(even):not(.category-row) { background: #f8fafc; }
-  .low-row { background: #fef3c7 !important; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .count-col { min-width: 80px; }
-  .obs-col { min-width: 120px; }
-  .status-col { text-align: center; font-size: 10px; font-weight: 600; white-space: nowrap; }
-  .signatures { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-  .sig-block { border-top: 1px solid #334155; padding-top: 8px; text-align: center; color: #64748b; font-size: 10px; }
-  .footer-note { margin-top: 24px; font-size: 9px; color: #94a3b8; text-align: center; }
-  @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .page { padding: 12px 16px; }
-    @page { margin: 12mm; }
-  }
-</style></head><body>
-<div class="page">
-  <div class="report-header">
-    <div>
-      <h1>Reporte de Inventario F\u00edsico</h1>
-      <p class="subtitle">Conteo y verificaci\u00f3n de existencias</p>
-    </div>
-    <div class="report-meta">
-      <div><strong>Fecha:</strong> ${dateStr}</div>
-      <div><strong>Hora:</strong> ${timeStr}</div>
-    </div>
-  </div>
-  <div class="stats">
-    <div class="stat"><div class="stat-label">Total productos</div><div class="stat-value">${filteredProducts.length}</div></div>
-    <div class="stat"><div class="stat-label">Categor\u00edas</div><div class="stat-value">${sortedCategories.length}</div></div>
-    <div class="stat warn"><div class="stat-label">Stock bajo</div><div class="stat-value">${lowStockCount}</div></div>
-  </div>
-  <table>
-    <thead><tr>
-      <th>Producto</th><th>SKU</th><th>Unidad</th>
-      <th>Stock sistema</th><th>Stock m\u00edn.</th>
-      <th class="count-col">Conteo f\u00edsico</th><th class="obs-col">Observaciones</th><th>Estado</th>
-    </tr></thead>
-    <tbody>${bodyRows}</tbody>
-  </table>
-  <div class="signatures">
-    <div class="sig-block">Realizado por</div>
-    <div class="sig-block">Supervisado por</div>
-  </div>
-  <div class="footer-note">Documento generado desde el sistema de gesti\u00f3n — ${dateStr} ${timeStr}</div>
-</div>
-</body></html>`;
-
+        const html = buildInventoryCountSheetHtml(filteredProducts as ProductInventory[], categories, lowStock);
         const win = window.open('', '_blank');
         if (win) {
             win.document.write(html);
@@ -772,17 +651,13 @@ export default function Inventory() {
         });
     }, [products, lowStock, filter, searchQuery, selectedCategory, storageFilter]);
 
-    // Reset to first page whenever the filtered result set changes.
-    useEffect(() => {
-        setTablePage(1);
-    }, [filter, searchQuery, selectedCategory, storageFilter, viewMode]);
 
-    const tableTotalPages = Math.max(1, Math.ceil(filteredProducts.length / TABLE_PAGE_SIZE));
-    const pagedProducts = useMemo(
-        () => filteredProducts.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE),
-        [filteredProducts, tablePage]
+    const isLowStockProduct = (id: number) => lowStock.some((p) => p.id === id);
+    const kpis = useMemo(() => computeInventoryKpis(products as ProductInventory[]), [products]);
+    const valuedProductsCount = useMemo(
+        () => (products as ProductInventory[]).filter((p) => Number(p.totalStock ?? 0) > 0).length,
+        [products],
     );
-
 
     // Type helpers
     const getTypeClass = (type: string, isLow: boolean) => {
@@ -804,12 +679,10 @@ export default function Inventory() {
 
     return (
         <div className="inventory-page">
-            {/* Modern Header - Tables Style */}
-            <div className="inventory-header-new">
-                <div className="header-title-section">
-                    <h1><Package size={32} /> Gestión de Inventario</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <PageHeader
+                title="Gestión de Inventario"
+                actions={(
+                    <>
                     <div className="inventory-view-toggle">
                         <button
                             type="button"
@@ -856,74 +729,36 @@ export default function Inventory() {
                     )}
                     {/* Acceso a "Unidades de Medida" se gestiona desde su propia vista (sidebar/menú). */}
                     {canMutateProduct && (
-                        <Button onClick={() => handleOpenSidebar()} title="Nuevo producto" aria-label="Nuevo producto">
+                        <Button variant="primary" onClick={() => handleOpenSidebar()} title="Nuevo producto" aria-label="Nuevo producto">
                             <Plus size={20} />
                         </Button>
                     )}
-                </div>
-            </div>
+                    </>
+                )}
+            />
 
-            <div className="inventory-grid-new" style={{ marginBottom: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-                <div className="inventory-card-new">
-                    <div className="inventory-card-body-new">
-                        <div className="product-name-new">Alertas de stock</div>
-                        <div className="product-details-new">
-                            <div className="detail-item"><AlertTriangle size={14} /><span>{stockAlertSummary?.totalAlerts || 0} alertas activas</span></div>
-                            <div className="detail-item"><span>{stockAlertSummary?.criticalAlerts || 0} críticas</span></div>
-                            <div className="detail-item"><span>{stockAlertSummary?.warningAlerts || 0} preventivas</span></div>
-                        </div>
-                    </div>
-                </div>
-                <div className="inventory-card-new">
-                    <div className="inventory-card-body-new">
-                        <div className="product-name-new">Urgentes sin stock</div>
-                        <div className="product-details-new">
-                            {stockAlerts.filter((alert) => Number(alert.currentStock) === 0).slice(0, 3).map((alert) => (
-                                <div key={`${alert.productId}-${alert.warehouseId}`} className="detail-item">
-                                    <span>{alert.productName}</span>
-                                    <span>{alert.warehouseName}</span>
-                                </div>
-                            ))}
-                            {stockAlerts.filter((alert) => Number(alert.currentStock) === 0).length === 0 && (
-                                <div className="detail-item"><span>No hay productos agotados</span></div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div className="inventory-card-new">
-                    <div className="inventory-card-body-new">
-                        <div className="product-name-new">Reposición sugerida</div>
-                        <div className="product-details-new">
-                            {autoPurchaseSuggestions.slice(0, 3).map((suggestion) => (
-                                <div key={`${suggestion.productId}-${suggestion.warehouseId}`} className="detail-item">
-                                    <span>{suggestion.productName}</span>
-                                    <span>{suggestion.suggestedQuantity}</span>
-                                </div>
-                            ))}
-                            {autoPurchaseSuggestions.length === 0 && (
-                                <div className="detail-item"><span>Sin sugerencias de compra</span></div>
-                            )}
-                            {autoPurchaseSuggestions.length > 0 && canCreateAutoPO && (
-                                <div className="detail-item" style={{ marginTop: '8px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAutoPurchaseSidebar(true)}
-                                        style={{
-                                            border: 'none',
-                                            background: 'transparent',
-                                            color: 'var(--color-primary)',
-                                            fontWeight: 700,
-                                            cursor: 'pointer',
-                                            padding: 0
-                                        }}
-                                    >
-                                        Revisar sugerencias y crear borrador
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+            <div className="inventory-kpi-grid" style={{ display: 'grid', gap: 'var(--ui-space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', marginBottom: 'var(--ui-space-4)' }}>
+                <StatCard
+                    label="Valor del inventario (C$)"
+                    value={formatNumber(kpis.totalValue)}
+                    context={`${valuedProductsCount} productos con existencia valorizada`}
+                />
+                <StatCard
+                    label="Reposición requerida (C$)"
+                    value={formatNumber(kpis.replenishmentCost)}
+                    tone={kpis.belowMinCount > 0 ? 'warning' : 'success'}
+                    context={kpis.belowMinCount > 0
+                        ? `${kpis.belowMinCount} productos bajo mínimo, ${kpis.outOfStockCount} agotados`
+                        : 'Ningún producto bajo el mínimo'}
+                    action={canCreateAutoPO && autoPurchaseSuggestions.length > 0
+                        ? { label: 'Generar orden de compra sugerida', onClick: () => setShowAutoPurchaseSidebar(true) }
+                        : undefined}
+                />
+                <StatCard
+                    label="Concentración del capital"
+                    value={formatPercent(kpis.concentrationPct, 1)}
+                    context={kpis.topNames.length > 0 ? `En: ${kpis.topNames.join(', ')}` : 'Sin existencias valorizadas'}
+                />
             </div>
 
             {/* Filters Row - Reservations Style Alignment */}
@@ -969,33 +804,27 @@ export default function Inventory() {
                     <div style={{ width: '1px', height: '24px', background: 'var(--color-border)', margin: '0 8px' }} />
 
                     <div className="inventory-category-select-wrapper">
-                        <Select
-                            variant="modal"
-                            options={[
+                        <AppSelect options={[
                                 { value: 'all', label: 'Todas las Categorías' },
                                 ...categories.filter(c => isCategoryVisibleInInventory(c) && (c._count?.products ?? 0) > 0).map(cat => ({ value: cat.id.toString(), label: cat.name }))
-                            ]}
-                            value={selectedCategory === 'all' ? { value: 'all', label: 'Todas las Categorías' } : { value: selectedCategory, label: categories.find(c => c.id.toString() === selectedCategory)?.name || 'Categoría' }}
-                            onChange={(option: StrOption) => setSelectedCategory(option?.value || 'all')}
-                            placeholder="Filtrar por categoría..."
-                            className="category-select-filter"
-                        />
+                            ]} value={(selectedCategory === 'all' ? { value: 'all', label: 'Todas las Categorías' } : { value: selectedCategory, label: categories.find(c => c.id.toString() === selectedCategory)?.name || 'Categoría' })?.value ?? null} onChange={(__v) => { const option = ([
+                                { value: 'all', label: 'Todas las Categorías' },
+                                ...categories.filter(c => isCategoryVisibleInInventory(c) && (c._count?.products ?? 0) > 0).map(cat => ({ value: cat.id.toString(), label: cat.name }))
+                            ]).find((o) => o.value === __v) ?? null; return setSelectedCategory(option?.value || 'all'); }} placeholder="Filtrar por categoría..." />
                     </div>
 
                     <div className="inventory-category-select-wrapper">
-                        <Select
-                            variant="modal"
-                            options={[
+                        <AppSelect options={[
                                 { value: 'all', label: 'Almacenamiento' },
                                 { value: 'PERISHABLE', label: 'Perecedero' },
                                 { value: 'FROZEN', label: 'Congelado' },
                                 { value: 'NON_PERISHABLE', label: 'No Perecedero' }
-                            ]}
-                            value={{ value: storageFilter, label: storageFilter === 'all' ? 'Almacenamiento' : { 'PERISHABLE': 'Perecedero', 'FROZEN': 'Congelado', 'NON_PERISHABLE': 'No Perecedero' }[storageFilter] || storageFilter }}
-                            onChange={(option: StrOption) => setStorageFilter(option?.value || 'all')}
-                            placeholder="Almacenamiento..."
-                            className="category-select-filter"
-                        />
+                            ]} value={storageFilter ?? null} onChange={(__v) => { const option = ([
+                                { value: 'all', label: 'Almacenamiento' },
+                                { value: 'PERISHABLE', label: 'Perecedero' },
+                                { value: 'FROZEN', label: 'Congelado' },
+                                { value: 'NON_PERISHABLE', label: 'No Perecedero' }
+                            ]).find((o) => o.value === __v) ?? null; return setStorageFilter(option?.value || 'all'); }} placeholder="Almacenamiento..." />
                     </div>
                 </div>
 
@@ -1138,85 +967,39 @@ export default function Inventory() {
 
             {/* Table View */}
             {viewMode === 'table' && filteredProducts.length > 0 && (
-                <div className="inventory-table-wrapper">
-                    <table className="inventory-table">
-                        <thead>
-                            <tr>
-                                <th>Producto</th>
-                                <th>Categoría</th>
-                                <th>Unidad</th>
-                                <th className="text-right">Stock Actual</th>
-                                <th className="text-right">Mín.</th>
-                                <th className="text-right">Costo unit.</th>
-                                <th className="text-right">Precio</th>
-                                <th>Estado</th>
-                                <th className="text-right">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {pagedProducts.map(product => {
-                                const isLow = lowStock.some(p => p.id === product.id);
-                                const stock = Number((product as ProductInventory).totalStock ?? 0);
-                                return (
-                                    <tr key={product.id} className={isLow ? 'row-low-stock' : ''}>
-                                        <td className="cell-name">
-                                            <span className="cell-name-title">{product.name}</span>
-                                            {product.sku && <span className="cell-name-sku">{product.sku}</span>}
-                                        </td>
-                                        <td>{categories.find(c => c.id === product.categoryId)?.name || '-'}</td>
-                                        <td>{product.baseUnit?.abbreviation || product.unit}</td>
-                                        <td className="text-right">{stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
-                                        <td className="text-right">{product.minStock}</td>
-                                        <td className="text-right">{formatCurrency(effectiveUnitCost((product as ProductInventory).currentAverageCost, product.cost), settings)}</td>
-                                        <td className="text-right">{product.price ? formatCurrency(Number(product.price), settings) : '-'}</td>
-                                        <td>
-                                            {isLow
-                                                ? <span className="status-pill status-warning">Stock bajo</span>
-                                                : <span className="status-pill status-ok">OK</span>}
-                                        </td>
-                                        <td className="text-right">
-                                            <div className="table-actions">
-                                                <button className="table-action-btn" onClick={() => handleViewProduct(product)} title="Ver detalle" aria-label={`Ver detalle de ${product.name}`}>
-                                                    <Eye size={16} />
-                                                </button>
-                                                <button className="table-action-btn" onClick={() => navigate(`/kardex?productId=${product.id}`)} title="Ver Kardex">
-                                                    <FileText size={16} />
-                                                </button>
-                                                {canAdjustStock && (
-                                                    <button className="table-action-btn" onClick={() => handleOpenAdjustment(product)} title="Ajustar Stock">
-                                                        <Activity size={16} />
-                                                    </button>
-                                                )}
-                                                {canMutateProduct && (
-                                                    <button className="table-action-btn" onClick={() => navigate(`/inventory/${product.id}/units`)} title="Conversiones">
-                                                        <Layers size={16} />
-                                                    </button>
-                                                )}
-                                                {canMutateProduct && (
-                                                    <button className="table-action-btn" onClick={() => handleOpenSidebar(product)} title="Editar">
-                                                        <Edit2 size={16} />
-                                                    </button>
-                                                )}
-                                                {canDeleteProduct && (
-                                                    <button className="table-action-btn danger" onClick={() => handleDelete(product.id)} title="Eliminar">
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                    <Pagination
-                        page={tablePage}
-                        totalPages={tableTotalPages}
-                        totalItems={filteredProducts.length}
-                        pageSize={TABLE_PAGE_SIZE}
-                        onPageChange={setTablePage}
-                    />
-                </div>
+                <DataTable<ProductInventory>
+                    ariaLabel="Inventario de productos"
+                    rows={filteredProducts as ProductInventory[]}
+                    rowKey={(product) => product.id}
+                    defaultPageSize={TABLE_PAGE_SIZE}
+                    pageSizeOptions={[10, 25, 50, 100]}
+                    resetKey={`${filter}|${searchQuery}|${selectedCategory}|${storageFilter}`}
+                    rowTone={(product) => (isLowStockProduct(product.id) ? 'warning' : undefined)}
+                    columns={[
+                        { key: 'sku', header: 'Código', width: 'minmax(5.5rem,.8fr)', render: (product) => product.sku || '-' },
+                        { key: 'name', header: 'Producto', width: '2.4fr', render: (product) => product.name },
+                        { key: 'category', header: 'Categoría', width: '1.2fr', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '-' },
+                        { key: 'stock', header: 'Existencia', width: '1fr', type: 'qty', accessor: (product) => product.totalStock ?? 0 },
+                        { key: 'unit', header: 'Unidad', width: '.6fr', render: (product) => product.baseUnit?.abbreviation || product.unit },
+                        { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => effectiveUnitCost(product.currentAverageCost, product.cost) },
+                        { key: 'value', header: 'Valor (C$)', width: '1.2fr', type: 'money', total: true, accessor: (product) => Number(product.totalStock ?? 0) * effectiveUnitCost(product.currentAverageCost, product.cost) },
+                        { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (product) => (
+                            <Badge tone={isLowStockProduct(product.id) ? 'warning' : 'success'} dot>
+                                {isLowStockProduct(product.id) ? 'Stock bajo' : 'OK'}
+                            </Badge>
+                        ) },
+                        { key: 'actions', header: 'Acciones', width: '48px', type: 'actions', render: (product) => (
+                            <div className="table-actions">
+                                <IconButton icon={Eye} label={`Ver detalle de ${product.name}`} onClick={() => handleViewProduct(product)} />
+                                <IconButton icon={FileText} label={`Ver kardex de ${product.name}`} onClick={() => navigate(`/kardex?productId=${product.id}`)} />
+                                {canAdjustStock && <IconButton icon={Activity} label={`Ajustar stock de ${product.name}`} onClick={() => handleOpenAdjustment(product)} />}
+                                {canMutateProduct && <IconButton icon={Layers} label={`Conversiones de ${product.name}`} onClick={() => navigate(`/inventory/${product.id}/units`)} />}
+                                {canMutateProduct && <IconButton icon={Edit2} label={`Editar ${product.name}`} onClick={() => handleOpenSidebar(product)} />}
+                                {canDeleteProduct && <IconButton icon={Trash2} label={`Eliminar ${product.name}`} onClick={() => handleDelete(product.id)} />}
+                            </div>
+                        ) },
+                    ] as Column<ProductInventory>[]}
+                />
             )}
 
             {
@@ -1225,16 +1008,16 @@ export default function Inventory() {
                         <Package size={48} />
                         <p>No hay productos {filter !== 'all' ? 'con este filtro' : 'registrados'}</p>
                         {filter !== 'all' ? (
-                            <Button onClick={() => setFilter('all')}>Ver todos</Button>
+                            <Button variant="primary" onClick={() => setFilter('all')}>Ver todos</Button>
                         ) : canMutateProduct ? (
-                            <Button onClick={() => handleOpenSidebar()}>Crear primer producto</Button>
+                            <Button variant="primary" onClick={() => handleOpenSidebar()}>Crear primer producto</Button>
                         ) : null}
                     </div>
                 )
             }
 
             {/* Product Form Sidebar */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={Boolean(viewingProduct)}
                 onClose={() => setViewingProduct(null)}
                 title="Detalle del Producto"
@@ -1382,9 +1165,9 @@ export default function Inventory() {
                         </div>
                     );
                 })()}
-            </Sidebar>
+            </FullScreenModal>
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
@@ -1447,32 +1230,14 @@ export default function Inventory() {
                                     </div>
 
                                     <div className={formData.type === 'INGREDIENT' ? 'disabled-group' : ''}>
-                                        <Select
-                                            variant="modal"
-                                            inputId="inventory-product-category"
-                                            label={
-                                                <>
-                                                    Categoría del Producto
-                                                    {formData.type === 'INGREDIENT' && (
-                                                        <span className="label-note"> (No aplica para ingredientes)</span>
-                                                    )}
-                                                </>
-                                            }
-                                            options={categories.filter(c => isCategoryVisibleInInventory(c)).map(c => ({ value: c.id.toString(), label: c.name }))}
-                                            value={
-                                                formData.categoryId
+                                        <Field label={formData.type === 'INGREDIENT' ? 'Categoría del Producto (No aplica para ingredientes)' : 'Categoría del Producto'} htmlFor="inventory-product-category">
+<AppSelect inputId="inventory-product-category" options={categories.filter(c => isCategoryVisibleInInventory(c)).map(c => ({ value: c.id.toString(), label: c.name }))} value={(formData.categoryId
                                                     ? categories
                                                         .filter(c => isCategoryVisibleInInventory(c))
                                                         .map(c => ({ value: c.id.toString(), label: c.name }))
                                                         .find(opt => opt.value === formData.categoryId) || null
-                                                    : null
-                                            }
-                                            onChange={(option: StrOption) => setFormData({ ...formData, categoryId: option ? option.value : '' })}
-                                            placeholder={formData.type === 'INGREDIENT' ? 'N/A' : 'Seleccionar categoría...'}
-                                            isClearable
-                                            isDisabled={formData.type === 'INGREDIENT'}
-                                            isSearchable
-                                        />
+                                                    : null)?.value ?? null} onChange={(__v) => { const option = (categories.filter(c => isCategoryVisibleInInventory(c)).map(c => ({ value: c.id.toString(), label: c.name }))).find((o) => o.value === __v) ?? null; return setFormData({ ...formData, categoryId: option ? option.value : '' }); }} placeholder={formData.type === 'INGREDIENT' ? 'N/A' : 'Seleccionar categoría...'} isDisabled={formData.type === 'INGREDIENT'} isClearable />
+</Field>
                                     </div>
 
                                     <div className="modal-input-group">
@@ -1576,29 +1341,25 @@ export default function Inventory() {
                                                 placeholder={editingProduct ? 'Ej: ING-000001' : 'Dejar vacío para autogenerar'}
                                             />
                                         </div>
-                                        <Select
-                                            variant="modal"
-                                            label="Unidad de referencia"
-                                            options={allUnits.map((unit) => ({
+                                        <Field label="Unidad de referencia" htmlFor="sel-1578">
+<AppSelect inputId="sel-1578" options={allUnits.map((unit) => ({
                                                 value: unit.abbreviation,
                                                 label: `${unit.name} (${unit.abbreviation})`
-                                            }))}
-                                            value={formData.unit
+                                            }))} value={(formData.unit
                                                 ? {
                                                     value: formData.unit,
                                                     label: allUnits.find((unit) => unit.abbreviation === formData.unit)
                                                         ? `${allUnits.find((unit) => unit.abbreviation === formData.unit)!.name} (${formData.unit})`
                                                         : formData.unit
                                                 }
-                                                : null}
-                                            onChange={(option: StrOption) => {
+                                                : null)?.value ?? null} onChange={(__v) => { const option = (allUnits.map((unit) => ({
+                                                value: unit.abbreviation,
+                                                label: `${unit.name} (${unit.abbreviation})`
+                                            }))).find((o) => o.value === __v) ?? null; 
                                                 if (!option) return;
                                                 setFormData({ ...formData, unit: option.value });
-                                            }}
-                                            placeholder={allUnits.length === 0 ? 'Sin unidades' : 'Seleccionar...'}
-                                            isDisabled={allUnits.length === 0}
-                                            isSearchable
-                                        />
+                                            }} placeholder={allUnits.length === 0 ? 'Sin unidades' : 'Seleccionar...'} isDisabled={allUnits.length === 0} />
+</Field>
                                         {allUnits.length === 0 && (
                                             <p className="modal-input-hint">
                                                 No hay unidades activas.{' '}
@@ -1761,10 +1522,10 @@ export default function Inventory() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
             {/* Adjustment Modal Sidebar */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={isAdjustmentModalOpen}
                 onClose={() => setIsAdjustmentModalOpen(false)}
                 title="Ajuste de Inventario"
@@ -1778,44 +1539,39 @@ export default function Inventory() {
                                     <h3>Ajuste para: {adjustmentData.productName}</h3>
                                 </div>
 
-                                <Select
-                                    variant="modal"
-                                    label="Almacén"
-                                    options={warehouses.map(warehouse => ({
+                                <Field label="Almacén" htmlFor="sel-1780">
+<AppSelect inputId="sel-1780" options={warehouses.map(warehouse => ({
                                         value: warehouse.id.toString(),
                                         label: warehouse.name
-                                    }))}
-                                    value={adjustmentData.warehouseId
+                                    }))} value={(adjustmentData.warehouseId
                                         ? {
                                             value: adjustmentData.warehouseId,
                                             label: warehouses.find(warehouse => warehouse.id.toString() === adjustmentData.warehouseId)?.name || 'Seleccionar almacén...'
                                         }
-                                        : null}
-                                    onChange={(option: StrOption) => setAdjustmentData({ ...adjustmentData, warehouseId: option?.value || '' })}
-                                    placeholder="Seleccionar almacén..."
-                                    isSearchable={false}
-                                />
+                                        : null)?.value ?? null} onChange={(__v) => { const option = (warehouses.map(warehouse => ({
+                                        value: warehouse.id.toString(),
+                                        label: warehouse.name
+                                    }))).find((o) => o.value === __v) ?? null; return setAdjustmentData({ ...adjustmentData, warehouseId: option?.value || '' }); }} placeholder="Seleccionar almacén..." />
+</Field>
 
-                                <Select
-                                    variant="modal"
-                                    label="Tipo de Movimiento"
-                                    options={[
+                                <Field label="Tipo de Movimiento" htmlFor="sel-1798">
+<AppSelect inputId="sel-1798" options={[
                                         { value: 'OUT', label: 'Salida (Desperdicio/Uso)' },
                                         { value: 'ADJUSTMENT', label: 'Entrada (Corrección de conteo)' },
                                         { value: 'IN', label: 'Entrada Directa' }
-                                    ]}
-                                    value={{
+                                    ]} value={({
                                         value: adjustmentData.type,
                                         label: {
                                             'OUT': 'Salida (Desperdicio/Uso)',
                                             'ADJUSTMENT': 'Entrada (Corrección de conteo)',
                                             'IN': 'Entrada Directa'
                                         }[adjustmentData.type]
-                                    }}
-                                    onChange={(option: SingleValue<{ value: 'OUT' | 'ADJUSTMENT' | 'IN'; label: string }>) =>
-                                        option && setAdjustmentData({ ...adjustmentData, type: option.value })}
-                                    isSearchable={false}
-                                />
+                                    })?.value ?? null} onChange={(__v) => { const option = ([
+                                        { value: 'OUT', label: 'Salida (Desperdicio/Uso)' },
+                                        { value: 'ADJUSTMENT', label: 'Entrada (Corrección de conteo)' },
+                                        { value: 'IN', label: 'Entrada Directa' }
+                                    ]).find((o) => o.value === __v) ?? null; return option && setAdjustmentData({ ...adjustmentData, type: option.value as typeof adjustmentData.type }); }} />
+</Field>
 
                                 <div className="modal-form-row">
                                     <div className="modal-input-group" style={{ flex: 2 }}>
@@ -1832,25 +1588,20 @@ export default function Inventory() {
                                         />
                                     </div>
                                     <div style={{ flex: 1 }}>
-                                        <Select
-                                            variant="modal"
-                                            label="Unidad"
-                                            options={adjustmentUnits.length > 0
+                                        <Field label="Unidad" htmlFor="sel-1834">
+<AppSelect inputId="sel-1834" options={adjustmentUnits.length > 0
                                                 ? adjustmentUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))
-                                                : [{ value: '', label: 'Sin unidades' }]
-                                            }
-                                            value={adjustmentData.unit
+                                                : [{ value: '', label: 'Sin unidades' }]} value={(adjustmentData.unit
                                                 ? {
                                                     value: adjustmentData.unit,
                                                     label: adjustmentUnits.find(u => u.abbreviation === adjustmentData.unit)
                                                         ? `${adjustmentUnits.find(u => u.abbreviation === adjustmentData.unit)!.name} (${adjustmentData.unit})`
                                                         : adjustmentData.unit
                                                 }
-                                                : null}
-                                            onChange={(option: StrOption) => setAdjustmentData({ ...adjustmentData, unit: option?.value || '' })}
-                                            placeholder="Unidad..."
-                                            isSearchable={false}
-                                        />
+                                                : null)?.value ?? null} onChange={(__v) => { const option = (adjustmentUnits.length > 0
+                                                ? adjustmentUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))
+                                                : [{ value: '', label: 'Sin unidades' }]).find((o) => o.value === __v) ?? null; return setAdjustmentData({ ...adjustmentData, unit: option?.value || '' }); }} placeholder="Unidad..." />
+</Field>
                                     </div>
                                 </div>
 
@@ -1879,13 +1630,12 @@ export default function Inventory() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={showAutoPurchaseSidebar}
                 onClose={() => setShowAutoPurchaseSidebar(false)}
                 title="Crear Orden de Compra Sugerida"
-                width="wide"
             >
                 <div className="premium-modal-content product-modal-content">
                     <form onSubmit={handleCreateAutoPurchaseOrder} className="modal-form-new">
@@ -1897,40 +1647,35 @@ export default function Inventory() {
                                 </div>
 
                                 <div className="modal-form-row">
-                                    <Select
-                                        variant="modal"
-                                        label="Sucursal"
-                                        options={branches.map((branch) => ({
+                                    <Field label="Sucursal" htmlFor="sel-1898">
+<AppSelect inputId="sel-1898" options={branches.map((branch) => ({
                                             value: branch.id.toString(),
                                             label: branch.name
-                                        }))}
-                                        value={autoPurchaseForm.branchId
+                                        }))} value={(autoPurchaseForm.branchId
                                             ? {
                                                 value: autoPurchaseForm.branchId,
                                                 label: branches.find((branch) => branch.id.toString() === autoPurchaseForm.branchId)?.name || 'Seleccionar sucursal'
                                             }
-                                            : null}
-                                        onChange={(option: StrOption) => setAutoPurchaseForm((prev) => ({ ...prev, branchId: option?.value || '' }))}
-                                        placeholder="Seleccionar sucursal..."
-                                        isSearchable={false}
-                                    />
+                                            : null)?.value ?? null} onChange={(__v) => { const option = (branches.map((branch) => ({
+                                            value: branch.id.toString(),
+                                            label: branch.name
+                                        }))).find((o) => o.value === __v) ?? null; return setAutoPurchaseForm((prev) => ({ ...prev, branchId: option?.value || '' })); }} placeholder="Seleccionar sucursal..." />
+</Field>
 
-                                    <Select
-                                        variant="modal"
-                                        label="Proveedor"
-                                        options={suppliers.map((supplier) => ({
+                                    <Field label="Proveedor" htmlFor="sel-1916">
+<AppSelect inputId="sel-1916" options={suppliers.map((supplier) => ({
                                             value: supplier.id.toString(),
                                             label: supplier.name
-                                        }))}
-                                        value={autoPurchaseForm.supplierId
+                                        }))} value={(autoPurchaseForm.supplierId
                                             ? {
                                                 value: autoPurchaseForm.supplierId,
                                                 label: suppliers.find((supplier) => supplier.id.toString() === autoPurchaseForm.supplierId)?.name || 'Seleccionar proveedor'
                                             }
-                                            : null}
-                                        onChange={(option: StrOption) => setAutoPurchaseForm((prev) => ({ ...prev, supplierId: option?.value || '' }))}
-                                        placeholder="Seleccionar proveedor..."
-                                    />
+                                            : null)?.value ?? null} onChange={(__v) => { const option = (suppliers.map((supplier) => ({
+                                            value: supplier.id.toString(),
+                                            label: supplier.name
+                                        }))).find((o) => o.value === __v) ?? null; return setAutoPurchaseForm((prev) => ({ ...prev, supplierId: option?.value || '' })); }} placeholder="Seleccionar proveedor..." />
+</Field>
                                 </div>
 
                                 <div className="po-suggestion-toolbar">
@@ -1980,9 +1725,9 @@ export default function Inventory() {
                                                             <span className="sku-tag">{suggestion.warehouseName}</span>
                                                         </div>
                                                         <div className="po-suggestion-metrics">
-                                                            <span><strong>Actual:</strong> {Number(suggestion.currentStock || 0).toFixed(2)}</span>
-                                                            <span><strong>Mín:</strong> {Number(suggestion.minStock || 0).toFixed(2)}</span>
-                                                            <span><strong>Sugerido:</strong> {Number(suggestion.suggestedQuantity).toFixed(2)}</span>
+                                                            <span><strong>Actual:</strong> {formatNumber(suggestion.currentStock || 0)}</span>
+                                                            <span><strong>Mín:</strong> {formatNumber(suggestion.minStock || 0)}</span>
+                                                            <span><strong>Sugerido:</strong> {formatNumber(suggestion.suggestedQuantity)}</span>
                                                         </div>
                                                     </div>
                                                     <div className="po-suggestion-cost">
@@ -2009,10 +1754,10 @@ export default function Inventory() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
             {/* Import Excel Sidebar */}
-            <Sidebar isOpen={showImportSidebar} onClose={closeImportSidebar} title="Importar Productos desde Excel" width="wide">
+            <FullScreenModal isOpen={showImportSidebar} onClose={closeImportSidebar} title="Importar Productos desde Excel">
                 <div className="premium-modal-content product-import-modal">
                     <div className="modal-tab-content">
                         <div className="import-steps" aria-label="Pasos de importación">
@@ -2130,50 +1875,28 @@ export default function Inventory() {
                                     </span>
                                 </div>
 
-                                <div className="import-table-wrap">
-                                    <table className="price-history-table import-preview-table">
-                                        <thead>
-                                            <tr>
-                                                <th>#</th>
-                                                <th>SKU</th>
-                                                <th>Nombre</th>
-                                                <th>Acción</th>
-                                                <th>Estado</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filteredImportItems.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={5} className="import-table-empty">
-                                                        No hay filas que coincidan con el filtro.
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                filteredImportItems.map((item) => (
-                                                    <tr key={`${item.rowNumber}-${item.sku}`} className={item.isValid ? '' : 'import-row-error'}>
-                                                        <td>{item.rowNumber}</td>
-                                                        <td className="import-cell-sku">{item.sku}</td>
-                                                        <td>{item.name}</td>
-                                                        <td>
-                                                            <span className={`report-status-badge ${item.isUpdate ? 'status-default' : 'status-ok'}`}>
-                                                                {item.isUpdate ? 'Actualizar' : 'Nuevo'}
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            {item.isValid ? (
-                                                                <span className="report-status-badge status-ok">✓ OK</span>
-                                                            ) : (
-                                                                <span className="report-status-badge status-critical" title={item.errors.join(', ')}>
-                                                                    ✗ {item.errors[0]}
-                                                                </span>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <DataTable
+                                    ariaLabel="Vista previa de importación"
+                                    rows={filteredImportItems}
+                                    rowKey={(item) => `${item.rowNumber}-${item.sku}`}
+                                    defaultPageSize={25}
+                                    pageSizeOptions={[25, 50, 100]}
+                                    rowTone={(item) => (item.isValid ? undefined : 'danger')}
+                                    empty={<EmptyState title="No hay filas que coincidan con el filtro." />}
+                                    columns={[
+                                        { key: 'rowNumber', header: '#', type: 'number', decimals: 0 },
+                                        { key: 'sku', header: 'SKU' },
+                                        { key: 'name', header: 'Nombre' },
+                                        { key: 'action', header: 'Acción', render: (item) => (
+                                            <Badge tone={item.isUpdate ? 'neutral' : 'success'}>{item.isUpdate ? 'Actualizar' : 'Nuevo'}</Badge>
+                                        ) },
+                                        { key: 'status', header: 'Estado', type: 'status', render: (item) => (
+                                            item.isValid
+                                                ? <Badge tone="success">✓ OK</Badge>
+                                                : <span title={item.errors.join(', ')}><Badge tone="danger">✗ {item.errors[0]}</Badge></span>
+                                        ) },
+                                    ] as Column<(typeof filteredImportItems)[number]>[]}
+                                />
                             </>
                         )}
                     </div>
@@ -2193,7 +1916,7 @@ export default function Inventory() {
                         )}
                     </div>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
             <ToastContainer toasts={toasts} onRemove={removeToast} />
         </div >
