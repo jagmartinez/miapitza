@@ -80,6 +80,15 @@ export default function Users() {
         { value: 'INACTIVE', label: 'Inactivos' }
     ];
 
+    const accountTypeOptions: Array<{ value: UserAccountType; label: string }> = [
+        { value: 'INTERNAL', label: 'Interno · ligado a personal' },
+        { value: 'EXTERNAL', label: 'Externo · solo acceso al sistema' },
+    ];
+    const accountStatusOptions = [
+        { value: 'ACTIVE', label: 'Activo' },
+        { value: 'INACTIVE', label: 'Inactivo' },
+    ];
+
     const loadData = useCallback(async (companyId?: string, isInitial = false) => {
         try {
             if (isInitial) setLoading(true);
@@ -352,18 +361,18 @@ export default function Users() {
 
                 {/* Role Filter */}
                 <div className="filter-group-container">
-                    <AppSelect options={roleOptions} value={(roleOptions.find(opt => opt.value === roleFilter))?.value ?? null} onChange={(__v) => { const opt = (roleOptions).find((o) => o.value === __v) ?? null; return opt && setRoleFilter(opt.value); }} placeholder="Filtrar por Rol" />
+                    <AppSelect isClearable={false} options={roleOptions} value={roleFilter} onChange={(v) => { if (v) setRoleFilter(String(v)); }} placeholder="Filtrar por Rol" />
                 </div>
 
                 <div className="filter-group-container">
-                    <AppSelect options={statusOptions} value={(statusOptions.find(opt => opt.value === statusFilter))?.value ?? null} onChange={(__v) => { const opt = (statusOptions).find((o) => o.value === __v) ?? null; return opt && setStatusFilter(opt.value); }} placeholder="Estado" />
+                    <AppSelect isClearable={false} options={statusOptions} value={statusFilter} onChange={(v) => { if (v) setStatusFilter(String(v)); }} placeholder="Estado" />
                 </div>
             </div>
 
             {/* Table view */}
             {viewMode === 'table' && filteredUsers.length > 0 && (
                 <DataTable<User>
-                    ariaLabel="Listado"
+                    ariaLabel="Listado de usuarios"
                     rows={filteredUsers}
                     rowKey={(u) => u.id}
                     resetKey={`${searchQuery}|${roleFilter}|${statusFilter}`}
@@ -426,7 +435,7 @@ export default function Users() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            type: 'number',
+                            type: 'actions',
                             render: (u) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => handleOpenSidebar(u)} title="Editar">
@@ -644,7 +653,7 @@ export default function Users() {
                                     {isSuperAdmin && !editingUser && (
                                         <div className="modal-input-group">
                                             <Field label="Empresa" htmlFor="sel-660" required>
-<AppSelect inputId="sel-660" options={companies.map(c => ({ value: c.id, label: c.name }))} value={((() => {
+<AppSelect isClearable={false} inputId="sel-660" options={companies.map(c => ({ value: c.id, label: c.name }))} value={((() => {
                                                     const c = companies.find(co => co.id.toString() === formData.companyId);
                                                     return c ? { value: c.id, label: c.name } : null;
                                                 })())?.value ?? null} onChange={(__v) => { const option = (companies.map(c => ({ value: c.id, label: c.name }))).find((o) => o.value === __v) ?? null; 
@@ -659,16 +668,7 @@ export default function Users() {
 
                                     <div className="modal-input-group">
                                         <Field label="Tipo de cuenta" htmlFor="sel-681">
-<AppSelect inputId="sel-681" options={formData.accountType === 'INTERNAL'
-                                                ? [{ value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }]
-                                                : [{ value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' }]} value={(formData.accountType === 'INTERNAL'
-                                                ? { value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }
-                                                : { value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' })?.value ?? null} onChange={(__v) => { const option = (formData.accountType === 'INTERNAL'
-                                                ? [{ value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }]
-                                                : [{ value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' }]).find((o) => o.value === __v) ?? null; 
-                                                if (!option) return;
-                                                setFormData({ ...formData, accountType: option.value });
-                                            }} isDisabled />
+<AppSelect isClearable={false} inputId="sel-681" options={accountTypeOptions.filter((o) => o.value === formData.accountType)} value={formData.accountType} onChange={() => undefined} isDisabled />
 </Field>
                                         <small style={{ color: 'var(--color-neutral-500)', lineHeight: 1.45 }}>
                                             {formData.accountType === 'INTERNAL'
@@ -719,16 +719,7 @@ export default function Users() {
 
                                     <div className="modal-form-row">
                                         <Field label="Estado de Cuenta" htmlFor="sel-745">
-<AppSelect inputId="sel-745" options={[
-                                                { value: 'ACTIVE', label: 'Activo' },
-                                                { value: 'INACTIVE', label: 'Inactivo' }
-                                            ]} value={({
-                                                value: formData.status,
-                                                label: formData.status === 'ACTIVE' ? 'Activo' : 'Inactivo'
-                                            })?.value ?? null} onChange={(__v) => { const option = ([
-                                                { value: 'ACTIVE', label: 'Activo' },
-                                                { value: 'INACTIVE', label: 'Inactivo' }
-                                            ]).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, status: option.value }); }} isDisabled={!editingUser} />
+<AppSelect isClearable={false} inputId="sel-745" options={accountStatusOptions} value={formData.status} onChange={(v) => { if (v) setFormData({ ...formData, status: String(v) as typeof formData.status }); }} isDisabled={!editingUser} />
 </Field>
 
                                         <div className="modal-input-group">
@@ -792,7 +783,7 @@ export default function Users() {
                                             </div>
 
                                             <Field label="Sucursal activa" htmlFor="sel-821">
-<AppSelect inputId="sel-821" options={[
+<AppSelect isClearable={false} inputId="sel-821" options={[
                                                     { value: '', label: 'Ninguna (Global / Superadmin)' },
                                                     ...branches
                                                         .filter(b => formData.branchIds.includes(b.id.toString()))
@@ -807,7 +798,7 @@ export default function Users() {
                                         </>
                                     ) : (
                                         <Field label="Sucursal activa" htmlFor="sel-836">
-<AppSelect inputId="sel-836" options={[
+<AppSelect isClearable={false} inputId="sel-836" options={[
                                                 { value: '', label: 'Sin sucursal' },
                                                 ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
                                             ]} value={(formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Sin sucursal' })?.value ?? null} onChange={(__v) => { const option = ([

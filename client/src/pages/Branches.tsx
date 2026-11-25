@@ -368,7 +368,7 @@ export default function Branches() {
             {/* Table view */}
             {viewMode === 'table' && filteredBranches.length > 0 && (
                 <DataTable<Branch>
-                    ariaLabel="Listado"
+                    ariaLabel="Listado de sucursales"
                     rows={filteredBranches}
                     rowKey={(b) => b.id}
                     resetKey={statusFilter}
@@ -383,7 +383,7 @@ export default function Branches() {
                                     {(b._count?.warehouses ?? 0) === 0 && (
                                         <span
                                             className="cell-sub"
-                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--color-warning, #f59e0b)', fontWeight: 600 }}
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--color-warning)', fontWeight: 600 }}
                                             title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
                                         >
                                             <AlertTriangle size={12} /> Sin almacén
@@ -399,8 +399,8 @@ export default function Branches() {
                         }] : []),
                         { key: 'phone', header: 'Teléfono', render: (b) => b.phone || '-' },
                         { key: 'address', header: 'Dirección', render: (b) => b.address || '-' },
-                        { key: 'users', header: 'Usuarios', render: (b) => b._count?.users || 0 },
-                        { key: 'tables', header: 'Mesas', render: (b) => b._count?.tables || 0 },
+                        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, render: (b) => b._count?.users || 0 },
+                        { key: 'tables', header: 'Mesas', type: 'number', decimals: 0, render: (b) => b._count?.tables || 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -409,7 +409,7 @@ export default function Branches() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            type: 'number',
+                            type: 'actions',
                             render: (b) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
@@ -459,9 +459,9 @@ export default function Branches() {
                                             borderRadius: '999px',
                                             fontSize: '0.72rem',
                                             fontWeight: 700,
-                                            color: 'var(--color-warning, #f59e0b)',
-                                            background: 'color-mix(in srgb, var(--color-warning, #f59e0b) 15%, transparent)',
-                                            border: '1px solid var(--color-warning, #f59e0b)'
+                                            color: 'var(--color-warning)',
+                                            background: 'color-mix(in srgb, var(--color-warning) 15%, transparent)',
+                                            border: '1px solid var(--color-warning)'
                                         }}
                                         title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
                                     >
@@ -620,7 +620,7 @@ export default function Branches() {
 
                                     {editingBranch && (
                                         <Field label="Estado de Sucursal" htmlFor="sel-625">
-<AppSelect inputId="sel-625" options={[
+<AppSelect isClearable={false} inputId="sel-625" options={[
                                                 { value: 'ACTIVE', label: 'Activa' },
                                                 { value: 'INACTIVE', label: 'Inactiva' }
                                             ]} value={(formData.status === 'ACTIVE' ? { value: 'ACTIVE', label: 'Activa' } : { value: 'INACTIVE', label: 'Inactiva' })?.value ?? null} onChange={(__v) => { const option = ([

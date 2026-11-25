@@ -239,7 +239,7 @@ export default function Suppliers() {
             {/* Table view */}
             {viewMode === 'table' && filteredSuppliers.length > 0 && (
                 <DataTable<Supplier>
-                    ariaLabel="Listado"
+                    ariaLabel="Listado de proveedores"
                     rows={filteredSuppliers}
                     rowKey={(s) => s.id}
                     resetKey={`${searchTerm}|${supplyTypeFilter}`}
@@ -261,7 +261,7 @@ export default function Suppliers() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            type: 'number',
+                            type: 'actions',
                             render: (s) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => viewPriceHistory(s)} title="Historial de Precios">

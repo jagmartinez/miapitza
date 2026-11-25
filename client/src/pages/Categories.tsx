@@ -173,7 +173,7 @@ export default function Categories() {
 
             {viewMode === 'table' && categories.length > 0 && (
                 <DataTable<CategoryRow>
-                    ariaLabel="Listado"
+                    ariaLabel="Listado de categorías"
                     rows={categories}
                     rowKey={(c) => c.id}
                     columns={[
@@ -188,8 +188,8 @@ export default function Categories() {
                             )
                         },
                         { key: 'prefix', header: 'Prefijo', render: (c) => c.codePrefix || '-' },
-                        { key: 'items', header: 'Platos', render: (c) => c._count?.menuItems || 0 },
-                        { key: 'order', header: 'Orden', render: (c) => c.sortOrder ?? 0 },
+                        { key: 'items', header: 'Platos', type: 'number', decimals: 0, render: (c) => c._count?.menuItems || 0 },
+                        { key: 'order', header: 'Orden', type: 'number', decimals: 0, render: (c) => c.sortOrder ?? 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -207,7 +207,7 @@ export default function Categories() {
                         ...(canMutateCategory ? [{
                             key: 'actions',
                             header: 'Acciones',
-                            type: 'number',
+                            type: 'actions',
                             render: (c: CategoryRow) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(c)} title="Editar">
@@ -436,7 +436,7 @@ export default function Categories() {
                                     </div>
 
                                     {formData.active && !formData.showInMenu && !formData.showInInventory && (
-                                        <p style={{ fontSize: '12px', color: 'var(--color-danger, #ef4444)', margin: 0 }}>
+                                        <p style={{ fontSize: '12px', color: 'var(--color-danger)', margin: 0 }}>
                                             Debe activar al menos una visibilidad (menú o inventario).
                                         </p>
                                     )}

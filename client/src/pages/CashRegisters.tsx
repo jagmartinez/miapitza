@@ -469,7 +469,7 @@ export default function CashRegisters() {
                                     </div>
                                 ) : (
                                     <Field label="Sucursal" htmlFor="sel-477">
-<AppSelect inputId="sel-477" options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))} value={(branches
+<AppSelect isClearable={false} inputId="sel-477" options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))} value={(branches
                                             .map((branch) => ({ value: String(branch.id), label: branch.name }))
                                             .find((option) => option.value === newRegisterBranchId) || null)?.value ?? null} onChange={(__v) => { const option = (branches.map((branch) => ({ value: String(branch.id), label: branch.name }))).find((o) => o.value === __v) ?? null; return setNewRegisterBranchId(option?.value || ''); }} />
 </Field>

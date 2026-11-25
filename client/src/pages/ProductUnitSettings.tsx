@@ -409,7 +409,7 @@ export default function ProductUnitSettings() {
 
                         {canMutate && (
                             <div className="puc-add-row">
-                                <AppSelect options={addOptions} value={(newAllowedUnitId
+                                <AppSelect isClearable={false} options={addOptions} value={(newAllowedUnitId
                                         ? addOptions.find((o) => o.value === newAllowedUnitId) || null
                                         : null)?.value ?? null} onChange={(__v) => { const option = (addOptions).find((o) => o.value === __v) ?? null; return setNewAllowedUnitId(option?.value || ''); }} placeholder="Selecciona una unidad para agregar..." />
                                 <Button type="button" variant="primary" onClick={handleAddAllowedUnit} disabled={!newAllowedUnitId}>

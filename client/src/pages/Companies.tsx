@@ -154,7 +154,7 @@ export default function Companies() {
             {/* Table view */}
             {viewMode === 'table' && filteredCompanies.length > 0 && (
                 <DataTable<Company>
-                    ariaLabel="Listado"
+                    ariaLabel="Listado de empresas"
                     rows={filteredCompanies}
                     rowKey={(c) => c.id}
                     resetKey={statusFilter}
@@ -169,8 +169,8 @@ export default function Companies() {
                                 </div>
                             )
                         },
-                        { key: 'branches', header: 'Sucursales', render: (c) => c._count?.branches || 0 },
-                        { key: 'users', header: 'Usuarios', render: (c) => c._count?.users || 0 },
+                        { key: 'branches', header: 'Sucursales', type: 'number', decimals: 0, render: (c) => c._count?.branches || 0 },
+                        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, render: (c) => c._count?.users || 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -179,7 +179,7 @@ export default function Companies() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            type: 'number',
+                            type: 'actions',
                             render: (c) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(c)} title="Editar">
@@ -326,7 +326,7 @@ export default function Companies() {
 
                                 {editingCompany && (
                                     <Field label="Estado de la Empresa" htmlFor="sel-331">
-<AppSelect inputId="sel-331" options={[
+<AppSelect isClearable={false} inputId="sel-331" options={[
                                             { value: 'true', label: 'Activa' },
                                             { value: 'false', label: 'Inactiva' }
                                         ]} value={(formData.active ? { value: 'true', label: 'Activa' } : { value: 'false', label: 'Inactiva' })?.value ?? null} onChange={(__v) => { const option = ([

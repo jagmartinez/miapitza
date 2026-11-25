@@ -141,7 +141,7 @@ export default function Brands() {
 
             {viewMode === 'table' && brands.length > 0 && (
                 <DataTable<MenuBrand>
-                    ariaLabel="Listado"
+                    ariaLabel="Listado de marcas"
                     rows={brands}
                     rowKey={(b) => b.id}
                     columns={[
@@ -157,8 +157,8 @@ export default function Brands() {
                                 </div>
                             )
                         },
-                        { key: 'items', header: 'Platos', render: (b) => b._count?.menuItems || 0 },
-                        { key: 'order', header: 'Orden', render: (b) => b.sortOrder ?? 0 },
+                        { key: 'items', header: 'Platos', type: 'number', decimals: 0, render: (b) => b._count?.menuItems || 0 },
+                        { key: 'order', header: 'Orden', type: 'number', decimals: 0, render: (b) => b.sortOrder ?? 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -167,7 +167,7 @@ export default function Brands() {
                         ...(canMutate ? [{
                             key: 'actions',
                             header: 'Acciones',
-                            type: 'number',
+                            type: 'actions',
                             render: (b: MenuBrand) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
