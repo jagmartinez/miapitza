@@ -1,19 +1,25 @@
-import { useRef } from 'react';
-import { createPortal } from 'react-dom';
 import {
-    X, Clock, FileText, Printer, ShoppingCart, Receipt,
+    Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
-    Users, CircleDollarSign
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
-import { formatNumber } from '@/ui';
+import { Badge, Button, DataTable, EmptyState, FullScreenModal, formatNumber, type Column, type Tone } from '@/ui';
 import { getUserAccentColor } from '../utils/authz';
-import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
-import { useDialogA11y } from '../hooks/useDialogA11y';
+import { getOrderStatusLabel } from '../utils/orderStatus';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAppToast } from '../context/ToastContext';
-import './TableOrdersModal.css';
+import styles from './TableOrdersModal.module.css';
+
+const STATUS_TONE: Record<Order['status'], Tone> = {
+    OPEN: 'primary',
+    SENT_TO_KITCHEN: 'warning',
+    IN_PREPARATION: 'warning',
+    READY: 'success',
+    DELIVERED: 'neutral',
+    CANCELLED: 'neutral',
+};
+const statusTone = (status: Order['status']): Tone => STATUS_TONE[status] ?? 'neutral';
 
 interface TableOrdersModalProps {
     isOpen: boolean;
@@ -54,21 +60,11 @@ export default function TableOrdersModal({
 }: TableOrdersModalProps) {
     const { formatMoney, symbol } = useCurrency();
     const { error: showError } = useAppToast();
-    const containerRef = useRef<HTMLDivElement>(null);
-    const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
     if (!isOpen || !table) return null;
 
     const tableNumber = table.number;
 
     const totalAmount = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
-    const getStatusColor = (status: string) => {
-        return getOrderStatusClassName(status as Order['status']);
-    };
-
-    const getStatusText = (status: string) => {
-        return getOrderStatusLabel(status as Order['status']);
-    };
-
     const formatTime = (date: string) => {
         return new Date(date).toLocaleTimeString('es-ES', {
             hour: '2-digit',
@@ -149,156 +145,135 @@ export default function TableOrdersModal({
         }, 250);
     };
 
-    return createPortal(
-        <div className="modal-overlay-orders" onClick={onClose}>
-            <div
-                ref={containerRef}
-                className="orders-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
-                tabIndex={-1}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="orders-modal-header">
-                    <div className="table-detail-title">
-                        <div className="header-title">
-                            <span className="table-detail-eyebrow">Centro operativo</span>
-                            <h2 id={titleId}>Mesa {tableNumber}</h2>
-                            <span className="header-subtitle">
-                                {table.location || 'Salón principal'}
-                            </span>
-                        </div>
-                    </div>
-                    <button type="button" className="close-btn-orders" onClick={onClose} aria-label="Cerrar">
-                        <X size={24} aria-hidden="true" />
-                    </button>
-                </div>
+    const itemColumns: Column<OrderItem>[] = [
+        { key: 'quantity', header: 'Cant.', type: 'number', width: '0.5fr', decimals: 0 },
+        {
+            key: 'name',
+            header: 'Producto',
+            width: '2fr',
+            render: (item) => (
+                <span className={styles.itemName}>
+                    {item.menuItem?.name || 'Item'}
+                    <small className={styles.kitchen} data-status={item.status}>
+                        <ChefHat size={12} aria-hidden="true" /> {itemStatusLabel(item.status)}
+                    </small>
+                </span>
+            ),
+        },
+        { key: 'subtotal', header: 'Subtotal', type: 'money', width: '1fr', render: (item) => formatMoney(Number(item.subtotal)) },
+    ];
 
-                <section className="table-detail-summary" aria-label="Resumen de la mesa">
-                    <div><Users size={17} /><span><small>Capacidad</small><strong>{table.capacity} personas</strong></span></div>
-                    <div><FileText size={17} /><span><small>Órdenes activas</small><strong>{orders.length}</strong></span></div>
-                    <div className="summary-total"><CircleDollarSign size={17} /><span><small>Consumo activo</small><strong>{formatMoney(totalAmount)}</strong></span></div>
-                </section>
+    return (
+        <FullScreenModal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={`Mesa ${tableNumber}`}
+            subtitle={table.location || 'Salón principal'}
+            footer={({ requestClose }) => (
+                <>
+                    <Button variant="ghost" className={styles.touch} onClick={requestClose}>Cerrar</Button>
+                    {orders.length > 0 && (
+                        <Button variant="secondary" className={styles.touch} icon={Printer} onClick={handlePrintBill}>
+                            Imprimir cuenta
+                        </Button>
+                    )}
+                    {canOperatePOS && (
+                        <Button variant="primary" className={styles.touch} icon={ShoppingCart} onClick={() => onOpenPOS(table)}>
+                            {orders.length > 0 ? 'Continuar pedido' : 'Abrir pedido'}
+                        </Button>
+                    )}
+                </>
+            )}
+        >
+            <div className={styles.workspace}>
+                <dl className={styles.summary} aria-label="Resumen de la mesa">
+                    <div><dt>Capacidad</dt><dd>{formatNumber(table.capacity, 0)} personas</dd></div>
+                    <div><dt>Órdenes activas</dt><dd>{formatNumber(orders.length, 0)}</dd></div>
+                    <div><dt>Consumo activo</dt><dd className={styles.total}>{formatMoney(totalAmount)}</dd></div>
+                </dl>
 
                 {(canTransfer || canConsolidate) && (
-                    <div className="table-command-strip" aria-label="Gestionar ubicación de la mesa">
-                        {canTransfer && <button type="button" onClick={() => onTransfer(table)}>
-                            <ArrowRightLeft size={18} /><span>Cambiar mesa</span>
-                        </button>}
-                        {canConsolidate && <button type="button" onClick={() => onConsolidate(table)}>
-                            <Merge size={18} /><span>Consolidar</span>
-                        </button>}
+                    <div className={styles.commands} role="group" aria-label="Gestionar ubicación de la mesa">
+                        {canTransfer && (
+                            <Button variant="secondary" className={styles.touch} icon={ArrowRightLeft} onClick={() => onTransfer(table)}>
+                                Cambiar mesa
+                            </Button>
+                        )}
+                        {canConsolidate && (
+                            <Button variant="secondary" className={styles.touch} icon={Merge} onClick={() => onConsolidate(table)}>
+                                Consolidar
+                            </Button>
+                        )}
                     </div>
                 )}
 
-                <div className="modal-tab-content-orders">
-                    <div className="orders-list animate-slide-in">
-                            {orders.length === 0 ? (
-                                <div className="no-orders-message">
-                                    <FileText size={48} />
-                                    <p>No hay órdenes activas</p>
-                                    <small>Esta mesa no tiene órdenes pendientes</small>
+                {orders.length === 0 ? (
+                    <EmptyState icon={FileText} title="No hay órdenes activas" description="Esta mesa no tiene órdenes pendientes" />
+                ) : (
+                    orders.map((order) => (
+                        <section key={order.id} className={styles.order} aria-label={`Orden ${order.id}`}>
+                            <header className={styles.orderHeader}>
+                                <div className={styles.orderTitle}>
+                                    <strong>Orden #{order.id}</strong>
+                                    <span className={styles.time}><Clock size={14} aria-hidden="true" /> {formatTime(order.createdAt)}</span>
+                                    <span
+                                        className={styles.waiter}
+                                        style={{ background: `${getUserAccentColor(order.user)}18`, color: getUserAccentColor(order.user) }}
+                                    >
+                                        {order.user?.name || 'Sin mesero'}
+                                    </span>
                                 </div>
-                            ) : (
-                                orders.map(order => (
-                                    <article key={order.id} className="order-card-modal">
-                                        <div className="order-card-header">
-                                            <div className="order-id-time">
-                                                <span className="order-id-badge">Orden #{order.id}</span>
-                                                <div className="order-time">
-                                                    <Clock size={14} />
-                                                    <span>{formatTime(order.createdAt)}</span>
-                                                </div>
-                                            </div>
-                                            <span className={`order-status-badge ${getStatusColor(order.status)}`}>
-                                                {getStatusText(order.status)}
-                                            </span>
-                                        </div>
-                                        <div className="order-waiter-row">
-                                            <span className="order-waiter" style={{ background: `${getUserAccentColor(order.user)}18`, color: getUserAccentColor(order.user) }}>
-                                                {order.user?.name || 'Sin mesero'}
-                                            </span>
-                                            <small>{order.items?.length || 0} productos</small>
-                                        </div>
+                                <Badge tone={statusTone(order.status)} dot>{getOrderStatusLabel(order.status)}</Badge>
+                            </header>
 
-                                        <div className="order-items-list">
-                                            {order.items?.map((item) => (
-                                                <div key={item.id || item.menuItemId} className="order-item-line">
-                                                    <div className="item-quantity-name">
-                                                        <span className="item-qty">{item.quantity}x</span>
-                                                        <span className="item-name">
-                                                            {item.menuItem?.name || 'Item'}
-                                                            <small className={`kitchen-line-status status-${item.status.toLowerCase()}`}>
-                                                                <ChefHat size={12} /> {itemStatusLabel(item.status)}
-                                                            </small>
-                                                        </span>
-                                                    </div>
-                                                    <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
-                                                </div>
-                                            ))}
-                                        </div>
+                            <DataTable<OrderItem>
+                                ariaLabel={`Productos de la orden ${order.id}`}
+                                columns={itemColumns}
+                                rows={order.items ?? []}
+                                rowKey={(item) => item.id || item.menuItemId}
+                                defaultPageSize={25}
+                                empty={<EmptyState title="Sin productos" />}
+                            />
 
-                                        <div className="order-card-footer">
-                                            <span className="order-total-label">Total de la orden</span>
-                                            <span className="order-total-amount">{formatMoney(Number(order.total))}</span>
-                                        </div>
-                                        <div className="table-order-actions">
-                                            {canOperatePOS && !order.invoiceNumber && order.financialStatus === 'UNPAID' && (
-                                                <button type="button" className="table-order-add-products" onClick={() => onOpenPOS(table)}>
-                                                    <ShoppingCart size={16} /> Agregar productos
-                                                </button>
-                                            )}
-                                            {!order.invoiceNumber && canIssueInvoice && (
-                                                <button
-                                                    type="button"
-                                                    className="primary"
-                                                    disabled={busyOrderId === order.id}
-                                                    onClick={() => onIssueInvoice(order)}
-                                                >
-                                                    <Receipt size={16} />
-                                                    {busyOrderId === order.id ? 'Emitiendo…' : 'Emitir factura'}
-                                                </button>
-                                            )}
-                                            {order.invoiceNumber && (
-                                                <span className="invoice-issued-badge">
-                                                    <Receipt size={15} /> {order.invoiceNumber}
-                                                </span>
-                                            )}
-                                            {order.invoiceNumber && order.financialStatus !== 'PAID' && canPay && (
-                                                <>
-                                                    <button type="button" className="primary" onClick={() => onPay(order)}>
-                                                        <CreditCard size={16} /> Cobrar
-                                                    </button>
-                                                    <button type="button" onClick={() => onSplit(order)}>
-                                                        <Scissors size={16} /> Dividir por consumo
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </article>
-                                ))
-                            )}
-                    </div>
-                </div>
-
-                <div className="orders-modal-footer">
-                    <button type="button" className="btn-modal-secondary" onClick={onClose}>
-                        Cerrar
-                    </button>
-                    {orders.length > 0 && (
-                        <button type="button" className="btn-modal-secondary print-bill-action" onClick={handlePrintBill}>
-                            <Printer size={18} />
-                            Imprimir cuenta
-                        </button>
-                    )}
-                    {canOperatePOS && <button type="button" className="btn-modal-primary" onClick={() => onOpenPOS(table)}>
-                        <ShoppingCart size={18} />
-                        {orders.length > 0 ? 'Continuar pedido' : 'Abrir pedido'}
-                    </button>}
-                </div>
+                            <div className={styles.orderFooter}>
+                                <span>Total de la orden</span>
+                                <strong>{formatMoney(Number(order.total))}</strong>
+                            </div>
+                            <div className={styles.actions}>
+                                {canOperatePOS && !order.invoiceNumber && order.financialStatus === 'UNPAID' && (
+                                    <Button variant="secondary" className={`${styles.touch} ${styles.addProducts}`} icon={ShoppingCart} onClick={() => onOpenPOS(table)}>
+                                        Agregar productos
+                                    </Button>
+                                )}
+                                {!order.invoiceNumber && canIssueInvoice && (
+                                    <Button
+                                        variant="primary"
+                                        className={styles.touch}
+                                        icon={Receipt}
+                                        disabled={busyOrderId === order.id}
+                                        onClick={() => onIssueInvoice(order)}
+                                    >
+                                        {busyOrderId === order.id ? 'Emitiendo…' : 'Emitir factura'}
+                                    </Button>
+                                )}
+                                {order.invoiceNumber && (
+                                    <Badge tone="success"><Receipt size={14} aria-hidden="true" /> {order.invoiceNumber}</Badge>
+                                )}
+                                {order.invoiceNumber && order.financialStatus !== 'PAID' && canPay && (
+                                    <>
+                                        <Button variant="primary" className={styles.touch} icon={CreditCard} onClick={() => onPay(order)}>
+                                            Cobrar
+                                        </Button>
+                                        <Button variant="secondary" className={styles.touch} icon={Scissors} onClick={() => onSplit(order)}>
+                                            Dividir por consumo
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
+                        </section>
+                    ))
+                )}
             </div>
-        </div>,
-        document.body,
+        </FullScreenModal>
     );
 }
