@@ -773,7 +773,8 @@ export default function ProductionRecipes() {
                 </div>
             </TableToolbar>
 
-            <div className={s.masterDetail}>
+            {/* Sin receta seleccionada la tabla usa todo el ancho; el panel aparece al elegir una fila. */}
+            <div className={detail ? s.masterDetail : undefined}>
                 <div className={s.master}>
                     <DataTable<ProductionRecipe>
                         ariaLabel="Recetas de producción"
@@ -781,7 +782,7 @@ export default function ProductionRecipes() {
                         rows={filteredRecipes}
                         rowKey={(recipe) => recipe.id}
                         resetKey={`${statusFilter}-${focus}-${searchQuery}`}
-                        minWidth="40rem"
+                        minWidth="64rem"
                         onRowClick={(recipe) => void handleView(recipe)}
                         empty={
                             <EmptyState
@@ -793,9 +794,11 @@ export default function ProductionRecipes() {
                         }
                     />
                 </div>
-                <aside className={s.detail} aria-label="Detalle de la Receta">
-                    {detail || <EmptyState icon={FlaskConical} title="Selecciona una receta" description="El detalle muestra costos, peso de cada insumo y dónde se usa." />}
-                </aside>
+                {detail && (
+                    <aside className={s.detail} aria-label="Detalle de la Receta">
+                        {detail}
+                    </aside>
+                )}
             </div>
 
             <FullScreenModal
