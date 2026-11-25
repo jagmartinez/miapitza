@@ -1,0 +1,18 @@
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+body {
+  font-family: var(--ui-font-sans);
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ui-primary);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}

@@ -1,12 +1,8 @@
 :root {
   /* Colors - Modern Minimalist Palette */
-  --color-primary: #2563eb;
   --color-primary-dark: #1e40af;
   --color-secondary: #10b981;
   --color-accent: #f59e0b;
-  --color-danger: #ef4444;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
 
   /* Neutrals */
   --color-neutral-50: #f8fafc;
@@ -21,12 +17,7 @@
   --color-neutral-900: #0f172a;
 
   /* Semantic colors */
-  --color-background: var(--color-neutral-50);
-  --color-surface: #ffffff;
-  --color-text: var(--color-neutral-900);
-  --color-text-secondary: var(--color-neutral-600);
   --color-text-tertiary: var(--color-neutral-400);
-  --color-border: var(--color-neutral-200);
 
   /* Spacing */
   --spacing-xs: 0.25rem;
@@ -87,8 +78,6 @@
   --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  --color-primary-light: #dbeafe;
-  --color-surface-hover: var(--color-neutral-100);
   --color-disabled-bg: var(--color-neutral-100);
   --font-size-md: 0.9375rem;
   --font-size-2xs: 0.625rem;
@@ -102,15 +91,8 @@
 
 /* Dark Mode Variables */
 .dark {
-  --color-background: var(--color-neutral-900);
-  --color-surface: var(--color-neutral-800);
-  --color-text: var(--color-neutral-50);
-  --color-text-secondary: var(--color-neutral-400);
   --color-text-tertiary: var(--color-neutral-600);
-  --color-border: var(--color-neutral-700);
 
-  --color-primary-light: #1e3a8a;
-  --color-surface-hover: var(--color-neutral-700);
   --color-disabled-bg: var(--color-neutral-700);
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
