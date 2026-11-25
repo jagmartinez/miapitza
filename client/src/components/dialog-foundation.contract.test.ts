@@ -68,7 +68,7 @@ describe('shared dialog foundation', () => {
     expect(pos).not.toContain('pos-shift-warning-overlay');
     expect(pos).not.toContain('pos-modifier-overlay');
     expect(pos).not.toContain('<select');
-    expect(pos).toContain('<Select<WarehouseOption>');
+    expect(pos).toContain('<AppSelect');
     expect(pos.match(/<Modal/g)).toHaveLength(4);
     expect(pos).toContain("closest('[role=\"dialog\"], [role=\"alertdialog\"]')");
   });

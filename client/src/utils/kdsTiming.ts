@@ -33,9 +33,9 @@ export type KdsSummary = {
     targetMinutes: number | null;
 };
 
-/** Active = still in the kitchen (not READY, not released). Missing data is null, never 0. */
+/** Active = SENT_TO_KITCHEN / IN_PREPARATION and not released; closed or cancelled orders never count. Missing data is null, never 0. */
 export function summarizeKds(orders: SummaryOrder[], config: KdsTimingConfig | null, nowMs = Date.now()): KdsSummary {
-    const active = orders.filter((o) => o.status !== 'READY' && !o.kitchenReleasedAt);
+    const active = orders.filter((o) => (o.status === 'SENT_TO_KITCHEN' || o.status === 'IN_PREPARATION') && !o.kitchenReleasedAt);
     const waits = active.map((o) => getKdsWaitMinutes(o, nowMs));
     const avgMinutes = waits.length > 0 ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null;
     return {

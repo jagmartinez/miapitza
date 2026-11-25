@@ -270,18 +270,18 @@
 
 /* Every payment control uses the same 46px rhythm. React Select normally
    defaults to 38px, which made method selection feel disconnected. */
-.payment-dialog .select-group.modal .react-select__control {
+.payment-dialog .app-select__control {
     min-height: 46px;
     border-radius: 10px;
     background: var(--color-surface, #172033);
 }
 
-.payment-dialog .select-group.modal .react-select__value-container {
+.payment-dialog .app-select__value-container {
     min-height: 44px;
     padding-inline: 12px;
 }
 
-.payment-dialog .select-group.modal .react-select__indicators {
+.payment-dialog .app-select__indicators {
     min-height: 44px;
 }
 

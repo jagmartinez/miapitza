@@ -21,8 +21,7 @@ import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
-import Select from '../components/Select';
-import { formatNumber } from '@/ui';
+import { AppSelect, Field, SegmentedControl, formatNumber } from '@/ui';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
@@ -134,6 +133,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [brands, setBrands] = useState<Brand[]>([]);
     const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+    // DELIVERY is created from the delivery flow, not from the POS.
+    const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEOUT'>('DINE_IN');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [showMobileCart, setShowMobileCart] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -549,6 +550,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const buildOrderPayload = useCallback(() => ({
         tableId: selectedTable?.id,
         branchId: selectedTable?.branchId,
+        orderType,
         customerName: customerName || undefined,
         customerTaxId: fiscalCustomer.taxId || undefined,
         customerTaxIdType: fiscalCustomer.taxIdType || undefined,
@@ -562,7 +564,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             notes: item.notes || '',
             modifierIds: item.modifiers.map(mod => mod.id)
         }))
-    }), [selectedTable, customerName, fiscalCustomer, cart]);
+    }), [selectedTable, orderType, customerName, fiscalCustomer, cart]);
 
     const syncOrderContext = useCallback(async (orderId: number) => {
         if (!offlineManager.getStatus()) {
@@ -1205,6 +1207,19 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                             </button>
                         </div>
                     )}
+                    {selectedTable && !currentOrderId && !activeTableOrder && (
+                        <div className="pos-order-type">
+                            <SegmentedControl
+                                ariaLabel="Tipo de orden"
+                                value={orderType}
+                                onChange={setOrderType}
+                                options={[
+                                    { value: 'DINE_IN', label: 'Comer aquí' },
+                                    { value: 'TAKEOUT', label: 'Para llevar' },
+                                ]}
+                            />
+                        </div>
+                    )}
                     {selectedTable && activeTableOrder && (
                         <div style={{
                             marginBottom: '1rem',
@@ -1441,15 +1456,15 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     )}
                 >
                         <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
-                        <Select<WarehouseOption>
-                            variant="modal"
-                            label="Bodega operativa"
-                            placeholder="Seleccionar bodega…"
-                            options={warehouseOptions}
-                            value={warehouseOptions.find((option) => option.value === operationalWarehouseId) ?? null}
-                            onChange={(option: WarehouseOption | null) => setOperationalWarehouseId(option?.value ?? null)}
-                            isSearchable={warehouseOptions.length > 6}
-                        />
+                        <Field label="Bodega operativa" htmlFor="pos-operational-warehouse">
+                            <AppSelect
+                                inputId="pos-operational-warehouse"
+                                placeholder="Seleccionar bodega…"
+                                options={warehouseOptions}
+                                value={operationalWarehouseId}
+                                onChange={setOperationalWarehouseId}
+                            />
+                        </Field>
                         {branchWarehouses.length === 0 && (
                             <p className="shift-warning-note">No hay una bodega tipo sucursal configurada para completar esta operación.</p>
                         )}

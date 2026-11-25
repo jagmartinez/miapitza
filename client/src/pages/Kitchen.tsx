@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI } from '../services/api';
 import { ChefHat, CheckCircle, CheckCheck, AlertCircle, Volume2, VolumeX, AlertTriangle, Play, Check, ListOrdered, Maximize2, Minimize2, MonitorUp, ArrowLeft } from 'lucide-react';
@@ -14,6 +14,7 @@ import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { AppSelect, Button, PageHeader, SegmentedControl, StatCard, formatNumber } from '@/ui';
 import Modal from '../components/Modal';
+import { ThemeContext } from '../context/theme-context';
 import EmptyState from '../components/EmptyState';
 import type { Order, OrderItem } from '../types';
 import { getKdsTimeClass, getKdsWaitMinutes, getKitchenReceivedAt, summarizeKds } from '../utils/kdsTiming';
@@ -65,6 +66,10 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     const previousOrderCount = useRef(0);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+
+    const themeContext = useContext(ThemeContext);
+    const themeRef = useRef<'light' | 'dark'>(themeContext?.theme ?? 'light');
+    themeRef.current = themeContext?.theme ?? 'light';
 
     // KDS screen is dark by default; a theme the user fixed explicitly is respected.
     useEffect(() => {
@@ -548,7 +553,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             />
             {loadError && <div className="kitchen-load-error" role="alert"><AlertTriangle size={20} /><span>{loadError}</span><button type="button" onClick={() => void loadOrders()}>Reintentar</button></div>}
 
-            <div className="kitchen-stats">
+            {!showHistory && <div className="kitchen-stats">
                 <StatCard
                     label="Tiempo promedio en cocina"
                     value={summary.avgMinutes === null ? 'N/D' : `${formatNumber(summary.avgMinutes, 0)} min`}
@@ -567,7 +572,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                         : `Órdenes activas que superan el umbral urgente (${formatNumber(timingConfig?.urgentMinutes ?? 0, 0)} min).`}
                     tone={summary.lateCount ? 'danger' : 'neutral'}
                 />
-            </div>
+            </div>}
 
 
 
@@ -610,7 +615,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 </div>}
             </div>
 
-            <div className="kitchen-columns">
+            <div className={`kitchen-columns${showHistory ? " kitchen-columns--history" : ""}`}>
                 {kitchenColumns.map((col) => (
                     <section key={col.key} className="kitchen-column" aria-label={col.label}>
                         <h2 className="kitchen-column__title">{col.label} <span>{formatNumber(col.orders.length, 0)}</span></h2>

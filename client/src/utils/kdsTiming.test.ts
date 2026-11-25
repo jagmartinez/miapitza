@@ -44,6 +44,13 @@ describe('KDS summary indicators', () => {
         expect(s.targetMinutes).toBe(3);
     });
 
+    it('ignores old CANCELLED/DELIVERED orders that still carry kitchen timestamps', () => {
+        const s = summarizeKds([mk('CANCELLED', 180), mk('DELIVERED', 240), mk('IN_PREPARATION', 4)], { warningMinutes: 3, urgentMinutes: 10 }, now);
+        expect(s.activeCount).toBe(1);
+        expect(s.avgMinutes).toBe(4);
+        expect(s.lateCount).toBe(0);
+    });
+
     it('reports N/D (null) instead of zero when there is nothing active or no thresholds', () => {
         expect(summarizeKds([mk('READY', 5)], { warningMinutes: 3, urgentMinutes: 10 }, now).avgMinutes).toBeNull();
         const s = summarizeKds([mk('IN_PREPARATION', 5)], null, now);

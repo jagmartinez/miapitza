@@ -33,7 +33,7 @@ import {
     splitTotalEvenly,
     summarizePaymentAllocation,
 } from '../utils/payment';
-import CustomSelect from './Select';
+import { AppSelect } from '@/ui';
 import './PaymentModal.css';
 
 type PaymentMode = 'single' | 'mixed' | 'split';
@@ -622,16 +622,14 @@ export default function PaymentModal({
         onChange: (value: number | null) => void,
         disabled = false,
     ) => (
-        <CustomSelect<MethodOption>
+        <AppSelect<number>
             inputId={inputId}
-            variant="modal"
-            value={options.find((option) => option.value === value) ?? null}
+            value={value}
             options={options}
-            onChange={(option: MethodOption | null) => onChange(option?.value ?? null)}
+            onChange={onChange}
             isDisabled={disabled}
-            isSearchable={options.length > 6}
             placeholder="Selecciona método"
-            noOptionsMessage={() => 'Sin métodos disponibles'}
+            noOptionsText="Sin métodos disponibles"
         />
     );
 

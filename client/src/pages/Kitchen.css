@@ -1278,6 +1278,7 @@ button.kitchen-card-body-new:focus-visible {
 /* ===== Plan 04: columnas por estado e indicadores ===== */
 .kitchen-controls { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .kitchen-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: var(--spacing-md); }
+.kitchen-columns--history { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .kitchen-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-md); align-items: start; }
 .kitchen-column { min-width: 0; }
 .kitchen-column__title { display: flex; justify-content: space-between; align-items: center; margin: 0 0 var(--spacing-sm); font-size: 1rem; font-weight: 700; color: var(--color-text); }

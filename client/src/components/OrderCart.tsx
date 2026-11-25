@@ -226,6 +226,15 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
         return () => { cancelled = true; };
     }, []);
 
+    const promoOptions = [
+        ...promos.map((p) => ({
+            value: p.code,
+            label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})`,
+        })),
+        // Keep a selected code visible even when it is no longer in the promotions list.
+        ...(selected && !promos.some((p) => p.code === selected) ? [{ value: selected, label: selected }] : []),
+    ];
+
     const handleApply = () => {
         const code = mode === 'select' ? selected : manualCode.toUpperCase();
         if (code && onApply) {
@@ -261,10 +270,7 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
                     aria-label="Promoción"
                     value={selected || null}
                     onChange={(option) => setSelected(option || '')}
-                    options={promos.map((p) => ({
-                        value: p.code,
-                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})`
-                    }))}
+                    options={promoOptions}
                     placeholder={loading ? 'Cargando promociones...' : 'Seleccionar promoción...'}
                     isDisabled={loading || loadError || promos.length === 0}
                 />
