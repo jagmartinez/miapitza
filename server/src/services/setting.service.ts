@@ -19,6 +19,10 @@ export class SettingService {
     private static readonly TIMEZONE_CACHE_TTL_MS = 60_000;
     private static readonly timezoneCache = new Map<number, { value: string; expiresAt: number }>();
 
+    static clearTimezoneCache(companyId: number) {
+        this.timezoneCache.delete(companyId);
+    }
+
     static async getAll(companyId: number) {
         // Use prefix to simulate multi-tenancy on a global unique name field
         const prefix = `${companyId}_`;
