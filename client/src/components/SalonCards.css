@@ -1,0 +1,7 @@
+.salon-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--spacing-md, 12px);
+  margin-bottom: var(--spacing-md, 12px);
+  min-width: 0;
+}

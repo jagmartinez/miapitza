@@ -1,17 +1,4 @@
 .table-operation-form { display: grid; gap: var(--spacing-lg); }
-.table-operation-form > label { display: grid; gap: 7px; color: var(--color-text); font-weight: 600; }
-.table-operation-form textarea {
-    width: 100%;
-    padding: 11px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-background);
-    color: var(--color-text);
-    font: inherit;
-    box-sizing: border-box;
-}
-.table-operation-form textarea:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
-.table-operation-form .select-group.modal .react-select__control { min-height: 46px; }
 .table-operation-guide { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface)); }
 .table-operation-guide > span { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: var(--color-primary); color: white; font-weight: 800; }
 .table-operation-guide > div { display: grid; gap: 2px; }

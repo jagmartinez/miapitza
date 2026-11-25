@@ -396,8 +396,9 @@ export const ordersAPI = {
     complete: (orderId: number, warehouseId: number) =>
         api.post(`/orders/${orderId}/complete`, { warehouseId }),
 
-    getActive: (branchId?: number) =>
-        api.get('/orders/active', { params: { branchId } }),
+    /** Con includeServedUnpaid trae también las órdenes entregadas sin cobrar (consumo abierto de la mesa). */
+    getActive: (branchId?: number, includeServedUnpaid = false) =>
+        api.get('/orders/active', { params: { branchId, ...(includeServedUnpaid ? { includeServedUnpaid: true } : {}) } }),
 
     getKitchenConfig: () => api.get('/orders/kitchen/config'),
 

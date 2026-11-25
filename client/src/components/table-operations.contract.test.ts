@@ -59,7 +59,7 @@ describe('table operational center contract', () => {
         expect(panelSource).toContain('Consolidar');
         expect(mapSource).toContain('Nueva mesa');
         expect(mapSource).toContain('onStatusFilterChange');
-        expect(tablesSource).toContain('!showMap && <PageHeader');
+        expect(tablesSource).toMatch(/!showMap && \(\s*<PageContent>\s*<PageHeader/);
         expect(tablesSource).toContain('branchControl=');
         expect(mapSource).not.toContain('<select');
         expect(mapSource).not.toContain('onShowList');
@@ -85,12 +85,12 @@ describe('table operational center contract', () => {
     });
 
     it('uses themed react-select controls throughout table operations', () => {
-        expect(operationSource).toContain('variant="modal"');
+        expect(operationSource).toContain('AppSelect');
         expect(operationSource).toContain('Cuenta principal / mesa destino');
         expect(operationSource).toContain('initialTableId');
         expect(tablesSource).toContain('initialTableId={operationTableId}');
         expect(operationSource).not.toContain('<select');
-        expect(mapSource).toContain('Select<SelectOption>');
+        expect(mapSource).toContain('AppSelect<');
         expect(operationSource).toContain('Buscar por mesa o salón');
         expect(operationSource).toContain('visibleConsolidationSources');
     });

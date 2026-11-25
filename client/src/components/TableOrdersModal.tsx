@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
+import { formatNumber } from '@/ui';
 import { getUserAccentColor } from '../utils/authz';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useDialogA11y } from '../hooks/useDialogA11y';
@@ -121,7 +122,7 @@ export default function TableOrdersModal({
                         ${order.items?.map(item => `
                             <div class="item">
                                 <span>${e(item.quantity)}x ${e(item.menuItem?.name || 'Item')}</span>
-                                <span>${e(symbol)}${Number(item.subtotal).toFixed(2)}</span>
+                                <span>${e(symbol)}${formatNumber(item.subtotal)}</span>
                             </div>
                         `).join('')}
                     </div>
@@ -129,7 +130,7 @@ export default function TableOrdersModal({
                 <div class="total">
                     <div class="item">
                         <span>TOTAL:</span>
-                        <span>${e(symbol)}${totalAmount.toFixed(2)}</span>
+                        <span>${e(symbol)}${formatNumber(totalAmount)}</span>
                     </div>
                 </div>
                 <div class="footer">

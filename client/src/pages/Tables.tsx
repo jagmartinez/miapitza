@@ -1,22 +1,20 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { tablesAPI, ordersAPI, branchesAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
+import {
+    AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton,
+    Input, NumberInput, PageContent, PageHeader, SegmentedControl,
+    type Column, type Opt, type Tone,
+} from '@/ui';
+import SalonCards from '../components/SalonCards';
 import TableOrdersModal from '../components/TableOrdersModal';
 import PaymentModal from '../components/PaymentModal';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { canCreatePayment, getUserRoleNames } from '../utils/authz';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned } from 'lucide-react';
-import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
-import { useViewMode } from '../hooks/useViewMode';
+import { Grid3x3, Plus, Edit2, Trash2, Eye, MapPinned } from 'lucide-react';
 import type { Table, Order, Branch, TableFloorPlan } from '../types';
-import type { SingleValue } from 'react-select';
-import Select from '../components/Select';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import './Tables.css';
 import TableMap, { type FloorPlanDraft } from '../components/TableMap';
@@ -26,6 +24,7 @@ import POS from './POS';
 import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { useCurrency } from '../hooks/useCurrency';
+import { openMinutesByTable, openAmountByTable, openTableOrders } from '../utils/salonInsights';
 import ThemeToggle from '../components/ThemeToggle';
 import KitchenNotificationBell from '../components/KitchenNotificationBell';
 import { useNavigate } from 'react-router-dom';
@@ -81,13 +80,16 @@ export default function Tables() {
         branchId: ''
     });
     const [activeTab, setActiveTab] = useState<'general' | 'ubicacion'>('general');
+    const [formDirty, setFormDirty] = useState(false);
 
     // Orders Modal State
     const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
-    const { viewMode, setViewMode } = useViewMode('tables');
     const [showMap, setShowMap] = useState(true);
+    const [openOrders, setOpenOrders] = useState<Order[] | null>(null);
+    const [openOrdersFailed, setOpenOrdersFailed] = useState(false);
+    const [metaNow, setMetaNow] = useState(() => Date.now());
     const [savingLayout, setSavingLayout] = useState(false);
     const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
     const [operationTableId, setOperationTableId] = useState<number | null>(null);
@@ -187,11 +189,12 @@ export default function Tables() {
             });
         }
         setActiveTab('general');
+        setFormDirty(false);
         setIsSidebarOpen(true);
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (editingTable && !canEditTable) {
             showWarning('No tienes permisos para editar mesas');
             return;
@@ -204,20 +207,26 @@ export default function Tables() {
             showWarning('Selecciona la sucursal a la que pertenece la mesa.');
             return;
         }
+        const capacity = parseInt(formData.capacity);
+        if (!Number.isFinite(capacity) || capacity < 1) {
+            setActiveTab('general');
+            showWarning('Indica la capacidad (mínimo 1 persona).');
+            return;
+        }
 
         try {
             if (editingTable) {
                 // La sucursal de una mesa no se reasigna desde la edición.
                 await tablesAPI.update(editingTable.id, {
                     number: formData.number,
-                    capacity: parseInt(formData.capacity),
+                    capacity,
                     location: formData.location,
                     status: formData.status
                 });
             } else {
                 await tablesAPI.create({
                     number: formData.number,
-                    capacity: parseInt(formData.capacity),
+                    capacity,
                     location: formData.location,
                     ...(formData.branchId ? { branchId: parseInt(formData.branchId) } : {})
                 });
@@ -437,101 +446,159 @@ export default function Tables() {
         }
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'AVAILABLE': return 'available';
-            case 'OCCUPIED': return 'occupied';
-            case 'RESERVED': return 'reserved';
-            default: return 'unavailable';
-        }
-    };
-
     const getStatusText = (status: string) => {
         switch (status) {
             case 'AVAILABLE': return 'Disponible';
             case 'OCCUPIED': return 'Ocupada';
             case 'RESERVED': return 'Reservada';
-            default: return 'Fuera de Servicio';
+            default: return 'Fuera de servicio';
         }
     };
+
+    const getStatusTone = (status: string): Tone => {
+        switch (status) {
+            case 'AVAILABLE': return 'success';
+            case 'OCCUPIED': return 'warning';
+            case 'RESERVED': return 'primary';
+            default: return 'neutral';
+        }
+    };
+
+    const setField = (patch: Partial<typeof formData>) => {
+        setFormData((current) => ({ ...current, ...patch }));
+        setFormDirty(true);
+    };
+
+    const branchOptions: Opt<number>[] = branches.map((b) => ({ value: b.id, label: b.name }));
+    const statusSegments: { value: string; label: string }[] = [
+        { value: 'ALL', label: 'Todas' },
+        { value: 'AVAILABLE', label: 'Disponibles' },
+        { value: 'OCCUPIED', label: 'Ocupadas' },
+        { value: 'RESERVED', label: 'Reservadas' },
+    ];
+    const operationalStatusOptions: Opt<Table['status']>[] = [
+        { value: 'AVAILABLE', label: 'Disponible' },
+        { value: 'RESERVED', label: 'Reservada' },
+        { value: 'OUT_OF_SERVICE', label: 'Fuera de servicio' },
+    ];
+
+    const tableColumns: Column<Table>[] = [
+        { key: 'number', header: 'Mesa', width: '8rem', render: (table) => `Mesa ${table.number}` },
+        ...(canChooseBranch ? [{ key: 'branch', header: 'Sucursal', width: '1fr', render: (table: Table) => table.branch?.name || '-' }] : []),
+        { key: 'capacity', header: 'Capacidad (pers.)', width: '9rem', type: 'number' as const, decimals: 0, accessor: (table) => table.capacity },
+        { key: 'location', header: 'Ubicación', width: '1fr', hideBelow: 'md' as const, render: (table) => table.location || '-' },
+        { key: 'status', header: 'Estado', width: '10rem', type: 'status' as const, render: (table) => <Badge tone={getStatusTone(table.status)} dot>{getStatusText(table.status)}</Badge> },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            width: '8rem',
+            type: 'actions' as const,
+            render: (table) => (
+                <>
+                    <IconButton icon={Eye} label={`Ver órdenes de la mesa ${table.number}`} onClick={() => void handleViewOrders(table)} />
+                    {canEditTable && <IconButton icon={Edit2} label={`Editar mesa ${table.number}`} onClick={() => handleOpenSidebar(table)} />}
+                    {canDeleteTable && <IconButton icon={Trash2} label={`Eliminar mesa ${table.number}`} onClick={() => void handleDelete(table.id)} />}
+                </>
+            ),
+        },
+    ];
+
+    const mapBranchForMeta = mapBranchId;
+    useEffect(() => {
+        let cancelled = false;
+        const loadOpenOrders = async () => {
+            try {
+                const res = await ordersAPI.getActive(mapBranchForMeta, true);
+                if (cancelled) return;
+                setOpenOrders((res.data.data ?? []) as Order[]);
+                setOpenOrdersFailed(false);
+            } catch {
+                if (!cancelled) setOpenOrdersFailed(true);
+            }
+            if (!cancelled) setMetaNow(Date.now());
+        };
+        void loadOpenOrders();
+        const timer = window.setInterval(() => { void loadOpenOrders(); }, 60000);
+        return () => { cancelled = true; window.clearInterval(timer); };
+    }, [mapBranchForMeta]);
+
+    const tableMeta = useMemo(() => {
+        if (!openOrders) return undefined;
+        const minutes = openMinutesByTable(openOrders, metaNow);
+        const amounts = openAmountByTable(openOrders);
+        const meta = new Map<number, { minutes: number; amount: number | null }>();
+        for (const order of openTableOrders(openOrders)) {
+            if (order.tableId == null) continue;
+            meta.set(order.tableId, { minutes: minutes.get(order.tableId) ?? 0, amount: amounts.get(order.tableId) ?? null });
+        }
+        return meta;
+    }, [openOrders, metaNow]);
 
     if (loading) return <div className="tables-loading">Cargando...</div>;
 
     return (
         <div className={`tables-page ${showMap ? 'tables-page--map' : 'tables-page--list'}`}>
-            {!showMap && <PageHeader
-                title="Gestión de Mesas"
-                icon={Grid3x3}
-                actions={(
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <ThemeToggle />
-                        <button
-                            type="button"
-                            className="tables-map-toggle"
-                            onClick={() => setShowMap(true)}
-                        >
-                            <MapPinned size={18} /> Plano
-                        </button>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        {canCreateTable && (
-                            <Button onClick={() => handleOpenSidebar()}>
-                                <Plus size={20} />
-                                Nueva Mesa
-                            </Button>
+            {!showMap && (
+                <PageContent>
+                    <PageHeader
+                        title="Gestión de mesas"
+                        description="Plano, estado y consumo abierto del salón"
+                        actions={(
+                            <>
+                                <ThemeToggle />
+                                <Button icon={MapPinned} onClick={() => setShowMap(true)}>Plano</Button>
+                                {canCreateTable && (
+                                    <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>Nueva mesa</Button>
+                                )}
+                            </>
+                        )}
+                    />
+
+                    <SalonCards branchId={branchFilter} tables={tables} onReviewOrders={() => navigate('/orders')} />
+
+                    <div className="tables-filters-row">
+                        <SegmentedControl
+                            ariaLabel="Estado de la mesa"
+                            options={statusSegments}
+                            value={statusFilter ?? 'ALL'}
+                            onChange={(value) => setStatusFilter(value === 'ALL' ? null : value)}
+                        />
+                        {canChooseBranch && branches.length > 1 && (
+                            <div className="tables-branch-filter">
+                                <AppSelect<number>
+                                    aria-label="Filtrar por sucursal"
+                                    placeholder="Todas las sucursales"
+                                    options={branchOptions}
+                                    value={branchFilter}
+                                    onChange={setBranchFilter}
+                                />
+                            </div>
                         )}
                     </div>
-                )}
-            />}
 
-            {/* Filters Row */}
-            {!showMap && <div className="tables-filters-row">
-                <div className="table-status-filters">
-                    <button
-                        className={`table-status-btn ${statusFilter === null ? 'active' : ''}`}
-                        onClick={() => setStatusFilter(null)}
-                    >
-                        Todas
-                    </button>
-                    <button
-                        className={`table-status-btn available ${statusFilter === 'AVAILABLE' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('AVAILABLE')}
-                    >
-                        Disponibles
-                    </button>
-                    <button
-                        className={`table-status-btn occupied ${statusFilter === 'OCCUPIED' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('OCCUPIED')}
-                    >
-                        Ocupadas
-                    </button>
-                    <button
-                        className={`table-status-btn reserved ${statusFilter === 'RESERVED' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('RESERVED')}
-                    >
-                        Reservadas
-                    </button>
-                </div>
-
-                {canChooseBranch && branches.length > 1 && (
-                    <div className="tables-branch-filter">
-                        <Select
-                            placeholder="Todas las sucursales"
-                            options={[
-                                { value: 'all', label: 'Todas las sucursales' },
-                                ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))
-                            ]}
-                            value={
-                                branchFilter
-                                    ? { value: branchFilter.toString(), label: branches.find((b) => b.id === branchFilter)?.name || 'Sucursal' }
-                                    : { value: 'all', label: 'Todas las sucursales' }
-                            }
-                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                setBranchFilter(option && option.value !== 'all' ? parseInt(option.value) : null)}
-                            isSearchable={branches.length > 6}
-                        />
-                    </div>
-                )}
-            </div>}
+                    <DataTable
+                        ariaLabel="Mesas"
+                        columns={tableColumns}
+                        rows={filteredTables}
+                        rowKey={(table) => table.id}
+                        resetKey={`${statusFilter}-${branchFilter}`}
+                        empty={(
+                            <EmptyState
+                                icon={Grid3x3}
+                                title={`No hay mesas ${statusFilter ? 'con este estado' : 'registradas'}`}
+                                action={(
+                                    <Button
+                                        onClick={() => (statusFilter ? setStatusFilter(null) : handleOpenSidebar())}
+                                        disabled={!statusFilter && !canCreateTable}
+                                    >
+                                        {statusFilter ? 'Ver todas' : 'Crear primera mesa'}
+                                    </Button>
+                                )}
+                            />
+                        )}
+                    />
+                </PageContent>
+            )}
 
             {showMap && !mapBranchId && (
                 <div className="table-map-branch-required">
@@ -544,6 +611,9 @@ export default function Tables() {
                 <TableMap
                     plan={floorPlan}
                     statusFilter={statusFilter}
+                    tableMeta={tableMeta}
+                    tableMetaUnavailable={openOrdersFailed && !openOrders}
+                    currencySymbol={currencySymbol}
                     onStatusFilterChange={setStatusFilter}
                     canEdit={canEditMap}
                     saving={savingLayout}
@@ -552,348 +622,107 @@ export default function Tables() {
                     onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
                     onReturnToAdministration={canEditMap ? () => navigate('/dashboard') : undefined}
                     themeControl={<KitchenNotificationBell inline />}
+                    insights={<SalonCards branchId={mapBranchId} tables={tables} onReviewOrders={() => navigate('/orders')} />}
                     branchControl={canChooseBranch && branches.length > 1 ? (
                         <div className="table-map-branch-control">
-                            <Select
+                            <AppSelect<number>
+                                aria-label="Sucursal"
                                 placeholder="Sucursal"
-                                options={branches.map((branch) => ({ value: branch.id.toString(), label: branch.name }))}
-                                value={branchFilter ? {
-                                    value: branchFilter.toString(),
-                                    label: branches.find((branch) => branch.id === branchFilter)?.name || 'Sucursal'
-                                } : null}
-                                onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                    setBranchFilter(option ? Number(option.value) : null)}
-                                isSearchable={branches.length > 6}
+                                options={branchOptions}
+                                value={branchFilter}
+                                onChange={setBranchFilter}
                             />
                         </div>
                     ) : undefined}
                 />
             )}
 
-            {!showMap && viewMode === 'table' && filteredTables.length > 0 && (
-                <CatalogTable<Table>
-                    rows={filteredTables}
-                    rowKey={(table) => table.id}
-                    resetKey={`${statusFilter}-${branchFilter}`}
-                    columns={[
-                        {
-                            key: 'number',
-                            header: 'Mesa',
-                            render: (table) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">Mesa {table.number}</span>
-                                </div>
-                            ),
-                        },
-                        ...(canChooseBranch ? [{
-                            key: 'branch',
-                            header: 'Sucursal',
-                            render: (table: Table) => table.branch?.name || '-',
-                        }] : []),
-                        {
-                            key: 'capacity',
-                            header: 'Capacidad',
-                            align: 'center',
-                            render: (table) => `${table.capacity} pers.`,
-                        },
-                        {
-                            key: 'location',
-                            header: 'Ubicación',
-                            render: (table) => table.location || '-',
-                        },
-                        {
-                            key: 'status',
-                            header: 'Estado',
-                            render: (table) => (
-                                <span className={`catalog-pill ${table.status === 'AVAILABLE' ? 'ok' : table.status === 'OCCUPIED' ? 'warning' : 'neutral'}`}>
-                                    {getStatusText(table.status)}
-                                </span>
-                            ),
-                        },
-                        {
-                            key: 'actions',
-                            header: 'Acciones',
-                            align: 'right',
-                            render: (table) => (
-                                <div className="catalog-table-actions">
-                                    <button
-                                        type="button"
-                                        className="catalog-action-btn"
-                                        onClick={() => handleViewOrders(table)}
-                                        title="Ver órdenes"
-                                    >
-                                        <Eye size={16} />
-                                    </button>
-                                    {canEditTable && (
-                                        <button
-                                            type="button"
-                                            className="catalog-action-btn"
-                                            onClick={() => handleOpenSidebar(table)}
-                                            title="Editar"
-                                        >
-                                            <Edit2 size={16} />
-                                        </button>
-                                    )}
-                                    {canDeleteTable && (
-                                        <button
-                                            type="button"
-                                            className="catalog-action-btn danger"
-                                            onClick={() => handleDelete(table.id)}
-                                            title="Eliminar"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            ),
-                        },
-                    ] as CatalogColumn<Table>[]}
-                />
-            )}
-
-            {!showMap && viewMode === 'cards' && (
-            <div className="tables-grid-new">
-                {filteredTables.map(table => {
-                    return (
-                        <div key={table.id} className={`table-card-new ${getStatusColor(table.status)}`}>
-                            {/* Status Badge */}
-                            <div className={`status-badge-new ${getStatusColor(table.status)}`}>
-                                {getStatusText(table.status)}
-                            </div>
-
-                            {/* Table Info */}
-                            <div className="table-card-body-new">
-                                <div className="table-number-new">Mesa {table.number}</div>
-
-                                {canChooseBranch && table.branch && (
-                                    <div className="table-branch-tag">
-                                        <Building2 size={12} />
-                                        <span>{table.branch.name}</span>
-                                    </div>
-                                )}
-
-                                <div className="table-details-new">
-                                    <div className="detail-item">
-                                        <Users size={16} />
-                                        <span>{table.capacity} personas</span>
-                                    </div>
-                                    {table.location && (
-                                        <div className="detail-item">
-                                            <MapPin size={16} />
-                                            <span>{table.location}</span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Order Count for Occupied Tables */}
-                                {table.status === 'OCCUPIED' && (
-                                    <div className="order-count-badge">
-                                        📋 Ver órdenes activas
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Actions */}
-                            <div className="table-card-actions-new">
-                                <button
-                                    className="action-btn-new view"
-                                    onClick={() => handleViewOrders(table)}
-                                    title="Ver Órdenes"
-                                >
-                                    <Eye size={20} />
-                                    <span>Ver</span>
-                                </button>
-                                {canEditTable && (
-                                    <button
-                                        className="action-btn-new edit"
-                                        onClick={() => handleOpenSidebar(table)}
-                                        title="Editar"
-                                    >
-                                        <Edit2 size={20} />
-                                        <span>Editar</span>
-                                    </button>
-                                )}
-                                {canDeleteTable && (
-                                    <button
-                                        className="action-btn-new delete"
-                                        onClick={() => handleDelete(table.id)}
-                                        title="Eliminar"
-                                    >
-                                        <Trash2 size={20} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-            )}
-
-            {!showMap && filteredTables.length === 0 && (
-                <div className="no-tables-message">
-                    <Grid3x3 size={48} />
-                    <p>No hay mesas {statusFilter ? 'con este estado' : 'registradas'}</p>
-                    <Button
-                        onClick={() => statusFilter ? setStatusFilter(null) : handleOpenSidebar()}
-                        disabled={!statusFilter && !canCreateTable}
-                    >
-                        {statusFilter ? 'Ver todas' : 'Crear primera mesa'}
-                    </Button>
-                </div>
-            )}
-
-            {/* Create/Edit Sidebar */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
-                title={editingTable ? 'Editar Mesa' : 'Nueva Mesa'}
+                title={editingTable ? 'Editar mesa' : 'Nueva mesa'}
+                dirty={formDirty}
+                tabs={[{ id: 'general', label: 'General' }, { id: 'ubicacion', label: 'Ubicación' }]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as 'general' | 'ubicacion')}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="secondary" onClick={requestClose}>Cancelar</Button>
+                        <Button type="submit" form="table-form" variant="primary">
+                            {editingTable ? 'Actualizar mesa' : 'Guardar mesa'}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content table-modal-content">
-                    {/* Tabs Navigation */}
-                    <div className="modal-tabs">
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'general'}
-                            className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('general')}
-                        >
-                            <Grid3x3 size={18} />
-                            <span>General</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'ubicacion'}
-                            className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('ubicacion')}
-                        >
-                            <MapPin size={18} />
-                            <span>Ubicación</span>
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            {activeTab === 'general' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Users size={18} />
-                                        <h3>Información de la Mesa</h3>
-                                    </div>
-
-                                    {editingTable ? (
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label">Sucursal</label>
-                                            <div className="modal-static-field">
-                                                <Building2 size={16} />
-                                                <span>{editingTable.branch?.name || `Sucursal #${editingTable.branchId}`}</span>
-                                            </div>
-                                        </div>
-                                    ) : canChooseBranch && (
-                                        <div className="modal-input-group">
-                                            <Select
-                                                variant="modal"
-                                                label="Sucursal"
-                                                placeholder="Selecciona la sucursal..."
-                                                options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
-                                                value={
-                                                    formData.branchId
-                                                        ? {
-                                                            value: formData.branchId,
-                                                            label: branches.find((b) => b.id.toString() === formData.branchId)?.name || ''
-                                                        }
-                                                        : null
-                                                }
-                                                onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                                    setFormData({ ...formData, branchId: option?.value || '' })}
-                                                isSearchable={branches.length > 6}
-                                            />
-                                        </div>
-                                    )}
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="table-number">Número/Nombre</label>
-                                            <input
-                                                id="table-number"
-                                                type="text"
-                                                className="modal-standard-input"
-                                                value={formData.number}
-                                                onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-                                                required
-                                                placeholder="Ej: 01, A2..."
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="table-capacity">Capacidad (Personas)</label>
-                                            <input
-                                                id="table-capacity"
-                                                type="number"
-                                                className="modal-standard-input"
-                                                value={formData.capacity}
-                                                onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
-                                                required
-                                                min="1"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'ubicacion' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <MapPin size={18} />
-                                        <h3>Localización y Estado</h3>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="table-location">Área / Ubicación</label>
-                                        <input
-                                            id="table-location"
-                                            type="text"
-                                            className="modal-standard-input"
-                                            value={formData.location}
-                                            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                                            placeholder="Ej: Terraza, Salón Principal, VIP..."
+                <form id="table-form" onSubmit={handleSubmit}>
+                    {activeTab === 'general' && (
+                        <FormSection title="Información de la mesa">
+                            <FormGrid>
+                                {editingTable ? (
+                                    <Field label="Sucursal" htmlFor="table-branch-static">
+                                        <Input id="table-branch-static" readOnly value={editingTable.branch?.name || `Sucursal #${editingTable.branchId}`} />
+                                    </Field>
+                                ) : canChooseBranch && (
+                                    <Field label="Sucursal" htmlFor="table-branch" required>
+                                        <AppSelect<number>
+                                            inputId="table-branch"
+                                            placeholder="Selecciona la sucursal..."
+                                            options={branchOptions}
+                                            value={formData.branchId ? Number(formData.branchId) : null}
+                                            onChange={(value) => setField({ branchId: value ? String(value) : '' })}
                                         />
-                                    </div>
+                                    </Field>
+                                )}
+                                <Field label="Número/Nombre" htmlFor="table-number" required>
+                                    <Input
+                                        id="table-number"
+                                        value={formData.number}
+                                        onChange={(e) => setField({ number: e.target.value })}
+                                        required
+                                        placeholder="Ej: 01, A2..."
+                                    />
+                                </Field>
+                                <Field label="Capacidad (personas)" htmlFor="table-capacity" required>
+                                    <NumberInput
+                                        id="table-capacity"
+                                        decimals={0}
+                                        min={1}
+                                        value={formData.capacity === '' ? null : Number(formData.capacity)}
+                                        onChange={(value) => setField({ capacity: value === null ? '' : String(value) })}
+                                    />
+                                </Field>
+                            </FormGrid>
+                        </FormSection>
+                    )}
 
-                                    {editingTable && (
-                                        <Select
-                                            variant="modal"
-                                            label="Estado Operativo"
-                                            options={[
-                                                { value: 'AVAILABLE', label: 'Disponible' },
-                                                { value: 'RESERVED', label: 'Reservada' },
-                                                { value: 'OUT_OF_SERVICE', label: 'Fuera de Servicio' }
-                                            ]}
-                                            value={{
-                                                value: formData.status,
-                                                label: getStatusText(formData.status)
-                                            }}
-                                            onChange={(option: SingleValue<{ value: Table['status']; label: string }>) =>
-                                                option && setFormData({ ...formData, status: option.value })}
+                    {activeTab === 'ubicacion' && (
+                        <FormSection title="Localización y estado">
+                            <FormGrid>
+                                <Field label="Área / Ubicación" htmlFor="table-location">
+                                    <Input
+                                        id="table-location"
+                                        value={formData.location}
+                                        onChange={(e) => setField({ location: e.target.value })}
+                                        placeholder="Ej: Terraza, Salón Principal, VIP..."
+                                    />
+                                </Field>
+                                {editingTable && (
+                                    <Field label="Estado operativo" htmlFor="table-status">
+                                        <AppSelect<Table['status']>
+                                            inputId="table-status"
+                                            options={operationalStatusOptions}
+                                            value={formData.status}
+                                            onChange={(value) => value && setField({ status: value })}
                                             isDisabled={editingTable.status === 'OCCUPIED'}
-                                            isSearchable={false}
+                                            isClearable={false}
                                         />
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" variant="primary">
-                                {editingTable ? 'Actualizar Mesa' : 'Guardar Mesa'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
-            </Sidebar>
+                                    </Field>
+                                )}
+                            </FormGrid>
+                        </FormSection>
+                    )}
+                </form>
+            </FullScreenModal>
 
             {/* Orders Modal */}
             <TableOrdersModal

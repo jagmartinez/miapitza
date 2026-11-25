@@ -24,6 +24,17 @@ describe('durable KDS lifecycle', () => {
         }));
     });
 
+    it('includes served orders that are not paid when open consumption is requested', async () => {
+        const findMany = jest.spyOn(prisma.order, 'findMany').mockResolvedValue([]);
+
+        await OrderService.getActiveOrders(1, 2, true);
+        expect(findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                OR: expect.arrayContaining([{ status: 'DELIVERED', financialStatus: { not: 'PAID' } }])
+            })
+        }));
+    });
+
     it('deduplicates retries in one READY cycle but permits a later reopened cycle', () => {
         const first = buildKitchenNotificationDedupKey({
             orderId: 41,
