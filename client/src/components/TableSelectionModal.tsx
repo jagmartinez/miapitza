@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { Table } from '../types';
-import Modal from './Modal';
+import { FullScreenModal } from '@/ui';
 import './TableSelectionModal.css';
 
 interface TableSelectionModalProps {
@@ -30,7 +30,7 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
     const occupiedTables = filteredTables.filter(t => t.status === 'OCCUPIED');
 
     return (
-        <Modal isOpen onClose={onClose} title="Seleccionar Mesa" size="lg">
+        <FullScreenModal isOpen onClose={onClose} title="Seleccionar Mesa">
             <div className="table-selection-modal-content">
                 <div className="table-selection-modal-toolbar">
                     <div className="table-selection-search">
@@ -99,6 +99,6 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
                     )}
                 </div>
             </div>
-        </Modal>
+        </FullScreenModal>
     );
 }

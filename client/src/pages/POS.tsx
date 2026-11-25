@@ -19,9 +19,7 @@ import TableSelectionModal from '../components/TableSelectionModal';
 import OrderCart from '../components/OrderCart';
 import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
-import Modal from '../components/Modal';
-import Button from '../components/Button';
-import { AppSelect, Field, SegmentedControl, formatNumber } from '@/ui';
+import { AppSelect, Button, Field, FullScreenModal, SegmentedControl, formatNumber } from '@/ui';
 import POSProductCard from '../components/POSProductCard';
 import { loadMenuAvailability, type MenuAvailabilityItem } from '../services/posAvailability';
 import { LoadingOverlay } from '../components/LoadingSpinner';
@@ -1406,13 +1404,12 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             )}
 
             {showFiscalCustomer && (
-                <Modal
+                <FullScreenModal
                     isOpen
                     onClose={() => setShowFiscalCustomer(false)}
                     title="Datos fiscales del cliente"
-                    size="lg"
-                    description="Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir."
-                    footer={<Button type="button" onClick={() => setShowFiscalCustomer(false)}>Aceptar</Button>}
+                    subtitle="Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir."
+                    footer={<Button type="button" variant="primary" onClick={() => setShowFiscalCustomer(false)}>Aceptar</Button>}
                 >
                         <div className="pos-fiscal-grid">
                             <label>
@@ -1443,7 +1440,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         {activeTableOrder?.invoiceNumber && (
                             <p className="shift-warning-note">La factura ya fue emitida; estos datos son de solo lectura.</p>
                         )}
-                </Modal>
+                </FullScreenModal>
             )}
 
             {showKeypad && (
@@ -1455,7 +1452,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             )}
 
             {warehouseAction && (
-                <Modal
+                <FullScreenModal
                     isOpen
                     onClose={() => {
                         setWarehouseAction(null);
@@ -1463,8 +1460,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         setPendingCancelReason(undefined);
                     }}
                     title={warehouseAction === 'DELIVER' ? 'Bodega de entrega' : 'Bodega para registrar merma'}
-                    size="sm"
-                    description={warehouseAction === 'DELIVER'
+                    subtitle={warehouseAction === 'DELIVER'
                         ? 'Selecciona la bodega de esta sucursal de la que se descontará el inventario.'
                         : 'La orden ya fue enviada a cocina. Selecciona la bodega donde se registrará el desperdicio.'}
                     footer={(
@@ -1474,7 +1470,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 setOperationalWarehouseId(null);
                                 setPendingCancelReason(undefined);
                             }}>Volver</Button>
-                            <Button type="button" disabled={!operationalWarehouseId} onClick={() => void handleWarehouseAction()}>Confirmar</Button>
+                            <Button type="button" variant="primary" disabled={!operationalWarehouseId} onClick={() => void handleWarehouseAction()}>Confirmar</Button>
                         </>
                     )}
                 >
@@ -1491,7 +1487,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         {branchWarehouses.length === 0 && (
                             <p className="shift-warning-note">No hay una bodega tipo sucursal configurada para completar esta operación.</p>
                         )}
-                </Modal>
+                </FullScreenModal>
             )}
 
             {modifierItem && (
@@ -1510,21 +1506,19 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             {/* Cash Shift Warning Modal */}
             {showShiftWarning && shiftStatus && (
-                <Modal
+                <FullScreenModal
                     isOpen
                     onClose={() => setShowShiftWarning(false)}
                     title={shiftStatus.requiresClose ? 'Turno de caja pendiente' : 'Sin turno de caja'}
-                    size="sm"
-                    closeOnBackdrop={false}
-                    description={canManageShift
+                    subtitle={canManageShift
                         ? shiftStatus.message
                         : 'No hay un turno de caja activo. Solicita al cajero o administrador que abra un turno para procesar pagos.'}
                     footer={canManageShift ? (
-                        <Button type="button" onClick={() => navigate('/cash-registers')}>
+                        <Button type="button" variant="primary" onClick={() => navigate('/cash-registers')}>
                             {shiftStatus.requiresClose ? 'Ir a cerrar turno' : 'Ir a abrir turno'}
                         </Button>
                     ) : (
-                        <Button type="button" onClick={() => setShowShiftWarning(false)}>Entendido</Button>
+                        <Button type="button" variant="primary" onClick={() => setShowShiftWarning(false)}>Entendido</Button>
                     )}
                 >
                         <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
@@ -1541,7 +1535,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                     ? 'Aviso: Puedes crear órdenes y enviarlas a cocina. Los cobros los registra cajería y requieren turno activo.'
                                     : 'Aviso: Los cobros los registra cajería y requieren turno de caja activo.'}
                         </p>
-                </Modal>
+                </FullScreenModal>
             )}
         </div>
     );
@@ -1617,12 +1611,11 @@ function ModifierSelectorModal({
     };
 
     return (
-        <Modal
+        <FullScreenModal
             isOpen
             onClose={onClose}
             title={item.name}
-            size="md"
-            description="Personaliza el producto y revisa el subtotal antes de agregarlo."
+            subtitle="Personaliza el producto y revisa el subtotal antes de agregarlo."
             footer={(
                 <>
                     <div className="pos-modifier-subtotal">
@@ -1630,7 +1623,7 @@ function ModifierSelectorModal({
                         <strong>{currencySymbol}{formatNumber(subtotal)}</strong>
                     </div>
                     <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-                    <Button type="button" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
+                    <Button type="button" variant="primary" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
                 </>
             )}
         >
@@ -1678,6 +1671,6 @@ function ModifierSelectorModal({
                         })
                     )}
                 </div>
-        </Modal>
+        </FullScreenModal>
     );
 }

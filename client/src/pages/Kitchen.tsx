@@ -12,8 +12,7 @@ import { useAppToast } from '../context/ToastContext';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
 import { useConfirmDialog } from '../context/ConfirmContext';
-import { AppSelect, Button, PageHeader, SegmentedControl, StatCard, formatNumber } from '@/ui';
-import Modal from '../components/Modal';
+import { AppSelect, Button, FullScreenModal, PageHeader, SegmentedControl, StatCard, formatNumber } from '@/ui';
 import { ThemeContext } from '../context/theme-context';
 import EmptyState from '../components/EmptyState';
 import type { Order, OrderItem } from '../types';
@@ -645,22 +644,20 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 const detailTimeline = getOrderTimeline(detailOrder);
                 const detailWaiterAccent = getUserAccentColor(detailOrder.user);
                 return (
-                    <Modal
+                    <FullScreenModal
                         isOpen={true}
                         onClose={() => setDetailOrderId(null)}
                         title={`Orden #${detailOrder.id} — Mesa ${detailOrder.table?.number || 'N/A'}`}
-                        size="lg"
-                        variant="sidebar"
                         footer={!detailOrder.kitchenReleasedAt ? (
                             <div className="kitchen-detail-footer">
                                 {canKitchenLineOps && (
-                                    <button className="btn btn-danger-ghost" onClick={() => { setDetailOrderId(null); handleReportProblem(detailOrder.id); }}>
+                                    <Button variant="ghost" className="btn-danger-ghost" onClick={() => { setDetailOrderId(null); handleReportProblem(detailOrder.id); }}>
                                         <AlertTriangle size={16} /> Reportar problema
-                                    </button>
+                                    </Button>
                                 )}
                                 <div className="kitchen-detail-footer-primary">
-                                    {canKitchenLineOps && detailOrder.status === 'IN_PREPARATION' && <button className="btn btn-primary" onClick={() => { void handleMarkReady(detailOrder.id); setDetailOrderId(null); }}><CheckCircle size={16} /> Marcar todo listo</button>}
-                                    {canKitchenLineOps && detailOrder.status === 'READY' && <button className="btn btn-primary" onClick={() => void handleReleaseOrder(detailOrder.id)}><Check size={18} /> Liberar del KDS</button>}
+                                    {canKitchenLineOps && detailOrder.status === 'IN_PREPARATION' && <Button variant="primary" onClick={() => { void handleMarkReady(detailOrder.id); setDetailOrderId(null); }}><CheckCircle size={16} /> Marcar todo listo</Button>}
+                                    {canKitchenLineOps && detailOrder.status === 'READY' && <Button variant="primary" onClick={() => void handleReleaseOrder(detailOrder.id)}><Check size={18} /> Liberar del KDS</Button>}
                                 </div>
                             </div>
                         ) : undefined}
@@ -761,18 +758,17 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                 })}
                             </div>
                         </div>
-                    </Modal>
+                    </FullScreenModal>
                 );
             })()}
 
-            <Modal
+            <FullScreenModal
                 isOpen={showProblemModal}
                 onClose={() => {
                     setShowProblemModal(false);
                     setProblemDescription('');
                 }}
                 title="Reportar Problema"
-                size="sm"
             >
                 <p style={{ margin: '0 0 var(--spacing-md) 0', color: 'var(--ui-text-muted)', fontSize: 'var(--font-size-sm)' }}>
                     Orden #{selectedOrderId}
@@ -803,7 +799,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                         Reportar
                     </button>
                 </div>
-            </Modal>
+            </FullScreenModal>
         </div>
     );
 }

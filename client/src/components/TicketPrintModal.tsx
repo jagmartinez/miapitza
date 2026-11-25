@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppSelect, Field } from '@/ui';
-import Modal from './Modal';
+import { AppSelect, Button, Field, FullScreenModal } from '@/ui';
 import api from '../services/api';
 import { Printer } from 'lucide-react';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -329,17 +328,16 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <Modal
+    <FullScreenModal
       isOpen={isOpen}
       onClose={onClose}
       title={type === 'kitchen' ? 'Ticket de Cocina' : 'Ticket de Cliente'}
-      size="sm"
       footer={(
         <>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button type="button" className="btn btn-primary" onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
             <Printer size={18} aria-hidden="true" /> Imprimir
-          </button>
+          </Button>
         </>
       )}
     >
@@ -394,7 +392,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
           )}
         </div>
       </div>
-    </Modal>
+    </FullScreenModal>
   );
 };
 

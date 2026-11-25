@@ -2,18 +2,19 @@ import type { CSSProperties, ReactNode } from 'react';
 import './charts.css';
 
 /** Mapa de calor filas × columnas; la intensidad es relativa al mayor valor. */
-export function Heatmap({ rows, columns, format, caption }: {
+export function Heatmap({ rows, columns, format, caption, ariaLabel = 'Mapa de calor de ventas por día y hora' }: {
   rows: { label: string; values: number[] }[];
   columns: string[];
   format(v: number): string;
   caption?: ReactNode;
+  ariaLabel?: string;
 }) {
   const all = rows.flatMap((r) => r.values).filter((v) => Number.isFinite(v));
   const max = all.length ? Math.max(...all) : 0;
   if (rows.length === 0 || columns.length === 0 || max <= 0) {
     return <p className="ui-chart__empty">Sin datos en el periodo</p>;
   }
-  const label = 'Mapa de calor de ventas por día y hora';
+  const label = ariaLabel;
   return (
     <figure className="ui-chart">
       <div

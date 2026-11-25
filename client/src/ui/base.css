@@ -16,3 +16,17 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--ui-border) transparent;
 }
+
+/* Impresión: oculta el chrome de la app y los botones salvo .print-keep */
+@media print {
+    .ui-shell__rail,
+    .ui-shell__topbar,
+    button:not(.print-keep) {
+        display: none !important;
+    }
+
+    .ui-shell__main {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+}

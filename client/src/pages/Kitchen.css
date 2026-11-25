@@ -617,7 +617,7 @@
     .kitchen-items-list-modal .item-action-btn { grid-column: 2; justify-self: start; }
     .kitchen-detail-footer { align-items: stretch; flex-direction: column; }
     .kitchen-detail-footer-primary { width: 100%; margin-left: 0; }
-    .kitchen-detail-footer .btn { width: 100%; }
+    .kitchen-detail-footer .ui-button { width: 100%; }
 }
 
 .kitchen-items-list-modal {
@@ -665,19 +665,19 @@
     flex-wrap: wrap;
 }
 
-.kitchen-detail-actions .btn {
+.kitchen-detail-actions .ui-button {
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
-.btn-danger-ghost {
+.ui-button.btn-danger-ghost {
     background: transparent;
     color: var(--ui-danger);
     border: 1px solid var(--ui-danger);
 }
 
-.btn-danger-ghost:hover {
+.ui-button.btn-danger-ghost:hover {
     background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
 }
 
@@ -1157,7 +1157,7 @@
 
 .kitchen-detail-footer { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .kitchen-detail-footer-primary { display: flex; justify-content: flex-end; gap: 10px; margin-left: auto; }
-.kitchen-detail-footer .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; }
+.kitchen-detail-footer .ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; }
 
 .kitchen-display-mode {
     width: 100%;
