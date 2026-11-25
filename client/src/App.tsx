@@ -47,6 +47,7 @@ function InternalEmployeeGuard({ children }: { children: React.ReactNode }) {
 
 // Lazy-loaded pages (code-split per route)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const UiPlayground = import.meta.env.DEV ? lazy(() => import('./pages/UiPlayground')) : null;
 const Tables = lazy(() => import('./pages/Tables'));
 const Kitchen = lazy(() => import('./pages/Kitchen'));
 const Users = lazy(() => import('./pages/Users'));
@@ -122,6 +123,7 @@ function App() {
                             <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
                                 {/* Open to all authenticated users */}
                                 <Route path="/dashboard" element={<Dashboard />} />
+                                {UiPlayground && <Route path="/dev/ui" element={<UiPlayground />} />}
                                 <Route path="/profile" element={<Profile />} />
                                 <Route path="/rh/mi-portal" element={<InternalEmployeeGuard><MyHrLanding /></InternalEmployeeGuard>} />
                                 <Route path="/rh/mi-portal/horario" element={<InternalEmployeeGuard><MySchedule /></InternalEmployeeGuard>} />
