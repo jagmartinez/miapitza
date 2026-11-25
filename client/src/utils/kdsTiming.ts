@@ -23,3 +23,25 @@ export function getKdsTimeClass(minutes: number, config: KdsTimingConfig): KdsTi
     if (minutes >= config.warningMinutes) return 'time-warning';
     return 'time-normal';
 }
+
+type SummaryOrder = KitchenTimedOrder & { status: string; kitchenReleasedAt?: string | null };
+
+export type KdsSummary = {
+    activeCount: number;
+    avgMinutes: number | null;
+    lateCount: number | null;
+    targetMinutes: number | null;
+};
+
+/** Active = still in the kitchen (not READY, not released). Missing data is null, never 0. */
+export function summarizeKds(orders: SummaryOrder[], config: KdsTimingConfig | null, nowMs = Date.now()): KdsSummary {
+    const active = orders.filter((o) => o.status !== 'READY' && !o.kitchenReleasedAt);
+    const waits = active.map((o) => getKdsWaitMinutes(o, nowMs));
+    const avgMinutes = waits.length > 0 ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null;
+    return {
+        activeCount: active.length,
+        avgMinutes,
+        lateCount: config ? waits.filter((w) => w >= config.urgentMinutes).length : null,
+        targetMinutes: config ? config.warningMinutes : null,
+    };
+}

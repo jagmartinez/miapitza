@@ -12,12 +12,11 @@ import { useAppToast } from '../context/ToastContext';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
 import { useConfirmDialog } from '../context/ConfirmContext';
-import Select from '../components/Select';
+import { AppSelect, Button, PageHeader, SegmentedControl, StatCard, formatNumber } from '@/ui';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
-import type { SingleValue } from 'react-select';
 import type { Order, OrderItem } from '../types';
-import { getKdsTimeClass, getKdsWaitMinutes, getKitchenReceivedAt } from '../utils/kdsTiming';
+import { getKdsTimeClass, getKdsWaitMinutes, getKitchenReceivedAt, summarizeKds } from '../utils/kdsTiming';
 
 function axiosMsg(err: unknown, fallback: string): string {
     if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -66,6 +65,21 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     const previousOrderCount = useRef(0);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+
+    // KDS screen is dark by default; a theme the user fixed explicitly is respected.
+    useEffect(() => {
+        if (!displayMode) return;
+        let userSet = false;
+        try { userSet = localStorage.getItem('theme_user_set') === '1'; } catch { /* storage unavailable */ }
+        const root = document.documentElement;
+        if (userSet || root.classList.contains('dark')) return;
+        root.classList.add('dark');
+        root.style.colorScheme = 'dark';
+        return () => {
+            root.classList.remove('dark');
+            root.style.colorScheme = 'light';
+        };
+    }, [displayMode]);
 
     useEffect(() => {
         initializeSound();
@@ -345,101 +359,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
 
-    return (
-        <div ref={pageRef} className={`kitchen-page-new ${displayMode ? 'kitchen-display-mode' : 'kitchen-admin-mode'}`}>
-            <div className="kitchen-header-new">
-                <div className="header-left-kitchen">
-                    <h1><ChefHat size={28} /> {displayMode ? 'Pantalla de Cocina' : 'Cocina (supervisión)'}</h1>
-                    <p className="kitchen-subtitle-new">{orders.length} {showHistory ? 'órdenes en historial' : 'órdenes en cola activa'}</p>
-                </div>
-                <div className="kitchen-controls">
-                    {!displayMode && <button
-                        className={`sound-toggle-new ${showHistory ? 'enabled' : 'disabled'}`}
-                        onClick={() => setShowHistory((value) => !value)}
-                    >
-                        <ListOrdered size={18} />
-                        <span>{showHistory ? 'Ver cola activa' : 'Historial'}</span>
-                    </button>}
-                    <button
-                        className={`sound-toggle-new ${soundEnabled ? 'enabled' : 'disabled'}`}
-                        onClick={() => setSoundEnabled(!soundEnabled)}
-                    >
-                        {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
-                        <span>{soundEnabled ? 'Sonido ON' : 'Sonido OFF'}</span>
-                    </button>
-                    {displayMode && <button className="sound-toggle-new" onClick={() => void toggleFullscreen()}>
-                        {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                        <span>{isFullscreen ? 'Salir de pantalla' : 'Pantalla completa'}</span>
-                    </button>}
-                    {!displayMode && <button className="sound-toggle-new" onClick={() => navigate('/kds')}>
-                        <MonitorUp size={18} />
-                        <span>Abrir KDS táctil</span>
-                    </button>}
-                    {displayMode && canReturnToAdministration && <button className="sound-toggle-new" onClick={() => navigate('/kitchen')}>
-                        <ArrowLeft size={18} />
-                        <span>Volver a administración</span>
-                    </button>}
-                </div>
-            </div>
-
-            {loadError && <div className="kitchen-load-error" role="alert"><AlertTriangle size={20} /><span>{loadError}</span><button type="button" onClick={() => void loadOrders()}>Reintentar</button></div>}
-
-
-            {/* Filters Row */}
-            <div className="filters-row">
-                <div className="status-filters-new">
-                    <button
-                        className={`status-filter-btn-new ${statusFilter === 'all' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('all')}
-                    >
-                        Todas
-                    </button>
-                    <button
-                        className={`status-filter-btn-new ${statusFilter === 'SENT_TO_KITCHEN' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('SENT_TO_KITCHEN')}
-                    >
-                        En Cola
-                    </button>
-                    <button
-                        className={`status-filter-btn-new ${statusFilter === 'IN_PREPARATION' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('IN_PREPARATION')}
-                    >
-                        En Preparación
-                    </button>
-                    <button
-                        className={`status-filter-btn-new ${statusFilter === 'READY' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('READY')}
-                    >
-                        Listas
-                    </button>
-                </div>
-
-                {!displayMode && <div className="additional-filters">
-                    <div className="filter-group">
-                        <input
-                            id="table-filter"
-                            type="text"
-                            className="table-filter-input"
-                            placeholder="Mesa #"
-                            value={tableFilter}
-                            onChange={(e) => setTableFilter(e.target.value)}
-                        />
-                    </div>
-                    <div className="filter-group date-filter-group">
-                        <Select
-                            id="date-filter"
-                            options={dateFilterOptions}
-                            value={dateFilterOptions.find(opt => opt.value === dateFilter)}
-                            onChange={(option: SingleValue<{ value: string; label: string }>) => setDateFilter(option?.value || '24h')}
-                            isSearchable={false}
-                            placeholder="Filtrar por fecha"
-                        />
-                    </div>
-                </div>}
-            </div>
-
-            <div className="kitchen-grid-new">
-                {sortedOrders.map(order => {
+    const renderCard = (order: Order) => {
                     const waitTime = getWaitTime(order);
                     const timeClass = getTimeClass(waitTime);
                     const timeline = getOrderTimeline(order);
@@ -596,20 +516,121 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
 
 
                     );
-                })}
+    };
 
-                {sortedOrders.length === 0 && (
-                    <EmptyState
-                        icon={<ChefHat size={48} />}
-                        title={orders.length === 0 ? 'No hay órdenes pendientes' : 'Ninguna orden coincide con los filtros'}
-                        description={
-                            orders.length === 0
-                                ? 'Las nuevas órdenes aparecerán aquí automáticamente'
-                                : 'Prueba otro estado, mesa o rango de fecha'
-                        }
-                    />
-                )}
+    const kitchenColumns = [
+        { key: "received", label: "Recibidas", orders: sortedOrders.filter((o) => o.status === "SENT_TO_KITCHEN") },
+        { key: "preparing", label: "En preparación", orders: sortedOrders.filter((o) => o.status === "IN_PREPARATION") },
+        { key: "ready", label: "Listas", orders: sortedOrders.filter((o) => o.status !== "SENT_TO_KITCHEN" && o.status !== "IN_PREPARATION") },
+    ];
+    const summary = summarizeKds(orders, timingConfig);
+
+    return (
+        <div ref={pageRef} className={`kitchen-page-new ${displayMode ? 'kitchen-display-mode' : 'kitchen-admin-mode'}`}>
+            <PageHeader
+                title={displayMode ? 'Pantalla de Cocina' : 'Cocina (supervisión)'}
+                description={`${orders.length} ${showHistory ? 'órdenes en historial' : 'órdenes en cola activa'}`}
+                actions={
+                    <div className="kitchen-controls">
+                        {!displayMode && <Button variant="secondary" icon={ListOrdered} onClick={() => setShowHistory((value) => !value)}>
+                            {showHistory ? 'Ver cola activa' : 'Historial'}
+                        </Button>}
+                        <Button variant="secondary" icon={soundEnabled ? Volume2 : VolumeX} onClick={() => setSoundEnabled(!soundEnabled)}>
+                            {soundEnabled ? 'Sonido ON' : 'Sonido OFF'}
+                        </Button>
+                        {displayMode && <Button variant="secondary" icon={isFullscreen ? Minimize2 : Maximize2} onClick={() => void toggleFullscreen()}>
+                            {isFullscreen ? 'Salir de pantalla' : 'Pantalla completa'}
+                        </Button>}
+                        {!displayMode && <Button variant="secondary" icon={MonitorUp} onClick={() => navigate('/kds')}>Abrir KDS táctil</Button>}
+                        {displayMode && canReturnToAdministration && <Button variant="secondary" icon={ArrowLeft} onClick={() => navigate('/kitchen')}>Volver a administración</Button>}
+                    </div>
+                }
+            />
+            {loadError && <div className="kitchen-load-error" role="alert"><AlertTriangle size={20} /><span>{loadError}</span><button type="button" onClick={() => void loadOrders()}>Reintentar</button></div>}
+
+            <div className="kitchen-stats">
+                <StatCard
+                    label="Tiempo promedio en cocina"
+                    value={summary.avgMinutes === null ? 'N/D' : `${formatNumber(summary.avgMinutes, 0)} min`}
+                    context={summary.avgMinutes === null
+                        ? 'Sin órdenes activas para promediar.'
+                        : summary.targetMinutes === null
+                            ? 'Umbrales de cocina no disponibles.'
+                            : `Meta ${formatNumber(summary.targetMinutes, 0)} min (umbral de atención en Configuración).`}
+                    tone={summary.avgMinutes !== null && summary.targetMinutes !== null && summary.avgMinutes > summary.targetMinutes ? 'warning' : 'neutral'}
+                />
+                <StatCard
+                    label="Atrasadas"
+                    value={summary.lateCount === null ? 'N/D' : formatNumber(summary.lateCount, 0)}
+                    context={summary.lateCount === null
+                        ? 'Umbrales de cocina no disponibles.'
+                        : `Órdenes activas que superan el umbral urgente (${formatNumber(timingConfig?.urgentMinutes ?? 0, 0)} min).`}
+                    tone={summary.lateCount ? 'danger' : 'neutral'}
+                />
             </div>
+
+
+
+            {/* Filters Row */}
+            <div className="filters-row">
+                <SegmentedControl
+                    ariaLabel="Filtrar por estado"
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    options={[
+                        { value: 'all', label: 'Todas' },
+                        { value: 'SENT_TO_KITCHEN', label: 'En cola' },
+                        { value: 'IN_PREPARATION', label: 'En preparación' },
+                        { value: 'READY', label: 'Listas' },
+                    ]}
+                />
+
+                {!displayMode && <div className="additional-filters">
+                    <div className="filter-group">
+                        <input
+                            id="table-filter"
+                            type="text"
+                            className="table-filter-input"
+                            placeholder="Mesa #"
+                            value={tableFilter}
+                            onChange={(e) => setTableFilter(e.target.value)}
+                        />
+                    </div>
+                    <div className="filter-group date-filter-group">
+                        <AppSelect
+                            inputId="date-filter"
+                            aria-label="Filtrar por fecha"
+                            options={dateFilterOptions}
+                            value={dateFilter}
+                            onChange={(v) => setDateFilter(v ?? '24h')}
+                            isClearable={false}
+                            placeholder="Filtrar por fecha"
+                        />
+                    </div>
+                </div>}
+            </div>
+
+            <div className="kitchen-columns">
+                {kitchenColumns.map((col) => (
+                    <section key={col.key} className="kitchen-column" aria-label={col.label}>
+                        <h2 className="kitchen-column__title">{col.label} <span>{formatNumber(col.orders.length, 0)}</span></h2>
+                        <div className="kitchen-column__body">
+                            {col.orders.map(renderCard)}
+                        </div>
+                    </section>
+                ))}
+            </div>
+            {sortedOrders.length === 0 && (
+                <EmptyState
+                    icon={<ChefHat size={48} />}
+                    title={orders.length === 0 ? 'No hay órdenes pendientes' : 'Ninguna orden coincide con los filtros'}
+                    description={
+                        orders.length === 0
+                            ? 'Las nuevas órdenes aparecerán aquí automáticamente'
+                            : 'Prueba otro estado, mesa o rango de fecha'
+                    }
+                />
+            )}
 
             {/* Order Detail Modal */}
             {detailOrderId !== null && (() => {

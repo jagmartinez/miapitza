@@ -20,6 +20,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, [theme]);
 
     const toggleTheme = () => {
+        try { localStorage.setItem('theme_user_set', '1'); } catch { /* storage unavailable */ }
         setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
     };
 

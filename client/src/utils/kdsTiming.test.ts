@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getKdsTimeClass, getKdsWaitMinutes, getKitchenReceivedAt } from './kdsTiming';
+import { getKdsTimeClass, getKdsWaitMinutes, getKitchenReceivedAt, summarizeKds } from './kdsTiming';
 
 describe('KDS persistent timing', () => {
     const order = {
@@ -24,5 +24,30 @@ describe('KDS persistent timing', () => {
 
     it('falls back to order creation only for legacy lines without sentAt', () => {
         expect(getKitchenReceivedAt({ createdAt: order.createdAt, items: [{}] })).toBe(order.createdAt);
+    });
+});
+
+describe('KDS summary indicators', () => {
+    const now = new Date('2026-07-14T13:00:00.000Z').getTime();
+    const mk = (status: string, minutesAgo: number, released = false) => ({
+        status,
+        kitchenReleasedAt: released ? 'x' : null,
+        createdAt: new Date(now - minutesAgo * 60_000).toISOString(),
+        items: [] as Array<{ sentAt?: string }>,
+    });
+
+    it('averages only active orders and counts the ones past the urgent threshold', () => {
+        const s = summarizeKds([mk('SENT_TO_KITCHEN', 12), mk('IN_PREPARATION', 4), mk('READY', 40)], { warningMinutes: 3, urgentMinutes: 10 }, now);
+        expect(s.activeCount).toBe(2);
+        expect(s.avgMinutes).toBe(8);
+        expect(s.lateCount).toBe(1);
+        expect(s.targetMinutes).toBe(3);
+    });
+
+    it('reports N/D (null) instead of zero when there is nothing active or no thresholds', () => {
+        expect(summarizeKds([mk('READY', 5)], { warningMinutes: 3, urgentMinutes: 10 }, now).avgMinutes).toBeNull();
+        const s = summarizeKds([mk('IN_PREPARATION', 5)], null, now);
+        expect(s.lateCount).toBeNull();
+        expect(s.targetMinutes).toBeNull();
     });
 });
