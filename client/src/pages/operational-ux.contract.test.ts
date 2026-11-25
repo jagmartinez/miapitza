@@ -5,11 +5,11 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 
 describe('operational UX contracts', () => {
     it('keeps the main shell fluid and centers the dashboard at 1700px', () => {
-        const layoutStyles = read('../components/Layout.css');
+        const layoutStyles = read('../ui/layout/layout.css');
         const dashboardStyles = read('./Dashboard.css');
 
-        expect(layoutStyles).toContain('.main-content {');
-        expect(layoutStyles).toContain('max-width: none');
+        expect(layoutStyles).toContain('.ui-shell__main {');
+        expect(layoutStyles).toContain('min-width: 0');
         expect(dashboardStyles).toContain('max-width: 1700px');
         expect(dashboardStyles).toContain('margin: 0 auto');
     });
