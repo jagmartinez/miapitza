@@ -4,6 +4,8 @@ import prisma from '../../utils/prisma';
 import { CostingService } from '../../services/costing.service';
 import { ProductionRecipeService } from '../../services/production-recipe.service';
 import { ProductionOrderService } from '../../services/production-order.service';
+import { InventoryEngineService } from '../../services/inventory-engine.service';
+import { AuditLogService } from '../../services/audit-log.service';
 
 afterEach(() => {
     jest.restoreAllMocks();
@@ -244,6 +246,68 @@ describe('Production order lifecycle invariants', () => {
         await expect(ProductionOrderService.cancel(8, 1, 9, '   '))
             .rejects.toThrow(/motivo de anulación es requerido/i);
         expect(findFirst).not.toHaveBeenCalled();
+    });
+
+    it('rejects all-zero real consumptions before mutating stock or the order', async () => {
+        jest.spyOn(prisma.productionOrder, 'findFirst').mockResolvedValue({
+            id: 8, companyId: 1, status: 'IN_PROGRESS', recipeId: null,
+            items: [{ id: 1, componentProductId: 12, requiredQuantity: 4 }]
+        } as never);
+        const transaction = jest.spyOn(prisma, '$transaction');
+        const movement = jest.spyOn(InventoryEngineService, 'applyMovement');
+
+        await expect(ProductionOrderService.finish(8, 1, 9, {
+            consumptions: [{ componentProductId: 12, consumedQuantity: 0 }]
+        })).rejects.toThrow(/consumir al menos un insumo/i);
+
+        expect(transaction).not.toHaveBeenCalled();
+        expect(movement).not.toHaveBeenCalled();
+    });
+
+    it('allows mixed zero and positive overrides while posting only the positive input', async () => {
+        const order = {
+            id: 8, companyId: 1, branchId: 2, status: 'IN_PROGRESS', recipeId: null,
+            productId: 30, warehouseId: 4, code: 'PRD-8', plannedQuantity: 1,
+            items: [
+                { id: 1, componentProductId: 12, requiredQuantity: 4 },
+                { id: 2, componentProductId: 13, requiredQuantity: 3 }
+            ]
+        };
+        jest.spyOn(prisma.productionOrder, 'findFirst').mockResolvedValue(order as never);
+        const itemUpdate = jest.fn(async (_args: unknown) => ({}));
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            productionOrder: {
+                findFirst: jest.fn(async () => order),
+                update: jest.fn(async () => ({ ...order, status: 'FINISHED' }))
+            },
+            productionOrderItem: { update: itemUpdate },
+            product: { findFirst: jest.fn(async ({ where }: { where: { id: number } }) => ({ id: where.id, name: `P${where.id}` })) },
+            stock: { aggregate: jest.fn(async () => ({ _sum: { quantity: 0 } })) }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        const movement = jest.spyOn(InventoryEngineService, 'applyMovement')
+            .mockResolvedValueOnce({ movementId: 1, unitCost: 5, totalCost: 10, balanceQty: 0, balanceCost: 0, consumedLayers: [] })
+            .mockResolvedValueOnce({ movementId: 2, unitCost: 10, totalCost: 10, balanceQty: 1, balanceCost: 10, consumedLayers: [] });
+        jest.spyOn(CostingService, 'applyProductionCost').mockResolvedValue();
+        jest.spyOn(AuditLogService, 'log').mockResolvedValue({} as never);
+
+        await ProductionOrderService.finish(8, 1, 9, {
+            producedQuantity: 1,
+            consumptions: [
+                { componentProductId: 12, consumedQuantity: 0 },
+                { componentProductId: 13, consumedQuantity: 2 }
+            ]
+        });
+
+        const inputCalls = movement.mock.calls.filter((call) => call[1].type === 'OUT');
+        expect(inputCalls).toHaveLength(1);
+        expect(inputCalls[0][1]).toEqual(expect.objectContaining({ productId: 13, quantity: 2 }));
+        expect(itemUpdate).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 1 }, data: { consumedQuantity: 0, totalCost: 0 }
+        }));
     });
 });
 

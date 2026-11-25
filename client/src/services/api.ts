@@ -343,6 +343,12 @@ export const menuAPI = {
     updateRecipe: (recipeId: number, data: MenuRecipeUpdateInput) =>
         api.put<{ success: boolean; data: MenuRecipe }>(`/menu-items/recipes/${recipeId}`, data),
 
+    replaceRecipes: (id: number, recipes: MenuRecipeCreateInput[], menuItem?: Record<string, unknown>) =>
+        api.put<{ success: boolean; data: { menuItem: Record<string, unknown>; recipes: MenuRecipe[] } }>(
+            `/menu-items/${id}/recipes`,
+            { recipes, ...(menuItem ? { menuItem } : {}) }
+        ),
+
     deleteRecipe: (recipeId: number) =>
         api.delete(`/menu-items/recipes/${recipeId}`),
 
@@ -416,6 +422,9 @@ export const ordersAPI = {
     updatePricing: (id: number, data: Record<string, unknown>) =>
         api.patch(`/orders/${id}/pricing`, data),
 
+    updateFiscalCustomer: (id: number, data: Record<string, unknown>) =>
+        api.patch(`/orders/${id}/fiscal-customer`, data),
+
     cancel: (id: number, cancelReason?: string, warehouseId?: number) =>
         api.post(`/orders/${id}/cancel`, { cancelReason, ...(warehouseId ? { warehouseId } : {}) }),
 
@@ -430,10 +439,42 @@ export const ordersAPI = {
 };
 
 export const invoicesAPI = {
+    issue: (orderId: number) => api.post(`/invoices/${orderId}/issue`),
+
     getData: (orderId: number) => api.get(`/invoices/${orderId}`),
 
     downloadPdf: (orderId: number) =>
         api.get(`/invoices/${orderId}/pdf`, { responseType: 'blob' }),
+
+    cancel: (orderId: number, data: { idempotencyKey: string; reason: string; wasteWarehouseId?: number }) =>
+        api.post(`/invoices/${orderId}/cancel`, data),
+
+    getCancellation: (orderId: number) => api.get(`/invoices/${orderId}/cancellation`),
+
+    downloadCancellationPdf: (orderId: number) =>
+        api.get(`/invoices/${orderId}/cancellation/pdf`, { responseType: 'blob' }),
+
+    issueCreditNote: (orderId: number, data: {
+        idempotencyKey: string;
+        reason: string;
+        inventoryAction: 'NO_RETURN' | 'RETURN_TO_STOCK';
+        externalRefunds: Array<{ paymentId: number; reference: string }>;
+        lines?: Array<{ orderItemId: number; quantity: number }>;
+    }) => api.post(`/invoices/${orderId}/credit-note`, data),
+
+    getCreditNote: (orderId: number) => api.get(`/invoices/${orderId}/credit-note`),
+
+    downloadCreditNotePdf: (orderId: number) =>
+        api.get(`/invoices/${orderId}/credit-note/pdf`, { responseType: 'blob' }),
+
+    listCreditNotes: (params?: Record<string, unknown>) => api.get('/invoices/credit-notes', { params }),
+
+    getCreditNoteById: (creditNoteId: number) => api.get(`/invoices/credit-notes/${creditNoteId}`),
+
+    downloadCreditNotePdfById: (creditNoteId: number) =>
+        api.get(`/invoices/credit-notes/${creditNoteId}/pdf`, { responseType: 'blob' }),
+
+    listCancellations: (params?: Record<string, unknown>) => api.get('/invoices/cancellations', { params }),
 };
 
 // Products API
@@ -980,6 +1021,11 @@ export const inventoryMovementsAPI = {
         api.post('/inventory-movements/transfer', data, {
             ...(idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : {})
         }),
+
+    reverse: (movementId: number, reason: string, idempotencyKey: string) =>
+        api.post(`/inventory-movements/${movementId}/reverse`, { reason }, {
+            headers: { 'X-Idempotency-Key': idempotencyKey }
+        }),
 };
 
 // Units of Measure API
@@ -1198,6 +1244,22 @@ export const cateringAPI = {
 
     reversePayment: (eventId: number, paymentId: number, reason: string) =>
         api.post(`/catering/${eventId}/payments/${paymentId}/reverse`, { reason }),
+
+    issueFiscalInvoice: (eventId: number, idempotencyKey: string) =>
+        api.post(`/catering/${eventId}/fiscal-invoice`, {}, {
+            headers: { 'X-Idempotency-Key': idempotencyKey }
+        }),
+
+    getFiscalInvoice: (eventId: number) =>
+        api.get(`/catering/${eventId}/fiscal-invoice`),
+
+    issueFiscalCreditNote: (eventId: number, data: Record<string, unknown>, idempotencyKey: string) =>
+        api.post(`/catering/${eventId}/fiscal-credit-note`, data, {
+            headers: { 'X-Idempotency-Key': idempotencyKey }
+        }),
+
+    getFiscalCreditNote: (eventId: number) =>
+        api.get(`/catering/${eventId}/fiscal-credit-note`),
 
     getAllServices: () =>
         api.get('/catering/services'),

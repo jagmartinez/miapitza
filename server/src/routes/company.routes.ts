@@ -3,11 +3,12 @@ import { CompanyController } from '../controllers/company.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
+import { ADMINS } from '../constants/roles';
 
 const router = Router();
 
 router.use(authMiddleware);
-router.use(requireRole('SUPERADMIN'));
+router.use(requireRole(...ADMINS));
 
 router.get('/', CompanyController.getAll);
 router.get('/:id', validate(s.idParam), CompanyController.getById);

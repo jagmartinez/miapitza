@@ -3,7 +3,7 @@ import { UserController } from '../controllers/user.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
-import { ADMINS, ROLES } from '../constants/roles';
+import { ADMINS } from '../constants/roles';
 
 const router = Router();
 
@@ -15,6 +15,6 @@ router.get('/:id', validate(s.idParam), UserController.getById);
 router.put('/profile', UserController.updateMe);
 router.post('/', requireRole(...ADMINS), validate(s.createUser), UserController.create);
 router.put('/:id', requireRole(...ADMINS), validate(s.updateUser), UserController.update);
-router.delete('/:id', requireRole(ROLES.SUPERADMIN), validate(s.idParam), UserController.delete);
+router.delete('/:id', requireRole(...ADMINS), validate(s.idParam), UserController.delete);
 
 export default router;

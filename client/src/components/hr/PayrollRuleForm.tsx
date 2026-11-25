@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Scale } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrPayrollRulePayload, HrPayrollRuleVersion } from '../../types/hr-payroll';
 
 interface PayrollRuleFormProps {
@@ -8,6 +10,7 @@ interface PayrollRuleFormProps {
   saving: boolean;
   onSubmit: (payload: HrPayrollRulePayload) => Promise<void>;
   onCancel: () => void;
+  notice?: ReactNode;
 }
 
 export default function PayrollRuleForm({
@@ -16,15 +19,29 @@ export default function PayrollRuleForm({
   saving,
   onSubmit,
   onCancel,
+  notice,
 }: PayrollRuleFormProps) {
   const [name, setName] = useState(initial?.name ?? '');
   const [effectiveFrom, setEffectiveFrom] = useState(initial?.effectiveFrom ?? '');
   const [effectiveTo, setEffectiveTo] = useState(initial?.effectiveTo ?? '');
   const [sourceReference, setSourceReference] = useState(initial?.sourceReference ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const sourceIsValid = sourceReference.trim().length >= 3;
+  const datesAreValid = !effectiveTo || !effectiveFrom || effectiveTo >= effectiveFrom;
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!sourceIsValid) {
+      setValidationError('La referencia normativa debe contener al menos 3 caracteres.');
+      return;
+    }
+    if (!datesAreValid) {
+      setValidationError('La fecha final no puede ser anterior a la fecha inicial.');
+      return;
+    }
+    setValidationError(null);
     await onSubmit({
       name: name.trim(),
       effectiveFrom,
@@ -35,7 +52,35 @@ export default function PayrollRuleForm({
   };
 
   return (
-    <form className="hr-payroll-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de regla de nómina"
+      tabLabel="Regla"
+      sectionTitle="Identidad, vigencia y respaldo normativo"
+      icon={<Scale size={18} aria-hidden="true" />}
+      formClassName="hr-payroll-form"
+      notice={notice}
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            disabled={
+              !online ||
+              saving ||
+              !name.trim() ||
+              !effectiveFrom ||
+              !sourceIsValid ||
+              !datesAreValid
+            }
+          >
+            {saving ? 'Guardando…' : initial ? 'Guardar nueva revisión' : 'Crear borrador'}
+          </Button>
+        </>
+      }
+    >
       <label>
         Nombre de la versión
         <input
@@ -68,10 +113,16 @@ export default function PayrollRuleForm({
         <input
           value={sourceReference}
           onChange={(event) => setSourceReference(event.target.value)}
+          minLength={3}
           maxLength={240}
           required
         />
       </label>
+      {validationError && (
+        <p className="hr-payroll-warning span-full" role="alert">
+          {validationError}
+        </p>
+      )}
       <label className="span-full">
         Descripción de alcance
         <textarea
@@ -85,17 +136,6 @@ export default function PayrollRuleForm({
         Esta pantalla versiona metadatos y vigencia. No captura tasas, fórmulas legales ni valores
         calculados.
       </p>
-      <div className="hr-payroll-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button
-          type="submit"
-          disabled={!online || saving || !name.trim() || !effectiveFrom || !sourceReference.trim()}
-        >
-          {saving ? 'Guardando…' : initial ? 'Guardar nueva revisión' : 'Crear borrador'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

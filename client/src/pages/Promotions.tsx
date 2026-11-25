@@ -336,7 +336,7 @@ export default function Promotions() {
                     <form onSubmit={handleSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
                             {activeTab === 'identidad' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <FileText size={16} />
                                         <h3>Identidad de la Promoción</h3>
@@ -362,7 +362,7 @@ export default function Promotions() {
                             )}
 
                             {activeTab === 'reglas' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Percent size={16} />
                                         <h3>Reglas de Descuento</h3>
@@ -408,7 +408,7 @@ export default function Promotions() {
                             )}
 
                             {activeTab === 'vigencia' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Calendar size={16} />
                                         <h3>Período de Vigencia</h3>

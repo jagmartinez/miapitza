@@ -11,6 +11,7 @@ import {
     type VacationBalanceUnit,
 } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { scheduledWorkMinutes } from '../utils/hr-shift-minutes';
 import { isValidTimeZone, zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
 import { availableActionsFrom } from './hr-attendance.service';
@@ -54,7 +55,7 @@ function positiveInt(value: unknown, field: string, max = 1_000_000): number {
 function dateValue(value: unknown, field: string): Date {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new HrWorkforceError(`${field} debe usar YYYY-MM-DD`);
     const result = new Date(`${value}T00:00:00.000Z`);
-    if (Number.isNaN(result.getTime()) || result.toISOString().slice(0, 10) !== value) throw new HrWorkforceError(`${field} es invÃ¡lida`);
+    if (Number.isNaN(result.getTime()) || result.toISOString().slice(0, 10) !== value) throw new HrWorkforceError(`${field} es inválida`);
     return result;
 }
 
@@ -64,7 +65,7 @@ function dateKey(value: Date): string {
 
 function dateRangeKeys(from: Date, to: Date): string[] {
     const days = Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1;
-    if (days < 1 || days > 366) throw new HrWorkforceError('El rango debe contener entre 1 y 366 dÃ­as');
+    if (days < 1 || days > 366) throw new HrWorkforceError('El rango debe contener entre 1 y 366 días');
     return Array.from({ length: days }, (_, index) => new Date(from.getTime() + index * 86_400_000).toISOString().slice(0, 10));
 }
 
@@ -74,7 +75,7 @@ function localDateTime(value: unknown, timezone: unknown): { instant: Date; time
     const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
     if (!match) throw new HrWorkforceError('requestedOccurredAt debe usar YYYY-MM-DDTHH:mm');
     const zone = requiredText(timezone, 'requestedTimezone', 64);
-    if (!isValidTimeZone(zone)) throw new HrWorkforceError('requestedTimezone no es una zona IANA vÃ¡lida');
+    if (!isValidTimeZone(zone)) throw new HrWorkforceError('requestedTimezone no es una zona IANA válida');
     try {
         return {
             timezone: zone,
@@ -84,7 +85,7 @@ function localDateTime(value: unknown, timezone: unknown): { instant: Date; time
             }, zone),
         };
     } catch (error) {
-        throw new HrWorkforceError(error instanceof Error ? error.message : 'Hora local invÃ¡lida');
+        throw new HrWorkforceError(error instanceof Error ? error.message : 'Hora local inválida');
     }
 }
 
@@ -109,7 +110,7 @@ async function ensureUser(companyId: number, userId: number, db: Db = prisma, ac
         },
         select: { id: true, name: true, username: true, branchId: true },
     });
-    if (!user) throw new HrWorkforceError('El usuario no pertenece a la empresa o estÃ¡ inactivo', 404, 'HR_USER_NOT_FOUND');
+    if (!user) throw new HrWorkforceError('El usuario no pertenece a la empresa o está inactivo', 404, 'HR_USER_NOT_FOUND');
     return user;
 }
 
@@ -125,7 +126,7 @@ async function assertDatesOpen(companyId: number, from: Date, to: Date, db: Db =
         where: { companyId, status: 'CLOSED', dateFrom: { lte: to }, dateTo: { gte: from } },
         select: { id: true, dateFrom: true, dateTo: true },
     });
-    if (period) throw new HrWorkforceError(`El perÃ­odo ${dateKey(period.dateFrom)} a ${dateKey(period.dateTo)} estÃ¡ cerrado`, 409, 'HR_PERIOD_CLOSED');
+    if (period) throw new HrWorkforceError(`El período ${dateKey(period.dateFrom)} a ${dateKey(period.dateTo)} está cerrado`, 409, 'HR_PERIOD_CLOSED');
 }
 
 async function lockAttendancePeriod(tx: Prisma.TransactionClient, companyId: number, periodId: number) {
@@ -135,7 +136,7 @@ async function lockAttendancePeriod(tx: Prisma.TransactionClient, companyId: num
         WHERE id = ${periodId} AND companyId = ${companyId}
         FOR UPDATE
     `);
-    if (!rows[0]) throw new HrWorkforceError('PerÃ­odo no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
+    if (!rows[0]) throw new HrWorkforceError('Período no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
     return rows[0];
 }
 
@@ -150,11 +151,11 @@ async function idempotent<T>(input: {
         const record = await prisma.workforceIdempotencyRecord.findUnique({ where: { companyId_key: { companyId: input.companyId, key } } });
         if (!record) return null;
         if (record.operation !== input.operation || record.requestHash !== hash) {
-            throw new HrWorkforceError('Idempotency-Key ya fue usado con otra operaciÃ³n o payload', 409, 'IDEMPOTENCY_CONFLICT');
+            throw new HrWorkforceError('Idempotency-Key ya fue usado con otra operación o payload', 409, 'IDEMPOTENCY_CONFLICT');
         }
         if (record.response !== null) return record.response as T;
         const loaded = await input.load(record.entityId);
-        if (!loaded) throw new HrWorkforceError('La respuesta idempotente ya no estÃ¡ disponible', 409, 'IDEMPOTENCY_STALE');
+        if (!loaded) throw new HrWorkforceError('La respuesta idempotente ya no está disponible', 409, 'IDEMPOTENCY_STALE');
         return loaded;
     };
     const existing = await replay();
@@ -507,7 +508,7 @@ export class AttendanceDerivedService {
         await ensureUser(companyId, userId, prisma, false);
         const branch = await ensureBranch(companyId, branchId || null);
         const timezone = branch?.timezone || timezoneHint || 'America/Managua';
-        if (!isValidTimeZone(timezone)) throw new HrWorkforceError('Zona horaria IANA invÃ¡lida');
+        if (!isValidTimeZone(timezone)) throw new HrWorkforceError('Zona horaria IANA inválida');
         const localDate = dateValue(date, 'date');
         const scopeKey = branchId ? `BRANCH:${branchId}` : 'UNASSIGNED';
         const existing = await prisma.attendanceDailySummary.findUnique({
@@ -521,7 +522,7 @@ export class AttendanceDerivedService {
         });
         if (period?.status === 'CLOSED') {
             if (existing) return summaryApi(existing);
-            throw new HrWorkforceError('El perÃ­odo estÃ¡ cerrado y no admite nuevos resÃºmenes', 409, 'HR_PERIOD_CLOSED');
+            throw new HrWorkforceError('El período está cerrado y no admite nuevos resúmenes', 409, 'HR_PERIOD_CLOSED');
         }
 
         const bounds = dayBounds(date, timezone);
@@ -541,15 +542,26 @@ export class AttendanceDerivedService {
         // Attribute a shift to the local date on which it starts. This avoids
         // double-counting an overnight shift in both adjacent daily summaries.
         const shifts = candidateShifts.filter(shift => zonedDateKey(shift.startAt, timezone) === date);
-        const eventStart = shifts.reduce((value, shift) => shift.startAt < value ? shift.startAt : value, bounds.start);
-        const eventEnd = shifts.reduce((value, shift) => shift.endAt > value ? shift.endAt : value, bounds.end);
+        const scheduledShiftIds = shifts.map((shift) => shift.id);
         const leaveCoverageEnd = shifts.reduce((value, shift) => {
             const shiftEndDate = dateValue(zonedDateKey(shift.endAt, timezone), 'shiftEndDate');
             return shiftEndDate > value ? shiftEndDate : value;
         }, localDate);
         const [rawEvents, approvedLeaves] = await Promise.all([
             prisma.attendanceEvent.findMany({
-            where: { companyId, userId, serverAt: { gte: eventStart, lt: eventEnd } },
+            // Events bound to a shift belong to the local date on which that shift
+            // starts, even when the checkout is exactly at/after its overnight end.
+            // Unscheduled events remain bounded to the local calendar day.
+            where: {
+                companyId,
+                userId,
+                OR: scheduledShiftIds.length > 0
+                    ? [
+                        { scheduledShiftId: { in: scheduledShiftIds } },
+                        { scheduledShiftId: null, serverAt: { gte: bounds.start, lt: bounds.end } },
+                    ]
+                    : [{ scheduledShiftId: null, serverAt: { gte: bounds.start, lt: bounds.end } }],
+            },
             include: {
                 review: { select: { decision: true } },
                 targetedCorrections: {
@@ -571,7 +583,7 @@ export class AttendanceDerivedService {
         const events = branchId ? allEffective.filter(event => event.branchId === branchId) : allEffective.filter(event => event.branchId === null);
         const worked = deriveWorkedMinutes(events, new Set(shifts.filter(shift => shift.paidBreak).map(shift => shift.id)));
         const scheduledMinutes = shifts.length
-            ? shifts.reduce((total, shift) => total + minutesBetween(shift.startAt, shift.endAt) - (shift.paidBreak ? 0 : shift.breakMinutes), 0)
+            ? shifts.reduce((total, shift) => total + scheduledWorkMinutes(shift), 0)
             : null;
         const shiftAssessments = shifts.map(shift => {
             const shiftEvents = events.filter(event => event.scheduledShiftId === shift.id || (
@@ -649,7 +661,7 @@ export class AttendanceDerivedService {
                 });
             }
         }
-        if (lateMinutes > 0) generated.push({ key: 'LATE_ARRIVAL', type: 'LATE_ARRIVAL', severity: 'WARNING', message: `Entrada tardÃ­a por ${lateMinutes} minutos` });
+        if (lateMinutes > 0) generated.push({ key: 'LATE_ARRIVAL', type: 'LATE_ARRIVAL', severity: 'WARNING', message: `Entrada tardía por ${lateMinutes} minutos` });
         if (earlyDepartureMinutes > 0) generated.push({ key: 'EARLY_DEPARTURE', type: 'EARLY_DEPARTURE', severity: 'WARNING', message: `Salida anticipada por ${earlyDepartureMinutes} minutos` });
         for (const anomaly of worked.anomalies) generated.push({ key: anomaly, type: anomaly, severity: 'WARNING', message: `Secuencia de marcaje irregular: ${anomaly}` });
         for (const event of rawEvents.filter(item => item.decision === 'REJECTED' || (item.decision === 'REVIEW' && item.review?.decision === 'REJECTED'))) {
@@ -671,7 +683,7 @@ export class AttendanceDerivedService {
                     include: summaryInclude,
                 });
                 if (frozen) return summaryApi(frozen);
-                throw new HrWorkforceError('El perÃ­odo estÃ¡ cerrado y no admite nuevos resÃºmenes', 409, 'HR_PERIOD_CLOSED');
+                throw new HrWorkforceError('El período está cerrado y no admite nuevos resúmenes', 409, 'HR_PERIOD_CLOSED');
             }
             const priorSummary = await tx.attendanceDailySummary.findUnique({
                 where: { companyId_userId_date_scopeKey: { companyId, userId, date: localDate, scopeKey } },
@@ -812,22 +824,59 @@ export class AttendanceIncidentService {
     }
 }
 
-async function periodWithCounts(id: number, companyId: number) {
+async function periodWithCounts(
+    id: number,
+    companyId: number,
+    scope: { branchId?: number; userId?: number } = {},
+) {
     const period = await prisma.attendancePeriod.findFirst({
         where: { id, companyId }, include: { _count: { select: { summaries: true } } },
     });
     if (!period) return null;
     const instants = periodInstantBounds(period.dateFrom, period.dateTo, period.timezone);
+    const branchId = scope.branchId;
+    const userId = scope.userId;
     const [unresolvedIncidentCount, pendingCorrectionCount, pendingOvertimeCount, pendingLeaveCount] = await Promise.all([
-        prisma.attendanceIncident.count({ where: { companyId, status: 'OPEN', date: { gte: period.dateFrom, lte: period.dateTo } } }),
-        prisma.attendanceCorrection.count({ where: { companyId, status: 'PENDING', OR: [
-            { dailySummary: { date: { gte: period.dateFrom, lte: period.dateTo } } },
-            { requestedOccurredAt: { gte: instants.start, lt: instants.end } },
-        ] } }),
-        prisma.overtimeRequest.count({ where: { companyId, status: 'PENDING', date: { gte: period.dateFrom, lte: period.dateTo } } }),
+        prisma.attendanceIncident.count({ where: {
+            companyId, status: 'OPEN', date: { gte: period.dateFrom, lte: period.dateTo },
+            branchId, userId,
+        } }),
+        prisma.attendanceCorrection.count({ where: {
+            companyId,
+            status: 'PENDING',
+            userId,
+            AND: [
+                {
+                    OR: [
+                        { dailySummary: { date: { gte: period.dateFrom, lte: period.dateTo } } },
+                        { requestedOccurredAt: { gte: instants.start, lt: instants.end } },
+                    ],
+                },
+                ...(branchId ? [{
+                    OR: [
+                        { requestedBranchId: branchId },
+                        { dailySummary: { is: { branchId } } },
+                    ],
+                }] : []),
+            ],
+        } }),
+        prisma.overtimeRequest.count({ where: {
+            companyId,
+            status: 'PENDING',
+            date: { gte: period.dateFrom, lte: period.dateTo },
+            userId,
+            ...(branchId ? {
+                OR: [
+                    { dailySummary: { is: { branchId } } },
+                    { user: employeeBranchScope(branchId, { from: period.dateFrom, to: period.dateTo })! },
+                ],
+            } : {}),
+        } }),
         prisma.leaveRequest.count({ where: {
             companyId,
             status: 'PENDING',
+            branchId,
+            userId,
             startDate: { lte: period.dateTo },
             endDate: { gte: period.dateFrom },
         } }),
@@ -836,7 +885,15 @@ async function periodWithCounts(id: number, companyId: number) {
 }
 
 export class AttendancePeriodService {
-    static async list(companyId: number, filters: { dateFrom?: string; dateTo?: string; status?: string; page?: number; limit?: number }) {
+    static async list(companyId: number, filters: {
+        dateFrom?: string;
+        dateTo?: string;
+        status?: string;
+        branchId?: number;
+        userId?: number;
+        page?: number;
+        limit?: number;
+    }) {
         const current = page(filters);
         const where: Prisma.AttendancePeriodWhereInput = {
             companyId,
@@ -848,7 +905,8 @@ export class AttendancePeriodService {
             prisma.attendancePeriod.findMany({ where, include: { _count: { select: { summaries: true } } }, orderBy: { dateFrom: 'desc' }, skip: current.skip, take: current.limit }),
             prisma.attendancePeriod.count({ where }),
         ]);
-        const items = await Promise.all(periods.map(period => periodWithCounts(period.id, companyId)));
+        const scope = { branchId: filters.branchId, userId: filters.userId };
+        const items = await Promise.all(periods.map(period => periodWithCounts(period.id, companyId, scope)));
         return { items: items.filter(Boolean), pagination: pagination(total, current) };
     }
 
@@ -857,7 +915,7 @@ export class AttendancePeriodService {
         const dateTo = dateValue(body.dateTo, 'dateTo');
         dateRangeKeys(dateFrom, dateTo);
         const timezone = optionalText(body.timezone, 64) || 'America/Managua';
-        if (!isValidTimeZone(timezone)) throw new HrWorkforceError('timezone no es una zona IANA vÃ¡lida');
+        if (!isValidTimeZone(timezone)) throw new HrWorkforceError('timezone no es una zona IANA válida');
         const reason = optionalText(body.reason, 2000);
         return idempotent({
             companyId, key: idempotencyKey, operation: 'PERIOD_CREATE', entityType: 'AttendancePeriod',
@@ -865,7 +923,7 @@ export class AttendancePeriodService {
             load: id => periodWithCounts(id, companyId),
             execute: async tx => {
                 const overlap = await tx.attendancePeriod.findFirst({ where: { companyId, dateFrom: { lte: dateTo }, dateTo: { gte: dateFrom } } });
-                if (overlap) throw new HrWorkforceError('El rango se solapa con otro perÃ­odo de asistencia', 409, 'HR_PERIOD_OVERLAP');
+                if (overlap) throw new HrWorkforceError('El rango se solapa con otro período de asistencia', 409, 'HR_PERIOD_OVERLAP');
                 const created = await tx.attendancePeriod.create({ data: { companyId, dateFrom, dateTo, timezone, lastActionReason: reason, createdById: actorId } });
                 await AuditLogService.log({ companyId, userId: actorId, entityType: 'AttendancePeriod', entityId: created.id, action: 'CREATE', details: { dateFrom: dateKey(dateFrom), dateTo: dateKey(dateTo), timezone, reason } }, tx);
                 return { entityId: created.id, value: periodApi(await tx.attendancePeriod.findUniqueOrThrow({ where: { id: created.id }, include: { _count: { select: { summaries: true } } } }), { unresolvedIncidentCount: 0, pendingCorrectionCount: 0, pendingOvertimeCount: 0, pendingLeaveCount: 0 }) };
@@ -878,7 +936,7 @@ export class AttendancePeriodService {
         // Materialize all known summaries before the serializable close. New
         // corrections/overtime requests also lock against CLOSED inside their tx.
         const period = await prisma.attendancePeriod.findFirst({ where: { id, companyId } });
-        if (!period) throw new HrWorkforceError('PerÃ­odo no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
+        if (!period) throw new HrWorkforceError('Período no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
         const periodInstants = periodInstantBounds(period.dateFrom, period.dateTo, period.timezone);
         const [eventSources, scheduledSources] = await Promise.all([
             prisma.attendanceEvent.findMany({
@@ -913,10 +971,10 @@ export class AttendancePeriodService {
             load: entityId => periodWithCounts(entityId, companyId),
             execute: async tx => {
                 let current = await tx.attendancePeriod.findFirst({ where: { id, companyId } });
-                if (!current) throw new HrWorkforceError('PerÃ­odo no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
+                if (!current) throw new HrWorkforceError('Período no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
                 const locked = await lockAttendancePeriod(tx, companyId, id);
                 current = { ...current, status: locked.status, revision: locked.revision };
-                if (current.status === 'CLOSED') throw new HrWorkforceError('El perÃ­odo ya estÃ¡ cerrado', 409, 'HR_PERIOD_ALREADY_CLOSED');
+                if (current.status === 'CLOSED') throw new HrWorkforceError('El período ya está cerrado', 409, 'HR_PERIOD_ALREADY_CLOSED');
                 const instants = periodInstantBounds(current.dateFrom, current.dateTo, current.timezone);
                 const [critical, pendingCorrections, overtime, leave, attendanceReviews] = await Promise.all([
                     tx.attendanceIncident.count({ where: { companyId, status: 'OPEN', severity: 'CRITICAL', date: { gte: current.dateFrom, lte: current.dateTo } } }),
@@ -979,13 +1037,13 @@ export class AttendancePeriodService {
                     if (attendanceReviews) {
                         throw new HrWorkforceError(`No se puede cerrar: ${attendanceReviews} marcajes pendientes de revisión`, 409, 'HR_PERIOD_PENDING_ATTENDANCE_REVIEWS');
                     }
-                    throw new HrWorkforceError(`No se puede cerrar: ${critical} incidencias crÃ­ticas, ${corrections} correcciones, ${overtime} horas extra y ${leave} ausencias pendientes`, 409, 'HR_PERIOD_PENDING_ITEMS');
+                    throw new HrWorkforceError(`No se puede cerrar: ${critical} incidencias críticas, ${corrections} correcciones, ${overtime} horas extra y ${leave} ausencias pendientes`, 409, 'HR_PERIOD_PENDING_ITEMS');
                 }
                 const changed = await tx.attendancePeriod.updateMany({
                     where: { id, companyId, status: { in: ['OPEN', 'REOPENED'] }, revision: current.revision },
                     data: { status: 'CLOSED', closedById: actorId, closedAt: new Date(), payrollEligible: true, lastActionReason: reason, revision: { increment: 1 } },
                 });
-                if (changed.count !== 1) throw new HrWorkforceError('El perÃ­odo cambiÃ³ concurrentemente', 409, 'HR_PERIOD_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('El período cambió concurrentemente', 409, 'HR_PERIOD_CAS_CONFLICT');
                 await tx.attendanceDailySummary.updateMany({ where: { companyId, date: { gte: current.dateFrom, lte: current.dateTo } }, data: { periodId: id } });
                 await AuditLogService.log({ companyId, userId: actorId, entityType: 'AttendancePeriod', entityId: id, action: 'UPDATE', details: { transition: `${current.status}->CLOSED`, reason, payrollEligible: true } }, tx);
                 const updated = await tx.attendancePeriod.findUniqueOrThrow({ where: { id }, include: { _count: { select: { summaries: true } } } });
@@ -1001,17 +1059,17 @@ export class AttendancePeriodService {
             load: entityId => periodWithCounts(entityId, companyId),
             execute: async tx => {
                 let current = await tx.attendancePeriod.findFirst({ where: { id, companyId } });
-                if (!current) throw new HrWorkforceError('PerÃ­odo no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
+                if (!current) throw new HrWorkforceError('Período no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
                 const locked = await lockAttendancePeriod(tx, companyId, id);
                 current = { ...current, status: locked.status, revision: locked.revision };
-                if (current.status !== 'CLOSED') throw new HrWorkforceError('Solo un perÃ­odo cerrado puede reabrirse', 409, 'HR_PERIOD_NOT_CLOSED');
+                if (current.status !== 'CLOSED') throw new HrWorkforceError('Solo un período cerrado puede reabrirse', 409, 'HR_PERIOD_NOT_CLOSED');
                 const payrollDependency = await tx.payrollAttendanceDependency.findFirst({ where: { companyId, attendancePeriodId: id, run: { status: { not: 'VOID' } } }, select: { runId: true } });
                 if (payrollDependency) throw new HrWorkforceError(`No se puede reabrir: la corrida de nómina ${payrollDependency.runId} depende de este período y no está VOID`, 409, 'HR_PERIOD_USED_BY_PAYROLL');
                 const changed = await tx.attendancePeriod.updateMany({
                     where: { id, companyId, status: 'CLOSED', revision: current.revision },
                     data: { status: 'REOPENED', reopenedById: actorId, reopenedAt: new Date(), payrollEligible: false, lastActionReason: reason, revision: { increment: 1 } },
                 });
-                if (changed.count !== 1) throw new HrWorkforceError('El perÃ­odo cambiÃ³ concurrentemente', 409, 'HR_PERIOD_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('El período cambió concurrentemente', 409, 'HR_PERIOD_CAS_CONFLICT');
                 await AuditLogService.log({ companyId, userId: actorId, entityType: 'AttendancePeriod', entityId: id, action: 'UPDATE', details: { transition: 'CLOSED->REOPENED', reason, payrollEligible: false } }, tx);
                 const updated = await tx.attendancePeriod.findUniqueOrThrow({ where: { id }, include: { _count: { select: { summaries: true } } } });
                 return { entityId: id, value: periodApi(updated) };
@@ -1068,7 +1126,7 @@ export class AttendanceCorrectionService {
 
     static async create(companyId: number, actorId: number, body: Record<string, unknown>, idempotencyKey: string, forcedUserId?: number) {
         const type = requiredText(body.type, 'type', 32) as AttendanceCorrectionType;
-        if (!['ADD_PUNCH', 'VOID_PUNCH', 'CHANGE_TIME', 'ASSIGN_BRANCH', 'OTHER'].includes(type)) throw new HrWorkforceError('type invÃ¡lido');
+        if (!['ADD_PUNCH', 'VOID_PUNCH', 'CHANGE_TIME', 'ASSIGN_BRANCH', 'OTHER'].includes(type)) throw new HrWorkforceError('type inválido');
         const reason = requiredText(body.reason, 'reason');
         const requestedAction = body.requestedAction === undefined
             ? null
@@ -1142,9 +1200,44 @@ export class AttendanceCorrectionService {
         });
     }
 
+    static async cancel(id: number, companyId: number, actorId: number, reasonValue: unknown, idempotencyKey: string, forcedUserId?: number) {
+        const reason = requiredText(reasonValue, 'reason');
+        return idempotent({
+            companyId,
+            key: idempotencyKey,
+            operation: `CORRECTION_CANCEL:${id}`,
+            entityType: 'AttendanceCorrection',
+            payload: { id, reason, forcedUserId: forcedUserId || null },
+            load: entityId => correctionById(entityId, companyId),
+            execute: async tx => {
+                const current = await tx.attendanceCorrection.findFirst({ where: { id, companyId } });
+                if (!current || (forcedUserId && current.userId !== forcedUserId)) {
+                    throw new HrWorkforceError('Corrección no encontrada', 404, 'HR_CORRECTION_NOT_FOUND');
+                }
+                if (current.status !== 'PENDING') {
+                    throw new HrWorkforceError('Solo una corrección pendiente puede cancelarse', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                }
+                const changed = await tx.attendanceCorrection.updateMany({
+                    where: { id, companyId, status: 'PENDING', revision: current.revision },
+                    data: {
+                        status: 'CANCELLED', decidedById: actorId, decisionReason: reason,
+                        decidedAt: new Date(), revision: { increment: 1 },
+                    },
+                });
+                if (changed.count !== 1) throw new HrWorkforceError('La corrección cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                await AuditLogService.log({
+                    companyId, userId: actorId, entityType: 'AttendanceCorrection', entityId: id,
+                    action: 'UPDATE', details: { transition: 'PENDING->CANCELLED', reason },
+                }, tx);
+                const updated = await tx.attendanceCorrection.findUniqueOrThrow({ where: { id }, include: correctionInclude });
+                return { entityId: id, value: correctionApi(updated) };
+            },
+        });
+    }
+
     static async decide(id: number, companyId: number, actorId: number, decisionValue: unknown, reasonValue: unknown, idempotencyKey: string) {
         const decision = requiredText(decisionValue, 'decision', 16) as Decision;
-        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision invÃ¡lida');
+        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision inválida');
         const reason = requiredText(reasonValue, 'reason');
         return idempotent({
             companyId, key: idempotencyKey, operation: `CORRECTION_DECIDE:${id}`, entityType: 'AttendanceCorrection', payload: { id, decision, reason },
@@ -1153,10 +1246,10 @@ export class AttendanceCorrectionService {
                 const current = await tx.attendanceCorrection.findFirst({
                     where: { id, companyId }, include: { targetEvent: true, dailySummary: true, requestedBranch: true },
                 });
-                if (!current) throw new HrWorkforceError('CorrecciÃ³n no encontrada', 404, 'HR_CORRECTION_NOT_FOUND');
-                if (current.status !== 'PENDING') throw new HrWorkforceError('La correcciÃ³n ya fue decidida', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                if (!current) throw new HrWorkforceError('Corrección no encontrada', 404, 'HR_CORRECTION_NOT_FOUND');
+                if (current.status !== 'PENDING') throw new HrWorkforceError('La corrección ya fue decidida', 409, 'HR_WORKFLOW_CAS_CONFLICT');
                 if (actorId === current.userId) {
-                    throw new HrWorkforceError('Una persona no puede decidir su propia correcciÃ³n', 409, 'HR_SELF_APPROVAL_FORBIDDEN');
+                    throw new HrWorkforceError('Una persona no puede decidir su propia corrección', 409, 'HR_SELF_APPROVAL_FORBIDDEN');
                 }
                 const subjectUser = await ensureUser(companyId, current.userId, tx);
                 const targetBranch = current.targetEvent?.branchId
@@ -1195,16 +1288,17 @@ export class AttendanceCorrectionService {
                         select: { id: true },
                     });
                     if (conflicting && ['VOID_PUNCH', 'CHANGE_TIME', 'ASSIGN_BRANCH'].includes(current.type)) {
-                        throw new HrWorkforceError('El marcaje ya tiene una correcciÃ³n incompatible aplicada', 409, 'HR_CORRECTION_CONFLICT');
+                        throw new HrWorkforceError('El marcaje ya tiene una corrección incompatible aplicada', 409, 'HR_CORRECTION_CONFLICT');
                     }
                 }
                 if (decision === 'APPROVED' && ['ADD_PUNCH', 'VOID_PUNCH', 'CHANGE_TIME', 'ASSIGN_BRANCH'].includes(current.type)) {
                     const action = current.type === 'ADD_PUNCH'
                         ? current.requestedAction
                         : current.targetEvent?.action;
-                    if (!action) throw new HrWorkforceError('No se pudo inferir la acciÃ³n compensatoria', 409);
+                    if (!action) throw new HrWorkforceError('No se pudo inferir la acción compensatoria', 409);
                     const branchId = current.requestedBranchId || current.targetEvent?.branchId || subjectUser.branchId;
-                    await ensureBranch(companyId, branchId, tx);
+                    const branch = await ensureBranch(companyId, branchId, tx);
+                    if (!branch) throw new HrWorkforceError('La corrección requiere una sucursal autoritativa', 409, 'HR_CORRECTION_BRANCH_REQUIRED');
                     let scheduledShiftId = current.targetEvent?.scheduledShiftId || null;
                     let sessionKey = current.targetEvent?.sessionKey || null;
                     if (!scheduledShiftId && current.type === 'ADD_PUNCH') {
@@ -1223,6 +1317,35 @@ export class AttendanceCorrectionService {
                         if (!shift) throw new HrWorkforceError('ADD_PUNCH requiere un turno publicado aplicable', 409, 'HR_CORRECTION_PUBLISHED_SHIFT_REQUIRED');
                         scheduledShiftId = shift.id;
                     }
+                    const scheduledShift = scheduledShiftId ? await tx.scheduledShift.findFirst({
+                        where: { id: scheduledShiftId, companyId },
+                        select: { id: true, branchId: true, startAt: true },
+                    }) : null;
+                    if (scheduledShiftId && !scheduledShift) {
+                        throw new HrWorkforceError('El turno de la corrección ya no existe', 409, 'HR_CORRECTION_PUBLISHED_SHIFT_REQUIRED');
+                    }
+                    if (current.type === 'ASSIGN_BRANCH' && !scheduledShift) {
+                        throw new HrWorkforceError('No se puede reasignar parcialmente una sesión sin turno publicado', 409, 'HR_CORRECTION_PUBLISHED_SHIFT_REQUIRED');
+                    }
+                    if (scheduledShift && scheduledShift.branchId !== branch.id) {
+                        throw new HrWorkforceError('La sucursal solicitada no coincide con la sucursal del turno publicado', 409, 'HR_CORRECTION_SHIFT_BRANCH_MISMATCH');
+                    }
+                    if (current.type !== 'VOID_PUNCH') {
+                        const assignmentInstant = scheduledShift?.startAt || instant;
+                        const assignmentDate = dateValue(zonedDateKey(assignmentInstant, branch.timezone), 'assignmentDate');
+                        const assignment = await tx.employeeBranchAssignment.findFirst({
+                            where: {
+                                companyId, branchId: branch.id,
+                                employee: { companyId, userId: current.userId },
+                                effectiveFrom: { lte: assignmentDate },
+                                OR: [{ effectiveTo: null }, { effectiveTo: { gte: assignmentDate } }],
+                            },
+                            select: { id: true },
+                        });
+                        if (!assignment) {
+                            throw new HrWorkforceError('El empleado no tiene adscripción RH vigente para la sucursal corregida', 409, 'HR_CORRECTION_BRANCH_ASSIGNMENT_REQUIRED');
+                        }
+                    }
                     sessionKey = sessionKey || (scheduledShiftId
                         ? `SHIFT:${scheduledShiftId}`
                         : `LEGACY:${current.userId}:${branchId || 'NONE'}:${instant.toISOString().slice(0, 10)}`);
@@ -1238,19 +1361,24 @@ export class AttendanceCorrectionService {
                     }
                     assertCanonicalSequence(simulated.map(event => ({ id: event.id, action: event.action, occurredAt: event.occurredAt })));
                     if (current.type !== 'VOID_PUNCH') {
+                    const reassignedGeofence = current.type === 'ASSIGN_BRANCH' ? await tx.branchGeofenceVersion.findFirst({
+                        where: { companyId, branchId: branch.id },
+                        orderBy: { version: 'desc' },
+                        select: { id: true },
+                    }) : null;
                     const event = await tx.attendanceEvent.create({ data: {
                         companyId, userId: current.userId, actorUserId: actorId, branchId,
                         scheduledShiftId, sessionKey,
                         sequenceKey: `${sessionKey}:CORRECTION:${current.id}`,
-                        geofenceVersionId: current.targetEvent?.geofenceVersionId,
-                        policyId: current.targetEvent?.policyId,
-                        policyVersion: current.targetEvent?.policyVersion,
+                        geofenceVersionId: current.type === 'ASSIGN_BRANCH' ? reassignedGeofence?.id || null : current.targetEvent?.geofenceVersionId,
+                        policyId: current.type === 'ASSIGN_BRANCH' ? null : current.targetEvent?.policyId,
+                        policyVersion: current.type === 'ASSIGN_BRANCH' ? null : current.targetEvent?.policyVersion,
                         adjustsEventId: current.targetEventId,
                         idempotencyKey: `workforce-correction:${current.id}:${current.revision + 1}`,
                         requestHash: requestHash({ correctionId: current.id, action, instant: instant.toISOString(), branchId }),
                         action, source: 'MANUAL', serverAt: instant, clientAt: instant,
                         faceStatus: 'NOT_REQUIRED', livenessStatus: 'NOT_REQUIRED', providerStatus: 'MANUAL_CORRECTION', decision: 'ACCEPTED',
-                        reasonCode: current.type, reasonCodes: [current.type], message: `${current.reason}\nAprobaciÃ³n: ${reason}`,
+                        reasonCode: current.type, reasonCodes: [current.type], message: `${current.reason}\nAprobación: ${reason}`,
                     } });
                     compensationEventId = event.id;
                     }
@@ -1260,7 +1388,7 @@ export class AttendanceCorrectionService {
                     where: { id, companyId, status: 'PENDING', revision: current.revision },
                     data: { status, decidedById: actorId, decisionReason: reason, decidedAt: new Date(), appliedAt: decision === 'APPROVED' ? new Date() : null, compensationEventId, revision: { increment: 1 } },
                 });
-                if (changed.count !== 1) throw new HrWorkforceError('La correcciÃ³n cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('La corrección cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
                 if (decision === 'APPROVED' && current.incidentId) {
                     await tx.attendanceIncident.updateMany({ where: { id: current.incidentId, companyId, status: 'OPEN' }, data: { status: 'RESOLVED', resolvedAt: new Date(), resolvedById: actorId } });
                 }
@@ -1360,7 +1488,7 @@ export class OvertimeService {
 
     static async decide(id: number, companyId: number, actorId: number, body: Record<string, unknown>, idempotencyKey: string) {
         const decision = requiredText(body.decision, 'decision', 16) as Decision;
-        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision invÃ¡lida');
+        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision inválida');
         const reason = requiredText(body.reason, 'reason');
         return idempotent({
             companyId, key: idempotencyKey, operation: `OVERTIME_DECIDE:${id}`, entityType: 'OvertimeRequest', payload: { id, decision, reason, approvedMinutes: body.approvedMinutes },
@@ -1401,7 +1529,7 @@ export class OvertimeService {
                     const approvedTotal = Number(alreadyApproved._sum.approvedMinutes || 0) + Number(approvedMinutes || 0);
                     const candidate = currentSummary.candidateOvertimeMinutes;
                     if (approvedTotal > candidate) {
-                        throw new HrWorkforceError(`La aprobaciÃ³n excede el candidato calculado (${candidate} minutos)`, 409, 'HR_OVERTIME_EXCEEDS_CANDIDATE');
+                        throw new HrWorkforceError(`La aprobación excede el candidato calculado (${candidate} minutos)`, 409, 'HR_OVERTIME_EXCEEDS_CANDIDATE');
                     }
                 }
                 const status: OvertimeRequestStatus = decision;
@@ -1409,7 +1537,7 @@ export class OvertimeService {
                     where: { id, companyId, status: 'PENDING', revision: current.revision },
                     data: { status, approvedMinutes, decidedById: actorId, decisionReason: reason, decidedAt: new Date(), revision: { increment: 1 } },
                 });
-                if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
                 if (decision === 'APPROVED' && current.dailySummaryId) {
                     const approved = await tx.overtimeRequest.aggregate({ where: { dailySummaryId: current.dailySummaryId, status: 'APPROVED' }, _sum: { approvedMinutes: true } });
                     await tx.attendanceDailySummary.update({ where: { id: current.dailySummaryId }, data: { approvedOvertimeMinutes: approved._sum.approvedMinutes || 0, sourceRevision: { increment: 1 } } });
@@ -1434,7 +1562,7 @@ export class OvertimeService {
                 const changed = await tx.overtimeRequest.updateMany({ where: { id, companyId, status: 'PENDING', revision: current.revision }, data: {
                     status: 'CANCELLED', cancelledAt: new Date(), decisionReason: reason, revision: { increment: 1 },
                 } });
-                if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
                 await AuditLogService.log({ companyId, userId: actorId, entityType: 'OvertimeRequest', entityId: id, action: 'CANCEL', details: { reason } }, tx);
                 const updated = await tx.overtimeRequest.findUniqueOrThrow({ where: { id }, include: overtimeInclude });
                 return { entityId: id, value: overtimeApi(updated) };
@@ -1445,17 +1573,92 @@ export class OvertimeService {
 
 function unitValue(value: unknown): VacationBalanceUnit {
     const unit = requiredText(value, 'unit', 16) as VacationBalanceUnit;
-    if (!['DAYS', 'HOURS', 'MINUTES'].includes(unit)) throw new HrWorkforceError('unit invÃ¡lido');
+    if (!['DAYS', 'HOURS', 'MINUTES'].includes(unit)) throw new HrWorkforceError('unit inválido');
     return unit;
 }
 
 function fractionValue(value: unknown): LeaveFraction {
     const fraction = requiredText(value, 'fraction', 16) as LeaveFraction;
-    if (!['FULL_DAY', 'HALF_DAY', 'HOURS'].includes(fraction)) throw new HrWorkforceError('fraction invÃ¡lida');
+    if (!['FULL_DAY', 'HALF_DAY', 'HOURS'].includes(fraction)) throw new HrWorkforceError('fraction inválida');
     return fraction;
 }
 
-export function leaveAmount(from: Date, to: Date, fraction: LeaveFraction, startTime: string | null, endTime: string | null, unit: VacationBalanceUnit): number {
+export type LeaveUnitMinutes = {
+    dayMinutes: number;
+    hourMinutes: number;
+};
+
+/** Defaults match historical ledger and typical payroll paidLeaveUnitMinutes.DAYS/HOURS. */
+export const DEFAULT_LEAVE_UNIT_MINUTES: LeaveUnitMinutes = { dayMinutes: 480, hourMinutes: 60 };
+
+async function leaveUnitMinutesForCompany(companyId: number, asOf: Date, db: Db = prisma): Promise<LeaveUnitMinutes> {
+    const rule = await db.payrollRuleVersion.findFirst({
+        where: {
+            companyId,
+            status: 'ACTIVE',
+            effectiveFrom: { lte: asOf },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }],
+        },
+        include: { activeConfigurationRevision: { select: { configuration: true } } },
+        orderBy: { effectiveFrom: 'desc' },
+    });
+    const config = rule?.activeConfigurationRevision?.configuration;
+    if (!config || typeof config !== 'object' || Array.isArray(config)) return DEFAULT_LEAVE_UNIT_MINUTES;
+    const regular = (config as { regular?: { paidLeaveUnitMinutes?: Record<string, unknown> } }).regular;
+    const units = regular?.paidLeaveUnitMinutes;
+    const dayRaw = Number(units?.DAYS);
+    const hourRaw = Number(units?.HOURS);
+    if (!Number.isFinite(dayRaw) || dayRaw <= 0 || !Number.isFinite(hourRaw) || hourRaw <= 0) {
+        return DEFAULT_LEAVE_UNIT_MINUTES;
+    }
+    return { dayMinutes: dayRaw, hourMinutes: hourRaw };
+}
+
+async function resolveLeaveBranchId(companyId: number, userId: number, asOf: Date, fallbackBranchId: number | null, db: Db = prisma): Promise<number | null> {
+    const assignment = await db.employeeBranchAssignment.findFirst({
+        where: {
+            companyId,
+            employee: { companyId, userId },
+            effectiveFrom: { lte: asOf },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }],
+        },
+        orderBy: [{ isPrimary: 'desc' }, { effectiveFrom: 'desc' }],
+        select: { branchId: true },
+    });
+    return assignment?.branchId ?? fallbackBranchId;
+}
+
+export function employeeBranchScope(
+    branchId: number | undefined,
+    effective: { from: Date; to?: Date },
+): Prisma.UserWhereInput | undefined {
+    if (!branchId) return undefined;
+    const effectiveTo = effective.to ?? effective.from;
+    return {
+        employee: {
+            branchAssignments: {
+                some: {
+                    branchId,
+                    effectiveFrom: { lte: effectiveTo },
+                    OR: [{ effectiveTo: null }, { effectiveTo: { gte: effective.from } }],
+                },
+            },
+        },
+    };
+}
+
+export function leaveAmount(
+    from: Date,
+    to: Date,
+    fraction: LeaveFraction,
+    startTime: string | null,
+    endTime: string | null,
+    unit: VacationBalanceUnit,
+    units: LeaveUnitMinutes = DEFAULT_LEAVE_UNIT_MINUTES,
+): number {
+    const dayMinutes = units.dayMinutes;
+    const hourMinutes = units.hourMinutes;
+    const halfDayMinutes = dayMinutes / 2;
     const days = dateRangeKeys(from, to).length;
     let workDays: number;
     if (fraction === 'FULL_DAY') workDays = days;
@@ -1465,13 +1668,13 @@ export function leaveAmount(from: Date, to: Date, fraction: LeaveFraction, start
         }
         const [startH, startM] = startTime.split(':').map(Number);
         const [endH, endM] = endTime.split(':').map(Number);
-        const halfDayMinutes = endH * 60 + endM - (startH * 60 + startM);
-        if (halfDayMinutes !== 240) {
-            throw new HrWorkforceError('HALF_DAY debe indicar un intervalo exacto de 4 horas');
+        const intervalMinutes = endH * 60 + endM - (startH * 60 + startM);
+        if (intervalMinutes !== halfDayMinutes) {
+            throw new HrWorkforceError(`HALF_DAY debe indicar un intervalo exacto de ${halfDayMinutes} minutos`);
         }
         workDays = days * 0.5;
     } else {
-        if (days !== 1) throw new HrWorkforceError('Una ausencia por horas debe iniciar y finalizar el mismo dÃ­a');
+        if (days !== 1) throw new HrWorkforceError('Una ausencia por horas debe iniciar y finalizar el mismo día');
         if (!startTime || !endTime || !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
             throw new HrWorkforceError('startTime y endTime HH:mm son requeridos para HOURS');
         }
@@ -1480,12 +1683,12 @@ export function leaveAmount(from: Date, to: Date, fraction: LeaveFraction, start
         const minutes = endH * 60 + endM - (startH * 60 + startM);
         if (minutes <= 0) throw new HrWorkforceError('endTime debe ser posterior a startTime');
         if (unit === 'MINUTES') return minutes;
-        if (unit === 'HOURS') return minutes / 60;
-        return minutes / 480;
+        if (unit === 'HOURS') return minutes / hourMinutes;
+        return minutes / dayMinutes;
     }
     if (unit === 'DAYS') return workDays;
-    if (unit === 'HOURS') return workDays * 8;
-    return workDays * 480;
+    if (unit === 'HOURS') return workDays * (dayMinutes / hourMinutes);
+    return workDays * dayMinutes;
 }
 
 function leaveRequestsOverlap(left: {
@@ -1583,7 +1786,7 @@ export class LeaveTypeService {
                 where: { companyId, leaveTypeId: id, status: 'APPROVED' },
             });
             if (approvedHistory) {
-                throw new HrWorkforceError('No se puede alterar la semÃ¡ntica de un tipo con ausencias aprobadas; cree un tipo nuevo', 409, 'HR_LEAVE_TYPE_HISTORY_IMMUTABLE');
+                throw new HrWorkforceError('No se puede alterar la semántica de un tipo con ausencias aprobadas; cree un tipo nuevo', 409, 'HR_LEAVE_TYPE_HISTORY_IMMUTABLE');
             }
         }
         const updated = await prisma.$transaction(async tx => {
@@ -1623,7 +1826,8 @@ export class LeaveRequestService {
         const fraction = fractionValue(body.fraction);
         const startTime = optionalText(body.startTime, 5);
         const endTime = optionalText(body.endTime, 5);
-        const requestedAmount = leaveAmount(startDate, endDate, fraction, startTime, endTime, leaveType.unit);
+        const leaveUnits = await leaveUnitMinutesForCompany(companyId, startDate);
+        const requestedAmount = leaveAmount(startDate, endDate, fraction, startTime, endTime, leaveType.unit, leaveUnits);
         const reason = requiredText(body.reason, 'reason');
         await assertDatesOpen(companyId, startDate, endDate);
         const created = await prisma.$transaction(async tx => {
@@ -1633,8 +1837,9 @@ export class LeaveRequestService {
                 // accrue/adjust the balance without inventing a generic bucket.
                 await ensureBalance(companyId, userId, leaveTypeId, leaveType.unit, startDate, tx);
             }
+            const branchId = await resolveLeaveBranchId(companyId, userId, startDate, user.branchId, tx);
             const request = await tx.leaveRequest.create({ data: {
-                companyId, userId, branchId: user.branchId, leaveTypeId, startDate, endDate, fraction,
+                companyId, userId, branchId, leaveTypeId, startDate, endDate, fraction,
                 startTime, endTime, requestedAmount, balanceUnit: leaveType.unit, reason,
                 status: 'DRAFT', requestedById: actorId,
             }, include: leaveRequestInclude });
@@ -1662,7 +1867,7 @@ export class LeaveRequestService {
             const overlap = overlapCandidates.some(candidate => leaveRequestsOverlap(current, candidate));
             if (overlap) throw new HrWorkforceError('La solicitud se solapa con otra ausencia pendiente o aprobada', 409, 'HR_LEAVE_OVERLAP');
             const changed = await tx.leaveRequest.updateMany({ where: { id, companyId, status: 'DRAFT', revision: current.revision }, data: { status: 'PENDING', submittedAt: new Date(), revision: { increment: 1 } } });
-            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
             await AuditLogService.log({ companyId, userId: actorId, entityType: 'LeaveRequest', entityId: id, action: 'UPDATE', details: { transition: 'DRAFT->PENDING' } }, tx);
             return leaveRequestApi(await tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: leaveRequestInclude }));
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -1670,7 +1875,7 @@ export class LeaveRequestService {
 
     static async decide(id: number, companyId: number, actorId: number, decisionValue: unknown, reasonValue: unknown) {
         const decision = requiredText(decisionValue, 'decision', 16) as Decision;
-        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision invÃ¡lida');
+        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision inválida');
         const reason = requiredText(reasonValue, 'reason');
         return prisma.$transaction(async tx => {
             const current = await tx.leaveRequest.findFirst({ where: { id, companyId }, include: { leaveType: true } });
@@ -1705,7 +1910,7 @@ export class LeaveRequestService {
             const changed = await tx.leaveRequest.updateMany({ where: { id, companyId, status: 'PENDING', revision: current.revision }, data: {
                 status, decidedById: actorId, decisionReason: reason, decidedAt: new Date(), revision: { increment: 1 },
             } });
-            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
             await AuditLogService.log({ companyId, userId: actorId, entityType: 'LeaveRequest', entityId: id, action: 'UPDATE', details: { transition: `PENDING->${status}`, reason } }, tx);
             return leaveRequestApi(await tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: leaveRequestInclude }));
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -1750,7 +1955,7 @@ export class LeaveRequestService {
             const changed = await tx.leaveRequest.updateMany({ where: { id, companyId, status: current.status, revision: current.revision }, data: {
                 status: 'CANCELLED', cancelledAt: new Date(), decisionReason: reason, revision: { increment: 1 },
             } });
-            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
             await AuditLogService.log({ companyId, userId: actorId, entityType: 'LeaveRequest', entityId: id, action: 'CANCEL', details: { reason } }, tx);
             return leaveRequestApi(await tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: leaveRequestInclude }));
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -1782,11 +1987,11 @@ function decimalAmount(value: unknown, field: string, options: { nonZero?: boole
     const parsed = Number(value);
     const max = options.max ?? 1_000_000;
     if (!Number.isFinite(parsed) || Math.abs(parsed) > max) {
-        throw new HrWorkforceError(`${field} debe ser un nÃºmero entre -${max} y ${max}`);
+        throw new HrWorkforceError(`${field} debe ser un número entre -${max} y ${max}`);
     }
     if (options.nonZero && parsed === 0) throw new HrWorkforceError(`${field} no puede ser cero`);
     if (Math.round(parsed * 10_000) !== parsed * 10_000) {
-        throw new HrWorkforceError(`${field} admite como mÃ¡ximo cuatro decimales`);
+        throw new HrWorkforceError(`${field} admite como máximo cuatro decimales`);
     }
     return parsed;
 }
@@ -1814,19 +2019,27 @@ function vacationLedgerApi(entry: Prisma.VacationLedgerEntryGetPayload<Record<st
 }
 
 export class VacationService {
-    static async listBalances(companyId: number, filters: { userId?: number; branchId?: number }) {
+    static async listBalances(companyId: number, filters: { userId?: number; branchId?: number; page?: number; limit?: number }) {
+        const current = page(filters);
+        // Balances are a current snapshot, so branch membership is evaluated at
+        // today's date boundary (not at an implicit clock read inside the scope helper).
+        const asOf = dateValue(dateKey(new Date()), 'asOf');
         const where: Prisma.VacationBalanceWhereInput = {
             companyId,
             userId: filters.userId,
-            user: filters.branchId ? { branchId: filters.branchId } : undefined,
+            user: employeeBranchScope(filters.branchId, { from: asOf }),
         };
-        const balances = await prisma.vacationBalance.findMany({
-            where,
-            include: vacationBalanceInclude,
-            orderBy: [{ userId: 'asc' }, { id: 'asc' }],
-            take: 500,
-        });
-        return Promise.all(balances.map(async balance => {
+        const [balances, total] = await Promise.all([
+            prisma.vacationBalance.findMany({
+                where,
+                include: vacationBalanceInclude,
+                orderBy: [{ userId: 'asc' }, { id: 'asc' }],
+                skip: current.skip,
+                take: current.limit,
+            }),
+            prisma.vacationBalance.count({ where }),
+        ]);
+        const items = await Promise.all(balances.map(async balance => {
             const [ledger, accrued, used, pending] = await Promise.all([
                 prisma.vacationLedgerEntry.aggregate({ where: { balanceId: balance.id }, _sum: { amount: true } }),
                 prisma.vacationLedgerEntry.aggregate({ where: { balanceId: balance.id, type: 'ACCRUAL' }, _sum: { amount: true } }),
@@ -1861,6 +2074,7 @@ export class VacationService {
                 sourceRevision: balance.sourceRevision,
             };
         }));
+        return { items, pagination: pagination(total, current) };
     }
 
     static async listLedger(companyId: number, filters: {
@@ -1872,13 +2086,38 @@ export class VacationService {
         limit?: number;
     }) {
         const current = page(filters);
+        const dateFrom = filters.dateFrom ? dateValue(filters.dateFrom, 'dateFrom') : new Date('1970-01-01T00:00:00.000Z');
+        const dateTo = filters.dateTo ? dateValue(filters.dateTo, 'dateTo') : new Date('9999-12-31T00:00:00.000Z');
+        let branchWindows: Prisma.VacationLedgerEntryWhereInput[] | undefined;
+        if (filters.branchId) {
+            const assignments = await prisma.employeeBranchAssignment.findMany({
+                where: {
+                    companyId,
+                    branchId: filters.branchId,
+                    effectiveFrom: { lte: dateTo },
+                    OR: [{ effectiveTo: null }, { effectiveTo: { gte: dateFrom } }],
+                },
+                select: {
+                    effectiveFrom: true,
+                    effectiveTo: true,
+                    employee: { select: { userId: true } },
+                },
+            });
+            branchWindows = assignments.map((assignment) => ({
+                userId: assignment.employee.userId,
+                effectiveDate: {
+                    gte: assignment.effectiveFrom > dateFrom ? assignment.effectiveFrom : dateFrom,
+                    lte: assignment.effectiveTo && assignment.effectiveTo < dateTo ? assignment.effectiveTo : dateTo,
+                },
+            }));
+        }
         const where: Prisma.VacationLedgerEntryWhereInput = {
             companyId,
             userId: filters.userId,
-            user: filters.branchId ? { branchId: filters.branchId } : undefined,
+            ...(branchWindows ? { OR: branchWindows } : {}),
             effectiveDate: {
-                gte: filters.dateFrom ? dateValue(filters.dateFrom, 'dateFrom') : undefined,
-                lte: filters.dateTo ? dateValue(filters.dateTo, 'dateTo') : undefined,
+                gte: filters.dateFrom ? dateFrom : undefined,
+                lte: filters.dateTo ? dateTo : undefined,
             },
         };
         const [items, total] = await Promise.all([
@@ -2006,7 +2245,7 @@ export class WorkforcePortalService {
             corrections: corrections.items,
             overtimeRequests: overtime.items,
             leaveRequests: leave.items,
-            vacationBalances: balances,
+            vacationBalances: balances.items,
             vacationLedger: ledger.items,
         };
     }

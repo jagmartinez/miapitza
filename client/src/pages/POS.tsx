@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
 import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI, warehousesAPI, invoicesAPI } from '../services/api';
 import { offlineManager } from '../services/offlineManager';
@@ -19,10 +20,13 @@ import TableSelectionModal from '../components/TableSelectionModal';
 import OrderCart from '../components/OrderCart';
 import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
+import Modal from '../components/Modal';
+import Button from '../components/Button';
+import Select from '../components/Select';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
-import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table } from '../types';
+import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table, Warehouse } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { hasUsableCashShift } from '../utils/paymentAccess';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
@@ -38,6 +42,8 @@ interface SelectedModifier {
     name: string;
     price: number;
 }
+
+type WarehouseOption = { value: number; label: string };
 
 interface CartItem {
     // Stable per-line id: several lines can share the same menuItemId when they
@@ -67,6 +73,7 @@ interface Brand {
 }
 
 interface POSSettings {
+    tax_rate?: string;
     taxRate?: string;
     tipRate?: string;
     tipEnabled?: string;
@@ -74,6 +81,22 @@ interface POSSettings {
     enablePromotions?: string;
     [key: string]: string | undefined;
 }
+
+function resolveConfiguredTaxRate(settings: POSSettings): number {
+    return parseFloat(settings.tax_rate || settings.taxRate || '0');
+}
+
+interface FiscalCustomerForm {
+    taxId: string;
+    taxIdType: string;
+    fiscalAddress: string;
+    email: string;
+    phone: string;
+}
+
+const EMPTY_FISCAL_CUSTOMER: FiscalCustomerForm = {
+    taxId: '', taxIdType: '', fiscalAddress: '', email: '', phone: ''
+};
 
 interface ShiftInfo {
     cashRegister?: { name: string; branch?: { id: number; name: string } };
@@ -127,6 +150,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [appliedPromotionCode, setAppliedPromotionCode] = useState<string | null>(null);
     const [tipApplied, setTipApplied] = useState<boolean>(false);
     const [customerName, setCustomerName] = useState('');
+    const [fiscalCustomer, setFiscalCustomer] = useState<FiscalCustomerForm>(EMPTY_FISCAL_CUSTOMER);
+    const [showFiscalCustomer, setShowFiscalCustomer] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 250);
     const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -137,6 +162,14 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [showShiftWarning, setShowShiftWarning] = useState(false);
     // null = aún sin verificar; false bloquea el cobro proactivamente.
     const [hasWarehouse, setHasWarehouse] = useState<boolean | null>(null);
+    const [branchWarehouses, setBranchWarehouses] = useState<Warehouse[]>([]);
+    const [warehouseAction, setWarehouseAction] = useState<'DELIVER' | 'CANCEL' | null>(null);
+    const [operationalWarehouseId, setOperationalWarehouseId] = useState<number | null>(null);
+    const warehouseOptions = useMemo<WarehouseOption[]>(() => branchWarehouses.map((warehouse) => ({
+        value: warehouse.id,
+        label: `${warehouse.name} (${warehouse.code})`,
+    })), [branchWarehouses]);
+    const [pendingCancelReason, setPendingCancelReason] = useState<string | undefined>();
     const waiterAccentColor = getUserAccentColor(activeTableOrder?.user || user);
 
     // Scope the local menu cache by company + branch so different tenants/branches
@@ -163,6 +196,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
     const clearTableContext = useCallback(() => {
         clearDraftCart();
+        setFiscalCustomer(EMPTY_FISCAL_CUSTOMER);
         setSelectedTable(null);
         setCurrentOrderId(null);
         setActiveTableOrder(null);
@@ -234,16 +268,21 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             // Sin sucursal asignada (p. ej. SUPERADMIN global): no bloqueamos aquí;
             // el guard del backend sigue protegiendo el descargue de inventario.
             setHasWarehouse(true);
+            setBranchWarehouses([]);
             return;
         }
         try {
             const res = await warehousesAPI.getAll({ branchId });
-            const list = (res.data?.data || []) as unknown[];
+            const list = ((res.data?.data || []) as Warehouse[]).filter(
+                (warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === branchId
+            );
+            setBranchWarehouses(list);
             setHasWarehouse(list.length > 0);
         } catch {
             // Ante un fallo de consulta no bloqueamos proactivamente; el cobro lo
             // seguirá validando el backend.
             setHasWarehouse(true);
+            setBranchWarehouses([]);
         }
     }, [selectedTable?.branchId, user?.branchId]);
 
@@ -312,6 +351,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyPress = (e: KeyboardEvent) => {
+            const eventTarget = e.target instanceof HTMLElement ? e.target : null;
+            if (eventTarget?.closest('[role="dialog"], [role="alertdialog"]')) return;
+
             if (e.ctrlKey && e.key === 'f') {
                 e.preventDefault();
                 searchInputRef.current?.focus();
@@ -347,6 +389,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             setCurrentOrderId(null);
             setActiveTableOrder(null);
             setCustomerName('');
+            setFiscalCustomer(EMPTY_FISCAL_CUSTOMER);
             return;
         }
 
@@ -357,6 +400,13 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             setCurrentOrderId(tableOrder?.id ?? null);
             setActiveTableOrder(tableOrder);
             setCustomerName(tableOrder?.customerName || '');
+            setFiscalCustomer(tableOrder ? {
+                taxId: tableOrder.customerTaxId || '',
+                taxIdType: tableOrder.customerTaxIdType || '',
+                fiscalAddress: tableOrder.customerFiscalAddress || '',
+                email: tableOrder.customerEmail || '',
+                phone: tableOrder.customerPhone || ''
+            } : EMPTY_FISCAL_CUSTOMER);
 
             if (tableOrder) {
                 info(`Mesa ${table.number}: retomaste la orden #${tableOrder.id} (${tableOrder.status}).`);
@@ -500,6 +550,11 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         tableId: selectedTable?.id,
         branchId: selectedTable?.branchId,
         customerName: customerName || undefined,
+        customerTaxId: fiscalCustomer.taxId || undefined,
+        customerTaxIdType: fiscalCustomer.taxIdType || undefined,
+        customerFiscalAddress: fiscalCustomer.fiscalAddress || undefined,
+        customerEmail: fiscalCustomer.email || undefined,
+        customerPhone: fiscalCustomer.phone || undefined,
         items: cart.map(item => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,
@@ -507,7 +562,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             notes: item.notes || '',
             modifierIds: item.modifiers.map(mod => mod.id)
         }))
-    }), [selectedTable, customerName, cart]);
+    }), [selectedTable, customerName, fiscalCustomer, cart]);
 
     const syncOrderContext = useCallback(async (orderId: number) => {
         if (!offlineManager.getStatus()) {
@@ -519,6 +574,13 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         setActiveTableOrder(refreshedOrder);
         setCurrentOrderId(refreshedOrder.id);
         setCustomerName(refreshedOrder.customerName || '');
+        setFiscalCustomer({
+            taxId: refreshedOrder.customerTaxId || '',
+            taxIdType: refreshedOrder.customerTaxIdType || '',
+            fiscalAddress: refreshedOrder.customerFiscalAddress || '',
+            email: refreshedOrder.customerEmail || '',
+            phone: refreshedOrder.customerPhone || ''
+        });
         return refreshedOrder;
     }, []);
 
@@ -602,11 +664,54 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
         setSendingToKitchen(true);
         try {
-            const { orderId } = await persistCartToOrder();
+            const requestedDiscountPercent = discount;
+            const requestedDiscountOverride = discountAmountOverride;
+            const requestedPromotionCode = appliedPromotionCode;
+            const requestedTipApplied = tipApplied;
+            const { orderId, offlineQueued } = await persistCartToOrder();
 
             if (!orderId) {
                 warning('La orden quedó pendiente, pero no puede enviarse a cocina hasta existir en el servidor.');
                 return;
+            }
+
+            const hasExplicitPricing = requestedDiscountPercent > 0
+                || requestedDiscountOverride !== null
+                || Boolean(requestedPromotionCode)
+                || requestedTipApplied;
+            if (offlineQueued && hasExplicitPricing) {
+                setDiscount(requestedDiscountPercent);
+                setDiscountAmountOverride(requestedDiscountOverride);
+                setAppliedPromotionCode(requestedPromotionCode);
+                setTipApplied(requestedTipApplied);
+                warning('La promoción o propina no puede confirmarse sin conexión. La orden no se enviará a cocina hasta sincronizar el precio.');
+                return;
+            }
+
+            if (!offlineQueued && hasExplicitPricing) {
+                const refreshedOrder = await syncOrderContext(orderId);
+                if (!refreshedOrder) throw new Error('No se pudo confirmar el total de la orden');
+                const refreshedSubtotal = (refreshedOrder.items || []).reduce(
+                    (sum, item) => sum + Number(item.subtotal || 0),
+                    0
+                );
+                const computedDiscount = Math.min(
+                    Math.max(0, requestedDiscountOverride ?? (refreshedSubtotal * (requestedDiscountPercent / 100))),
+                    refreshedSubtotal
+                );
+                const taxRate = resolveConfiguredTaxRate(settings);
+                const computedTax = Math.max(0, (refreshedSubtotal - computedDiscount) * (taxRate / 100));
+                const computedTipRate = parseFloat(settings.tipRate || '0');
+                const computedTip = requestedTipApplied
+                    ? Math.max(0, (refreshedSubtotal - computedDiscount) * (computedTipRate / 100))
+                    : 0;
+                const pricingResponse = await ordersAPI.updatePricing(orderId, {
+                    discount: Number(computedDiscount.toFixed(2)),
+                    discountCode: requestedPromotionCode || null,
+                    tax: Number(computedTax.toFixed(2)),
+                    tipAmount: Number(computedTip.toFixed(2))
+                });
+                setActiveTableOrder(pricingResponse.data.data as Order);
             }
 
             const response = await ordersAPI.sendToKitchen(orderId, {
@@ -676,7 +781,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     Math.max(0, requestedDiscountOverride ?? (refreshedSubtotal * (requestedDiscountPercent / 100))),
                     refreshedSubtotal
                 );
-                const taxRate = parseFloat(settings.taxRate || '0');
+                const taxRate = resolveConfiguredTaxRate(settings);
                 const computedTax = Math.max(0, (refreshedSubtotal - computedDiscount) * (taxRate / 100));
                 const computedTipRate = parseFloat(settings.tipRate || '0');
                 const computedTip = tipApplied ? Math.max(0, (refreshedSubtotal - computedDiscount) * (computedTipRate / 100)) : 0;
@@ -690,10 +795,21 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 setActiveTableOrder(pricingResponse.data.data as Order);
             }
 
+            if (!refreshedOrder?.invoiceNumber) {
+                await ordersAPI.updateFiscalCustomer(orderId, {
+                    customerName,
+                    customerTaxId: fiscalCustomer.taxId,
+                    customerTaxIdType: fiscalCustomer.taxIdType,
+                    customerFiscalAddress: fiscalCustomer.fiscalAddress,
+                    customerEmail: fiscalCustomer.email,
+                    customerPhone: fiscalCustomer.phone
+                });
+            }
+
             // Emit the fiscal document before opening collection. The backend
             // enforces the same invariant, so bypassing this UI cannot pay an
             // unbilled order.
-            const invoiceResponse = await invoicesAPI.getData(orderId);
+            const invoiceResponse = await invoicesAPI.issue(orderId);
             const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber;
             if (!invoiceNumber) {
                 throw new Error('La factura no pudo emitirse antes del cobro');
@@ -742,17 +858,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         if (!activeTableOrder) {
             return;
         }
-
-        try {
-            await ordersAPI.updateStatus(activeTableOrder.id, 'DELIVERED');
-            await syncOrderContext(activeTableOrder.id);
-            await loadData();
-            success(`Orden #${activeTableOrder.id} marcada como entregada.`);
-        } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'No se pudo marcar la orden como entregada.');
-        }
-    }, [activeTableOrder, loadData, showError, success, syncOrderContext]);
+        setOperationalWarehouseId(branchWarehouses.length === 1 ? branchWarehouses[0].id : null);
+        setWarehouseAction('DELIVER');
+    }, [activeTableOrder, branchWarehouses]);
 
     const handleCancelActiveOrder = useCallback(async () => {
         if (!activeTableOrder) {
@@ -769,6 +877,13 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         }
 
         const reason = window.prompt('Motivo de cancelación (opcional):') || undefined;
+        const requiresWasteWarehouse = activeTableOrder.status !== 'OPEN';
+        if (requiresWasteWarehouse) {
+            setPendingCancelReason(reason);
+            setOperationalWarehouseId(branchWarehouses.length === 1 ? branchWarehouses[0].id : null);
+            setWarehouseAction('CANCEL');
+            return;
+        }
 
         try {
             await ordersAPI.cancel(activeTableOrder.id, reason);
@@ -779,7 +894,33 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             const axiosErr = error as { response?: { data?: { message?: string } } };
             showError(axiosErr.response?.data?.message || 'No se pudo cancelar la orden.');
         }
-    }, [activeTableOrder, canCancelActive, clearTableContext, confirm, loadData, showError, success, warning]);
+    }, [activeTableOrder, branchWarehouses, canCancelActive, clearTableContext, confirm, loadData, showError, success, warning]);
+
+    const handleWarehouseAction = useCallback(async () => {
+        if (!activeTableOrder || !warehouseAction || !operationalWarehouseId) {
+            warning('Selecciona una bodega de la sucursal.');
+            return;
+        }
+        try {
+            if (warehouseAction === 'DELIVER') {
+                await ordersAPI.complete(activeTableOrder.id, operationalWarehouseId);
+                await syncOrderContext(activeTableOrder.id);
+                await loadData();
+                success(`Orden #${activeTableOrder.id} marcada como entregada.`);
+            } else {
+                await ordersAPI.cancel(activeTableOrder.id, pendingCancelReason, operationalWarehouseId);
+                await loadData();
+                clearTableContext();
+                success(`Orden #${activeTableOrder.id} cancelada correctamente.`);
+            }
+            setWarehouseAction(null);
+            setOperationalWarehouseId(null);
+            setPendingCancelReason(undefined);
+        } catch (error: unknown) {
+            const axiosErr = error as { response?: { data?: { message?: string } } };
+            showError(axiosErr.response?.data?.message || 'No se pudo completar la operación de inventario.');
+        }
+    }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, syncOrderContext, warehouseAction, warning]);
     const handleApplyPromotion = async (code: string) => {
         try {
             const res = await promotionsAPI.validate(code, subtotal);
@@ -849,7 +990,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         Math.max(0, discountAmountOverride ?? (subtotal * (discount / 100))),
         subtotal
     );
-    const taxAmount = (subtotal - discountAmount) * (parseFloat(settings.taxRate || '0') / 100);
+    const taxAmount = (subtotal - discountAmount) * (resolveConfiguredTaxRate(settings) / 100);
     const tipRate = parseFloat(settings.tipRate || '0');
     const tipAmount = tipApplied ? (subtotal - discountAmount) * (tipRate / 100) : 0;
     const total = subtotal - discountAmount + taxAmount + tipAmount;
@@ -1095,7 +1236,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                         Estado: {getOrderStatusLabel(activeTableOrder.status)} · {activeTableOrder.items?.length || 0} items
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
-                                        {activeTableOrder.status === 'READY' && (
+                                        {activeTableOrder.status === 'READY'
+                                            && (activeTableOrder.financialStatus === 'PAID' || Math.round(activeOrderTotal * 100) === 0) && (
                                             <button className="header-action-btn secondary" onClick={handleMarkDelivered}>
                                                 Entregar
                                             </button>
@@ -1117,10 +1259,19 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                             </div>
                         </div>
                     )}
+                    <button
+                        type="button"
+                        className="header-action-btn secondary"
+                        onClick={() => setShowFiscalCustomer(true)}
+                        style={{ width: '100%', justifyContent: 'center', marginBottom: '0.75rem' }}
+                    >
+                        Datos fiscales del cliente
+                        {fiscalCustomer.taxId ? ` · ${fiscalCustomer.taxIdType || 'ID'} ${fiscalCustomer.taxId}` : ' · Consumidor final'}
+                    </button>
                     <OrderCart
                         cart={cart}
                         discount={discount}
-                        taxRate={parseFloat(settings.taxRate || '0')}
+                        taxRate={resolveConfiguredTaxRate(settings)}
                         tipRate={tipRate}
                         tipEnabled={tipApplied}
                         onUpdateQuantity={updateQuantity}
@@ -1216,12 +1367,93 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 />
             )}
 
+            {showFiscalCustomer && (
+                <Modal
+                    isOpen
+                    onClose={() => setShowFiscalCustomer(false)}
+                    title="Datos fiscales del cliente"
+                    size="lg"
+                    description="Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir."
+                    footer={<Button type="button" onClick={() => setShowFiscalCustomer(false)}>Aceptar</Button>}
+                >
+                        <div className="pos-fiscal-grid">
+                            <label>
+                                Nombre o razón social
+                                <input className="input" value={customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setCustomerName(event.target.value)} />
+                            </label>
+                            <label>
+                                Tipo de identificación
+                                <input className="input" value={fiscalCustomer.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
+                            </label>
+                            <label>
+                                Identificación tributaria
+                                <input className="input" value={fiscalCustomer.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxId: event.target.value }))} />
+                            </label>
+                            <label>
+                                Teléfono
+                                <input className="input" value={fiscalCustomer.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, phone: event.target.value }))} />
+                            </label>
+                            <label className="pos-fiscal-span-full">
+                                Dirección fiscal
+                                <textarea className="input" rows={2} value={fiscalCustomer.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, fiscalAddress: event.target.value }))} />
+                            </label>
+                            <label className="pos-fiscal-span-full">
+                                Correo
+                                <input className="input" type="email" value={fiscalCustomer.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, email: event.target.value }))} />
+                            </label>
+                        </div>
+                        {activeTableOrder?.invoiceNumber && (
+                            <p className="shift-warning-note">La factura ya fue emitida; estos datos son de solo lectura.</p>
+                        )}
+                </Modal>
+            )}
+
             {showKeypad && (
                 <NumericKeypad
                     onConfirm={handleKeypadConfirm}
                     onClose={() => setShowKeypad(false)}
                     initialValue={1}
                 />
+            )}
+
+            {warehouseAction && (
+                <Modal
+                    isOpen
+                    onClose={() => {
+                        setWarehouseAction(null);
+                        setOperationalWarehouseId(null);
+                        setPendingCancelReason(undefined);
+                    }}
+                    title={warehouseAction === 'DELIVER' ? 'Bodega de entrega' : 'Bodega para registrar merma'}
+                    size="sm"
+                    description={warehouseAction === 'DELIVER'
+                        ? 'Selecciona la bodega de esta sucursal de la que se descontará el inventario.'
+                        : 'La orden ya fue enviada a cocina. Selecciona la bodega donde se registrará el desperdicio.'}
+                    footer={(
+                        <>
+                            <Button type="button" variant="ghost" onClick={() => {
+                                setWarehouseAction(null);
+                                setOperationalWarehouseId(null);
+                                setPendingCancelReason(undefined);
+                            }}>Volver</Button>
+                            <Button type="button" disabled={!operationalWarehouseId} onClick={() => void handleWarehouseAction()}>Confirmar</Button>
+                        </>
+                    )}
+                >
+                        <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
+                        <Select<WarehouseOption>
+                            variant="modal"
+                            label="Bodega operativa"
+                            placeholder="Seleccionar bodega…"
+                            options={warehouseOptions}
+                            value={warehouseOptions.find((option) => option.value === operationalWarehouseId) ?? null}
+                            onChange={(option: SingleValue<WarehouseOption>) => setOperationalWarehouseId(option?.value ?? null)}
+                            isSearchable={warehouseOptions.length > 6}
+                        />
+                        {branchWarehouses.length === 0 && (
+                            <p className="shift-warning-note">No hay una bodega tipo sucursal configurada para completar esta operación.</p>
+                        )}
+                </Modal>
             )}
 
             {modifierItem && (
@@ -1240,42 +1472,30 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             {/* Cash Shift Warning Modal */}
             {showShiftWarning && shiftStatus && (
-                <div className="pos-shift-warning-overlay">
-                    <div className="pos-shift-warning-modal">
-                        <div className="shift-warning-icon">
-                            <AlertTriangle size={48} />
-                        </div>
-                        <h2 className="shift-warning-title">
-                            {shiftStatus.requiresClose ? 'Turno de Caja Pendiente' : 'Sin Turno de Caja'}
-                        </h2>
-                        <p className="shift-warning-message">
-                            {canManageShift
-                                ? shiftStatus.message
-                                : 'No hay un turno de caja activo. Solicita al cajero o administrador que abra un turno para procesar pagos.'}
-                        </p>
+                <Modal
+                    isOpen
+                    onClose={() => setShowShiftWarning(false)}
+                    title={shiftStatus.requiresClose ? 'Turno de caja pendiente' : 'Sin turno de caja'}
+                    size="sm"
+                    closeOnBackdrop={false}
+                    description={canManageShift
+                        ? shiftStatus.message
+                        : 'No hay un turno de caja activo. Solicita al cajero o administrador que abra un turno para procesar pagos.'}
+                    footer={canManageShift ? (
+                        <Button type="button" onClick={() => navigate('/cash-registers')}>
+                            {shiftStatus.requiresClose ? 'Ir a cerrar turno' : 'Ir a abrir turno'}
+                        </Button>
+                    ) : (
+                        <Button type="button" onClick={() => setShowShiftWarning(false)}>Entendido</Button>
+                    )}
+                >
+                        <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
                         {shiftStatus.requiresClose && shiftStatus.shift && (
                             <div className="shift-warning-details">
                                 <p><strong>Caja:</strong> {shiftStatus.shift.cashRegister?.name}</p>
                                 <p><strong>Abierto:</strong> {new Date(shiftStatus.shift.startDate).toLocaleString('es-NI')}</p>
                             </div>
                         )}
-                        <div className="shift-warning-actions">
-                            {canManageShift ? (
-                                <button
-                                    className="shift-warning-btn primary"
-                                    onClick={() => navigate('/cash-registers')}
-                                >
-                                    {shiftStatus.requiresClose ? 'Ir a Cerrar Turno' : 'Ir a Abrir Turno'}
-                                </button>
-                            ) : (
-                                <button
-                                    className="shift-warning-btn primary"
-                                    onClick={() => setShowShiftWarning(false)}
-                                >
-                                    Entendido
-                                </button>
-                            )}
-                        </div>
                         <p className="shift-warning-note">
                             {canManageShift
                                 ? 'Aviso: Debe tener un turno activo válido para efectuar ventas.'
@@ -1283,8 +1503,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                     ? 'Aviso: Puedes crear órdenes y enviarlas a cocina. Los cobros los registra cajería y requieren turno activo.'
                                     : 'Aviso: Los cobros los registra cajería y requieren turno de caja activo.'}
                         </p>
-                    </div>
-                </div>
+                </Modal>
             )}
         </div>
     );
@@ -1360,18 +1579,23 @@ function ModifierSelectorModal({
     };
 
     return (
-        <div className="pos-modifier-overlay" onClick={onClose}>
-            <div className="pos-modifier-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="pos-modifier-header">
-                    <div>
-                        <h3>{item.name}</h3>
-                        <span className="pos-modifier-subtitle">Personaliza tu producto</span>
+        <Modal
+            isOpen
+            onClose={onClose}
+            title={item.name}
+            size="md"
+            description="Personaliza el producto y revisa el subtotal antes de agregarlo."
+            footer={(
+                <>
+                    <div className="pos-modifier-subtotal">
+                        <span>Subtotal</span>
+                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
                     </div>
-                    <button type="button" className="pos-modifier-close" onClick={onClose}>
-                        <X size={20} />
-                    </button>
-                </div>
-
+                    <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+                    <Button type="button" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
+                </>
+            )}
+        >
                 <div className="pos-modifier-body">
                     {loading ? (
                         <div className="pos-modifier-empty">Cargando modificadores...</div>
@@ -1416,22 +1640,6 @@ function ModifierSelectorModal({
                         })
                     )}
                 </div>
-
-                <div className="pos-modifier-footer">
-                    <div className="pos-modifier-subtotal">
-                        <span>Subtotal</span>
-                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
-                    </div>
-                    <button
-                        type="button"
-                        className="pos-modifier-add-btn"
-                        onClick={() => onConfirm(selectedOptions)}
-                        disabled={loading || !isValid}
-                    >
-                        Agregar
-                    </button>
-                </div>
-            </div>
-        </div>
+        </Modal>
     );
 }

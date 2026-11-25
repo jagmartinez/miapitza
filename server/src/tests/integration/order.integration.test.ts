@@ -20,35 +20,13 @@ describe('Order API Integration Tests', () => {
     let createdOrderId: number | null = null;
 
     beforeAll(async () => {
-        const existingAdminRole = await prisma.role.findFirst({
-            where: { companyId: null, name: 'ADMIN' }
-        });
-
-        if (existingAdminRole) {
-            adminRoleId = existingAdminRole.id;
-        } else {
-            const createdRole = await prisma.role.create({
-                data: { name: 'ADMIN', description: 'Global admin role for integration tests' }
-            });
-            adminRoleId = createdRole.id;
-        }
-
-        const company = await prisma.company.upsert({
-            where: { id: 991 },
-            update: { name: 'Integration Orders Company', active: true },
-            create: { id: 991, name: 'Integration Orders Company', active: true }
+        const company = await prisma.company.create({
+            data: { name: 'Integration Orders Company', active: true }
         });
         testCompanyId = company.id;
 
-        const branch = await prisma.branch.upsert({
-            where: { id: 991 },
-            update: {
-                companyId: company.id,
-                name: 'Integration Orders Branch',
-                code: 'IT-ORD'
-            },
-            create: {
-                id: 991,
+        const branch = await prisma.branch.create({
+            data: {
                 companyId: company.id,
                 name: 'Integration Orders Branch',
                 code: 'IT-ORD'
@@ -56,7 +34,30 @@ describe('Order API Integration Tests', () => {
         });
         testBranchId = branch.id;
 
-        await prisma.user.deleteMany({ where: { username: credentials.username } });
+        const permissions = await Promise.all([
+            prisma.permission.upsert({
+                where: { name: 'orders.create' },
+                update: {},
+                create: { name: 'orders.create', description: 'Crear ordenes' }
+            }),
+            prisma.permission.upsert({
+                where: { name: 'orders.view' },
+                update: {},
+                create: { name: 'orders.view', description: 'Ver ordenes' }
+            })
+        ]);
+
+        const adminRole = await prisma.role.create({
+            data: {
+                companyId: company.id,
+                name: 'ORDER_IT_ADMIN',
+                description: 'Role scoped to the order integration test',
+                permissions: {
+                    connect: permissions.map(({ id }) => ({ id }))
+                }
+            }
+        });
+        adminRoleId = adminRole.id;
 
         const user = await prisma.user.create({
             data: {
@@ -93,6 +94,7 @@ describe('Order API Integration Tests', () => {
         }
 
         await prisma.user.deleteMany({ where: { id: testUserId } });
+        await prisma.role.deleteMany({ where: { id: adminRoleId } });
         await prisma.branch.deleteMany({ where: { id: testBranchId } });
         await prisma.company.deleteMany({ where: { id: testCompanyId } });
     });

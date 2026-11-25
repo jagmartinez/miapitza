@@ -1,12 +1,14 @@
 import type { Request } from 'express';
-import { ROLES } from '../constants/roles';
+import { ADMINS } from '../constants/roles';
 
 type ReqUser = NonNullable<Request['user']>;
 
 /**
  * Branch-scoping rules for this system:
- * - SUPERADMIN is company-wide: can see/operate across every branch of its company.
- * - Every other role (ADMIN, CAJERO, MESERO, BODEGA, ...) is pinned to its
+ * - SUPERADMIN and ADMIN are company-wide inside their home company. Cross-
+ *   tenant company overrides are handled separately by
+ *   `tenant-scope.ts` (`isPlatformOperator` / `resolveActingCompanyId`).
+ * - Every operational role (CAJERO, MESERO, BODEGA, ...) is pinned to its
  *   currently active branch (`User.branchId`), which a SUPERADMIN rotates over time.
  *
  * Multi-tenant isolation by `companyId` is always enforced separately at the
@@ -24,12 +26,12 @@ export class BranchScopeError extends Error {
 /** True when the user may operate across all branches of its company. */
 export function isCompanyWide(user: ReqUser): boolean {
     const roles = user.roles ?? [user.role];
-    return roles.includes(ROLES.SUPERADMIN);
+    return ADMINS.some((role) => roles.includes(role));
 }
 
 /**
  * Resolve the branch filter to apply on list/read endpoints.
- * - SUPERADMIN: honours an explicit `requestedBranchId`, or returns `undefined`
+ * - Company-wide admin: honours an explicit `requestedBranchId`, or returns `undefined`
  *   (no branch filter → all branches).
  * - Other roles: always pinned to their active branch; any requested branch is
  *   ignored. Throws if the user has no active branch assigned.
@@ -46,7 +48,7 @@ export function resolveBranchScope(user: ReqUser, requestedBranchId?: number): n
 
 /**
  * Assert that the user may act on a resource belonging to `branchId`.
- * SUPERADMIN always passes. Other roles must match their active branch.
+ * Company-wide admins always pass. Other roles must match their active branch.
  * When `allowGlobal` is true, resources with a null branch (shared across the
  * company, e.g. global menu items or the CENTRAL warehouse) are also allowed.
  */

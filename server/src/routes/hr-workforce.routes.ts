@@ -49,6 +49,10 @@ router.post('/attendance/corrections', selfWorkforce, allowHrBodyFields(correcti
     requestedBranchId: { type: 'number', integer: true, min: 1 },
     reason: { type: 'string', required: true, min: 3, max: 2000 },
 } }), HrWorkforceController.createCorrection);
+router.post('/attendance/corrections/:id/cancel', selfWorkforce, allowHrBodyFields(['reason']), validate({
+    params: idParam,
+    body: { reason: { type: 'string', required: true, min: 3, max: 2000 } },
+}), HrWorkforceController.cancelCorrection);
 router.post('/attendance/corrections/:id/decide', ownerApprove, allowHrBodyFields(['decision', 'reason']), validate({
     params: idParam,
     body: {

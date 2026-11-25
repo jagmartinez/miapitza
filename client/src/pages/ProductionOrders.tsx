@@ -68,6 +68,7 @@ export default function ProductionOrders() {
     const userRoleNames = getUserRoleNames(user);
     const canManage = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'].includes(role));
     const isSuperAdmin = userRoleNames.includes('SUPERADMIN');
+    const canOverrideNegativeStock = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
 
     const [orders, setOrders] = useState<ProductionOrder[]>([]);
     const [loading, setLoading] = useState(true);
@@ -505,7 +506,7 @@ export default function ProductionOrders() {
             >
                 <div className="premium-modal-content po-production-form">
                     <div className="modal-tab-content">
-                        <div className="modal-section animate-slide-in">
+                        <div className="modal-content-group">
                             <div className="modal-section-header">
                                 <Factory size={18} />
                                 <h3>Datos de la producción</h3>
@@ -592,7 +593,7 @@ export default function ProductionOrders() {
                             </div>
                         </div>
 
-                        <div className="modal-section animate-slide-in">
+                        <div className="modal-content-group">
                             <div className="modal-section-header po-section-header-actions">
                                 <div className="po-section-heading">
                                     <Calculator size={18} />
@@ -858,14 +859,16 @@ export default function ProductionOrders() {
                             />
                         </div>
 
-                        <label className="po-checkbox-row">
-                            <input
-                                type="checkbox"
-                                checked={finishForm.allowNegative}
-                                onChange={(e) => setFinishForm((prev) => ({ ...prev, allowNegative: e.target.checked }))}
-                            />
-                            <span>Permitir inventario negativo si falta stock</span>
-                        </label>
+                        {canOverrideNegativeStock && (
+                            <label className="po-checkbox-row">
+                                <input
+                                    type="checkbox"
+                                    checked={finishForm.allowNegative}
+                                    onChange={(e) => setFinishForm((prev) => ({ ...prev, allowNegative: e.target.checked }))}
+                                />
+                                <span>Permitir inventario negativo si falta stock (excepción administrativa)</span>
+                            </label>
+                        )}
 
                         <div className="modal-footer">
                             <div className="action-buttons po-modal-actions">

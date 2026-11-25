@@ -57,9 +57,14 @@ export default function Settings() {
         invoicePrefix: 'INV',
         invoiceFooter: '',
         invoiceTerms: '',
+        fiscal_jurisdiction: '',
+        credit_note_series: '',
+        fiscal_tax_id_length: '',
+        fiscal_tax_id_charset: '',
 
         // System
         enablePromotions: 'false',
+        reservation_table_window_minutes: '120',
 
         // Security
         password_expiry_days: '90',
@@ -77,7 +82,7 @@ export default function Settings() {
             const settings = res.data.data;
             setFormData({
                 companyName: settings.companyName || '',
-                taxRate: settings.taxRate || '',
+                taxRate: settings.tax_rate || settings.taxRate || '',
                 tipRate: settings.tipRate || '',
                 cash_reconciliation_tolerance: settings.cash_reconciliation_tolerance || '1',
                 tipEnabled: settings.tipEnabled || 'false',
@@ -90,7 +95,12 @@ export default function Settings() {
                 invoicePrefix: settings.invoicePrefix || 'INV',
                 invoiceFooter: settings.invoiceFooter || '',
                 invoiceTerms: settings.invoiceTerms || '',
+                fiscal_jurisdiction: settings.fiscal_jurisdiction || '',
+                credit_note_series: settings.credit_note_series || '',
+                fiscal_tax_id_length: settings.fiscal_tax_id_length || '',
+                fiscal_tax_id_charset: settings.fiscal_tax_id_charset || '',
                 enablePromotions: settings.enablePromotions || 'false',
+                reservation_table_window_minutes: settings.reservation_table_window_minutes || '120',
                 password_expiry_days: settings.password_expiry_days || '90',
                 session_timeout_minutes: settings.session_timeout_minutes || '30'
             });
@@ -355,6 +365,47 @@ export default function Settings() {
                                 onChange={(e) => setFormData({ ...formData, invoicePrefix: e.target.value })}
                                 placeholder="INV"
                             />
+                            <p className="section-description">
+                                Las notas de crédito y anulaciones permanecen bloqueadas hasta que un responsable fiscal configure estos valores conforme a la jurisdicción aplicable.
+                            </p>
+                            <div className="form-row">
+                                <Input
+                                    label="Jurisdicción fiscal"
+                                    value={formData.fiscal_jurisdiction}
+                                    onChange={(e) => setFormData({ ...formData, fiscal_jurisdiction: e.target.value })}
+                                    placeholder="Código definido por la empresa"
+                                />
+                                <Input
+                                    label="Serie de nota de crédito"
+                                    value={formData.credit_note_series}
+                                    onChange={(e) => setFormData({ ...formData, credit_note_series: e.target.value.toUpperCase() })}
+                                    placeholder="Serie autorizada"
+                                />
+                            </div>
+                            <div className="form-row">
+                                <Input
+                                    label="Longitud de RUC/NIT"
+                                    type="number"
+                                    min="1"
+                                    max="50"
+                                    value={formData.fiscal_tax_id_length}
+                                    onChange={(e) => setFormData({ ...formData, fiscal_tax_id_length: e.target.value })}
+                                    placeholder="Definida por la autoridad fiscal"
+                                />
+                                <div className="input-group">
+                                    <label className="input-label" htmlFor="fiscal-tax-id-charset">Caracteres de RUC/NIT</label>
+                                    <select
+                                        id="fiscal-tax-id-charset"
+                                        className="input"
+                                        value={formData.fiscal_tax_id_charset}
+                                        onChange={(e) => setFormData({ ...formData, fiscal_tax_id_charset: e.target.value })}
+                                    >
+                                        <option value="">Seleccione</option>
+                                        <option value="DIGITS">Solo dígitos</option>
+                                        <option value="ALPHANUMERIC">Alfanumérico y guion</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div className="input-group">
                                 <label className="input-label">Texto de Pie de Página</label>
                                 <textarea
@@ -488,6 +539,25 @@ export default function Settings() {
                                     <span style={{ marginLeft: '8px' }}>Habilitar Sistema de Promociones</span>
                                 </label>
                             </div>
+
+                            <h4 style={{ marginTop: '24px' }}>Reservas</h4>
+                            <div className="form-row">
+                                <Input
+                                    label="Ventana para reservar mesa (minutos)"
+                                    type="number"
+                                    min="1"
+                                    max="1440"
+                                    value={formData.reservation_table_window_minutes}
+                                    onChange={(e) => setFormData({
+                                        ...formData,
+                                        reservation_table_window_minutes: e.target.value
+                                    })}
+                                    placeholder="120"
+                                />
+                            </div>
+                            <p className="section-description" style={{ marginTop: '4px', fontSize: '12px', opacity: 0.7 }}>
+                                Define con cuánta anticipación una reserva bloquea una mesa física y el margen de llegada permitido.
+                            </p>
 
                             <h4 style={{ marginTop: '24px' }}>Seguridad</h4>
                             <div className="form-row">

@@ -28,7 +28,7 @@ export function NavRail({ nav, activePath, expanded = false, onNavigate }: {
                 onClick={onNavigate}
               >
                 <item.icon size={20} aria-hidden="true" />
-                {expanded ? <span className="ui-navrail__text">{item.label}</span> : null}
+                <span className="ui-navrail__text">{item.label}</span>
               </Link>
             );
           })}

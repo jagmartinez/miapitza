@@ -154,6 +154,8 @@ export class CategoryService {
         showInMenu?: boolean;
         showInInventory?: boolean;
     }) {
+        const name = data.name?.trim();
+        if (!name) throw new Error('El nombre de la categoría es requerido');
         this.assertVisibility(data);
 
         const codePrefix = this.normalizeCodePrefix(data.codePrefix);
@@ -168,7 +170,7 @@ export class CategoryService {
 
         return await prisma.category.create({
             data: {
-                name: data.name,
+                name,
                 description: data.description,
                 codePrefix,
                 sortOrder: data.sortOrder,
@@ -190,6 +192,8 @@ export class CategoryService {
         showInInventory?: boolean;
     }) {
         const category = await this.getById(id, companyId);
+        const normalizedName = data.name === undefined ? undefined : data.name.trim();
+        if (normalizedName !== undefined && !normalizedName) throw new Error('El nombre de la categoría es requerido');
         this.assertVisibility({
             active: data.active ?? category.active,
             showInMenu: data.showInMenu ?? category.showInMenu,
@@ -197,7 +201,7 @@ export class CategoryService {
         });
 
         const updateData = {
-            ...(data.name !== undefined ? { name: data.name } : {}),
+            ...(normalizedName !== undefined ? { name: normalizedName } : {}),
             ...(data.description !== undefined ? { description: data.description } : {}),
             ...(data.codePrefix !== undefined ? { codePrefix: data.codePrefix } : {}),
             ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),

@@ -192,6 +192,19 @@ export const workforceClient = {
     return requireObject(response.data, 'corrección creada');
   },
 
+  async cancelCorrection(
+    id: number,
+    payload: HrReasonPayload,
+    idempotencyKey: string
+  ): Promise<HrAttendanceCorrection> {
+    const response = await api.post(
+      `${HR_BASE}/attendance/corrections/${id}/cancel`,
+      payload,
+      mutationConfig(idempotencyKey)
+    );
+    return requireObject(response.data, 'cancelación de corrección');
+  },
+
   async decideCorrection(
     id: number,
     payload: HrDecisionPayload,
@@ -355,10 +368,11 @@ export const workforceClient = {
     ]).items;
   },
 
-  async getVacationBalances(filters: HrWorkforceFilters = {}): Promise<HrVacationBalance[]> {
+  async getVacationBalances(
+    filters: HrWorkforceFilters = {}
+  ): Promise<HrWorkforceList<HrVacationBalance>> {
     const response = await api.get(`${HR_BASE}/vacation/balances`, { params: paramsOf(filters), skipOfflineCache: true });
-    return requireList<HrVacationBalance>(response.data, 'saldos de vacaciones', ['balances'])
-      .items;
+    return requireList<HrVacationBalance>(response.data, 'saldos de vacaciones', ['balances']);
   },
 
   async getVacationLedger(

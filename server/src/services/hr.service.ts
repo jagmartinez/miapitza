@@ -1,4 +1,5 @@
-import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
@@ -14,10 +15,20 @@ export class HrDomainError extends Error {
 const EMPLOYEE_STATUSES = ['ACTIVE', 'ON_LEAVE', 'INACTIVE', 'SUSPENDED', 'TERMINATED'] as const;
 const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'TEMPORARY', 'CONTRACTOR', 'INTERN'] as const;
 const ACCOUNT_TYPES = ['INTERNAL', 'EXTERNAL'] as const;
+const PAY_FREQUENCIES = ['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'] as const;
 
 type EmployeeStatusValue = typeof EMPLOYEE_STATUSES[number];
 type EmploymentTypeValue = typeof EMPLOYMENT_TYPES[number];
 type AccountTypeValue = typeof ACCOUNT_TYPES[number];
+type PayFrequencyValue = typeof PAY_FREQUENCIES[number];
+
+export interface EmployeeInitialCompensationInput {
+    compensationType?: 'SALARY' | 'HOURLY';
+    payFrequency?: PayFrequencyValue;
+    amount?: string;
+    currency?: string;
+    reason?: string;
+}
 
 export interface EmployeeWriteInput {
     userId?: number;
@@ -44,6 +55,7 @@ export interface EmployeeWriteInput {
     notes?: string | null;
     branchIds?: number[];
     primaryBranchId?: number | null;
+    initialCompensation?: EmployeeInitialCompensationInput;
 }
 
 const employeeRelationsSelect = {
@@ -64,9 +76,9 @@ const employeeRelationsSelect = {
     },
 } satisfies Pick<Prisma.EmployeeSelect, 'user' | 'department' | 'jobPosition' | 'costCenter' | 'supervisor' | 'branchAssignments'>;
 
-// List endpoints deliberately omit identification, social-security, tax,
-// address, emergency-contact and notes fields. Those fields are only returned
-// by the sensitive-detail endpoint.
+// The base list deliberately omits sensitive PII. A separate projection adds
+// only identification and current compensation after the controller confirms
+// hr.employee.sensitive.view; the remaining sensitive fields stay detail-only.
 const employeeListSelect = {
     id: true,
     companyId: true,
@@ -112,6 +124,37 @@ const employeeSensitiveSelect = {
     },
 } satisfies Prisma.EmployeeSelect;
 
+const currentCompensationSelect = {
+    id: true,
+    employeeId: true,
+    contractId: true,
+    compensationType: true,
+    payFrequency: true,
+    amount: true,
+    currency: true,
+    effectiveFrom: true,
+    effectiveTo: true,
+    reason: true,
+    createdAt: true,
+} satisfies Prisma.CompensationHistorySelect;
+
+function employeeAuthorizedListSelect(at: Date) {
+    return {
+        ...employeeListSelect,
+        documentType: true,
+        documentNumber: true,
+        compensation: {
+            where: {
+                effectiveFrom: { lte: at },
+                OR: [{ effectiveTo: null }, { effectiveTo: { gte: at } }],
+            },
+            select: currentCompensationSelect,
+            orderBy: [{ effectiveFrom: 'desc' as const }, { id: 'desc' as const }],
+            take: 1,
+        },
+    } satisfies Prisma.EmployeeSelect;
+}
+
 function todayDate(timeZone = 'America/Managua'): Date {
     return parseDateOnly(zonedDateKey(new Date(), timeZone), 'fecha actual');
 }
@@ -143,6 +186,36 @@ function requiredText(value: unknown, field: string, max = 191): string {
     const normalized = nullableText(value, field, max);
     if (!normalized) throw new HrDomainError(`${field} es requerido`);
     return normalized;
+}
+
+function initialCompensation(value: unknown): Required<EmployeeInitialCompensationInput> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new HrDomainError('La compensación inicial es requerida para crear el expediente');
+    }
+    const input = value as Record<string, unknown>;
+    const compensationType = requiredText(input.compensationType, 'initialCompensation.compensationType', 20);
+    const payFrequency = requiredText(input.payFrequency, 'initialCompensation.payFrequency', 20);
+    if (!['SALARY', 'HOURLY'].includes(compensationType)) {
+        throw new HrDomainError('initialCompensation.compensationType inválido');
+    }
+    if (!PAY_FREQUENCIES.includes(payFrequency as PayFrequencyValue)) {
+        throw new HrDomainError('initialCompensation.payFrequency inválido');
+    }
+    const amount = requiredText(input.amount, 'initialCompensation.amount', 40);
+    if (!/^\d+(?:\.\d{1,2})?$/.test(amount) || !new Prisma.Decimal(amount).greaterThan(0)) {
+        throw new HrDomainError('initialCompensation.amount debe ser positivo con máximo dos decimales');
+    }
+    const currency = requiredText(input.currency ?? 'NIO', 'initialCompensation.currency', 3).toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+        throw new HrDomainError('initialCompensation.currency debe ser ISO 4217 de tres letras');
+    }
+    return {
+        compensationType: compensationType as Required<EmployeeInitialCompensationInput>['compensationType'],
+        payFrequency: payFrequency as PayFrequencyValue,
+        amount,
+        currency,
+        reason: requiredText(input.reason, 'initialCompensation.reason', 500),
+    };
 }
 
 function positiveInt(value: unknown, field: string): number {
@@ -190,6 +263,32 @@ async function assertTenantReference(
     }
 }
 
+async function assertAcyclicSupervisorHierarchy(
+    companyId: number,
+    employeeId: number | undefined,
+    supervisorEmployeeId: number | null | undefined,
+    db: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+    if (!employeeId || supervisorEmployeeId == null) return;
+    const visited = new Set<number>();
+    let currentId: number | null = supervisorEmployeeId;
+    while (currentId !== null) {
+        if (currentId === employeeId) {
+            throw new HrDomainError('La relación de supervisión no puede formar un ciclo', 409);
+        }
+        if (visited.has(currentId)) {
+            throw new HrDomainError('La jerarquía de supervisión existente contiene un ciclo', 409);
+        }
+        visited.add(currentId);
+        const current: { supervisorEmployeeId: number | null } | null = await db.employee.findFirst({
+            where: { id: currentId, companyId },
+            select: { supervisorEmployeeId: true },
+        });
+        if (!current) throw new HrDomainError('Supervisor no encontrado en la empresa', 404);
+        currentId = current.supervisorEmployeeId;
+    }
+}
+
 async function assertBranches(companyId: number, branchIds: number[] | undefined, primaryBranchId?: number | null) {
     if (branchIds === undefined) return;
     if (branchIds.length > 0 && primaryBranchId == null) {
@@ -215,7 +314,7 @@ export class HrEmployeeService {
         branchId?: number;
         page?: number;
         limit?: number;
-    }) {
+    }, options: { sensitive?: boolean; timeZone?: string } = {}) {
         const page = Math.max(1, filters.page || 1);
         const limit = Math.min(100, Math.max(1, filters.limit || 25));
         const where: Prisma.EmployeeWhereInput = { companyId };
@@ -229,7 +328,12 @@ export class HrEmployeeService {
         if (filters.jobPositionId) where.jobPositionId = filters.jobPositionId;
         if (filters.costCenterId) where.costCenterId = filters.costCenterId;
         if (filters.branchId) {
-            where.branchAssignments = { some: { branchId: filters.branchId, effectiveTo: null } };
+            const today = todayDate();
+            where.branchAssignments = { some: {
+                branchId: filters.branchId,
+                effectiveFrom: { lte: today },
+                OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }],
+            } };
         }
         const search = filters.search?.trim();
         if (search) {
@@ -239,11 +343,15 @@ export class HrEmployeeService {
                 { preferredName: { contains: search } },
                 { user: { name: { contains: search } } },
                 { user: { username: { contains: search } } },
+                ...(options.sensitive ? [{ documentNumber: { contains: search } }] : []),
             ];
         }
+        const select = options.sensitive
+            ? employeeAuthorizedListSelect(todayDate(options.timeZone))
+            : employeeListSelect;
         const [data, total] = await prisma.$transaction([
             prisma.employee.findMany({
-                where, select: employeeListSelect,
+                where, select,
                 orderBy: [{ status: 'asc' }, { legalName: 'asc' }],
                 skip: (page - 1) * limit, take: limit,
             }),
@@ -258,7 +366,11 @@ export class HrEmployeeService {
                 id,
                 companyId,
                 ...(options.branchId
-                    ? { branchAssignments: { some: { branchId: options.branchId, effectiveTo: null } } }
+                    ? { branchAssignments: { some: {
+                        branchId: options.branchId,
+                        effectiveFrom: { lte: todayDate() },
+                        OR: [{ effectiveTo: null }, { effectiveTo: { gte: todayDate() } }],
+                    } } }
                     : {}),
             },
             select: options.sensitive ? employeeSensitiveSelect : employeeListSelect,
@@ -281,6 +393,11 @@ export class HrEmployeeService {
             assertTenantReference(companyId, 'costCenter', optionalId(input.costCenterId, 'costCenterId')),
             assertTenantReference(companyId, 'employee', optionalId(input.supervisorEmployeeId, 'supervisorEmployeeId'), employeeId),
         ]);
+        await assertAcyclicSupervisorHierarchy(
+            companyId,
+            employeeId,
+            optionalId(input.supervisorEmployeeId, 'supervisorEmployeeId'),
+        );
         const effectiveDepartmentId = input.departmentId !== undefined ? departmentId ?? null : current?.departmentId ?? null;
         const effectiveJobPositionId = input.jobPositionId !== undefined ? jobPositionId ?? null : current?.jobPositionId ?? null;
         if (effectiveJobPositionId !== null) {
@@ -326,6 +443,7 @@ export class HrEmployeeService {
         const { branchIds, primaryBranchId } = await this.validateReferences(companyId, input);
         const employmentType = input.employmentType || 'FULL_TIME';
         if (!EMPLOYMENT_TYPES.includes(employmentType)) throw new HrDomainError('Tipo de empleo inválido');
+        const compensation = initialCompensation(input.initialCompensation);
 
         const created = await prisma.$transaction(async (tx) => {
             await tx.user.update({ where: { id: userId }, data: { accountType: 'INTERNAL' } });
@@ -360,9 +478,38 @@ export class HrEmployeeService {
                     })),
                 });
             }
+            const compensationRecord = await tx.compensationHistory.create({
+                data: {
+                    companyId,
+                    employeeId: employee.id,
+                    changedById: actorUserId,
+                    compensationType: compensation.compensationType,
+                    payFrequency: compensation.payFrequency,
+                    amount: new Prisma.Decimal(compensation.amount),
+                    currency: compensation.currency,
+                    effectiveFrom: hireDate,
+                    reason: compensation.reason,
+                },
+            });
             await AuditLogService.log({
                 companyId, userId: actorUserId, entityType: 'Employee', entityId: employee.id,
                 action: 'CREATE', details: { employeeCode, linkedUserId: userId, branchIds: branchIds || [] },
+            }, tx);
+            await AuditLogService.log({
+                companyId,
+                userId: actorUserId,
+                entityType: 'CompensationHistory',
+                entityId: compensationRecord.id,
+                action: 'CREATE',
+                details: {
+                    employeeId: employee.id,
+                    effectiveFrom: hireDate.toISOString().slice(0, 10),
+                    compensationType: compensation.compensationType,
+                    payFrequency: compensation.payFrequency,
+                    currency: compensation.currency,
+                    priorEntryId: null,
+                    operation: 'EMPLOYEE_ONBOARDING',
+                },
             }, tx);
             return employee;
         });
@@ -414,6 +561,19 @@ export class HrEmployeeService {
         if (input.supervisorEmployeeId !== undefined) data.supervisor = input.supervisorEmployeeId == null ? { disconnect: true } : { connect: { id: input.supervisorEmployeeId } };
 
         await prisma.$transaction(async (tx) => {
+            if (input.supervisorEmployeeId !== undefined) {
+                await tx.$queryRaw(Prisma.sql`
+                    SELECT id FROM Employee
+                    WHERE companyId = ${companyId}
+                    FOR UPDATE
+                `);
+                await assertAcyclicSupervisorHierarchy(
+                    companyId,
+                    id,
+                    optionalId(input.supervisorEmployeeId, 'supervisorEmployeeId'),
+                    tx,
+                );
+            }
             await tx.employee.update({ where: { id }, data });
             if (branchIds !== undefined) {
                 const current = await tx.employeeBranchAssignment.findMany({
@@ -494,13 +654,17 @@ export class HrEmployeeService {
             throw new HrDomainError('terminationDate sólo aplica al estado TERMINATED');
         }
         await prisma.$transaction(async (tx) => {
-            await tx.employee.update({
-                where: { id },
+            let biometricPurgeRequestId: number | null = null;
+            const changed = await tx.employee.updateMany({
+                where: { id, companyId, status: existing.status },
                 data: {
                     status,
                     terminationDate: status === 'TERMINATED' ? statusDate : null,
                 },
             });
+            if (changed.count !== 1) {
+                throw new HrDomainError('El estado del empleado cambió concurrentemente; recargue el expediente', 409);
+            }
             if (status === 'TERMINATED') {
                 const [futureAssignment, futureContract] = await Promise.all([
                     tx.employeeBranchAssignment.findFirst({
@@ -531,10 +695,48 @@ export class HrEmployeeService {
                     where: { userId: existing.userId, revoked: false },
                     data: { revoked: true },
                 });
+                const biometric = await tx.biometricProfile.findFirst({
+                    where: { companyId, userId: existing.userId, status: 'ACTIVE' },
+                    select: { id: true, provider: true, templateRef: true },
+                });
+                if (biometric) {
+                    const now = new Date();
+                    const revoked = await tx.biometricProfile.updateMany({
+                        where: { id: biometric.id, companyId, userId: existing.userId, status: 'ACTIVE' },
+                        data: {
+                            status: 'REVOKED',
+                            templateRef: `REVOKED:${randomUUID()}`,
+                            revokedAt: now,
+                            purgeRequestedAt: now,
+                            revocationReason: 'EMPLOYMENT_TERMINATED',
+                        },
+                    });
+                    if (revoked.count === 1) {
+                        const purge = await tx.biometricPurgeRequest.create({
+                            data: {
+                                companyId,
+                                biometricProfileId: biometric.id,
+                                provider: biometric.provider,
+                                encryptedTemplateRef: biometric.templateRef,
+                                reason: 'EMPLOYMENT_TERMINATED',
+                                status: 'PENDING',
+                                attempts: 0,
+                                nextAttemptAt: now,
+                            },
+                            select: { id: true },
+                        });
+                        biometricPurgeRequestId = purge.id;
+                    }
+                }
             }
             await AuditLogService.log({
                 companyId, userId: actorUserId, entityType: 'Employee', entityId: id,
-                action: 'UPDATE', details: { field: 'status', from: existing.status, to: status, reason: reason?.trim() || null },
+                action: 'UPDATE',
+                details: {
+                    field: 'status', from: existing.status, to: status,
+                    reason: reason?.trim() || null,
+                    biometricPurgeRequestId,
+                },
             }, tx);
         });
         return this.getById(id, companyId);
@@ -804,8 +1006,16 @@ export class HrOverviewService {
             ...(branchId ? { branchAssignments: { some: { branchId, effectiveTo: null } } } : {}),
         };
         const branchWhere: Prisma.BranchWhereInput = { companyId, ...(branchId ? { id: branchId } : {}) };
+        const scopedUserRelation = branchId
+            ? { user: { employee: { branchAssignments: { some: { branchId, effectiveTo: null } } } } }
+            : {};
+        const scopedEmployeeRelation = branchId
+            ? { employee: { branchAssignments: { some: { branchId, effectiveTo: null } } } }
+            : {};
         const [total, active, onLeave, inactive, suspended, terminated, internalAccounts,
-            departments, jobPositions, costCenters, totalBranches, geofenceConfigured, attendanceEnabled] = await Promise.all([
+            departments, jobPositions, costCenters, totalBranches, geofenceConfigured, attendanceEnabled,
+            leaveRequests, overtimeRequests, attendanceCorrections, attendanceIncidents, loanRequests,
+            activeRule, draftRuns, reviewRuns, approvedRuns] = await Promise.all([
             prisma.employee.count({ where: employeeWhere }),
             prisma.employee.count({ where: { ...employeeWhere, status: 'ACTIVE' } }),
             prisma.employee.count({ where: { ...employeeWhere, status: 'ON_LEAVE' } }),
@@ -830,11 +1040,32 @@ export class HrOverviewService {
                 },
             }),
             prisma.branch.count({ where: { ...branchWhere, attendanceEnabled: true } }),
+            prisma.leaveRequest.count({
+                where: { companyId, status: 'PENDING', ...scopedUserRelation },
+            }),
+            prisma.overtimeRequest.count({
+                where: { companyId, status: 'PENDING', ...scopedUserRelation },
+            }),
+            prisma.attendanceCorrection.count({
+                where: { companyId, status: 'PENDING', ...scopedUserRelation },
+            }),
+            prisma.attendanceIncident.count({
+                where: { companyId, status: 'OPEN', ...scopedUserRelation },
+            }),
+            prisma.hrLoan.count({
+                where: { companyId, status: 'REQUESTED', ...scopedEmployeeRelation },
+            }),
+            prisma.payrollRuleVersion.count({ where: { companyId, status: 'ACTIVE' } }),
+            prisma.payrollRun.count({ where: { companyId, status: 'DRAFT' } }),
+            prisma.payrollRun.count({ where: { companyId, status: 'REVIEW' } }),
+            prisma.payrollRun.count({ where: { companyId, status: 'APPROVED' } }),
         ]);
         return {
             employees: { total, active, onLeave, inactive, suspended, terminated, internalAccounts },
             catalogs: { departments, jobPositions, costCenters },
             branches: { total: totalBranches, geofenceConfigured, attendanceEnabled },
+            attention: { leaveRequests, overtimeRequests, attendanceCorrections, attendanceIncidents, loanRequests },
+            payroll: { activeRule: activeRule > 0, draftRuns, reviewRuns, approvedRuns },
         };
     }
 

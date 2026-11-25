@@ -4,9 +4,11 @@ import type {
   HrPayrollAnomaly,
   HrPayrollComponent,
   HrPayrollComponentPayload,
+  HrPayrollCompanyTaxProfile,
   HrPayrollConfigurationReviewPayload,
   HrPayrollConfigurationUploadPayload,
   HrPayrollEnvelope,
+  HrPayrollEmployerContribution,
   HrPayrollFilters,
   HrPayrollList,
   HrPayrollPagination,
@@ -14,6 +16,8 @@ import type {
   HrPayrollPeriodPayload,
   HrPayrollReceiptDetail,
   HrPayrollReceiptSummary,
+  HrPayrollReconciliationPayload,
+  HrPayrollReconciliationReport,
   HrPayrollRulePayload,
   HrPayrollRuleConfigurationRevision,
   HrPayrollRuleVersion,
@@ -22,6 +26,7 @@ import type {
   HrPayrollRunKind,
   HrPayrollRunPayload,
   HrPayrollSnapshotLine,
+  HrPayrollStatutoryCalculation,
   HrPayrollTransitionPayload,
 } from '../../types/hr-payroll';
 
@@ -259,6 +264,11 @@ async function transitionRun(
 }
 
 export const payrollClient = {
+  async getCompanyTaxProfile(): Promise<HrPayrollCompanyTaxProfile> {
+    const response = await api.get(`${PAYROLL_BASE}/company-tax-profile`, { skipOfflineCache: true });
+    return requireObject<HrPayrollCompanyTaxProfile>(response.data, 'perfil fiscal de empresa');
+  },
+
   async getRules(filters: HrPayrollFilters = {}): Promise<HrPayrollList<HrPayrollRuleVersion>> {
     const response = await api.get(`${PAYROLL_BASE}/rules`, { params: paramsOf(filters), skipOfflineCache: true });
     const result = requireList<HrPayrollRuleVersion>(response.data, 'reglas de nómina', [
@@ -275,6 +285,19 @@ export const payrollClient = {
   ): Promise<HrPayrollRuleVersion> {
     const response = await api.post(
       `${PAYROLL_BASE}/rules`,
+      payload,
+      mutationConfig(idempotencyKey)
+    );
+    return requireRule(response.data);
+  },
+
+  async cloneRule(
+    id: number,
+    payload: HrPayrollRulePayload & { expectedRevision: number },
+    idempotencyKey: string
+  ): Promise<HrPayrollRuleVersion> {
+    const response = await api.post(
+      `${PAYROLL_BASE}/rules/${id}/clone`,
       payload,
       mutationConfig(idempotencyKey)
     );
@@ -398,6 +421,19 @@ export const payrollClient = {
     return requireRun(response.data, 'corrida de nómina');
   },
 
+  async reconcileParallelControl(
+    kind: HrPayrollRunKind,
+    id: number,
+    payload: HrPayrollReconciliationPayload
+  ): Promise<HrPayrollReconciliationReport> {
+    const response = await api.post(`${runPath(kind, id)}/reconciliation`, payload);
+    const result = dataOf<HrPayrollReconciliationReport>(response.data);
+    if (!result || !Array.isArray(result.checks) || typeof result.reconciliationHash !== 'string') {
+      throw new PayrollContractError('conciliación paralela');
+    }
+    return result;
+  },
+
   async createRun(payload: HrPayrollRunPayload, idempotencyKey: string): Promise<HrPayrollRun> {
     const response = await api.post(runPath('REGULAR'), payload, mutationConfig(idempotencyKey));
     return requireRun(response.data, 'corrida de nómina');
@@ -460,6 +496,16 @@ export const payrollClient = {
     return result;
   },
 
+  async getEmployerContributions(kind: HrPayrollRunKind, id: number): Promise<HrPayrollEmployerContribution[]> {
+    const response = await api.get(`${runPath(kind, id)}/employer-contributions`, { skipOfflineCache: true });
+    return requireList<HrPayrollEmployerContribution>(response.data, 'aportes patronales', ['employerContributions']).items;
+  },
+
+  async getStatutoryCalculations(kind: HrPayrollRunKind, id: number): Promise<HrPayrollStatutoryCalculation[]> {
+    const response = await api.get(`${runPath(kind, id)}/statutory-calculations`, { skipOfflineCache: true });
+    return requireList<HrPayrollStatutoryCalculation>(response.data, 'cálculos estatutarios', ['statutoryCalculations']).items;
+  },
+
   async addComponent(
     kind: HrPayrollRunKind,
     id: number,
@@ -484,14 +530,16 @@ export const payrollClient = {
   },
 
   async getRunWorkspace(kind: HrPayrollRunKind, id: number): Promise<HrPayrollRunDetail> {
-    const [run, anomalies, snapshot, components, receipts] = await Promise.all([
+    const [run, anomalies, snapshot, components, receipts, employerContributions, statutoryCalculations] = await Promise.all([
       this.getRun(kind, id),
       this.getAnomalies(kind, id),
       this.getSnapshot(kind, id),
       this.getComponents(kind, id),
       this.getRunReceipts(kind, id),
+      this.getEmployerContributions(kind, id),
+      this.getStatutoryCalculations(kind, id),
     ]);
-    return { ...run, anomalies, snapshot, components, receipts };
+    return { ...run, anomalies, snapshot, components, receipts, employerContributions, statutoryCalculations };
   },
 
   exportRun: (kind: HrPayrollRunKind, id: number, format: 'csv' | 'xlsx') =>

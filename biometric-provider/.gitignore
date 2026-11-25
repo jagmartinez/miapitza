@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.python-packages/
+data/
+models/*.onnx
+*.pyc
+*.db
+*.sqlite

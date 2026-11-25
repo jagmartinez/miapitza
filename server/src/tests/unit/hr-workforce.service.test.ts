@@ -5,6 +5,7 @@ import prisma from '../../utils/prisma';
 import {
     deriveWorkedMinutes,
     deriveWorkedIntervals,
+    employeeBranchScope,
     hasAttendanceLeaveConflict,
     hasSummarySourceChanged,
     leaveAmount,
@@ -29,6 +30,15 @@ describe('HR workforce invariants', () => {
             { start: new Date('2026-07-14T14:00:00Z'), end: new Date('2026-07-14T18:00:00Z') },
             { start: new Date('2026-07-14T18:30:00Z'), end: new Date('2026-07-14T22:00:00Z') },
         ]);
+    });
+
+    it('reconciles an overnight checkout at or after shift end without inventing a missing exit', () => {
+        const result = deriveWorkedMinutes([
+            { id: 11, action: 'CHECK_IN', occurredAt: new Date('2026-07-15T04:00:00Z'), branchId: 2 },
+            { id: 12, action: 'CHECK_OUT', occurredAt: new Date('2026-07-15T12:15:00Z'), branchId: 2 },
+        ]);
+
+        expect(result).toEqual({ ordinaryMinutes: 495, breakMinutes: 0, anomalies: [] });
     });
 
     it('detects invalid punch ordering without inventing worked time', () => {
@@ -109,11 +119,29 @@ describe('HR workforce invariants', () => {
         })).toBe(false);
     });
 
-    it('requires a half-day interval to match its four-hour ledger charge', () => {
+    it('requires a half-day interval to match its configured ledger charge', () => {
         const date = new Date('2026-07-15T00:00:00Z');
         expect(leaveAmount(date, date, 'HALF_DAY', '08:00', '12:00', 'HOURS')).toBe(4);
         expect(() => leaveAmount(date, date, 'HALF_DAY', '00:00', '23:59', 'DAYS'))
-            .toThrow('intervalo exacto de 4 horas');
+            .toThrow('intervalo exacto de 240 minutos');
+        expect(leaveAmount(date, date, 'HALF_DAY', '08:00', '11:45', 'HOURS', { dayMinutes: 450, hourMinutes: 60 })).toBe(3.75);
+    });
+
+    it('evaluates employee branch scope against the process window in both directions', () => {
+        const from = new Date('2026-07-01T00:00:00.000Z');
+        const to = new Date('2026-07-31T00:00:00.000Z');
+
+        expect(employeeBranchScope(4, { from, to })).toEqual({
+            employee: {
+                branchAssignments: {
+                    some: {
+                        branchId: 4,
+                        effectiveFrom: { lte: to },
+                        OR: [{ effectiveTo: null }, { effectiveTo: { gte: from } }],
+                    },
+                },
+            },
+        });
     });
 
     it('forbids a user from deciding their own leave request', async () => {
@@ -133,7 +161,7 @@ describe('HR workforce invariants', () => {
             (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never,
         );
 
-        await expect(LeaveRequestService.decide(7, 4, 11, 'APPROVED', 'AprobaciÃ³n'))
+        await expect(LeaveRequestService.decide(7, 4, 11, 'APPROVED', 'Aprobación'))
             .rejects.toMatchObject({ code: 'HR_SELF_APPROVAL_FORBIDDEN', statusCode: 409 });
     });
 
@@ -223,6 +251,7 @@ describe('HR workforce invariants', () => {
 
 describe('HR workforce route and migration contract', () => {
     const routes = fs.readFileSync(path.resolve(__dirname, '../../routes/hr-workforce.routes.ts'), 'utf8');
+    const service = fs.readFileSync(path.resolve(__dirname, '../../services/hr-workforce.service.ts'), 'utf8');
     const migration = fs.readFileSync(path.resolve(__dirname, '../../../prisma/migrations/20260713_hr_04_workforce_management/migration.sql'), 'utf8');
 
     it('matches the client endpoint contract, including PUT for leave types', () => {
@@ -242,6 +271,12 @@ describe('HR workforce route and migration contract', () => {
             '/me/workforce',
         ]) expect(routes).toContain(endpoint);
         expect(routes).toContain("router.put('/leave/types/:id'");
+        expect(routes).toContain("/attendance/corrections/:id/cancel");
+    });
+
+    it('loads overnight events by scheduled shift instead of truncating checkout at shift end', () => {
+        expect(service).toContain('{ scheduledShiftId: { in: scheduledShiftIds } }');
+        expect(service).toContain('{ scheduledShiftId: null, serverAt: { gte: bounds.start, lt: bounds.end } }');
     });
 
     it('separates self, management and approval permissions', () => {

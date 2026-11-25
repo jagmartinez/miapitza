@@ -16,7 +16,7 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
                 findFirst: jest.fn(async () => ({
                     id: 9, companyId: 1, branchId: 2, total: 10,
                     financialStatus: 'UNPAID', status: 'READY', cashRegisterId: null,
-                    discountCode: null, invoiceNumber: 'FAC-2-000009', payments: []
+                    discountCode: null, invoiceNumber: 'FAC-2-000009', invoiceFiscalStatus: 'ISSUED', payments: []
                 })),
                 update: jest.fn(async (_args: unknown) => ({}))
             },

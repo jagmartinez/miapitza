@@ -1,8 +1,11 @@
 import prisma from '../utils/prisma';
 
 /**
- * Script to fix users without companyId
- * Assigns them to the first available company
+ * ONE-OFF REMEDIATION SCRIPT — not for production automation.
+ *
+ * Assigns users with null companyId to the first active company. That silent
+ * "default tenant" fallback is unsafe in multi-tenant deployments: review each
+ * orphaned user and pass an explicit --company-id before running in prod.
  */
 async function fixUsersWithoutCompany() {
     try {

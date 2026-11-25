@@ -22,7 +22,11 @@ export type RoleName = (typeof ROLES)[keyof typeof ROLES];
 /** Full administrators (tenant-wide management). */
 export const ADMINS: RoleName[] = [ROLES.SUPERADMIN, ROLES.ADMIN];
 
-/** Platform-only role; can act across tenants. */
+/**
+ * Platform-capable role name. Cross-tenant company overrides additionally
+ * require `isPlatformOperator` (see `utils/tenant-scope.ts`), which pins the
+ * actor to `PLATFORM_ADMIN_COMPANY_ID` when that env is configured.
+ */
 export const PLATFORM_ADMINS: RoleName[] = [ROLES.SUPERADMIN];
 
 /** Front-of-house operations (POS, orders). */

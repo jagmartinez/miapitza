@@ -51,7 +51,8 @@ describe('adaptadores heredados', () => {
     rerender(<Modal isOpen onClose={() => {}} title="Chico" size="sm">x</Modal>);
     const sm = screen.getByRole('dialog', { name: 'Chico' });
     expect(sm).not.toHaveClass('ui-fsm');
-    expect(sm).toHaveClass('modal-container');
+    expect(sm).toHaveClass('modal-overlay');
+    expect(sm.querySelector('.modal-container')).not.toBeNull();
   });
 
   it('Pagination heredada convierte onChange(page, size) a onPageChange(page)', async () => {

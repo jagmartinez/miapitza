@@ -24,7 +24,11 @@ export class CashArqueoService {
         const billsTotal = (breakdown.bills || []).reduce((sum, b) => sum + (b.denomination * b.count), 0);
         const coinsTotal = (breakdown.coins || []).reduce((sum, c) => sum + (c.denomination * c.count), 0);
         const usdTotal = (breakdown.usdBills || []).reduce((sum, b) => sum + (b.denomination * b.count), 0);
-        const exchangeRate = breakdown.exchangeRate || 0;
+        // USD counted at rate 0 silently understates the arqueo — fail closed.
+        if (usdTotal > 0 && (!Number.isFinite(breakdown.exchangeRate) || Number(breakdown.exchangeRate) <= 0)) {
+            throw new Error('Debe indicar una tasa de cambio mayor a cero cuando hay billetes en USD');
+        }
+        const exchangeRate = usdTotal > 0 ? Number(breakdown.exchangeRate) : (breakdown.exchangeRate || 0);
         const usdInCordobas = usdTotal * exchangeRate;
 
         return {

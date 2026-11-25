@@ -573,7 +573,7 @@ export default function Branches() {
                         <div className="modal-tab-content">
                             {/* 1. GENERAL TAB */}
                             {activeTab === 'general' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Store size={18} />
                                         <h3>Información General</h3>
@@ -644,7 +644,7 @@ export default function Branches() {
 
                             {/* 2. UBICACION TAB */}
                             {activeTab === 'ubicacion' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <MapPin size={18} />
                                         <h3>Dirección y geocerca</h3>

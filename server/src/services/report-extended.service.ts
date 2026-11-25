@@ -12,7 +12,85 @@ import {
     zonedWeekday
 } from '../utils/timezone';
 
+type RecipeLine = {
+    quantity: Prisma.Decimal | number | string;
+    unit?: string | null;
+    product: { id: number; name: string; unit: string; currentAverageCost?: unknown; cost?: unknown };
+};
+
+type OrderItemWithRecipes = {
+    quantity: number;
+    subtotal?: Prisma.Decimal | number | string;
+    menuItem?: {
+        recipes?: RecipeLine[] | null;
+    } | null;
+};
+
+const UNCATEGORIZED_CATEGORY = 'Sin categoría';
+
 export class ReportExtendedService {
+    /** Credit notes are negative sales events dated by issuedAt, never by the
+     * original order's closedAt. This shared loader keeps every sales rollup on
+     * the same temporal contract. */
+    private static async loadFiscalCredits(companyId: number, filters?: {
+        dateFrom?: Date; dateTo?: Date; branchId?: number; salesChannel?: string;
+        userId?: number;
+    }) {
+        return prisma.fiscalCreditNote.findMany({
+            where: {
+                companyId,
+                ...(filters?.branchId ? { branchId: filters.branchId } : {}),
+                ...(filters?.salesChannel || filters?.userId ? {
+                    order: {
+                        ...(filters?.salesChannel ? {
+                            salesChannel: filters.salesChannel as Prisma.OrderWhereInput['salesChannel']
+                        } : {}),
+                        ...(filters?.userId ? { userId: filters.userId } : {})
+                    }
+                } : {}),
+                ...(filters?.dateFrom || filters?.dateTo ? {
+                    issuedAt: {
+                        ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
+                        ...(filters?.dateTo ? { lte: filters.dateTo } : {})
+                    }
+                } : {})
+            },
+            select: {
+                id: true,
+                issuedAt: true,
+                total: true,
+                tax: true,
+                tipAmount: true,
+                order: {
+                    select: {
+                        userId: true, branchId: true, salesChannel: true,
+                        user: { select: { name: true, role: { select: { name: true } } } },
+                        branch: { select: { name: true } },
+                        company: { select: { name: true } }
+                    }
+                },
+                refunds: { select: { amount: true, payment: { select: { paymentMethod: { select: { name: true } } } } } },
+                lines: {
+                    select: {
+                        quantity: true, grossSubtotal: true, subtotal: true,
+                        orderItem: {
+                            select: {
+                                menuItemId: true,
+                                menuItem: {
+                                    select: {
+                                        name: true,
+                                        categoryId: true,
+                                        category: { select: { name: true } },
+                                        brand: { select: { name: true } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
     private static async recipeQuantityInBase(companyId: number, recipe: {
         quantity: Prisma.Decimal | number | string;
         unit?: string | null;
@@ -30,26 +108,176 @@ export class ReportExtendedService {
         }
     }
 
+    /**
+     * Net consumption cost per order from immutable ORD-{id} OUT/IN movements
+     * (same semantics as ReportService.getCostReport). Map key = orderId.
+     */
+    private static async loadOrderNetLedgerCogs(
+        companyId: number,
+        orderIds: number[]
+    ): Promise<Map<number, number>> {
+        const netByOrderId = new Map<number, number>();
+        const incompleteOrderIds = new Set<number>();
+        if (orderIds.length === 0) return netByOrderId;
+
+        const orderRefs = orderIds.map((id) => `ORD-${id}`);
+        const movements = await prisma.inventoryMovement.findMany({
+            where: {
+                companyId,
+                reference: { in: orderRefs },
+                type: { in: ['OUT', 'IN'] }
+            },
+            select: { reference: true, type: true, totalCost: true }
+        });
+
+        for (const movement of movements) {
+            if (!movement.reference?.startsWith('ORD-')) continue;
+            const orderId = Number(movement.reference.slice(4));
+            if (!Number.isFinite(orderId)) continue;
+            const movementCost = movement.totalCost == null ? null : Number(movement.totalCost);
+            if (movementCost == null || !Number.isFinite(movementCost) || movementCost < 0) {
+                incompleteOrderIds.add(orderId);
+                continue;
+            }
+            const signed = movement.type === 'OUT'
+                ? movementCost
+                : -movementCost;
+            netByOrderId.set(orderId, (netByOrderId.get(orderId) || 0) + signed);
+        }
+        for (const orderId of incompleteOrderIds) netByOrderId.delete(orderId);
+        return netByOrderId;
+    }
+
+    /** Inventory cost events for a report window. Historical movements for the
+     * sold orders are also loaded only to decide whether recipe fallback is
+     * allowed; their cost is never shifted into the current window. */
+    private static async loadTemporalOrderLedgerCogs(
+        companyId: number,
+        soldOrderIds: number[],
+        filters?: { dateFrom?: Date; dateTo?: Date; branchId?: number }
+    ): Promise<{ periodByOrderId: Map<number, number>; hasAnyOrderIds: Set<number> }> {
+        const soldRefs = soldOrderIds.map((id) => `ORD-${id}`);
+        const window = filters?.dateFrom || filters?.dateTo ? {
+            ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
+            ...(filters?.dateTo ? { lte: filters.dateTo } : {})
+        } : undefined;
+        const movements = await prisma.inventoryMovement.findMany({
+            where: {
+                companyId,
+                type: { in: ['OUT', 'IN'] },
+                reference: { startsWith: 'ORD-' },
+                ...(window && soldRefs.length > 0
+                    ? { OR: [{ createdAt: window }, { reference: { in: soldRefs } }] }
+                    : window ? { createdAt: window } : {})
+            },
+            select: { id: true, reference: true, type: true, totalCost: true, createdAt: true }
+        });
+        const movementOrderIds = [...new Set(movements.flatMap((movement) => {
+            const match = /^ORD-(\d+)$/.exec(movement.reference || '');
+            return match ? [Number(match[1])] : [];
+        }))];
+        const allowedOrderIds = filters?.branchId && movementOrderIds.length > 0
+            ? new Set((await prisma.order.findMany({
+                where: { companyId, branchId: filters.branchId, id: { in: movementOrderIds } },
+                select: { id: true }
+            })).map((order) => order.id))
+            : null;
+        const periodByOrderId = new Map<number, number>();
+        const hasAnyOrderIds = new Set<number>();
+        for (const movement of movements) {
+            const match = /^ORD-(\d+)$/.exec(movement.reference || '');
+            if (!match) continue;
+            const orderId = Number(match[1]);
+            if (allowedOrderIds && !allowedOrderIds.has(orderId)) continue;
+            hasAnyOrderIds.add(orderId);
+            const inWindow = !window
+                || ((!filters?.dateFrom || movement.createdAt >= filters.dateFrom)
+                    && (!filters?.dateTo || movement.createdAt <= filters.dateTo));
+            if (!inWindow) continue;
+            const value = movement.totalCost == null ? null : Number(movement.totalCost);
+            if (value == null || !Number.isFinite(value) || value < 0) {
+                throw new Error(`El movimiento ORD ${movement.id} no tiene costo histÃ³rico Ã­ntegro; requiere remediaciÃ³n antes de reportar`);
+            }
+            const signed = movement.type === 'OUT' ? value : -value;
+            periodByOrderId.set(orderId, (periodByOrderId.get(orderId) || 0) + signed);
+        }
+        return { periodByOrderId, hasAnyOrderIds };
+    }
+
+    /** Recipe × live WAC estimate for one order line (fallback only). */
+    private static async estimateLineRecipeCogs(
+        companyId: number,
+        item: OrderItemWithRecipes
+    ): Promise<number> {
+        let cogs = 0;
+        for (const recipe of item.menuItem?.recipes || []) {
+            const qtyInBase = await this.recipeQuantityInBase(companyId, recipe);
+            const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
+            cogs += qtyInBase * item.quantity * unitCost;
+        }
+        return cogs;
+    }
+
+    /**
+     * Per-line COGS for an order: prefer ORD-* ledger total when present.
+     * Ledger is order-grain only (ingredient OUT/IN under ORD-{id}), so line
+     * dimensions allocate that net cost by recipe-estimate share within the
+     * order; if recipe estimates are all zero, allocate by line revenue share.
+     * No ledger → each line uses recipe × live WAC.
+     */
+    private static async lineCogsPreferringLedger(
+        companyId: number,
+        orderId: number,
+        items: OrderItemWithRecipes[],
+        ledgerByOrderId: Map<number, number>
+    ): Promise<number[]> {
+        const recipeByLine = await Promise.all(
+            items.map((item) => this.estimateLineRecipeCogs(companyId, item))
+        );
+
+        if (!ledgerByOrderId.has(orderId)) {
+            return recipeByLine;
+        }
+
+        const ledgerTotal = ledgerByOrderId.get(orderId) || 0;
+        const recipeTotal = recipeByLine.reduce((sum, value) => sum + value, 0);
+        if (recipeTotal > 0) {
+            return recipeByLine.map((lineRecipe) => ledgerTotal * (lineRecipe / recipeTotal));
+        }
+
+        const revenueByLine = items.map((item) => Number(item.subtotal ?? 0));
+        const revenueTotal = revenueByLine.reduce((sum, value) => sum + value, 0);
+        if (revenueTotal > 0) {
+            return revenueByLine.map((revenue) => ledgerTotal * (revenue / revenueTotal));
+        }
+
+        // No allocation key: attribute full order ledger to the first line only.
+        return items.map((_, index) => (index === 0 ? ledgerTotal : 0));
+    }
+
     // ── PURCHASES: By Day ──
     static async getPurchasesByDay(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number; supplierId?: number;
         categoryId?: number; productId?: number;
     }) {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
-        const orders = await prisma.purchaseOrder.findMany({
-            where: { ...poWhere, status: 'RECEIVED' },
-            include: {
-                supplier: { select: { name: true } },
-                items: {
-                    include: { product: { select: { name: true, sku: true, category: { select: { name: true } } } } }
-                }
-            },
-            orderBy: { date: 'asc' }
-        });
+        const [orders, timeZone] = await Promise.all([
+            prisma.purchaseOrder.findMany({
+                where: { ...poWhere, status: 'RECEIVED' },
+                include: {
+                    supplier: { select: { name: true } },
+                    items: {
+                        include: { product: { select: { name: true, sku: true, category: { select: { name: true } } } } }
+                    }
+                },
+                orderBy: { date: 'asc' }
+            }),
+            SettingService.getTimezone(companyId)
+        ]);
 
         const byDay: Record<string, { date: string; totalAmount: number; orderCount: number; itemCount: number }> = {};
         for (const po of orders) {
-            const day = po.date.toISOString().split('T')[0];
+            const day = zonedDateKey(po.date, timeZone);
             if (!byDay[day]) byDay[day] = { date: day, totalAmount: 0, orderCount: 0, itemCount: 0 };
             byDay[day].totalAmount += Number(po.total);
             byDay[day].orderCount += 1;
@@ -75,15 +303,18 @@ export class ReportExtendedService {
         dateFrom?: Date; dateTo?: Date; branchId?: number; supplierId?: number;
     }) {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
-        const orders = await prisma.purchaseOrder.findMany({
-            where: { ...poWhere, status: 'RECEIVED' },
-            select: { date: true, total: true },
-            orderBy: { date: 'asc' }
-        });
+        const [orders, timeZone] = await Promise.all([
+            prisma.purchaseOrder.findMany({
+                where: { ...poWhere, status: 'RECEIVED' },
+                select: { date: true, total: true },
+                orderBy: { date: 'asc' }
+            }),
+            SettingService.getTimezone(companyId)
+        ]);
 
         const byMonth: Record<string, { month: string; totalAmount: number; orderCount: number }> = {};
         for (const po of orders) {
-            const m = po.date.toISOString().substring(0, 7);
+            const m = zonedMonthKey(po.date, timeZone);
             if (!byMonth[m]) byMonth[m] = { month: m, totalAmount: 0, orderCount: 0 };
             byMonth[m].totalAmount += Number(po.total);
             byMonth[m].orderCount += 1;
@@ -122,10 +353,17 @@ export class ReportExtendedService {
         });
 
         const matrix: Record<string, Record<string, { avgCost: number; minCost: number; maxCost: number; totalQty: number; entries: number }>> = {};
+        let excludedLegacyLines = 0;
+        let excludedLegacyAmount = 0;
 
         for (const po of orders) {
             for (const item of po.items) {
                 if (filters?.categoryId && item.product.categoryId !== filters.categoryId) continue;
+                if (item.baseCost == null || item.baseQuantity == null) {
+                    excludedLegacyLines += 1;
+                    excludedLegacyAmount += Number(item.subtotal);
+                    continue;
+                }
                 const productKey = `${item.product.id}|${item.product.name}|${item.product.sku || ''}|${item.product.category?.name || ''}`;
                 const supplierKey = `${po.supplier.id}|${po.supplier.name}`;
                 if (!matrix[productKey]) matrix[productKey] = {};
@@ -134,8 +372,8 @@ export class ReportExtendedService {
                 }
                 // Compare supplier prices per BASE unit so purchases in different
                 // purchase units are ranked consistently.
-                const unitCost = Number(item.baseCost ?? item.cost);
-                const qty = Number(item.baseQuantity ?? item.quantity);
+                const unitCost = Number(item.baseCost);
+                const qty = Number(item.baseQuantity);
                 const entry = matrix[productKey][supplierKey];
                 entry.minCost = Math.min(entry.minCost, unitCost);
                 entry.maxCost = Math.max(entry.maxCost, unitCost);
@@ -178,7 +416,9 @@ export class ReportExtendedService {
                 totalComparisons: items.length,
                 avgVariation: items.length > 0
                     ? Math.round(items.reduce((s, i) => s + i.priceVariation, 0) / items.length * 100) / 100
-                    : 0
+                    : 0,
+                excludedLegacyLines,
+                excludedLegacyAmount: Math.round(excludedLegacyAmount * 100) / 100
             }
         };
     }
@@ -207,9 +447,20 @@ export class ReportExtendedService {
             productName: string; sku: string | null; unit: string;
             categoryName: string | null; totalQuantity: number; totalCost: number; orderCount: number;
         }> = {};
+        let totalSpent = 0;
+        let normalizedSpent = 0;
+        let excludedLegacyLines = 0;
+        let excludedLegacyAmount = 0;
 
         for (const po of orders) {
             for (const item of po.items) {
+                const subtotal = Number(item.subtotal);
+                totalSpent += subtotal;
+                if (item.baseQuantity == null || item.baseCost == null) {
+                    excludedLegacyLines += 1;
+                    excludedLegacyAmount += subtotal;
+                    continue;
+                }
                 if (!productMap[item.productId]) {
                     productMap[item.productId] = {
                         productName: item.product.name,
@@ -221,8 +472,9 @@ export class ReportExtendedService {
                 }
                 // Accumulate volume in BASE units; subtotal is the unit-independent
                 // monetary total, so avgUnitCost ends up expressed per base unit.
-                productMap[item.productId].totalQuantity += Number(item.baseQuantity ?? item.quantity);
-                productMap[item.productId].totalCost += Number(item.subtotal);
+                productMap[item.productId].totalQuantity += Number(item.baseQuantity);
+                productMap[item.productId].totalCost += subtotal;
+                normalizedSpent += subtotal;
                 productMap[item.productId].orderCount += 1;
             }
         }
@@ -241,7 +493,10 @@ export class ReportExtendedService {
             items,
             summary: {
                 totalProducts: items.length,
-                totalSpent: Math.round(items.reduce((s, i) => s + i.totalCost, 0) * 100) / 100
+                totalSpent: Math.round(totalSpent * 100) / 100,
+                normalizedSpent: Math.round(normalizedSpent * 100) / 100,
+                excludedLegacyLines,
+                excludedLegacyAmount: Math.round(excludedLegacyAmount * 100) / 100
             }
         };
     }
@@ -303,16 +558,19 @@ export class ReportExtendedService {
             effectiveFilters = { ...filters, dateFrom: month.start, dateTo: month.endInclusive };
         }
         const orderWhere = this.buildOrderWhere(companyId, effectiveFilters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            include: {
-                items: {
-                    include: {
-                        menuItem: { select: { categoryId: true, category: { select: { id: true, name: true } } } }
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({
+                where: orderWhere,
+                include: {
+                    items: {
+                        include: {
+                            menuItem: { select: { categoryId: true, category: { select: { id: true, name: true } } } }
+                        }
                     }
                 }
-            }
-        });
+            }),
+            this.loadFiscalCredits(companyId, effectiveFilters)
+        ]);
 
         const catMap: Record<string, { categoryName: string; totalSales: number; itemCount: number; unitsSold: number }> = {};
         let grandTotal = 0;
@@ -323,12 +581,23 @@ export class ReportExtendedService {
         for (const order of orders) {
             for (const item of order.items) {
                 if (selectedCategoryIds && (!item.menuItem?.categoryId || !selectedCategoryIds.has(item.menuItem.categoryId))) continue;
-                const catName = item.menuItem?.category?.name || 'Sin Categoría';
+                const catName = item.menuItem?.category?.name || UNCATEGORIZED_CATEGORY;
                 if (!catMap[catName]) catMap[catName] = { categoryName: catName, totalSales: 0, itemCount: 0, unitsSold: 0 };
                 catMap[catName].totalSales += Number(item.subtotal);
                 catMap[catName].itemCount += 1;
                 catMap[catName].unitsSold += item.quantity;
                 grandTotal += Number(item.subtotal);
+            }
+        }
+        for (const credit of credits) {
+            for (const line of credit.lines) {
+                const menuItem = line.orderItem.menuItem;
+                if (selectedCategoryIds && (!menuItem.categoryId || !selectedCategoryIds.has(menuItem.categoryId))) continue;
+                const catName = menuItem.category?.name || UNCATEGORIZED_CATEGORY;
+                if (!catMap[catName]) catMap[catName] = { categoryName: catName, totalSales: 0, itemCount: 0, unitsSold: 0 };
+                catMap[catName].totalSales -= Number(line.grossSubtotal);
+                catMap[catName].unitsSold -= line.quantity;
+                grandTotal -= Number(line.grossSubtotal);
             }
         }
 
@@ -364,17 +633,20 @@ export class ReportExtendedService {
         const selectedCategoryIds = effectiveFilters?.categoryIds?.length
             ? effectiveFilters.categoryIds
             : effectiveFilters?.categoryId ? [effectiveFilters.categoryId] : [];
-        const orderItems = await prisma.orderItem.findMany({
-            where: {
-                order: orderWhere,
-                ...(selectedCategoryIds.length > 0 ? { menuItem: { categoryId: { in: selectedCategoryIds } } } : {}),
-                ...(effectiveFilters?.productId ? { menuItemId: effectiveFilters.productId } : {}),
-            },
-            select: {
-                orderId: true, menuItemId: true, quantity: true, subtotal: true,
-                menuItem: { select: { name: true, category: { select: { name: true } } } },
-            },
-        });
+        const [orderItems, credits] = await Promise.all([
+            prisma.orderItem.findMany({
+                where: {
+                    order: orderWhere,
+                    ...(selectedCategoryIds.length > 0 ? { menuItem: { categoryId: { in: selectedCategoryIds } } } : {}),
+                    ...(effectiveFilters?.productId ? { menuItemId: effectiveFilters.productId } : {}),
+                },
+                select: {
+                    orderId: true, menuItemId: true, quantity: true, subtotal: true,
+                    menuItem: { select: { name: true, category: { select: { name: true } } } },
+                },
+            }),
+            this.loadFiscalCredits(companyId, effectiveFilters)
+        ]);
         const products = new Map<number, { productId: number; productName: string; categoryName: string; unitsSold: number; lineCount: number; totalSales: number; orderIds: Set<number> }>();
         const allOrderIds = new Set<number>();
         for (const item of orderItems) {
@@ -383,7 +655,7 @@ export class ReportExtendedService {
             const current = products.get(item.menuItemId) || {
                 productId: item.menuItemId,
                 productName: item.menuItem.name,
-                categoryName: item.menuItem.category?.name || 'Sin categoría',
+                categoryName: item.menuItem.category?.name || UNCATEGORIZED_CATEGORY,
                 unitsSold: 0, lineCount: 0, totalSales: 0, orderIds: new Set<number>(),
             };
             current.unitsSold += Number(item.quantity) || 0;
@@ -391,6 +663,23 @@ export class ReportExtendedService {
             current.totalSales += Number(item.subtotal) || 0;
             current.orderIds.add(item.orderId);
             products.set(item.menuItemId, current);
+        }
+        for (const credit of credits) {
+            for (const line of credit.lines) {
+                const menuItem = line.orderItem.menuItem;
+                const menuItemId = line.orderItem.menuItemId;
+                if (selectedCategoryIds.length > 0 && (!menuItem.categoryId || !selectedCategoryIds.includes(menuItem.categoryId))) continue;
+                if (effectiveFilters?.productId && menuItemId !== effectiveFilters.productId) continue;
+                const current = products.get(menuItemId) || {
+                    productId: menuItemId,
+                    productName: menuItem.name,
+                    categoryName: menuItem.category?.name || UNCATEGORIZED_CATEGORY,
+                    unitsSold: 0, lineCount: 0, totalSales: 0, orderIds: new Set<number>()
+                };
+                current.unitsSold -= line.quantity;
+                current.totalSales -= Number(line.grossSubtotal);
+                products.set(menuItemId, current);
+            }
         }
         const items = [...products.values()].map(({ orderIds, ...item }) => ({
             ...item,
@@ -421,16 +710,19 @@ export class ReportExtendedService {
             effectiveFilters = { ...filters, dateFrom: month.start, dateTo: month.endInclusive };
         }
         const orderWhere = this.buildOrderWhere(companyId, effectiveFilters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            include: {
-                items: {
-                    include: {
-                        menuItem: { select: { brand: { select: { id: true, name: true } } } }
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({
+                where: orderWhere,
+                include: {
+                    items: {
+                        include: {
+                            menuItem: { select: { brand: { select: { id: true, name: true } } } }
+                        }
                     }
                 }
-            }
-        });
+            }),
+            this.loadFiscalCredits(companyId, effectiveFilters)
+        ]);
 
         const brandMap: Record<string, { brandName: string; totalSales: number; itemCount: number; unitsSold: number }> = {};
         let grandTotal = 0;
@@ -443,6 +735,15 @@ export class ReportExtendedService {
                 brandMap[brandName].itemCount += 1;
                 brandMap[brandName].unitsSold += item.quantity;
                 grandTotal += Number(item.subtotal);
+            }
+        }
+        for (const credit of credits) {
+            for (const line of credit.lines) {
+                const brandName = line.orderItem.menuItem.brand?.name || 'Sin Marca (ComÃºn)';
+                if (!brandMap[brandName]) brandMap[brandName] = { brandName, totalSales: 0, itemCount: 0, unitsSold: 0 };
+                brandMap[brandName].totalSales -= Number(line.grossSubtotal);
+                brandMap[brandName].unitsSold -= line.quantity;
+                grandTotal -= Number(line.grossSubtotal);
             }
         }
 
@@ -470,11 +771,14 @@ export class ReportExtendedService {
     }) {
         const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            select: { closedAt: true, total: true, discount: true, id: true, salesChannel: true },
-            orderBy: { closedAt: 'asc' }
-        });
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({
+                where: orderWhere,
+                select: { closedAt: true, total: true, discount: true, id: true, salesChannel: true },
+                orderBy: { closedAt: 'asc' }
+            }),
+            this.loadFiscalCredits(companyId, filters)
+        ]);
 
         const byDay: Record<string, { date: string; totalSales: number; orderCount: number; avgTicket: number; totalDiscount: number }> = {};
 
@@ -484,6 +788,11 @@ export class ReportExtendedService {
             byDay[day].totalSales += Number(order.total);
             byDay[day].orderCount += 1;
             byDay[day].totalDiscount += Number(order.discount);
+        }
+        for (const credit of credits) {
+            const day = zonedDateKey(credit.issuedAt, timeZone);
+            if (!byDay[day]) byDay[day] = { date: day, totalSales: 0, orderCount: 0, avgTicket: 0, totalDiscount: 0 };
+            byDay[day].totalSales -= Number(credit.total);
         }
 
         const items = Object.values(byDay)
@@ -514,10 +823,10 @@ export class ReportExtendedService {
     }) {
         const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            select: { closedAt: true, total: true, id: true }
-        });
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({ where: orderWhere, select: { closedAt: true, total: true, id: true } }),
+            this.loadFiscalCredits(companyId, filters)
+        ]);
 
         const byMonth: Record<string, { month: string; totalSales: number; orderCount: number }> = {};
         for (const o of orders) {
@@ -525,6 +834,11 @@ export class ReportExtendedService {
             if (!byMonth[m]) byMonth[m] = { month: m, totalSales: 0, orderCount: 0 };
             byMonth[m].totalSales += Number(o.total);
             byMonth[m].orderCount += 1;
+        }
+        for (const credit of credits) {
+            const month = zonedMonthKey(credit.issuedAt, timeZone);
+            if (!byMonth[month]) byMonth[month] = { month, totalSales: 0, orderCount: 0 };
+            byMonth[month].totalSales -= Number(credit.total);
         }
 
         const items = Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month));
@@ -557,12 +871,18 @@ export class ReportExtendedService {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            include: {
-                payments: { where: { status: 'ACTIVE' }, include: { paymentMethod: { select: { name: true } } } }
-            }
-        });
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({
+                where: orderWhere,
+                include: {
+                    // Preserve the immutable gross receipt and subtract fiscal
+                    // refunds below. A final note reverses the original payment,
+                    // so filtering only ACTIVE rows would publish a negative-only result.
+                    payments: { include: { paymentMethod: { select: { name: true } } } }
+                }
+            }),
+            this.loadFiscalCredits(companyId, filters)
+        ]);
 
         const methodMap: Record<string, { methodName: string; totalAmount: number; transactionCount: number }> = {};
         let grandTotal = 0;
@@ -574,6 +894,14 @@ export class ReportExtendedService {
                 methodMap[name].totalAmount += Number(payment.amount);
                 methodMap[name].transactionCount += 1;
                 grandTotal += Number(payment.amount);
+            }
+        }
+        for (const credit of credits) {
+            for (const refund of credit.refunds) {
+                const name = refund.payment.paymentMethod?.name || 'Otro';
+                if (!methodMap[name]) methodMap[name] = { methodName: name, totalAmount: 0, transactionCount: 0 };
+                methodMap[name].totalAmount -= Number(refund.amount);
+                grandTotal -= Number(refund.amount);
             }
         }
 
@@ -600,14 +928,17 @@ export class ReportExtendedService {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            include: {
-                user: { select: { id: true, name: true, role: { select: { name: true } } } },
-                branch: { select: { name: true } },
-                company: { select: { name: true } }
-            }
-        });
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({
+                where: orderWhere,
+                include: {
+                    user: { select: { id: true, name: true, role: { select: { name: true } } } },
+                    branch: { select: { name: true } },
+                    company: { select: { name: true } }
+                }
+            }),
+            this.loadFiscalCredits(companyId, filters)
+        ]);
 
         // Group by user AND branch so each row makes the branch/company explicit
         // (a cashier/waiter rotates across branches over time).
@@ -629,6 +960,20 @@ export class ReportExtendedService {
             }
             userMap[key].totalSales += Number(order.total);
             userMap[key].orderCount += 1;
+        }
+        for (const credit of credits) {
+            const order = credit.order;
+            const key = `${order.userId}-${order.branchId}`;
+            if (!userMap[key]) {
+                userMap[key] = {
+                    userName: order.user?.name || 'Unknown',
+                    roleName: order.user?.role?.name || 'N/A',
+                    branchName: order.branch?.name || 'N/A',
+                    companyName: order.company?.name || 'N/A',
+                    totalSales: 0, orderCount: 0
+                };
+            }
+            userMap[key].totalSales -= Number(credit.total);
         }
 
         const items = Object.values(userMap)
@@ -654,10 +999,11 @@ export class ReportExtendedService {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            select: {
-                total: true, salesChannel: true, channelCommission: true, channelMarkup: true,
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({
+                where: orderWhere,
+                select: {
+                id: true, total: true, salesChannel: true, channelCommission: true, channelMarkup: true,
                 items: {
                     select: {
                         quantity: true, subtotal: true,
@@ -674,8 +1020,16 @@ export class ReportExtendedService {
                         }
                     }
                 }
-            }
-        });
+                }
+            }),
+            this.loadFiscalCredits(companyId, filters)
+        ]);
+
+        const temporalLedger = await this.loadTemporalOrderLedgerCogs(
+            companyId,
+            orders.map((order) => order.id),
+            filters
+        );
 
         const channelLabels: Record<string, string> = {
             RESTAURANT: 'Restaurante',
@@ -703,13 +1057,50 @@ export class ReportExtendedService {
             channelMap[ch].netIncome += gross - comm;
             channelMap[ch].orderCount += 1;
 
-            for (const item of order.items) {
-                for (const recipe of (item.menuItem?.recipes || [])) {
-                    const qtyInBase = await this.recipeQuantityInBase(companyId, recipe);
-                    const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
-                    channelMap[ch].estimatedCOGS += qtyInBase * item.quantity * unitCost;
+            // Order-grain channel rollup: full ORD-* net when present, else recipe×WAC.
+            if (!temporalLedger.hasAnyOrderIds.has(order.id)) {
+                for (const item of order.items) {
+                    channelMap[ch].estimatedCOGS += await this.estimateLineRecipeCogs(companyId, item);
                 }
             }
+        }
+        for (const credit of credits) {
+            const channel = credit.order.salesChannel || 'RESTAURANT';
+            if (!channelMap[channel]) {
+                channelMap[channel] = {
+                    channel, channelName: channelLabels[channel] || channel,
+                    grossSales: 0, commission: 0, netIncome: 0, estimatedCOGS: 0, orderCount: 0
+                };
+            }
+            channelMap[channel].grossSales -= Number(credit.total);
+            channelMap[channel].netIncome -= Number(credit.total);
+            // Keep the original channel commission as accrued. Credit notes do
+            // not persist whether the external marketplace returned any fee;
+            // inferring a proportional commission refund would invent policy.
+        }
+        const knownChannels = new Map(orders.map((order) => [order.id, order.salesChannel || 'RESTAURANT']));
+        const unknownCostOrderIds = [...temporalLedger.periodByOrderId.keys()].filter((id) => !knownChannels.has(id));
+        if (unknownCostOrderIds.length > 0) {
+            const historicalOrders = await prisma.order.findMany({
+                where: {
+                    companyId,
+                    id: { in: unknownCostOrderIds },
+                    ...(filters?.branchId ? { branchId: filters.branchId } : {})
+                },
+                select: { id: true, salesChannel: true }
+            });
+            for (const order of historicalOrders) knownChannels.set(order.id, order.salesChannel || 'RESTAURANT');
+        }
+        for (const [orderId, cost] of temporalLedger.periodByOrderId) {
+            const channel = knownChannels.get(orderId);
+            if (!channel) continue;
+            if (!channelMap[channel]) {
+                channelMap[channel] = {
+                    channel, channelName: channelLabels[channel] || channel,
+                    grossSales: 0, commission: 0, netIncome: 0, estimatedCOGS: 0, orderCount: 0
+                };
+            }
+            channelMap[channel].estimatedCOGS += cost;
         }
 
         const items = Object.values(channelMap).map(c => {
@@ -743,10 +1134,13 @@ export class ReportExtendedService {
     }) {
         const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            select: { closedAt: true, total: true, id: true }
-        });
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({
+                where: orderWhere,
+                select: { closedAt: true, total: true, id: true }
+            }),
+            this.loadFiscalCredits(companyId, filters)
+        ]);
 
         const hourMap: Record<number, { hour: number; totalSales: number; orderCount: number }> = {};
         for (let h = 0; h < 24; h++) hourMap[h] = { hour: h, totalSales: 0, orderCount: 0 };
@@ -756,9 +1150,13 @@ export class ReportExtendedService {
             hourMap[hour].totalSales += Number(order.total);
             hourMap[hour].orderCount += 1;
         }
+        for (const credit of credits) {
+            const hour = zonedHour(credit.issuedAt, timeZone);
+            hourMap[hour].totalSales -= Number(credit.total);
+        }
 
         const items = Object.values(hourMap)
-            .filter(h => h.orderCount > 0)
+            .filter(h => h.orderCount > 0 || Math.abs(h.totalSales) > 1e-9)
             .map(h => ({
                 ...h,
                 hourLabel: `${String(h.hour).padStart(2, '0')}:00`,
@@ -783,7 +1181,7 @@ export class ReportExtendedService {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
+        const grossOrders = await prisma.order.findMany({
             where: orderWhere,
             include: {
                 items: {
@@ -806,18 +1204,73 @@ export class ReportExtendedService {
             }
         });
 
+        const temporalLedger = await this.loadTemporalOrderLedgerCogs(
+            companyId,
+            grossOrders.map((order) => order.id),
+            filters
+        );
+        const grossOrderIds = new Set(grossOrders.map((order) => order.id));
+        const extraOrderIds = [...temporalLedger.periodByOrderId.keys()]
+            .filter((orderId) => !grossOrderIds.has(orderId));
+        const counterflowOrders = extraOrderIds.length > 0
+            ? await prisma.order.findMany({
+                where: { companyId, id: { in: extraOrderIds } },
+                include: {
+                    items: {
+                        include: {
+                            menuItem: {
+                                select: {
+                                    categoryId: true,
+                                    category: { select: { name: true } },
+                                    recipes: {
+                                        select: {
+                                            quantity: true,
+                                            unit: true,
+                                            product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            : [];
+        const credits = await this.loadFiscalCredits(companyId, filters);
+
         const catMap: Record<string, { categoryName: string; revenue: number; cogs: number }> = {};
 
-        for (const order of orders) {
+        for (const order of grossOrders) {
             for (const item of order.items) {
-                const catName = item.menuItem?.category?.name || 'Sin Categoría';
+                const catName = item.menuItem?.category?.name || UNCATEGORIZED_CATEGORY;
                 if (!catMap[catName]) catMap[catName] = { categoryName: catName, revenue: 0, cogs: 0 };
                 catMap[catName].revenue += Number(item.subtotal);
-                for (const recipe of (item.menuItem?.recipes || [])) {
-                    const qtyInBase = await this.recipeQuantityInBase(companyId, recipe);
-                    const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
-                    catMap[catName].cogs += qtyInBase * item.quantity * unitCost;
-                }
+            }
+        }
+        for (const credit of credits) {
+            for (const line of credit.lines) {
+                const catName = line.orderItem.menuItem?.category?.name || UNCATEGORIZED_CATEGORY;
+                if (!catMap[catName]) catMap[catName] = { categoryName: catName, revenue: 0, cogs: 0 };
+                catMap[catName].revenue -= Number(line.subtotal);
+            }
+        }
+
+        for (const order of [...grossOrders, ...counterflowOrders]) {
+            const hasPeriodLedger = temporalLedger.periodByOrderId.has(order.id);
+            const allowRecipeFallback = grossOrderIds.has(order.id)
+                && !temporalLedger.hasAnyOrderIds.has(order.id);
+            if (!hasPeriodLedger && !allowRecipeFallback) continue;
+            // ORD-* is order-grain; allocate to categories via recipe (or revenue) share.
+            const lineCogs = await this.lineCogsPreferringLedger(
+                companyId,
+                order.id,
+                order.items,
+                hasPeriodLedger ? temporalLedger.periodByOrderId : new Map<number, number>()
+            );
+            for (const [index, item] of order.items.entries()) {
+                const catName = item.menuItem?.category?.name || UNCATEGORIZED_CATEGORY;
+                if (!catMap[catName]) catMap[catName] = { categoryName: catName, revenue: 0, cogs: 0 };
+                catMap[catName].cogs += lineCogs[index] || 0;
             }
         }
 
@@ -851,7 +1304,7 @@ export class ReportExtendedService {
         dateFrom?: Date; dateTo?: Date; branchId?: number; categoryId?: number; categoryIds?: number[];
     }) {
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
+        const grossOrders = await prisma.order.findMany({
             where: orderWhere,
             include: {
                 items: {
@@ -874,6 +1327,40 @@ export class ReportExtendedService {
             }
         });
 
+        const temporalLedger = await this.loadTemporalOrderLedgerCogs(
+            companyId,
+            grossOrders.map((order) => order.id),
+            filters
+        );
+        const grossOrderIds = new Set(grossOrders.map((order) => order.id));
+        const extraOrderIds = [...temporalLedger.periodByOrderId.keys()]
+            .filter((orderId) => !grossOrderIds.has(orderId));
+        const counterflowOrders = extraOrderIds.length > 0
+            ? await prisma.order.findMany({
+                where: { companyId, id: { in: extraOrderIds } },
+                include: {
+                    items: {
+                        include: {
+                            menuItem: {
+                                select: {
+                                    id: true, name: true, categoryId: true,
+                                    category: { select: { name: true } },
+                                    recipes: {
+                                        select: {
+                                            quantity: true,
+                                            unit: true,
+                                            product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            : [];
+        const credits = await this.loadFiscalCredits(companyId, filters);
+
         const prodMap: Record<number, {
             menuItemName: string; categoryName: string | null; revenue: number; cogs: number; unitsSold: number;
         }> = {};
@@ -881,25 +1368,61 @@ export class ReportExtendedService {
             ? new Set(filters.categoryIds)
             : filters?.categoryId ? new Set([filters.categoryId]) : null;
 
-        for (const order of orders) {
+        const ensureProduct = (menuItemId: number, menuItemName: string, categoryName: string | null) => {
+            if (!prodMap[menuItemId]) {
+                prodMap[menuItemId] = {
+                    menuItemName,
+                    categoryName,
+                    revenue: 0,
+                    cogs: 0,
+                    unitsSold: 0
+                };
+            }
+            return prodMap[menuItemId];
+        };
+
+        for (const order of grossOrders) {
             for (const item of order.items) {
                 if (!item.menuItem) continue;
                 if (selectedCategoryIds && (!item.menuItem.categoryId || !selectedCategoryIds.has(item.menuItem.categoryId))) continue;
-                const id = item.menuItem.id;
-                if (!prodMap[id]) {
-                    prodMap[id] = {
-                        menuItemName: item.menuItem.name,
-                        categoryName: item.menuItem.category?.name || null,
-                        revenue: 0, cogs: 0, unitsSold: 0
-                    };
-                }
-                prodMap[id].revenue += Number(item.subtotal);
-                prodMap[id].unitsSold += item.quantity;
-                for (const recipe of (item.menuItem.recipes || [])) {
-                    const qtyInBase = await this.recipeQuantityInBase(companyId, recipe);
-                    const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
-                    prodMap[id].cogs += qtyInBase * item.quantity * unitCost;
-                }
+                const product = ensureProduct(item.menuItem.id, item.menuItem.name, item.menuItem.category?.name || null);
+                product.revenue += Number(item.subtotal);
+                product.unitsSold += item.quantity;
+            }
+        }
+        for (const credit of credits) {
+            for (const line of credit.lines) {
+                const menuItem = line.orderItem.menuItem;
+                if (!menuItem) continue;
+                if (selectedCategoryIds && (!menuItem.categoryId || !selectedCategoryIds.has(menuItem.categoryId))) continue;
+                const product = ensureProduct(line.orderItem.menuItemId, menuItem.name, menuItem.category?.name || null);
+                product.revenue -= Number(line.subtotal);
+                product.unitsSold -= line.quantity;
+            }
+        }
+
+        for (const order of [...grossOrders, ...counterflowOrders]) {
+            const hasPeriodLedger = temporalLedger.periodByOrderId.has(order.id);
+            const allowRecipeFallback = grossOrderIds.has(order.id)
+                && !temporalLedger.hasAnyOrderIds.has(order.id);
+            if (!hasPeriodLedger && !allowRecipeFallback) continue;
+            // Same ORD-* preference + within-order allocation as food-cost-by-category.
+            // Category filters only affect which lines are published — allocation still
+            // uses the full order so ledger totals stay consistent with getCostReport.
+            const lineCogs = await this.lineCogsPreferringLedger(
+                companyId,
+                order.id,
+                order.items,
+                hasPeriodLedger ? temporalLedger.periodByOrderId : new Map<number, number>()
+            );
+            for (const [index, item] of order.items.entries()) {
+                if (!item.menuItem) continue;
+                if (selectedCategoryIds && (!item.menuItem.categoryId || !selectedCategoryIds.has(item.menuItem.categoryId))) continue;
+                ensureProduct(
+                    item.menuItem.id,
+                    item.menuItem.name,
+                    item.menuItem.category?.name || null
+                ).cogs += lineCogs[index] || 0;
             }
         }
 
@@ -984,10 +1507,13 @@ export class ReportExtendedService {
     }) {
         const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere = this.buildOrderWhere(companyId, filters);
-        const orders = await prisma.order.findMany({
-            where: orderWhere,
-            select: { closedAt: true, total: true, id: true }
-        });
+        const [orders, credits] = await Promise.all([
+            prisma.order.findMany({
+                where: orderWhere,
+                select: { closedAt: true, total: true, id: true }
+            }),
+            this.loadFiscalCredits(companyId, filters)
+        ]);
 
         const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
         const dayMap: Record<number, { dayName: string; totalSales: number; orderCount: number; weekCount: number }> = {};
@@ -1005,9 +1531,18 @@ export class ReportExtendedService {
             dayMap[dayOfWeek].totalSales += Number(order.total);
             dayMap[dayOfWeek].orderCount += 1;
         }
+        for (const credit of credits) {
+            const dayOfWeek = zonedWeekday(credit.issuedAt, timeZone);
+            const localDate = zonedDateKey(credit.issuedAt, timeZone);
+            if (!datesTracked.has(localDate)) {
+                datesTracked.add(localDate);
+                dayMap[dayOfWeek].weekCount += 1;
+            }
+            dayMap[dayOfWeek].totalSales -= Number(credit.total);
+        }
 
         const items = Object.values(dayMap)
-            .filter(d => d.orderCount > 0)
+            .filter(d => d.orderCount > 0 || Math.abs(d.totalSales) > 1e-9)
             .map(d => ({
                 ...d,
                 totalSales: Math.round(d.totalSales * 100) / 100,
@@ -1038,28 +1573,34 @@ export class ReportExtendedService {
         const defaultMonthA = `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, '0')}`;
         const monthAStr = filters?.monthA || defaultMonthA;
 
-        const buildWhere = (monthStr: string): Prisma.OrderWhereInput => {
+        const buildBounds = (monthStr: string) => {
             const from = parseZonedDateStart(`${monthStr}-01`, timeZone);
             const [year, month] = monthStr.split('-').map(Number);
             const nextMonth = new Date(Date.UTC(year, month, 1));
             const nextMonthKey = `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, '0')}`;
             const to = new Date(parseZonedDateStart(`${nextMonthKey}-01`, timeZone).getTime() - 1);
-            return {
-                companyId,
-                financialStatus: 'PAID',
-                status: { not: 'CANCELLED' },
-                ...(filters?.branchId ? { branchId: filters.branchId } : {}),
-                closedAt: { gte: from, lte: to }
-            };
+            return { from, to };
         };
+        const boundsA = buildBounds(monthAStr);
+        const boundsB = buildBounds(monthBStr);
 
-        const [ordersA, ordersB] = await Promise.all([
-            prisma.order.findMany({ where: buildWhere(monthAStr), select: { total: true } }),
-            prisma.order.findMany({ where: buildWhere(monthBStr), select: { total: true } })
+        const [ordersA, ordersB, creditsA, creditsB] = await Promise.all([
+            prisma.order.findMany({
+                where: this.buildOrderWhere(companyId, { branchId: filters?.branchId, dateFrom: boundsA.from, dateTo: boundsA.to }),
+                select: { total: true }
+            }),
+            prisma.order.findMany({
+                where: this.buildOrderWhere(companyId, { branchId: filters?.branchId, dateFrom: boundsB.from, dateTo: boundsB.to }),
+                select: { total: true }
+            }),
+            this.loadFiscalCredits(companyId, { branchId: filters?.branchId, dateFrom: boundsA.from, dateTo: boundsA.to }),
+            this.loadFiscalCredits(companyId, { branchId: filters?.branchId, dateFrom: boundsB.from, dateTo: boundsB.to })
         ]);
 
-        const salesA = ordersA.reduce((s, o) => s + Number(o.total), 0);
-        const salesB = ordersB.reduce((s, o) => s + Number(o.total), 0);
+        const salesA = ordersA.reduce((s, o) => s + Number(o.total), 0)
+            - creditsA.reduce((s, note) => s + Number(note.total), 0);
+        const salesB = ordersB.reduce((s, o) => s + Number(o.total), 0)
+            - creditsB.reduce((s, note) => s + Number(note.total), 0);
         const variation = salesA > 0 ? Math.round((salesB - salesA) / salesA * 10000) / 100 : 0;
 
         return {
@@ -1101,14 +1642,20 @@ export class ReportExtendedService {
     }): Prisma.OrderWhereInput {
         return {
             companyId,
-            financialStatus: 'PAID',
-            status: { not: 'CANCELLED' },
+            // Fiscal credits are separate negative events. Retain the original
+            // closed ticket as gross even when its final note changes the
+            // operational/payment state to CANCELLED/UNPAID.
+            OR: [
+                { financialStatus: 'PAID', status: { not: 'CANCELLED' } },
+                { status: 'CANCELLED', invoiceFiscalStatus: 'CREDITED' }
+            ],
             closedAt: { not: null },
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.salesChannel ? { salesChannel: filters.salesChannel as Prisma.OrderWhereInput['salesChannel'] } : {}),
             ...(filters?.userId ? { userId: filters.userId } : {}),
             ...(filters?.dateFrom || filters?.dateTo ? {
                 closedAt: {
+                    not: null,
                     ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
                     ...(filters?.dateTo ? { lte: filters.dateTo } : {}),
                 }

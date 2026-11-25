@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import HrReactSelect from './HrReactSelect';
+import { useState, type ReactNode } from 'react';
+import { Calculator, Gift } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type {
   HrAguinaldoRunPayload,
   HrPayrollPeriod,
@@ -16,6 +19,7 @@ interface PayrollRunFormProps {
   saving: boolean;
   onSubmit: (payload: HrPayrollRunPayload | HrAguinaldoRunPayload) => Promise<void>;
   onCancel: () => void;
+  notice?: ReactNode;
 }
 
 export default function PayrollRunForm({
@@ -26,6 +30,7 @@ export default function PayrollRunForm({
   saving,
   onSubmit,
   onCancel,
+  notice,
 }: PayrollRunFormProps) {
   const currentYear = new Date().getFullYear();
   const [periodId, setPeriodId] = useState('');
@@ -55,13 +60,41 @@ export default function PayrollRunForm({
   const valid = Boolean(
     ruleVersionId && reason.trim() && (kind === 'AGUINALDO' ? year && cutoffDate : periodId)
   );
+  const isAguinaldo = kind === 'AGUINALDO';
+  const icon = isAguinaldo ? (
+    <Gift size={18} aria-hidden="true" />
+  ) : (
+    <Calculator size={18} aria-hidden="true" />
+  );
 
   return (
-    <form className="hr-payroll-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel={isAguinaldo ? 'Sección de corrida de aguinaldo' : 'Sección de corrida de nómina'}
+      tabLabel={isAguinaldo ? 'Aguinaldo' : 'Corrida'}
+      sectionTitle={isAguinaldo ? 'Año, corte y regla aplicable' : 'Periodo y regla aplicable'}
+      icon={icon}
+      formClassName="hr-payroll-form"
+      notice={notice}
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!online || saving || !valid}>
+            {saving ? 'Creando…' : isAguinaldo ? 'Crear aguinaldo' : 'Crear corrida'}
+          </Button>
+        </>
+      }
+    >
       {kind === 'REGULAR' ? (
         <label>
           Periodo
-          <select value={periodId} onChange={(event) => setPeriodId(event.target.value)} required>
+          <HrReactSelect
+            value={periodId}
+            onChange={(event) => setPeriodId(event.target.value)}
+            required
+          >
             <option value="">Seleccionar…</option>
             {periods
               .filter((period) => period.status !== 'VOID')
@@ -70,7 +103,7 @@ export default function PayrollRunForm({
                   {period.code} · {period.dateFrom} – {period.dateTo}
                 </option>
               ))}
-          </select>
+          </HrReactSelect>
         </label>
       ) : (
         <>
@@ -98,7 +131,7 @@ export default function PayrollRunForm({
       )}
       <label>
         Regla activa
-        <select
+        <HrReactSelect
           value={ruleVersionId}
           onChange={(event) => setRuleVersionId(event.target.value)}
           required
@@ -111,7 +144,7 @@ export default function PayrollRunForm({
                 {rule.name} · v{rule.version}
               </option>
             ))}
-        </select>
+        </HrReactSelect>
       </label>
       <label className="span-full">
         Razón de apertura
@@ -127,14 +160,6 @@ export default function PayrollRunForm({
         Se enviará sólo alcance, periodo y regla. El servidor obtiene empleados elegibles, snapshot
         y todos los importes.
       </p>
-      <div className="hr-payroll-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={!online || saving || !valid}>
-          {saving ? 'Creando…' : kind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

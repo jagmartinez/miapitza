@@ -10,7 +10,7 @@ interface ViewToggleProps {
 /** Cards / table view switcher used across catalog views. */
 export default function ViewToggle({ value, onChange }: ViewToggleProps) {
     return (
-        <div className="view-toggle">
+        <div className="view-toggle catalog-view-toggle">
             <button
                 type="button"
                 className={`view-toggle-btn ${value === 'cards' ? 'active' : ''}`}

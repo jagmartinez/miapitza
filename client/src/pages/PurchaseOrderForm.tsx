@@ -85,7 +85,9 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         try {
             const [supRes, prodRes, branchRes, warehouseRes] = await Promise.all([
                 suppliersAPI.getAll({ active: true }),
-                productsAPI.getAll({ type: 'INGREDIENT' }), // Assuming we buy ingredients
+                // Purchasing may include ingredients, packaging, resale goods or
+                // externally sourced intermediates; do not hide valid product types.
+                productsAPI.getAll({ active: true, limit: 500 }),
                 branchesAPI.getAll(),
                 warehousesAPI.getAll()
             ]);
@@ -446,7 +448,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             <form onSubmit={handleSave} className="modal-form-new">
             <div className="modal-tab-content">
                 {activeTab === 'general' ? (
-                    <div className="modal-section animate-slide-in">
+                    <div className="modal-content-group">
                         <div className="modal-section-header">
                             <Info size={18} />
                             <h3>Detalles de la Orden</h3>
@@ -610,7 +612,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                         </div>
                     </div>
                 ) : (
-                    <div className="modal-section animate-slide-in">
+                    <div className="modal-content-group">
                         <div className="modal-section-header" style={{ justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <Package size={18} />
@@ -806,7 +808,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 <div className="premium-modal-content purchase-item-modal-content">
                     <div className="modal-form-new">
                     <div className="modal-tab-content">
-                    <div className="modal-section animate-slide-in">
+                    <div className="modal-content-group">
                         <div className="modal-section-header">
                             <Package size={18} />
                             <h3>Producto de la orden</h3>

@@ -3,6 +3,7 @@ import { CateringStatus } from '@prisma/client';
 import { CateringService } from '../services/catering.service';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, isCompanyWide, BranchScopeError } from '../utils/branch-scope';
+import { CateringFiscalService } from '../services/catering-fiscal.service';
 
 const CATERING_STATUSES: readonly CateringStatus[] = [
     'QUOTED',
@@ -97,7 +98,7 @@ export class CateringController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             await CateringController.assertEventBranch(req, id);
-            await CateringService.deleteEvent(id, companyId);
+            await CateringService.deleteEvent(id, companyId, req.user!.userId);
             res.json({ success: true, message: 'Evento eliminado exitosamente' });
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
@@ -141,6 +142,66 @@ export class CateringController {
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async issueFiscalInvoice(req: Request, res: Response, next: NextFunction) {
+        try {
+            const eventId = Number(req.params.id);
+            await CateringController.assertEventBranch(req, eventId);
+            const rawKey = req.headers['x-idempotency-key'];
+            const data = await CateringFiscalService.issueInvoice(
+                eventId,
+                req.user!.companyId,
+                req.user!.userId,
+                typeof rawKey === 'string' ? rawKey : undefined
+            );
+            res.status(201).json({ success: true, data });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getFiscalInvoice(req: Request, res: Response, next: NextFunction) {
+        try {
+            const eventId = Number(req.params.id);
+            await CateringController.assertEventBranch(req, eventId);
+            const data = await CateringFiscalService.getInvoice(eventId, req.user!.companyId);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
+        }
+    }
+
+    static async issueFiscalCreditNote(req: Request, res: Response, next: NextFunction) {
+        try {
+            const eventId = Number(req.params.id);
+            await CateringController.assertEventBranch(req, eventId);
+            const rawKey = req.headers['x-idempotency-key'];
+            const data = await CateringFiscalService.issueFullCreditNote(
+                eventId,
+                req.user!.companyId,
+                req.user!.userId,
+                { ...req.body, idempotencyKey: typeof rawKey === 'string' ? rawKey : undefined }
+            );
+            res.status(201).json({ success: true, data });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getFiscalCreditNote(req: Request, res: Response, next: NextFunction) {
+        try {
+            const eventId = Number(req.params.id);
+            await CateringController.assertEventBranch(req, eventId);
+            const data = await CateringFiscalService.getCreditNote(eventId, req.user!.companyId);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
         }
     }
 

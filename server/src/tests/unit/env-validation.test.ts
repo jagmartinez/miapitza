@@ -6,6 +6,7 @@ const validProductionEnv = {
     JWT_SECRET: 'a-production-secret-with-more-than-32-bytes',
     TWO_FA_ENCRYPTION_KEY: 'a'.repeat(64),
     CLIENT_URL: 'https://restaurant.example.com',
+    PLATFORM_TENANCY_MODE: 'single',
 } as NodeJS.ProcessEnv;
 
 describe('production environment validation', () => {
@@ -20,6 +21,30 @@ describe('production environment validation', () => {
 
     it('accepts a non-placeholder secret with the required production controls', () => {
         expect(collectEnvironmentErrors(validProductionEnv)).toEqual([]);
+    });
+
+    it('requires an explicit tenancy mode in production', () => {
+        const env = { ...validProductionEnv };
+        delete env.PLATFORM_TENANCY_MODE;
+        expect(collectEnvironmentErrors(env)).toContain(
+            'PLATFORM_TENANCY_MODE is required in production (single or multi).',
+        );
+    });
+
+    it('requires a valid operator company in multi mode and forbids it in single mode', () => {
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            PLATFORM_TENANCY_MODE: 'multi',
+        })).toContain('PLATFORM_ADMIN_COMPANY_ID is required in multi tenancy mode.');
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            PLATFORM_ADMIN_COMPANY_ID: '1',
+        })).toContain('PLATFORM_ADMIN_COMPANY_ID must be empty in single tenancy mode.');
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            PLATFORM_TENANCY_MODE: 'multi',
+            PLATFORM_ADMIN_COMPANY_ID: '1',
+        })).toEqual([]);
     });
 
     it('forbids fake face verification in production', () => {
@@ -40,5 +65,66 @@ describe('production environment validation', () => {
             HR_ALLOW_FAKE_FACE_PROVIDER: 'true',
         });
         expect(errors).toContain('HR_BIOMETRIC_ENCRYPTION_KEY must be a 64-character hexadecimal key when facial verification is enabled.');
+    });
+
+    it('accepts a fully configured HTTPS face provider in production', () => {
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal.example',
+            HR_FACE_PROVIDER_TOKEN: 'provider-token-with-at-least-32-bytes',
+            HR_FACE_PROVIDER_TIMEOUT_MS: '5000',
+            HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
+        })).toEqual([]);
+    });
+
+    it('rejects incomplete or insecure HTTP face-provider configuration', () => {
+        const incomplete = collectEnvironmentErrors({
+            ...validProductionEnv,
+            HR_FACE_PROVIDER: 'http',
+        });
+        expect(incomplete).toEqual(expect.arrayContaining([
+            'HR_FACE_PROVIDER_BASE_URL is required for the http face provider.',
+            'HR_FACE_PROVIDER_TOKEN is required for the http face provider.',
+            'HR_BIOMETRIC_ENCRYPTION_KEY must be a 64-character hexadecimal key when facial verification is enabled.',
+        ]));
+
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'http://faces.internal.example',
+            HR_FACE_PROVIDER_TOKEN: 'provider-token-with-at-least-32-bytes',
+            HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
+        })).toContain('HR_FACE_PROVIDER_BASE_URL must use HTTPS in production.');
+
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'http://faces.public.example',
+            HR_FACE_PROVIDER_ALLOW_HTTP_INTERNAL: 'true',
+            HR_FACE_PROVIDER_TOKEN: 'provider-token-with-at-least-32-bytes',
+            HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
+        })).toContain('HR_FACE_PROVIDER_BASE_URL must use HTTPS in production.');
+    });
+
+    it('allows explicit plain HTTP only for a private service-network hostname', () => {
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'http://face-provider.railway.internal:8080',
+            HR_FACE_PROVIDER_ALLOW_HTTP_INTERNAL: 'true',
+            HR_FACE_PROVIDER_TOKEN: 'provider-token-with-at-least-32-bytes',
+            HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
+        })).toEqual([]);
+    });
+
+    it('rejects a short face-provider bearer token', () => {
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal.example',
+            HR_FACE_PROVIDER_TOKEN: 'short-token',
+            HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
+        })).toContain('HR_FACE_PROVIDER_TOKEN must contain at least 32 bytes.');
     });
 });

@@ -8,6 +8,7 @@ import {
     assertStrongPassword,
     BCRYPT_ROUNDS
 } from '../utils/password-policy';
+import { collectPermissionNames } from '../utils/permission-names';
 
 export { BCRYPT_ROUNDS, PASSWORD_REGEX } from '../utils/password-policy';
 
@@ -143,8 +144,24 @@ export class AuthService {
         const user = await prisma.user.findUnique({
             where: { username },
             include: {
-                role: { select: { id: true, name: true } },
-                userRoles: { select: { role: { select: { id: true, name: true } } } },
+                role: {
+                    select: {
+                        id: true,
+                        name: true,
+                        permissions: { select: { name: true } },
+                    },
+                },
+                userRoles: {
+                    select: {
+                        role: {
+                            select: {
+                                id: true,
+                                name: true,
+                                permissions: { select: { name: true } },
+                            },
+                        },
+                    },
+                },
                 company: { select: { id: true, name: true, ruc: true, active: true } },
                 branch: { select: { status: true } },
                 allowedBranches: { select: { branchId: true } },
@@ -228,10 +245,12 @@ export class AuthService {
         const JWT_SECRET = process.env.JWT_SECRET;
         if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is not configured');
 
-        const allRoles = [user.role, ...user.userRoles.map((ur: { role: { id: number; name: string } }) => ur.role)]
+        const allRoleRecords = [user.role, ...user.userRoles.map((ur) => ur.role)]
             .filter((role, index, roles) => roles.findIndex((candidate) => candidate.id === role.id) === index)
             .filter((role) => role.name !== ROLES.SUPERADMIN || user.role.name === ROLES.SUPERADMIN);
+        const allRoles = allRoleRecords.map(({ id, name }) => ({ id, name }));
         const roleNames = allRoles.map((r: { id: number; name: string }) => r.name);
+        const permissions = collectPermissionNames(allRoleRecords);
 
         const token = jwt.sign(
             { userId: user.id, role: user.role.name, roles: roleNames, branchId: user.branchId, companyId: user.companyId },
@@ -246,10 +265,11 @@ export class AuthService {
             token,
             user: {
                 id: user.id, name: user.name, email: user.email, username: user.username,
-                role: user.role, roles: allRoles, branchId: user.branchId,
+                role: { id: user.role.id, name: user.role.name }, roles: allRoles, branchId: user.branchId,
                 companyId: user.companyId, company: user.company, color: user.color,
                 accountType: user.accountType,
-                employeeId: user.employee?.id
+                employeeId: user.employee?.id,
+                permissions,
             },
             mustChangePassword: user.mustChangePassword,
             passwordExpired,

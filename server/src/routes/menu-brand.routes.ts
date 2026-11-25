@@ -11,7 +11,7 @@ router.use(authenticate);
 router.get('/', MenuBrandController.getAll);
 router.get('/:id', validate(s.idParam), MenuBrandController.getById);
 router.post('/', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.createMenuBrand), MenuBrandController.create);
-router.put('/:id', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.idParam), MenuBrandController.update);
+router.put('/:id', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.updateMenuBrand), MenuBrandController.update);
 router.delete('/:id', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.idParam), MenuBrandController.delete);
 
 export default router;

@@ -1,3 +1,4 @@
+import HrReactSelect from '../../components/hr/HrReactSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -17,6 +18,7 @@ import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
 import {
@@ -34,6 +36,7 @@ import type {
   HrAttendanceSettingsLookups,
   HrAttendanceViolationMode,
   HrBiometricMaintenanceResult,
+  HrBiometricProviderHealth,
   HrBiometricStatus,
 } from '../../types/hr-attendance';
 import './attendance-settings.css';
@@ -53,6 +56,12 @@ function displayDateTime(value?: string | null): string {
   }).format(new Date(value));
 }
 
+function providerStatusLabel(status?: HrBiometricProviderHealth['status']): string {
+  if (status === 'AVAILABLE') return 'Conexión disponible';
+  if (status === 'UNAVAILABLE') return 'Conexión no disponible';
+  return 'Sin verificar';
+}
+
 function policyPayload(policy: HrAttendancePolicy, branchId?: number): HrAttendancePolicyPayload {
   return {
     branchId: branchId ?? null,
@@ -66,8 +75,8 @@ function policyPayload(policy: HrAttendancePolicy, branchId?: number): HrAttenda
     earlyCheckOutToleranceM: policy.earlyCheckOutToleranceM,
     lateCheckOutMinutes: policy.lateCheckOutMinutes,
     scheduleViolationMode: policy.scheduleViolationMode,
-    geofenceViolationMode: policy.geofenceViolationMode,
-    biometricViolationMode: policy.biometricViolationMode,
+    geofenceViolationMode: 'BLOCK',
+    biometricViolationMode: 'BLOCK',
     allowUnscheduledPunch: policy.allowUnscheduledPunch,
     unscheduledViolationMode: policy.unscheduledViolationMode,
     allowManualFallback: policy.allowManualFallback,
@@ -81,6 +90,7 @@ export default function AttendanceSettings() {
   const online = useWorkforceOnline();
   const { success: showSuccess, error: showError } = useAppToast();
   const [scope, setScope] = useState('');
+  const [scopeMode, setScopeMode] = useState<'COMPANY' | 'BRANCH'>('COMPANY');
   const [lookups, setLookups] = useState<HrAttendanceSettingsLookups>(EMPTY_LOOKUPS);
   const [policy, setPolicy] = useState<HrAttendancePolicy | null>(null);
   const [devices, setDevices] = useState<HrAttendanceDevice[]>([]);
@@ -96,9 +106,19 @@ export default function AttendanceSettings() {
   const [biometricReason, setBiometricReason] = useState('');
   const [revokedStatus, setRevokedStatus] = useState<HrBiometricStatus | null>(null);
   const [maintenance, setMaintenance] = useState<HrBiometricMaintenanceResult | null>(null);
+  const [providerHealth, setProviderHealth] = useState<HrBiometricProviderHealth | null>(null);
+  const [providerHealthLoading, setProviderHealthLoading] = useState(false);
 
   const scopeBranchId = scope ? Number(scope) : undefined;
   const selectedBranch = lookups.branches.find((branch) => branch.id === scopeBranchId);
+  const selectScopeMode = (nextMode: 'COMPANY' | 'BRANCH') => {
+    setScopeMode(nextMode);
+    if (nextMode === 'COMPANY') {
+      setScope('');
+      return;
+    }
+    setScope((current) => current || String(lookups.branches[0]?.id ?? ''));
+  };
   const internalUsers = useMemo(
     () =>
       lookups.users.filter(
@@ -137,6 +157,17 @@ export default function AttendanceSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadProviderHealth = useCallback(async () => {
+    setProviderHealthLoading(true);
+    try {
+      setProviderHealth(await attendanceClient.getBiometricProviderHealth());
+    } catch (healthError) {
+      setProviderHealth({ provider: 'unknown', model: 'unknown', status: 'UNAVAILABLE', checkedAt: new Date().toISOString(), detail: getAttendanceErrorMessage(healthError, 'No fue posible consultar el proveedor') });
+    } finally {
+      setProviderHealthLoading(false);
+    }
+  }, []);
 
   const updatePolicyField = <K extends keyof HrAttendancePolicy>(
     field: K,
@@ -287,8 +318,8 @@ export default function AttendanceSettings() {
   return (
     <div className="page-wrapper hr-attendance-settings-page">
       <PageHeader
-        title="Configuración de asistencia"
-        subtitle="Políticas versionadas, dispositivos, consentimiento y ciclo de vida biométrico"
+        title="Reglas para el marcaje"
+        subtitle="Decide qué debe comprobar cada empleado al marcar y qué hacer cuando algo falla"
         icon={ShieldCheck}
         actions={
           <Button variant="ghost" onClick={() => void load()} disabled={loading}>
@@ -299,21 +330,28 @@ export default function AttendanceSettings() {
       <OnlineOnlyNotice online={online} />
 
       <section className="hr-settings-scope" aria-label="Alcance de configuración">
-        <label>
-          Alcance de política y dispositivos
-          <select value={scope} onChange={(event) => setScope(event.target.value)}>
-            <option value="">Toda la empresa</option>
-            {lookups.branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p>
+        <div className="hr-settings-scope-intro">
+          <span><ShieldCheck size={20} aria-hidden="true" /></span>
+          <div><strong>Alcance de la regla</strong><p>Define una base para toda la empresa o una excepción versionada para una sucursal.</p></div>
+        </div>
+        <div className="hr-settings-scope-controls">
+          <div className="hr-settings-scope-mode" role="group" aria-label="Tipo de alcance">
+            <button type="button" aria-pressed={scopeMode === 'COMPANY'} onClick={() => selectScopeMode('COMPANY')}>Regla general</button>
+            <button type="button" aria-pressed={scopeMode === 'BRANCH'} onClick={() => selectScopeMode('BRANCH')} disabled={lookups.branches.length === 0}>Por sucursal</button>
+          </div>
+          {scopeMode === 'BRANCH' && <label>
+            Sucursal que tendrá reglas propias
+            <HrReactSelect value={scope} onChange={(event) => setScope(event.target.value)} isSearchable aria-label="Seleccionar sucursal para reglas de marcaje">
+              {lookups.branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>{branch.name}</option>
+              ))}
+            </HrReactSelect>
+          </label>}
+        </div>
+        <p className="hr-settings-scope-note">
           {selectedBranch
-            ? `Administrando ${selectedBranch.name}. La zona horaria procede de la sucursal.`
-            : 'La política global es la base para sucursales sin una versión propia.'}
+            ? `Editando ${selectedBranch.name}. Al guardar se crea una versión exclusiva para esta sucursal.`
+            : 'La regla general se hereda en todas las sucursales que no tengan una versión propia.'}
         </p>
       </section>
 
@@ -349,7 +387,7 @@ export default function AttendanceSettings() {
           <section className="hr-settings-summary" aria-label="Resumen de política">
             <article>
               <ShieldCheck size={20} />
-              <span>Versión vigente</span>
+              <span>Reglas vigentes</span>
               <strong>{policy.version === 0 ? 'Valores base' : `v${policy.version}`}</strong>
             </article>
             <article>
@@ -359,12 +397,12 @@ export default function AttendanceSettings() {
             </article>
             <article>
               <ScanFace size={20} />
-              <span>Consentimiento</span>
+              <span>Aviso biométrico</span>
               <strong>{policy.biometricConsentVersion}</strong>
             </article>
             <article>
               <Clock3 size={20} />
-              <span>Retención</span>
+              <span>Datos biométricos</span>
               <strong>{policy.biometricRetentionDays} días</strong>
             </article>
           </section>
@@ -373,8 +411,8 @@ export default function AttendanceSettings() {
             <section className="hr-settings-card" aria-labelledby="enforcement-title">
               <header>
                 <div>
-                  <h2 id="enforcement-title">Evidencia y enforcement</h2>
-                  <p>Define qué evidencia se exige y cómo se resuelve cada incumplimiento.</p>
+                  <h2 id="enforcement-title">Qué debe comprobar cada marcaje</h2>
+                  <p>Activa las comprobaciones y elige si una falla bloquea o se envía a revisión.</p>
                 </div>
                 <ScanFace size={22} />
               </header>
@@ -430,8 +468,8 @@ export default function AttendanceSettings() {
               </div>
               <div className="hr-settings-fields three-columns">
                 <label>
-                  Incumplimiento de horario
-                  <select
+                  Si marca fuera del horario
+                  <HrReactSelect
                     value={policy.scheduleViolationMode}
                     onChange={(event) =>
                       updatePolicyField(
@@ -445,47 +483,31 @@ export default function AttendanceSettings() {
                         {mode.label}
                       </option>
                     ))}
-                  </select>
+                  </HrReactSelect>
                 </label>
                 <label>
-                  Incumplimiento geocerca
-                  <select
-                    value={policy.geofenceViolationMode}
-                    onChange={(event) =>
-                      updatePolicyField(
-                        'geofenceViolationMode',
-                        event.target.value as HrAttendanceViolationMode
-                      )
-                    }
+                  Si marca fuera del lugar permitido
+                  <HrReactSelect
+                    value="BLOCK"
+                    disabled
                   >
-                    {MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
-                  </select>
+                    <option value="BLOCK">Bloquear (obligatorio)</option>
+                  </HrReactSelect>
+                  <small>Una ubicación fuera de geocerca requiere corrección auditada.</small>
                 </label>
                 <label>
-                  Incumplimiento biométrico
-                  <select
-                    value={policy.biometricViolationMode}
-                    onChange={(event) =>
-                      updatePolicyField(
-                        'biometricViolationMode',
-                        event.target.value as HrAttendanceViolationMode
-                      )
-                    }
+                  Si no valida su identidad
+                  <HrReactSelect
+                    value="BLOCK"
+                    disabled
                   >
-                    {MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
-                  </select>
+                    <option value="BLOCK">Bloquear (obligatorio)</option>
+                  </HrReactSelect>
+                  <small>Un rostro no coincidente nunca genera tiempo trabajado.</small>
                 </label>
                 <label>
                   Marcaje sin turno
-                  <select
+                  <HrReactSelect
                     value={policy.unscheduledViolationMode}
                     onChange={(event) =>
                       updatePolicyField(
@@ -499,20 +521,19 @@ export default function AttendanceSettings() {
                         {mode.label}
                       </option>
                     ))}
-                  </select>
+                  </HrReactSelect>
                 </label>
               </div>
               <p className="hr-form-help">
-                Una falla del proveedor facial se conserva como intento para revisión; la pantalla
-                no la presenta como una validación aceptada.
+                Si el reconocimiento facial falla, se conserva el intento para que Recursos Humanos pueda revisarlo.
               </p>
             </section>
 
             <section className="hr-settings-card" aria-labelledby="tolerances-title">
               <header>
                 <div>
-                  <h2 id="tolerances-title">Tolerancias y calidad de ubicación</h2>
-                  <p>Los límites se evalúan en el servidor contra el turno y la geocerca.</p>
+                  <h2 id="tolerances-title">Horarios permitidos y precisión GPS</h2>
+                  <p>Define cuántos minutos antes o después puede marcar y la precisión mínima de ubicación.</p>
                 </div>
                 <Clock3 size={22} />
               </header>
@@ -650,9 +671,9 @@ export default function AttendanceSettings() {
             </section>
 
             <div className="hr-settings-savebar">
-              <p>Guardar crea una versión nueva; no modifica el registro histórico.</p>
+              <p>Al guardar, estas reglas quedan vigentes y la versión anterior se conserva en el historial.</p>
               <Button type="submit" disabled={!online || saving}>
-                {saving ? 'Versionando…' : 'Guardar nueva versión'}
+                {saving ? 'Guardando reglas…' : 'Guardar y aplicar reglas'}
               </Button>
             </div>
           </form>
@@ -719,6 +740,26 @@ export default function AttendanceSettings() {
           </section>
 
           <div className="hr-settings-columns">
+            <section className="hr-settings-card hr-provider-card" aria-labelledby="provider-health-title">
+              <header>
+                <div>
+                  <h2 id="provider-health-title">Conexión biométrica</h2>
+                  <p>Comprueba si el servicio facial configurado en el servidor responde.</p>
+                </div>
+                <ScanFace size={22} />
+              </header>
+              <div className="hr-provider-explanation" role="note">
+                <strong>¿Qué es el proveedor biométrico?</strong>
+                <span>Es el servicio que compara de forma segura la captura facial durante el marcaje. No se elige ni se cambia desde esta pantalla: aquí solo se verifica la conexión configurada por el administrador del servidor.</span>
+              </div>
+              <dl className="hr-maintenance-result" aria-live="polite">
+                <div><dt>Estado de conexión</dt><dd className={`hr-provider-status ${(providerHealth?.status ?? 'UNKNOWN').toLowerCase()}`}>{providerHealthLoading ? 'Verificando…' : providerStatusLabel(providerHealth?.status)}</dd></div>
+                <div><dt>Servicio configurado</dt><dd>{providerHealth ? `${providerHealth.provider} · ${providerHealth.model}` : '—'}</dd></div>
+                <div><dt>Revisado</dt><dd>{providerHealth ? displayDateTime(providerHealth.checkedAt) : '—'}</dd></div>
+              </dl>
+              {providerHealth?.detail && <p className="hr-form-help">{providerHealth.detail}</p>}
+              <Button variant="ghost" onClick={() => void loadProviderHealth()} disabled={!online || providerHealthLoading}><RefreshCw size={15} /> Verificar conexión</Button>
+            </section>
             <section className="hr-settings-card" aria-labelledby="revoke-biometric-title">
               <header>
                 <div>
@@ -735,7 +776,7 @@ export default function AttendanceSettings() {
               >
                 <label>
                   Usuario interno
-                  <select
+                  <HrReactSelect
                     value={biometricUserId}
                     onChange={(event) => {
                       setBiometricUserId(event.target.value);
@@ -749,7 +790,7 @@ export default function AttendanceSettings() {
                         {user.name} · {user.username}
                       </option>
                     ))}
-                  </select>
+                  </HrReactSelect>
                 </label>
                 <label>
                   Razón obligatoria
@@ -819,19 +860,32 @@ export default function AttendanceSettings() {
         isOpen={devicePanelOpen}
         onClose={() => !saving && setDevicePanelOpen(false)}
         title="Crear credencial de dispositivo"
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <form className="hr-settings-sidebar-form" onSubmit={(event) => void createDevice(event)}>
-          <OnlineOnlyNotice online={online} compact />
-          <div className="hr-kiosk-gate">
+        <HrModalFormShell
+          ariaLabel="Sección de credencial de dispositivo"
+          tabLabel="Dispositivo"
+          sectionTitle="Sucursal e identidad operativa"
+          icon={<TabletSmartphone size={18} aria-hidden="true" />}
+          formClassName="hr-settings-sidebar-form"
+          notice={<OnlineOnlyNotice online={online} compact />}
+          onSubmit={(event) => void createDevice(event)}
+          footer={
+            <>
+              <Button type="button" variant="ghost" onClick={() => setDevicePanelOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={!online || saving}>{saving ? 'Creando…' : 'Crear y mostrar clave'}</Button>
+            </>
+          }
+        >
+          <div className="hr-kiosk-gate span-full">
             <AlertTriangle size={18} />
             <span>La credencial no habilita un kiosco ni sustituye un cliente protegido.</span>
           </div>
           <label>
             Sucursal
-            <select
+            <HrReactSelect
               value={deviceForm.branchId}
               onChange={(event) =>
                 setDeviceForm((current) => ({ ...current, branchId: event.target.value }))
@@ -844,7 +898,7 @@ export default function AttendanceSettings() {
                   {branch.name}
                 </option>
               ))}
-            </select>
+            </HrReactSelect>
           </label>
           <label>
             Nombre descriptivo
@@ -870,60 +924,47 @@ export default function AttendanceSettings() {
               required
             />
           </label>
-          <div className="hr-settings-sidebar-actions">
-            <Button type="button" variant="ghost" onClick={() => setDevicePanelOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={!online || saving}>
-              {saving ? 'Creando…' : 'Crear y mostrar clave'}
-            </Button>
-          </div>
-        </form>
+        </HrModalFormShell>
       </Sidebar>
 
       <Sidebar
         isOpen={Boolean(credential)}
         onClose={() => setCredential(null)}
         title="Clave mostrada una sola vez"
-        width="wide"
+        width="large"
         closeOnBackdrop={false}
+        closeOnEscape={false}
       >
         {credential && (
-          <div className="hr-secret-panel">
-            <div className="hr-attendance-alert warning">
-              <KeyRound size={19} />
-              <span>
-                Guarda la clave ahora en el mecanismo seguro del cliente administrado. Al cerrar se
-                elimina de esta memoria de pantalla y el servidor no volverá a entregarla.
-              </span>
+          <div className="premium-modal-content hr-flow-modal-content hr-attendance-sensitive-modal">
+            <div className="modal-tabs" role="tablist" aria-label="Sección de clave efímera">
+              <button type="button" role="tab" id="attendance-credential-tab" aria-controls="attendance-credential-panel" aria-selected="true" className="modal-tab active"><KeyRound size={18} aria-hidden="true" /><span>Clave efímera</span></button>
             </div>
-            <dl>
-              <div>
-                <dt>Dispositivo</dt>
-                <dd>{credential.name}</dd>
-              </div>
-              <div>
-                <dt>ID público</dt>
-                <dd>{credential.id}</dd>
-              </div>
-              <div>
-                <dt>Código</dt>
-                <dd>{credential.code}</dd>
-              </div>
-            </dl>
-            <label>
-              Clave secreta
-              <code className="hr-device-secret">{credential.key}</code>
-            </label>
-            <div className="hr-kiosk-gate">
-              <LockKeyhole size={18} />
-              <span>
-                La clave por sí sola no significa que el kiosco esté desplegado o habilitado.
-              </span>
+            <div className="modal-tab-content" id="attendance-credential-panel" role="tabpanel" aria-labelledby="attendance-credential-tab" tabIndex={0}>
+              <section className="modal-content-group hr-secret-panel">
+                <div className="modal-section-header"><KeyRound size={18} aria-hidden="true" /><h3>Custodia inmediata de la credencial</h3></div>
+                <div className="hr-attendance-alert warning">
+                  <KeyRound size={19} />
+                  <span>Guarda la clave ahora en el mecanismo seguro del cliente administrado. Al cerrar se elimina de esta memoria de pantalla y el servidor no volverá a entregarla.</span>
+                </div>
+                <dl>
+                  <div><dt>Dispositivo</dt><dd>{credential.name}</dd></div>
+                  <div><dt>ID público</dt><dd>{credential.id}</dd></div>
+                  <div><dt>Código</dt><dd>{credential.code}</dd></div>
+                </dl>
+                <label>
+                  Clave secreta
+                  <code className="hr-device-secret">{credential.key}</code>
+                </label>
+                <div className="hr-kiosk-gate">
+                  <LockKeyhole size={18} />
+                  <span>La clave por sí sola no significa que el kiosco esté desplegado o habilitado.</span>
+                </div>
+              </section>
             </div>
-            <Button fullWidth onClick={() => setCredential(null)}>
-              Ya guardé la clave; cerrar definitivamente
-            </Button>
+            <div className="modal-footer">
+              <Button onClick={() => setCredential(null)}>Ya guardé la clave; cerrar definitivamente</Button>
+            </div>
           </div>
         )}
       </Sidebar>
@@ -932,34 +973,34 @@ export default function AttendanceSettings() {
         isOpen={Boolean(deviceToRevoke)}
         onClose={() => !saving && setDeviceToRevoke(null)}
         title="Revocar dispositivo"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
         {deviceToRevoke && (
-          <div className="hr-secret-panel">
-            <div className="hr-attendance-alert danger">
+          <HrModalFormShell
+            ariaLabel="Sección de revocación de dispositivo"
+            tabLabel="Revocación"
+            sectionTitle="Confirmación de seguridad"
+            icon={<Ban size={18} aria-hidden="true" />}
+            formClassName="hr-settings-sidebar-form"
+            notice={<OnlineOnlyNotice online={online} compact />}
+            onSubmit={(event) => { event.preventDefault(); void revokeDevice(); }}
+            footer={
+              <>
+                <Button type="button" variant="ghost" onClick={() => setDeviceToRevoke(null)} disabled={saving}>Cancelar</Button>
+                <Button type="submit" variant="danger" disabled={!online || saving}>{saving ? 'Revocando…' : 'Confirmar revocación'}</Button>
+              </>
+            }
+          >
+            <div className="hr-attendance-alert danger span-full">
               <Ban size={19} />
-              <span>
-                {deviceToRevoke.name} ({deviceToRevoke.code}) dejará de autenticar solicitudes.
-              </span>
+              <span>{deviceToRevoke.name} ({deviceToRevoke.code}) dejará de autenticar solicitudes.</span>
             </div>
-            <p className="hr-form-help">
-              Para volver a provisionar el equipo tendrás que crear otra credencial y custodiar su
-              nueva clave.
+            <p className="hr-form-help span-full">
+              Para volver a provisionar el equipo tendrás que crear otra credencial y custodiar su nueva clave.
             </p>
-            <div className="hr-settings-sidebar-actions">
-              <Button variant="ghost" onClick={() => setDeviceToRevoke(null)} disabled={saving}>
-                Cancelar
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => void revokeDevice()}
-                disabled={!online || saving}
-              >
-                {saving ? 'Revocando…' : 'Confirmar revocación'}
-              </Button>
-            </div>
-          </div>
+          </HrModalFormShell>
         )}
       </Sidebar>
     </div>
