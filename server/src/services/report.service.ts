@@ -33,7 +33,7 @@ function settledWhere(closedAt?: Prisma.DateTimeNullableFilter): Prisma.OrderWhe
 /** Gross fiscal sale events. A final credit changes the order to
  * CANCELLED/UNPAID, but the original closed sale remains part of history and is
  * offset by a separate credit-note event at issuedAt. */
-function fiscalGrossWhere(closedAt?: Prisma.DateTimeNullableFilter): Prisma.OrderWhereInput {
+export function fiscalGrossWhere(closedAt?: Prisma.DateTimeNullableFilter): Prisma.OrderWhereInput {
     return {
         OR: [
             { financialStatus: 'PAID', status: { not: 'CANCELLED' } },

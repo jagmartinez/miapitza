@@ -1,0 +1,411 @@
+import prisma from '../../utils/prisma';
+import { effectiveUnitCost } from '../../utils/product-cost';
+import { zonedDateTimeToUtc, getZonedParts } from '../../utils/timezone';
+import { UnitConversionService } from '../unit-conversion.service';
+import { SettingsScopeService } from '../settings-scope.service';
+import { fiscalGrossWhere } from '../report.service';
+import { buckets, type BiQuery, type BiRange } from './bi-range';
+
+export const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+/** Percentage that never yields NaN/Infinity: 0 when the denominator is 0. */
+export const pct = (part: number, whole: number): number => (whole > 0 ? round2((part / whole) * 100) : 0);
+
+export interface BiOrderFact {
+    at: Date;
+    branchId: number;
+    total: number;
+    discount: number;
+    commission: number;
+    channel: string;
+    items: { menuItemId: number; quantity: number }[];
+}
+export interface BiCreditFact { at: Date; branchId: number; total: number }
+export interface BiCostFact { at: Date; amount: number; kind: 'consumption' | 'waste' }
+export interface BiCashOutFact { at: Date; amount: number }
+export interface BiPayrollFact { start: Date; end: Date; amount: number }
+
+/** Raw facts of one window [from, to). `end` of every interval is exclusive. */
+export interface BiFacts {
+    orders: BiOrderFact[];
+    credits: BiCreditFact[];
+    costs: BiCostFact[];
+    cashOuts: BiCashOutFact[];
+    payroll: BiPayrollFact[];
+    /** menuItemId -> cost per portion; null when a recipe cannot be converted (N/D). */
+    recipeCost: Map<number, number | null>;
+    /** Movements without historical cost: excluded from the real cost and reported. */
+    movementsWithoutCost: number;
+}
+
+export type RecipeCostCache = Map<number, number | null>;
+
+const inScope = (branchIds: number[]) => (branchIds.length > 0 ? { in: branchIds } : undefined);
+const dec = (v: unknown): number => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+};
+
+/** Cost per portion by menu item. A recipe with an unconvertible unit is N/D (null), never 0. */
+async function loadRecipeCosts(companyId: number, ids: number[], cache: RecipeCostCache): Promise<void> {
+    const missing = ids.filter((id) => !cache.has(id));
+    if (missing.length === 0) return;
+    const menuItems = await prisma.menuItem.findMany({
+        where: { id: { in: missing }, companyId },
+        select: {
+            id: true,
+            recipes: {
+                select: {
+                    quantity: true, unit: true,
+                    product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } },
+                },
+            },
+        },
+    });
+    for (const mi of menuItems) {
+        let cost = 0;
+        let ok = true;
+        for (const r of mi.recipes) {
+            try {
+                const base = (await UnitConversionService.convert(
+                    r.product.id, companyId, Number(r.quantity), r.unit || r.product.unit,
+                )).baseQuantity;
+                cost += base * effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
+            } catch {
+                ok = false;
+                break;
+            }
+        }
+        cache.set(mi.id, ok ? cost : null);
+    }
+    for (const id of missing) if (!cache.has(id)) cache.set(id, null);
+}
+
+function localDateOnly(date: Date, timezone: string): Date {
+    const p = getZonedParts(date, timezone);
+    return new Date(Date.UTC(p.year, p.month - 1, p.day));
+}
+
+function dateColumnToLocalMidnight(d: Date, timezone: string): Date {
+    return zonedDateTimeToUtc({
+        year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate(),
+        hour: 0, minute: 0, second: 0,
+    }, timezone);
+}
+
+export async function loadBiFacts(
+    q: BiQuery, from: Date, to: Date, timezone: string, recipeCache: RecipeCostCache,
+): Promise<BiFacts> {
+    const { companyId, branchIds } = q;
+    const branchWhere = inScope(branchIds);
+    const closedAt = { gte: from, lt: to };
+
+    const [orders, credits, movements, cashOuts, runs] = await Promise.all([
+        prisma.order.findMany({
+            where: {
+                companyId,
+                ...(branchWhere ? { branchId: branchWhere } : {}),
+                ...fiscalGrossWhere(closedAt),
+            },
+            select: {
+                closedAt: true, branchId: true, total: true, discount: true,
+                channelCommission: true, salesChannel: true,
+                items: { select: { menuItemId: true, quantity: true } },
+            },
+        }),
+        prisma.fiscalCreditNote.findMany({
+            where: { companyId, ...(branchWhere ? { branchId: branchWhere } : {}), issuedAt: closedAt },
+            select: { issuedAt: true, branchId: true, total: true },
+        }),
+        prisma.inventoryMovement.findMany({
+            where: {
+                companyId,
+                createdAt: closedAt,
+                ...(branchWhere ? { warehouse: { branchId: branchWhere } } : {}),
+                OR: [
+                    { type: 'OUT', reference: { startsWith: 'ORD-' } },
+                    { origin: 'WASTE' },
+                    { reason: { startsWith: 'WASTE:' } },
+                    {
+                        origin: 'REVERSAL',
+                        reversalOf: {
+                            OR: [
+                                { reference: { startsWith: 'ORD-' } },
+                                { origin: 'WASTE' },
+                                { reason: { startsWith: 'WASTE:' } },
+                            ],
+                        },
+                    },
+                ],
+            },
+            select: {
+                createdAt: true, quantity: true, unitCost: true, totalCost: true,
+                origin: true, reason: true, reference: true, reversalOfId: true,
+                reversalOf: { select: { origin: true, reason: true, reference: true } },
+            },
+        }),
+        // Manual cash expenses: OUT movements without an order/payment reference
+        // (refunds and payment reversals always carry one).
+        prisma.cashMovement.findMany({
+            where: {
+                type: 'OUT',
+                reference: null,
+                createdAt: closedAt,
+                shift: { companyId, ...(branchWhere ? { cashRegister: { branchId: branchWhere } } : {}) },
+            },
+            select: { createdAt: true, amount: true },
+        }),
+        loadPayrollRuns(q, from, to, timezone),
+    ]);
+
+    const orderFacts: BiOrderFact[] = orders.map((o) => ({
+        at: o.closedAt as Date,
+        branchId: o.branchId,
+        total: dec(o.total),
+        discount: dec(o.discount),
+        commission: dec(o.channelCommission),
+        channel: String(o.salesChannel),
+        items: (o.items ?? []).map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+    }));
+
+    const itemIds = [...new Set(orderFacts.flatMap((o) => o.items.map((i) => i.menuItemId)))];
+    await loadRecipeCosts(companyId, itemIds, recipeCache);
+
+    let movementsWithoutCost = 0;
+    const costs: BiCostFact[] = [];
+    for (const m of movements) {
+        const source = m.reversalOfId != null ? m.reversalOf : m;
+        const isWaste = source?.origin === 'WASTE' || (source?.reason ?? '').startsWith('WASTE:');
+        const total = m.totalCost == null ? null : Number(m.totalCost);
+        const unit = m.unitCost == null ? null : Number(m.unitCost);
+        let amount: number | null = null;
+        if (total != null && Number.isFinite(total) && total >= 0) amount = total;
+        else if (unit != null && Number.isFinite(unit) && unit >= 0) amount = Number(m.quantity) * unit;
+        if (amount == null) { movementsWithoutCost += 1; continue; }
+        costs.push({
+            at: m.createdAt,
+            amount: (m.reversalOfId != null ? -1 : 1) * amount,
+            kind: isWaste ? 'waste' : 'consumption',
+        });
+    }
+
+    return {
+        orders: orderFacts,
+        credits: credits.map((c) => ({ at: c.issuedAt, branchId: c.branchId, total: dec(c.total) })),
+        costs,
+        cashOuts: cashOuts.map((c) => ({ at: c.createdAt, amount: dec(c.amount) })),
+        payroll: runs,
+        recipeCost: recipeCache,
+        movementsWithoutCost,
+    };
+}
+
+/**
+ * Payroll cost of the runs whose period overlaps the window: accrued income plus
+ * employer contributions. Branch-scoped queries take the share of the run's INCOME
+ * components that belongs to employees assigned to the selected branches.
+ */
+async function loadPayrollRuns(q: BiQuery, from: Date, to: Date, timezone: string): Promise<BiPayrollFact[]> {
+    const firstDay = localDateOnly(from, timezone);
+    const lastDay = localDateOnly(new Date(to.getTime() - 1), timezone);
+    const scoped = q.branchIds.length > 0;
+    const runs = await prisma.payrollRun.findMany({
+        where: {
+            companyId: q.companyId,
+            status: { in: ['APPROVED', 'PAID'] },
+            period: { is: { dateFrom: { lte: lastDay }, dateTo: { gte: firstDay } } },
+        },
+        select: {
+            grossIncome: true,
+            employerContributions: true,
+            period: { select: { dateFrom: true, dateTo: true } },
+            ...(scoped ? {
+                snapshots: { select: { userId: true, branchId: true } },
+                components: { select: { userId: true, type: true, amount: true } },
+            } : {}),
+        },
+    });
+
+    const facts: BiPayrollFact[] = [];
+    for (const run of runs as Array<{
+        grossIncome: unknown; employerContributions: unknown;
+        period: { dateFrom: Date; dateTo: Date } | null;
+        snapshots?: { userId: number; branchId: number | null }[];
+        components?: { userId: number; type: string; amount: unknown }[];
+    }>) {
+        if (!run.period) continue;
+        let amount = dec(run.grossIncome) + dec(run.employerContributions);
+        if (scoped) {
+            const inBranch = new Set((run.snapshots ?? [])
+                .filter((s) => s.branchId != null && q.branchIds.includes(s.branchId))
+                .map((s) => s.userId));
+            let all = 0;
+            let mine = 0;
+            for (const c of run.components ?? []) {
+                if (c.type !== 'INCOME') continue;
+                all += dec(c.amount);
+                if (inBranch.has(c.userId)) mine += dec(c.amount);
+            }
+            const share = all > 0
+                ? mine / all
+                : ((run.snapshots?.length ?? 0) > 0 ? inBranch.size / run.snapshots!.length : 0);
+            amount *= share;
+        }
+        const start = dateColumnToLocalMidnight(run.period.dateFrom, timezone);
+        const lastDayOfPeriod = dateColumnToLocalMidnight(run.period.dateTo, timezone);
+        const end = zonedDateTimeToUtc({
+            ...getZonedParts(new Date(lastDayOfPeriod.getTime() + 36 * 3_600_000), timezone),
+            hour: 0, minute: 0, second: 0,
+        }, timezone);
+        facts.push({ start, end, amount });
+    }
+    return facts;
+}
+
+// ---- Interval maths -------------------------------------------------------
+
+const overlapMs = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): number =>
+    Math.max(0, Math.min(aEnd.getTime(), bEnd.getTime()) - Math.max(aStart.getTime(), bStart.getTime()));
+
+/** Payroll cost attributable to [s, e), prorated by time over each run's period. */
+export function payrollInInterval(facts: BiFacts, s: Date, e: Date): number {
+    let sum = 0;
+    for (const p of facts.payroll) {
+        const len = p.end.getTime() - p.start.getTime();
+        if (len > 0) sum += p.amount * (overlapMs(s, e, p.start, p.end) / len);
+    }
+    return sum;
+}
+
+/** Prorates a monthly amount over [s, e) walking the local calendar months. */
+export function monthlyInInterval(monthly: number, s: Date, e: Date, timezone: string): number {
+    if (!(monthly > 0) || e.getTime() <= s.getTime()) return 0;
+    const first = getZonedParts(s, timezone);
+    let year = first.year;
+    let month = first.month;
+    let sum = 0;
+    for (let guard = 0; guard < 1200; guard += 1) {
+        const mStart = zonedDateTimeToUtc({ year, month, day: 1, hour: 0, minute: 0, second: 0 }, timezone);
+        if (mStart.getTime() >= e.getTime()) break;
+        const ny = month === 12 ? year + 1 : year;
+        const nm = month === 12 ? 1 : month + 1;
+        const mEnd = zonedDateTimeToUtc({ year: ny, month: nm, day: 1, hour: 0, minute: 0, second: 0 }, timezone);
+        sum += monthly * (overlapMs(s, e, mStart, mEnd) / (mEnd.getTime() - mStart.getTime()));
+        year = ny;
+        month = nm;
+    }
+    return sum;
+}
+
+export interface BiBucketBound { key: string; start: Date; end: Date }
+
+function keyStart(key: string, timezone: string): Date {
+    const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?(?:T(\d{2}))?$/.exec(key)!;
+    return zonedDateTimeToUtc({
+        year: Number(m[1]), month: Number(m[2]), day: m[3] ? Number(m[3]) : 1,
+        hour: m[4] ? Number(m[4]) : 0, minute: 0, second: 0,
+    }, timezone);
+}
+
+/** Bucket keys with their [start, end) instants, clipped to the range. */
+export function bucketBounds(range: BiRange): BiBucketBound[] {
+    const keys = buckets(range);
+    return keys.map((key, i) => ({
+        key,
+        start: i === 0 ? range.from : keyStart(key, range.timezone),
+        end: i === keys.length - 1 ? range.to : keyStart(keys[i + 1], range.timezone),
+    }));
+}
+
+// ---- Goals ---------------------------------------------------------------
+
+export interface BiGoalSet {
+    monthlySales: number; avgTicket: number; foodCostPct: number; foodCostGapPts: number;
+    grossMarginPct: number; laborCostMaxPct: number; operatingMarginPct: number; fixedMonthlyExpenses: number;
+}
+
+const SUM_KEYS = new Set(['monthlySales', 'fixedMonthlyExpenses']);
+const GOAL_KEYS: Record<keyof BiGoalSet, string> = {
+    monthlySales: 'goal.monthlySales', avgTicket: 'goal.avgTicket', foodCostPct: 'goal.foodCostPct',
+    foodCostGapPts: 'goal.foodCostGapPts', grossMarginPct: 'goal.grossMarginPct',
+    laborCostMaxPct: 'goal.laborCostMaxPct', operatingMarginPct: 'goal.operatingMarginPct',
+    fixedMonthlyExpenses: 'finance.fixedMonthlyExpenses',
+};
+
+/** Goals of one scope: a branch (its override or the company value) or the company. */
+export async function loadGoalsForScope(companyId: number, branchId: number | null): Promise<BiGoalSet> {
+    const out = {} as BiGoalSet;
+    for (const k of Object.keys(GOAL_KEYS) as (keyof BiGoalSet)[]) {
+        out[k] = await SettingsScopeService.getNumber(companyId, branchId, GOAL_KEYS[k]);
+    }
+    return out;
+}
+
+/** Amounts add up across the selected branches; ratios and ticket are averaged. */
+export async function loadGoals(companyId: number, branchIds: number[]): Promise<BiGoalSet> {
+    const scopes: (number | null)[] = branchIds.length > 0 ? branchIds : [null];
+    const sets = await Promise.all(scopes.map((b) => loadGoalsForScope(companyId, b)));
+    const out = {} as BiGoalSet;
+    for (const k of Object.keys(GOAL_KEYS) as (keyof BiGoalSet)[]) {
+        const total = sets.reduce((s, g) => s + g[k], 0);
+        out[k] = SUM_KEYS.has(k) ? total : total / sets.length;
+    }
+    return out;
+}
+
+// ---- Aggregation ---------------------------------------------------------
+
+export interface BiTotals {
+    netSales: number; grossSales: number; discounts: number; orders: number; avgTicket: number;
+    costReal: number; costTheoretical: number; commissions: number; labor: number; opex: number;
+    grossMarginPct: number; foodCostRealPct: number; foodCostTheoreticalPct: number;
+    laborCostPct: number; operatingProfit: number; operatingMarginPct: number;
+}
+
+/**
+ * Definitions (see plan "Global Constraints"):
+ * - net sales = sum(Order.total) - credit notes; gross = net + sum(Order.discount)
+ * - theoretical cost = units sold x recipe cost per portion (N/D recipes are excluded)
+ * - real cost = sale-consumption movements + registered waste (reversals subtract)
+ * - operating profit = net - real cost - payroll - operating expenses - channel commissions
+ */
+export function totalsInInterval(
+    facts: BiFacts, s: Date, e: Date, fixedMonthly: number, timezone: string,
+): BiTotals {
+    const within = (d: Date) => d.getTime() >= s.getTime() && d.getTime() < e.getTime();
+    const orders = facts.orders.filter((o) => within(o.at));
+    const credits = facts.credits.filter((c) => within(c.at));
+
+    const orderSales = orders.reduce((a, o) => a + o.total, 0);
+    const creditTotal = credits.reduce((a, c) => a + c.total, 0);
+    const discounts = orders.reduce((a, o) => a + o.discount, 0);
+    const netSales = orderSales - creditTotal;
+    const grossSales = netSales + discounts;
+    const orderCount = orders.length;
+    const commissions = orders.reduce((a, o) => a + o.commission, 0);
+
+    let costTheoretical = 0;
+    for (const o of orders) {
+        for (const i of o.items) {
+            const c = facts.recipeCost.get(i.menuItemId);
+            if (c != null) costTheoretical += c * i.quantity;
+        }
+    }
+    const costReal = facts.costs.filter((c) => within(c.at)).reduce((a, c) => a + c.amount, 0);
+    const labor = payrollInInterval(facts, s, e);
+    const opex = facts.cashOuts.filter((c) => within(c.at)).reduce((a, c) => a + c.amount, 0)
+        + monthlyInInterval(fixedMonthly, s, e, timezone);
+    const operatingProfit = netSales - costReal - labor - opex - commissions;
+
+    return {
+        netSales: round2(netSales), grossSales: round2(grossSales), discounts: round2(discounts),
+        orders: orderCount, avgTicket: orderCount > 0 ? round2(netSales / orderCount) : 0,
+        costReal: round2(costReal), costTheoretical: round2(costTheoretical),
+        commissions: round2(commissions), labor: round2(labor), opex: round2(opex),
+        grossMarginPct: netSales > 0 ? pct(netSales - costReal, netSales) : 0,
+        foodCostRealPct: pct(costReal, netSales),
+        foodCostTheoreticalPct: pct(costTheoretical, netSales),
+        laborCostPct: pct(labor, netSales),
+        operatingProfit: round2(operatingProfit),
+        operatingMarginPct: netSales > 0 ? pct(operatingProfit, netSales) : 0,
+    };
+}
