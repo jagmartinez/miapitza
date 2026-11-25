@@ -413,12 +413,6 @@ const WasteReport: React.FC = () => {
                     {report && (
                         <>
                             <div className="kpi-grid">
-                                <div className="kpi-card kpi-neutral">
-                                    <div className="kpi-label">
-                                        <FileText size={14} /> Total Entradas
-                                    </div>
-                                    <div className="kpi-value">{report.summary.totalEntries}</div>
-                                </div>
                                 <div className="kpi-card kpi-warning">
                                     <div className="kpi-label">
                                         <Package size={14} /> Cantidad física

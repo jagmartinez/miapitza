@@ -1,4 +1,4 @@
-import { effectiveUnitCost } from './productCost';
+import { resolveEffectiveUnitCost, type ProductCostResolution } from './productCost';
 
 export interface WarehouseStockRow {
   productId: number;
@@ -15,6 +15,9 @@ export interface CostedProduct {
   id: number;
   cost?: number;
   currentAverageCost?: number;
+  averageCostKnown?: boolean;
+  referenceCostKnown?: boolean;
+  costQuality?: ProductCostResolution;
 }
 
 export interface WarehouseValue {
@@ -28,13 +31,22 @@ export interface WarehouseBreakdown {
   labelByProduct: Map<number, string>;
   /** Valor valorizado por almacén, de mayor a menor (sin almacenes en cero). */
   valueByWarehouse: WarehouseValue[];
+  /** Productos con existencia en algun almacen pero costo desconocido (excluidos del valor). */
+  unknownCostCount: number;
 }
 
 export function buildWarehouseBreakdown(
   warehouses: WarehouseStockInput[],
   products: CostedProduct[],
 ): WarehouseBreakdown {
-  const unitCost = new Map(products.map((p) => [p.id, effectiveUnitCost(p.currentAverageCost, p.cost)]));
+  const unitCost = new Map<number, number | null>(products.map((p) => {
+    const q = p.costQuality ?? resolveEffectiveUnitCost(p.currentAverageCost, p.cost, {
+      averageCostKnown: p.averageCostKnown,
+      referenceCostKnown: p.referenceCostKnown,
+    });
+    return [p.id, q.known ? q.value : null];
+  }));
+  const unknownIds = new Set<number>();
   const names = new Map<number, string[]>();
   const valueByWarehouse: WarehouseValue[] = [];
 
@@ -46,7 +58,9 @@ export function buildWarehouseBreakdown(
       const list = names.get(row.productId) ?? [];
       list.push(w.warehouseName);
       names.set(row.productId, list);
-      value += qty * (unitCost.get(row.productId) ?? 0);
+      const cost = unitCost.get(row.productId);
+      if (cost == null) unknownIds.add(row.productId);
+      else value += qty * cost;
     }
     if (value > 0) valueByWarehouse.push({ warehouseId: w.warehouseId, name: w.warehouseName, value });
   }
@@ -57,5 +71,5 @@ export function buildWarehouseBreakdown(
     labelByProduct.set(p.id, list.length === 0 ? '-' : list.length === 1 ? list[0] : 'Varias');
   }
   valueByWarehouse.sort((a, b) => b.value - a.value);
-  return { labelByProduct, valueByWarehouse };
+  return { labelByProduct, valueByWarehouse, unknownCostCount: unknownIds.size };
 }

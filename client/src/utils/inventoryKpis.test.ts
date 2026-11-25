@@ -40,4 +40,20 @@ describe('computeInventoryKpis', () => {
     expect(k.outOfStockCount).toBe(0);
     expect(k.replenishmentCost).toBe(10 * 3);
   });
+  it('excluye de los montos los productos con costo desconocido y los cuenta', () => {
+    const k = computeInventoryKpis([
+      ...products,
+      { id: 7, name: 'Misterio', totalStock: 3, minStock: 10, currentAverageCost: 0, cost: 0 },
+    ]);
+    expect(k.unknownCostCount).toBe(1);
+    expect(k.totalValue).toBe(4 * 20 + 50 * 2);
+    expect(k.replenishmentCost).toBe(100 + 320);
+    expect(k.belowMinCount).toBe(3);
+    expect(k.topNames).not.toContain('Misterio');
+  });
+  it('sin productos (carga fallida) no inventa montos ni costos desconocidos', () => {
+    const k = computeInventoryKpis([]);
+    expect(k.totalValue).toBe(0);
+    expect(k.unknownCostCount).toBe(0);
+  });
 });

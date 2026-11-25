@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
+import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
 // import Input from '../components/Input';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
@@ -13,7 +13,7 @@ import {
     Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, Printer,
     FlaskConical, Box, Eye
 } from 'lucide-react';
-import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, Supplier, UnitOfMeasure, Warehouse } from '../types';
+import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import { formatCurrency, currencyInputPadding, type CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
@@ -169,6 +169,8 @@ export default function Inventory() {
     const [allUnits, setAllUnits] = useState<UnitOfMeasure[]>([]);
     const { symbol } = useCurrency();
     const [settings, setSettings] = useState<CurrencySettings>({});
+    const [stockAlerts, setStockAlerts] = useState<StockAlertItem[]>([]);
+    const [stockAlertSummary, setStockAlertSummary] = useState<{ criticalAlerts?: number; warningAlerts?: number } | null>(null);
     const [loadIssues, setLoadIssues] = useState<Record<string, string>>({});
 
     const setLoadIssue = useCallback((area: string, error?: unknown) => {
@@ -278,10 +280,12 @@ export default function Inventory() {
         const results = await Promise.allSettled([
             productsAPI.getAll({ active: true, limit: 500 }),
             productsAPI.getLowStock(),
+            stockAlertsAPI.getAll(),
+            stockAlertsAPI.getSummary(),
             autoPurchaseOrdersAPI.getSuggestions()
         ]);
 
-        const [productsRes, lowStockRes, suggestionsRes] = results;
+        const [productsRes, lowStockRes, alertsRes, alertSummaryRes, suggestionsRes] = results;
 
         if (productsRes.status === 'fulfilled') {
             setProducts(productsRes.value.data.data || []);
@@ -295,6 +299,18 @@ export default function Inventory() {
             setLoadIssue('Stock bajo');
         } else {
             setLoadIssue('Stock bajo', lowStockRes.reason);
+        }
+        if (alertsRes.status === 'fulfilled') {
+            setStockAlerts(alertsRes.value.data.data || []);
+            setLoadIssue('Alertas');
+        } else {
+            setLoadIssue('Alertas', alertsRes.reason);
+        }
+        if (alertSummaryRes.status === 'fulfilled') {
+            setStockAlertSummary(alertSummaryRes.value.data.data || null);
+            setLoadIssue('Resumen de alertas');
+        } else {
+            setLoadIssue('Resumen de alertas', alertSummaryRes.reason);
         }
         if (suggestionsRes.status === 'fulfilled') {
             setAutoPurchaseSuggestions(suggestionsRes.value.data.data?.suggestions || []);
@@ -745,6 +761,24 @@ export default function Inventory() {
         ? warehouseBreakdown.valueByWarehouse.slice(0, 3).map((w) => `${w.name}: ${formatNumber(w.value)}`).join(' · ')
         : 'Sin existencias valorizadas por almacén';
     const productsTruncated = products.length >= 500;
+    const productsFailed = 'Productos' in loadIssues;
+    const unknownCostCount = Math.max(kpis.unknownCostCount, warehouseBreakdown.unknownCostCount);
+    const unknownCostNote = unknownCostCount > 0
+        ? `${unknownCostCount} ${unknownCostCount === 1 ? 'producto sin costo excluido' : 'productos sin costo excluidos'}`
+        : '';
+    const alertContext = (() => {
+        const critical = Number(stockAlertSummary?.criticalAlerts ?? 0);
+        const warning = Number(stockAlertSummary?.warningAlerts ?? 0);
+        if (critical + warning === 0) return '';
+        const byWarehouse = new Map<string, number>();
+        for (const a of stockAlerts) {
+            if (a.priority === 'URGENT' || Number(a.currentStock) === 0) {
+                byWarehouse.set(a.warehouseName, (byWarehouse.get(a.warehouseName) ?? 0) + 1);
+            }
+        }
+        const top = [...byWarehouse.entries()].sort((a, b) => b[1] - a[1])[0];
+        return `${critical} ${critical === 1 ? 'alerta crítica' : 'alertas críticas'}${top ? ` (más en ${top[0]})` : ''}, ${warning} ${warning === 1 ? 'preventiva' : 'preventivas'}`;
+    })();
 
     // Type helpers
     const getTypeClass = (type: string, isLow: boolean) => {
@@ -854,27 +888,41 @@ export default function Inventory() {
             )}
 
             <div className="inventory-kpi-grid" style={{ display: 'grid', gap: 'var(--ui-space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', marginBottom: 'var(--ui-space-4)' }}>
-                <StatCard
-                    label="Valor del inventario (C$)"
-                    value={formatNumber(kpis.totalValue)}
-                    context={`${warehouseValueContext}${productsTruncated ? ' (primeros 500 productos)' : ''}`}
-                />
-                <StatCard
-                    label="Reposición requerida (C$)"
-                    value={formatNumber(kpis.replenishmentCost)}
-                    tone={kpis.belowMinCount > 0 ? 'warning' : 'success'}
-                    context={kpis.belowMinCount > 0
-                        ? `${kpis.belowMinCount} bajo mínimo, ${kpis.outOfStockCount} agotados${kpis.outOfStockNames.length > 0 ? ` (${kpis.outOfStockNames.join(', ')}${kpis.outOfStockCount > kpis.outOfStockNames.length ? '…' : ''})` : ''}${productsTruncated ? ' · primeros 500 productos' : ''}`
-                        : 'Ningún producto bajo el mínimo'}
-                    action={canCreateAutoPO && autoPurchaseSuggestions.length > 0
-                        ? { label: 'Generar orden de compra sugerida', onClick: () => setShowAutoPurchaseSidebar(true) }
-                        : undefined}
-                />
-                <StatCard
-                    label="Concentración del capital"
-                    value={formatPercent(kpis.concentrationPct, 1)}
-                    context={kpis.topNames.length > 0 ? `En: ${kpis.topNames.join(', ')}` : 'Sin existencias valorizadas'}
-                />
+                {productsFailed ? (
+                    <>
+                        <StatCard label="Valor del inventario (C$)" value="No disponible" tone="neutral" context="No se pudieron cargar los productos" />
+                        <StatCard label="Reposición requerida (C$)" value="No disponible" tone="neutral" context={[alertContext, 'No se pudieron cargar los productos'].filter(Boolean).join(' · ')} />
+                        <StatCard label="Concentración del capital" value="No disponible" tone="neutral" context="No se pudieron cargar los productos" />
+                    </>
+                ) : (
+                    <>
+                        <StatCard
+                            label="Valor del inventario (C$)"
+                            value={formatNumber(kpis.totalValue)}
+                            context={[warehouseValueContext, unknownCostNote].filter(Boolean).join(' · ') + (productsTruncated ? ' (primeros 500 productos)' : '')}
+                        />
+                        <StatCard
+                            label="Reposición requerida (C$)"
+                            value={formatNumber(kpis.replenishmentCost)}
+                            tone={kpis.belowMinCount > 0 ? 'warning' : 'success'}
+                            context={[
+                                kpis.belowMinCount > 0
+                                    ? `${kpis.belowMinCount} bajo mínimo, ${kpis.outOfStockCount} agotados${kpis.outOfStockNames.length > 0 ? ` (${kpis.outOfStockNames.join(', ')}${kpis.outOfStockCount > kpis.outOfStockNames.length ? '…' : ''})` : ''}`
+                                    : 'Ningún producto bajo el mínimo',
+                                alertContext,
+                                unknownCostNote,
+                            ].filter(Boolean).join(' · ') + (productsTruncated ? ' · primeros 500 productos' : '')}
+                            action={canCreateAutoPO && autoPurchaseSuggestions.length > 0
+                                ? { label: 'Generar orden de compra sugerida', onClick: () => setShowAutoPurchaseSidebar(true) }
+                                : undefined}
+                        />
+                        <StatCard
+                            label="Concentración del capital"
+                            value={formatPercent(kpis.concentrationPct, 1)}
+                            context={[kpis.topNames.length > 0 ? `En: ${kpis.topNames.join(', ')}` : 'Sin existencias valorizadas', unknownCostNote].filter(Boolean).join(' · ')}
+                        />
+                    </>
+                )}
             </div>
 
             {/* Filters Row - Reservations Style Alignment */}
@@ -1068,6 +1116,7 @@ export default function Inventory() {
                     pageSizeOptions={[10, 25, 50, 100]}
                     resetKey={`${filter}|${searchQuery}|${selectedCategory}|${storageFilter}`}
                     rowTone={(product) => (isLowStockProduct(product.id) ? 'warning' : undefined)}
+                    footerLabel="Total (sin productos N/D)"
                     columns={[
                         { key: 'sku', header: 'Código', width: 'minmax(5.5rem,.8fr)', render: (product) => product.sku || '-' },
                         { key: 'name', header: 'Producto', width: '2.4fr', render: (product) => product.name },
@@ -1076,7 +1125,7 @@ export default function Inventory() {
                         { key: 'stock', header: 'Existencia', width: '1fr', type: 'qty', accessor: (product) => product.totalStock ?? 0 },
                         { key: 'unit', header: 'Unidad', width: '.6fr', render: (product) => product.baseUnit?.abbreviation || product.unit },
                         { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
-                        { key: 'value', header: 'Valor (C$)', width: '1.2fr', type: 'money', total: true, accessor: (product) => Number(product.totalStock ?? 0) * inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
+                        { key: 'value', header: 'Valor (C$)', width: '1.2fr', type: 'money', total: true, accessor: (product) => (inventoryCostQuality(product).known ? Number(product.totalStock ?? 0) * inventoryCostQuality(product).value : null), render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
                         { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (product) => (
                             <Badge tone={isLowStockProduct(product.id) ? 'warning' : 'success'} dot>
                                 {isLowStockProduct(product.id) ? 'Stock bajo' : 'OK'}

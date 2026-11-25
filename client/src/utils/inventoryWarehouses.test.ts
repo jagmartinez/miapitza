@@ -22,4 +22,12 @@ describe('buildWarehouseBreakdown', () => {
     const { valueByWarehouse } = buildWarehouseBreakdown(warehouses, products);
     expect(valueByWarehouse.map((w) => [w.name, w.value])).toEqual([['Central', 40], ['Cocina', 10]]);
   });
+  it('excluye del valor los productos sin costo y los cuenta', () => {
+    const r = buildWarehouseBreakdown(
+      [{ warehouseId: 1, warehouseName: 'Central', rows: [{ productId: 1, quantity: 2 }, { productId: 9, quantity: 5 }] }],
+      [...products, { id: 9, cost: 0, currentAverageCost: 0 }],
+    );
+    expect(r.valueByWarehouse.map((w) => w.value)).toEqual([20]);
+    expect(r.unknownCostCount).toBe(1);
+  });
 });

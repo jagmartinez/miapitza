@@ -432,10 +432,10 @@
     gap: 1rem;
     margin-bottom: 1rem;
     padding: 1rem;
-    border: 1px solid #f59e0b;
+    border: 1px solid var(--ui-warning);
     border-radius: 10px;
-    background: #fffbeb;
-    color: #78350f;
+    background: var(--ui-warning-soft);
+    color: var(--ui-text);
 }
 
 .inventory-load-error span {
