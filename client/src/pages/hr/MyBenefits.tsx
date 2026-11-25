@@ -511,35 +511,21 @@ export default function MyBenefits() {
                       )}
                     </div>
                     <h3>Gastos reportados</h3>
-                    <div className="hr-benefits-table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Fecha</th>
-                            <th>Descripción</th>
-                            <th className="hr-amount-cell">Reclamado</th>
-                            <th className="hr-amount-cell">Reconocido</th>
-                            <th>Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selected.item.expenses ?? []).length === 0 && (
-                            <tr><td colSpan={5} className="hr-benefits-table-empty">Aún no has reportado gastos para este viático.</td></tr>
-                          )}
-                          {(selected.item.expenses ?? []).map((expense) => (
-                            <tr key={expense.id}>
-                              <td>{dateLabel(expense.occurredOn)}</td>
-                              <td>{expense.description}</td>
-                              <td className="hr-amount-cell">{money(expense.currency, expense.claimedAmount)}</td>
-                              <td className="hr-amount-cell">{money(expense.currency, expense.recognizedAmount)}</td>
-                              <td>
-                                <BenefitsStatusPill status={expense.status} />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <DataTable
+                      ariaLabel="Gastos reportados"
+                      rows={selected.item.expenses ?? []}
+                      rowKey={(expense) => expense.id}
+                      pagination={{ mode: 'client' }}
+                      minWidth="40rem"
+                      empty="Aún no has reportado gastos para este viático."
+                      columns={[
+                        { key: 'date', header: 'Fecha', render: (expense) => dateLabel(expense.occurredOn) },
+                        { key: 'description', header: 'Descripción', width: '2fr', render: (expense) => expense.description },
+                        { key: 'claimed', header: 'Reclamado', type: 'money', render: (expense) => money(expense.currency, expense.claimedAmount) },
+                        { key: 'recognized', header: 'Reconocido', type: 'money', render: (expense) => money(expense.currency, expense.recognizedAmount) },
+                        { key: 'status', header: 'Estado', type: 'status', render: (expense) => <BenefitsStatusPill status={expense.status} /> },
+                      ]}
+                    />
                   </>
                 )}
                 {selected.resource === 'LOAN' && (
@@ -549,39 +535,22 @@ export default function MyBenefits() {
                       tu navegador.
                     </div>
                     <h3>Calendario</h3>
-                    <div className="hr-benefits-table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Vence</th>
-                            <th className="hr-amount-cell">Cuota</th>
-                            <th className="hr-amount-cell">Pagado</th>
-                            <th className="hr-amount-cell">Saldo</th>
-                            <th>Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selected.item.schedule ?? []).length === 0 && (
-                            <tr><td colSpan={6} className="hr-benefits-table-empty">El calendario de cuotas todavía no está publicado.</td></tr>
-                          )}
-                          {(selected.item.schedule ?? []).map((installment) => (
-                            <tr key={installment.id}>
-                              <td>{installment.number}</td>
-                              <td>{dateLabel(installment.dueDate)}</td>
-                              <td className="hr-amount-cell">{money(selected.item.currency, installment.scheduledTotal)}</td>
-                              <td className="hr-amount-cell">{money(selected.item.currency, installment.paidAmount)}</td>
-                              <td className="hr-amount-cell">
-                                {money(selected.item.currency, installment.outstandingAmount)}
-                              </td>
-                              <td>
-                                <BenefitsStatusPill status={installment.status} />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <DataTable
+                      ariaLabel="Calendario de cuotas"
+                      rows={selected.item.schedule ?? []}
+                      rowKey={(installment) => installment.id}
+                      pagination={{ mode: 'client' }}
+                      minWidth="44rem"
+                      empty="El calendario de cuotas todavía no está publicado."
+                      columns={[
+                        { key: 'number', header: '#', width: '4rem', render: (installment) => installment.number },
+                        { key: 'due', header: 'Vence', render: (installment) => dateLabel(installment.dueDate) },
+                        { key: 'scheduled', header: 'Cuota', type: 'money', render: (installment) => money(selected.item.currency, installment.scheduledTotal) },
+                        { key: 'paid', header: 'Pagado', type: 'money', render: (installment) => money(selected.item.currency, installment.paidAmount) },
+                        { key: 'outstanding', header: 'Saldo', type: 'money', render: (installment) => money(selected.item.currency, installment.outstandingAmount) },
+                        { key: 'status', header: 'Estado', type: 'status', render: (installment) => <BenefitsStatusPill status={installment.status} /> },
+                      ]}
+                    />
                     <h3>Movimientos</h3>
                     <div className="hr-benefits-ledger">
                       {(selected.item.ledger ?? []).length === 0 && (

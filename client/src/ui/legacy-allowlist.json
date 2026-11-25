@@ -2,9 +2,6 @@
   "nativeSelect": [],
   "rawTable": [
     "src/components/PurchaseOrderImport.tsx",
-    "src/components/hr/PayrollPaymentConceptCatalogEditor.tsx",
-    "src/components/hr/PayrollRuleConfigurationPanel.tsx",
-    "src/components/hr/payroll-operation-workspace.tsx",
     "src/pages/BankReconciliation.tsx",
     "src/pages/CashShift.tsx",
     "src/pages/CostReport.tsx",
@@ -19,15 +16,7 @@
     "src/pages/PurchaseOrders.tsx",
     "src/pages/Reports.tsx",
     "src/pages/Suppliers.tsx",
-    "src/pages/WasteReport.tsx",
-    "src/pages/hr/AttendanceManagement.tsx",
-    "src/pages/hr/AttendanceReview.tsx",
-    "src/pages/hr/BenefitsGovernance.tsx",
-    "src/pages/hr/BenefitsManagement.tsx",
-    "src/pages/hr/LeaveManagement.tsx",
-    "src/pages/hr/MyBenefits.tsx",
-    "src/pages/hr/PayrollLegalSettings.tsx",
-    "src/pages/hr/PayrollManagement.tsx"
+    "src/pages/WasteReport.tsx"
   ],
   "reactSelectImport": [
     "src/components/OrderCart.tsx",
@@ -37,8 +26,6 @@
     "src/components/TableMap.tsx",
     "src/components/TableOperationModal.tsx",
     "src/components/TicketPrintModal.tsx",
-    "src/components/hr/EmployeeForm.tsx",
-    "src/components/hr/ScheduleShiftForm.tsx",
     "src/pages/Branches.tsx",
     "src/pages/CashRegisters.tsx",
     "src/pages/CashShift.tsx",
@@ -65,10 +52,7 @@
     "src/pages/Tables.tsx",
     "src/pages/Users.tsx",
     "src/pages/Warehouses.tsx",
-    "src/pages/WasteReport.tsx",
-    "src/pages/hr/AttendanceReview.tsx",
-    "src/pages/hr/Employees.tsx",
-    "src/pages/hr/Schedules.tsx"
+    "src/pages/WasteReport.tsx"
   ],
   "toFixedInJsx": [
     "src/components/ContractPDF.tsx",
@@ -76,7 +60,6 @@
     "src/components/POSProductCard.tsx",
     "src/components/TableOrdersModal.tsx",
     "src/components/TicketPrintModal.tsx",
-    "src/components/hr/payroll-operation-workspace.tsx",
     "src/pages/CashShift.tsx",
     "src/pages/CateringServices.tsx",
     "src/pages/CostReport.tsx",
