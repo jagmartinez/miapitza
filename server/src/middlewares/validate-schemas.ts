@@ -641,6 +641,28 @@ export const updateSettings: ValidationSchema = {
     },
 };
 
+export const getResolvedSettings: ValidationSchema = {
+    query: {
+        branchId: { type: 'number', integer: true, min: 1 },
+    },
+};
+
+export const patchResolvedSettings: ValidationSchema = {
+    body: {
+        branchId: { type: 'number', integer: true, min: 1 },
+        version: { type: 'string' },
+        changes: { type: 'object', required: true },
+    },
+};
+
+export const settingsHistory: ValidationSchema = {
+    query: {
+        section: { type: 'string', max: 50 },
+        key: { type: 'string', max: 100 },
+        limit: { type: 'number', integer: true, min: 1, max: 200 },
+    },
+};
+
 export const updateCostingMethod: ValidationSchema = {
     body: {
         costingMethod: { type: 'string', required: true },
