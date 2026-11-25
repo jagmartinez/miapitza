@@ -346,12 +346,12 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
       <div className="ticket-print-content">
         <div className="ticket-print-body">
           {loadError && (
-            <div style={{ color: 'var(--ui-danger, #d32f2f)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'rgba(211, 47, 47, 0.08)' }}>
+            <div style={{ color: 'var(--ui-danger)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'var(--ui-danger-soft)' }}>
               {loadError}
             </div>
           )}
           {printError && (
-            <div style={{ color: 'var(--ui-danger, #d32f2f)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'rgba(211, 47, 47, 0.08)' }}>
+            <div style={{ color: 'var(--ui-danger)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'var(--ui-danger-soft)' }}>
               {printError}
             </div>
           )}

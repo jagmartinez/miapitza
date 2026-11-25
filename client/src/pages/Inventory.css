@@ -518,7 +518,7 @@
 }
 
 .type-option.active .type-desc {
-    color: var(--ui-primary-soft0);
+    color: var(--ui-primary);
 }
 
 /* Responsive adjustments for type grid */

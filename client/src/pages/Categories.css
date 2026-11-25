@@ -125,7 +125,7 @@
 .toggle-dot {
     width: 14px;
     height: 14px;
-    background: white;
+    background: var(--ui-surface);
     border-radius: 50%;
     position: absolute;
     top: 3px;

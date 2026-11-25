@@ -376,7 +376,7 @@
 }
 
 .calendar-event-item.status-quoted {
-    background: color-mix(in srgb, var(--ui-primary) 15%, transparent);
+    background: color-mix(in srgb, var(--ui-text-muted) 15%, transparent);
     border-color: var(--ui-text-muted);
     color: var(--ui-text-muted);
 }
@@ -394,9 +394,9 @@
 }
 
 .calendar-event-item.status-finished {
-    background: color-mix(in srgb, var(--ui-primary) 15%, transparent);
-    border-color: var(--ui-success);
-    color: var(--ui-success);
+    background: color-mix(in srgb, var(--ui-warning) 15%, transparent);
+    border-color: var(--ui-warning);
+    color: var(--ui-warning);
 }
 
 .calendar-event-item.status-cancelled {
@@ -800,7 +800,7 @@
     max-height: 600px;
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: var(--ui-text-muted) var(--ui-text);
+    scrollbar-color: var(--ui-text-muted) var(--ui-surface-2);
 }
 
 .day-view::-webkit-scrollbar {
@@ -812,7 +812,7 @@
 }
 
 .day-view::-webkit-scrollbar-thumb {
-    background-color: var(--ui-surface-2);
+    background-color: var(--ui-text-muted);
     border-radius: 4px;
 }
 
@@ -1711,7 +1711,7 @@
 }
 
 .status-badge-new.status-finished {
-    background: var(--ui-success);
+    background: var(--ui-warning);
 }
 
 .status-badge-new.status-cancelled {

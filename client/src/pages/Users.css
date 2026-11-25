@@ -313,7 +313,7 @@
     padding: 100px var(--spacing-xl);
     text-align: center;
     background: var(--ui-surface);
-    border-radius: var(--radius-2xl);
+    border-radius: var(--ui-radius-lg);
     border: 2px dashed var(--ui-border);
 }
 

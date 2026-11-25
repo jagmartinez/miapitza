@@ -108,7 +108,7 @@
 
 .search-clear-btn:hover {
     background: var(--ui-danger);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .dark .search-clear-btn {
@@ -165,7 +165,7 @@
 
 .filter-clear-btn:hover {
     background: var(--ui-danger);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 /* Suppliers Grid / Card — base styles live in index.css under the unified
@@ -183,7 +183,7 @@
     letter-spacing: 0.8px;
     border-radius: 0 0 0 5px;
     z-index: 10;
-    color: white;
+    color: var(--ui-primary-fg);
     line-height: 1;
     display: inline-block;
     background: var(--ui-primary);
@@ -330,7 +330,7 @@
 
 .supplier-tab.active {
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     border-color: var(--ui-primary);
     box-shadow: var(--shadow-sm);
 }
@@ -423,7 +423,7 @@
 .standard-input-new:focus {
     outline: none;
     border-color: var(--ui-primary);
-    background: white;
+    background: var(--ui-surface);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 10%, transparent);
 }
 
@@ -443,7 +443,7 @@
 .textarea-new:focus {
     outline: none;
     border-color: var(--ui-primary);
-    background: white;
+    background: var(--ui-surface);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 10%, transparent);
 }
 
@@ -475,7 +475,7 @@
 .type-chip.active {
     background: var(--ui-primary);
     border-color: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 /* Form Footer */

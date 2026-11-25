@@ -826,7 +826,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   outline: none;
   border-color: var(--ui-primary);
   background: var(--ui-surface);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 10%, transparent);
 }
 
 .filter-input::placeholder,
@@ -875,7 +875,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .search-box:focus-within {
   border-color: var(--ui-primary);
   background: var(--ui-surface);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 10%, transparent);
 }
 
 .search-box input {
@@ -1191,28 +1191,28 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 
 .status-pill.status-ok,
 .status-pill.status-success {
-  background: rgba(16, 185, 129, 0.12);
+  background: color-mix(in srgb, var(--ui-success) 12%, transparent);
   color: var(--ui-success);
-  border-color: rgba(16, 185, 129, 0.3);
+  border-color: color-mix(in srgb, var(--ui-success) 30%, transparent);
 }
 
 .status-pill.status-warning {
-  background: rgba(245, 158, 11, 0.12);
+  background: color-mix(in srgb, var(--ui-warning) 12%, transparent);
   color: var(--ui-warning);
-  border-color: rgba(245, 158, 11, 0.3);
+  border-color: color-mix(in srgb, var(--ui-warning) 30%, transparent);
 }
 
 .status-pill.status-critical,
 .status-pill.status-danger {
-  background: rgba(239, 68, 68, 0.12);
+  background: color-mix(in srgb, var(--ui-danger) 12%, transparent);
   color: var(--ui-danger);
-  border-color: rgba(239, 68, 68, 0.3);
+  border-color: color-mix(in srgb, var(--ui-danger) 30%, transparent);
 }
 
 .status-pill.status-info {
-  background: rgba(37, 99, 235, 0.12);
+  background: color-mix(in srgb, var(--ui-primary) 12%, transparent);
   color: var(--ui-primary);
-  border-color: rgba(37, 99, 235, 0.3);
+  border-color: color-mix(in srgb, var(--ui-primary) 30%, transparent);
 }
 
 /* ===== UNIFIED EMPTY / LOADING STATE ===== */
@@ -1418,7 +1418,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .entity-card-badge.badge-success { background: var(--ui-success); }
-.entity-card-badge.badge-warning { background: var(--ui-warning); color: #78350f; }
+.entity-card-badge.badge-warning { background: var(--ui-warning); color: var(--ui-text); }
 .entity-card-badge.badge-danger  { background: var(--ui-danger); }
 .entity-card-badge.badge-neutral { background: var(--ui-text-muted); }
 
@@ -1498,25 +1498,25 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .entity-card-action.kardex:hover:not(:disabled),
 .action-btn-new.kardex:hover:not(:disabled) {
   color: var(--ui-primary);
-  background: rgba(37, 99, 235, 0.08);
+  background: color-mix(in srgb, var(--ui-primary) 8%, transparent);
 }
 
 .entity-card-action.adjust:hover:not(:disabled),
 .action-btn-new.adjust:hover:not(:disabled) {
   color: var(--ui-primary);
-  background: rgba(37, 99, 235, 0.08);
+  background: color-mix(in srgb, var(--ui-primary) 8%, transparent);
 }
 
 .entity-card-action.edit:hover:not(:disabled),
 .action-btn-new.edit:hover:not(:disabled) {
   color: var(--ui-success);
-  background: rgba(16, 185, 129, 0.1);
+  background: color-mix(in srgb, var(--ui-success) 10%, transparent);
 }
 
 .entity-card-action.delete:hover:not(:disabled),
 .action-btn-new.delete:hover:not(:disabled) {
   color: var(--ui-danger);
-  background: rgba(239, 68, 68, 0.1);
+  background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
 }
 
 /* Delete button: just an icon, no label */
@@ -1592,8 +1592,8 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   font-size: var(--font-size-xs);
   font-weight: 600;
 }
-.report-status-badge.status-ok { background: rgba(16, 185, 129, 0.15); color: var(--ui-success); }
-.report-status-badge.status-critical { background: rgba(239, 68, 68, 0.15); color: var(--ui-danger); }
+.report-status-badge.status-ok { background: color-mix(in srgb, var(--ui-success) 15%, transparent); color: var(--ui-success); }
+.report-status-badge.status-critical { background: color-mix(in srgb, var(--ui-danger) 15%, transparent); color: var(--ui-danger); }
 .report-status-badge.status-default { background: var(--ui-surface-2); color: var(--ui-text-muted); }
 .dark .report-status-badge.status-default { background: var(--ui-text); }
 

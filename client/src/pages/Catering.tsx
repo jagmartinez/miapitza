@@ -1709,7 +1709,7 @@ export default function Catering() {
                                     </div>
                                 </div>
 
-                                <div className="payment-form" style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', marginBottom: '12px' }}>
+                                <div className="payment-form" style={{ padding: '12px', background: 'var(--ui-surface-2)', borderRadius: '8px', marginBottom: '12px' }}>
                                     <h3 style={{ marginBottom: '10px', fontSize: '0.95rem' }}>Documentos fiscales</h3>
                                     {selectedEvent.fiscalInvoice ? (
                                         <p style={{ margin: '0 0 10px' }}>
@@ -1769,7 +1769,7 @@ export default function Catering() {
                                     )}
                                 </div>
 
-                                <div className="payment-form" style={{ padding: '10px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                <div className="payment-form" style={{ padding: '10px', background: 'var(--ui-surface-2)', borderRadius: '8px' }}>
                                     <h3 style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}>
                                         Registrar Pago
                                     </h3>
