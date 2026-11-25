@@ -7,6 +7,7 @@ import { validate } from '../middlewares/validate';
 import { generateApiKey } from '../utils/apiKeyGenerator';
 import hrRoutes from './hr.routes';
 import biRoutes from './bi.routes';
+import posRoutes from './pos.routes';
 
 const v1 = Router();
 
@@ -89,6 +90,7 @@ v1.get('/health', async (_req: Request, res: Response) => {
 v1.use(globalLimiter);
 v1.use('/hr', hrRoutes);
 v1.use('/bi', biRoutes);
+v1.use('/pos', posRoutes);
 
 // ── API info endpoint ──
 v1.get('/', (_req: Request, res: Response) => {
