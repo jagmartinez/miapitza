@@ -11,10 +11,9 @@ import {
   RefreshCw,
   WalletCards,
 } from 'lucide-react';
+import { PageHeader, FullScreenModal } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
-import Sidebar from '../../components/Sidebar';
 import MyHrNav from '../../components/hr/MyHrNav';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
@@ -255,10 +254,8 @@ export default function MyWorkforce() {
   return (
     <div className="page-wrapper hr-workforce-page my-hr-page">
       <PageHeader
-        className="my-hr-page-header"
         title="Mi gestión laboral"
-        subtitle="Revisa tu asistencia y gestiona solicitudes, saldos y trazabilidad en una sola bandeja"
-        icon={BriefcaseBusiness}
+        description="Revisa tu asistencia y gestiona solicitudes, saldos y trazabilidad en una sola bandeja"
         actions={
           <>
             <div className="hr-header-actions">
@@ -664,7 +661,7 @@ export default function MyWorkforce() {
         </>
       )}
 
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(panel)}
         onClose={() => !saving && setPanel(null)}
         title={
@@ -674,9 +671,6 @@ export default function MyWorkforce() {
               ? 'Solicitar horas extra'
               : 'Solicitar permiso o vacaciones'
         }
-        width="large"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
       >
           {panel?.kind === 'correction' && (
             <AttendanceCorrectionForm
@@ -712,15 +706,12 @@ export default function MyWorkforce() {
               onCancel={() => setPanel(null)}
             />
           )}
-      </Sidebar>
+      </FullScreenModal>
 
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(cancelPanel)}
         onClose={() => !saving && setCancelPanel(null)}
         title="Cancelar solicitud"
-        width="large"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
       >
         <HrModalFormShell
           ariaLabel="Cancelación de solicitud"
@@ -752,7 +743,7 @@ export default function MyWorkforce() {
             />
           </label>
         </HrModalFormShell>
-      </Sidebar>
+      </FullScreenModal>
     </div>
   );
 }

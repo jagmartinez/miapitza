@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, Clock3, Fingerprint, MapPin, RefreshCw } from 'lucide-react';
+import { PageHeader } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import MyHrNav from '../../components/hr/MyHrNav';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -63,7 +63,11 @@ export default function TimeClock() {
 
     return (
         <div className="page-wrapper hr-time-clock-page my-hr-page">
-            <PageHeader className="my-hr-page-header" title="Marcaje" subtitle="Registra tu jornada con la hora y las validaciones oficiales del servidor" icon={Clock3} actions={<MyHrNav />} />
+            <PageHeader
+        title="Marcaje"
+        description="Registra tu jornada con la hora y las validaciones oficiales del servidor"
+        actions={<MyHrNav />}
+      />
             {!online && <OnlineOnlyNotice online={false} />}
             {loading && <LoadingSpinner text="Preparando marcaje…" />}
             {!loading && error && <div className="state-placeholder" role="alert"><Clock3 size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} /> Reintentar</Button></div>}

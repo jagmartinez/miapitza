@@ -76,9 +76,9 @@ describe('Phase 6 benefits UI contract', () => {
 
   it('presents personal benefits as a full-width paginated register', () => {
     expect(self).toContain('className="my-benefits-register"');
-    expect(self).toContain('inventory-table my-benefits-table');
-    expect(self).toContain('<Pagination');
-    expect(self).toContain('className="hr-amount-cell"');
+    expect(self).toContain('<DataTable');
+    expect(self).toContain("pagination={{ mode: 'client' }}");
+    expect(self).toContain("type: 'money'");
     expect(self).not.toContain('className="hr-benefits-list"');
   });
 

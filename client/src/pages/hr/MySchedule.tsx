@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarCheck, ChevronLeft, ChevronRight, CheckCheck, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { PageHeader } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import MyHrNav from '../../components/hr/MyHrNav';
 import ScheduleStatusPill from '../../components/hr/ScheduleStatusPill';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
@@ -82,7 +82,11 @@ export default function MySchedule() {
 
     return (
         <div className="page-wrapper hr-my-schedule-page my-hr-page">
-            <PageHeader className="my-hr-page-header" title="Mi horario" subtitle="Consulta tus turnos publicados y confirma su recepción" icon={CalendarCheck} actions={<MyHrNav />} />
+            <PageHeader
+        title="Mi horario"
+        description="Consulta tus turnos publicados y confirma su recepción"
+        actions={<MyHrNav />}
+      />
 
             <section className="hr-week-navigation my-hr-toolbar" aria-label="Navegación semanal">
                 <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={acknowledgingId !== null} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
