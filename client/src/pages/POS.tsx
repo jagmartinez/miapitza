@@ -1171,7 +1171,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 >
                                     <span
                                         className="pos-brand-dot"
-                                        style={{ background: brand.color || 'var(--color-primary)' }}
+                                        style={{ background: brand.color || 'var(--ui-primary)' }}
                                     />
                                     {brand.name}
                                 </button>
@@ -1217,8 +1217,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 style={{
                                     width: '100%',
                                     justifyContent: 'center',
-                                    border: '1px solid var(--color-primary)',
-                                    color: 'var(--color-primary)',
+                                    border: '1px solid var(--ui-primary)',
+                                    color: 'var(--ui-primary)',
                                     padding: '12px',
                                     gap: '8px'
                                 }}
@@ -1246,7 +1246,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                             marginBottom: '1rem',
                             padding: '0.85rem 1rem',
                             borderRadius: '12px',
-                            background: 'var(--color-surface-elevated)',
+                            background: 'var(--ui-surface)',
                             border: `1px solid ${waiterAccentColor}55`,
                             boxShadow: `inset 4px 0 0 ${waiterAccentColor}`
                         }}>
@@ -1268,7 +1268,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                             {activeTableOrder.user?.name || 'Sin mesero'}
                                         </span>
                                     </div>
-                                    <div style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>
+                                    <div style={{ fontSize: '0.9rem', color: 'var(--ui-text-muted)' }}>
                                         Estado: {getOrderStatusLabel(activeTableOrder.status)} · {activeTableOrder.items?.length || 0} items
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
@@ -1282,7 +1282,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                             <button
                                                 className="header-action-btn secondary"
                                                 onClick={handleCancelActiveOrder}
-                                                style={{ borderColor: 'var(--color-error, #ef4444)', color: 'var(--color-error, #ef4444)' }}
+                                                style={{ borderColor: 'var(--ui-danger)', color: 'var(--ui-danger)' }}
                                             >
                                                 Cancelar
                                             </button>
@@ -1373,7 +1373,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             {/* Mobile Cart Summary Bar */}
             <div className="mobile-cart-summary">
                 <div className="cart-total-preview">
-                    <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Total:</span>
+                    <span style={{ fontSize: '0.9rem', color: 'var(--ui-text-muted)' }}>Total:</span>
                     <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{currencySymbol}{formatNumber(displayTotal)}</span>
                 </div>
                 <button className="mobile-cart-btn" onClick={() => setShowMobileCart(true)}>

@@ -68,19 +68,8 @@
   --ui-overlay: rgba(0, 0, 0, .7);
 }
 
-/* Alias heredados: los tokens viejos apuntan a los nuevos. */
+/* Alias de diálogo heredados. */
 :root, .dark {
-  --color-primary: var(--ui-primary);
-  --color-background: var(--ui-bg);
-  --color-surface: var(--ui-surface);
-  --color-text: var(--ui-text);
-  --color-text-secondary: var(--ui-text-muted);
-  --color-border: var(--ui-border);
-  --color-danger: var(--ui-danger);
-  --color-success: var(--ui-success);
-  --color-warning: var(--ui-warning);
-  --color-primary-light: var(--ui-primary-soft);
-  --color-surface-hover: var(--ui-surface-2);
   --dialog-accent: var(--ui-primary);
   --dialog-overlay: var(--ui-overlay);
 }

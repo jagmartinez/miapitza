@@ -22,9 +22,8 @@ it('usa los valores aprobados', () => {
   expect(block(read('./tokens.css'), ':root')).toMatch(/--ui-primary:\s*#3451d1/i);
   expect(block(read('./tokens.css'), '.dark')).toMatch(/--ui-primary:\s*#8ea2ff/i);
 });
-it('remapea los tokens heredados a los nuevos', () => {
+it('ya no define alias --color-* y conserva los alias de diálogo', () => {
   const css = read('./tokens.css');
-  expect(css).toMatch(/--color-primary:\s*var\(--ui-primary\)/);
-  expect(css).toMatch(/--color-surface:\s*var\(--ui-surface\)/);
+  expect(css).not.toMatch(/--color-[a-z-]+:/);
   expect(css).toMatch(/--dialog-accent:\s*var\(--ui-primary\)/);
 });
