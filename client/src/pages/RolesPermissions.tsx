@@ -4,11 +4,10 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { rolesAPI, permissionsAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
 import { Plus, Edit, Trash2, Shield } from 'lucide-react';
 import { describePermission } from '../utils/permissionCatalog';
 import './RolesPermissions.css';
+import { Button, FullScreenModal, PageHeader } from '@/ui';
 
 interface PermissionRow {
     id: number;
@@ -119,15 +118,15 @@ export default function RolesPermissions() {
 
     return (
         <div className="roles-permissions-page">
-            <div className="rp-header">
-                <div>
-                    <h1><Shield size={28} /> Roles y Permisos</h1>
-                    <p>Gestiona los roles del sistema y sus capacidades</p>
-                </div>
-                <Button onClick={() => handleOpenSidebar()}>
-                    <Plus size={18} /> Nuevo Rol
-                </Button>
-            </div>
+            <PageHeader
+                title="Roles y Permisos"
+                description="Gestiona los roles del sistema y sus capacidades"
+                actions={(
+                    <Button variant="primary" onClick={() => handleOpenSidebar()}>
+                        <Plus size={18} /> Nuevo Rol
+                    </Button>
+                )}
+            />
 
             <div className="roles-grid">
                 {roles.map(role => (
@@ -181,7 +180,7 @@ export default function RolesPermissions() {
                 ))}
             </div>
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={editingRole ? 'Editar Rol' : 'Nuevo Rol'}
@@ -243,12 +242,12 @@ export default function RolesPermissions() {
                         <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
                             Cancelar
                         </Button>
-                        <Button type="submit">
+                        <Button variant="primary" type="submit">
                             {editingRole ? 'Actualizar Rol' : 'Crear Rol'}
                         </Button>
                     </div>
                 </form>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

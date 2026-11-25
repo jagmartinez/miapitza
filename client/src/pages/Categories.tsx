@@ -4,15 +4,12 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Tag, Edit2, Trash2, List } from 'lucide-react';
 import { getCategoryVisibilityLabel } from '../utils/categoryVisibility';
 import './Categories.css';
+import { Button, DataTable, FullScreenModal, PageHeader, type Column } from '@/ui';
 
 interface CategoryRow {
     id: number;
@@ -160,8 +157,7 @@ export default function Categories() {
         <div className="categories-page">
             <PageHeader
                 title="Categorías"
-                subtitle={`${categories.length} categorías configuradas`}
-                icon={Tag}
+                description={`${categories.length} categorías configuradas`}
                 actions={(
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
@@ -176,7 +172,8 @@ export default function Categories() {
             />
 
             {viewMode === 'table' && categories.length > 0 && (
-                <CatalogTable<CategoryRow>
+                <DataTable<CategoryRow>
+                    ariaLabel="Listado"
                     rows={categories}
                     rowKey={(c) => c.id}
                     columns={[
@@ -191,8 +188,8 @@ export default function Categories() {
                             )
                         },
                         { key: 'prefix', header: 'Prefijo', render: (c) => c.codePrefix || '-' },
-                        { key: 'items', header: 'Platos', align: 'center', render: (c) => c._count?.menuItems || 0 },
-                        { key: 'order', header: 'Orden', align: 'center', render: (c) => c.sortOrder ?? 0 },
+                        { key: 'items', header: 'Platos', render: (c) => c._count?.menuItems || 0 },
+                        { key: 'order', header: 'Orden', render: (c) => c.sortOrder ?? 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -210,7 +207,7 @@ export default function Categories() {
                         ...(canMutateCategory ? [{
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right' as const,
+                            type: 'number',
                             render: (c: CategoryRow) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(c)} title="Editar">
@@ -227,7 +224,7 @@ export default function Categories() {
                                 </div>
                             )
                         }] : [])
-                    ] as CatalogColumn<CategoryRow>[]}
+                    ] as Column<CategoryRow>[]}
                 />
             )}
 
@@ -303,12 +300,12 @@ export default function Categories() {
                     <Tag size={48} />
                     <p>No hay categorías configuradas</p>
                     {canMutateCategory && (
-                        <Button onClick={() => openModal()}>Crear primera categoría</Button>
+                        <Button variant="primary" onClick={() => openModal()}>Crear primera categoría</Button>
                     )}
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={() => { closeModal(); setActiveTab('info'); }}
                 title={editingCategory ? 'Editar Categoría' : 'Nueva Categoría'}
@@ -495,7 +492,7 @@ export default function Categories() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

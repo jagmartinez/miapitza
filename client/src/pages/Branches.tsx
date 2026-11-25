@@ -1,19 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import Select from '../components/Select';
 import { branchesAPI, hrAPI, type BranchGeofencePayload } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store, AlertTriangle, LocateFixed } from 'lucide-react';
 import type { Branch } from '../types';
-import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import './Branches.css';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, type Column, PageHeader } from '@/ui';
 
 interface BranchFormData {
     name: string;
@@ -329,21 +325,20 @@ export default function Branches() {
 
     return (
         <div className="branches-page">
-            {/* Modern Header */}
-            <div className="branches-header-new">
-                <div className="header-title-section">
-                    <h1><Store size={32} /> Gestión de Sucursales</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <ViewToggle value={viewMode} onChange={setViewMode} />
-                    {isSuperAdmin && (
-                        <Button variant="primary" onClick={() => openModal()}>
-                            <Plus size={20} />
-                            Nueva Sucursal
-                        </Button>
-                    )}
-                </div>
-            </div>
+            <PageHeader
+                title="Gestión de Sucursales"
+                actions={(
+                    <>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        {isSuperAdmin && (
+                            <Button variant="primary" onClick={() => openModal()}>
+                                <Plus size={20} />
+                                Nueva Sucursal
+                            </Button>
+                        )}
+                    </>
+                )}
+            />
 
             {/* Filters Row */}
             <div className="branches-filters-row">
@@ -372,7 +367,8 @@ export default function Branches() {
 
             {/* Table view */}
             {viewMode === 'table' && filteredBranches.length > 0 && (
-                <CatalogTable<Branch>
+                <DataTable<Branch>
+                    ariaLabel="Listado"
                     rows={filteredBranches}
                     rowKey={(b) => b.id}
                     resetKey={statusFilter}
@@ -403,8 +399,8 @@ export default function Branches() {
                         }] : []),
                         { key: 'phone', header: 'Teléfono', render: (b) => b.phone || '-' },
                         { key: 'address', header: 'Dirección', render: (b) => b.address || '-' },
-                        { key: 'users', header: 'Usuarios', align: 'center', render: (b) => b._count?.users || 0 },
-                        { key: 'tables', header: 'Mesas', align: 'center', render: (b) => b._count?.tables || 0 },
+                        { key: 'users', header: 'Usuarios', render: (b) => b._count?.users || 0 },
+                        { key: 'tables', header: 'Mesas', render: (b) => b._count?.tables || 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -413,7 +409,7 @@ export default function Branches() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right',
+                            type: 'number',
                             render: (b) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
@@ -427,7 +423,7 @@ export default function Branches() {
                                 </div>
                             )
                         }
-                    ] as CatalogColumn<Branch>[]}
+                    ] as Column<Branch>[]}
                 />
             )}
 
@@ -531,7 +527,7 @@ export default function Branches() {
                     <Store size={48} />
                     <p>No hay sucursales {statusFilter ? 'con este estado' : 'registradas'}</p>
                     {(statusFilter || isSuperAdmin) && (
-                        <Button
+                        <Button variant="primary"
                             onClick={() => {
                                 if (statusFilter) setStatusFilter(null);
                                 else openModal();
@@ -543,7 +539,7 @@ export default function Branches() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={handleSidebarClose}
                 title={editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
@@ -623,21 +619,19 @@ export default function Branches() {
                                     </div>
 
                                     {editingBranch && (
-                                        <Select
-                                            variant="modal"
-                                            label="Estado de Sucursal"
-                                            options={[
+                                        <Field label="Estado de Sucursal" htmlFor="sel-625">
+<AppSelect inputId="sel-625" options={[
                                                 { value: 'ACTIVE', label: 'Activa' },
                                                 { value: 'INACTIVE', label: 'Inactiva' }
-                                            ]}
-                                            value={formData.status === 'ACTIVE' ? { value: 'ACTIVE', label: 'Activa' } : { value: 'INACTIVE', label: 'Inactiva' }}
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) => setFormData({
+                                            ]} value={(formData.status === 'ACTIVE' ? { value: 'ACTIVE', label: 'Activa' } : { value: 'INACTIVE', label: 'Inactiva' })?.value ?? null} onChange={(__v) => { const option = ([
+                                                { value: 'ACTIVE', label: 'Activa' },
+                                                { value: 'INACTIVE', label: 'Inactiva' }
+                                            ]).find((o) => o.value === __v) ?? null; return setFormData({
                                                 ...formData,
                                                 status: option?.value === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
                                                 ...(option?.value === 'INACTIVE' ? { attendanceEnabled: false } : {}),
-                                            })}
-                                            isSearchable={false}
-                                        />
+                                            }); }} />
+</Field>
                                     )}
                                 </div>
                             )}
@@ -836,7 +830,7 @@ export default function Branches() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

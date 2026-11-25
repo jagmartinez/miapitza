@@ -27,7 +27,6 @@
     "src/pages/PurchaseOrderForm.tsx",
     "src/pages/PurchaseOrders.tsx",
     "src/pages/Reports.tsx",
-    "src/pages/Suppliers.tsx",
     "src/pages/WasteReport.tsx",
     "src/pages/hr/BenefitsManagement.tsx",
     "src/pages/hr/MyBenefits.tsx"
@@ -42,19 +41,13 @@
     "src/components/TicketPrintModal.tsx",
     "src/components/hr/EmployeeForm.tsx",
     "src/components/hr/ScheduleShiftForm.tsx",
-    "src/pages/Branches.tsx",
-    "src/pages/CashRegisters.tsx",
     "src/pages/CashShift.tsx",
     "src/pages/Catering.tsx",
-    "src/pages/Companies.tsx",
     "src/pages/Dashboard.tsx",
-    "src/pages/Inventory.tsx",
-    "src/pages/Kardex.tsx",
     "src/pages/Kitchen.tsx",
     "src/pages/Menu.tsx",
     "src/pages/Orders.tsx",
     "src/pages/PedidosYaIntegration.tsx",
-    "src/pages/ProductUnitSettings.tsx",
     "src/pages/ProductionDashboard.tsx",
     "src/pages/ProductionOrders.tsx",
     "src/pages/ProductionRecipes.tsx",
@@ -63,11 +56,7 @@
     "src/pages/PurchaseOrders.tsx",
     "src/pages/Reports.tsx",
     "src/pages/Reservations.tsx",
-    "src/pages/Suppliers.tsx",
     "src/pages/Tables.tsx",
-    "src/pages/Users.tsx",
-    "src/pages/Warehouses.tsx",
-    "src/pages/WasteReport.tsx",
     "src/pages/hr/AttendanceReview.tsx",
     "src/pages/hr/Employees.tsx",
     "src/pages/hr/Schedules.tsx"
@@ -88,8 +77,6 @@
     "src/pages/ProductionOrders.tsx",
     "src/pages/PurchaseOrderForm.tsx",
     "src/pages/PurchaseOrders.tsx",
-    "src/pages/Suppliers.tsx",
-    "src/pages/Warehouses.tsx",
     "src/pages/WasteReport.tsx"
   ]
 }

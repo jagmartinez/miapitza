@@ -5,9 +5,6 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { useNavigate } from 'react-router-dom';
 import { branchesAPI, cashRegistersAPI, cashShiftsAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import Select from '../components/Select';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
     Wallet, Unlock, History, Plus,
@@ -15,10 +12,10 @@ import {
     Clock, Building2, Settings
 } from 'lucide-react';
 import type { Branch, CashRegister, CashShift } from '../types';
-import type { SingleValue } from 'react-select';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import './CashRegisters.css';
+import { AppSelect, Button, Field, FullScreenModal, PageHeader } from '@/ui';
 
 export default function CashRegisters() {
     const { user } = useAuth();
@@ -215,25 +212,21 @@ export default function CashRegisters() {
 
     return (
         <div className="cash-registers-page">
-            <div className="cash-registers-header">
-                <div className="header-title-section">
-                    <h1><Wallet size={32} /> Cajas Registradoras</h1>
-                    <p className="header-subtitle">
-                        {viewTab === 'registers'
-                            ? `${registers.length} cajas registradas`
-                            : `${shifts.length} turnos encontrados`}
-                    </p>
-                </div>
-                {viewTab === 'registers' && canCreateRegister && (
-                    <Button onClick={() => {
+            <PageHeader
+                title="Cajas Registradoras"
+                description={viewTab === 'registers'
+                    ? `${registers.length} cajas registradas`
+                    : `${shifts.length} turnos encontrados`}
+                actions={viewTab === 'registers' && canCreateRegister ? (
+                    <Button variant="primary" onClick={() => {
                         setActiveTab('general');
                         setIsCreateModalOpen(true);
                     }}>
                         <Plus size={20} />
                         Nueva Caja
                     </Button>
-                )}
-            </div>
+                ) : undefined}
+            />
 
             <div className="filters-row">
                 <div className="filters-left">
@@ -419,7 +412,7 @@ export default function CashRegisters() {
                 </>
             )}
 
-            <Sidebar isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Apertura de Caja">
+            <FullScreenModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Apertura de Caja">
                 <div className="premium-modal-content">
                     <div className="modal-tab-content">
                         <div className="modal-section">
@@ -439,12 +432,12 @@ export default function CashRegisters() {
                     </div>
                     <div className="modal-footer">
                         <Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-                        <Button onClick={() => void confirmOpenShift()}>Abrir Turno</Button>
+                        <Button variant="primary" onClick={() => void confirmOpenShift()}>Abrir Turno</Button>
                     </div>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
 
-            <Sidebar isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Nueva Caja Registradora">
+            <FullScreenModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Nueva Caja Registradora">
                 <div className="premium-modal-content">
                     <div className="modal-tabs" role="tablist" aria-label="Configuración de caja registradora">
                         <button type="button" role="tab" aria-selected={activeTab === 'general'} className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
@@ -475,27 +468,21 @@ export default function CashRegisters() {
                                         <input id="register-branch" type="text" className="modal-standard-input" value={user.branch?.name || `Sucursal #${user.branchId}`} disabled />
                                     </div>
                                 ) : (
-                                    <Select
-                                        variant="modal"
-                                        label="Sucursal"
-                                        options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))}
-                                        value={branches
+                                    <Field label="Sucursal" htmlFor="sel-477">
+<AppSelect inputId="sel-477" options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))} value={(branches
                                             .map((branch) => ({ value: String(branch.id), label: branch.name }))
-                                            .find((option) => option.value === newRegisterBranchId) || null}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                            setNewRegisterBranchId(option?.value || '')}
-                                        isSearchable
-                                    />
+                                            .find((option) => option.value === newRegisterBranchId) || null)?.value ?? null} onChange={(__v) => { const option = (branches.map((branch) => ({ value: String(branch.id), label: branch.name }))).find((o) => o.value === __v) ?? null; return setNewRegisterBranchId(option?.value || ''); }} />
+</Field>
                                 )}
                             </div>
                         )}
                     </div>
                     <div className="modal-footer">
                         <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>Cancelar</Button>
-                        <Button type="button" onClick={handleCreateRegister}>Guardar Caja</Button>
+                        <Button variant="primary" type="button" onClick={handleCreateRegister}>Guardar Caja</Button>
                     </div>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }
