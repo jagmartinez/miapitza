@@ -28,7 +28,7 @@ function safeStorage<T>(fn: () => T): T | undefined {
 }
 
 export function applyUserPreferences(userId: number, prefs: Partial<UserPreferences>): void {
-    setUiPrefs({ density: prefs.density, rowsPerPage: prefs.rowsPerPage });
+    setUiPrefs({ density: prefs.density, rowsPerPage: prefs.rowsPerPage, numberFormat: prefs.numberFormat, defaultBranchId: prefs.defaultBranchId });
     safeStorage(() => localStorage.setItem(cacheKey(userId), JSON.stringify(prefs)));
 }
 
@@ -41,7 +41,7 @@ export function readCachedPreferences(userId: number): Partial<UserPreferences> 
 /** Carga las preferencias del usuario: primero la copia local (arranque inmediato), luego la del servidor. */
 export async function loadUserPreferences(userId: number): Promise<UserPreferences | null> {
     const cached = readCachedPreferences(userId);
-    if (cached) setUiPrefs({ density: cached.density, rowsPerPage: cached.rowsPerPage });
+    if (cached) setUiPrefs({ density: cached.density, rowsPerPage: cached.rowsPerPage, numberFormat: cached.numberFormat, defaultBranchId: cached.defaultBranchId });
     try {
         const res = await usersAPI.getPreferences();
         const prefs = { ...DEFAULT_USER_PREFERENCES, ...(res.data?.data as Partial<UserPreferences>) };

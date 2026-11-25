@@ -47,10 +47,11 @@ describe('employee self-service UX contract', () => {
 
   it('always explains Profile HR access and opens self-service only for a linked account', () => {
     expect(profile).toContain("user?.accountType === 'INTERNAL' && Boolean(user.employeeId)");
-    expect(profile).toContain("{ id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' }");
+    expect(profile).toContain('id="profile-sec-hr"');
+    expect(profile).toContain('Mi RH</h2>');
     expect(profile).toContain('Esta cuenta todavía no está vinculada a un empleado');
     expect(profile).toContain('Vincular en Personal');
-    expect(profile).toContain("setSearchParams(tab === 'info' ? {} : { tab }");
+    expect(profile).toContain("setSearchParams(tab === 'resumen' ? {} : { tab }");
     expect(layout).not.toContain("section: 'Mi portal RH'");
     expect(layout).not.toContain("to: '/profile?tab=hr'");
     expect(layout).toContain('title="Perfil y Mi RH"');

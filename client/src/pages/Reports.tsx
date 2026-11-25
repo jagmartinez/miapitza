@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, menuBrandsAPI, productionReportsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, Input, LoadErrorState, PageContent, PageHeader, Switch,
-    formatMoney, formatNumber, formatPercent, type Column, type Tone,
+    formatMoney, formatNumber, formatPercent, getUiPrefs, type Column, type Tone,
 } from '@/ui';
 import { ParetoBars } from '@/ui/charts';
 import {
@@ -970,6 +970,10 @@ function ReportViewer({ reportId }: { reportId: string }) {
     const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
     const [brands, setBrands] = useState<BrandOption[]>([]);
 
+    const defaultBranch = () => {
+        const id = getUiPrefs().defaultBranchId;
+        return hasBranchFilter(reportId) && id ? String(id) : '';
+    };
     const [filters, setFilters] = useState<Record<string, string>>({
         dateFrom: monthStartStr(),
         dateTo: todayStr(),
@@ -977,7 +981,7 @@ function ReportViewer({ reportId }: { reportId: string }) {
         categoryId: '',
         categoryIds: '',
         supplierId: '',
-        branchId: '',
+        branchId: defaultBranch(),
         brandId: '',
         lowStockOnly: '',
     });
@@ -1002,7 +1006,12 @@ function ReportViewer({ reportId }: { reportId: string }) {
             } else {
                 setFilterWarning('');
             }
-            setBranches(results[0].status === 'fulfilled' ? results[0].value.data.data || [] : []);
+            const branchList: Branch[] = results[0].status === 'fulfilled' ? results[0].value.data.data || [] : [];
+            setBranches(branchList);
+            // La sucursal predeterminada solo aplica si el usuario realmente puede elegirla.
+            if (results[0].status === 'fulfilled') {
+                setFilters((f) => (f.branchId && !branchList.some((b) => String(b.id) === f.branchId) ? { ...f, branchId: '' } : f));
+            }
             setCategories(results[1].status === 'fulfilled' ? results[1].value.data.data || [] : []);
             setSuppliers(results[2].status === 'fulfilled' ? results[2].value.data.data || [] : []);
             setWarehouses(results[3].status === 'fulfilled' ? results[3].value.data.data || [] : []);
@@ -1063,7 +1072,7 @@ function ReportViewer({ reportId }: { reportId: string }) {
     };
 
     const clearFilters = () => {
-        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', categoryIds: '', supplierId: '', branchId: '', brandId: '', lowStockOnly: '' });
+        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', categoryIds: '', supplierId: '', branchId: defaultBranch(), brandId: '', lowStockOnly: '' });
     };
 
     const set = (key: string, val: string) => setFilters(f => ({ ...f, [key]: val }));

@@ -2,6 +2,12 @@ import { coerceMoneyAmount } from '../../utils/currency';
 
 const cache = new Map<string, Intl.NumberFormat>();
 
+let defaultLocale = 'es-NI';
+/** Formato numérico elegido por el usuario (Preferencias); `es-NI` si no eligió. */
+export function setNumberLocale(locale: string): void {
+  defaultLocale = locale === 'en-US' ? 'en-US' : 'es-NI';
+}
+
 function getFormat(locale: string, decimals: number): Intl.NumberFormat {
   const key = `${locale}|${decimals}`;
   let f = cache.get(key);
@@ -13,7 +19,7 @@ function getFormat(locale: string, decimals: number): Intl.NumberFormat {
 }
 
 /** Número con separador de miles y decimales fijos; valores inválidos se ven como 0.00. */
-export function formatNumber(value: unknown, decimals = 2, locale = 'es-NI'): string {
+export function formatNumber(value: unknown, decimals = 2, locale = defaultLocale): string {
   const n = coerceMoneyAmount(value);
   const f = getFormat(locale, decimals);
   const out = f.format(n);

@@ -5,7 +5,7 @@ vi.mock('../services/db', () => ({ db: {} }));
 vi.mock('../services/offlineManager', () => ({ offlineManager: { enqueueRequest: vi.fn(), isOnline: vi.fn(() => true) } }));
 
 import api from '../services/api';
-import { getRowsPerPage, resetUiPrefs } from '../ui';
+import { formatNumber, getRowsPerPage, resetUiPrefs } from '../ui';
 import { loadUserPreferences, saveUserPreferences } from './userPreferences';
 
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); resetUiPrefs(); });
@@ -31,5 +31,13 @@ describe('user preferences client', () => {
         expect(put).toHaveBeenCalledWith('/users/me/preferences', { rowsPerPage: 50 });
         expect(getRowsPerPage()).toBe(50);
         expect(JSON.parse(localStorage.getItem('uiPrefs:7') ?? '{}').rowsPerPage).toBe(50);
+    });
+
+    it('number format preference changes the default locale of formatNumber and resets on logout', async () => {
+        vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { numberFormat: 'en-US' } } });
+        await loadUserPreferences(7);
+        expect(formatNumber(1234.5)).toBe('1,234.50');
+        resetUiPrefs();
+        expect(formatNumber(1234.5)).toBe(new Intl.NumberFormat('es-NI', { minimumFractionDigits: 2 }).format(1234.5));
     });
 });

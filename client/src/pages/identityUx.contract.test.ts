@@ -32,7 +32,7 @@ describe('identity surfaces UX contract', () => {
         expect(profile).toContain("user?.accountType === 'INTERNAL' && Boolean(user.employeeId)");
         expect(profile).toContain('Esta cuenta todavía no está vinculada a un empleado');
         expect(profile).toContain('Expediente laboral vinculado');
-        expect(profile).toContain('aria-label="Secciones de mi perfil"');
+        expect(profile).toContain('ariaLabel="Secciones de mi perfil"');
         expect(profile).toContain('Promise.allSettled');
     });
 

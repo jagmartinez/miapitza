@@ -47,4 +47,4 @@ export type { SettingsRowProps, SettingsScope } from './settings/SettingsRow';
 export { ScopeSelector } from './settings/ScopeSelector';
 export { UnsavedChangesBar } from './settings/UnsavedChangesBar';
 export { getRowsPerPage, getUiPrefs, setUiPrefs, resetUiPrefs, subscribeUiPrefs, ROWS_PER_PAGE_OPTIONS } from './prefs/userPrefs';
-export type { Density, UiPrefs } from './prefs/userPrefs';
+export type { Density, UiPrefs, NumberFormatPref } from './prefs/userPrefs';

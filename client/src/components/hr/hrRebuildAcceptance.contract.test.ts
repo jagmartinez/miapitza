@@ -61,8 +61,9 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
     expect(layout).not.toContain("section: 'Mi portal RH'");
     expect(layout).not.toContain("to: '/profile?tab=hr'");
     expect(layout).toContain('Perfil y Mi RH');
-    expect(profile).toContain("{ id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' }");
-    expect(profile).toContain("setSearchParams(tab === 'info' ? {} : { tab }");
+    expect(profile).toContain('id="profile-sec-hr"');
+    expect(profile).toContain('Mi RH</h2>');
+    expect(profile).toContain("setSearchParams(tab === 'resumen' ? {} : { tab }");
     expect(profile).toContain('selectVacationBalance');
     expect(profile).toContain('Saldo de vacaciones');
     ['/rh/mi-portal/horario', '/rh/marcaje', '/rh/mi-portal/gestion?tab=OVERTIME', '/rh/mi-portal/gestion?tab=LEAVE', '/rh/mi-portal/nomina']
