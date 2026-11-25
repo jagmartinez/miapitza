@@ -17,6 +17,7 @@ describe('computeInventoryKpis', () => {
     expect(k.replenishmentCost).toBe(100 + 320);
     expect(k.belowMinCount).toBe(2);
     expect(k.outOfStockCount).toBe(1);
+    expect(k.outOfStockNames).toEqual(['Harina']);
   });
   it('concentración = % del valor en los 3 productos principales', () => {
     const k = computeInventoryKpis(products);
@@ -32,5 +33,11 @@ describe('computeInventoryKpis', () => {
   });
   it('sin valor no divide entre cero', () => {
     expect(computeInventoryKpis([]).concentrationPct).toBe(0);
+  });
+  it('existencia igual al mínimo cuenta como bajo mínimo (misma regla que getLowStock del servidor)', () => {
+    const k = computeInventoryKpis([{ id: 9, name: 'Pasta', totalStock: 10, minStock: 10, currentAverageCost: 3, cost: 3 }]);
+    expect(k.belowMinCount).toBe(1);
+    expect(k.outOfStockCount).toBe(0);
+    expect(k.replenishmentCost).toBe(10 * 3);
   });
 });

@@ -15,6 +15,8 @@ export interface InventoryKpis {
   replenishmentCost: number;
   belowMinCount: number;
   outOfStockCount: number;
+  /** Hasta 3 nombres de productos agotados (existencia 0, mínimo > 0). */
+  outOfStockNames: string[];
   /** % del valor total que concentran los 3 productos de mayor valor. */
   concentrationPct: number;
   topNames: string[];
@@ -25,6 +27,7 @@ export function computeInventoryKpis(products: KpiProduct[]): InventoryKpis {
   let replenishmentCost = 0;
   let belowMinCount = 0;
   let outOfStockCount = 0;
+  const outOfStockNames: string[] = [];
   const values: { name: string; value: number }[] = [];
 
   for (const p of products) {
@@ -36,7 +39,10 @@ export function computeInventoryKpis(products: KpiProduct[]): InventoryKpis {
     if (value > 0) values.push({ name: p.name, value });
     if (min > 0 && stock <= min) {
       belowMinCount += 1;
-      if (stock === 0) outOfStockCount += 1;
+      if (stock === 0) {
+        outOfStockCount += 1;
+        if (outOfStockNames.length < 3) outOfStockNames.push(p.name);
+      }
       replenishmentCost += (2 * min - stock) * unitCost;
     }
   }
@@ -48,6 +54,7 @@ export function computeInventoryKpis(products: KpiProduct[]): InventoryKpis {
     replenishmentCost,
     belowMinCount,
     outOfStockCount,
+    outOfStockNames,
     concentrationPct: totalValue > 0 ? (topSum / totalValue) * 100 : 0,
     topNames: top.map((v) => v.name),
   };

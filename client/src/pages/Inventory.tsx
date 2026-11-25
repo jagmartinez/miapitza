@@ -20,9 +20,11 @@ import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
 import { newIdempotencyKey } from '../utils/idempotency';
 import './Inventory.css';
+import s from './Inventory.module.css';
 import { computeInventoryKpis } from '../utils/inventoryKpis';
+import { buildWarehouseBreakdown, type WarehouseStockInput } from '../utils/inventoryWarehouses';
 import { buildInventoryCountSheetHtml } from '../utils/inventoryCountSheet';
-import { AppSelect, Button, Field, FullScreenModal, Badge, DataTable, EmptyState, IconButton, PageHeader, StatCard, formatNumber, formatPercent, type Column } from '@/ui';
+import { AppSelect, Button, SegmentedControl, Field, FullScreenModal, Badge, DataTable, EmptyState, IconButton, PageHeader, StatCard, formatNumber, formatPercent, type Column } from '@/ui';
 
 interface CategoryRow {
     id: number;
@@ -139,6 +141,7 @@ export default function Inventory() {
     const [adjustmentUnits, setAdjustmentUnits] = useState<ProductAllowedUnit[]>([]);
 
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+    const [warehouseStocks, setWarehouseStocks] = useState<WarehouseStockInput[]>([]);
     const [allUnits, setAllUnits] = useState<UnitOfMeasure[]>([]);
     const { symbol } = useCurrency();
     const [settings, setSettings] = useState<CurrencySettings>({});
@@ -211,6 +214,15 @@ export default function Inventory() {
             const { warehousesAPI } = await import('../services/api');
             const res = await warehousesAPI.getAll();
             setWarehouses(res.data.data);
+            const list = (res.data.data || []) as Warehouse[];
+            const stocks = await Promise.allSettled(list.map((w) => warehousesAPI.getStock(w.id)));
+            setWarehouseStocks(list.flatMap((w, i) => {
+                const r = stocks[i];
+                if (r.status !== 'fulfilled') return [];
+                const rows = ((r.value.data.data || []) as { productId: number; quantity: number | string }[])
+                    .map((row) => ({ productId: row.productId, quantity: row.quantity }));
+                return [{ warehouseId: w.id, warehouseName: w.name, rows }];
+            }));
         } catch (error) {
             console.error('Error loading warehouses:', error);
         }
@@ -654,10 +666,14 @@ export default function Inventory() {
 
     const isLowStockProduct = (id: number) => lowStock.some((p) => p.id === id);
     const kpis = useMemo(() => computeInventoryKpis(products as ProductInventory[]), [products]);
-    const valuedProductsCount = useMemo(
-        () => (products as ProductInventory[]).filter((p) => Number(p.totalStock ?? 0) > 0).length,
-        [products],
+    const warehouseBreakdown = useMemo(
+        () => buildWarehouseBreakdown(warehouseStocks, products as ProductInventory[]),
+        [warehouseStocks, products],
     );
+    const warehouseValueContext = warehouseBreakdown.valueByWarehouse.length > 0
+        ? warehouseBreakdown.valueByWarehouse.slice(0, 3).map((w) => `${w.name}: ${formatNumber(w.value)}`).join(' · ')
+        : 'Sin existencias valorizadas por almacén';
+    const productsTruncated = products.length >= 500;
 
     // Type helpers
     const getTypeClass = (type: string, isLow: boolean) => {
@@ -741,14 +757,14 @@ export default function Inventory() {
                 <StatCard
                     label="Valor del inventario (C$)"
                     value={formatNumber(kpis.totalValue)}
-                    context={`${valuedProductsCount} productos con existencia valorizada`}
+                    context={`${warehouseValueContext}${productsTruncated ? ' (primeros 500 productos)' : ''}`}
                 />
                 <StatCard
                     label="Reposición requerida (C$)"
                     value={formatNumber(kpis.replenishmentCost)}
                     tone={kpis.belowMinCount > 0 ? 'warning' : 'success'}
                     context={kpis.belowMinCount > 0
-                        ? `${kpis.belowMinCount} productos bajo mínimo, ${kpis.outOfStockCount} agotados`
+                        ? `${kpis.belowMinCount} bajo mínimo, ${kpis.outOfStockCount} agotados${kpis.outOfStockNames.length > 0 ? ` (${kpis.outOfStockNames.join(', ')}${kpis.outOfStockCount > kpis.outOfStockNames.length ? '…' : ''})` : ''}${productsTruncated ? ' · primeros 500 productos' : ''}`
                         : 'Ningún producto bajo el mínimo'}
                     action={canCreateAutoPO && autoPurchaseSuggestions.length > 0
                         ? { label: 'Generar orden de compra sugerida', onClick: () => setShowAutoPurchaseSidebar(true) }
@@ -764,42 +780,19 @@ export default function Inventory() {
             {/* Filters Row - Reservations Style Alignment */}
             <div className="inventory-filters-row">
                 <div className="inventory-status-filters">
-                    <button
-                        className={`inventory-status-btn ${filter === 'all' ? 'active' : ''}`}
-                        onClick={() => setFilter('all')}
-                    >
-                        Todos
-                    </button>
-                    <button
-                        className={`inventory-status-btn ingredient ${filter === 'INGREDIENT' ? 'active' : ''}`}
-                        onClick={() => setFilter('INGREDIENT')}
-                    >
-                        Ingredientes
-                    </button>
-                    <button
-                        className={`inventory-status-btn product ${filter === 'PRODUCT_FOR_SALE' ? 'active' : ''}`}
-                        onClick={() => setFilter('PRODUCT_FOR_SALE')}
-                    >
-                        Productos
-                    </button>
-                    <button
-                        className={`inventory-status-btn intermediate ${filter === 'INTERMEDIATE' ? 'active' : ''}`}
-                        onClick={() => setFilter('INTERMEDIATE')}
-                    >
-                        Intermedios
-                    </button>
-                    <button
-                        className={`inventory-status-btn packaging ${filter === 'PACKAGING' ? 'active' : ''}`}
-                        onClick={() => setFilter('PACKAGING')}
-                    >
-                        Empaques
-                    </button>
-                    <button
-                        className={`inventory-status-btn low ${filter === 'low' ? 'active' : ''}`}
-                        onClick={() => setFilter('low')}
-                    >
-                        Stock Bajo
-                    </button>
+                    <SegmentedControl
+                        ariaLabel="Filtrar por tipo"
+                        value={filter}
+                        onChange={setFilter}
+                        options={[
+                            { value: 'all', label: 'Todos' },
+                            { value: 'INGREDIENT', label: 'Ingredientes' },
+                            { value: 'PRODUCT_FOR_SALE', label: 'Productos' },
+                            { value: 'INTERMEDIATE', label: 'Intermedios' },
+                            { value: 'PACKAGING', label: 'Empaques' },
+                            { value: 'low', label: 'Stock bajo' },
+                        ]}
+                    />
 
                     <div style={{ width: '1px', height: '24px', background: 'var(--color-border)', margin: '0 8px' }} />
 
@@ -979,6 +972,7 @@ export default function Inventory() {
                         { key: 'sku', header: 'Código', width: 'minmax(5.5rem,.8fr)', render: (product) => product.sku || '-' },
                         { key: 'name', header: 'Producto', width: '2.4fr', render: (product) => product.name },
                         { key: 'category', header: 'Categoría', width: '1.2fr', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '-' },
+                        { key: 'warehouse', header: 'Bodega', width: '1.1fr', render: (product) => warehouseBreakdown.labelByProduct.get(product.id) ?? '-' },
                         { key: 'stock', header: 'Existencia', width: '1fr', type: 'qty', accessor: (product) => product.totalStock ?? 0 },
                         { key: 'unit', header: 'Unidad', width: '.6fr', render: (product) => product.baseUnit?.abbreviation || product.unit },
                         { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => effectiveUnitCost(product.currentAverageCost, product.cost) },
@@ -1678,11 +1672,11 @@ export default function Inventory() {
 </Field>
                                 </div>
 
-                                <div className="po-suggestion-toolbar">
-                                    <span className="po-suggestion-count">
+                                <div className={s.poSuggestionToolbar}>
+                                    <span className={s.poSuggestionCount}>
                                         {selectedSuggestions.length} seleccionados de {autoPurchaseSuggestions.length} sugerencias
                                     </span>
-                                    <div className="po-suggestion-toolbar-actions">
+                                    <div className={s.poSuggestionToolbarActions}>
                                         <Button type="button" variant="ghost" onClick={handleSelectUrgentSuggestions}>
                                             Seleccionar urgentes
                                         </Button>
@@ -1692,9 +1686,9 @@ export default function Inventory() {
                                     </div>
                                 </div>
 
-                                <div className="po-suggestion-list">
+                                <div className={s.poSuggestionList}>
                                     {autoPurchaseSuggestions.length === 0 ? (
-                                        <div className="po-suggestion-empty">
+                                        <div className={s.poSuggestionEmpty}>
                                             No hay productos con stock bajo para sugerir compra.
                                         </div>
                                     ) : (
@@ -1706,35 +1700,35 @@ export default function Inventory() {
                                             return (
                                                 <label
                                                     key={key}
-                                                    className={`po-suggestion-card${checked ? ' is-selected' : ''}${isUrgent ? ' is-urgent' : ''}`}
+                                                    className={`${s.poSuggestionCard}${checked ? ` ${s.isSelected}` : ''}${isUrgent ? ` ${s.isUrgent}` : ''}`}
                                                 >
                                                     <input
                                                         type="checkbox"
-                                                        className="po-suggestion-checkbox"
+                                                        className={s.poSuggestionCheckbox}
                                                         checked={checked}
                                                         onChange={() => handleToggleSuggestion(suggestion)}
                                                     />
-                                                    <div className="po-suggestion-body">
-                                                        <div className="po-suggestion-header">
-                                                            <span className="po-suggestion-name">{displayName}</span>
+                                                    <div className={s.poSuggestionBody}>
+                                                        <div className={s.poSuggestionHeader}>
+                                                            <span className={s.poSuggestionName}>{displayName}</span>
                                                             <span className={`po-priority-badge${isUrgent ? ' po-priority-badge--urgent' : ' po-priority-badge--normal'}`}>
                                                                 {isUrgent ? 'Urgente' : 'Normal'}
                                                             </span>
                                                         </div>
-                                                        <div className="po-suggestion-tags">
+                                                        <div className={s.poSuggestionTags}>
                                                             <span className="sku-tag">{suggestion.warehouseName}</span>
                                                         </div>
-                                                        <div className="po-suggestion-metrics">
+                                                        <div className={s.poSuggestionMetrics}>
                                                             <span><strong>Actual:</strong> {formatNumber(suggestion.currentStock || 0)}</span>
                                                             <span><strong>Mín:</strong> {formatNumber(suggestion.minStock || 0)}</span>
                                                             <span><strong>Sugerido:</strong> {formatNumber(suggestion.suggestedQuantity)}</span>
                                                         </div>
                                                     </div>
-                                                    <div className="po-suggestion-cost">
-                                                        <span className="po-suggestion-cost-value">
+                                                    <div className={s.poSuggestionCost}>
+                                                        <span className={s.poSuggestionCostValue}>
                                                             {formatCurrency(Number(suggestion.estimatedCost || 0), settings)}
                                                         </span>
-                                                        <span className="po-suggestion-cost-label">estimado</span>
+                                                        <span className={s.poSuggestionCostLabel}>estimado</span>
                                                     </div>
                                                 </label>
                                             );
