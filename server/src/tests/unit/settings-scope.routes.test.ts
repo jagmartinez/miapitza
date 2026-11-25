@@ -54,7 +54,9 @@ describe('SettingController scoped API', () => {
 
     it('403s a non company-wide user asking for another branch of the same company', async () => {
         jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 8 } as never);
-        const { next } = await call(SettingController.getResolved, makeReq({ query: { branchId: '8' } }));
+        // ADMIN es de alcance empresa desde main; un rol operativo sigue anclado a su sucursal.
+        const user = { userId: 9, companyId: 1, role: 'CAJERO', roles: ['CAJERO'], branchId: 3 };
+        const { next } = await call(SettingController.getResolved, makeReq({ user, query: { branchId: '8' } }));
         expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
     });
 
