@@ -68,6 +68,31 @@ describe('FullScreenModal', () => {
     expect(opener).toHaveFocus();
   });
 
+  it('dirty + Cerrar pide confirmación; Descartar cierra y devuelve el foco', async () => {
+    const onClose = vi.fn();
+    render(<Harness dirty onClose={onClose} />);
+    const opener = screen.getByRole('button', { name: 'Abrir' });
+    await userEvent.click(opener);
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(screen.getByText('¿Descartar cambios?')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Descartar' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(opener).toHaveFocus();
+  });
+
+  it('footer como función recibe requestClose y respeta dirty', async () => {
+    const onClose = vi.fn();
+    render(
+      <FullScreenModal isOpen dirty title="X" onClose={onClose} footer={({ requestClose }) => <button onClick={requestClose}>Cancelar pie</button>}>
+        <p>c</p>
+      </FullScreenModal>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar pie' }));
+    expect(screen.getByText('¿Descartar cambios?')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('flecha derecha cambia de pestaña', async () => {
     const onTabChange = vi.fn();
     render(<Harness onClose={() => {}} onTabChange={onTabChange} tabs={[{ id: 'primera', label: 'Primera' }, { id: 'siguiente', label: 'Siguiente' }]} />);

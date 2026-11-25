@@ -23,8 +23,9 @@ export interface FullScreenModalProps {
   activeTab?: string;
   onTabChange?(id: string): void;
   aside?: ReactNode;
-  footer?: ReactNode;
-  footerStart?: ReactNode;
+  /** Si es función recibe requestClose: un 'Cancelar' del pie debe usarlo para respetar `dirty`. */
+  footer?: ReactNode | ((api: { requestClose(): void }) => ReactNode);
+  footerStart?: ReactNode | ((api: { requestClose(): void }) => ReactNode);
   dirty?: boolean;
   dirtyMessage?: string;
   headerActions?: ReactNode;
@@ -115,8 +116,8 @@ export function FullScreenModal({
         </div>
         {footer || footerStart ? (
           <footer className="ui-fsm__footer">
-            <div className="ui-fsm__footer-start">{footerStart}</div>
-            <div className="ui-fsm__footer-end">{footer}</div>
+            <div className="ui-fsm__footer-start">{typeof footerStart === 'function' ? footerStart({ requestClose }) : footerStart}</div>
+            <div className="ui-fsm__footer-end">{typeof footer === 'function' ? footer({ requestClose }) : footer}</div>
           </footer>
         ) : null}
       </div>

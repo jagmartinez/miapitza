@@ -22,8 +22,6 @@ th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); tex
 .ui-row--danger { background: var(--ui-danger-soft); }
 .ui-table__empty { display: block !important; }
 .ui-table__empty td { display: block; }
-@media (max-width: 1023px) { .ui-hide-below-lg { display: none; } }
-@media (max-width: 767px) { .ui-hide-below-md { display: none; } }
 
 .ui-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); justify-content: space-between; font-size: 13px; color: var(--ui-text-muted); }
 .ui-pagination__pages { display: flex; align-items: center; gap: var(--ui-space-1); }

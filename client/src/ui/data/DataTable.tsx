@@ -1,4 +1,5 @@
-import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { coerceMoneyAmount } from '../../utils/currency';
 import { formatNumber, formatPercent } from '../format/number';
 import { Skeleton } from '../primitives/Skeleton';
 import type { Tone } from '../primitives/statusTone';
@@ -53,7 +54,30 @@ function formatCell<T>(c: Column<T>, row: T): ReactNode {
   const v = raw(c, row);
   if (c.type === 'percent') return formatPercent(v, c.decimals ?? 2);
   if (isNumeric(c)) return formatNumber(v, c.decimals ?? 2);
+  if (c.type === 'date') return formatDateCell(v);
   return v == null ? '' : String(v);
+}
+
+/** Date o ISO string a dd/mm/aaaa (es-NI); 'YYYY-MM-DD' se toma literal para no correrse por zona horaria. */
+function formatDateCell(v: unknown): string {
+  if (v == null || v === '') return '';
+  const iso = typeof v === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+  const d = iso ? new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])) : v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('es-NI');
+}
+
+function useMediaMatch(query: string): boolean {
+  const get = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
+  const [matches, setMatches] = useState(get);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [query]);
+  return matches;
 }
 
 function cellClass<T>(c: Column<T>): string {
@@ -61,16 +85,15 @@ function cellClass<T>(c: Column<T>): string {
     'ui-cell',
     isNumeric(c) ? 'ui-cell--numeric' : '',
     c.type === 'actions' ? 'ui-cell--actions' : '',
-    c.hideBelow ? `ui-hide-below-${c.hideBelow}` : '',
-  ]
+      ]
     .filter(Boolean)
     .join(' ');
 }
 
-const INTERACTIVE = 'button, a, input, label, [role=switch]';
+const INTERACTIVE = 'button, a, input, label, select, textarea, [role=switch], [role=checkbox], [role=button]';
 
 export function DataTable<T>({
-  columns,
+  columns: allColumns,
   rows,
   rowKey,
   ariaLabel,
@@ -86,6 +109,10 @@ export function DataTable<T>({
   rowTone,
   minWidth = '48rem',
 }: DataTableProps<T>) {
+  const belowLg = useMediaMatch('(max-width: 1023px)');
+  const belowMd = useMediaMatch('(max-width: 767px)');
+  // Se quitan las columnas ocultas (no solo display:none) para que el grid conserve sus pistas.
+  const columns = allColumns.filter((c) => !(c.hideBelow === 'lg' ? belowLg : c.hideBelow === 'md' ? belowMd : false));
   const local = useTablePagination(rows.length, { defaultPageSize, resetKey });
 
   const visible = pagination.mode === 'server' ? rows : rows.slice(local.range[0], local.range[1]);
@@ -175,7 +202,7 @@ export function DataTable<T>({
                   <td key={c.key} className={cellClass(c)}>
                     {c.total
                       ? formatNumber(
-                          visible.reduce((s, r) => s + (Number(raw(c, r)) || 0), 0),
+                          visible.reduce((s, r) => s + coerceMoneyAmount(raw(c, r)), 0),
                           c.decimals ?? 2,
                         )
                       : i === 0

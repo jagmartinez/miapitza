@@ -56,6 +56,22 @@ describe('DataTable', () => {
     expect(within(foot).getByText('Total página')).toBeInTheDocument();
   });
 
+  it('total: true normaliza strings con comas y Decimal', () => {
+    const c: Column<{ id: number; v: unknown }>[] = [{ key: 'v', header: 'V', type: 'money', total: true }];
+    const rows = [
+      { id: 1, v: '1,000.50' },
+      { id: 2, v: { toNumber: () => 2 } },
+    ];
+    render(<DataTable columns={c} rows={rows} rowKey={(r) => r.id} ariaLabel="T" />);
+    expect(within(screen.getAllByRole('rowgroup')[2]).getByText('1,002.50')).toBeInTheDocument();
+  });
+
+  it('columna date formatea ISO date-only sin correr el día', () => {
+    const c: Column<{ id: number; d: string }>[] = [{ key: 'd', header: 'F', type: 'date' }];
+    render(<DataTable columns={c} rows={[{ id: 1, d: '2026-03-05' }]} rowKey={(r) => r.id} ariaLabel="T" />);
+    expect(screen.getByText(new Date(2026, 2, 5).toLocaleDateString('es-NI'))).toBeInTheDocument();
+  });
+
   it('modo servidor: no recorta y "Página siguiente" llama onChange(2, 25)', async () => {
     const onChange = vi.fn();
     render(
