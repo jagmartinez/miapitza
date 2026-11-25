@@ -49,7 +49,9 @@
 .ui-pageheader__crumb { margin: 0 0 var(--ui-space-1); font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
 .ui-pageheader__title { margin: 0; font-size: var(--ui-text-2xl); font-weight: 700; color: var(--ui-text); }
 .ui-pageheader__desc { margin: var(--ui-space-1) 0 0; font-size: var(--ui-text-md); color: var(--ui-text-muted); }
-.ui-pageheader__actions { display: flex; gap: var(--ui-space-2); flex-wrap: wrap; }
+.ui-pageheader__actions { display: flex; gap: var(--ui-space-2); flex-wrap: wrap; min-width: 0; max-width: 100%; }
+/* Las páginas a veces agrupan sus acciones en un contenedor propio: también debe acomodarse en varias líneas. */
+.ui-pageheader__actions > * { flex-wrap: wrap; max-width: 100%; min-width: 0; }
 .ui-pagecontent { width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--ui-space-5); }
 
 .ui-statcard { display: flex; flex-direction: column; gap: var(--ui-space-1); padding: var(--ui-space-4); background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); }
