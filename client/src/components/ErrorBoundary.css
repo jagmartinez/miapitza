@@ -1,0 +1,9 @@
+.error-boundary {
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--ui-space-3); padding: var(--ui-space-6); text-align: center; min-width: 0;
+  background: var(--ui-bg); color: var(--ui-text); font-family: var(--ui-font-sans);
+}
+.error-boundary__icon { color: var(--ui-danger); }
+.error-boundary__title { margin: 0; font-size: var(--ui-text-2xl); }
+.error-boundary__text { margin: 0; max-width: 28rem; color: var(--ui-text-muted); }
+.error-boundary__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--ui-space-2); }

@@ -104,15 +104,13 @@ describe('operational UX contracts', () => {
 
     it('supports selecting several categories in sales reports end to end', () => {
         const source = read('./Reports.tsx');
-        const styles = read('./Reports.css');
 
-        expect(source).toContain('<Select<FilterOption, true>');
+        expect(source).toContain('kind="multi"');
         expect(source).toContain('categoryIds');
-        expect(source).toContain('closeMenuOnSelect={false}');
-        expect(source).toContain('CompactCategoryMultiValue');
-        expect(styles).toContain('.report-category-summary');
-        expect(styles).toContain('max-width: 1700px');
-        expect(styles).toContain('.reports-page > .reports-detail-page');
+        expect(source).toContain("filters.categoryIds.split(',')");
+        expect(source).toContain("set('categoryIds', ids.join(','))");
+        expect(source).toContain('hasMultiCategoryFilter(reportId)');
+        expect(source).toContain('<PageContent>');
     });
 
     it('uses the dedicated kitchen and explicit-warehouse delivery boundaries', () => {

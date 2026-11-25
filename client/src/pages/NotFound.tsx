@@ -1,20 +1,24 @@
 import { useNavigate } from 'react-router-dom';
 import { Home, SearchX } from 'lucide-react';
-import Button from '../components/Button';
+import { Button, EmptyState } from '@/ui';
 import './NotFound.css';
 
 export default function NotFound() {
     const navigate = useNavigate();
 
     return (
-        <div className="not-found-page">
-            <SearchX size={64} aria-hidden="true" />
-            <h1>Página no encontrada</h1>
-            <p>La ruta que buscas no existe o fue movida.</p>
-            <Button variant="primary" onClick={() => navigate('/dashboard')}>
-                <Home size={18} aria-hidden="true" />
-                Ir al inicio
-            </Button>
-        </div>
+        <main className="not-found-page">
+            <h1 className="sr-only">Página no encontrada</h1>
+            <EmptyState
+                icon={SearchX}
+                title="Página no encontrada"
+                description="La ruta que buscas no existe o fue movida."
+                action={
+                    <Button variant="primary" icon={Home} onClick={() => navigate('/dashboard')}>
+                        Ir al inicio
+                    </Button>
+                }
+            />
+        </main>
     );
 }

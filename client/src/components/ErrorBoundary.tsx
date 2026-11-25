@@ -1,4 +1,7 @@
 import { Component, ReactNode } from 'react';
+import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { Button } from '@/ui';
+import './ErrorBoundary.css';
 
 interface Props {
     children: ReactNode;
@@ -23,38 +26,18 @@ export class ErrorBoundary extends Component<Props, State> {
     render() {
         if (this.state.hasError) {
             return (
-                <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: '100vh',
-                    padding: '2rem',
-                    fontFamily: 'system-ui, sans-serif',
-                    textAlign: 'center',
-                    background: '#f8f9fa'
-                }}>
-                    <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: '#333' }}>
-                        Algo salió mal
-                    </h1>
-                    <p style={{ color: '#666', marginBottom: '1.5rem', maxWidth: '400px' }}>
+                <main className="error-boundary" role="alert">
+                    <AlertTriangle size={40} aria-hidden="true" className="error-boundary__icon" />
+                    <h1 className="error-boundary__title">Algo salió mal</h1>
+                    <p className="error-boundary__text">
                         Ha ocurrido un error inesperado. Por favor recarga la página.
                     </p>
-                    <button
-                        onClick={() => window.location.reload()}
-                        style={{
-                            padding: '0.75rem 1.5rem',
-                            background: '#2563eb',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontSize: '1rem'
-                        }}
-                    >
-                        Recargar página
-                    </button>
-                </div>
+                    <div className="error-boundary__actions">
+                        <Button variant="primary" icon={RefreshCw} onClick={() => window.location.reload()}>
+                            Recargar página
+                        </Button>
+                    </div>
+                </main>
             );
         }
         return this.props.children;
