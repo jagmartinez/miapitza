@@ -46,7 +46,7 @@ describe('table operational center contract', () => {
     it('renders editable persisted floor areas and table geometry', () => {
         expect(mapSource).toContain('plan.areas.map(normalizeArea)');
         expect(mapSource).toContain('Agregar salón');
-        expect(mapSource).toContain("mapShape: 'ROUND'");
+        expect(mapSource).toContain("value: 'ROUND'");
         expect(mapSource).toContain('Guardar plano');
         expect(tablesSource).toContain('tablesAPI.updateFloorPlan');
     });

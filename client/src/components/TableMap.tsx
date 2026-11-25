@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Armchair, CopyPlus, LayoutDashboard, Lock, Maximize2, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
-import { AppSelect, SegmentedControl, formatMoney } from '@/ui';
+import { AppSelect, Button, Field, Input, SegmentedControl, formatMoney } from '@/ui';
 import './TableMap.css';
+import styles from './TableMap.module.css';
 
 interface PositionedTable extends Table {
     mapX: number;
@@ -377,12 +378,12 @@ export default function TableMap({
                     {!editing && branchControl}
                     {!editing && themeControl}
                     {!editing && insights && (
-                        <button type="button" className={showInsights ? 'active' : ''} aria-expanded={showInsights} aria-controls="table-map-insights" onClick={() => setShowInsights((value) => !value)}>
+                        <Button variant={showInsights ? 'primary' : 'secondary'} className={styles.touch} aria-expanded={showInsights} aria-controls="table-map-insights" onClick={() => setShowInsights((value) => !value)}>
                             <LayoutDashboard size={18} /> Indicadores
-                        </button>
+                        </Button>
                     )}
-                    {!editing && onCreateTable && <button type="button" className="primary" onClick={onCreateTable}><Plus size={18} /> Nueva mesa</button>}
-                    {!editing && onReturnToAdministration && <button type="button" onClick={onReturnToAdministration}><LayoutDashboard size={18} /> Administración</button>}
+                    {!editing && onCreateTable && <Button variant="primary" className={styles.touch} onClick={onCreateTable}><Plus size={18} /> Nueva mesa</Button>}
+                    {!editing && onReturnToAdministration && <Button variant="secondary" className={styles.touch} onClick={onReturnToAdministration}><LayoutDashboard size={18} /> Administración</Button>}
                     {editing && (
                         <div className="table-map-area-selector">
                             <AppSelect<string>
@@ -395,12 +396,12 @@ export default function TableMap({
                         </div>
                     )}
                     <span className="table-map-action-divider" aria-hidden="true" />
-                    <button type="button" onClick={() => setZoom((value) => Math.max(0.45, value - 0.1))} aria-label="Alejar plano"><ZoomOut size={18} /></button>
+                    <Button variant="secondary" className={styles.touch} onClick={() => setZoom((value) => Math.max(0.45, value - 0.1))} aria-label="Alejar plano"><ZoomOut size={18} /></Button>
                     <output aria-label="Nivel de zoom">{Math.round(zoom * 100)}%</output>
-                    <button type="button" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} aria-label="Acercar plano"><ZoomIn size={18} /></button>
-                    {editing && <button type="button" onClick={addArea}><CopyPlus size={18} /> Agregar salón</button>}
-                    {canEdit && <button type="button" className={editing ? 'active' : ''} onClick={toggleEditing}>{editing ? <Unlock size={18} /> : <Lock size={18} />}{editing ? 'Salir' : 'Editar plano'}</button>}
-                    {editing && <button type="button" className="primary" disabled={saving || !dirty} onClick={() => void save()}><Save size={18} /> {saving ? 'Guardando…' : 'Guardar plano'}</button>}
+                    <Button variant="secondary" className={styles.touch} onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} aria-label="Acercar plano"><ZoomIn size={18} /></Button>
+                    {editing && <Button variant="secondary" className={styles.touch} onClick={addArea}><CopyPlus size={18} /> Agregar salón</Button>}
+                    {canEdit && <Button variant={editing ? 'primary' : 'secondary'} className={styles.touch} onClick={toggleEditing}>{editing ? <Unlock size={18} /> : <Lock size={18} />}{editing ? 'Salir' : 'Editar plano'}</Button>}
+                    {editing && <Button variant="primary" className={styles.touch} disabled={saving || !dirty} onClick={() => void save()}><Save size={18} /> {saving ? 'Guardando…' : 'Guardar plano'}</Button>}
                 </div>
             </div>
 
@@ -498,14 +499,23 @@ export default function TableMap({
                                         }}
                                     />
                                 </div>
-                                <div className="inspector-shapes"><button type="button" className={selectedTable.mapShape === 'RECTANGLE' ? 'active' : ''} onClick={() => patchTable({ mapShape: 'RECTANGLE' })}>Rectangular</button><button type="button" className={selectedTable.mapShape === 'SQUARE' ? 'active' : ''} onClick={() => { const size = Math.max(selectedTable.mapWidth, selectedTable.mapHeight); patchTable({ mapShape: 'SQUARE', mapWidth: size, mapHeight: size }); }}>Cuadrada</button><button type="button" className={selectedTable.mapShape === 'ROUND' ? 'active' : ''} onClick={() => { const size = Math.max(selectedTable.mapWidth, selectedTable.mapHeight); patchTable({ mapShape: 'ROUND', mapWidth: size, mapHeight: size }); }}>Redonda</button></div>
-                                <div className="inspector-grid"><label>Ancho<input type="number" min="56" max="400" value={selectedTable.mapWidth} onChange={(event) => patchTable({ mapWidth: Number(event.target.value) })} /></label><label>Alto<input type="number" min="56" max="400" value={selectedTable.mapHeight} onChange={(event) => patchTable({ mapHeight: Number(event.target.value) })} /></label></div>
+                                <SegmentedControl<'RECTANGLE' | 'SQUARE' | 'ROUND'>
+                                    ariaLabel="Forma de la mesa"
+                                    options={[{ value: 'RECTANGLE', label: 'Rectangular' }, { value: 'SQUARE', label: 'Cuadrada' }, { value: 'ROUND', label: 'Redonda' }]}
+                                    value={selectedTable.mapShape}
+                                    onChange={(shape) => {
+                                        if (shape === 'RECTANGLE') { patchTable({ mapShape: shape }); return; }
+                                        const size = Math.max(selectedTable.mapWidth, selectedTable.mapHeight);
+                                        patchTable({ mapShape: shape, mapWidth: size, mapHeight: size });
+                                    }}
+                                />
+                                <div className="inspector-grid"><Field label="Ancho" htmlFor="map-field-1"><Input id="map-field-1" type="number" min="56" max="400" value={selectedTable.mapWidth} onChange={(event) => patchTable({ mapWidth: Number(event.target.value) })} /></Field><Field label="Alto" htmlFor="map-field-2"><Input id="map-field-2" type="number" min="56" max="400" value={selectedTable.mapHeight} onChange={(event) => patchTable({ mapHeight: Number(event.target.value) })} /></Field></div>
                                 <label><span className="label-with-icon"><RotateCw size={15} /> Rotación</span><input type="range" min="0" max="359" value={selectedTable.mapRotation} onChange={(event) => patchTable({ mapRotation: Number(event.target.value) })} /><output>{selectedTable.mapRotation}°</output></label>
                             </>
                         ) : selectedArea ? (
                             <>
                                 <div className="inspector-heading"><Shapes size={20} /><div><strong>{selectedArea.name}</strong><span>Diseño del salón</span></div></div>
-                                <label>Nombre<input value={selectedArea.name} maxLength={100} onChange={(event) => patchArea({ name: event.target.value })} /></label>
+                                <Field label="Nombre" htmlFor="map-area-name"><Input id="map-area-name" value={selectedArea.name} maxLength={100} onChange={(event) => patchArea({ name: event.target.value })} /></Field>
                                 <div className="inspector-field">
                                     <label htmlFor="map-area-kind">Tipo</label>
                                     <AppSelect<FloorAreaKind>
@@ -527,14 +537,14 @@ export default function TableMap({
                                     />
                                 </div>
                                 <label>Color<input type="color" value={selectedArea.color || '#E4EEFF'} onChange={(event) => patchArea({ color: event.target.value })} /></label>
-                                <div className="inspector-grid"><label>Ancho<input type="number" min="160" max="10000" value={selectedArea.mapWidth} onChange={(event) => patchArea({ mapWidth: Number(event.target.value) })} /></label><label>Alto<input type="number" min="140" max="10000" value={selectedArea.mapHeight} onChange={(event) => patchArea({ mapHeight: Number(event.target.value) })} /></label></div>
+                                <div className="inspector-grid"><Field label="Ancho" htmlFor="map-field-3"><Input id="map-field-3" type="number" min="160" max="10000" value={selectedArea.mapWidth} onChange={(event) => patchArea({ mapWidth: Number(event.target.value) })} /></Field><Field label="Alto" htmlFor="map-field-4"><Input id="map-field-4" type="number" min="140" max="10000" value={selectedArea.mapHeight} onChange={(event) => patchArea({ mapHeight: Number(event.target.value) })} /></Field></div>
                                 <label><span className="label-with-icon"><RotateCw size={15} /> Rotación</span><input type="range" min="0" max="359" value={selectedArea.mapRotation} onChange={(event) => patchArea({ mapRotation: Number(event.target.value) })} /><output>{selectedArea.mapRotation}°</output></label>
-                                <button type="button" className="inspector-danger" disabled={areas.length === 1} onClick={removeSelectedArea}><Trash2 size={16} /> Eliminar salón</button>
+                                <Button variant="danger" className={styles.touch} disabled={areas.length === 1} onClick={removeSelectedArea}><Trash2 size={16} /> Eliminar salón</Button>
                             </>
                         ) : (
                             <>
                                 <div className="inspector-heading"><Maximize2 size={20} /><div><strong>Plano general</strong><span>Selecciona una mesa o salón</span></div></div>
-                                <div className="inspector-grid"><label>Ancho<input type="number" min="640" max="10000" value={canvasWidth} onChange={(event) => { setCanvasWidth(Number(event.target.value)); setDirty(true); }} /></label><label>Alto<input type="number" min="480" max="10000" value={canvasHeight} onChange={(event) => { setCanvasHeight(Number(event.target.value)); setDirty(true); }} /></label></div>
+                                <div className="inspector-grid"><Field label="Ancho" htmlFor="map-field-5"><Input id="map-field-5" type="number" min="640" max="10000" value={canvasWidth} onChange={(event) => { setCanvasWidth(Number(event.target.value)); setDirty(true); }} /></Field><Field label="Alto" htmlFor="map-field-6"><Input id="map-field-6" type="number" min="480" max="10000" value={canvasHeight} onChange={(event) => { setCanvasHeight(Number(event.target.value)); setDirty(true); }} /></Field></div>
                                 <div className="inspector-help">Arrastra los elementos para moverlos. Usa el control de la esquina inferior derecha para cambiar su tamaño.</div>
                             </>
                         )}
