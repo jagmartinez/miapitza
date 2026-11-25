@@ -44,12 +44,9 @@ describe('operational UX contracts', () => {
         expect(layoutSource).not.toContain("{ to: '/kardex'");
     });
 
-    it('centers KDS empty results and exposes Catering table and logistics modes', () => {
-        const kitchenStyles = read('./Kitchen.css');
+    it('exposes Catering table and logistics modes', () => {
         const cateringSource = read('./Catering.tsx');
 
-        expect(kitchenStyles).toContain('.kitchen-grid-new > .empty-state');
-        expect(kitchenStyles).toContain('grid-column: 1 / -1');
         expect(cateringSource).toContain("type CateringViewMode = 'grid' | 'table' | 'calendar'");
         expect(cateringSource).toContain("activeTab === 'logistics'");
         expect(cateringSource).toContain('<DataTable<CateringEvent>');

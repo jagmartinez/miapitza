@@ -1,10 +1,4 @@
-/* ProductUnitSettings — alineado al patrón entity-card / inventory */
 
-.puc-header-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
 
 .puc-intro {
     display: flex;

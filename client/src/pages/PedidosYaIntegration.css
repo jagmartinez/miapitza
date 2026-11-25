@@ -6,33 +6,6 @@
     margin: 0 auto;
 }
 
-/* Header */
-.pedidosya-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-xl);
-}
-
-.pedidosya-header h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    font-size: var(--font-size-3xl);
-    font-weight: 700;
-    color: var(--ui-text);
-    margin: 0 0 var(--spacing-xs) 0;
-}
-
-.pedidosya-subtitle {
-    font-size: var(--font-size-sm);
-    color: var(--ui-text-muted);
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-}
-
 .status-active {
     display: inline-flex;
     align-items: center;
@@ -268,58 +241,6 @@
     border-color: var(--ui-primary);
 }
 
-/* Tables */
-.mappings-table-container {
-    background: var(--ui-surface);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-}
-
-.mappings-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.mappings-table thead {
-    background: var(--ui-surface-2);
-}
-
-.mappings-table th {
-    padding: var(--spacing-sm) var(--spacing-md);
-    text-align: left;
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-    color: var(--ui-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--ui-border);
-}
-
-.mappings-table td {
-    padding: var(--spacing-sm) var(--spacing-md);
-    font-size: var(--font-size-sm);
-    color: var(--ui-text);
-    border-bottom: 1px solid var(--ui-border);
-    vertical-align: middle;
-}
-
-.mappings-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-.mappings-table tbody tr:hover {
-    background: var(--ui-surface-2);
-}
-
-.mappings-table code {
-    padding: 2px 6px;
-    background: var(--ui-surface-2);
-    border-radius: var(--radius-sm);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: var(--font-size-xs);
-}
-
 .mapped {
     color: var(--ui-success);
     font-weight: 500;
@@ -427,10 +348,6 @@
         padding: var(--spacing-md);
     }
 
-    .pedidosya-header h1 {
-        font-size: var(--font-size-2xl);
-    }
-
     .pedidosya-tabs {
         gap: var(--spacing-xs);
     }
@@ -459,10 +376,6 @@
 
     .search-container {
         max-width: 100%;
-    }
-
-    .mappings-table-container {
-        overflow-x: auto;
     }
 }
 

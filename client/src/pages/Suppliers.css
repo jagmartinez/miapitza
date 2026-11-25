@@ -6,14 +6,6 @@
     margin: 0 auto;
 }
 
-/* Header */
-.suppliers-header-new {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-xl);
-}
-
 .header-title-section h1 {
     display: flex;
     align-items: center;
@@ -168,32 +160,6 @@
     color: var(--ui-primary-fg);
 }
 
-/* Suppliers Grid / Card — base styles live in index.css under the unified
-   .entity-* system. Only supplier-specific overrides remain here. */
-
-/* Supply Type Badge */
-.supply-type-badge {
-    position: absolute;
-    top: 0;
-    right: 0;
-    padding: 6px 14px;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    border-radius: 0 0 0 5px;
-    z-index: 10;
-    color: var(--ui-primary-fg);
-    line-height: 1;
-    display: inline-block;
-    background: var(--ui-primary);
-}
-
-.dark .supply-type-badge {
-    background: var(--ui-primary-hover);
-    /* Blue 700 */
-}
-
 /* Card Body — base in index.css. Supplier-specific tweaks only. */
 .supplier-card-body-new {
     padding-top: var(--spacing-xl);
@@ -284,169 +250,6 @@
     /* .action-btn-new span responsive hide handled in index.css */
 }
 
-/* ===== REDESIGNED SUPPLIER MODAL (SIDEBAR) ===== */
-
-.supplier-modal-content {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-
-/* Tabs Navigation */
-.supplier-tabs {
-    display: flex;
-    padding: var(--spacing-md) var(--spacing-xl);
-    background: var(--ui-bg);
-    border-bottom: 2px solid var(--ui-border);
-    gap: var(--spacing-sm);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.supplier-tab {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding: 8px 16px;
-    border: 2px solid var(--ui-border);
-    background: var(--ui-surface);
-    color: var(--ui-text-muted);
-    font-weight: 600;
-    font-size: var(--font-size-sm);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.supplier-tab:hover {
-    background: var(--ui-surface-2);
-    border-color: var(--ui-primary);
-}
-
-.dark .supplier-tab:hover {
-    background: var(--ui-text);
-}
-
-.supplier-tab.active {
-    background: var(--ui-primary);
-    color: var(--ui-primary-fg);
-    border-color: var(--ui-primary);
-    box-shadow: var(--shadow-sm);
-}
-
-.supplier-tab svg {
-    opacity: 0.7;
-}
-
-.supplier-tab.active svg {
-    opacity: 1;
-}
-
-/* Form Layout */
-.supplier-form-new {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    overflow: hidden;
-}
-
-.tab-content-container {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--spacing-xl);
-    background: var(--ui-surface);
-}
-
-.form-section-new {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-lg);
-}
-
-.section-header-new {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding-bottom: var(--spacing-sm);
-    border-bottom: 1px solid var(--ui-border);
-    margin-bottom: var(--spacing-sm);
-}
-
-.section-header-new h3 {
-    font-size: var(--font-size-md);
-    font-weight: 700;
-    color: var(--ui-text);
-    margin: 0;
-}
-
-.section-header-new svg {
-    color: var(--ui-primary);
-}
-
-.form-row-new {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--spacing-lg);
-}
-
-/* Custom Inputs & Components */
-.input-group-new {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-}
-
-.input-label-new {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--ui-text-muted);
-    letter-spacing: 0.5px;
-}
-
-.standard-input-new {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--ui-border);
-    border-radius: 6px;
-    font-size: 14px;
-    color: var(--ui-text);
-    background: var(--ui-bg);
-    transition: all var(--transition-fast);
-    box-sizing: border-box;
-}
-
-.standard-input-new:focus {
-    outline: none;
-    border-color: var(--ui-primary);
-    background: var(--ui-surface);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 10%, transparent);
-}
-
-.textarea-new {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--ui-border);
-    border-radius: 6px;
-    font-size: 14px;
-    color: var(--ui-text);
-    background: var(--ui-bg);
-    transition: all var(--transition-fast);
-    resize: none;
-    box-sizing: border-box;
-}
-
-.textarea-new:focus {
-    outline: none;
-    border-color: var(--ui-primary);
-    background: var(--ui-surface);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 10%, transparent);
-}
-
 /* Supply Type Chips */
 .supply-type-chips {
     display: flex;
@@ -478,19 +281,6 @@
     color: var(--ui-primary-fg);
 }
 
-/* Form Footer */
-.form-footer-new {
-    padding: var(--spacing-lg) var(--spacing-xl);
-    background: var(--ui-bg);
-    border-top: 2px solid var(--ui-border);
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--spacing-md);
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-}
-
 /* Animations */
 .animate-slide-in {
     animation: slideIn 0.3s ease-out;
@@ -505,27 +295,6 @@
     to {
         opacity: 1;
         transform: translateY(0);
-    }
-}
-
-/* Responsive */
-@media (max-width: 480px) {
-    .supplier-tabs {
-        padding: var(--spacing-md);
-        gap: var(--spacing-xs);
-    }
-
-    .supplier-tab {
-        padding: 6px 10px;
-        font-size: 12px;
-    }
-
-    .supplier-tab span {
-        display: none;
-    }
-
-    .form-row-new {
-        grid-template-columns: 1fr;
     }
 }
 

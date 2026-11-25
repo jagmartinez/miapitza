@@ -40,13 +40,14 @@ export default tseslint.config(
     ignores: ['src/ui/**'],
     rules: {
       'no-restricted-imports': [
-        'warn',
+        'error',
         {
           paths: [
             {
               name: 'react-select',
               message: 'Usa AppSelect de @/ui en lugar de importar react-select directamente.',
             },
+            { name: 'recharts', message: 'recharts se eliminó: usa los gráficos de @/ui/charts.' },
           ],
           patterns: [
             {
@@ -54,8 +55,16 @@ export default tseslint.config(
               message: 'Usa AppSelect de @/ui en lugar de importar react-select directamente.',
             },
             {
-              group: ['**/components/Modal', '**/components/Sidebar', '**/components/CatalogTable'],
-              message: 'Componentes heredados: usa FullScreenModal, Drawer o DataTable de @/ui en archivos nuevos.',
+              group: [
+                '**/components/Modal', '**/components/Sidebar', '**/components/CatalogTable', '**/components/Select',
+                '**/components/Pagination', '**/components/Card', '**/components/Button', '**/components/Input',
+                '**/utils/reactSelectTheme', '**/components/hr/HrReactSelect', '**/pages/Settings',
+              ],
+              message: 'Componente heredado eliminado: usa el design system de @/ui (FullScreenModal, Drawer, DataTable, Button, Input, AppSelect).',
+            },
+            {
+              group: ['recharts', 'recharts/*'],
+              message: 'recharts se eliminó: usa los gráficos de @/ui/charts.',
             },
           ],
         },

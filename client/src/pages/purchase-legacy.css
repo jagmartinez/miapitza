@@ -1,18 +1,4 @@
-/* Reglas heredadas que aún usan ProductionOrders y CateringServices; se eliminan con su migración (Plan 05). */
-/* Form Styles */
-.form-grid-modern {
-    display: grid;
-    gap: var(--spacing-lg);
-}
 
-.form-grid-modern .full-width {
-    grid-column: 1 / -1;
-}
-
-/* Custom alignment for buttons in the sidebar */
-.save-btn-premium {
-    gap: var(--spacing-sm);
-}
 
 .action-btn-mini {
     padding: 8px;

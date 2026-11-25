@@ -220,12 +220,7 @@
 .table-map-inspector input[type='range'] { width: 100%; accent-color: var(--ui-primary); }
 .table-map-inspector output { color: var(--ui-text); font-weight: 800; }
 .inspector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.inspector-shapes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.inspector-shapes button { min-height: 42px; padding: 5px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface-2); color: var(--ui-text-muted); font-size: 10px; font-weight: 750; cursor: pointer; }
-.inspector-shapes button.active { border-color: var(--ui-primary); color: var(--ui-primary); background: color-mix(in srgb, var(--ui-primary) 9%, var(--ui-surface)); }
 .label-with-icon { display: inline-flex; align-items: center; gap: 5px; }
-.inspector-danger { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--ui-danger) 45%, var(--ui-border)); border-radius: var(--ui-radius-sm); color: var(--ui-danger); background: color-mix(in srgb, var(--ui-danger) 7%, var(--ui-surface)); cursor: pointer; }
-.inspector-danger:disabled { opacity: .45; cursor: not-allowed; }
 .inspector-help { padding: 12px; border-radius: var(--ui-radius-sm); color: var(--ui-text-muted); background: var(--ui-surface-2); border: 1px solid var(--ui-border); font-size: var(--ui-text-xs); line-height: 1.5; }
 
 .table-map-viewport,

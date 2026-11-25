@@ -206,10 +206,6 @@ a {
   font-size: var(--font-size-lg);
 }
 
-.font-medium {
-  font-weight: 500;
-}
-
 .font-semibold {
   font-weight: 600;
 }
@@ -218,56 +214,8 @@ a {
   font-weight: 700;
 }
 
-.mt-auto {
-  margin-top: auto;
-}
-
-.mr-auto {
-  margin-right: auto;
-}
-
-.mb-auto {
-  margin-bottom: auto;
-}
-
-.ml-auto {
-  margin-left: auto;
-}
-
 .flex {
   display: flex;
-}
-
-.flex-col {
-  flex-direction: column;
-}
-
-.items-center {
-  align-items: center;
-}
-
-.justify-center {
-  justify-content: center;
-}
-
-.justify-between {
-  justify-content: space-between;
-}
-
-.gap-sm {
-  gap: var(--spacing-sm);
-}
-
-.gap-md {
-  gap: var(--spacing-md);
-}
-
-.gap-lg {
-  gap: var(--spacing-lg);
-}
-
-.gap-xl {
-  gap: var(--spacing-xl);
 }
 
 /* ===== PREMIUM MODAL SYSTEM (GENERALIZED) ===== */
@@ -519,50 +467,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   box-shadow: 0 0 0 3px var(--dialog-focus-ring);
 }
 
-/* Chips */
-.modal-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-xs);
-}
-
-.modal-chip {
-  padding: 6px 12px;
-  background: var(--ui-bg);
-  border: 1px solid var(--ui-border);
-  border-radius: 20px;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--ui-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.modal-chip:hover {
-  background: var(--ui-surface);
-  color: var(--ui-text);
-}
-
-.modal-chip.active {
-  background: var(--dialog-accent);
-  border-color: var(--dialog-accent);
-  color: white;
-}
-
-/* Dialog actions use a quieter steel-blue accent. PaymentModal is standalone. */
-.modal-container .btn-primary,
-.modal-sidebar .btn-primary,
-.sidebar-panel .btn-primary {
-  background-color: var(--dialog-accent);
-}
-
-.modal-container .btn-primary:hover:not(:disabled),
-.modal-sidebar .btn-primary:hover:not(:disabled),
-.sidebar-panel .btn-primary:hover:not(:disabled) {
-  background-color: var(--dialog-accent-hover);
-}
-
 /* Form Footer */
 .modal-footer {
   padding: var(--spacing-lg) var(--spacing-xl);
@@ -683,12 +587,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   flex-shrink: 0;
 }
 
-/* Compact selects used as header actions align with adjacent buttons. */
-.page-header-actions .report-view-select {
-  width: 240px;
-  min-width: 220px;
-}
-
 /* Back navigation button (e.g. "Volver a Reportería") */
 .back-link-btn {
   display: inline-flex;
@@ -736,16 +634,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 
 .filter-field.filter-field-wide {
   flex: 1 1 260px;
-  min-width: 240px;
-}
-
-.filter-field.filter-field-narrow {
-  flex: 0 1 140px;
-  min-width: 120px;
-}
-
-.filter-field.filter-field-category {
-  flex-basis: 250px;
   min-width: 240px;
 }
 
@@ -1008,10 +896,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   color: var(--ui-text);
 }
 
-.data-table-scroll {
-  overflow-x: auto;
-}
-
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -1058,90 +942,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .data-table tbody td.text-center { text-align: center; }
 .data-table tbody td.text-secondary { color: var(--ui-text-muted); }
 .data-table tbody td.font-semibold { font-weight: 600; }
-
-.data-table-empty {
-  padding: var(--spacing-3xl) var(--spacing-lg) !important;
-  text-align: center;
-  color: var(--ui-text-muted);
-}
-
-/* ===== UNIFIED TABLE PAGINATION ===== */
-.table-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 16px 12px;
-  border-top: 1px solid var(--ui-border);
-  background: transparent;
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
-  font-size: var(--font-size-sm);
-  color: var(--ui-text-muted);
-}
-
-.table-pagination .pagination-info {
-  font-weight: 500;
-  color: var(--ui-text-muted);
-}
-
-.table-pagination .pagination-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  border: none;
-}
-
-.table-pagination .pagination-page {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--ui-text);
-  min-width: 44px;
-  text-align: center;
-  padding: 0 2px;
-}
-
-.table-pagination .pagination-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--ui-border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ui-text-muted);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.table-pagination .pagination-btn:hover:not(:disabled) {
-  color: var(--ui-primary);
-  border-color: var(--ui-primary);
-}
-
-.table-pagination .pagination-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-/* Legacy alias — same layout as .table-pagination */
-.pagination-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 16px 12px;
-  border-top: 1px solid var(--ui-border);
-  background: transparent;
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
-  font-size: var(--font-size-sm);
-  color: var(--ui-text-muted);
-}
 
 .pagination-info .total-records {
   margin-left: var(--spacing-xs);
@@ -1558,54 +1358,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   .users-grid {
     grid-template-columns: 1fr;
   }
-}
-
-/* Report status badges (Inventory import validation) */
-.report-status-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-}
-.report-status-badge.status-ok { background: color-mix(in srgb, var(--ui-success) 15%, transparent); color: var(--ui-success); }
-.report-status-badge.status-critical { background: color-mix(in srgb, var(--ui-danger) 15%, transparent); color: var(--ui-danger); }
-.report-status-badge.status-default { background: var(--ui-surface-2); color: var(--ui-text-muted); }
-.dark .report-status-badge.status-default { background: var(--ui-text); }
-
-/* Mobile nav drawer (Layout) */
-.mobile-nav-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1040;
-}
-.mobile-nav-drawer {
-  position: fixed; bottom: 0; left: 0; right: 0; max-height: 85vh;
-  background: var(--ui-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  z-index: 1041; overflow-y: auto; padding: var(--spacing-lg);
-  box-shadow: var(--shadow-xl);
-}
-.mobile-nav-drawer-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: var(--spacing-md); padding-bottom: var(--spacing-md);
-  border-bottom: 1px solid var(--ui-border);
-}
-.mobile-nav-drawer-header h2 { margin: 0; font-size: var(--font-size-lg); }
-.mobile-nav-section-title {
-  font-size: var(--font-size-xs); font-weight: 700; text-transform: uppercase;
-  color: var(--ui-text-muted); margin: var(--spacing-md) 0 var(--spacing-sm);
-}
-.mobile-nav-item {
-  display: flex; align-items: center; gap: var(--spacing-md);
-  padding: var(--spacing-md); border-radius: var(--radius-md);
-  color: var(--ui-text); text-decoration: none; font-weight: 500;
-}
-.mobile-nav-item:hover, .mobile-nav-item.active {
-  background: var(--ui-primary-soft); color: var(--ui-primary);
-}
-.mobile-nav-controls {
-  display: flex; align-items: center; gap: var(--spacing-md);
-  padding: var(--spacing-md) 0; border-bottom: 1px solid var(--ui-border);
-  margin-bottom: var(--spacing-md);
 }
 
 .sr-only {

@@ -294,18 +294,8 @@
         white-space: nowrap;
         border-left-width: 2px;
     }
-  .calendar-day .calendar-reservation-item .calendar-res-name, .calendar-day .calendar-reservation-item .calendar-res-time, .calendar-day .calendar-reservation-item .calendar-res-icon {
-        font-size: 9px;
-    }
-  .reservation-card-header {
-        flex-direction: column;
-        gap: var(--spacing-sm);
-    }
   .guest-badge {
         align-self: flex-start;
-    }
-  .reservation-card-footer {
-        flex-wrap: wrap;
     }
   .action-btn {
         flex: 1 1 40%;

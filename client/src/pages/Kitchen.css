@@ -8,102 +8,10 @@
     min-height: 100vh;
 }
 
-/* Header */
-.kitchen-header-new {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-xl);
-    border-radius: var(--radius-lg);
-}
-
-.header-left-kitchen h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    font-size: var(--font-size-3xl);
-    font-weight: 700;
-    color: var(--ui-text);
-    margin: 0 0 var(--spacing-xs) 0;
-}
-
-.kitchen-subtitle-new {
-    font-size: var(--font-size-sm);
-    color: var(--ui-text-muted);
-    margin: 0;
-}
-
 .kitchen-controls {
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
-}
-
-.sound-toggle-new {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--radius-md);
-    border: 2px solid var(--ui-border);
-    background: var(--ui-surface);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    font-size: var(--font-size-sm);
-}
-
-.sound-toggle-new.enabled {
-    background: var(--ui-success);
-    border-color: var(--ui-success);
-    color: white;
-}
-
-.sound-toggle-new:hover {
-    transform: translateY(-1px);
-}
-
-.stat-badge-new {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-sm) var(--spacing-md);
-    background: var(--ui-bg);
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
-    color: var(--ui-text-muted);
-}
-
-/* Filters */
-.kitchen-filters-new {
-    display: flex;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
-    overflow-x: auto;
-    padding: var(--spacing-xs);
-}
-
-.station-filter-new {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-sm) var(--spacing-md);
-    background: var(--ui-surface);
-    border: 2px solid var(--ui-border);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    font-size: var(--font-size-sm);
-    white-space: nowrap;
-}
-
-.station-filter-new:hover {
-    border-color: var(--ui-primary);
-}
-
-.station-filter-new.active {
-    background: var(--ui-primary);
-    border-color: var(--ui-primary);
-    color: white;
 }
 
 /* Filters Row */
@@ -213,21 +121,6 @@
 
 .filter-input::placeholder {
     color: var(--ui-text-muted);
-}
-
-/* Kitchen Grid */
-.kitchen-grid-new {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--spacing-lg);
-}
-
-.kitchen-grid-new > .empty-state {
-    grid-column: 1 / -1;
-    width: 100%;
-    min-height: clamp(320px, calc(100dvh - 330px), 620px);
-    padding-inline: var(--spacing-lg);
-    box-sizing: border-box;
 }
 
 /* Kitchen Card */
@@ -498,30 +391,6 @@
 .kitchen-detail-wait.status-ready strong { color: var(--ui-primary); }
 .kitchen-detail-wait small { color: var(--ui-text-muted); font-weight: 650; }
 
-.kitchen-detail-status {
-    padding: 5px 12px;
-    border-radius: var(--radius-md);
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--ui-primary-fg);
-}
-
-.kitchen-detail-status.status-normal { background: var(--ui-success); }
-.kitchen-detail-status.status-warning { background: var(--ui-warning); }
-.kitchen-detail-status.status-urgent { background: var(--ui-danger); }
-.kitchen-detail-status.status-ready { background: var(--ui-primary); }
-
-.kitchen-detail-section-title {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--ui-text);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin: 0;
-}
-
 .kitchen-detail-modal .kitchen-timeline-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -581,21 +450,6 @@
     .kitchen-items-list-modal {
         max-height: none;
     }
-}
-
-.kitchen-detail-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--spacing-sm);
-    padding-top: var(--spacing-sm);
-    border-top: 1px solid var(--ui-border);
-    flex-wrap: wrap;
-}
-
-.kitchen-detail-actions .ui-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
 }
 
 .ui-button.btn-danger-ghost {
@@ -671,13 +525,6 @@
     color: var(--ui-text-muted);
     font-size: 0.75rem;
     margin-top: 2px;
-}
-
-.item-prep-time {
-    font-size: 0.7rem;
-    color: var(--ui-warning, var(--ui-warning));
-    font-weight: 600;
-    white-space: nowrap;
 }
 
 .item-action-btn {
@@ -761,32 +608,6 @@
     font-size: 13px;
 }
 
-/* No Orders */
-.no-orders-new {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: var(--spacing-3xl);
-    text-align: center;
-    color: var(--ui-text-muted);
-}
-
-.no-orders-new svg {
-    margin-bottom: var(--spacing-lg);
-    opacity: 0.5;
-}
-
-.no-orders-new p {
-    font-size: var(--font-size-lg);
-    margin-bottom: var(--spacing-xs);
-}
-
-.no-orders-new small {
-    font-size: var(--font-size-sm);
-}
-
 /* Loading */
 .kitchen-loading {
     display: flex;
@@ -808,32 +629,9 @@
 .kitchen-items-list::-webkit-scrollbar-thumb { background: var(--ui-border); border-radius: 3px; }
 .kitchen-items-list::-webkit-scrollbar-thumb:hover { background: var(--ui-text-muted); }
 
-/* Responsive */
-@media (max-width: 1024px) {
-    .kitchen-grid-new {
-        grid-template-columns: 1fr 1fr;
-    }
-}
-
 @media (max-width: 768px) {
     .kitchen-page-new {
         padding: var(--spacing-md);
-    }
-
-    .kitchen-grid-new {
-        grid-template-columns: 1fr;
-        gap: var(--spacing-md);
-    }
-
-    .kitchen-header-new {
-        flex-direction: column;
-        gap: var(--spacing-sm);
-        align-items: stretch;
-        margin-bottom: var(--spacing-md);
-    }
-
-    .header-left-kitchen h1 {
-        font-size: var(--font-size-2xl);
     }
 
     .kitchen-controls {
@@ -841,25 +639,6 @@
         justify-content: flex-start;
         flex-wrap: wrap;
         gap: var(--spacing-sm);
-    }
-
-    .sound-toggle-new,
-    .stat-badge-new {
-        padding: var(--spacing-xs) var(--spacing-sm);
-        font-size: var(--font-size-xs);
-    }
-
-    /* Filters scroll horizontally using the same subtle scrollbar as navigation. */
-    .kitchen-filters-new {
-        overflow-x: auto;
-        overflow-y: hidden;
-        flex-wrap: nowrap;
-        scrollbar-width: thin;
-        scrollbar-color: var(--ui-border) transparent;
-        -webkit-overflow-scrolling: touch;
-        padding: var(--spacing-xs) var(--spacing-sm);
-        gap: var(--spacing-xs);
-        margin: 0 0 var(--spacing-sm);
     }
 
     .kitchen-filters-new::-webkit-scrollbar,
@@ -967,30 +746,11 @@
         padding: var(--spacing-sm);
     }
 
-    .header-left-kitchen h1 {
-        font-size: var(--font-size-xl);
-    }
-
     .station-filter-new,
     .status-filter-btn-new {
         padding: 6px 12px;
         font-size: 11px;
     }
-}
-
-/* Problem Modal */
-.modal-overlay-problem {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--ui-overlay);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
 }
 
 .problem-modal {
@@ -1082,17 +842,7 @@
     padding: 14px 18px;
 }
 
-.kitchen-display-mode .kitchen-header-new {
-    position: sticky;
-    top: -14px;
-    z-index: 20;
-    padding: 12px 0;
-    background: color-mix(in srgb, var(--ui-bg) 94%, transparent);
-    backdrop-filter: blur(12px);
-}
-
 .kitchen-display-mode .filters-row { margin-bottom: var(--spacing-md); }
-.kitchen-display-mode .kitchen-grid-new { grid-template-columns: repeat(auto-fill, minmax(390px, 1fr)); gap: 14px; }
 .kitchen-display-mode .kitchen-card-new { min-height: 430px !important; }
 .kitchen-display-mode .kitchen-card-body-new { justify-content: flex-start; }
 .kitchen-load-error {
@@ -1132,13 +882,6 @@ button.kitchen-card-body-new {
 button.kitchen-card-body-new:focus-visible {
     outline: 3px solid var(--ui-primary);
     outline-offset: -3px;
-}
-
-/* Touch-first KDS interaction layer. State is also written in badge text, so
-   these surfaces do not rely on color alone. */
-.kitchen-grid-new {
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    align-items: stretch;
 }
 
 .kitchen-card-new {
@@ -1183,7 +926,6 @@ button.kitchen-card-body-new:focus-visible {
 }
 
 @media (max-width: 768px) {
-    .kitchen-grid-new { grid-template-columns: 1fr; }
     .kitchen-controls { display: flex !important; }
     .kitchen-card-new { min-height: 300px !important; }
 }

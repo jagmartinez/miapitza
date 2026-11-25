@@ -351,31 +351,7 @@
     grid-column: span 2;
 }
 
-.category-filter-select {
-    padding: 6px 12px;
-    border-radius: 8px;
-    background: var(--ui-bg);
-    border: 1px solid var(--ui-border);
-    color: var(--ui-text-muted);
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.category-filter-select:hover {
-    border-color: var(--ui-primary);
-    color: var(--ui-text);
-}
-
-.category-filter-select:focus {
-    outline: none;
-    border-color: var(--ui-primary);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-primary) 10%, transparent);
-}
-
 /* Custom Treemap Label Style */
-
 
 /* Scatter Sections */
 .scatter-section-large {
@@ -767,7 +743,6 @@
     color: var(--ui-success);
 }
 
-
 /* Responsive */
 @media (max-width: 1400px) {
     .bento-grid {
@@ -1101,11 +1076,6 @@
 }
 
 .detail-value.font-bold {
-    font-weight: 700;
-}
-
-.detail-value.text-success {
-    color: var(--ui-success);
     font-weight: 700;
 }
 

@@ -28,12 +28,6 @@
     border-radius: 0;
 }
 
-.table-map-utility-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-}
-
 .tables-page--list {
     box-sizing: border-box;
     min-width: 0;

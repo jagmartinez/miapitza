@@ -4,37 +4,6 @@
     margin: 0 auto;
 }
 
-.units-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-xl);
-    gap: var(--spacing-md);
-    flex-wrap: wrap;
-}
-
-.units-header h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    font-size: var(--font-size-3xl);
-    font-weight: 700;
-    color: var(--ui-text);
-    margin: 0;
-}
-
-.units-subtitle {
-    font-size: var(--font-size-sm);
-    color: var(--ui-text-muted);
-    margin: var(--spacing-xs) 0 0;
-}
-
-.units-header-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
 .units-filters-row {
     display: flex;
     justify-content: space-between;

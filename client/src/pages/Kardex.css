@@ -5,30 +5,6 @@
     color: var(--ui-text);
 }
 
-/* Header */
-.kardex-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-xl);
-}
-
-.kardex-header h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--ui-text);
-    margin: 0;
-}
-
-.kardex-header .header-subtitle {
-    color: var(--ui-text-muted);
-    font-size: 14px;
-    margin-top: var(--spacing-xs);
-}
-
 /* Back Button */
 .kardex-back-button {
     display: inline-flex;
@@ -338,21 +314,6 @@
     }
 }
 
-/* Pagination */
-.kardex-pagination {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-lg);
-    padding: var(--spacing-md);
-    background: var(--ui-surface);
-    border: 1px solid var(--ui-border);
-    border-top: none;
-    border-bottom-left-radius: var(--radius-lg);
-    border-bottom-right-radius: var(--radius-lg);
-    margin-top: -1px;
-}
-
 .pagination-info {
     font-size: 0.9rem;
     color: var(--ui-text-muted);
@@ -363,12 +324,4 @@
     margin-left: var(--spacing-xs);
     font-size: 0.8rem;
     opacity: 0.7;
-}
-
-@media (max-width: 768px) {
-    .kardex-pagination {
-        flex-direction: column;
-        gap: var(--spacing-sm);
-        padding: var(--spacing-lg) var(--spacing-md);
-    }
 }

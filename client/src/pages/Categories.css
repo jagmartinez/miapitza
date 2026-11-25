@@ -6,31 +6,6 @@
     margin: 0 auto;
 }
 
-/* Header */
-.categories-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-xl);
-}
-
-.categories-header h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    font-size: var(--font-size-3xl);
-    font-weight: 700;
-    color: var(--ui-text);
-    margin: 0;
-    line-height: 1.2;
-}
-
-.categories-subtitle {
-    font-size: var(--font-size-sm);
-    color: var(--ui-text-muted);
-    margin: 0;
-}
-
 /* Grid / Card — base styles in index.css under the unified .entity-* system.
    Page-specific overrides only. */
 .categories-grid-new {

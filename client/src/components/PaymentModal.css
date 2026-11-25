@@ -571,10 +571,6 @@
     scrollbar-color: var(--ui-border, var(--ui-text-muted)) transparent;
 }
 
-.unit-allocation-header {
-    margin-bottom: 12px;
-}
-
 .unit-row {
     padding: 12px 0;
     border-top: 1px solid var(--payment-line);

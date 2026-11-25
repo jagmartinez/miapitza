@@ -37,12 +37,6 @@
   --hr-panel-muted: color-mix(in srgb, var(--ui-surface-2) 94%, var(--ui-primary) 6%);
 }
 
-/* RH side panels follow the same visual grammar as Nueva Reservación. */
-.page-wrapper[class*='hr-'] .sidebar-panel {
-  --hr-modal-control-height: 42px;
-  background: var(--ui-surface);
-}
-
 /* Sidebar already owns the content inset; legacy RH wrappers must not add a second gutter. */
 
 .page-wrapper[class*='hr-'] .sidebar-panel :is(
@@ -59,10 +53,6 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.page-wrapper[class*='hr-'] .sidebar-panel .premium-modal-content {
-  background: color-mix(in srgb, var(--ui-surface) 95%, var(--ui-surface-2) 5%);
 }
 
 @media (max-width: 768px) {
