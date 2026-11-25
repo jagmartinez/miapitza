@@ -67,7 +67,7 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     D({ key: 'cash.openingFloat', type: 'number', default: '2000', group: 'operacion', section: 'caja', label: 'Fondo inicial de caja', description: 'Efectivo con el que abre cada turno.', min: 0, prefix: 'C$', branchable: true }),
     D({ key: 'cash.forcedDropAbove', type: 'number', default: '30000', group: 'operacion', section: 'caja', label: 'Retiro forzado desde', description: 'Efectivo en caja que obliga a hacer un retiro.', min: 0, prefix: 'C$', branchable: true }),
     D({ key: 'cash.closeWithDifferenceNeedsSupervisor', type: 'boolean', default: 'true', group: 'operacion', section: 'caja', label: 'Cierre con diferencia requiere supervisor', description: 'Exige autorización si el arqueo no cuadra.' }),
-    D({ key: 'cash_reconciliation_tolerance', type: 'number', default: '1', group: 'operacion', section: 'caja', label: 'Tolerancia de arqueo', description: 'Diferencia aceptada sin autorización.', min: 0, prefix: 'C$' }),
+    D({ key: 'cash_reconciliation_tolerance', type: 'number', default: '1', group: 'operacion', section: 'caja', label: 'Tolerancia de arqueo', description: 'Diferencia aceptada sin autorización.', min: 0, prefix: 'C$', branchable: true }),
     // Inventario
     D({ key: 'inventory.sellWithoutStock', type: 'enum', default: 'warn', group: 'operacion', section: 'inventario', label: 'Venta sin existencias', description: 'Qué hace el POS cuando no hay stock.', options: [{ value: 'block', label: 'Bloquear' }, { value: 'warn', label: 'Advertir' }, { value: 'allow', label: 'Permitir' }] }),
     D({ key: 'inventory.wasteTolerancePct', type: 'number', default: '3', group: 'operacion', section: 'inventario', label: 'Tolerancia de merma', description: 'Merma aceptada antes de alertar.', min: 0, max: 100, suffix: '%', branchable: true }),
@@ -75,8 +75,8 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     // Cocina
     D({ key: 'kitchen.targetMinutes', type: 'integer', default: '15', group: 'operacion', section: 'cocina', label: 'Tiempo objetivo de cocina', description: 'Minutos objetivo por comanda.', min: 1, max: 240, suffix: 'min', branchable: true }),
     D({ key: 'kitchen.newTicketSound', type: 'boolean', default: 'true', group: 'operacion', section: 'cocina', label: 'Sonido de comanda nueva', description: 'Suena en la pantalla de cocina.' }),
-    D({ key: 'kds_warning_minutes', type: 'integer', default: '3', group: 'operacion', section: 'cocina', label: 'Aviso KDS', description: 'Minutos para marcar una comanda en advertencia.', min: 1, max: 240, suffix: 'min' }),
-    D({ key: 'kds_urgent_minutes', type: 'integer', default: '10', group: 'operacion', section: 'cocina', label: 'Urgente KDS', description: 'Minutos para marcar una comanda como urgente.', min: 1, max: 240, suffix: 'min' }),
+    D({ key: 'kds_warning_minutes', type: 'integer', default: '3', group: 'operacion', section: 'cocina', label: 'Aviso KDS', description: 'Minutos para marcar una comanda en advertencia.', min: 1, max: 240, suffix: 'min', branchable: true }),
+    D({ key: 'kds_urgent_minutes', type: 'integer', default: '10', group: 'operacion', section: 'cocina', label: 'Urgente KDS', description: 'Minutos para marcar una comanda como urgente.', min: 1, max: 240, suffix: 'min', branchable: true }),
     D({ key: 'reservation_table_window_minutes', type: 'integer', default: '120', group: 'operacion', section: 'cocina', label: 'Ventana de reserva por mesa', description: 'Minutos que una reserva bloquea la mesa.', min: 15, max: 720, suffix: 'min' }),
     // Metas
     D({ key: 'goal.monthlySales', type: 'number', default: '0', group: 'metas', section: 'metas', label: 'Meta de ventas mensuales', description: 'Ventas objetivo del mes.', min: 0, prefix: 'C$', branchable: true }),

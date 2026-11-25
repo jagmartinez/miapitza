@@ -1,12 +1,22 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SettingService } from './setting.service';
+import { SettingsScopeService } from './settings-scope.service';
 
 /**
  * Cash Register Arqueo Service
  * Detailed cash counting and reconciliation
  */
 export class CashArqueoService {
+    /** Reconciliation tolerance of the shift's branch (falls back to the company value). */
+    static async resolveTolerance(shiftId: number, companyId: number): Promise<number> {
+        const shift = await prisma.cashShift.findFirst({
+            where: { id: shiftId, companyId },
+            select: { cashRegister: { select: { branchId: true } } }
+        });
+        return SettingsScopeService.getNumber(companyId, shift?.cashRegister?.branchId ?? null, 'cash_reconciliation_tolerance');
+    }
+
     // Acceptable cash count difference (in córdobas) before a shift is flagged.
     private static calculateCountedAmount(breakdown: {
         bills?: { denomination: number; count: number }[];
@@ -159,7 +169,7 @@ export class CashArqueoService {
         const details = await this.getShiftDetails(shiftId, companyId);
         const counted = this.calculateCountedAmount(closeData);
         const endAmount = closeData.endAmount ?? counted.totalCounted;
-        const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
+        const tolerance = await this.resolveTolerance(shiftId, companyId);
         const differenceSummary = this.classifyDifference(endAmount - details.amounts.expectedEndAmount, tolerance);
 
         return {
@@ -200,7 +210,7 @@ export class CashArqueoService {
 
         // Get expected amount
         const details = await this.getShiftDetails(shiftId, companyId);
-        const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
+        const tolerance = await this.resolveTolerance(shiftId, companyId);
         const differenceSummary = this.classifyDifference(counted.totalCounted - details.amounts.expectedEndAmount, tolerance);
 
         return {

@@ -141,6 +141,18 @@ export class SettingsScopeService {
         return Number.isFinite(n) ? n : Number(def.default);
     }
 
+    /** KDS warning/urgent thresholds for a branch; falls back to company values when inconsistent. */
+    static async getKdsTiming(companyId: number, branchId: number | null): Promise<{ warningMinutes: number; urgentMinutes: number }> {
+        const [warning, urgent] = await Promise.all([
+            this.getNumber(companyId, branchId, 'kds_warning_minutes'),
+            this.getNumber(companyId, branchId, 'kds_urgent_minutes')
+        ]);
+        if (Number.isInteger(warning) && Number.isInteger(urgent) && warning < urgent) {
+            return { warningMinutes: warning, urgentMinutes: urgent };
+        }
+        return SettingService.getKdsTimingConfig(companyId);
+    }
+
     static async update(
         companyId: number,
         branchId: number | null,

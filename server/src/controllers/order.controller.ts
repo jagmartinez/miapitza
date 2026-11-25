@@ -3,7 +3,7 @@ import { OrderService } from '../services/order.service';
 import { WebSocketService } from '../services/websocket.service';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 import { parseQueryDateFrom, parseQueryDateTo } from '../utils/date-range';
-import { SettingService } from '../services/setting.service';
+import { SettingsScopeService } from '../services/settings-scope.service';
 import { KitchenNotificationService } from '../services/kitchen-notification.service';
 import prisma from '../utils/prisma';
 
@@ -428,9 +428,12 @@ export class OrderController {
 
     static async getKitchenConfig(req: Request, res: Response, next: NextFunction) {
         try {
-            const data = await SettingService.getKdsTimingConfig(req.user!.companyId);
+            const requested = req.query.branchId ? Number(req.query.branchId) : undefined;
+            const branchId = resolveBranchScope(req.user!, requested);
+            const data = await SettingsScopeService.getKdsTiming(req.user!.companyId, branchId ?? null);
             res.json({ success: true, data: { ...data, clockStartsAt: 'KITCHEN_RECEIVED_AT' } });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: error instanceof Error ? error.message : 'Error al obtener configuración KDS' });
         }
     }
