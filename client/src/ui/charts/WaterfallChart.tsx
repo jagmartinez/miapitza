@@ -28,7 +28,7 @@ export function WaterfallChart({ steps }: { steps: BridgeStep[] }) {
   const laborQ = steps.find((s) => s.key === 'labor')?.quality;
   const label = 'Puente de la venta bruta a la utilidad operativa';
   return (
-    <figure className="ui-chart">
+    <figure className="ui-chart ui-chart--waterfall">
       <div className="ui-waterfall" role="img" aria-label={label} style={{ '--steps': steps.length } as CSSProperties}>
         {steps.map((s, i) => (
           <div key={s.key} className="ui-waterfall__col">

@@ -77,7 +77,7 @@ function toQuery(p: BiParams, extra: Record<string, string | number> = {}): Reco
 }
 
 async function get<T>(route: string, params: Record<string, string | number>, signal?: AbortSignal): Promise<T> {
-    const res = await api.get(`/bi/${route}`, { params, signal });
+    const res = await api.get(`/v1/bi/${route}`, { params, signal });
     return res.data.data as T;
 }
 

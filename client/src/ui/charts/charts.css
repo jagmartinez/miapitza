@@ -21,9 +21,11 @@
 .ui-waterfall__bar--positive { background: var(--ui-success); }
 .ui-waterfall__bar--partial { background: repeating-linear-gradient(45deg, var(--ui-danger) 0 4px, var(--ui-warning-soft) 4px 8px); }
 .ui-waterfall__bar--unavailable { display: none; }
-.ui-waterfall__amount { font-size: var(--ui-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ui-text); overflow-wrap: anywhere; }
-.ui-waterfall__label { font-size: var(--ui-text-xs); color: var(--ui-text-muted); overflow-wrap: anywhere; }
-@media (max-width: 640px) {
+.ui-waterfall__amount { font-size: var(--ui-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ui-text); white-space: nowrap; }
+.ui-waterfall__label { font-size: var(--ui-text-xs); color: var(--ui-text-muted); hyphens: auto; }
+/* El puente se adapta al ancho de su tarjeta, no al de la ventana: con poco espacio pasa a barras horizontales. */
+.ui-chart--waterfall { container-type: inline-size; }
+@container (max-width: 760px) {
   .ui-waterfall { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-3); }
   .ui-waterfall__col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "label plot" "amount plot"; align-items: center; text-align: left; column-gap: var(--ui-space-3); }
   .ui-waterfall__label { grid-area: label; }
