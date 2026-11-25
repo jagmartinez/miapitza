@@ -317,7 +317,7 @@ export function Tabs(p: { tabs: ModalTab[]; active: string; onChange(id: string)
 ```
 - `StatCard.context` es **obligatorio** (regla del spec: valor + contexto; sin conteos sueltos).
 - Estado `collapsed` persistido en `localStorage('ui.nav.collapsed')` con try/catch. En < 768 px el menú se abre como `Drawer`.
-- `Topbar`: migas, buscador global (abre con `Ctrl+K`, solo navega por `NAV_GROUPS` en esta fase), selector de sucursal existente, `ThemeToggle`, `KitchenNotificationBell`, avatar → `/profile`.
+- `Topbar`: migas, buscador global (abre con `Ctrl+K`, solo navega por `NAV_GROUPS` en esta fase), selector de sucursal existente, `ThemeToggle`, `KitchenNotificationBell`, avatar → `/profile`. (Desviación: `KitchenNotificationBell` queda fuera del Topbar porque `table-operations.contract.test` lo prohíbe en Layout; las pantallas que lo necesitan lo inyectan vía `controls`.)
 
 - [ ] **Step 1: Tests** — `visibleNav` oculta Nómina a un usuario con rol cajero y la muestra a ADMIN (usar los mismos roles/permisos que hoy usa `Layout.tsx`); `NavRail` marca `aria-current="page"` en la ruta activa; `StatCard` exige `context` (test de tipos con `// @ts-expect-error` cuando falta); los dos contract tests de navegación actualizados a la nueva estructura → FAIL antes de implementar.
 - [ ] **Step 2:** FAIL. **Step 3:** Mover la definición de menú de `Layout.tsx` a `navConfig.ts` sin cambiar permisos; implementar componentes; `Layout.tsx` queda como composición.

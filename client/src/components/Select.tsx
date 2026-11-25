@@ -34,7 +34,7 @@ function computeModalMenuPlacement(
         obstructionBottom = Math.min(obstructionBottom, sidebarRect.bottom);
     });
 
-    document.querySelectorAll('.modal-container .modal-footer, .modal-form-new > .modal-footer').forEach((footer) => {
+    document.querySelectorAll('.modal-container .modal-footer, .modal-form-new > .modal-footer, .ui-fsm .ui-fsm__footer').forEach((footer) => {
         const footerRect = footer.getBoundingClientRect();
         if (footerRect.top > rect.top) {
             obstructionBottom = Math.min(obstructionBottom, footerRect.top);

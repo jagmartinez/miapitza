@@ -21,6 +21,12 @@
   --ui-radius-md: 8px;
   --ui-radius-lg: 12px;
 
+  --ui-text-xs: 12px;
+  --ui-text-sm: 13px;
+  --ui-text-md: 14px;
+  --ui-text-2xl: 24px;
+  --ui-text-3xl: 28px;
+  --ui-text-2xs: 11px;
   --ui-space-1: 4px;
   --ui-space-2: 8px;
   --ui-space-3: 12px;

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { offlineManager } from '../services/offlineManager';
 import { db } from '../services/db';
+import './TopbarControls.css';
 
 export default function NetworkStatus() {
     const [isOnline, setIsOnline] = useState(offlineManager.getStatus());

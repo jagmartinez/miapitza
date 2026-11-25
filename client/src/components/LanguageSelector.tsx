@@ -1,6 +1,7 @@
 import { Globe, ChevronDown, Check } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
 import { useState, useRef, useEffect } from 'react';
+import './TopbarControls.css';
 
 export default function LanguageSelector() {
     const { language, setLanguage } = useLanguage();

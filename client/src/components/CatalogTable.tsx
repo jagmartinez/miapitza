@@ -46,7 +46,7 @@ export default function CatalogTable<T>({
                 header: c.header,
                 render: c.render,
                 // `type` solo aplica la alineación numérica; el contenido sale de `render`.
-                type: c.align === 'right' ? 'number' : 'text',
+                type: c.align === 'right' ? 'number' : 'text', // 'center' no tiene equivalente en DataTable: se alinea a la izquierda.
             })),
         [columns],
     );

@@ -1,5 +1,6 @@
 import { Moon, Sun } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import './TopbarControls.css';
 
 export default function ThemeToggle() {
     const { theme, toggleTheme } = useTheme();
