@@ -212,7 +212,7 @@ export default function Profile() {
                         label="Mi semana vs el equipo"
                         value={`${performance.vsTeam >= 0 ? '+' : ''}${formatHrNumber(performance.vsTeam)}%`}
                         tone={performance.vsTeam >= 0 ? 'success' : 'warning'}
-                        context={`Total de la semana: ${money(performance.myWeekTotal ?? 0)} frente al promedio del equipo`}
+                        context={`Total de la semana: ${(performance.myWeekTotal == null ? "N/D" : money(performance.myWeekTotal))} frente al promedio del equipo`}
                     />
                 ) : null}
             </div>

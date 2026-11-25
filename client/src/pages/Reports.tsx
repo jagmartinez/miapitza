@@ -1329,7 +1329,7 @@ export default function Reports() {
                 <ReportsCatalog reportId={reportId} onSelect={handleSelect} />
                 <div className="reports-main">
                     {reportId ? (
-                        <ReportViewer reportId={reportId} />
+                        <ReportViewer key={reportId} reportId={reportId} />
                     ) : (
                         <EmptyState
                             icon={BarChart3}
