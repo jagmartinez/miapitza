@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { SingleValue } from 'react-select';
+import { PageHeader, FullScreenModal } from '@/ui';
 import {
     CalendarDays,
     ChevronLeft,
@@ -13,9 +13,7 @@ import {
 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
-import Select from '../../components/Select';
-import Sidebar from '../../components/Sidebar';
+import HrFilterSelect from '../../components/hr/HrFilterSelect';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
 import {
@@ -368,11 +366,10 @@ export default function Schedules() {
     return (
         <div className="page-wrapper hr-schedules-page">
             <PageHeader
-                title="Horarios semanales"
-                subtitle="Planificación por usuario, puesto y sucursal"
-                icon={CalendarDays}
-                actions={<Button onClick={openCreate} disabled={Boolean(lookupsError) || loading || mutationBusy || fromCache}><Plus size={18} aria-hidden="true" /> Nuevo turno</Button>}
-            />
+        title="Horarios semanales"
+        description="Planificación por usuario, puesto y sucursal"
+        actions={<Button onClick={openCreate} disabled={Boolean(lookupsError) || loading || mutationBusy || fromCache}><Plus size={18} aria-hidden="true" /> Nuevo turno</Button>}
+      />
 
             <section className="hr-week-navigation" aria-label="Navegación semanal">
                 <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={mutationBusy} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
@@ -381,10 +378,10 @@ export default function Schedules() {
                 <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={mutationBusy} aria-label="Semana siguiente">Siguiente <ChevronRight size={18} aria-hidden="true" /></Button>
             </section>
 
-            <div className="filters-toolbar hr-schedule-filters">
-                <div className="filter-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
-                <div className="filter-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
-                <div className="filter-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
+            <div className="hr-filters hr-schedule-filters">
+                <HrFilterSelect label="Sucursal" options={branchOptions} value={branchId} onChange={setBranchId} disabled={mutationBusy} />
+                <HrFilterSelect label="Usuario" options={userOptions} value={userId} onChange={setUserId} disabled={mutationBusy} />
+                <HrFilterSelect label="Puesto" options={positionOptions} value={jobPositionId} onChange={setJobPositionId} disabled={mutationBusy} />
                 <div className="filter-actions">
                     <Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
                     {!loading && !error && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
@@ -455,7 +452,11 @@ export default function Schedules() {
             )}
             {!loading && !error && hasShifts && <ScheduleWeekView weekStart={weekStart} schedules={visibleSchedules} holidays={holidays} readOnly={mutationBusy || fromCache || !activeSchedule} onEdit={openEdit} onDelete={(shift, schedule) => void deleteShift(shift, schedule)} />}
 
-            <Sidebar isOpen={editorOpen} onClose={closeEditor} title={editingShift ? 'Editar turno' : 'Nuevo turno'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+            <FullScreenModal
+        isOpen={editorOpen}
+        onClose={closeEditor}
+        title={editingShift ? 'Editar turno' : 'Nuevo turno'}
+      >
                 <ScheduleShiftForm
                     weekStart={weekStart}
                     shift={editingShift}
@@ -468,7 +469,7 @@ export default function Schedules() {
                     onCancel={closeEditor}
                     onSubmit={saveShift}
                 />
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SingleValue } from 'react-select';
 import {
     Briefcase,
     BadgeCheck,
@@ -14,15 +13,14 @@ import {
     UsersRound,
     WalletCards,
 } from 'lucide-react';
+import { PageHeader, FullScreenModal } from '@/ui';
 import Button from '../../components/Button';
 import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import Pagination from '../../components/Pagination';
-import Select from '../../components/Select';
-import Sidebar from '../../components/Sidebar';
 import ViewToggle from '../../components/ViewToggle';
 import EmployeeForm from '../../components/hr/EmployeeForm';
+import HrFilterSelect from '../../components/hr/HrFilterSelect';
 import HrStatusPill from '../../components/hr/HrStatusPill';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import { useConfirmDialog } from '../../context/ConfirmContext';
@@ -310,74 +308,50 @@ export default function Employees() {
     return (
         <div className="page-wrapper hr-employees-page">
             <PageHeader
-                title="Gestión de Personal"
-                subtitle="Expedientes, identificación autorizada y compensación vigente"
-                icon={UsersRound}
-                actions={
+        title="Gestión de Personal"
+        description="Expedientes, identificación autorizada y compensación vigente"
+        actions={
                     <>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
                         <Button onClick={openCreate}><Plus size={18} /> Nuevo empleado</Button>
                     </>
                 }
-            />
+      />
 
-            <div className="filters-toolbar">
-                <div className="filter-field filter-field-wide">
+            <div className="hr-filters" role="search" aria-label="Filtros de personal">
+                <div className="filter-field hr-filter-search">
                     <label className="filter-field-label" htmlFor="hr-employee-search"><Search size={12} /> Buscar</label>
                     <div className="search-box">
                         <Search size={16} aria-hidden="true" />
                         <input id="hr-employee-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre, código o usuario" />
                     </div>
                 </div>
-                <div className="filter-field">
-                    <Select<Option>
-                        label="Estado"
-                        options={STATUS_OPTIONS}
-                        value={STATUS_OPTIONS.find((option) => option.value === status)}
-                        onChange={(option: SingleValue<Option>) => setStatus((option?.value ?? 'ALL') as HrEmploymentStatus | 'ALL')}
-                        isSearchable={false}
-                    />
-                </div>
-                <div className="filter-field">
-                    <Select<Option>
-                        label="Departamento"
-                        options={[{ value: '', label: 'Todos' }, ...lookups.departments.map((item) => ({ value: String(item.id), label: item.name }))]}
-                        value={departmentId ? { value: departmentId, label: lookups.departments.find((item) => String(item.id) === departmentId)?.name ?? '' } : { value: '', label: 'Todos' }}
-                        onChange={(option: SingleValue<Option>) => { setDepartmentId(option?.value ?? ''); setJobPositionId(''); }}
-                        isSearchable
-                    />
-                </div>
-                <div className="filter-field">
-                    <Select<Option>
-                        label="Puesto"
-                        options={[{ value: '', label: 'Todos' }, ...filteredPositions.map((item) => ({ value: String(item.id), label: item.name }))]}
-                        value={jobPositionId ? { value: jobPositionId, label: filteredPositions.find((item) => String(item.id) === jobPositionId)?.name ?? '' } : { value: '', label: 'Todos' }}
-                        onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')}
-                        isSearchable
-                    />
-                </div>
-                <div className="filter-field">
-                    <Select<Option>
-                        label="Centro de costo"
-                        options={[{ value: '', label: 'Todos' }, ...lookups.costCenters.map((item) => ({ value: String(item.id), label: item.name }))]}
-                        value={costCenterId ? { value: costCenterId, label: lookups.costCenters.find((item) => String(item.id) === costCenterId)?.name ?? '' } : { value: '', label: 'Todos' }}
-                        onChange={(option: SingleValue<Option>) => setCostCenterId(option?.value ?? '')}
-                        isSearchable
-                    />
-                </div>
-                <div className="filter-field">
-                    <Select<Option>
-                        label="Sucursal"
-                        options={[{ value: '', label: 'Todas' }, ...(lookups.branches ?? []).map((item) => ({ value: String(item.id), label: item.name }))]}
-                        value={branchId
-                            ? { value: branchId, label: (lookups.branches ?? []).find((item) => String(item.id) === branchId)?.name ?? '' }
-                            : { value: '', label: 'Todas' }}
-                        onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')}
-                        isSearchable
-                    />
-                </div>
-                <div className="filter-spacer" />
-                <div className="filter-actions">
+                <HrFilterSelect label="Estado" options={STATUS_OPTIONS} value={status} onChange={(value) => setStatus(value as HrEmploymentStatus | 'ALL')} />
+                <HrFilterSelect
+                    label="Departamento"
+                    options={[{ value: '', label: 'Todos' }, ...lookups.departments.map((item) => ({ value: String(item.id), label: item.name }))]}
+                    value={departmentId}
+                    onChange={(value) => { setDepartmentId(value); setJobPositionId(''); }}
+                />
+                <HrFilterSelect
+                    label="Puesto"
+                    options={[{ value: '', label: 'Todos' }, ...filteredPositions.map((item) => ({ value: String(item.id), label: item.name }))]}
+                    value={jobPositionId}
+                    onChange={setJobPositionId}
+                />
+                <HrFilterSelect
+                    label="Centro de costo"
+                    options={[{ value: '', label: 'Todos' }, ...lookups.costCenters.map((item) => ({ value: String(item.id), label: item.name }))]}
+                    value={costCenterId}
+                    onChange={setCostCenterId}
+                />
+                <HrFilterSelect
+                    label="Sucursal"
+                    options={[{ value: '', label: 'Todas' }, ...(lookups.branches ?? []).map((item) => ({ value: String(item.id), label: item.name }))]}
+                    value={branchId}
+                    onChange={setBranchId}
+                />
+                <div className="hr-filters-actions">
                     <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>
                 </div>
             </div>
@@ -455,14 +429,11 @@ export default function Employees() {
                 <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={25} onPageChange={setPage} />
             )}
 
-            <Sidebar
-                isOpen={editorOpen}
-                onClose={closeEditor}
-                title={editingEmployee ? `Editar: ${editingEmployee.legalName}` : 'Nuevo empleado'}
-                width="large"
-                closeOnBackdrop={!saving}
-                closeOnEscape={!saving}
-            >
+            <FullScreenModal
+        isOpen={editorOpen}
+        onClose={closeEditor}
+        title={editingEmployee ? `Editar: ${editingEmployee.legalName}` : 'Nuevo empleado'}
+      >
                 <EmployeeForm
                     employee={editingEmployee}
                     lookups={lookups}
@@ -471,7 +442,7 @@ export default function Employees() {
                     onCancel={closeEditor}
                     onSubmit={saveEmployee}
                 />
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

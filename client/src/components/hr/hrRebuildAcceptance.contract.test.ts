@@ -76,7 +76,7 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
       expect(source).toContain('role="tabpanel"');
       expect(source).toContain('scope="col"');
     });
-    expect(attendanceReview).toContain('inventory-table');
+    expect(attendanceReview).toContain('<DataTable');
     expect(attendanceReview).not.toContain('hr-attendance-events');
   });
 

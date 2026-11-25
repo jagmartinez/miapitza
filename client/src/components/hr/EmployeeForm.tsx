@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SingleValue } from 'react-select';
+import type { SingleValue } from './HrOptionSelect';
 import {
     Building2,
     Briefcase,
     FileText,
-    MapPin,
     UserRound,
     WalletCards,
 } from 'lucide-react';
+import { Tabs } from '@/ui';
 import Button from '../Button';
-import Select from '../Select';
+import Select from './HrOptionSelect';
 import HrMoneyInput from './HrMoneyInput';
 import type {
     HrEmployee,
@@ -255,32 +255,22 @@ export default function EmployeeForm({
         });
     };
 
-    const tab = (id: FormTab, label: string, icon: React.ReactNode) => (
-        <button
-            type="button"
-            id={`hr-employee-tab-${id}`}
-            role="tab"
-            aria-selected={activeTab === id}
-            aria-controls={`hr-employee-panel-${id}`}
-            className={`modal-tab ${activeTab === id ? 'active' : ''}`}
-            onClick={() => setActiveTab(id)}
-        >
-            {icon}
-            <span>{label}</span>
-        </button>
-    );
-
     return (
-        <div className="premium-modal-content hr-employee-modal-content">
-            <div className="modal-tabs" role="tablist" aria-label="Secciones del expediente">
-                {tab('data', 'Datos', <UserRound size={18} aria-hidden="true" />)}
-                {tab('relationship', 'Relación laboral', <Briefcase size={18} aria-hidden="true" />)}
-                {!employee && tab('compensation', 'Compensación', <WalletCards size={18} aria-hidden="true" />)}
-                {tab('user', 'Usuario', <FileText size={18} aria-hidden="true" />)}
-                {tab('assignment', 'Asignación', <MapPin size={18} aria-hidden="true" />)}
-            </div>
+        <div className="hr-employee-modal-content">
+            <Tabs
+                ariaLabel="Secciones del expediente"
+                active={activeTab}
+                onChange={(id) => setActiveTab(id as FormTab)}
+                tabs={[
+                    { id: 'data', label: 'Datos' },
+                    { id: 'relationship', label: 'Relación laboral' },
+                    ...(!employee ? [{ id: 'compensation', label: 'Compensación' }] : []),
+                    { id: 'user', label: 'Usuario' },
+                    { id: 'assignment', label: 'Asignación' },
+                ]}
+            />
 
-            <form className="modal-form-new" onSubmit={submit}>
+            <form className="hr-modal-form" onSubmit={submit}>
                 <div className="modal-tab-content">
                     {validationError && (
                         <div className="hr-inline-alert danger" role="alert">{validationError}</div>
@@ -290,7 +280,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-data"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-data"
+                            aria-label="Datos"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -361,7 +351,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-relationship"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-relationship"
+                            aria-label="Relación laboral"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -417,7 +407,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-compensation"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-compensation"
+                            aria-label="Compensación"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -484,7 +474,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-user"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-user"
+                            aria-label="Usuario"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -518,7 +508,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-assignment"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-assignment"
+                            aria-label="Asignación"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -555,7 +545,7 @@ export default function EmployeeForm({
                     )}
                 </div>
 
-                <div className="modal-footer">
+                <div className="hr-modal-form-footer">
                     <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
                     <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : employee ? 'Guardar cambios' : 'Crear empleado'}</Button>
                 </div>

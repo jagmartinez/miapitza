@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SingleValue } from 'react-select';
+import type { SingleValue } from './HrOptionSelect';
 import { Clock3, UserRound } from 'lucide-react';
+import { Tabs } from '@/ui';
 import Button from '../Button';
-import Select from '../Select';
+import Select from './HrOptionSelect';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrScheduleShift, HrScheduleShiftInput, HrShiftTemplate } from '../../types/hr-schedule';
 import { addDaysDateOnly, isDateInWeek, shiftCrossesMidnight } from './scheduleDates';
@@ -128,16 +129,17 @@ export default function ScheduleShiftForm({
     };
 
     return (
-        <div className="premium-modal-content hr-shift-modal-content">
-            <div className="modal-tabs" role="tablist" aria-label="Secciones del turno">
-                <button type="button" role="tab" aria-selected={activeTab === 'assignment'} className={`modal-tab ${activeTab === 'assignment' ? 'active' : ''}`} onClick={() => setActiveTab('assignment')}>
-                    <UserRound size={18} aria-hidden="true" /><span>Asignación</span>
-                </button>
-                <button type="button" role="tab" aria-selected={activeTab === 'schedule'} className={`modal-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>
-                    <Clock3 size={18} aria-hidden="true" /><span>Jornada</span>
-                </button>
-            </div>
-            <form className="modal-form-new hr-shift-form" onSubmit={submit}>
+        <div className="hr-shift-modal-content">
+            <Tabs
+                ariaLabel="Secciones del turno"
+                active={activeTab}
+                onChange={(id) => setActiveTab(id as typeof activeTab)}
+                tabs={[
+                    { id: 'assignment', label: 'Asignación' },
+                    { id: 'schedule', label: 'Jornada' },
+                ]}
+            />
+            <form className="hr-modal-form hr-shift-form" onSubmit={submit}>
               <div className="modal-tab-content">
                 {error && <div className="hr-schedule-alert danger" role="alert">{error}</div>}
                 {conflicts.length > 0 && (
@@ -224,7 +226,7 @@ export default function ScheduleShiftForm({
                 </div>
                 </section>}
               </div>
-              <div className="modal-footer">
+              <div className="hr-modal-form-footer">
                 <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
                 {activeTab === 'assignment'
                     ? <Button type="button" onClick={() => setActiveTab('schedule')}>Continuar</Button>

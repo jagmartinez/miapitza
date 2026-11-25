@@ -121,3 +121,35 @@
     min-width: 0;
   }
 }
+
+/* Barra de filtros sin caja: se acomoda en varias líneas sin aplastar los controles. */
+.hr-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-md);
+  min-width: 0;
+  margin-bottom: var(--spacing-lg);
+}
+
+.hr-filters > * {
+  min-width: 0;
+}
+
+.hr-filter-select {
+  flex: 1 1 12rem;
+  min-width: 11rem;
+  max-width: 100%;
+}
+
+.hr-filters .hr-filter-search {
+  flex: 2 1 16rem;
+  min-width: 12rem;
+}
+
+.hr-filters .hr-filters-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-left: auto;
+}
