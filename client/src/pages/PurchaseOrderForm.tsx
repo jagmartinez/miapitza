@@ -1,20 +1,34 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import Select from '../components/Select';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI } from '../services/api';
-import Button from '../components/Button';
-import Input from '../components/Input';
-import Modal from '../components/Modal';
-import Sidebar from '../components/Sidebar';
-import { Plus, Trash2, Save, CheckCircle, Package, Info, MapPin, Building2, FileText, Eye, Upload, Download } from 'lucide-react';
+import {
+    AppSelect, Badge, Button, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    NumberInput, Textarea, formatMoney, formatNumber,
+    type Column,
+} from '@/ui';
+import { Plus, Trash2, Save, CheckCircle, Package, Eye, Upload, Download } from 'lucide-react';
 import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product, Branch, Warehouse, ProductAllowedUnit } from '../types';
-import type { SingleValue } from 'react-select';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import { BANK_OPTIONS, INVOICE_TYPE_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
-import './PurchaseOrderForm.css';
+import { BANK_OPTIONS, INVOICE_TYPE_OPTIONS } from '../constants/purchaseOrderOptions';
+import styles from './compras.module.css';
+
+type PoTab = 'data' | 'receive' | 'attachments' | 'history';
+
+const STATUS_LABEL: Record<string, string> = { DRAFT: 'Borrador', ISSUED: 'Emitida', RECEIVED: 'Recibida', CANCELLED: 'Cancelada' };
+const STATUS_TONE = { DRAFT: 'neutral', ISSUED: 'primary', RECEIVED: 'success', CANCELLED: 'danger' } as const;
+
+type LineRow = {
+    key: string | number;
+    removeKey: number;
+    index: number;
+    name: string;
+    unit: string;
+    quantity: number;
+    cost: number;
+};
 
 interface NewOrderLineDraft {
     productId: number;
@@ -31,7 +45,8 @@ interface PurchaseOrderFormProps {
 }
 
 export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: PurchaseOrderFormProps) {
-    const { formatMoney } = useCurrency();
+    const { symbol } = useCurrency();
+    const money = (value: unknown) => formatMoney(value, symbol);
     const { id: paramId } = useParams();
     const navigate = useNavigate();
     const { confirm } = useConfirmDialog();
@@ -40,7 +55,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
     // Use sidebarId if provided, otherwise fallback to URL params (for standalone page compatibility)
     const effectiveId = sidebarId || (paramId ? parseInt(paramId) : undefined);
     const isNew = !effectiveId;
-    const [activeTab, setActiveTab] = useState<'general' | 'items'>('general');
+    const [activeTab, setActiveTab] = useState<PoTab>('data');
 
     const [order, setOrder] = useState<PurchaseOrder | null>(null);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -48,6 +63,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
     const [branches, setBranches] = useState<Branch[]>([]);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [loading, setLoading] = useState(true);
+    const [depsError, setDepsError] = useState(false);
 
     // Form State for New Order
     const [formData, setFormData] = useState({
@@ -76,13 +92,12 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
     const importInputRef = useRef<HTMLInputElement>(null);
 
     // Receive Modal
-    const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
     const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
-    const [isItemSidebarOpen, setIsItemSidebarOpen] = useState(false);
     const [saving, setSaving] = useState(false);
 
     const loadDependencies = useCallback(async () => {
         try {
+            setDepsError(false);
             const [supRes, prodRes, branchRes, warehouseRes] = await Promise.all([
                 suppliersAPI.getAll({ active: true }),
                 // Purchasing may include ingredients, packaging, resale goods or
@@ -102,6 +117,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             }
         } catch (error) {
             console.error('Error loading dependencies:', error);
+            setDepsError(true);
         } finally {
             if (isNew) setLoading(false);
         }
@@ -150,7 +166,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             });
             setInvoiceFile(null);
             setNewItems([]);
-            setActiveTab('general');
+            setActiveTab('data');
         }
     }, [effectiveId, loadDependencies, loadOrder]);
 
@@ -333,13 +349,13 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         e.preventDefault();
         if (!formData.branchId || !formData.supplierId) {
             showWarning('Complete los campos obligatorios');
-            setActiveTab('general');
+            setActiveTab('data');
             return;
         }
 
         if (isNew && newItems.length === 0) {
             showWarning('Agregue al menos un ítem');
-            setActiveTab('items');
+            setActiveTab('data');
             return;
         }
 
@@ -411,7 +427,6 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         }
         try {
             await purchaseOrdersAPI.receive(Number(effectiveId), Number(selectedWarehouseId));
-            setIsReceiveModalOpen(false);
             loadOrder(Number(effectiveId));
             success('Orden recibida e inventario actualizado');
         } catch (error) {
@@ -420,466 +435,398 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         }
     };
 
-    if (loading) return <div>Cargando...</div>;
 
     const isDraft = isNew || order?.status === 'DRAFT';
+    const close = onClose ?? (() => navigate('/purchase-orders'));
+
+    const lineSource: Array<PurchaseOrderItem | NewOrderLineDraft> = isNew ? newItems : (order?.items ?? []);
+    const lineRows: LineRow[] = lineSource.map((item, index) => ({
+        key: isNew ? index : ('id' in item ? item.id : index),
+        removeKey: isNew ? index : ('id' in item ? item.id : index),
+        index,
+        name: item.product?.name ?? 'N/D',
+        unit: ('purchaseUnit' in item && item.purchaseUnit) ? item.purchaseUnit : (item.product?.unit ?? ''),
+        quantity: Number(item.quantity),
+        cost: Number(item.cost),
+    }));
+    const subtotal = isNew
+        ? newItems.reduce((sum, item) => sum + (item.quantity * item.cost), 0)
+        : Number(order?.total || 0);
+
+    const setNewItemField = (index: number, field: 'quantity' | 'cost', value: number | null) =>
+        setNewItems(prev => prev.map((it, i) => (i === index ? { ...it, [field]: value ?? 0 } : it)));
+
+    const lineColumns: Column<LineRow>[] = [
+        {
+            key: 'product', header: 'Producto', width: '2fr',
+            render: (r) => (
+                <span>
+                    {r.name}
+                    {r.unit ? <span className={styles.muted}> · {r.unit}</span> : null}
+                </span>
+            ),
+        },
+        {
+            key: 'quantity', header: 'Cant.', width: '1fr', type: 'qty',
+            render: (r) => (isNew
+                ? (
+                    <NumberInput
+                        aria-label={`Cantidad de ${r.name}`}
+                        value={r.quantity}
+                        min={0}
+                        onChange={(v) => setNewItemField(r.index, 'quantity', v)}
+                    />
+                )
+                : formatNumber(r.quantity)),
+        },
+        {
+            key: 'cost', header: `Costo (${symbol})`, width: '1fr', type: 'money',
+            render: (r) => (isNew
+                ? (
+                    <NumberInput
+                        aria-label={`Costo de ${r.name}`}
+                        value={r.cost}
+                        min={0}
+                        onChange={(v) => setNewItemField(r.index, 'cost', v)}
+                    />
+                )
+                : formatNumber(r.cost)),
+        },
+        { key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (r) => r.quantity * r.cost },
+        ...(isDraft ? [{
+            key: 'actions', header: '', width: '3.5rem', type: 'actions' as const,
+            render: (r: LineRow) => (
+                <IconButton icon={Trash2} size="sm" label={`Quitar ${r.name}`} onClick={() => void handleRemoveItem(r.removeKey)} />
+            ),
+        }] : []),
+    ];
+
+    const dirty = isNew
+        ? Boolean(newItems.length > 0 || formData.supplierId || formData.invoiceNumber || formData.notes || invoiceFile)
+        : Boolean(invoiceFile || (order && (
+            formData.notes !== (order.notes || '')
+            || formData.invoiceNumber !== (order.invoiceNumber || '')
+            || formData.invoiceType !== (order.invoiceType || 'CASH')
+            || formData.bank !== (order.bank || '')
+            || formData.transferNumber !== (order.transferNumber || '')
+            || formData.paymentDueDate !== (order.paymentDueDate ? order.paymentDueDate.split('T')[0] : '')
+            || formData.invoiceDate !== (order.invoiceDate ? order.invoiceDate.split('T')[0] : '')
+        )));
+
+    const title = isNew ? 'Nueva Orden de Compra' : `Orden de Compra #${effectiveId}`;
+    const selectedProductId = itemForm.productId || null;
 
     return (
-        <div className="premium-modal-content po-sidebar-form">
-            <div className="modal-tabs">
-                <button
-                    type="button"
-                    className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('general')}
-                >
-                    <Info size={18} />
-                    <span>Información General</span>
-                </button>
-                <button
-                    type="button"
-                    className={`modal-tab ${activeTab === 'items' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('items')}
-                >
-                    <Package size={18} />
-                    <span>Ítems de la Orden</span>
-                </button>
-            </div>
-
-            <form onSubmit={handleSave} className="modal-form-new">
-            <div className="modal-tab-content">
-                {activeTab === 'general' ? (
-                    <div className="modal-content-group">
-                        <div className="modal-section-header">
-                            <Info size={18} />
-                            <h3>Detalles de la Orden</h3>
+        <FullScreenModal
+            isOpen
+            onClose={close}
+            title={title}
+            breadcrumb={['Compras', 'Órdenes de compra']}
+            subtitle={!isNew && order ? `${order.supplier?.name ?? ''}`.trim() || undefined : undefined}
+            status={!isNew && order ? (
+                <Badge tone={STATUS_TONE[order.status] ?? 'neutral'} dot>{STATUS_LABEL[order.status] ?? order.status}</Badge>
+            ) : undefined}
+            tabs={[
+                { id: 'data', label: 'Datos y productos' },
+                { id: 'receive', label: 'Recepción' },
+                { id: 'attachments', label: 'Adjuntos' },
+                { id: 'history', label: 'Historial', disabled: isNew },
+            ]}
+            activeTab={activeTab}
+            onTabChange={(id) => setActiveTab(id as PoTab)}
+            dirty={dirty}
+            aside={(
+                <div className={styles.summary} aria-label="Resumen de la orden">
+                    <h3>Resumen</h3>
+                    <div className={styles.summaryRow}><span>Ítems</span><strong>{lineRows.length}</strong></div>
+                    <div className={styles.summaryRow}><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
+                    <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>Total</span><strong>{money(subtotal)}</strong></div>
+                    <p className={styles.muted}>La orden no maneja descuento ni IVA; el total es la suma de las líneas.</p>
+                </div>
+            )}
+            footerStart={!isNew && order?.status === 'ISSUED' ? (
+                <Button icon={Package} onClick={() => setActiveTab('receive')}>Recibir</Button>
+            ) : undefined}
+            footer={({ requestClose }) => (
+                <>
+                    <Button onClick={requestClose}>Cancelar</Button>
+                    {!isNew && order?.status === 'DRAFT' && (
+                        <Button icon={CheckCircle} onClick={() => void handleStatusChange('ISSUED')}>Emitir</Button>
+                    )}
+                    {isDraft && (
+                        <Button variant="primary" icon={Save} type="submit" form="po-form" loading={saving} disabled={saving}>
+                            {saving ? 'Guardando...' : 'Guardar'}
+                        </Button>
+                    )}
+                </>
+            )}
+        >
+            {loading ? (
+                <p role="status">Cargando...</p>
+            ) : (
+                <form id="po-form" onSubmit={handleSave} className={styles.stack}>
+                    {depsError && (
+                        <div className={styles.alert} role="alert">
+                            <span className={styles.inline}>
+                                No se pudieron cargar sucursales, proveedores o productos; las listas pueden estar incompletas.
+                                <Button size="sm" onClick={() => void loadDependencies()}>Reintentar</Button>
+                            </span>
                         </div>
-                        <div className="form-grid-modern">
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="po-branch"><Building2 size={14} /> Sucursal</label>
-                                {(() => {
-                                    const branch = branches.find(b => b.id.toString() === formData.branchId);
-                                    return (
-                                        <Select
+                    )}
+
+                    {activeTab === 'data' && (
+                        <>
+                            <FormSection step={1} title="Detalles de la orden">
+                                <FormGrid>
+                                    <Field label="Sucursal" htmlFor="po-branch" required>
+                                        <AppSelect
                                             inputId="po-branch"
                                             options={branches.map(b => ({ value: b.id.toString(), label: b.name }))}
-                                            value={branch ? { value: formData.branchId, label: branch.name } : null}
-                                            onChange={(option: SingleValue<StrOption>) => option && setFormData({ ...formData, branchId: option.value })}
+                                            value={formData.branchId || null}
+                                            onChange={(v) => v && setFormData({ ...formData, branchId: v })}
                                             isDisabled={!isNew}
                                             placeholder="Seleccione Sucursal"
-                                            variant="modal"
                                         />
-                                    );
-                                })()}
-                            </div>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="po-supplier"><MapPin size={14} /> Proveedor</label>
-                                {(() => {
-                                    const supplier = suppliers.find(s => s.id.toString() === formData.supplierId);
-                                    return (
-                                        <Select
+                                    </Field>
+                                    <Field label="Proveedor" htmlFor="po-supplier" required>
+                                        <AppSelect
                                             inputId="po-supplier"
                                             options={suppliers.map(s => ({ value: s.id.toString(), label: s.name }))}
-                                            value={supplier ? { value: formData.supplierId, label: supplier.name } : null}
-                                            onChange={(option: SingleValue<StrOption>) => option && setFormData({ ...formData, supplierId: option.value })}
+                                            value={formData.supplierId || null}
+                                            onChange={(v) => v && setFormData({ ...formData, supplierId: v })}
                                             isDisabled={!isNew}
                                             placeholder="Seleccione Proveedor"
-                                            variant="modal"
                                         />
-                                    );
-                                })()}
-                            </div>
-                            <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="po-invoice-number"><FileText size={14} /> Nº FT</label>
-                                    <Input
-                                        id="po-invoice-number"
-                                        value={formData.invoiceNumber}
-                                        onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
-                                        disabled={!isDraft}
-                                        placeholder="Ej: FAC-12345"
-                                        variant="modal"
-                                    />
-                                </div>
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="po-invoice-date"><FileText size={14} /> Fecha FT</label>
-                                    <input
-                                        id="po-invoice-date"
-                                        type="date"
-                                        className="modal-standard-input"
-                                        value={formData.invoiceDate}
-                                        onChange={e => setFormData({ ...formData, invoiceDate: e.target.value })}
-                                        disabled={!isDraft}
-                                    />
-                                </div>
-                            </div>
-                            <div className={formData.invoiceType === 'CREDIT' ? 'modal-form-row' : ''}>
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="po-invoice-type"><FileText size={14} /> Tipo</label>
-                                    <Select
-                                        inputId="po-invoice-type"
-                                        options={INVOICE_TYPE_OPTIONS}
-                                        value={INVOICE_TYPE_OPTIONS.find(o => o.value === formData.invoiceType) ?? null}
-                                        onChange={(option: SingleValue<StrOption>) =>
-                                            option && setFormData({ ...formData, invoiceType: option.value as 'CASH' | 'CREDIT' })
-                                        }
-                                        isDisabled={!isDraft}
-                                        placeholder="Seleccionar tipo..."
-                                        variant="modal"
-                                    />
-                                </div>
-                                {formData.invoiceType === 'CREDIT' && (
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="po-payment-due"><FileText size={14} /> Fecha de Vencimiento</label>
-                                        <input
-                                            id="po-payment-due"
-                                            type="date"
-                                            className="modal-standard-input"
-                                            value={formData.paymentDueDate}
-                                            onChange={e => setFormData({ ...formData, paymentDueDate: e.target.value })}
+                                    </Field>
+                                    <Field label="Nº FT" htmlFor="po-invoice-number">
+                                        <Input
+                                            id="po-invoice-number"
+                                            value={formData.invoiceNumber}
+                                            onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
+                                            disabled={!isDraft}
+                                            placeholder="Ej: FAC-12345"
+                                        />
+                                    </Field>
+                                    <Field label="Fecha FT" htmlFor="po-invoice-date">
+                                        <DateInput
+                                            id="po-invoice-date"
+                                            value={formData.invoiceDate}
+                                            onChange={e => setFormData({ ...formData, invoiceDate: e.target.value })}
                                             disabled={!isDraft}
                                         />
+                                    </Field>
+                                    <Field label="Tipo" htmlFor="po-invoice-type">
+                                        <AppSelect
+                                            inputId="po-invoice-type"
+                                            options={INVOICE_TYPE_OPTIONS}
+                                            value={formData.invoiceType}
+                                            onChange={(v) => v && setFormData({ ...formData, invoiceType: v as 'CASH' | 'CREDIT' })}
+                                            isDisabled={!isDraft}
+                                            placeholder="Seleccionar tipo..."
+                                        />
+                                    </Field>
+                                    {formData.invoiceType === 'CREDIT' && (
+                                        <Field label="Fecha de Vencimiento" htmlFor="po-payment-due">
+                                            <DateInput
+                                                id="po-payment-due"
+                                                value={formData.paymentDueDate}
+                                                onChange={e => setFormData({ ...formData, paymentDueDate: e.target.value })}
+                                                disabled={!isDraft}
+                                            />
+                                        </Field>
+                                    )}
+                                    {formData.invoiceType === 'CASH' && (
+                                        <>
+                                            <Field label="Banco" htmlFor="po-bank">
+                                                <AppSelect
+                                                    inputId="po-bank"
+                                                    options={BANK_OPTIONS}
+                                                    value={formData.bank || null}
+                                                    onChange={(v) => setFormData({ ...formData, bank: v ?? '' })}
+                                                    isDisabled={!isDraft}
+                                                    isClearable
+                                                    placeholder="Seleccionar banco..."
+                                                />
+                                            </Field>
+                                            <Field label="Nº Transferencia" htmlFor="po-transfer-number">
+                                                <Input
+                                                    id="po-transfer-number"
+                                                    value={formData.transferNumber}
+                                                    onChange={e => setFormData({ ...formData, transferNumber: e.target.value })}
+                                                    disabled={!isDraft}
+                                                    placeholder="Nº referencia"
+                                                />
+                                            </Field>
+                                        </>
+                                    )}
+                                </FormGrid>
+                                <Field label="Notas adicionales" htmlFor="po-notes">
+                                    <Textarea
+                                        id="po-notes"
+                                        value={formData.notes}
+                                        onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                                        disabled={!isDraft}
+                                        placeholder="Ingrese observaciones o detalles relevantes..."
+                                        rows={4}
+                                    />
+                                </Field>
+                            </FormSection>
+
+                            <FormSection step={2} title="Productos de la orden">
+                                {isDraft && (
+                                    <>
+                                        <input
+                                            ref={importInputRef}
+                                            type="file"
+                                            accept=".xlsx,.xls"
+                                            aria-label="Archivo Excel de ítems"
+                                            onChange={handleImportExcel}
+                                            hidden
+                                        />
+                                        <div className={styles.inline}>
+                                            <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla</Button>
+                                            <Button icon={Upload} onClick={() => importInputRef.current?.click()} disabled={importing}>
+                                                {importing ? 'Importando...' : 'Importar Excel'}
+                                            </Button>
+                                        </div>
+                                        <FormGrid columns="repeat(auto-fit, minmax(min(100%, 12rem), 1fr))">
+                                            <Field label="Producto" htmlFor="po-item-product">
+                                                <AppSelect
+                                                    inputId="po-item-product"
+                                                    options={products.map(p => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
+                                                    value={selectedProductId}
+                                                    onChange={(v) => v && void handleItemProductChange(v)}
+                                                    placeholder="Seleccione Producto"
+                                                />
+                                            </Field>
+                                            {itemUnits.length > 0 && (
+                                                <Field label="Unidad de compra" htmlFor="po-item-unit">
+                                                    <AppSelect
+                                                        inputId="po-item-unit"
+                                                        options={itemUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))}
+                                                        value={itemForm.purchaseUnit || null}
+                                                        onChange={(v) => setItemForm({ ...itemForm, purchaseUnit: v || '' })}
+                                                        placeholder="Seleccione Unidad"
+                                                    />
+                                                </Field>
+                                            )}
+                                            <Field
+                                                label={`Cantidad${itemForm.purchaseUnit ? ` (en ${itemForm.purchaseUnit})` : ''}`}
+                                                htmlFor="po-item-quantity"
+                                                hint={itemForm.purchaseUnit ? `Se convertirá a la unidad base del inventario al recibir.` : undefined}
+                                            >
+                                                <NumberInput
+                                                    id="po-item-quantity"
+                                                    value={itemForm.quantity}
+                                                    min={0}
+                                                    decimals={3}
+                                                    onChange={(v) => setItemForm({ ...itemForm, quantity: v ?? 0 })}
+                                                />
+                                            </Field>
+                                            <Field label="Costo unitario" htmlFor="po-item-cost">
+                                                <NumberInput
+                                                    id="po-item-cost"
+                                                    value={itemForm.cost}
+                                                    min={0}
+                                                    prefix={symbol}
+                                                    onChange={(v) => setItemForm({ ...itemForm, cost: v ?? 0 })}
+                                                />
+                                            </Field>
+                                        </FormGrid>
+                                        <div>
+                                            <Button icon={Plus} onClick={() => void handleAddItem()} disabled={!itemForm.productId}>
+                                                Agregar ítem
+                                            </Button>
+                                        </div>
+                                    </>
+                                )}
+                                <DataTable
+                                    ariaLabel="Ítems de la orden"
+                                    columns={lineColumns}
+                                    rows={lineRows}
+                                    rowKey={(r) => r.key}
+                                    empty="No hay ítems agregados aún"
+                                />
+                            </FormSection>
+                        </>
+                    )}
+
+                    {activeTab === 'receive' && (
+                        <FormSection title="Recepción de inventario">
+                            {order?.status === 'ISSUED' ? (
+                                <>
+                                    <p className={styles.muted}>
+                                        Esta acción ingresará los ítems de la orden al inventario físico. Asegúrese de contar los productos antes de confirmar.
+                                    </p>
+                                    <Field label="Almacén de destino" htmlFor="po-warehouse" required>
+                                        <AppSelect
+                                            inputId="po-warehouse"
+                                            options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.branch?.name})` }))}
+                                            value={selectedWarehouseId || null}
+                                            onChange={(v) => v && setSelectedWarehouseId(v)}
+                                            placeholder="Seleccione Almacén"
+                                        />
+                                    </Field>
+                                    <div>
+                                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId}>
+                                            Confirmar Recepción
+                                        </Button>
                                     </div>
+                                </>
+                            ) : order?.status === 'RECEIVED' ? (
+                                <p className={styles.muted}>Esta orden ya fue recibida y los ítems ingresaron al inventario.</p>
+                            ) : (
+                                <p className={styles.muted}>La orden debe estar emitida para poder recibirla.</p>
+                            )}
+                        </FormSection>
+                    )}
+
+                    {activeTab === 'attachments' && (
+                        <FormSection title="Factura adjunta">
+                            <div className={styles.fileDrop}>
+                                <input
+                                    type="file"
+                                    id="invoice-pdf"
+                                    accept="application/pdf,image/*"
+                                    aria-label="Factura PDF o imagen"
+                                    onChange={e => setInvoiceFile(e.target.files?.[0] || null)}
+                                    disabled={!isDraft}
+                                    hidden
+                                />
+                                <Button icon={Plus} disabled={!isDraft} onClick={() => document.getElementById('invoice-pdf')?.click()}>
+                                    {invoiceFile ? invoiceFile.name : (order?.invoicePdf ? 'Cambiar archivo' : 'Adjuntar factura')}
+                                </Button>
+                                {order?.invoicePdf && !invoiceFile && (
+                                    <Button variant="ghost" icon={Eye} onClick={() => void handleDownloadInvoice()}>Ver actual</Button>
                                 )}
                             </div>
-                            {formData.invoiceType === 'CASH' && (
-                                <div className="modal-form-row">
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="po-bank"><FileText size={14} /> Banco</label>
-                                        <Select
-                                            inputId="po-bank"
-                                            options={BANK_OPTIONS}
-                                            value={BANK_OPTIONS.find(o => o.value === formData.bank) ?? null}
-                                            onChange={(option: SingleValue<StrOption>) =>
-                                                setFormData({ ...formData, bank: option?.value ?? '' })
-                                            }
-                                            isDisabled={!isDraft}
-                                            isClearable
-                                            placeholder="Seleccionar banco..."
-                                            variant="modal"
-                                        />
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="po-transfer-number"><FileText size={14} /> Nº Transferencia</label>
-                                        <Input
-                                            id="po-transfer-number"
-                                            value={formData.transferNumber}
-                                            onChange={e => setFormData({ ...formData, transferNumber: e.target.value })}
-                                            disabled={!isDraft}
-                                            placeholder="Nº referencia"
-                                            variant="modal"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="invoice-pdf"><FileText size={14} /> Factura PDF/Imagen</label>
-                                <div className="file-upload-wrapper">
-                                    <input
-                                        type="file"
-                                        id="invoice-pdf"
-                                        accept="application/pdf,image/*"
-                                        onChange={e => setInvoiceFile(e.target.files?.[0] || null)}
-                                        disabled={!isDraft}
-                                        style={{ display: 'none' }}
-                                    />
-                                    <label htmlFor="invoice-pdf" className={`file-upload-label ${!isDraft ? 'disabled' : ''}`}>
-                                        <Plus size={16} />
-                                        {invoiceFile ? invoiceFile.name : (order?.invoicePdf ? 'Cambiar archivo' : 'Adjuntar factura')}
-                                    </label>
-                                    {order?.invoicePdf && !invoiceFile && (
-                                        <button
-                                            type="button"
-                                            onClick={() => void handleDownloadInvoice()}
-                                            className="view-pdf-link"
-                                        >
-                                            <Eye size={14} /> Ver actual
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="modal-input-group full-width">
-                                <label className="modal-input-label" htmlFor="po-notes"><FileText size={14} /> Notas Adicionales</label>
-                                <textarea
-                                    id="po-notes"
-                                    value={formData.notes}
-                                    onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                                    disabled={!isDraft}
-                                    className="modal-textarea"
-                                    placeholder="Ingrese observaciones o detalles relevantes..."
-                                    rows={4}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="modal-content-group">
-                        <div className="modal-section-header" style={{ justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                <Package size={18} />
-                                <h3>Ítems de la Orden</h3>
-                            </div>
-                            {isDraft && (
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <input
-                                        ref={importInputRef}
-                                        type="file"
-                                        accept=".xlsx,.xls"
-                                        onChange={handleImportExcel}
-                                        style={{ display: 'none' }}
-                                    />
-                                    <Button variant="ghost" type="button" onClick={handleDownloadTemplate} className="add-item-btn-modern">
-                                        <Download size={18} />
-                                        Plantilla
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        type="button"
-                                        onClick={() => importInputRef.current?.click()}
-                                        disabled={importing}
-                                        className="add-item-btn-modern"
-                                    >
-                                        <Upload size={18} />
-                                        {importing ? 'Importando...' : 'Importar Excel'}
-                                    </Button>
-                                    <Button variant="ghost" type="button" onClick={() => setIsItemSidebarOpen(true)} className="add-item-btn-modern">
-                                        <Plus size={20} />
-                                        Agregar Ítem
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
+                        </FormSection>
+                    )}
 
-                        <div className="modern-table-container">
-                            <table className="modern-po-table">
-                                <thead>
-                                    <tr>
-                                        <th>Producto</th>
-                                        <th style={{ textAlign: 'right' }}>Cant.</th>
-                                        <th style={{ textAlign: 'right' }}>Costo</th>
-                                        <th style={{ textAlign: 'right' }}>Total</th>
-                                        {isDraft && <th className="text-center"></th>}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(isNew ? newItems : order?.items || []).map((item: PurchaseOrderItem | NewOrderLineDraft, index: number) => (
-                                        <tr key={isNew ? index : ('id' in item ? item.id : index)}>
-                                            <td className="product-name-cell">
-                                                <div className="product-info-mini">
-                                                    <span className="p-name">{item.product?.name}</span>
-                                                    <span className="p-unit">
-                                                        {'purchaseUnit' in item && item.purchaseUnit
-                                                            ? item.purchaseUnit
-                                                            : item.product?.unit}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="text-right font-mono">{Number(item.quantity).toFixed(2)}</td>
-                                            <td className="text-right font-mono">{formatMoney(Number(item.cost))}</td>
-                                            <td className="text-right font-bold">{formatMoney(Number(item.quantity) * Number(item.cost))}</td>
-                                            {isDraft && (
-                                                <td className="text-center">
-                                                    <button
-                                                        className="action-btn-mini delete"
-                                                        onClick={() => handleRemoveItem(isNew ? index : ('id' in item ? item.id : index))}
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </td>
-                                            )}
-                                        </tr>
+                    {activeTab === 'history' && order && (
+                        <FormSection title="Historial de la orden">
+                            <dl className={styles.details}>
+                                <div><dt>Estado</dt><dd>{STATUS_LABEL[order.status] ?? order.status}</dd></div>
+                                <div><dt>Fecha de la orden</dt><dd>{new Date(order.date).toLocaleDateString('es-ES')}</dd></div>
+                                <div><dt>Fecha de factura</dt><dd>{order.invoiceDate ? new Date(order.invoiceDate).toLocaleDateString('es-ES') : 'No disponible'}</dd></div>
+                                <div><dt>Abonado</dt><dd>{order.invoiceType === 'CREDIT' ? money(Number(order.paidAmount || 0)) : 'Contado'}</dd></div>
+                            </dl>
+                            {(order.payments ?? []).length > 0 && (
+                                <div>
+                                    {(order.payments ?? []).map((p) => (
+                                        <div key={p.id} className={`${styles.paymentCard} ${p.status === 'REVERSED' ? styles.reversed : ''}`}>
+                                            <div className={styles.summaryRow}>
+                                                <strong>{money(Number(p.amount))}</strong>
+                                                <span>{new Date(p.date).toLocaleDateString('es-ES')}{p.status === 'REVERSED' ? ' · Revertido' : ''}</span>
+                                            </div>
+                                        </div>
                                     ))}
-                                    {(isNew ? newItems.length : (order?.items?.length || 0)) === 0 && (
-                                        <tr>
-                                            <td colSpan={isDraft ? 5 : 4} className="empty-table-msg">
-                                                No hay ítems agregados aún
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                                <tfoot>
-                                    <tr className="po-total-row">
-                                        <td colSpan={3} className="text-right">Total:</td>
-                                        <td className="text-right total-amount">
-                                            $
-                                            {(isNew
-                                                ? newItems.reduce((sum, item) => sum + (item.quantity * item.cost), 0)
-                                                : Number(order?.total || 0)
-                                            ).toFixed(2)}
-                                        </td>
-                                        {isDraft && <td></td>}
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            <div className="modal-footer">
-                <div className="status-indicator" style={{ marginRight: 'auto' }}>
-                    {!isNew && order && (
-                        <div className={`modern-status-badge status-${order.status.toLowerCase()}`}>
-                            {order.status === 'DRAFT' ? 'Borrador' :
-                                order.status === 'ISSUED' ? 'Emitida' :
-                                    order.status === 'RECEIVED' ? 'Recibida' : 'Cancelada'}
-                        </div>
+                                </div>
+                            )}
+                        </FormSection>
                     )}
-                </div>
-                <div className="action-buttons" style={{ display: 'flex', gap: '8px' }}>
-                    <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
-                    {isDraft && (
-                        <Button type="submit" className="save-btn-premium" disabled={saving}>
-                            <Save size={20} />
-                            <span>{saving ? 'Guardando...' : 'Guardar'}</span>
-                        </Button>
-                    )}
-                    {!isNew && order?.status === 'DRAFT' && (
-                        <Button variant="secondary" type="button" onClick={() => handleStatusChange('ISSUED')}>
-                            <CheckCircle size={20} />
-                            <span>Emitir</span>
-                        </Button>
-                    )}
-                    {!isNew && order?.status === 'ISSUED' && (
-                        <Button variant="secondary" type="button" onClick={() => setIsReceiveModalOpen(true)}>
-                            <Package size={20} />
-                            <span>Recibir</span>
-                        </Button>
-                    )}
-                </div>
-            </div>
-            </form>
-
-            <Modal
-                isOpen={isReceiveModalOpen}
-                onClose={() => setIsReceiveModalOpen(false)}
-                title="Recibir Orden"
-            >
-                <div className="receive-modal-container">
-                    <div className="receive-info-box">
-                        <Info size={20} className="info-icon" />
-                        <div className="info-text">
-                            <p>Esta acción ingresará los ítems de la orden al inventario físico.</p>
-                            <span className="info-subtext">Asegúrese de contar los productos antes de confirmar.</span>
-                        </div>
-                    </div>
-
-                    <div className="modal-section">
-                        <div className="modal-section-header">
-                            <Building2 size={18} />
-                            <h3>Destino de inventario</h3>
-                        </div>
-                    <div className="modal-input-group">
-                        <label className="modal-input-label" htmlFor="po-warehouse">
-                            <Building2 size={16} /> Almacén de Destino
-                        </label>
-                        {(() => {
-                            const warehouse = warehouses.find(w => w.id.toString() === selectedWarehouseId);
-                            return (
-                                <Select
-                                    inputId="po-warehouse"
-                                    variant="modal"
-                                    options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.branch?.name})` }))}
-                                    value={warehouse ? { value: selectedWarehouseId, label: `${warehouse.name} (${warehouse.branch?.name})` } : null}
-                                    onChange={(option: SingleValue<StrOption>) => option && setSelectedWarehouseId(option.value)}
-                                    placeholder="Seleccione Almacén"
-                                />
-                            );
-                        })()}
-                    </div>
-                    </div>
-
-                    <div className="modal-footer receive-modal-footer">
-                        <Button type="button" variant="ghost" onClick={() => setIsReceiveModalOpen(false)}>
-                            Cancelar
-                        </Button>
-                        <Button type="button" onClick={handleReceive} className="receive-confirm-btn">
-                            <CheckCircle size={20} />
-                            Confirmar Recepción
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
-
-            <Sidebar
-                isOpen={isItemSidebarOpen}
-                onClose={() => setIsItemSidebarOpen(false)}
-                title="Agregar Ítem"
-            >
-                <div className="premium-modal-content purchase-item-modal-content">
-                    <div className="modal-form-new">
-                    <div className="modal-tab-content">
-                    <div className="modal-content-group">
-                        <div className="modal-section-header">
-                            <Package size={18} />
-                            <h3>Producto de la orden</h3>
-                        </div>
-                        <div className="add-item-form">
-                        {(() => {
-                            const prod = products.find(p => p.id.toString() === itemForm.productId);
-                            return (
-                                <Select
-                                    variant="modal"
-                                    label="Producto"
-                                    options={products.map(p => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
-                                    value={prod ? { value: itemForm.productId, label: `${prod.name} (${prod.unit})` } : null}
-                                    onChange={(option: SingleValue<StrOption>) => option && handleItemProductChange(option?.value || '')}
-                                    placeholder="Seleccione Producto"
-                                />
-                            );
-                        })()}
-                        {itemUnits.length > 0 && (
-                            <Select
-                                variant="modal"
-                                label="Unidad de Compra"
-                                options={itemUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))}
-                                value={itemForm.purchaseUnit
-                                    ? {
-                                        value: itemForm.purchaseUnit,
-                                        label: itemUnits.find(u => u.abbreviation === itemForm.purchaseUnit)
-                                            ? `${itemUnits.find(u => u.abbreviation === itemForm.purchaseUnit)!.name} (${itemForm.purchaseUnit})`
-                                            : itemForm.purchaseUnit
-                                    }
-                                    : null}
-                                onChange={(option: SingleValue<StrOption>) => setItemForm({ ...itemForm, purchaseUnit: option?.value || '' })}
-                                placeholder="Seleccione Unidad"
-                            />
-                        )}
-                        <Input
-                            label={`Cantidad${itemForm.purchaseUnit ? ` (en ${itemForm.purchaseUnit})` : ''}`}
-                            type="number"
-                            value={itemForm.quantity}
-                            onChange={e => setItemForm({ ...itemForm, quantity: Number(e.target.value) })}
-                            min={0.001}
-                            step="any"
-                        />
-                        {itemForm.purchaseUnit && (
-                            <p className="purchase-unit-hint">
-                                <Info size={12} />
-                                La cantidad se ingresa en <strong>{itemForm.purchaseUnit}</strong>; se convertirá a la unidad base del inventario al recibir.
-                            </p>
-                        )}
-                        <Input
-                            label="Costo Unitario"
-                            type="number"
-                            value={itemForm.cost}
-                            onChange={e => setItemForm({ ...itemForm, cost: Number(e.target.value) })}
-                            min={0}
-                            step="0.01"
-                        />
-                    </div>
-                    </div>
-                    </div>
-                    <div className="modal-footer">
-                        <Button type="button" variant="ghost" onClick={() => setIsItemSidebarOpen(false)}>
-                            Cancelar
-                        </Button>
-                        <Button type="button" onClick={() => { handleAddItem(); setIsItemSidebarOpen(false); }} disabled={!itemForm.productId}>
-                            Agregar
-                        </Button>
-                    </div>
-                    </div>
-                </div>
-            </Sidebar>
-        </div>
+                </form>
+            )}
+        </FullScreenModal>
     );
 }

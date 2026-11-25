@@ -1,27 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import Button from '../components/Button';
-import Pagination from '../components/Pagination';
+import {
+    Badge, Button, Checkbox, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    NumberInput, PageContent, PageHeader, StatCard, TableToolbar, Tabs, Textarea, formatMoney,
+    type Column,
+} from '@/ui';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
-import {
-    Landmark,
-    BarChart3,
-    Hourglass,
-    CircleDollarSign,
-    CalendarRange,
-    Search,
-    Calendar,
-    TrendingUp,
-    Wallet,
-    CheckCircle2,
-    AlertTriangle,
-    Loader2,
-    Save,
-    RotateCcw,
-} from 'lucide-react';
+import { CheckCircle2, Plus, RotateCcw, Search } from 'lucide-react';
+import styles from './compras.module.css';
 
 function errorMessage(error: unknown): string {
     if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -74,16 +63,14 @@ interface BankDeposit {
 
 type TabKey = 'status' | 'pending' | 'deposit';
 
-const PAGE_SIZE = 20;
-
 const BankReconciliation: React.FC = () => {
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
     const [activeTab, setActiveTab] = useState<TabKey>('status');
-    const [pendingPage, setPendingPage] = useState(1);
     const [status, setStatus] = useState<ReconciliationStatus | null>(null);
     const [pending, setPending] = useState<PendingReconciliation[]>([]);
     const [deposits, setDeposits] = useState<BankDeposit[]>([]);
     const [selectedShifts, setSelectedShifts] = useState<number[]>([]);
+    const [isDepositOpen, setIsDepositOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [statusLoadError, setStatusLoadError] = useState<string | null>(null);
@@ -167,15 +154,13 @@ const BankReconciliation: React.FC = () => {
         void loadReconciliationStatus();
     }, [loadReconciliationStatus]);
 
-    useEffect(() => {
-        setPendingPage(1);
-    }, [pending.length]);
-
-    const pendingTotalPages = Math.max(1, Math.ceil(pending.length / PAGE_SIZE));
-    const pagedPending = pending.slice((pendingPage - 1) * PAGE_SIZE, pendingPage * PAGE_SIZE);
 
     const handleRecordDeposit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!(parseFloat(depositForm.amount) > 0)) {
+            showError('El monto del depósito debe ser mayor a 0');
+            return;
+        }
         setLoading(true);
         try {
             await api.post('/advanced/reconciliation/deposit', {
@@ -187,6 +172,7 @@ const BankReconciliation: React.FC = () => {
                 shiftIds: selectedShifts
             });
             showSuccess('Depósito registrado exitosamente');
+            setIsDepositOpen(false);
             setDepositForm({
                 date: formatLocalDateInput(),
                 amount: '',
@@ -251,430 +237,325 @@ const BankReconciliation: React.FC = () => {
         );
     };
 
-    const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-        { key: 'status', label: 'Estado', icon: <BarChart3 size={16} /> },
-        { key: 'pending', label: 'Pendientes', icon: <Hourglass size={16} /> },
-        { key: 'deposit', label: 'Registrar Depósito', icon: <CircleDollarSign size={16} /> },
+
+    const symbol = settings.currency_symbol || 'C$';
+    const money = (value: unknown) => formatMoney(value, symbol);
+
+    const tabs = [
+        { id: 'status', label: 'Estado' },
+        { id: 'pending', label: 'Pendientes', badge: pendingLoadError ? undefined : pending.length },
+        { id: 'deposit', label: 'Depósitos' },
     ];
 
     const isReconciled = status?.reconciliation.status === 'RECONCILED';
+    const difference = status?.reconciliation.difference ?? 0;
+
+    const allSelected = selectedShifts.length === pending.length && pending.length > 0;
+
+    const methodRows = status
+        ? [
+            { key: 'cash', label: 'Efectivo', amount: status.totals.byMethod.cash },
+            { key: 'card', label: 'Tarjeta', amount: status.totals.byMethod.card },
+            { key: 'transfer', label: 'Transferencia', amount: status.totals.byMethod.transfer },
+            { key: 'other', label: 'Otros', amount: status.totals.byMethod.other },
+        ]
+        : [];
+    const methodColumns: Column<{ key: string; label: string; amount: number }>[] = [
+        { key: 'label', header: 'Método', width: '2fr' },
+        { key: 'amount', header: `Monto (${symbol})`, width: '1fr', type: 'money' },
+    ];
+
+    const pendingColumns: Column<PendingReconciliation>[] = [
+        {
+            key: 'select',
+            header: (
+                <Checkbox
+                    aria-label="Seleccionar todos los turnos"
+                    checked={allSelected}
+                    onChange={(e) => setSelectedShifts(e.target.checked ? pending.map((p) => p.shiftId) : [])}
+                    label=""
+                />
+            ),
+            width: '3rem',
+            render: (shift) => (
+                <Checkbox
+                    aria-label={`Seleccionar turno ${shift.shiftId}`}
+                    checked={selectedShifts.includes(shift.shiftId)}
+                    onChange={() => toggleShiftSelection(shift.shiftId)}
+                    label=""
+                />
+            ),
+        },
+        { key: 'date', header: 'Fecha', width: '1fr', type: 'date' },
+        { key: 'cashRegister', header: 'Caja', width: '1.2fr' },
+        { key: 'user', header: 'Usuario', width: '1.2fr', hideBelow: 'md' },
+        { key: 'startAmount', header: `Monto inicial (${symbol})`, width: '1fr', type: 'money', hideBelow: 'lg' },
+        { key: 'endAmount', header: `Monto final (${symbol})`, width: '1fr', type: 'money' },
+        {
+            key: 'difference', header: `Diferencia (${symbol})`, width: '1fr', type: 'money',
+        },
+        {
+            key: 'status', header: 'Estado', width: '1fr',
+            render: (shift) => (
+                <Badge tone={shift.status === 'BALANCED' ? 'success' : 'warning'} dot>
+                    {shift.status === 'BALANCED' ? 'Cuadrado' : 'Con diferencia'}
+                </Badge>
+            ),
+        },
+    ];
+
+    const depositColumns: Column<BankDeposit>[] = [
+        { key: 'date', header: 'Fecha', width: '1fr', type: 'date' },
+        { key: 'reference', header: 'Referencia', width: '1.2fr' },
+        { key: 'bankAccount', header: 'Cuenta', width: '1.6fr', hideBelow: 'md' },
+        { key: 'amount', header: `Monto (${symbol})`, width: '1fr', type: 'money', accessor: (d) => Number(d.amount) },
+        { key: 'shifts', header: 'Turnos', width: '0.7fr', type: 'number', decimals: 0, hideBelow: 'lg', accessor: (d) => d.shifts.length },
+        {
+            key: 'status', header: 'Estado', width: '1fr',
+            render: (d) => <Badge tone={d.status === 'ACTIVE' ? 'success' : 'warning'} dot>{d.status === 'ACTIVE' ? 'Activo' : 'Revertido'}</Badge>,
+        },
+        {
+            key: 'actions', header: 'Acciones', width: '8rem', type: 'actions',
+            render: (d) => (
+                <span className={styles.rowActions}>
+                    {d.status === 'ACTIVE' && (
+                        <IconButton
+                            icon={RotateCcw} size="sm" label="Revertir depósito" disabled={loading}
+                            onClick={() => void handleReverseDeposit(d)}
+                        />
+                    )}
+                    {d.status === 'REVERSED' && d.reversalReason && (
+                        <span className={styles.muted} title={d.reversalReason}>Reverso registrado</span>
+                    )}
+                </span>
+            ),
+        },
+    ];
+
+    const depositDirty = Boolean(depositForm.amount || depositForm.bankAccount || depositForm.reference || depositForm.notes || selectedShifts.length > 0);
 
     return (
-        <div className="page-wrapper">
+        <PageContent>
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-            <div className="page-header-bar">
-                <div className="header-title-section">
-                    <h1><Landmark size={32} /> Conciliación Bancaria</h1>
-                    <p className="header-subtitle">Gestiona la conciliación de caja con depósitos bancarios</p>
-                </div>
-            </div>
+            <PageHeader
+                title="Conciliación Bancaria"
+                description="Gestiona la conciliación de caja con depósitos bancarios"
+                actions={(
+                    <Button variant="primary" icon={Plus} onClick={() => setIsDepositOpen(true)}>
+                        Registrar depósito
+                    </Button>
+                )}
+            />
 
-            <div className="page-tabs" style={{ marginBottom: 'var(--spacing-lg)' }}>
-                {tabs.map((tab) => (
-                    <button
-                        key={tab.key}
-                        className={`page-tab ${activeTab === tab.key ? 'active' : ''}`}
-                        onClick={() => setActiveTab(tab.key)}
-                    >
-                        {tab.icon}
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
+            <Tabs ariaLabel="Secciones de conciliación" tabs={tabs} active={activeTab} onChange={(id) => setActiveTab(id as TabKey)} />
 
-            {/* ========================= STATUS TAB ========================= */}
             {activeTab === 'status' && (
                 <>
-                    <div className="filters-toolbar" style={{ marginBottom: 'var(--spacing-lg)' }}>
-                        <div className="filter-field filter-field-narrow">
-                            <label className="filter-field-label">
-                                <Calendar size={14} /> Desde
-                            </label>
-                            <input
-                                type="date"
-                                className="filter-input"
+                    <div className={styles.filters}>
+                        <div className={styles.filterField}>
+                            <label htmlFor="rec-from">Desde</label>
+                            <DateInput
+                                id="rec-from"
                                 value={dateRange.startDate}
                                 onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
                             />
                         </div>
-                        <div className="filter-field filter-field-narrow">
-                            <label className="filter-field-label">
-                                <Calendar size={14} /> Hasta
-                            </label>
-                            <input
-                                type="date"
-                                className="filter-input"
+                        <div className={styles.filterField}>
+                            <label htmlFor="rec-to">Hasta</label>
+                            <DateInput
+                                id="rec-to"
                                 value={dateRange.endDate}
                                 onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
                             />
                         </div>
-                        <div className="filter-actions" style={{ alignSelf: 'flex-end' }}>
-                            <Button onClick={loadReconciliationStatus} disabled={loading}>
-                                {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                                {loading ? 'Cargando...' : 'Consultar'}
-                            </Button>
-                        </div>
+                        <Button icon={Search} loading={loading} onClick={() => void loadReconciliationStatus()} disabled={loading}>
+                            {loading ? 'Cargando...' : 'Consultar'}
+                        </Button>
                     </div>
 
-                    {status && (
+                    {statusLoadError && (
+                        <div className={styles.alert} role="alert">
+                            <span className={styles.inline}>
+                                {statusLoadError}
+                                <Button size="sm" onClick={() => void loadReconciliationStatus()}>Reintentar</Button>
+                            </span>
+                        </div>
+                    )}
+
+                    {status && !statusLoadError && (
                         <>
-                            <div className="kpi-grid">
-                                <div className="kpi-card kpi-neutral">
-                                    <div className="kpi-label"><CalendarRange size={14} /> Turnos cerrados</div>
-                                    <div className="kpi-value">{status.shifts}</div>
-                                </div>
-                                <div className="kpi-card">
-                                    <div className="kpi-label"><TrendingUp size={14} /> Ventas totales</div>
-                                    <div className="kpi-value">{formatCurrency(status.totals.totalSales, settings)}</div>
-                                </div>
-                                <div className="kpi-card">
-                                    <div className="kpi-label"><Wallet size={14} /> Efectivo en cajas</div>
-                                    <div className="kpi-value">{formatCurrency(status.totals.cashInRegisters, settings)}</div>
-                                </div>
-                                <div className={`kpi-card ${isReconciled ? 'kpi-success' : 'kpi-warning'}`}>
-                                    <div className="kpi-label">
-                                        {isReconciled ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
-                                        Estado
-                                    </div>
-                                    <div className="kpi-value">
-                                        {isReconciled ? 'Conciliado' : 'Pendiente'}
-                                    </div>
-                                </div>
+                            <div className={styles.kpiGrid}>
+                                <StatCard
+                                    label="Ventas del período"
+                                    value={money(status.totals.totalSales)}
+                                    context={`${status.shifts} turnos cerrados · efectivo ${money(status.totals.byMethod.cash)}`}
+                                />
+                                <StatCard
+                                    label="Efectivo en cajas"
+                                    value={money(status.totals.cashInRegisters)}
+                                    context={`Esperado ${money(status.reconciliation.cashExpected)} · real ${money(status.reconciliation.cashActual)}`}
+                                />
+                                <StatCard
+                                    label="Diferencia de efectivo"
+                                    value={money(difference)}
+                                    tone={difference === 0 ? 'success' : 'warning'}
+                                    context={`${difference > 0 ? 'Sobrante' : difference < 0 ? 'Faltante' : 'Cuadrado'} · ${isReconciled ? 'Conciliado' : 'Pendiente de conciliar'}`}
+                                    action={!isReconciled && pending.length > 0
+                                        ? { label: 'Ver turnos pendientes', onClick: () => setActiveTab('pending') }
+                                        : undefined}
+                                />
                             </div>
 
-                            <div className="data-table-wrapper">
-                                <div className="data-table-header">Ventas por método de pago</div>
-                                <div className="data-table-scroll">
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Método</th>
-                                                <th className="text-right">Monto</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr>
-                                                <td>Efectivo</td>
-                                                <td className="text-right font-semibold">{formatCurrency(status.totals.byMethod.cash, settings)}</td>
-                                            </tr>
-                                            <tr>
-                                                <td>Tarjeta</td>
-                                                <td className="text-right font-semibold">{formatCurrency(status.totals.byMethod.card, settings)}</td>
-                                            </tr>
-                                            <tr>
-                                                <td>Transferencia</td>
-                                                <td className="text-right font-semibold">{formatCurrency(status.totals.byMethod.transfer, settings)}</td>
-                                            </tr>
-                                            <tr>
-                                                <td>Otros</td>
-                                                <td className="text-right font-semibold">{formatCurrency(status.totals.byMethod.other, settings)}</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <div className="data-table-wrapper">
-                                <div className="data-table-header">Conciliación de efectivo</div>
-                                <div className="data-table-scroll">
-                                    <table className="data-table">
-                                        <tbody>
-                                            <tr>
-                                                <td>Efectivo esperado</td>
-                                                <td className="text-right font-semibold">{formatCurrency(status.reconciliation.cashExpected, settings)}</td>
-                                            </tr>
-                                            <tr>
-                                                <td>Efectivo real en cajas</td>
-                                                <td className="text-right font-semibold">{formatCurrency(status.reconciliation.cashActual, settings)}</td>
-                                            </tr>
-                                            <tr>
-                                                <td><strong>Diferencia</strong></td>
-                                                <td className="text-right">
-                                                    <span className={`status-pill ${status.reconciliation.difference === 0 ? 'status-success' : 'status-warning'}`}>
-                                                        {formatCurrency(status.reconciliation.difference, settings)}
-                                                        {status.reconciliation.difference > 0 && ' • Sobrante'}
-                                                        {status.reconciliation.difference < 0 && ' • Faltante'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                            <DataTable
+                                ariaLabel="Ventas por método de pago"
+                                columns={methodColumns}
+                                rows={methodRows}
+                                rowKey={(r) => r.key}
+                                resetKey={status.period.start}
+                            />
                         </>
                     )}
 
-                    {!status && !loading && statusLoadError && (
-                        <div className="state-placeholder">
-                            <AlertTriangle size={48} />
-                            <p>{statusLoadError}</p>
-                        </div>
-                    )}
-
                     {!status && !loading && !statusLoadError && (
-                        <div className="state-placeholder">
-                            <BarChart3 size={48} />
-                            <p>No hay datos disponibles para el período seleccionado.</p>
-                        </div>
+                        <p className={styles.muted}>No hay datos disponibles para el período seleccionado.</p>
                     )}
                 </>
             )}
 
-            {/* ========================= PENDING TAB ========================= */}
             {activeTab === 'pending' && (
-                <div className="data-table-wrapper">
-                    <div className="data-table-header">
-                        <span>Turnos pendientes de conciliación</span>
-                        {selectedShifts.length > 0 && (
-                            <Button variant="primary" onClick={handleMarkAsReconciled} disabled={loading}>
-                                <CheckCircle2 size={16} /> Marcar {selectedShifts.length} como conciliado(s)
-                            </Button>
-                        )}
-                    </div>
-                    {pendingLoadError ? (
-                        <div className="state-placeholder" style={{ borderTop: 'none', borderRadius: 0 }}>
-                            <AlertTriangle size={48} />
-                            <p>{pendingLoadError}</p>
-                        </div>
-                    ) : pending.length > 0 ? (
-                        <>
-                            <div className="data-table-scroll">
-                                <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ width: 36 }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedShifts.length === pending.length && pending.length > 0}
-                                                onChange={(e) =>
-                                                    setSelectedShifts(e.target.checked ? pending.map((p) => p.shiftId) : [])
-                                                }
-                                            />
-                                        </th>
-                                        <th>Fecha</th>
-                                        <th>Caja</th>
-                                        <th>Usuario</th>
-                                        <th className="text-right">Monto inicial</th>
-                                        <th className="text-right">Monto final</th>
-                                        <th className="text-right">Diferencia</th>
-                                        <th className="text-center">Estado</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {pagedPending.map((shift) => (
-                                        <tr key={shift.shiftId}>
-                                            <td>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedShifts.includes(shift.shiftId)}
-                                                    onChange={() => toggleShiftSelection(shift.shiftId)}
-                                                />
-                                            </td>
-                                            <td>{new Date(shift.date).toLocaleDateString()}</td>
-                                            <td>{shift.cashRegister}</td>
-                                            <td className="text-secondary">{shift.user}</td>
-                                            <td className="text-right font-semibold">{formatCurrency(shift.startAmount, settings)}</td>
-                                            <td className="text-right font-semibold">{formatCurrency(shift.endAmount, settings)}</td>
-                                            <td className="text-right">
-                                                <span className={`status-pill ${shift.difference === 0 ? 'status-success' : 'status-warning'}`}>
-                                                    {formatCurrency(shift.difference, settings)}
-                                                </span>
-                                            </td>
-                                            <td className="text-center">
-                                                <span className={`status-pill ${shift.status === 'BALANCED' ? 'status-success' : 'status-warning'}`}>
-                                                    {shift.status === 'BALANCED' ? 'Cuadrado' : 'Con diferencia'}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            </div>
-                            <Pagination
-                                page={pendingPage}
-                                totalPages={pendingTotalPages}
-                                totalItems={pending.length}
-                                pageSize={PAGE_SIZE}
-                                onPageChange={setPendingPage}
-                            />
-                        </>
-                    ) : (
-                        <div className="state-placeholder" style={{ borderTop: 'none', borderRadius: 0 }}>
-                            <Hourglass size={48} />
-                            <p>No hay turnos pendientes de conciliación.</p>
+                <>
+                    {pendingLoadError && (
+                        <div className={styles.alert} role="alert">
+                            <span className={styles.inline}>
+                                {pendingLoadError}
+                                <Button size="sm" onClick={() => void loadPendingReconciliations()}>Reintentar</Button>
+                            </span>
                         </div>
                     )}
-                </div>
+                    <DataTable
+                        ariaLabel="Turnos pendientes de conciliación"
+                        columns={pendingColumns}
+                        rows={pendingLoadError ? [] : pending}
+                        rowKey={(shift) => shift.shiftId}
+                        resetKey={pending.length}
+                        empty={pendingLoadError ? 'No disponible: los turnos pendientes no se pudieron cargar.' : 'No hay turnos pendientes de conciliación.'}
+                        toolbar={(
+                            <TableToolbar
+                                actions={selectedShifts.length > 0 ? (
+                                    <Button variant="primary" icon={CheckCircle2} onClick={handleMarkAsReconciled} disabled={loading}>
+                                        Marcar {selectedShifts.length} como conciliado(s)
+                                    </Button>
+                                ) : undefined}
+                            >
+                                <span className={styles.muted}>Turnos pendientes de conciliación</span>
+                            </TableToolbar>
+                        )}
+                    />
+                </>
             )}
 
-            {/* ========================= DEPOSIT TAB ========================= */}
             {activeTab === 'deposit' && (
-                <div className="data-table-wrapper" style={{ padding: 'var(--spacing-lg)' }}>
-                    <h2 style={{ margin: '0 0 var(--spacing-md) 0', fontSize: 'var(--font-size-lg)' }}>
-                        Registrar depósito bancario
-                    </h2>
-                    <form onSubmit={handleRecordDeposit} className="modal-form-new" style={{ padding: 0 }}>
-                        <div className="modal-form-row">
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="deposit-date">Fecha del depósito *</label>
-                                <input
+                <>
+                    {depositsLoadError && (
+                        <div className={styles.alert} role="alert">
+                            <span className={styles.inline}>
+                                {depositsLoadError}
+                                <Button size="sm" onClick={() => void loadDeposits()}>Reintentar</Button>
+                            </span>
+                        </div>
+                    )}
+                    <DataTable
+                        ariaLabel="Historial de depósitos"
+                        columns={depositColumns}
+                        rows={depositsLoadError ? [] : deposits}
+                        rowKey={(d) => d.id}
+                        resetKey={deposits.length}
+                        empty={depositsLoadError ? 'No disponible: el historial de depósitos no se pudo cargar.' : 'Sin depósitos registrados.'}
+                    />
+                </>
+            )}
+
+            <FullScreenModal
+                isOpen={isDepositOpen}
+                onClose={() => setIsDepositOpen(false)}
+                title="Registrar depósito bancario"
+                dirty={depositDirty}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="deposit-form" loading={loading} disabled={loading}>
+                            {loading ? 'Guardando...' : 'Registrar depósito'}
+                        </Button>
+                    </>
+                )}
+            >
+                <form id="deposit-form" onSubmit={handleRecordDeposit} className={styles.stack}>
+                    <FormSection step={1} title="Datos del depósito">
+                        <FormGrid>
+                            <Field label="Fecha del depósito" htmlFor="deposit-date" required>
+                                <DateInput
                                     id="deposit-date"
-                                    type="date"
-                                    className="modal-standard-input"
                                     value={depositForm.date}
                                     onChange={(e) => setDepositForm({ ...depositForm, date: e.target.value })}
                                     required
                                 />
-                            </div>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="deposit-amount">Monto *</label>
-                                <input
+                            </Field>
+                            <Field label="Monto" htmlFor="deposit-amount" required>
+                                <NumberInput
                                     id="deposit-amount"
-                                    type="number"
-                                    step="0.01"
-                                    className="modal-standard-input"
-                                    value={depositForm.amount}
-                                    onChange={(e) => setDepositForm({ ...depositForm, amount: e.target.value })}
-                                    required
-                                    min="0.01"
-                                    placeholder="0.00"
+                                    value={depositForm.amount === '' ? null : Number(depositForm.amount)}
+                                    onChange={(v) => setDepositForm({ ...depositForm, amount: v === null ? '' : String(v) })}
+                                    min={0.01}
+                                    prefix={symbol}
                                 />
-                            </div>
-                        </div>
-
-                        <div className="modal-form-row">
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="deposit-bank-account">Cuenta bancaria *</label>
-                                <input
+                            </Field>
+                            <Field label="Cuenta bancaria" htmlFor="deposit-bank-account" required>
+                                <Input
                                     id="deposit-bank-account"
-                                    type="text"
-                                    className="modal-standard-input"
                                     value={depositForm.bankAccount}
                                     onChange={(e) => setDepositForm({ ...depositForm, bankAccount: e.target.value })}
                                     required
                                     placeholder="Ej: BAC — Cuenta Corriente 123456"
                                 />
-                            </div>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="deposit-reference">Referencia / Boleta *</label>
-                                <input
+                            </Field>
+                            <Field label="Referencia / Boleta" htmlFor="deposit-reference" required>
+                                <Input
                                     id="deposit-reference"
-                                    type="text"
-                                    className="modal-standard-input"
                                     value={depositForm.reference}
                                     onChange={(e) => setDepositForm({ ...depositForm, reference: e.target.value })}
                                     required
                                     placeholder="Número de boleta o referencia"
                                 />
-                            </div>
-                        </div>
-
-                        <div className="modal-input-group">
-                            <label className="modal-input-label" htmlFor="deposit-notes">Notas</label>
-                            <textarea
+                            </Field>
+                        </FormGrid>
+                        <Field label="Notas" htmlFor="deposit-notes">
+                            <Textarea
                                 id="deposit-notes"
-                                className="modal-textarea"
                                 value={depositForm.notes}
                                 onChange={(e) => setDepositForm({ ...depositForm, notes: e.target.value })}
-                                rows={3}
                                 placeholder="Detalles adicionales del depósito..."
                             />
-                        </div>
+                        </Field>
+                    </FormSection>
 
-                        {pending.length > 0 && (
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" id="deposit-shifts-label">Turnos asociados (opcional)</label>
-                                <div role="group" aria-labelledby="deposit-shifts-label" style={{
-                                    maxHeight: 200,
-                                    overflowY: 'auto',
-                                    border: '1px solid var(--color-border)',
-                                    borderRadius: 'var(--radius-md)',
-                                    padding: 'var(--spacing-sm)',
-                                    background: 'var(--color-background)'
-                                }}>
-                                    {pending.map((shift) => (
-                                        <label key={shift.shiftId} style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 'var(--spacing-sm)',
-                                            cursor: 'pointer',
-                                            padding: 'var(--spacing-xs) var(--spacing-sm)',
-                                            borderRadius: 'var(--radius-sm)',
-                                            fontSize: 'var(--font-size-sm)',
-                                            color: 'var(--color-text)'
-                                        }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedShifts.includes(shift.shiftId)}
-                                                onChange={() => toggleShiftSelection(shift.shiftId)}
-                                            />
-                                            <span>
-                                                {new Date(shift.date).toLocaleDateString()} — {shift.cashRegister} — {formatCurrency(shift.endAmount, settings)}
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
+                    {pending.length > 0 && (
+                        <FormSection step={2} title="Turnos asociados (opcional)">
+                            <div role="group" aria-label="Turnos asociados" className={styles.checkList}>
+                                {pending.map((shift) => (
+                                    <Checkbox
+                                        key={shift.shiftId}
+                                        checked={selectedShifts.includes(shift.shiftId)}
+                                        onChange={() => toggleShiftSelection(shift.shiftId)}
+                                        label={`${new Date(shift.date).toLocaleDateString()} — ${shift.cashRegister} — ${money(shift.endAmount)}`}
+                                    />
+                                ))}
                             </div>
-                        )}
-
-                        <div className="modal-footer" style={{ borderTop: 'none', padding: 'var(--spacing-md) 0 0', marginTop: 'var(--spacing-md)' }}>
-                            <Button type="submit" disabled={loading}>
-                                {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                {loading ? 'Guardando...' : 'Registrar depósito'}
-                            </Button>
-                        </div>
-                    </form>
-
-                    <div className="data-table-wrapper" style={{ marginTop: 'var(--spacing-lg)' }}>
-                        <div className="data-table-header">Historial de depósitos</div>
-                        <div className="data-table-scroll">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Fecha</th><th>Referencia</th><th>Cuenta</th>
-                                        <th className="text-right">Monto</th><th>Turnos</th><th>Estado</th><th>Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {deposits.map((deposit) => (
-                                        <tr key={deposit.id}>
-                                            <td>{new Date(deposit.date).toLocaleDateString()}</td>
-                                            <td>{deposit.reference}</td>
-                                            <td>{deposit.bankAccount}</td>
-                                            <td className="text-right font-semibold">{formatCurrency(Number(deposit.amount), settings)}</td>
-                                            <td>{deposit.shifts.length}</td>
-                                            <td>
-                                                <span className={`status-pill ${deposit.status === 'ACTIVE' ? 'status-success' : 'status-warning'}`}>
-                                                    {deposit.status === 'ACTIVE' ? 'Activo' : 'Revertido'}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                {deposit.status === 'ACTIVE' && (
-                                                    <button type="button" className="table-action-btn danger" disabled={loading}
-                                                        onClick={() => void handleReverseDeposit(deposit)} title="Revertir depósito">
-                                                        <RotateCcw size={16} />
-                                                    </button>
-                                                )}
-                                                {deposit.status === 'REVERSED' && deposit.reversalReason && (
-                                                    <span className="text-secondary" title={deposit.reversalReason}>Reverso registrado</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {depositsLoadError && (
-                                        <tr><td colSpan={7} className="text-center text-secondary">{depositsLoadError}</td></tr>
-                                    )}
-                                    {!depositsLoadError && deposits.length === 0 && (
-                                        <tr><td colSpan={7} className="text-center text-secondary">Sin depósitos registrados.</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+                        </FormSection>
+                    )}
+                </form>
+            </FullScreenModal>
+        </PageContent>
     );
 };
 

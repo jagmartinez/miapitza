@@ -1,0 +1,77 @@
+/* Reglas heredadas que aún usan ProductionOrders y CateringServices; se eliminan con su migración (Plan 05). */
+/* Form Styles */
+.form-grid-modern {
+    display: grid;
+    gap: var(--spacing-lg);
+}
+
+.form-grid-modern .full-width {
+    grid-column: 1 / -1;
+}
+
+/* Custom alignment for buttons in the sidebar */
+.save-btn-premium {
+    gap: var(--spacing-sm);
+}
+
+.action-btn-mini {
+    padding: 8px;
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
+}
+
+.action-btn-mini:hover {
+    background: var(--color-neutral-100);
+    color: var(--color-primary);
+}
+
+.dark .action-btn-mini:hover {
+    background: var(--color-neutral-700);
+}
+
+.action-btn-mini.edit:hover {
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--color-primary);
+}
+
+.action-btn-mini.delete:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--color-danger);
+}
+
+.action-btn-mini.delete:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.action-btn-mini.pdf {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--color-primary);
+    text-decoration: none;
+}
+
+.action-btn-mini.pdf:hover {
+    background: var(--color-primary);
+    color: white;
+
+.action-btn-mini.payment {
+    color: var(--color-primary);
+    border-color: rgba(59, 130, 246, 0.3);
+    background: rgba(59, 130, 246, 0.08);
+}
+
+.action-btn-mini.payment:hover {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}

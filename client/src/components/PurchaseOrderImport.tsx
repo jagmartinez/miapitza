@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { purchaseOrdersAPI, suppliersAPI, branchesAPI } from '../services/api';
-import Button from './Button';
-import Select from './Select';
-import { Download, Upload, CheckCircle, AlertTriangle, X, ShoppingCart, Loader2, FileSpreadsheet } from 'lucide-react';
-import { formatCurrency, type CurrencySettings } from '../utils/currency';
-import type { SingleValue } from 'react-select';
-import './PurchaseOrderImport.css';
+import {
+    AppSelect, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, Input, Textarea, formatMoney, formatNumber,
+    type Column,
+} from '@/ui';
+import { Download, Upload, CheckCircle, AlertTriangle, ShoppingCart, FileSpreadsheet, ArrowLeft, ArrowRight } from 'lucide-react';
+import type { CurrencySettings } from '../utils/currency';
+import styles from '../pages/compras.module.css';
 
-type IdNameOption = { value: number; label: string };
+const STEP_LABELS = ['Cargar Excel', 'Validar Datos', 'Confirmar'];
 
 function axiosErrorMessage(err: unknown, fallback: string): string {
     if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -16,6 +17,7 @@ function axiosErrorMessage(err: unknown, fallback: string): string {
     }
     return fallback;
 }
+
 
 interface SupplierRow {
     id: number;
@@ -88,6 +90,7 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
             }
         } catch (error) {
             console.error('Error loading initial data for import:', error);
+            setError('No se pudieron cargar proveedores y sucursales; cierra y vuelve a abrir la carga masiva para reintentar.');
         }
     };
 
@@ -161,265 +164,179 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
         }
     };
 
-    return (
-        <div className="po-import-container">
-            {/* Stepper */}
-            <div className="import-stepper">
-                <div className={`step-item ${step >= 1 ? 'active' : ''} ${step > 1 ? 'completed' : ''}`}>
-                    <div className="step-number">{step > 1 ? <CheckCircle size={16} /> : 1}</div>
-                    <div className="step-label">Cargar Excel</div>
-                </div>
-                <div className="step-line"></div>
-                <div className={`step-item ${step >= 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`}>
-                    <div className="step-number">{step > 2 ? <CheckCircle size={16} /> : 2}</div>
-                    <div className="step-label">Validar Datos</div>
-                </div>
-                <div className="step-line"></div>
-                <div className={`step-item ${step >= 3 ? 'active' : ''}`}>
-                    <div className="step-number">3</div>
-                    <div className="step-label">Confirmar</div>
-                </div>
-            </div>
 
-            {error && (
-                <div className="import-error">
-                    <AlertTriangle size={20} />
-                    <span>{error}</span>
-                    <button onClick={() => setError(null)}><X size={16} /></button>
-                </div>
-            )}
+    const symbol = settings.currency_symbol || 'C$';
+    const money = (value: unknown) => formatMoney(value, symbol);
 
-            {/* Step 1: Upload */}
+    const previewColumns: Column<ImportItem>[] = [
+        { key: 'rowNumber', header: 'Fila', width: '0.6fr', type: 'number', decimals: 0 },
+        {
+            key: 'valid', header: 'Estado', width: '0.7fr',
+            render: (it) => (it.isValid
+                ? <span aria-label="Válida"><CheckCircle size={18} aria-hidden="true" /></span>
+                : <span aria-label="Con error"><AlertTriangle size={18} aria-hidden="true" /></span>),
+        },
+        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md' },
+        { key: 'name', header: 'Producto', width: '2fr' },
+        { key: 'quantity', header: 'Cantidad', width: '1fr', type: 'qty', render: (it) => `${formatNumber(it.quantity)} ${it.unit}`.trim() },
+        { key: 'purchaseUnit', header: 'Unidad Compra', width: '1fr', hideBelow: 'lg', render: (it) => it.purchaseUnit || 'Por defecto' },
+        { key: 'unitCost', header: `Costo Unit. (${symbol})`, width: '1fr', type: 'money' },
+        { key: 'total', header: `Subtotal (${symbol})`, width: '1fr', type: 'money' },
+        {
+            key: 'errors', header: 'Errores', width: '2fr',
+            render: (it) => (it.errors.length ? <span>{it.errors.join(' · ')}</span> : ''),
+        },
+    ];
+
+    const footer = (
+        <>
             {step === 1 && (
-                <div className="import-step-content">
-                    <div className="template-download-section">
-                        <h3>1. Descargar Plantilla</h3>
-                        <p>Use nuestra plantilla Excel para asegurarse de que los datos tengan el formato correcto.</p>
-                        <p className="file-hint">Opcional: puede incluir una columna <strong>"Unidad de compra"</strong> (ej: caja, kg, l) para que la cantidad se convierta a la unidad base del inventario. Si la deja vacía, se usará la unidad por defecto del producto.</p>
-                        <Button variant="secondary" onClick={handleDownloadTemplate} className="w-full">
-                            <Download size={18} />
-                            Descargar Plantilla.xlsx
-                        </Button>
-                    </div>
-
-                    <div className="file-upload-section">
-                        <h3>2. Subir Archivo</h3>
-                        <div className={`file-drop-zone ${file ? 'has-file' : ''}`}>
-                            <input
-                                type="file"
-                                accept=".xlsx, .xls"
-                                onChange={handleFileChange}
-                                id="file-input"
-                                className="hidden-input"
-                            />
-                            <label htmlFor="file-input" className="file-label">
-                                {file ? <FileSpreadsheet size={48} className="file-icon success" /> : <Upload size={48} className="file-icon" />}
-                                <div className="file-info">
-                                    <span className="file-name">{file ? file.name : 'Seleccionar o arrastrar archivo Excel'}</span>
-                                    <span className="file-hint">Formatos soportados: .xlsx, .xls</span>
-                                </div>
-                            </label>
-                        </div>
-
-                        <div className="import-actions flex-row">
-                            <Button
-                                variant="secondary"
-                                onClick={onClose}
-                                disabled={uploading}
-                                className="w-full"
-                            >
-                                Cancelar
-                            </Button>
-                            <Button
-                                variant="primary"
-                                onClick={handleUpload}
-                                disabled={!file || uploading}
-                                className="w-full"
-                            >
-                                {uploading ? <><Loader2 size={18} className="animate-spin" /> Procesando...</> : 'Procesar Archivo'}
-                            </Button>
-                        </div>
-                    </div>
-                </div>
+                <>
+                    <Button onClick={onClose} disabled={uploading}>Cancelar</Button>
+                    <Button variant="primary" onClick={handleUpload} loading={uploading} disabled={!file || uploading}>
+                        {uploading ? 'Procesando...' : 'Procesar Archivo'}
+                    </Button>
+                </>
             )}
-
-            {/* Step 2: Preview */}
             {step === 2 && importData && (
-                <div className="import-step-content wide">
-                    <div className="import-summary-bar">
-                        <div className="summary-item">
-                            <span className="label">Total Filas:</span>
-                            <span className="value">{importData.summary.totalRows}</span>
-                        </div>
-                        <div className="summary-item success">
-                            <span className="label">Válidos:</span>
-                            <span className="value">{importData.summary.valid}</span>
-                        </div>
-                        <div className="summary-item error">
-                            <span className="label">Con Error:</span>
-                            <span className="value">{importData.summary.invalid}</span>
-                        </div>
-                        <div className="summary-item total">
-                            <span className="label">Costo Total:</span>
-                            <span className="value">{formatCurrency(importData.summary.totalCost, settings)}</span>
-                        </div>
-                    </div>
-
-                    <div className="import-preview-table-wrapper">
-                        <table className="preview-table">
-                            <thead>
-                                <tr>
-                                    <th>Fila</th>
-                                    <th>Estado</th>
-                                    <th>SKU</th>
-                                    <th>Producto</th>
-                                    <th>Cantidad</th>
-                                    <th>Unidad Compra</th>
-                                    <th>Costo Unit.</th>
-                                    <th>Subtotal</th>
-                                    <th>Errores</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {importData.items.map((item, idx) => (
-                                    <tr key={idx} className={item.isValid ? '' : 'row-error'}>
-                                        <td>{item.rowNumber}</td>
-                                        <td>
-                                            {item.isValid ?
-                                                <CheckCircle size={18} className="text-success" /> :
-                                                <AlertTriangle size={18} className="text-error" />
-                                            }
-                                        </td>
-                                        <td>{item.sku}</td>
-                                        <td>{item.name}</td>
-                                        <td>{item.quantity} {item.unit}</td>
-                                        <td>{item.purchaseUnit || <span className="file-hint">Por defecto</span>}</td>
-                                        <td>{formatCurrency(item.unitCost, settings)}</td>
-                                        <td>{formatCurrency(item.total, settings)}</td>
-                                        <td className="cell-errors">
-                                            {item.errors.map((err, eIdx) => (
-                                                <div key={eIdx} className="error-text">{err}</div>
-                                            ))}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div className="import-actions flex-row">
-                        <Button variant="secondary" onClick={() => setStep(1)}>
-                            <ArrowLeft size={18} />
-                            Subir otro archivo
-                        </Button>
-                        <Button
-                            variant="primary"
-                            onClick={() => setStep(3)}
-                            disabled={importData.summary.valid === 0}
-                        >
-                            Siguiente Paso
-                            <ArrowRight size={18} />
-                        </Button>
-                    </div>
-                </div>
+                <>
+                    <Button icon={ArrowLeft} onClick={() => setStep(1)}>Subir otro archivo</Button>
+                    <Button variant="primary" onClick={() => setStep(3)} disabled={importData.summary.valid === 0}>
+                        Siguiente Paso <ArrowRight size={16} aria-hidden="true" />
+                    </Button>
+                </>
             )}
-
-            {/* Step 3: Confirm */}
             {step === 3 && importData && (
-                <div className="import-step-content">
-                    <div className="final-info-section">
-                        <h3>Detalles de la Orden</h3>
-                        <p>Seleccione el proveedor y la sucursal para finalizar la creación de la orden con los <strong>{importData.summary.valid}</strong> productos válidos.</p>
+                <>
+                    <Button icon={ArrowLeft} onClick={() => setStep(2)} disabled={confirming}>Volver al Preview</Button>
+                    <Button
+                        variant="primary" icon={ShoppingCart}
+                        onClick={handleConfirmImport} loading={confirming}
+                        disabled={!selectedSupplier || confirming}
+                    >
+                        {confirming ? 'Creando...' : 'Crear Orden de Compra'}
+                    </Button>
+                </>
+            )}
+        </>
+    );
 
-                        <div className="form-group">
-                            <Select
-                                label="Proveedor"
-                                options={suppliers.map(s => ({ value: s.id, label: s.name }))}
-                                value={selectedSupplier ? { value: selectedSupplier, label: suppliers.find(s => s.id === selectedSupplier)?.name || '' } : null}
-                                onChange={(opt: SingleValue<IdNameOption>) => setSelectedSupplier(opt?.value ?? null)}
-                                placeholder="Seleccionar proveedor..."
-                                required
-                            />
-                        </div>
+    return (
+        <FullScreenModal
+            isOpen
+            onClose={onClose}
+            title="Carga Masiva desde Excel"
+            breadcrumb={['Compras', 'Órdenes de compra']}
+            subtitle={`Paso ${step} de 3 · ${STEP_LABELS[step - 1]}`}
+            dirty={Boolean(file) || importData !== null}
+            dirtyMessage="Hay un archivo cargado sin confirmar. Si cierras ahora se perderá."
+            footer={footer}
+        >
+            <div className={styles.stack}>
+                {error && (
+                    <div className={styles.alert} role="alert">
+                        <span className={styles.inline}>
+                            {error}
+                            <Button size="sm" variant="ghost" onClick={() => setError(null)}>Cerrar aviso</Button>
+                        </span>
+                    </div>
+                )}
 
-                        <div className="form-group">
-                            <Select
-                                label="Sucursal"
-                                options={branches.map(b => ({ value: b.id, label: b.name }))}
-                                value={selectedBranch ? { value: selectedBranch, label: branches.find(b => b.id === selectedBranch)?.name || '' } : null}
-                                onChange={(opt: SingleValue<IdNameOption>) => setSelectedBranch(opt?.value ?? null)}
-                                placeholder="Seleccionar sucursal..."
-                                required
-                            />
-                        </div>
+                {step === 1 && (
+                    <>
+                        <FormSection step={1} title="Descargar plantilla" description="Use la plantilla Excel para asegurarse de que los datos tengan el formato correcto.">
+                            <p className={styles.muted}>
+                                Opcional: puede incluir una columna <strong>&quot;Unidad de compra&quot;</strong> (ej: caja, kg, l) para que la cantidad se convierta a la unidad base al recibir.
+                            </p>
+                            <div>
+                                <Button icon={Download} onClick={handleDownloadTemplate}>Descargar Plantilla.xlsx</Button>
+                            </div>
+                        </FormSection>
+                        <FormSection step={2} title="Subir archivo" description="Formatos soportados: .xlsx, .xls">
+                            <div className={styles.fileDrop}>
+                                <input
+                                    type="file"
+                                    accept=".xlsx, .xls"
+                                    onChange={handleFileChange}
+                                    id="file-input"
+                                    aria-label="Archivo Excel"
+                                    hidden
+                                />
+                                <Button
+                                    icon={file ? FileSpreadsheet : Upload}
+                                    onClick={() => document.getElementById('file-input')?.click()}
+                                >
+                                    {file ? file.name : 'Seleccionar archivo Excel'}
+                                </Button>
+                            </div>
+                        </FormSection>
+                    </>
+                )}
 
-                        <div className="form-group">
-                            <label className="form-label">Nº Factura de Proveedor (Opcional)</label>
-                            <input
-                                type="text"
-                                className="form-input"
-                                value={invoiceNumber}
-                                onChange={(e) => setInvoiceNumber(e.target.value)}
-                                placeholder="Ej: FAC-12345"
-                                style={{
-                                    width: '100%',
-                                    padding: 'var(--spacing-md)',
-                                    borderRadius: 'var(--radius-md)',
-                                    border: '1px solid var(--color-border)',
-                                    background: 'var(--color-surface)',
-                                    color: 'var(--color-text)',
-                                    fontSize: 'var(--font-size-sm)'
-                                }}
-                            />
-                        </div>
+                {step === 2 && importData && (
+                    <FormSection
+                        title="Validar datos"
+                        description={`${importData.summary.valid} válidas de ${importData.summary.totalRows} filas · ${importData.summary.invalid} con error · costo total ${money(importData.summary.totalCost)}`}
+                    >
+                        <DataTable
+                            ariaLabel="Vista previa de la importación"
+                            columns={previewColumns}
+                            rows={importData.items}
+                            rowKey={(it) => it.rowNumber}
+                            rowTone={(it) => (it.isValid ? undefined : 'danger')}
+                            empty="El archivo no contiene filas"
+                        />
+                    </FormSection>
+                )}
 
-                        <div className="form-group">
-                            <label className="form-label">Notas (Opcional)</label>
-                            <textarea
-                                className="form-textarea"
+                {step === 3 && importData && (
+                    <FormSection
+                        title="Detalles de la orden"
+                        description={`Seleccione el proveedor y la sucursal para crear la orden con los ${importData.summary.valid} productos válidos.`}
+                    >
+                        <FormGrid>
+                            <Field label="Proveedor" htmlFor="import-supplier" required>
+                                <AppSelect<number>
+                                    inputId="import-supplier"
+                                    options={suppliers.map(s => ({ value: s.id, label: s.name }))}
+                                    value={selectedSupplier}
+                                    onChange={(v) => setSelectedSupplier(v)}
+                                    placeholder="Seleccionar proveedor..."
+                                />
+                            </Field>
+                            <Field label="Sucursal" htmlFor="import-branch" required>
+                                <AppSelect<number>
+                                    inputId="import-branch"
+                                    options={branches.map(b => ({ value: b.id, label: b.name }))}
+                                    value={selectedBranch}
+                                    onChange={(v) => setSelectedBranch(v)}
+                                    placeholder="Seleccionar sucursal..."
+                                />
+                            </Field>
+                            <Field label="Nº Factura de Proveedor (opcional)" htmlFor="import-invoice">
+                                <Input
+                                    id="import-invoice"
+                                    value={invoiceNumber}
+                                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                                    placeholder="Ej: FAC-12345"
+                                />
+                            </Field>
+                        </FormGrid>
+                        <Field label="Notas (opcional)" htmlFor="import-notes">
+                            <Textarea
+                                id="import-notes"
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
                                 placeholder="Observaciones de la orden..."
-                                rows={3}
                             />
+                        </Field>
+                        <div className={styles.summary}>
+                            <div className={styles.summaryRow}><span>Productos a importar</span><strong>{importData.summary.valid}</strong></div>
+                            <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>Total estimado</span><strong>{money(importData.summary.totalCost)}</strong></div>
                         </div>
-
-                        <div className="import-totals-card">
-                            <div className="total-row">
-                                <span>Productos a importar:</span>
-                                <strong>{importData.summary.valid}</strong>
-                            </div>
-                            <div className="total-row big">
-                                <span>Total Estimado:</span>
-                                <strong>{formatCurrency(importData.summary.totalCost, settings)}</strong>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="import-actions flex-row">
-                        <Button variant="secondary" onClick={() => setStep(2)} disabled={confirming}>
-                            <ArrowLeft size={18} />
-                            Volver al Preview
-                        </Button>
-                        <Button
-                            variant="primary"
-                            onClick={handleConfirmImport}
-                            disabled={!selectedSupplier || confirming}
-                        >
-                            {confirming ? <><Loader2 size={18} className="animate-spin" /> Creando...</> : <><ShoppingCart size={18} /> Crear Orden de Compra</>}
-                        </Button>
-                    </div>
-                </div>
-            )}
-        </div>
+                    </FormSection>
+                )}
+            </div>
+        </FullScreenModal>
     );
-}
-
-// Internal icons helper for step navigation
-function ArrowLeft({ size }: { size: number }) {
-    return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></svg>;
-}
-
-function ArrowRight({ size }: { size: number }) {
-    return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>;
 }
