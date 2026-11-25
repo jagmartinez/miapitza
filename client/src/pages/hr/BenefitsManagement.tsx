@@ -772,7 +772,7 @@ export default function BenefitsManagement() {
                       <h3>Gastos y soportes</h3>
                       <div className="hr-benefits-table-wrap">
                         <DataTable
-                ariaLabel="Tabla"
+                ariaLabel="Gastos y soportes"
                 rows={(selected.item.expenses ?? [])}
                 rowKey={(expense) => expense.id}
                 pagination={{ mode: 'client' }}
@@ -795,7 +795,7 @@ export default function BenefitsManagement() {
                       <h3>Calendario informativo del servidor</h3>
                       <div className="hr-benefits-table-wrap">
                         <DataTable
-                ariaLabel="Tabla"
+                ariaLabel="Calendario de cuotas"
                 rows={(selected.item.schedule ?? [])}
                 rowKey={(installment) => installment.id}
                 pagination={{ mode: 'client' }}

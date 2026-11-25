@@ -1,3 +1,4 @@
+import { DataTable, PageHeader, FullScreenModal } from '@/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -15,8 +16,6 @@ import { useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
-import Sidebar from '../../components/Sidebar';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollRuleConfigurationPanel from '../../components/hr/PayrollRuleConfigurationPanel';
 import PayrollRuleForm from '../../components/hr/PayrollRuleForm';
@@ -225,8 +224,7 @@ export default function PayrollLegalSettings() {
     <div className="page-wrapper hr-payroll-page hr-legal-settings-page">
       <PageHeader
         title="IR laboral, INSS e INATEC"
-        subtitle="Configura qué se retiene al empleado, qué aporta la empresa y desde cuándo se aplican esas reglas"
-        icon={Landmark}
+        description="Configura qué se retiene al empleado, qué aporta la empresa y desde cuándo se aplican esas reglas"
         actions={<div className="hr-payroll-header-actions"><Button variant="ghost" onClick={() => void loadRules(selectedRuleId)} disabled={loading}><RefreshCw size={16} /> Actualizar</Button><Button onClick={() => { setCloneSource(null); setCreateOpen(true); }} disabled={!online || !companyTaxProfile?.ready}><Plus size={17} /> Nueva versión</Button></div>}
       />
 
@@ -254,16 +252,22 @@ export default function PayrollLegalSettings() {
             <div><span className="hr-legal-eyebrow">Registro legal</span><h2 id="legal-version-list-title">Versiones legales</h2><small>Abre una fila para consultar. Para modificar una versión activa, clónala como borrador.</small></div>
             <span className="hr-legal-version-count">{rules.length} versión(es)</span>
           </div>
-          <div className="hr-legal-readonly-table-wrap hr-admin-table-wrap"><table className="hr-admin-table inventory-table"><thead><tr><th scope="col">Versión</th><th scope="col">Vigencia</th><th scope="col">Estado</th><th scope="col">Configuración</th><th scope="col" className="hr-admin-actions-col">Acciones</th></tr></thead><tbody>{rules.map((rule) => {
-            const isSelected = String(rule.id) === selectedRuleId;
-            return <tr key={rule.id} className={isSelected ? 'is-selected' : undefined} aria-current={isSelected ? 'true' : undefined}>
-              <th scope="row" className="hr-legal-version-cell"><span className="hr-legal-version-number"><small>Versión</small><strong>{rule.version}</strong></span><strong className="hr-legal-version-name">{rule.name}</strong></th>
-              <td><div className="hr-legal-date-range"><CalendarDays size={16} aria-hidden="true" /><div><strong>{formatLegalDate(rule.effectiveFrom)}</strong><small>Hasta {formatLegalDate(rule.effectiveTo).toLocaleLowerCase()}</small></div></div></td>
-              <td><PayrollStatusPill status={rule.status} /></td>
-              <td><strong>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}</strong><small>{rule.configurationSummary || 'Sin revisión validada'}</small></td>
-              <td className="hr-admin-actions-col"><div className="hr-legal-row-actions"><Button className="hr-legal-table-action" type="button" size="sm" variant={isSelected ? 'secondary' : 'ghost'} aria-label={`Abrir ${rule.name}`} onClick={() => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }}><Eye size={15} aria-hidden="true" /> {isSelected ? 'Abierta' : 'Abrir'}</Button>{rule.activeConfigurationRevisionId && <Button className="hr-legal-table-action" type="button" size="sm" variant="ghost" aria-label={`Clonar ${rule.name} para editar`} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(rule); setCreateOpen(true); }}><Copy size={15} aria-hidden="true" /> Clonar</Button>}</div></td>
-            </tr>;
-          })}</tbody></table></div>
+          <div className="hr-legal-readonly-table-wrap hr-admin-table-wrap"><DataTable
+                ariaLabel="Versiones legales"
+                rows={rules}
+                rowKey={(rule) => rule.id}
+                pagination={{ mode: 'client' }}
+                minWidth="40rem"
+                rowTone={(rule) => (String(rule.id) === selectedRuleId ? 'primary' : undefined)}
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Versión', render: (rule) => <><span className="hr-legal-version-number"><small>Versión</small><strong>{rule.version}</strong></span><strong className="hr-legal-version-name">{rule.name}</strong></> },
+                  { key: 'c1', header: 'Vigencia', render: (rule) => <><div className="hr-legal-date-range"><CalendarDays size={16} aria-hidden="true" /><div><strong>{formatLegalDate(rule.effectiveFrom)}</strong><small>Hasta {formatLegalDate(rule.effectiveTo).toLocaleLowerCase()}</small></div></div></> },
+                  { key: 'c2', header: 'Estado', render: (rule) => <><PayrollStatusPill status={rule.status} /></> },
+                  { key: 'c3', header: 'Configuración', render: (rule) => <><strong>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}</strong><small>{rule.configurationSummary || 'Sin revisión validada'}</small></> },
+                  { key: 'c4', header: 'Acciones', width: '6rem', type: 'actions', render: (rule) => { const isSelected = String(rule.id) === selectedRuleId; return <div className="hr-legal-row-actions"><Button className="hr-legal-table-action" type="button" size="sm" variant={isSelected ? 'secondary' : 'ghost'} aria-label={`Abrir ${rule.name}`} onClick={() => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }}><Eye size={15} aria-hidden="true" /> {isSelected ? 'Abierta' : 'Abrir'}</Button>{rule.activeConfigurationRevisionId && <Button className="hr-legal-table-action" type="button" size="sm" variant="ghost" aria-label={`Clonar ${rule.name} para editar`} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(rule); setCreateOpen(true); }}><Copy size={15} aria-hidden="true" /> Clonar</Button>}</div>; } },
+                ]}
+              /></div>
         </section>
 
         <section className="hr-legal-selected-shell" aria-label="Espacio de trabajo de la versión abierta">
@@ -300,7 +304,11 @@ export default function PayrollLegalSettings() {
         </section>
       </>}
 
-      <Sidebar isOpen={createOpen} onClose={() => { if (!saving) { setCreateOpen(false); setCloneSource(null); } }} title={cloneSource ? 'Clonar como nuevo borrador' : 'Nueva versión legal de nómina'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}><PayrollRuleForm key={cloneSource?.id ?? 'new'} initial={cloneSource ? { ...cloneSource, effectiveFrom: '', effectiveTo: null } : null} online={online} saving={saving} onSubmit={saveRule} onCancel={() => { setCreateOpen(false); setCloneSource(null); }} notice={cloneSource ? <div className="hr-payroll-info"><Copy size={18} /><span>Se copiarán tasas, tramos y conceptos. Define la nueva vigencia; el perfil fiscal se actualizará desde Empresa y la copia deberá validarse antes de activarse.</span></div> : undefined} /></Sidebar>
+      <FullScreenModal
+        isOpen={createOpen}
+        onClose={() => { if (!saving) { setCreateOpen(false); setCloneSource(null); } }}
+        title={cloneSource ? 'Clonar como nuevo borrador' : 'Nueva versión legal de nómina'}
+      ><PayrollRuleForm key={cloneSource?.id ?? 'new'} initial={cloneSource ? { ...cloneSource, effectiveFrom: '', effectiveTo: null } : null} online={online} saving={saving} onSubmit={saveRule} onCancel={() => { setCreateOpen(false); setCloneSource(null); }} notice={cloneSource ? <div className="hr-payroll-info"><Copy size={18} /><span>Se copiarán tasas, tramos y conceptos. Define la nueva vigencia; el perfil fiscal se actualizará desde Empresa y la copia deberá validarse antes de activarse.</span></div> : undefined} /></FullScreenModal>
     </div>
   );
 }

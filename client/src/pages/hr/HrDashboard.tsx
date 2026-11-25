@@ -14,12 +14,11 @@ import {
     RefreshCw,
     Settings2,
     UserCheck,
-    UsersRound,
     WalletCards,
 } from 'lucide-react';
+import { PageHeader } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import type { HrDashboardData } from '../../types/hr';
 import './hr.css';
@@ -60,16 +59,15 @@ export default function HrDashboard() {
     return (
         <div className="page-wrapper hr-dashboard-page">
             <PageHeader
-                title="Centro de trabajo RH"
-                subtitle="Pendientes, personal y nómina en un solo lugar"
-                icon={UsersRound}
-                actions={
+        title="Centro de trabajo RH"
+        description="Pendientes, personal y nómina en un solo lugar"
+        actions={
                     <div className="hr-dashboard-header-actions">
                         <Button variant="ghost" onClick={() => navigate('/rh/personal')}>Gestionar personal</Button>
                         <Button onClick={() => navigate('/rh/nomina')}>Abrir nómina</Button>
                     </div>
                 }
-            />
+      />
 
             {loading && <LoadingSpinner text="Cargando operación de RH…" />}
 

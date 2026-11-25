@@ -17,9 +17,9 @@ import {
     ShieldCheck,
     UserRound,
 } from 'lucide-react';
+import { PageHeader } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import HrStatusPill from '../../components/hr/HrStatusPill';
 import EmployeeRecordPanel from '../../components/hr/EmployeeRecordPanel';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
@@ -148,9 +148,8 @@ export default function EmployeeDetail() {
         <div className="page-wrapper inventory-page hr-employee-detail-page hr-admin-catalog-page">
             <PageHeader
                 title="Expediente del colaborador"
-                subtitle="Identidad, relación laboral, asignaciones y documentos en un solo lugar"
-                icon={UserRound}
-                backButton={
+                description="Identidad, relación laboral, asignaciones y documentos en un solo lugar"
+                actions={
                     <button type="button" className="back-link-btn" onClick={() => navigate('/rh/personal')}>
                         <ArrowLeft size={16} /> Volver a personal
                     </button>
