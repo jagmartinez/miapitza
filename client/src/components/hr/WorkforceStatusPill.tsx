@@ -1,3 +1,6 @@
+import { Badge } from '@/ui';
+import { workforceTone } from './statusTone';
+
 const LABELS: Record<string, string> = {
   DRAFT: 'Borrador',
   PENDING: 'Pendiente',
@@ -17,17 +20,6 @@ const LABELS: Record<string, string> = {
   INACTIVE: 'Inactivo',
 };
 
-const OK = new Set(['APPROVED', 'APPLIED', 'RESOLVED', 'ACTIVE']);
-const WARNING = new Set(['PENDING', 'OPEN', 'REOPENED', 'WARNING']);
-const DANGER = new Set(['REJECTED', 'CRITICAL']);
-
 export default function WorkforceStatusPill({ status }: { status: string }) {
-  const className = OK.has(status)
-    ? 'ok'
-    : DANGER.has(status)
-      ? 'danger'
-      : WARNING.has(status)
-        ? 'warning'
-        : 'neutral';
-  return <span className={`catalog-pill ${className}`}>{LABELS[status] ?? status}</span>;
+  return <Badge tone={workforceTone(status)} dot>{LABELS[status] ?? status}</Badge>;
 }
