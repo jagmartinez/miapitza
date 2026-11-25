@@ -19,8 +19,8 @@ export interface BiOrderFact {
     channel: string;
     items: { menuItemId: number; quantity: number; subtotal: number }[];
 }
-export interface BiCreditFact { at: Date; branchId: number; total: number }
-export interface BiCostFact { at: Date; amount: number; kind: 'consumption' | 'waste' }
+export interface BiCreditFact { at: Date; branchId: number; total: number; channel?: string }
+export interface BiCostFact { at: Date; amount: number; kind: 'consumption' | 'waste'; productId?: number | null }
 export interface BiCashOutFact { at: Date; amount: number }
 export interface BiPayrollFact { start: Date; end: Date; amount: number }
 
@@ -114,7 +114,7 @@ export async function loadBiFacts(
         }),
         prisma.fiscalCreditNote.findMany({
             where: { companyId, ...(branchWhere ? { branchId: branchWhere } : {}), issuedAt: closedAt },
-            select: { issuedAt: true, branchId: true, total: true },
+            select: { issuedAt: true, branchId: true, total: true, order: { select: { salesChannel: true } } },
         }),
         prisma.inventoryMovement.findMany({
             where: {
@@ -142,7 +142,7 @@ export async function loadBiFacts(
                 ],
             },
             select: {
-                createdAt: true, type: true, quantity: true, unitCost: true, totalCost: true,
+                createdAt: true, productId: true, type: true, quantity: true, unitCost: true, totalCost: true,
                 origin: true, reason: true, reference: true, reversalOfId: true,
                 reversalOf: { select: { origin: true, reason: true, reference: true } },
             },
@@ -202,12 +202,16 @@ export async function loadBiFacts(
             at: m.createdAt,
             amount: (returned ? -1 : 1) * amount,
             kind: isWaste ? 'waste' : 'consumption',
+            productId: m.productId ?? null,
         });
     }
 
     return {
         orders: orderFacts,
-        credits: credits.map((c) => ({ at: c.issuedAt, branchId: c.branchId, total: dec(c.total) })),
+        credits: credits.map((c) => ({
+            at: c.issuedAt, branchId: c.branchId, total: dec(c.total),
+            channel: c.order?.salesChannel ? String(c.order.salesChannel) : undefined,
+        })),
         costs,
         cashOuts: cashOuts.map((c) => ({ at: c.createdAt, amount: dec(c.amount) })),
         payroll: runs,
@@ -462,4 +466,26 @@ export function totalsInInterval(
         unavailableRecipeSales: round2(unavailableRecipeSales),
         theoreticalQuality,
     };
+}
+
+// ---- Shared loader -------------------------------------------------------
+
+export interface BiContext {
+    timezone: string;
+    range: BiRange;
+    goals: BiGoalSet;
+    cur: BiFacts;
+    prev: BiFacts;
+    recipeCache: RecipeCostCache;
+}
+
+/** Resolves the range and loads goals plus the facts of the current and comparison windows. */
+export async function loadBiContext(q: BiQuery, timezone: string, range: BiRange): Promise<BiContext> {
+    const recipeCache: RecipeCostCache = new Map();
+    const [goals, cur, prev] = await Promise.all([
+        loadGoals(q.companyId, q.branchIds),
+        loadBiFacts(q, range.from, range.to, timezone, recipeCache),
+        loadBiFacts(q, range.cmpFrom, range.cmpTo, timezone, recipeCache),
+    ]);
+    return { timezone, range, goals, cur, prev, recipeCache };
 }
