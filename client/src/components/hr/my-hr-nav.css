@@ -10,26 +10,26 @@
   gap: 0.4rem;
   min-height: 36px;
   padding: 0.4rem 0.65rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
   font-weight: 750;
   text-decoration: none;
-  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
 
-.my-hr-nav a svg:nth-child(2) { color: var(--color-primary); }
+.my-hr-nav a svg:nth-child(2) { color: var(--ui-primary); }
 
 .my-hr-nav a:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
-  background: var(--color-background);
-  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--ui-primary) 42%, var(--ui-border));
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
 }
 
 .my-hr-nav a:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  outline: 3px solid color-mix(in srgb, var(--ui-primary) 35%, transparent);
   outline-offset: 2px;
 }
 

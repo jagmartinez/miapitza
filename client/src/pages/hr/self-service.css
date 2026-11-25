@@ -5,7 +5,7 @@
   min-width: 0;
   margin-inline: auto;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: var(--ui-space-4);
 }
 
 .my-hr-page > .my-hr-page-header { margin-bottom: 0; }
@@ -24,7 +24,7 @@
 .my-hr-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--spacing-md);
+  gap: var(--ui-space-3);
 }
 
 .my-hr-summary-grid > :is(article, div) {
@@ -34,10 +34,10 @@
   gap: 3px 11px;
   min-width: 0;
   min-height: 78px;
-  padding: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
 }
 
 .my-hr-summary-grid > :is(article, div) > svg {
@@ -46,15 +46,15 @@
   width: 36px;
   height: 36px;
   padding: 8px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary) 11%, var(--color-background));
-  color: var(--color-primary);
+  border-radius: var(--ui-radius-sm);
+  background: color-mix(in srgb, var(--ui-primary) 11%, var(--ui-surface-2));
+  color: var(--ui-primary);
 }
 
 .my-hr-summary-grid > :is(article, div) > span {
   align-self: end;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
   font-weight: 750;
 }
 
@@ -63,7 +63,7 @@
   grid-row: 1 / span 2;
   align-self: center;
   max-width: 170px;
-  color: var(--color-text);
+  color: var(--ui-text);
   font-size: clamp(1.1rem, 1.7vw, 1.5rem);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -73,23 +73,23 @@
 .my-hr-summary-grid > :is(article, div) > small {
   grid-column: 2;
   min-width: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
   overflow-wrap: anywhere;
 }
 
-.my-hr-summary-grid > .is-warning { border-color: color-mix(in srgb, var(--color-warning) 42%, var(--color-border)); }
-.my-hr-summary-grid > .is-danger { border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-border)); }
-.my-hr-summary-grid > .is-success { border-color: color-mix(in srgb, var(--color-success) 34%, var(--color-border)); }
-.my-hr-summary-grid > .is-warning > svg { color: var(--color-warning); }
-.my-hr-summary-grid > .is-danger > svg { color: var(--color-danger); }
-.my-hr-summary-grid > .is-success > svg { color: var(--color-success); }
+.my-hr-summary-grid > .is-warning { border-color: color-mix(in srgb, var(--ui-warning) 42%, var(--ui-border)); }
+.my-hr-summary-grid > .is-danger { border-color: color-mix(in srgb, var(--ui-danger) 40%, var(--ui-border)); }
+.my-hr-summary-grid > .is-success { border-color: color-mix(in srgb, var(--ui-success) 34%, var(--ui-border)); }
+.my-hr-summary-grid > .is-warning > svg { color: var(--ui-warning); }
+.my-hr-summary-grid > .is-danger > svg { color: var(--ui-danger); }
+.my-hr-summary-grid > .is-success > svg { color: var(--ui-success); }
 
 .my-hr-toolbar {
   margin: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
   box-shadow: none;
 }
 
@@ -111,24 +111,24 @@
   min-height: 40px;
   padding: 0.45rem 0.75rem;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--ui-radius-sm);
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
   font: inherit;
-  font-size: var(--font-size-sm);
+  font-size: var(--ui-text-md);
   font-weight: 750;
   cursor: pointer;
 }
 
-.my-hr-tabs button:hover { background: var(--color-background); color: var(--color-text); }
-.my-hr-tabs button[aria-selected='true'] { background: var(--color-neutral-700); color: white; }
-.my-hr-tabs button > span { min-width: 22px; padding: 2px 7px; border-radius: var(--radius-full); background: var(--color-background); color: var(--color-text); font-size: 11px; }
+.my-hr-tabs button:hover { background: var(--ui-surface-2); color: var(--ui-text); }
+.my-hr-tabs button[aria-selected='true'] { background: var(--ui-text-muted); color: white; }
+.my-hr-tabs button > span { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: var(--ui-surface-2); color: var(--ui-text); font-size: 11px; }
 
 .my-hr-tab-panel {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: var(--ui-space-4);
 }
 
 .my-hr-page :is(.hr-online-notice.offline, .hr-benefits-online.offline, .hr-payroll-online.offline) {
@@ -137,15 +137,15 @@
 
 .my-hr-panel {
   min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
 }
 
 .my-hr-page button:focus-visible,
 .my-hr-page a:focus-visible,
 .my-hr-page [role='tabpanel']:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  outline: 3px solid color-mix(in srgb, var(--ui-primary) 35%, transparent);
   outline-offset: 2px;
 }
 
@@ -154,7 +154,7 @@
 }
 
 @media (max-width: 680px) {
-  .my-hr-page { gap: var(--spacing-md); }
+  .my-hr-page { gap: var(--ui-space-3); }
   .my-hr-summary-grid { grid-template-columns: 1fr; }
   .my-hr-page-header .page-header-actions,
   .my-hr-page-header .page-header-actions > *,

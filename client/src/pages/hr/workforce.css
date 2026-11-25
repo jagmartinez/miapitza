@@ -1,7 +1,7 @@
 .hr-workforce-page {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: var(--ui-space-4);
 }
 
 .hr-header-actions,
@@ -11,65 +11,65 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--spacing-sm);
+  gap: var(--ui-space-2);
 }
 
 .hr-online-notice {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid rgba(34, 197, 94, 0.32);
-  border-radius: var(--radius-md);
-  background: rgba(34, 197, 94, 0.07);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-2) var(--ui-space-3);
+  border: 1px solid color-mix(in srgb, var(--ui-success) 32%, transparent);
+  border-radius: var(--ui-radius-sm);
+  background: color-mix(in srgb, var(--ui-success) 7%, transparent);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-md);
 }
 
 .hr-online-notice.offline {
-  border-color: rgba(239, 68, 68, 0.38);
-  background: rgba(239, 68, 68, 0.08);
-  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--ui-danger) 38%, transparent);
+  background: color-mix(in srgb, var(--ui-danger) 8%, transparent);
+  color: var(--ui-danger);
 }
 
 .hr-online-notice.compact {
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--ui-space-3);
 }
 
 .hr-workforce-partial-warning {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md);
-  border: 1px solid rgba(245, 158, 11, 0.38);
-  border-radius: var(--radius-lg);
-  background: rgba(245, 158, 11, 0.08);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3);
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 38%, transparent);
+  border-radius: var(--ui-radius-md);
+  background: color-mix(in srgb, var(--ui-warning) 8%, transparent);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-md);
 }
 
-.hr-workforce-partial-warning > svg { flex: 0 0 auto; color: var(--color-warning); }
+.hr-workforce-partial-warning > svg { flex: 0 0 auto; color: var(--ui-warning); }
 .hr-workforce-partial-warning > span { flex: 1; }
 
 .hr-workforce-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(170px, 1fr)) auto;
   align-items: end;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
 }
 
 .hr-workforce-filters label,
 .hr-workforce-form label {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: var(--ui-space-1);
   min-width: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-md);
   font-weight: 600;
 }
 
@@ -81,11 +81,11 @@
   width: 100%;
   min-height: 42px;
   padding: 0.65rem 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
   outline: none;
-  background: var(--color-background);
-  color: var(--color-text);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
   font: inherit;
 }
 
@@ -99,16 +99,16 @@
 .hr-workforce-form input:focus-visible,
 .hr-workforce-form select:focus-visible,
 .hr-workforce-form textarea:focus-visible {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.16);
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-warning) 16%, transparent);
 }
 
 .hr-workforce-section {
   min-width: 0;
-  padding: var(--spacing-lg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  padding: var(--ui-space-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
 }
 
 .hr-workforce-anchor {
@@ -117,12 +117,12 @@
 
 .hr-workforce-jump-nav {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: var(--ui-space-2);
   overflow-x: auto;
-  padding: var(--spacing-sm);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  padding: var(--ui-space-2);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
 }
 
 .hr-workforce-jump-nav a {
@@ -130,68 +130,68 @@
   flex: 1 0 auto;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-xs);
+  gap: var(--ui-space-1);
   min-height: 44px;
   padding: 0.55rem 0.8rem;
-  border-radius: var(--radius-md);
-  background: var(--color-background);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-2);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-md);
   font-weight: 700;
   text-decoration: none;
 }
 
 .hr-workforce-jump-nav a:hover {
-  color: var(--color-primary);
+  color: var(--ui-primary);
 }
 
 .hr-workforce-jump-nav a.is-active,
 .hr-workforce-jump-nav a[aria-current="location"] {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--ui-primary-soft);
+  color: var(--ui-primary);
 }
 
 .hr-workforce-jump-nav a:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  outline: 3px solid color-mix(in srgb, var(--ui-primary) 35%, transparent);
   outline-offset: 1px;
 }
 
 .hr-workflow-overview {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--spacing-md);
+  gap: var(--ui-space-3);
 }
 
 .hr-workflow-overview > div {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 0.25rem var(--spacing-sm);
+  gap: 0.25rem var(--ui-space-2);
   min-width: 0;
-  padding: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
 }
 
 .hr-workflow-overview span,
 .hr-workflow-overview small {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
 }
 
 .hr-workflow-overview strong {
   grid-row: 1 / span 2;
   grid-column: 2;
-  color: var(--color-text);
-  font-size: var(--font-size-2xl);
+  color: var(--ui-text);
+  font-size: var(--ui-text-2xl);
 }
 
 .hr-section-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-md);
+  gap: var(--ui-space-3);
+  margin-bottom: var(--ui-space-3);
 }
 
 .hr-section-heading h2,
@@ -202,23 +202,23 @@
 .hr-section-heading h2 {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  color: var(--color-text);
-  font-size: var(--font-size-lg);
+  gap: var(--ui-space-1);
+  color: var(--ui-text);
+  font-size: var(--ui-text-lg);
 }
 
 .hr-section-heading p,
 .hr-empty,
 .hr-form-help {
-  margin-top: var(--spacing-xs);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  margin-top: var(--ui-space-1);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-md);
 }
 
 .hr-workforce-columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-lg);
+  gap: var(--ui-space-4);
 }
 
 .hr-summary-grid,
@@ -226,7 +226,7 @@
 .hr-type-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
-  gap: var(--spacing-md);
+  gap: var(--ui-space-3);
 }
 
 .hr-summary-card,
@@ -234,12 +234,12 @@
 .hr-type-grid article {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: var(--ui-space-2);
   min-width: 0;
-  padding: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-background);
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-2);
 }
 
 .hr-summary-card header,
@@ -249,7 +249,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--spacing-sm);
+  gap: var(--ui-space-2);
 }
 
 .hr-summary-card header > div,
@@ -269,41 +269,41 @@
 .hr-calendar-list span {
   display: block;
   overflow-wrap: anywhere;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-md);
 }
 
 .hr-summary-card footer {
   align-items: center;
-  padding-top: var(--spacing-sm);
-  border-top: 1px solid var(--color-border);
+  padding-top: var(--ui-space-2);
+  border-top: 1px solid var(--ui-border);
 }
 
 .hr-summary-card footer small {
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
 }
 
 .hr-minute-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--spacing-xs);
+  gap: var(--ui-space-1);
   margin: 0;
 }
 
 .hr-minute-grid div {
-  padding: var(--spacing-sm);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  padding: var(--ui-space-2);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
 }
 
 .hr-minute-grid dt {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
 }
 
 .hr-minute-grid dd {
   margin: 0.2rem 0 0;
-  color: var(--color-text);
+  color: var(--ui-text);
   font-weight: 700;
 }
 
@@ -311,7 +311,7 @@
 .hr-calendar-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: var(--ui-space-2);
 }
 
 .hr-record-list article,
@@ -319,9 +319,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-md);
-  padding: var(--spacing-sm) 0;
-  border-bottom: 1px solid var(--color-border);
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-2) 0;
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .hr-record-list article:last-child,
@@ -336,29 +336,29 @@
 
 .hr-calendar-list time {
   flex: 0 0 auto;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-md);
-  background: rgba(234, 88, 12, 0.1);
-  color: var(--color-primary);
+  padding: var(--ui-space-1) var(--ui-space-2);
+  border-radius: var(--ui-radius-sm);
+  background: color-mix(in srgb, var(--ui-warning) 10%, transparent);
+  color: var(--ui-primary);
   font-weight: 700;
 }
 
 .hr-type-grid code {
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
 }
 
 .hr-workforce-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-md);
+  gap: var(--ui-space-3);
 }
 
 .hr-sidebar-body {
-  padding: var(--spacing-lg);
+  padding: var(--ui-space-4);
 }
 
 .hr-sidebar-body.hr-workforce-form {
-  padding: var(--spacing-lg);
+  padding: var(--ui-space-4);
 }
 
 .hr-workforce-form .span-full,
@@ -368,13 +368,13 @@
 
 .hr-form-actions {
   justify-content: flex-end;
-  padding-top: var(--spacing-sm);
+  padding-top: var(--ui-space-2);
 }
 
 .hr-checkbox-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-sm);
+  gap: var(--ui-space-2);
 }
 
 .hr-checkbox-grid label {
@@ -390,18 +390,18 @@
 .hr-sensitive-warning {
   display: flex;
   align-items: flex-start;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md);
-  border: 1px solid rgba(245, 158, 11, 0.42);
-  border-radius: var(--radius-md);
-  background: rgba(245, 158, 11, 0.1);
-  color: var(--color-text);
-  font-size: var(--font-size-sm);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3);
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 42%, transparent);
+  border-radius: var(--ui-radius-sm);
+  background: color-mix(in srgb, var(--ui-warning) 10%, transparent);
+  color: var(--ui-text);
+  font-size: var(--ui-text-md);
 }
 
 .hr-sensitive-warning svg {
   flex: 0 0 auto;
-  color: var(--color-warning);
+  color: var(--ui-warning);
 }
 
 @media (max-width: 1080px) {
@@ -425,7 +425,7 @@
   .hr-workforce-section,
   .hr-sidebar-body,
   .hr-sidebar-body.hr-workforce-form {
-    padding: var(--spacing-md);
+    padding: var(--ui-space-3);
   }
 
   .hr-workflow-overview {

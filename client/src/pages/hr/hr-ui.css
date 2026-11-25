@@ -1,14 +1,14 @@
 /* Shared RH surface: keeps every primary, secondary and modal view on the app design system. */
 .page-wrapper[class*='hr-'] {
-  --hr-panel-bg: var(--color-surface);
-  --hr-panel-muted: color-mix(in srgb, var(--color-background) 92%, var(--dialog-accent) 8%);
+  --hr-panel-bg: var(--ui-surface);
+  --hr-panel-muted: color-mix(in srgb, var(--ui-surface-2) 92%, var(--ui-primary) 8%);
   width: 100%;
   max-width: 1700px;
   min-width: 0;
   margin-inline: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: var(--ui-space-6);
 }
 
 .page-wrapper[class*='hr-'] > .page-header-bar {
@@ -28,21 +28,21 @@
   .hr-payroll-workspace,
   .hr-schedule-panel
 ) {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  background: var(--hr-panel-bg);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text) 14%, transparent);
 }
 
 .page-wrapper[class*='hr-'] :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
-  border-color: var(--color-border);
-  background: var(--color-background);
-  color: var(--color-text);
+  border-color: var(--ui-border);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
 }
 
 .page-wrapper[class*='hr-'] :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input):focus-visible {
-  border-color: var(--dialog-accent) !important;
-  box-shadow: 0 0 0 3px var(--dialog-focus-ring) !important;
+  border-color: var(--ui-primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 24%, transparent) !important;
   outline: none;
 }
 
@@ -59,27 +59,27 @@
 
 .page-wrapper[class*='hr-'] .filters-toolbar,
 .page-wrapper[class*='hr-'] :is(.hr-workforce-filterbar, .hr-payroll-filterbar, .hr-benefits-filterbar) {
-  border-radius: var(--radius-xl);
-  background: var(--hr-panel-bg);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
 }
 
 .page-wrapper[class*='hr-'] :is(.state-placeholder, .hr-benefits-empty, .hr-panel-empty) {
-  border-radius: var(--radius-xl);
+  border-radius: var(--ui-radius-lg);
   background: var(--hr-panel-muted);
 }
 
 .dark .page-wrapper[class*='hr-'] {
-  --hr-panel-muted: color-mix(in srgb, var(--color-background) 94%, var(--dialog-accent) 6%);
+  --hr-panel-muted: color-mix(in srgb, var(--ui-surface-2) 94%, var(--ui-primary) 6%);
 }
 
 /* RH side panels follow the same visual grammar as Nueva Reservación. */
 .page-wrapper[class*='hr-'] .sidebar-panel {
   --hr-modal-control-height: 42px;
-  background: var(--color-surface);
+  background: var(--ui-surface);
 }
 
 .page-wrapper[class*='hr-'] .sidebar-panel .sidebar-body {
-  background: color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%);
+  background: color-mix(in srgb, var(--ui-surface) 95%, var(--ui-surface-2) 5%);
 }
 
 /* Sidebar already owns the content inset; legacy RH wrappers must not add a second gutter. */
@@ -96,8 +96,8 @@
   .hr-secret-panel,
   .hr-record-form
 ) label:not(.hr-payroll-confirm):not(.hr-benefits-confirm) {
-  gap: var(--spacing-xs);
-  color: var(--color-neutral-500);
+  gap: var(--ui-space-1);
+  color: var(--ui-text-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -114,10 +114,10 @@
 ) :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
   min-height: var(--hr-modal-control-height);
   padding: 10px 12px;
-  border: 1px solid var(--dialog-panel-border, var(--color-border));
-  border-radius: var(--radius-lg);
-  background: var(--color-background);
-  color: var(--color-text);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
   box-sizing: border-box;
 }
 
@@ -130,17 +130,17 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--spacing-md);
-  padding-top: var(--spacing-lg);
-  border-top: 1px solid var(--dialog-panel-border, var(--color-border));
+  gap: var(--ui-space-3);
+  padding-top: var(--ui-space-4);
+  border-top: 1px solid var(--ui-border);
 }
 
 .page-wrapper[class*='hr-'] .sidebar-panel .premium-modal-content {
-  background: color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%);
+  background: color-mix(in srgb, var(--ui-surface) 95%, var(--ui-surface-2) 5%);
 }
 
 @media (max-width: 768px) {
   .page-wrapper[class*='hr-'] {
-    gap: var(--spacing-lg);
+    gap: var(--ui-space-4);
   }
 }

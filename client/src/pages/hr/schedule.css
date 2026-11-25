@@ -7,12 +7,12 @@
     display: grid;
     grid-template-columns: auto minmax(220px, 1fr) auto auto;
     align-items: center;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-lg);
-    padding: var(--spacing-sm);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
+    gap: var(--ui-space-2);
+    margin-bottom: var(--ui-space-4);
+    padding: var(--ui-space-2);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
 }
 
 .hr-week-navigation > div {
@@ -23,15 +23,15 @@
 }
 
 .hr-week-navigation span {
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-xs);
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
 
 .hr-week-navigation strong {
     overflow-wrap: anywhere;
-    color: var(--color-text);
+    color: var(--ui-text);
     text-align: center;
 }
 
@@ -50,48 +50,48 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--spacing-md);
-    margin-bottom: var(--spacing-lg);
-    padding: var(--spacing-md);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
+    gap: var(--ui-space-3);
+    margin-bottom: var(--ui-space-4);
+    padding: var(--ui-space-3);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
 }
 
 .hr-my-schedule-statuses > div > div {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--spacing-sm);
+    gap: var(--ui-space-2);
 }
 
 .hr-my-schedule-statuses span {
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-md);
 }
 
 .hr-schedule-alert {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-lg);
-    padding: var(--spacing-md);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
-    color: var(--color-text);
+    gap: var(--ui-space-2);
+    margin-bottom: var(--ui-space-4);
+    padding: var(--ui-space-3);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface);
+    color: var(--ui-text);
 }
 
 .hr-schedule-alert.info {
-    border-color: rgba(37, 99, 235, 0.35);
-    background: rgba(37, 99, 235, 0.08);
+    border-color: color-mix(in srgb, var(--ui-primary) 35%, transparent);
+    background: color-mix(in srgb, var(--ui-primary) 8%, transparent);
 }
 
 .hr-schedule-alert.danger {
-    border-color: rgba(239, 68, 68, 0.35);
-    background: rgba(239, 68, 68, 0.08);
-    color: var(--color-danger);
+    border-color: color-mix(in srgb, var(--ui-danger) 35%, transparent);
+    background: color-mix(in srgb, var(--ui-danger) 8%, transparent);
+    color: var(--ui-danger);
 }
 
 .hr-schedule-alert .btn {
@@ -99,50 +99,50 @@
 }
 
 .hr-schedule-conflicts {
-    margin-bottom: var(--spacing-lg);
-    padding: var(--spacing-md) var(--spacing-lg);
-    border: 1px solid rgba(239, 68, 68, 0.38);
-    border-radius: var(--radius-lg);
-    background: rgba(239, 68, 68, 0.07);
+    margin-bottom: var(--ui-space-4);
+    padding: var(--ui-space-3) var(--ui-space-4);
+    border: 1px solid color-mix(in srgb, var(--ui-danger) 38%, transparent);
+    border-radius: var(--ui-radius-md);
+    background: color-mix(in srgb, var(--ui-danger) 7%, transparent);
 }
 
 .hr-schedule-conflicts h2 {
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
-    margin: 0 0 var(--spacing-sm);
-    color: var(--color-danger);
-    font-size: var(--font-size-base);
+    gap: var(--ui-space-2);
+    margin: 0 0 var(--ui-space-2);
+    color: var(--ui-danger);
+    font-size: var(--ui-text-md);
 }
 
 .hr-schedule-conflicts ul {
     display: grid;
-    gap: var(--spacing-xs);
+    gap: var(--ui-space-1);
     margin: 0;
-    padding-left: var(--spacing-lg);
+    padding-left: var(--ui-space-4);
 }
 
 .hr-schedule-conflicts li span {
-    margin-left: var(--spacing-xs);
-    color: var(--color-text-secondary);
+    margin-left: var(--ui-space-1);
+    color: var(--ui-text-muted);
 }
 
 .hr-schedule-workspace {
     display: grid;
-    gap: var(--spacing-md);
+    gap: var(--ui-space-3);
     min-width: 0;
 }
 
 .hr-schedule-matrix-wrap {
     min-width: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
     overflow: hidden;
 }
 
 .hr-schedule-matrix-wrap:focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+    outline: 3px solid color-mix(in srgb, var(--ui-primary) 45%, transparent);
     outline-offset: 2px;
 }
 
@@ -154,7 +154,7 @@
     display: grid;
     grid-template-columns: minmax(170px, 1.35fr) repeat(7, minmax(0, 1fr));
     min-width: 0;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--ui-border);
 }
 
 .hr-schedule-matrix-row:last-child {
@@ -163,8 +163,8 @@
 
 .hr-schedule-matrix-row > * {
     min-width: 0;
-    padding: var(--spacing-sm);
-    border-right: 1px solid var(--color-border);
+    padding: var(--ui-space-2);
+    border-right: 1px solid var(--ui-border);
 }
 
 .hr-schedule-matrix-row > *:last-child {
@@ -172,7 +172,7 @@
 }
 
 .hr-schedule-matrix-row.is-header {
-    background: var(--color-background);
+    background: var(--ui-surface-2);
 }
 
 .hr-schedule-matrix-row.is-header > div {
@@ -180,25 +180,25 @@
     align-content: center;
     gap: 2px;
     min-height: 54px;
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-xs);
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-xs);
     text-transform: capitalize;
 }
 
 .hr-schedule-matrix-row.is-header strong {
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .hr-schedule-matrix-row.is-header span {
-    color: var(--color-warning);
+    color: var(--ui-warning);
     font-size: 10px;
 }
 
 .hr-schedule-employee {
     display: flex;
     align-items: flex-start;
-    gap: var(--spacing-sm);
-    background: color-mix(in srgb, var(--color-surface) 92%, var(--color-primary));
+    gap: var(--ui-space-2);
+    background: color-mix(in srgb, var(--ui-surface) 92%, var(--ui-primary));
 }
 
 .hr-schedule-employee > span {
@@ -207,9 +207,9 @@
     height: 34px;
     place-items: center;
     flex: 0 0 auto;
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-primary);
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in srgb, var(--ui-primary) 16%, transparent);
+    color: var(--ui-primary);
     font-size: 11px;
     font-weight: 800;
 }
@@ -225,13 +225,13 @@
 }
 
 .hr-schedule-employee strong {
-    color: var(--color-text);
-    font-size: var(--font-size-sm);
+    color: var(--ui-text);
+    font-size: var(--ui-text-md);
 }
 
 .hr-schedule-employee small {
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-xs);
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-xs);
 }
 
 .hr-schedule-matrix-cell {
@@ -239,37 +239,37 @@
     align-content: start;
     gap: 6px;
     min-height: 112px;
-    background: var(--color-surface);
+    background: var(--ui-surface);
 }
 
 .hr-schedule-matrix-cell.is-empty {
     place-items: center;
-    background: color-mix(in srgb, var(--color-background) 65%, var(--color-surface));
+    background: color-mix(in srgb, var(--ui-surface-2) 65%, var(--ui-surface));
 }
 
 .hr-schedule-no-shift {
-    color: color-mix(in srgb, var(--color-text-secondary) 55%, transparent);
+    color: color-mix(in srgb, var(--ui-text-muted) 55%, transparent);
 }
 
 .hr-schedule-week-grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(165px, 1fr));
-    gap: var(--spacing-sm);
+    gap: var(--ui-space-2);
     overflow-x: auto;
-    padding-bottom: var(--spacing-sm);
+    padding-bottom: var(--ui-space-2);
     scrollbar-width: thin;
 }
 
 .hr-schedule-week-grid:focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+    outline: 3px solid color-mix(in srgb, var(--ui-primary) 45%, transparent);
     outline-offset: 2px;
 }
 
 .hr-schedule-day {
     min-height: 280px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
     overflow: hidden;
 }
 
@@ -278,46 +278,46 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-background);
+    gap: var(--ui-space-1);
+    padding: var(--ui-space-2) var(--ui-space-3);
+    border-bottom: 1px solid var(--ui-border);
+    background: var(--ui-surface-2);
 }
 
 .hr-schedule-day h2,
 .hr-schedule-mobile-list h2 {
     flex: 1;
     margin: 0;
-    color: var(--color-text);
-    font-size: var(--font-size-sm);
+    color: var(--ui-text);
+    font-size: var(--ui-text-md);
     text-transform: capitalize;
 }
 
 .hr-schedule-day header > span {
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-xs);
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-xs);
 }
 
 .hr-holiday-chip {
     flex-basis: 100%;
-    color: var(--color-warning);
+    color: var(--ui-warning);
     font-size: 11px;
 }
 
 .hr-schedule-day-shifts {
     display: grid;
     align-content: start;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm);
+    gap: var(--ui-space-2);
+    padding: var(--ui-space-2);
 }
 
 .hr-shift-card {
     min-width: 0;
-    padding: var(--spacing-sm);
-    border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-primary);
-    border-radius: var(--radius-md);
-    background: var(--color-background);
+    padding: var(--ui-space-2);
+    border: 1px solid var(--ui-border);
+    border-left: 3px solid var(--ui-primary);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface-2);
 }
 
 .hr-shift-card.is-compact {
@@ -363,23 +363,23 @@
 
 .hr-shift-time {
     margin-bottom: 5px;
-    color: var(--color-text);
-    font-size: var(--font-size-sm);
+    color: var(--ui-text);
+    font-size: var(--ui-text-md);
 }
 
 .hr-shift-time > span {
     padding: 1px 5px;
-    border-radius: var(--radius-full);
-    background: rgba(37, 99, 235, 0.12);
-    color: var(--color-primary);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ui-primary) 12%, transparent);
+    color: var(--ui-primary);
     font-size: 10px;
     font-weight: 700;
 }
 
 .hr-shift-meta {
     margin-top: 3px;
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-xs);
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-xs);
 }
 
 .hr-shift-meta span,
@@ -391,21 +391,21 @@
 .hr-shift-card small {
     display: block;
     margin-top: 5px;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .hr-shift-card p {
-    margin: var(--spacing-xs) 0 0;
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-xs);
+    margin: var(--ui-space-1) 0 0;
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-xs);
 }
 
 .hr-shift-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1px;
-    margin: var(--spacing-sm) calc(var(--spacing-sm) * -1) calc(var(--spacing-sm) * -1);
-    border-top: 1px solid var(--color-border);
+    margin: var(--ui-space-2) calc(var(--ui-space-2) * -1) calc(var(--ui-space-2) * -1);
+    border-top: 1px solid var(--ui-border);
 }
 
 .hr-shift-actions button {
@@ -416,7 +416,7 @@
     padding: 7px 4px;
     border: 0;
     background: transparent;
-    color: var(--color-primary);
+    color: var(--ui-primary);
     cursor: pointer;
     font: inherit;
     font-size: 11px;
@@ -424,37 +424,37 @@
 }
 
 .hr-schedule-form-conflicts {
-    margin-bottom: var(--spacing-md);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border: 1px solid rgba(239, 68, 68, 0.38);
-    border-radius: var(--radius-md);
-    background: rgba(239, 68, 68, 0.07);
-    color: var(--color-text);
+    margin-bottom: var(--ui-space-3);
+    padding: var(--ui-space-2) var(--ui-space-3);
+    border: 1px solid color-mix(in srgb, var(--ui-danger) 38%, transparent);
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in srgb, var(--ui-danger) 7%, transparent);
+    color: var(--ui-text);
 }
 
 .hr-schedule-form-conflicts > strong {
-    color: var(--color-danger);
+    color: var(--ui-danger);
 }
 
 .hr-schedule-form-conflicts ul {
-    margin: var(--spacing-xs) 0 0;
-    padding-left: var(--spacing-lg);
+    margin: var(--ui-space-1) 0 0;
+    padding-left: var(--ui-space-4);
 }
 
 .hr-shift-actions button.danger {
-    color: var(--color-danger);
+    color: var(--ui-danger);
 }
 
 .hr-shift-actions button:hover {
-    background: var(--color-surface);
+    background: var(--ui-surface);
 }
 
 .hr-schedule-day-empty,
 .hr-schedule-empty {
     margin: 0;
-    padding: var(--spacing-md);
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
+    padding: var(--ui-space-3);
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-md);
     text-align: center;
 }
 
@@ -468,28 +468,28 @@
 
 .hr-my-schedule-statuses {
     display: grid;
-    gap: var(--spacing-sm);
+    gap: var(--ui-space-2);
 }
 
 .hr-acknowledged {
     display: inline-flex;
     align-items: center;
-    gap: var(--spacing-xs);
-    color: var(--color-success) !important;
+    gap: var(--ui-space-1);
+    color: var(--ui-success) !important;
     font-weight: 700;
 }
 
 .hr-schedule-help {
-    margin: 0 0 var(--spacing-lg);
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
+    margin: 0 0 var(--ui-space-4);
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-md);
 }
 
 .hr-schedule-empty-actions {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: var(--spacing-sm);
+    gap: var(--ui-space-2);
 }
 
 @media (max-width: 1100px) {
@@ -499,18 +499,18 @@
 
     .hr-schedule-mobile-list {
         display: grid;
-        gap: var(--spacing-md);
+        gap: var(--ui-space-3);
     }
 
     .hr-schedule-mobile-list section {
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        background: var(--color-surface);
+        border: 1px solid var(--ui-border);
+        border-radius: var(--ui-radius-md);
+        background: var(--ui-surface);
         overflow: hidden;
     }
 
     .hr-schedule-mobile-list .hr-shift-card {
-        margin: var(--spacing-sm);
+        margin: var(--ui-space-2);
     }
 }
 
@@ -542,18 +542,18 @@
 
     .hr-schedule-mobile-list {
         display: grid;
-        gap: var(--spacing-md);
+        gap: var(--ui-space-3);
     }
 
     .hr-schedule-mobile-list section {
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        background: var(--color-surface);
+        border: 1px solid var(--ui-border);
+        border-radius: var(--ui-radius-md);
+        background: var(--ui-surface);
         overflow: hidden;
     }
 
     .hr-schedule-mobile-list .hr-shift-card {
-        margin: var(--spacing-sm);
+        margin: var(--ui-space-2);
     }
 
     .hr-my-schedule-statuses > div {

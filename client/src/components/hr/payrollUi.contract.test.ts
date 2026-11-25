@@ -193,7 +193,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(css).toContain('.hr-my-payroll-layout');
     expect(operationCss).toContain('@media (max-width: 760px)');
     expect(operationCss).toContain(':focus-visible');
-    expect(operationCss).toContain('background: var(--color-surface)');
+    expect(operationCss).toContain('background: var(--ui-surface)');
     expect(operationCss).not.toContain('var(--surface, #fff)');
   });
 
