@@ -1,18 +1,29 @@
 import { SettingService } from '../setting.service';
-import { bucketBounds, loadBiFacts, loadGoals, monthlyInInterval, round2, totalsInInterval, type BiTotals } from './bi-common';
+import { bucketBounds, type BiQuality, loadBiFacts, loadGoals, monthlyInInterval, round2, totalsInInterval, type BiTotals } from './bi-common';
 import { resolveBiRange, type BiQuery } from './bi-range';
 
 export interface Money { current: number; previous: number; deltaPct: number | null }   // null si previous = 0
 
 export interface BiSummary {
     netSales: Money; grossSales: Money; discounts: Money; orders: Money; avgTicket: Money;
-    grossMarginPct: Money; foodCostRealPct: Money; foodCostTheoreticalPct: Money; foodCostGapAmount: number;
+    grossMarginPct: Money; foodCostRealPct: Money; foodCostTheoreticalPct: Money;
+    /** Real minus theoretical cost; null when dishes with N/D recipes make the comparison partial. */
+    foodCostGapAmount: number | null;
     laborCostPct: Money; operatingProfit: Money; operatingMarginPct: Money;
     goals: {
         monthlySales: number; periodSales: number; avgTicket: number; foodCostPct: number; foodCostGapPts: number;
         grossMarginPct: number; laborCostMaxPct: number; operatingMarginPct: number;
     };
-    spark: Record<'netSales' | 'grossMarginPct' | 'foodCostGapPts' | 'avgTicket' | 'laborCostPct' | 'operatingProfit', number[]>;
+    spark: Record<'netSales' | 'grossMarginPct' | 'avgTicket' | 'laborCostPct' | 'operatingProfit', number[]> & {
+        /** null for buckets whose gap is not comparable (N/D recipes sold). */
+        foodCostGapPts: (number | null)[];
+    };
+    /**
+     * Machine-readable data quality of the current range. Where it is not 'complete' the client
+     * shows N/D (or a partial label): labor drives laborCostPct/operatingProfit/operatingMarginPct;
+     * theoreticalCost drives foodCostTheoreticalPct and the food cost gap.
+     */
+    dataQuality: { labor: BiQuality; theoreticalCost: BiQuality; laborCoverage: number };
     /** Data-quality notices: values that could not be computed are excluded, never shown as 0. */
     warnings: string[];
 }
@@ -42,19 +53,23 @@ export async function getBiSummary(q: BiQuery, now: Date = new Date()): Promise<
 
     const bounds = bucketBounds(range);
     const series = bounds.map((b) => totalsInInterval(cur, b.start, b.end, fixed, timezone));
-    const gapPts = (x: BiTotals) => round2(x.foodCostRealPct - x.foodCostTheoreticalPct);
+    const gapPts = (x: BiTotals): number | null =>
+        x.theoreticalQuality === 'complete' ? round2(x.foodCostRealPct - x.foodCostTheoreticalPct) : null;
+    const laborQuality: BiQuality = t.laborCoverage < 0.001 ? 'unavailable' : t.laborCoverage < 0.999 ? 'partial' : 'complete';
 
     const warnings: string[] = [];
     const unavailableRecipes = [...recipeCache.values()].filter((v) => v == null).length;
     if (unavailableRecipes > 0) {
-        warnings.push(`Costo teórico no disponible para ${unavailableRecipes} platillo(s) con unidad de receta sin conversión; se excluyen del costo teórico.`);
+        warnings.push(`Costo teórico no disponible para ${unavailableRecipes} platillo(s) con unidad de receta sin conversión; se excluyen del costo teórico y de su base de venta; la brecha de food cost no es comparable.`);
     }
     const noCost = cur.movementsWithoutCost + prev.movementsWithoutCost;
     if (noCost > 0) {
         warnings.push(`${noCost} movimiento(s) de inventario sin costo histórico se excluyen del costo real.`);
     }
-    if (t.netSales > 0 && t.labor === 0) {
-        warnings.push('No hay nómina aprobada que cubra el periodo: el costo de personal no está disponible y se excluye de la utilidad.');
+    if (laborQuality === 'unavailable') {
+        warnings.push('No hay nómina aprobada que cubra el periodo: el costo de personal no está disponible y la utilidad operativa no lo incluye.');
+    } else if (laborQuality === 'partial') {
+        warnings.push(`La nómina aprobada cubre solo el ${Math.round(t.laborCoverage * 100)}% del periodo: el costo de personal y la utilidad operativa están incompletos.`);
     }
 
     return {
@@ -67,7 +82,7 @@ export async function getBiSummary(q: BiQuery, now: Date = new Date()): Promise<
         foodCostRealPct: money(t.foodCostRealPct, p.foodCostRealPct),
         foodCostTheoreticalPct: money(t.foodCostTheoreticalPct, p.foodCostTheoreticalPct),
         // Waste and over-portioning: real cost minus theoretical cost of what was sold.
-        foodCostGapAmount: round2(t.costReal - t.costTheoretical),
+        foodCostGapAmount: t.theoreticalQuality === 'complete' ? round2(t.costReal - t.costTheoretical) : null,
         laborCostPct: money(t.laborCostPct, p.laborCostPct),
         operatingProfit: money(t.operatingProfit, p.operatingProfit),
         operatingMarginPct: money(t.operatingMarginPct, p.operatingMarginPct),
@@ -90,6 +105,7 @@ export async function getBiSummary(q: BiQuery, now: Date = new Date()): Promise<
             laborCostPct: series.map((x) => x.laborCostPct),
             operatingProfit: series.map((x) => x.operatingProfit),
         },
+        dataQuality: { labor: laborQuality, theoreticalCost: t.theoreticalQuality, laborCoverage: round2(t.laborCoverage) },
         warnings,
     };
 }

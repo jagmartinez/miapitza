@@ -17,7 +17,7 @@ export interface BiOrderFact {
     discount: number;
     commission: number;
     channel: string;
-    items: { menuItemId: number; quantity: number }[];
+    items: { menuItemId: number; quantity: number; subtotal: number }[];
 }
 export interface BiCreditFact { at: Date; branchId: number; total: number }
 export interface BiCostFact { at: Date; amount: number; kind: 'consumption' | 'waste' }
@@ -109,7 +109,7 @@ export async function loadBiFacts(
             select: {
                 closedAt: true, branchId: true, total: true, discount: true,
                 channelCommission: true, salesChannel: true,
-                items: { select: { menuItemId: true, quantity: true } },
+                items: { select: { menuItemId: true, quantity: true, subtotal: true } },
             },
         }),
         prisma.fiscalCreditNote.findMany({
@@ -123,6 +123,10 @@ export async function loadBiFacts(
                 ...(branchWhere ? { warehouse: { branchId: branchWhere } } : {}),
                 OR: [
                     { type: 'OUT', reference: { startsWith: 'ORD-' } },
+                    // Stock returned by a cancelled order or a RETURN_TO_STOCK credit note
+                    // (IN / REVERSAL with an ORD- reference and no reversalOf link).
+                    { type: 'IN', reference: { startsWith: 'ORD-' } },
+                    { origin: 'REVERSAL', reference: { startsWith: 'ORD-' } },
                     { origin: 'WASTE' },
                     { reason: { startsWith: 'WASTE:' } },
                     {
@@ -138,17 +142,28 @@ export async function loadBiFacts(
                 ],
             },
             select: {
-                createdAt: true, quantity: true, unitCost: true, totalCost: true,
+                createdAt: true, type: true, quantity: true, unitCost: true, totalCost: true,
                 origin: true, reason: true, reference: true, reversalOfId: true,
                 reversalOf: { select: { origin: true, reason: true, reference: true } },
             },
         }),
-        // Manual cash expenses: OUT movements without an order/payment reference
-        // (refunds and payment reversals always carry one).
+        // Manual cash expenses: OUT movements that are not payment/refund ledger entries
+        // (known prefixes below); a manual expense may carry a free-text reference.
+        // Branch scope uses the warehouse branch: warehouses without branchId are left out
+        // of the scoped real cost (company-wide queries include them).
         prisma.cashMovement.findMany({
             where: {
                 type: 'OUT',
-                reference: null,
+                OR: [
+                    { reference: null },
+                    { reference: '' },
+                    {
+                        NOT: [
+                            { reference: { startsWith: 'PAY-' } }, { reference: { startsWith: 'REV-PAY-' } },
+                            { reference: { startsWith: 'CAT-PAY-' } }, { reference: { startsWith: 'REV-CAT-PAY-' } },
+                        ],
+                    },
+                ],
                 createdAt: closedAt,
                 shift: { companyId, ...(branchWhere ? { cashRegister: { branchId: branchWhere } } : {}) },
             },
@@ -164,7 +179,7 @@ export async function loadBiFacts(
         discount: dec(o.discount),
         commission: dec(o.channelCommission),
         channel: String(o.salesChannel),
-        items: (o.items ?? []).map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+        items: (o.items ?? []).map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity, subtotal: dec(i.subtotal) })),
     }));
 
     const itemIds = [...new Set(orderFacts.flatMap((o) => o.items.map((i) => i.menuItemId)))];
@@ -175,6 +190,8 @@ export async function loadBiFacts(
     for (const m of movements) {
         const source = m.reversalOfId != null ? m.reversalOf : m;
         const isWaste = source?.origin === 'WASTE' || (source?.reason ?? '').startsWith('WASTE:');
+        // Returns to stock subtract, whether linked through reversalOf or only by ORD- reference.
+        const returned = m.reversalOfId != null || (m.type === 'IN' && !isWaste);
         const total = m.totalCost == null ? null : Number(m.totalCost);
         const unit = m.unitCost == null ? null : Number(m.unitCost);
         let amount: number | null = null;
@@ -183,7 +200,7 @@ export async function loadBiFacts(
         if (amount == null) { movementsWithoutCost += 1; continue; }
         costs.push({
             at: m.createdAt,
-            amount: (m.reversalOfId != null ? -1 : 1) * amount,
+            amount: (returned ? -1 : 1) * amount,
             kind: isWaste ? 'waste' : 'consumption',
         });
     }
@@ -276,6 +293,24 @@ export function payrollInInterval(facts: BiFacts, s: Date, e: Date): number {
     return sum;
 }
 
+/** Share (0..1) of [s, e) covered by the union of payroll run periods. */
+export function payrollCoverage(facts: BiFacts, s: Date, e: Date): number {
+    const total = e.getTime() - s.getTime();
+    if (total <= 0) return 0;
+    const spans = facts.payroll
+        .map((p) => [Math.max(p.start.getTime(), s.getTime()), Math.min(p.end.getTime(), e.getTime())] as const)
+        .filter(([a, b]) => b > a)
+        .sort((x, y) => x[0] - y[0]);
+    let covered = 0;
+    let curEnd = -Infinity;
+    for (const [a, b] of spans) {
+        const start = Math.max(a, curEnd);
+        if (b > start) covered += b - start;
+        curEnd = Math.max(curEnd, b);
+    }
+    return Math.min(1, covered / total);
+}
+
 /** Prorates a monthly amount over [s, e) walking the local calendar months. */
 export function monthlyInInterval(monthly: number, s: Date, e: Date, timezone: string): number {
     if (!(monthly > 0) || e.getTime() <= s.getTime()) return 0;
@@ -359,12 +394,21 @@ export interface BiTotals {
     costReal: number; costTheoretical: number; commissions: number; labor: number; opex: number;
     grossMarginPct: number; foodCostRealPct: number; foodCostTheoreticalPct: number;
     laborCostPct: number; operatingProfit: number; operatingMarginPct: number;
+    /** Share (0..1) of the interval covered by approved/paid payroll runs. */
+    laborCoverage: number;
+    /** Net-sales basis of the theoretical %: excludes dishes with an N/D recipe. */
+    theoreticalSalesBasis: number;
+    /** Sales of dishes whose recipe cost is N/D (excluded from the theoretical cost). */
+    unavailableRecipeSales: number;
+    theoreticalQuality: BiQuality;
 }
+export type BiQuality = 'complete' | 'partial' | 'unavailable';
 
 /**
  * Definitions (see plan "Global Constraints"):
  * - net sales = sum(Order.total) - credit notes; gross = net + sum(Order.discount)
- * - theoretical cost = units sold x recipe cost per portion (N/D recipes are excluded)
+ * - theoretical cost = units sold x recipe cost per portion (N/D dishes are excluded together
+ *   with their sales from the theoretical % basis; the gap is then partial)
  * - real cost = sale-consumption movements + registered waste (reversals subtract)
  * - operating profit = net - real cost - payroll - operating expenses - channel commissions
  */
@@ -384,12 +428,18 @@ export function totalsInInterval(
     const commissions = orders.reduce((a, o) => a + o.commission, 0);
 
     let costTheoretical = 0;
+    let unavailableRecipeSales = 0;
+    let costedItems = 0;
+    let unavailableItems = 0;
     for (const o of orders) {
         for (const i of o.items) {
             const c = facts.recipeCost.get(i.menuItemId);
-            if (c != null) costTheoretical += c * i.quantity;
+            if (c != null) { costTheoretical += c * i.quantity; costedItems += 1; }
+            else { unavailableRecipeSales += i.subtotal; unavailableItems += 1; }
         }
     }
+    const theoreticalSalesBasis = Math.max(0, netSales - unavailableRecipeSales);
+    const theoreticalQuality: BiQuality = unavailableItems === 0 ? 'complete' : costedItems > 0 ? 'partial' : 'unavailable';
     const costReal = facts.costs.filter((c) => within(c.at)).reduce((a, c) => a + c.amount, 0);
     const labor = payrollInInterval(facts, s, e);
     const opex = facts.cashOuts.filter((c) => within(c.at)).reduce((a, c) => a + c.amount, 0)
@@ -403,9 +453,13 @@ export function totalsInInterval(
         commissions: round2(commissions), labor: round2(labor), opex: round2(opex),
         grossMarginPct: netSales > 0 ? pct(netSales - costReal, netSales) : 0,
         foodCostRealPct: pct(costReal, netSales),
-        foodCostTheoreticalPct: pct(costTheoretical, netSales),
+        foodCostTheoreticalPct: pct(costTheoretical, theoreticalSalesBasis),
         laborCostPct: pct(labor, netSales),
         operatingProfit: round2(operatingProfit),
         operatingMarginPct: netSales > 0 ? pct(operatingProfit, netSales) : 0,
+        laborCoverage: payrollCoverage(facts, s, e),
+        theoreticalSalesBasis: round2(theoreticalSalesBasis),
+        unavailableRecipeSales: round2(unavailableRecipeSales),
+        theoreticalQuality,
     };
 }
