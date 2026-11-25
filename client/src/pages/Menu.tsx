@@ -1,35 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
-import Select from '../components/Select';
-import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI, unitsAPI, menuBrandsAPI, modifiersAPI } from '../services/api';
+import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI, unitsAPI, menuBrandsAPI, modifiersAPI, reportsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
+import {
+  AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+  PageContent, PageHeader, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
+  type Column, type Opt, type Tone,
+} from '@/ui';
 import {
   Plus, Utensils, Trash2, Image as ImageIcon,
-  Info, PieChart, ImagePlus, DollarSign, Edit2,
+  Info, ImagePlus, DollarSign, Edit2,
   SlidersHorizontal, Package, Eye, Layers, Building2, Tag
 } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
-import { currencyInputPadding } from '../utils/currency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import type { Branch, MenuItem, MenuBrand, MenuRecipe, Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
-import type { SingleValue } from 'react-select';
 import {
   calculateMenuRecipeLineCost,
   type EditableMenuRecipe,
   validateMenuRecipes,
 } from '../utils/menuRecipe';
 
-type CatFilterOption = { value: string; label: string };
 import MenuItemCard from '../components/MenuItemCard';
 import { useCurrency } from '../hooks/useCurrency';
 import ImageViewer from '../components/ImageViewer';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
+import {
+  MENU_CLASS_HINT, MENU_CLASS_LABEL, classifyMenu, summarizeMenu,
+  type MenuClass, type MenuSalesRow,
+} from './menuEngineering';
+import s from './Menu.module.css';
 import './Menu.css';
 import './Inventory.css';
 
@@ -51,7 +55,29 @@ interface MenuImageRecord {
   imageUrl: string;
 }
 
-type StrOption = { value: string; label: string };
+type ItemClass = MenuClass | 'SIN_RECETA';
+
+const CLASS_TONE: Record<ItemClass, Tone> = {
+  ESTRELLA: 'success',
+  CABALLO: 'primary',
+  PUZZLE: 'warning',
+  PERRO: 'danger',
+  SIN_VENTAS: 'neutral',
+  SIN_COSTO: 'neutral',
+  SIN_RECETA: 'danger',
+};
+
+/** Valor de un input numérico (sin separador de miles para que siga siendo un número válido). */
+const amountDraft = (value: unknown): string => Number(value).toFixed(2);
+
+interface EngineeringApiRow {
+  menuItemId: number;
+  price: number | string;
+  cost: number | string;
+  margin: number | string;
+  qtySold: number | string;
+  revenue: number | string;
+}
 
 // Modifier inventory link: a modifier can optionally consume `consumeQuantity`
 // (in `unitId`) of `productId` from inventory when selected during a sale.
@@ -115,6 +141,8 @@ export default function Menu() {
   const canMutateMenu = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CHEF']);
   /** Backend: branch price overrides via /advanced/pricing require SUPERADMIN | ADMIN */
   const canSetBranchPrices = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+  /** GET /reports/menu-engineering requires SUPERADMIN | ADMIN: costs and sales stay hidden for other roles. */
+  const canSeeCosts = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -126,7 +154,10 @@ export default function Menu() {
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [brands, setBrands] = useState<MenuBrand[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
-  const { viewMode, setViewMode } = useViewMode('menu');
+  const [selectedClass, setSelectedClass] = useState<ItemClass | 'all'>('all');
+  const [engineering, setEngineering] = useState<MenuSalesRow[] | null>(null);
+  const [engineeringError, setEngineeringError] = useState<string | null>(null);
+  const { viewMode, setViewMode } = useViewMode('menu', 'table');
 
   // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -211,6 +242,36 @@ export default function Menu() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  /** Costo estándar, margen y unidades vendidas de los últimos 30 días (solo lectura). */
+  const loadEngineering = useCallback(async () => {
+    if (!canSeeCosts) return;
+    setEngineeringError(null);
+    try {
+      const to = new Date();
+      const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const params: Record<string, string> = { dateFrom: formatLocalDateInput(from), dateTo: formatLocalDateInput(to) };
+      if (selectedBranch !== 'all') params.branchId = selectedBranch;
+      const res = await reportsAPI.getMenuEngineering(params);
+      const items = (res.data.data?.items ?? []) as EngineeringApiRow[];
+      setEngineering(items.map((row) => ({
+        menuItemId: Number(row.menuItemId),
+        price: Number(row.price),
+        cost: Number(row.cost),
+        margin: Number(row.margin),
+        qtySold: Number(row.qtySold),
+        revenue: Number(row.revenue),
+      })));
+    } catch (error) {
+      console.error('Error loading menu engineering:', error);
+      setEngineering(null);
+      setEngineeringError(errMsg(error, 'No se pudieron cargar los costos y ventas de 30 días.'));
+    }
+  }, [canSeeCosts, selectedBranch]);
+
+  useEffect(() => {
+    void loadEngineering();
+  }, [loadEngineering]);
 
   const resetModifierForm = () => {
     setEditingModifierId(null);
@@ -415,7 +476,7 @@ export default function Menu() {
         setBranchPricing(pricingRes.data.data.branchPrices || []);
         setBranchPriceDrafts(
           (pricingRes.data.data.branchPrices || []).reduce((acc: Record<number, string>, priceRow: BranchPriceRow) => {
-            acc[priceRow.branchId] = Number(priceRow.price).toFixed(2);
+            acc[priceRow.branchId] = amountDraft(priceRow.price);
             return acc;
           }, {})
         );
@@ -493,7 +554,7 @@ export default function Menu() {
       setBranchPricing(pricingRes.data.data.branchPrices || []);
       setBranchPriceDrafts(
         (pricingRes.data.data.branchPrices || []).reduce((acc: Record<number, string>, priceRow: BranchPriceRow) => {
-          acc[priceRow.branchId] = Number(priceRow.price).toFixed(2);
+          acc[priceRow.branchId] = amountDraft(priceRow.price);
           return acc;
         }, {})
       );
@@ -740,7 +801,14 @@ export default function Menu() {
   // Stats calculations
 
 
-  if (loading) return <div className="menu-loading">Sincronizando Menú...</div>;
+  if (loading) {
+    return (
+      <PageContent>
+        <PageHeader title="Menú" description="Cargando platos, costos y ventas…" />
+        <Skeleton height={240} />
+      </PageContent>
+    );
+  }
 
   const handleImageClick = (item: Pick<MenuItem, 'name' | 'images'>, index: number) => {
     const images = item.images?.map(img => img.imageUrl) || [];
@@ -751,248 +819,320 @@ export default function Menu() {
     }
   };
 
+  const showCosts = canSeeCosts;
+  const salesById = new Map((engineering ?? []).map((row) => [row.menuItemId, row]));
+  const classes = classifyMenu(engineering ?? []);
+  const itemClass = (item: MenuItem): ItemClass | null => {
+    if (!showCosts || !engineering) return null;
+    const recipeCount = item._count?.recipes ?? item.recipes?.length ?? 0;
+    if (recipeCount === 0) return 'SIN_RECETA';
+    return classes.get(item.id) ?? 'SIN_VENTAS';
+  };
+  const costRow = (item: MenuItem): MenuSalesRow | null => {
+    const row = salesById.get(item.id);
+    return row && row.cost > 0 ? row : null;
+  };
+
+  const visibleItems = filteredItems.filter((item) => selectedClass === 'all' || itemClass(item) === selectedClass);
+  const summary = engineering ? summarizeMenu(engineering) : null;
+  const dogCount = menuItems.filter((item) => itemClass(item) === 'PERRO').length;
+  const noRecipeCount = menuItems.filter((item) => itemClass(item) === 'SIN_RECETA').length;
+  const nd = (reason: string) => <span className={s.nd} title={reason}>N/D</span>;
+
+  const classOptions: Opt<string>[] = [
+    { value: 'all', label: 'Toda clasificación' },
+    ...(['ESTRELLA', 'CABALLO', 'PUZZLE', 'PERRO', 'SIN_VENTAS'] as const).map((key) => ({ value: key, label: MENU_CLASS_LABEL[key] })),
+    { value: 'SIN_RECETA', label: 'Sin receta' },
+  ];
+
+  const columns: Column<MenuItem>[] = [
+    {
+      key: 'name',
+      header: 'Plato',
+      width: '2.4fr',
+      render: (item) => (
+        <div className={s.cellStack}>
+          <span className={s.cellTitle}>{item.name}</span>
+          {item.description && <span className={s.cellSub}>{item.description}</span>}
+        </div>
+      ),
+    },
+    { key: 'category', header: 'Categoría', width: '1.2fr', hideBelow: 'md', render: (item) => item.category?.name || '-' },
+    { key: 'brand', header: 'Marca', width: '1fr', hideBelow: 'lg', render: (item) => item.brand?.name || 'Común' },
+    {
+      key: 'branch',
+      header: 'Sucursal',
+      width: '1fr',
+      hideBelow: 'lg',
+      render: (item) => (!item.branchId ? 'Global' : branches.find((b) => b.id === item.branchId)?.name || '-'),
+    },
+    { key: 'price', header: `Precio (${symbol})`, type: 'money', width: '1fr', accessor: (item) => Number(item.price) },
+    ...(showCosts
+      ? ([
+          {
+            key: 'cost',
+            header: `Costo (${symbol})`,
+            type: 'money',
+            width: '1fr',
+            render: (item) => {
+              const row = costRow(item);
+              if (row) return formatNumber(row.cost);
+              return nd(itemClass(item) === 'SIN_RECETA' ? 'El plato no tiene receta' : engineering ? 'Sin ventas en 30 días: el costo no se calculó' : 'No se pudo cargar el costo');
+            },
+          },
+          {
+            key: 'foodCost',
+            header: 'Food cost',
+            type: 'percent',
+            width: '1fr',
+            render: (item) => {
+              const row = costRow(item);
+              return row && row.price > 0 ? formatPercent((row.cost / row.price) * 100) : nd('Sin costo conocido');
+            },
+          },
+          {
+            key: 'margin',
+            header: `Margen (${symbol})`,
+            type: 'money',
+            width: '1fr',
+            render: (item) => {
+              const row = costRow(item);
+              return row ? formatNumber(row.margin) : nd('Sin costo conocido');
+            },
+          },
+          {
+            key: 'sold',
+            header: 'Vendidos (30 días)',
+            type: 'number',
+            width: '1fr',
+            render: (item) => (engineering ? formatNumber(salesById.get(item.id)?.qtySold ?? 0, 0) : nd('No se pudieron cargar las ventas')),
+          },
+          {
+            key: 'class',
+            header: 'Clasificación',
+            width: '1.4fr',
+            render: (item) => {
+              const cls = itemClass(item);
+              if (!cls) return nd('No se pudo cargar la clasificación');
+              const label = cls === 'SIN_RECETA' ? 'Sin receta' : MENU_CLASS_LABEL[cls];
+              const hint = cls === 'SIN_RECETA' ? 'Sin receta no hay costo ni descuento de inventario.' : MENU_CLASS_HINT[cls];
+              return <span title={hint}><Badge tone={CLASS_TONE[cls]}>{label}</Badge></span>;
+            },
+          },
+        ] as Column<MenuItem>[])
+      : []),
+    {
+      key: 'actions',
+      header: 'Acciones',
+      type: 'actions',
+      width: '8rem',
+      render: (item) => (
+        <div className={s.rowActions}>
+          <IconButton icon={Eye} size="sm" label={`Ver detalle de ${item.name}`} onClick={() => void handleOpenDetail(item)} />
+          {canMutateMenu && <IconButton icon={Edit2} size="sm" label={`Editar ${item.name}`} onClick={() => void handleOpenSidebar(item)} />}
+          {canMutateMenu && <IconButton icon={Trash2} size="sm" label={`Eliminar ${item.name}`} onClick={() => handleDelete(item.id)} />}
+        </div>
+      ),
+    },
+  ];
+
+  const categoryOptions: Opt<string>[] = [
+    { value: 'all', label: 'Todas las categorías' },
+    ...categories.filter((cat) => isCategoryVisibleInMenu(cat)).map((cat) => ({ value: cat.name, label: cat.name })),
+  ];
+  const branchOptions: Opt<string>[] = [
+    { value: 'all', label: 'Todas las sucursales' },
+    ...branches.map((b) => ({ value: b.id.toString(), label: b.name })),
+  ];
+  const brandOptions: Opt<string>[] = [
+    { value: 'all', label: 'Todas las marcas' },
+    { value: 'none', label: 'Sin marca (común)' },
+    ...brands.map((b) => ({ value: b.id.toString(), label: b.name })),
+  ];
+
   return (
-    <div className={`menu-page${!canMutateMenu ? ' menu-readonly' : ''}`}>
+    <PageContent>
+      <div className={!canMutateMenu ? 'menu-readonly' : undefined}>
       <ImageViewer
         isOpen={isViewerOpen}
         onClose={() => setIsViewerOpen(false)}
         images={viewerImages}
         initialIndex={viewerInitialIndex}
       />
-      {/* Header View */}
-      <div className="menu-header">
-        <div>
-          <h1><Utensils size={32} /> Gestión de Menú</h1>
-          <p className="menu-subtitle">{filteredItems.length} platos catalogados en el sistema</p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <ViewToggle value={viewMode} onChange={setViewMode} />
-          {canSetBranchPrices && (
-            <Button variant="secondary" onClick={openModifierModal}>
-              <SlidersHorizontal size={18} />
-              Modificadores
-            </Button>
-          )}
-          {canMutateMenu && (
-            <Button onClick={() => handleOpenSidebar()}>
-              <Plus size={18} />
-              Nuevo Plato
-            </Button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title="Menú"
+        description={`${visibleItems.length} platos catalogados en el sistema`}
+        actions={
+          <>
+            {canSetBranchPrices && (
+              <Button icon={SlidersHorizontal} onClick={openModifierModal}>Modificadores</Button>
+            )}
+            {canMutateMenu && (
+              <Button variant="primary" icon={Plus} onClick={() => void handleOpenSidebar()}>Nuevo plato</Button>
+            )}
+          </>
+        }
+      />
 
-      {/* Modern Filter Row */}
-      <div className="menu-filters-bar">
-        <div className="menu-filters-row">
-          <Select
-            className="category-select-container"
-            value={selectedCategory === 'all'
-              ? { value: 'all', label: 'Todas las Categorías' }
-              : { value: selectedCategory, label: selectedCategory }}
-            onChange={(val: SingleValue<CatFilterOption>) => setSelectedCategory(val?.value || 'all')}
-            options={[
-              { value: 'all', label: 'Todas las Categorías' },
-              ...categories.filter(cat => isCategoryVisibleInMenu(cat)).map(cat => ({ value: cat.name, label: cat.name }))
-            ]}
-            placeholder="Filtrar por categoría..."
-            isSearchable
-          />
+      {showCosts && engineeringError && (
+        <div className={s.banner} role="alert">
+          <span>{engineeringError} Los costos, ventas y clasificación se muestran como N/D y no entran en ningún total.</span>
+          <Button size="sm" onClick={() => void loadEngineering()}>Reintentar</Button>
+        </div>
+      )}
 
-          <Select
-            className="branch-select-container"
-            value={
-              selectedBranch === 'all'
-                ? { value: 'all', label: 'Todas las Sucursales' }
-                : { value: selectedBranch, label: branches.find((b) => b.id.toString() === selectedBranch)?.name || 'Sucursal' }
+      {showCosts && summary && (
+        <div className={s.stats}>
+          <StatCard
+            label="Margen ponderado (30 días)"
+            value={summary.weightedMarginPct === null ? 'N/D' : formatPercent(summary.weightedMarginPct)}
+            context={
+              summary.weightedMarginPct === null
+                ? 'Ningún plato vendido tiene costo conocido.'
+                : `Utilidad ${formatMoney(summary.profit)} sobre ventas a precio de lista de ${formatMoney(summary.revenue)} en ${summary.costedCount} platos con costo.${summary.excludedWithoutCost > 0 ? ` ${summary.excludedWithoutCost} platos vendidos sin costo quedan fuera.` : ''}`
             }
-            onChange={(val: SingleValue<CatFilterOption>) => setSelectedBranch(val?.value || 'all')}
-            options={[
-              { value: 'all', label: 'Todas las Sucursales' },
-              ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))
-            ]}
-            placeholder="Sucursal..."
-            isSearchable={false}
+            tone={summary.excludedWithoutCost > 0 ? 'warning' : 'primary'}
           />
-
-          {brands.length > 0 && (
-            <Select
-              className="branch-select-container"
-              value={
-                selectedBrand === 'all'
-                  ? { value: 'all', label: 'Todas las Marcas' }
-                  : { value: selectedBrand, label: brands.find((b) => b.id.toString() === selectedBrand)?.name || 'Marca' }
-              }
-              onChange={(val: SingleValue<CatFilterOption>) => setSelectedBrand(val?.value || 'all')}
-              options={[
-                { value: 'all', label: 'Todas las Marcas' },
-                { value: 'none', label: 'Sin marca (común)' },
-                ...brands.map((b) => ({ value: b.id.toString(), label: b.name }))
-              ]}
-              placeholder="Marca..."
-              isSearchable={false}
+          {dogCount > 0 && (
+            <StatCard
+              label="Platos por revisar (Perro)"
+              value={formatNumber(dogCount, 0)}
+              context="Venden poco y dejan poco margen en 30 días: candidatos a rediseñar, subir de precio o retirar."
+              tone="warning"
+              action={{ label: 'Ver platos', onClick: () => setSelectedClass('PERRO') }}
             />
           )}
+          {noRecipeCount > 0 && (
+            <StatCard
+              label="Platos sin receta"
+              value={formatNumber(noRecipeCount, 0)}
+              context="No tienen costo ni descuentan inventario al venderse."
+              tone="danger"
+              action={{ label: 'Ver platos', onClick: () => setSelectedClass('SIN_RECETA') }}
+            />
+          )}
+        </div>
+      )}
 
-          <input
-            type="text"
-            className="search-input"
+      <TableToolbar actions={<ViewToggle value={viewMode} onChange={setViewMode} />}>
+        <div className={s.search}>
+          <Input
+            type="search"
+            aria-label="Buscar plato"
             placeholder="Buscar por nombre o descripción..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-      </div>
+        <div className={s.filter}>
+          <AppSelect<string>
+            aria-label="Filtrar por categoría"
+            options={categoryOptions}
+            value={selectedCategory}
+            onChange={(v) => setSelectedCategory(v ?? 'all')}
+            isClearable={false}
+          />
+        </div>
+        <div className={s.filter}>
+          <AppSelect<string>
+            aria-label="Filtrar por sucursal"
+            options={branchOptions}
+            value={selectedBranch}
+            onChange={(v) => setSelectedBranch(v ?? 'all')}
+            isClearable={false}
+          />
+        </div>
+        {brands.length > 0 && (
+          <div className={s.filter}>
+            <AppSelect<string>
+              aria-label="Filtrar por marca"
+              options={brandOptions}
+              value={selectedBrand}
+              onChange={(v) => setSelectedBrand(v ?? 'all')}
+              isClearable={false}
+            />
+          </div>
+        )}
+        {showCosts && engineering && (
+          <div className={s.filter}>
+            <AppSelect<string>
+              aria-label="Filtrar por clasificación"
+              options={classOptions}
+              value={selectedClass}
+              onChange={(v) => setSelectedClass((v ?? 'all') as ItemClass | 'all')}
+              isClearable={false}
+            />
+          </div>
+        )}
+      </TableToolbar>
 
-      {viewMode === 'table' && filteredItems.length > 0 && (
-        <CatalogTable<MenuItem>
-          rows={filteredItems}
+      {viewMode === 'table' && (
+        <DataTable<MenuItem>
+          ariaLabel="Platos del menú"
+          columns={columns}
+          rows={visibleItems}
           rowKey={(item) => item.id}
-          resetKey={`${selectedCategory}-${selectedBranch}-${selectedBrand}-${searchQuery}`}
-          columns={[
-            {
-              key: 'name',
-              header: 'Plato',
-              render: (item) => (
-                <div className="catalog-cell-stack">
-                  <span className="cell-title">{item.name}</span>
-                  {item.description && <span className="cell-sub">{item.description}</span>}
-                </div>
-              ),
-            },
-            {
-              key: 'category',
-              header: 'Categoría',
-              render: (item) => item.category?.name || '-',
-            },
-            {
-              key: 'brand',
-              header: 'Marca',
-              render: (item) => item.brand?.name || 'Común',
-            },
-            {
-              key: 'branch',
-              header: 'Sucursal',
-              render: (item) => {
-                if (!item.branchId) return 'Global';
-                return branches.find((b) => b.id === item.branchId)?.name || '-';
-              },
-            },
-            {
-              key: 'price',
-              header: 'Precio',
-              align: 'right',
-              render: (item) => formatMoney(Number(item.price)),
-            },
-            {
-              key: 'status',
-              header: 'Estado',
-              render: (item) => (
-                <span className={`catalog-pill ${item.active ? 'ok' : 'neutral'}`}>
-                  {item.active ? 'Activo' : 'Inactivo'}
-                </span>
-              ),
-            },
-            {
-              key: 'actions',
-              header: 'Acciones',
-              align: 'right',
-              render: (item) => (
-                <div className="catalog-table-actions">
-                  <button
-                    type="button"
-                    className="catalog-action-btn"
-                    onClick={() => void handleOpenDetail(item)}
-                    title="Ver detalle"
-                    aria-label={`Ver detalle de ${item.name}`}
-                  >
-                    <Eye size={16} />
-                  </button>
-                  {canMutateMenu && (
-                  <button
-                    type="button"
-                    className="catalog-action-btn"
-                    onClick={() => handleOpenSidebar(item)}
-                    title="Editar"
-                    aria-label={`Editar ${item.name}`}
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                  )}
-                  {canMutateMenu && (
-                    <button
-                      type="button"
-                      className="catalog-action-btn danger"
-                      onClick={() => handleDelete(item.id)}
-                      title="Eliminar"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </div>
-              ),
-            },
-          ] as CatalogColumn<MenuItem>[]}
+          resetKey={`${selectedCategory}-${selectedBranch}-${selectedBrand}-${selectedClass}-${searchQuery}`}
+          onRowClick={(item) => void handleOpenDetail(item)}
+          empty={<EmptyState icon={Utensils} title="No hay platos que coincidan con los filtros" />}
         />
       )}
 
       {viewMode === 'cards' && (
-        <div className="menu-grid">
-          {filteredItems.map(item => (
-            <MenuItemCard
-              key={item.id}
-              item={item}
-              onClick={() => void handleOpenDetail(item)}
-              onEdit={() => handleOpenSidebar(item)}
-              onDelete={() => handleDelete(item.id)}
-              onImageClick={handleImageClick}
-            />
-          ))}
-        </div>
+        visibleItems.length > 0 ? (
+          <div className="menu-grid">
+            {visibleItems.map(item => (
+              <MenuItemCard
+                key={item.id}
+                item={item}
+                onClick={() => void handleOpenDetail(item)}
+                onEdit={() => handleOpenSidebar(item)}
+                onDelete={() => handleDelete(item.id)}
+                onImageClick={handleImageClick}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon={Utensils} title="No hay platos que coincidan con los filtros" />
+        )
       )}
 
-      {filteredItems.length === 0 && (
-        <div className="menu-empty-state">
-          <Utensils size={48} />
-          <p>No hay platos que coincidan con los filtros</p>
-        </div>
-      )}
-
-      <Sidebar
+      <FullScreenModal
         isOpen={detailOpen}
         onClose={() => { setDetailOpen(false); setViewingItem(null); setDetailError(null); }}
         title="Detalle del Plato"
-        width="large"
-        footer={viewingItem ? (
-          <div className="inventory-detail-footer">
-            <Button type="button" variant="ghost" onClick={() => setDetailOpen(false)}>
-              Cerrar
-            </Button>
+        subtitle={viewingItem?.name}
+        footer={viewingItem ? ({ requestClose }) => (
+          <>
+            <Button variant="ghost" onClick={requestClose}>Cerrar</Button>
             {canMutateMenu && (
               <Button
-                type="button"
+                variant="primary"
+                icon={Edit2}
                 onClick={() => {
                   const item = viewingItem;
                   setDetailOpen(false);
                   void handleOpenSidebar(item as unknown as MenuItem);
                 }}
               >
-                <Edit2 size={16} /> Editar plato
+                Editar plato
               </Button>
             )}
-          </div>
+          </>
         ) : undefined}
       >
-        {detailLoading && <div className="inventory-loading">Cargando detalle del plato...</div>}
+        {detailLoading && <Skeleton height={200} />}
         {!detailLoading && detailError && (
-          <div className="state-placeholder" role="alert">
-            <Utensils size={42} />
-            <p className="state-error">{detailError}</p>
-            <Button variant="ghost" onClick={() => setDetailOpen(false)}>Cerrar</Button>
-          </div>
+          <EmptyState
+            icon={Utensils}
+            title="No se pudo cargar el detalle"
+            description={detailError}
+            action={<Button onClick={() => setDetailOpen(false)}>Cerrar</Button>}
+          />
         )}
         {!detailLoading && viewingItem && (() => {
           const price = Number(viewingItem.price) || 0;
+          const hasRecipe = (viewingItem.recipes?.length ?? 0) > 0;
           const totalCost = Number(viewingItem.totalCost) || 0;
           const margin = Number(viewingItem.margin ?? price - totalCost) || 0;
           const marginPercent = price > 0 ? (margin / price) * 100 : 0;
@@ -1023,7 +1163,7 @@ export default function Menu() {
                   <span>Precio de venta</span>
                   <strong>{formatMoney(price)}</strong>
                   <div className="inventory-detail-stock-track" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, marginPercent))}%` }} /></div>
-                  <small>Margen estimado {marginPercent.toFixed(1)}%</small>
+                  <small>{hasRecipe ? `Margen estimado ${formatNumber(marginPercent, 1)}%` : 'Margen N/D: el plato no tiene receta'}</small>
                 </div>
               </div>
 
@@ -1041,13 +1181,13 @@ export default function Menu() {
                 <div className="modal-section-header"><DollarSign size={18} /><h3>Precio, costo y margen</h3></div>
                 <div className="inventory-detail-finance">
                   <div className="inventory-detail-effective-cost">
-                    <div><span>Costo estimado de receta</span><strong>{formatMoney(totalCost)}</strong></div>
+                    <div><span>Costo estimado de receta</span><strong>{hasRecipe ? formatMoney(totalCost) : 'N/D'}</strong></div>
                     <span className="inventory-detail-cost-source">Calculado en servidor</span>
                   </div>
                   <dl className="inventory-detail-finance-breakdown">
                     <div><dt>Precio de venta</dt><dd>{formatMoney(price)}</dd></div>
-                    <div><dt>Utilidad estimada</dt><dd>{formatMoney(margin)}</dd></div>
-                    <div><dt>Margen</dt><dd>{marginPercent.toFixed(1)}%</dd></div>
+                    <div><dt>Utilidad estimada</dt><dd>{hasRecipe ? formatMoney(margin) : 'N/D'}</dd></div>
+                    <div><dt>Margen</dt><dd>{hasRecipe ? `${formatNumber(marginPercent, 1)}%` : 'N/D'}</dd></div>
                   </dl>
                   <p className="inventory-detail-finance-note">Los costos utilizan la receta y el costo efectivo vigente de cada insumo.</p>
                 </div>
@@ -1107,665 +1247,475 @@ export default function Menu() {
             </div>
           );
         })()}
-      </Sidebar>
+      </FullScreenModal>
 
-      {/* REDESIGNED MODAL WITH TABS */}
-      <Sidebar
+      <FullScreenModal
         isOpen={isSidebarOpen}
         onClose={() => { setIsSidebarOpen(false); setActiveTab('info'); }}
         title={editingItem ? 'Editar Plato' : 'Nuevo Plato'}
-        width="normal"
-      >
-        <div className="premium-modal-content menu-item-modal-content">
-          {/* NAVIGATION TABS */}
-          <div className="modal-tabs" role="tablist" aria-label="Secciones del plato">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'info'}
-              className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
-              onClick={() => setActiveTab('info')}
-            >
-              <Info size={18} />
-              <span>Información</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'recipe'}
-              className={`modal-tab ${activeTab === 'recipe' ? 'active' : ''}`}
-              onClick={() => setActiveTab('recipe')}
-            >
-              <PieChart size={18} />
-              <span>Costos</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'gallery'}
-              className={`modal-tab ${activeTab === 'gallery' ? 'active' : ''}`}
-              onClick={() => setActiveTab('gallery')}
-            >
-              <ImageIcon size={18} />
-              <span>Galería</span>
-            </button>
-            {editingItem && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === 'pricing'}
-                className={`modal-tab ${activeTab === 'pricing' ? 'active' : ''}`}
-                onClick={() => setActiveTab('pricing')}
-              >
-                <DollarSign size={18} />
-                <span>Precios</span>
-              </button>
+        subtitle={editingItem?.name}
+        tabs={[
+          { id: 'info', label: 'Información' },
+          { id: 'recipe', label: 'Costos' },
+          { id: 'gallery', label: 'Galería' },
+          ...(editingItem ? [{ id: 'pricing', label: 'Precios' }] : []),
+        ]}
+        activeTab={activeTab}
+        onTabChange={(id) => setActiveTab(id as typeof activeTab)}
+        footer={({ requestClose }) => (
+          <>
+            <Button variant="ghost" onClick={requestClose}>{canMutateMenu ? 'Cancelar' : 'Cerrar'}</Button>
+            {canMutateMenu && (
+              <Button type="submit" form="menu-item-form" variant="primary" loading={saving} disabled={!formData.name || saving}>
+                {saving ? 'Guardando...' : editingItem ? 'Actualizar Plato' : 'Guardar en Catálogo'}
+              </Button>
             )}
-          </div>
+          </>
+        )}
+      >
+        <form id="menu-item-form" onSubmit={handleSubmit} className={s.form}>
+          {activeTab === 'info' && (
+            <FormSection title="Información del plato">
+              <FormGrid>
+                <Field label="Nombre del plato" htmlFor="menu-item-name" required>
+                  <Input
+                    id="menu-item-name"
+                    autoFocus
+                    placeholder="Ej: Pasta Carbonara Premium"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
+                    readOnly={!canMutateMenu}
+                    disabled={!canMutateMenu}
+                  />
+                </Field>
+                <Field label="Precio final" htmlFor="menu-item-price" required>
+                  <Input
+                    id="menu-item-price"
+                    type="number"
+                    step="0.01"
+                    prefix={symbol}
+                    placeholder="0.00"
+                    value={formData.price}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                    required
+                    readOnly={!canMutateMenu}
+                    disabled={!canMutateMenu}
+                  />
+                </Field>
+                <Field label="Categoría" htmlFor="menu-item-category">
+                  <AppSelect<string>
+                    inputId="menu-item-category"
+                    options={categories.filter(cat => isCategoryVisibleInMenu(cat) || cat.id.toString() === formData.categoryId).map(cat => ({ value: cat.id.toString(), label: cat.name }))}
+                    value={formData.categoryId || null}
+                    onChange={(v) => setFormData({ ...formData, categoryId: v ?? '' })}
+                    placeholder="Seleccionar..."
+                    isDisabled={!canMutateMenu}
+                  />
+                </Field>
+                <Field label="Sucursal" htmlFor="menu-item-branch">
+                  <AppSelect<string>
+                    inputId="menu-item-branch"
+                    options={[
+                      { value: '', label: 'Todas las Sucursales (Global)' },
+                      ...branches.map((b) => ({ value: b.id.toString(), label: b.name })),
+                    ]}
+                    value={formData.branchId}
+                    onChange={(v) => setFormData({ ...formData, branchId: v ?? '' })}
+                    isClearable={false}
+                    isDisabled={!canMutateMenu}
+                  />
+                </Field>
+                <Field label="Marca" htmlFor="menu-item-brand">
+                  <AppSelect<string>
+                    inputId="menu-item-brand"
+                    options={[
+                      { value: '', label: 'Común (todas las marcas)' },
+                      ...brands.filter(b => b.active || b.id.toString() === formData.brandId).map((b) => ({ value: b.id.toString(), label: b.name })),
+                    ]}
+                    value={formData.brandId}
+                    onChange={(v) => setFormData({ ...formData, brandId: v ?? '' })}
+                    isClearable={false}
+                    isDisabled={!canMutateMenu}
+                  />
+                </Field>
+              </FormGrid>
+              <Field label="Descripción" htmlFor="menu-item-description">
+                <Textarea
+                  id="menu-item-description"
+                  rows={4}
+                  placeholder="Detalles sobre sabores, ingredientes o preparación..."
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  readOnly={!canMutateMenu}
+                  disabled={!canMutateMenu}
+                />
+              </Field>
+            </FormSection>
+          )}
 
-          <form onSubmit={handleSubmit} className="modal-form-new">
-            <div className="modal-tab-content">
-              {/* 1. INFORMACIÓN TAB */}
-              {activeTab === 'info' && (
-                <div className="modal-content-group">
-                  <div className="modal-section-header">
-                    <Info size={18} />
-                    <h3>Información del Plato</h3>
-                  </div>
-
-                  <div className="modal-input-group">
-                    <label className="modal-input-label" htmlFor="menu-item-name">Nombre del Plato</label>
-                    <input
-                      id="menu-item-name"
-                      autoFocus
-                      className="modal-standard-input"
-                      placeholder="Ej: Pasta Carbonara Premium"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      required
-                      readOnly={!canMutateMenu}
-                      disabled={!canMutateMenu}
-                    />
-                  </div>
-
-                  <div className="modal-form-row">
-                    <Select
-                      variant="modal"
-                      label="Categoría"
-                      options={categories.filter(cat => isCategoryVisibleInMenu(cat) || cat.id.toString() === formData.categoryId).map(cat => ({ value: cat.id.toString(), label: cat.name }))}
-                      value={categories.map(cat => ({ value: cat.id.toString(), label: cat.name })).find(opt => opt.value === formData.categoryId) || null}
-                      onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, categoryId: opt ? opt.value : '' })}
-                      placeholder="Seleccionar..."
-                      isClearable
-                      isDisabled={!canMutateMenu}
-                    />
-
-                    <Select
-                      variant="modal"
-                      label="Sucursal"
-                      options={[
-                        { value: '', label: 'Todas las Sucursales (Global)' },
-                        ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))
-                      ]}
-                      value={formData.branchId
-                        ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name || '' }
-                        : { value: '', label: 'Todas las Sucursales (Global)' }}
-                      onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, branchId: opt ? opt.value : '' })}
-                      isDisabled={!canMutateMenu}
-                    />
-
-                    <Select
-                      variant="modal"
-                      label="Marca"
-                      options={[
-                        { value: '', label: 'Común (todas las marcas)' },
-                        ...brands.filter(b => b.active || b.id.toString() === formData.brandId).map((b) => ({ value: b.id.toString(), label: b.name }))
-                      ]}
-                      value={formData.brandId
-                        ? { value: formData.brandId, label: brands.find((b) => b.id.toString() === formData.brandId)?.name || '' }
-                        : { value: '', label: 'Común (todas las marcas)' }}
-                      onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, brandId: opt ? opt.value : '' })}
-                      isDisabled={!canMutateMenu}
-                    />
-
-                    <div className="modal-input-group">
-                      <label className="modal-input-label" htmlFor="menu-item-price">Precio Final</label>
-                      <div className="price-input-wrapper">
-                        <span className="price-currency-icon">{symbol}</span>
-                        <input
-                          id="menu-item-price"
-                          type="number"
-                          step="0.01"
-                          className="modal-standard-input"
-                          style={{ paddingLeft: currencyInputPadding(symbol) }}
-                          placeholder="0.00"
-                          value={formData.price}
-                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          required
-                          readOnly={!canMutateMenu}
-                          disabled={!canMutateMenu}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="modal-input-group">
-                    <label className="modal-input-label" htmlFor="menu-item-description">Descripción</label>
-                    <textarea
-                      id="menu-item-description"
-                      className="modal-textarea"
-                      style={{ minHeight: '100px' }}
-                      placeholder="Detalles sobre sabores, ingredientes o preparación..."
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      readOnly={!canMutateMenu}
-                      disabled={!canMutateMenu}
-                    />
-                  </div>
+          {activeTab === 'recipe' && (() => {
+            const price = parseFloat(formData.price) || 0;
+            const unconfigured = recipe.filter((ing) => !ing.unitConfigured).length;
+            const totalCost = recipe.reduce((sum, ing) => sum + calculateIngredientLineCost(ing), 0);
+            const hasCost = recipe.length > 0 && unconfigured < recipe.length;
+            const profit = price - totalCost;
+            const margin = price > 0 ? (profit / price) * 100 : 0;
+            const exclusion = unconfigured > 0 ? ` Excluye ${unconfigured} ingrediente(s) con unidad no configurada.` : '';
+            return (
+              <FormSection title="Análisis de costos y receta">
+                <div className={s.stats}>
+                  <StatCard
+                    label="Costo de materia prima"
+                    value={hasCost ? formatMoney(totalCost) : 'N/D'}
+                    context={hasCost ? `Suma de ${recipe.length - unconfigured} ingredientes.${exclusion}` : 'Agrega ingredientes con unidad configurada para calcular el costo.'}
+                    tone={unconfigured > 0 ? 'warning' : 'primary'}
+                  />
+                  <StatCard
+                    label="Margen"
+                    value={hasCost && price > 0 ? formatPercent(margin, 0) : 'N/D'}
+                    context={hasCost && price > 0 ? `Sobre el precio de ${formatMoney(price)}.` : 'Requiere costo y precio.'}
+                    tone={!hasCost || price <= 0 ? 'neutral' : margin >= 70 ? 'success' : margin >= 40 ? 'warning' : 'danger'}
+                  />
+                  <StatCard
+                    label="Utilidad por plato"
+                    value={hasCost && price > 0 ? formatMoney(profit) : 'N/D'}
+                    context="Precio menos costo de materia prima."
+                    tone="neutral"
+                  />
                 </div>
-              )}
 
-              {/* 2. RECIPE & COSTOS TAB */}
-              {activeTab === 'recipe' && (
-                <div className="modal-content-group">
-                  <div className="modal-section-header">
-                    <PieChart size={18} />
-                    <h3>Análisis de Costos y Receta</h3>
-                  </div>
-
-                  {/* Compact Stats Dashboard (Adapted) */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
-                    {(() => {
-                      const totalCost = recipe.reduce((sum, ing) => sum + calculateIngredientLineCost(ing), 0);
-                      const price = parseFloat(formData.price) || 0;
-                      const profit = price - totalCost;
-                      const margin = price > 0 ? (profit / price) * 100 : 0;
-
-                      return (
-                        <>
-                          <div className="cost-stat-card primary">
-                            <span className="cost-stat-label">Costo MP</span>
-                            <div className="cost-stat-value">{formatMoney(totalCost)}</div>
-                          </div>
-                          <div className="cost-stat-card">
-                            <span className="cost-stat-label">Margen</span>
-                            <div className="cost-stat-value" style={{ color: margin >= 70 ? 'var(--color-success)' : margin >= 40 ? 'var(--color-warning)' : 'var(--color-danger)' }}>
-                              {margin.toFixed(0)}%
-                            </div>
-                          </div>
-                          <div className="cost-stat-card">
-                            <span className="cost-stat-label">Utilidad</span>
-                            <div className="cost-stat-value">{formatMoney(profit)}</div>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Add Tool */}
-                  <div className="modal-input-group">
-                    <label className="modal-input-label" id="menu-ingredient-add-label">Incorporar Ingrediente</label>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} role="group" aria-labelledby="menu-ingredient-add-label">
-                      <div style={{ flex: 2, minWidth: '140px' }}>
-                        <Select
-                          variant="modal"
-                          inputId="menu-ingredient-product"
-                          options={products.map(p => ({
-                            value: p.id.toString(), label: p.name, cost: p.cost, unit: p.unit
-                          }))}
-                          value={products
-                            .map(p => ({ value: p.id.toString(), label: p.name }))
-                            .find(opt => opt.value === selectedProductId) || null
-                          }
-                          onChange={(opt: SingleValue<StrOption>) => handleIngredientProductChange(opt ? opt.value : '')}
-                          placeholder="Buscar..."
-                          isClearable
-                          isDisabled={!canMutateMenu}
-                        />
-                      </div>
-                      <input
+                <Field label="Incorporar ingrediente" htmlFor="menu-ingredient-product">
+                  <div className={s.addRow} role="group" aria-label="Incorporar ingrediente">
+                    <div className={s.addProduct}>
+                      <AppSelect<string>
+                        inputId="menu-ingredient-product"
+                        options={products.map(p => ({ value: p.id.toString(), label: p.name }))}
+                        value={selectedProductId || null}
+                        onChange={(v) => void handleIngredientProductChange(v ?? '')}
+                        placeholder="Buscar..."
+                        isDisabled={!canMutateMenu}
+                      />
+                    </div>
+                    <div className={s.addQty}>
+                      <Input
                         id="menu-ingredient-quantity"
                         type="number"
                         min="0.001"
                         step="0.001"
-                        className="modal-standard-input"
-                        style={{ width: '80px', textAlign: 'center' }}
+                        aria-label="Cantidad del ingrediente"
                         placeholder="Cant"
                         value={quantity}
                         onChange={(e) => setQuantity(e.target.value)}
                         readOnly={!canMutateMenu}
                         disabled={!canMutateMenu}
                       />
-                      {selectedProductId && (
-                        <div style={{ minWidth: '120px' }}>
-                          <Select
-                            variant="modal"
-                            inputId="menu-ingredient-unit"
-                            options={ingredientUnits.map((u) => ({
-                              value: u.abbreviation,
-                              label: u.name && u.name !== u.abbreviation
-                                ? `${u.name} (${u.abbreviation})`
-                                : u.abbreviation
-                            }))}
-                            value={selectedIngredientUnit
-                              ? {
-                                  value: selectedIngredientUnit,
-                                  label: (() => {
-                                    const match = ingredientUnits.find(
-                                      (u) => u.abbreviation === selectedIngredientUnit
-                                    );
-                                    return match?.name && match.name !== match.abbreviation
-                                      ? `${match.name} (${match.abbreviation})`
-                                      : selectedIngredientUnit;
-                                  })()
-                                }
-                              : null}
-                            onChange={(opt: SingleValue<StrOption>) => setSelectedIngredientUnit(opt?.value || '')}
-                            isSearchable={ingredientUnits.length > 6}
-                            isDisabled={!canMutateMenu || ingredientUnits.length === 0}
-                            placeholder="Unidad"
-                          />
-                        </div>
-                      )}
-                      <Button
-                        type="button"
-                        variant="primary"
-                        style={{ padding: '0 12px' }}
-                        onClick={addIngredient}
-                        disabled={!canMutateMenu || !selectedProductId || !quantity || Number(quantity) <= 0}
-                      >
-                        <Plus size={18} />
-                      </Button>
                     </div>
+                    {selectedProductId && (
+                      <div className={s.addUnit}>
+                        <AppSelect<string>
+                          inputId="menu-ingredient-unit"
+                          aria-label="Unidad del ingrediente"
+                          options={ingredientUnits.map((u) => ({
+                            value: u.abbreviation,
+                            label: u.name && u.name !== u.abbreviation ? `${u.name} (${u.abbreviation})` : u.abbreviation,
+                          }))}
+                          value={selectedIngredientUnit || null}
+                          onChange={(v) => setSelectedIngredientUnit(v ?? '')}
+                          isDisabled={!canMutateMenu || ingredientUnits.length === 0}
+                          placeholder="Unidad"
+                        />
+                      </div>
+                    )}
+                    <Button
+                      variant="primary"
+                      icon={Plus}
+                      aria-label="Agregar ingrediente"
+                      onClick={addIngredient}
+                      disabled={!canMutateMenu || !selectedProductId || !quantity || Number(quantity) <= 0}
+                    >
+                      Agregar
+                    </Button>
                   </div>
+                </Field>
 
-                  {/* Ingredients Table (Adapted) */}
-                  <div className="modal-input-group" style={{ marginTop: '16px' }}>
-                    <label className="modal-input-label" id="menu-ingredients-list-label">Ingredientes Seleccionados</label>
-                    <div id="menu-ingredients-list" aria-labelledby="menu-ingredients-list-label" style={{ border: '1px solid var(--color-border)', borderRadius: '8px', overflow: 'hidden' }}>
-                      {recipe.length > 0 ? (
-                        recipe.map((ing, i) => {
-                          const allowedUnits = recipeUnitsByProduct[ing.productId] || [];
-                          const unitOptions = allowedUnits.map((unit) => ({
-                            value: unit.abbreviation,
-                            label: unit.name && unit.name !== unit.abbreviation
-                              ? `${unit.name} (${unit.abbreviation})`
-                              : unit.abbreviation,
-                          }));
-                          const selectedUnitOption = unitOptions.find(
-                            (option) => option.value.toLowerCase() === ing.unit.toLowerCase()
-                          ) || { value: ing.unit, label: ing.unit };
+                <div role="group" aria-labelledby="menu-ingredients-list-label">
+                  <p className={s.sectionLabel} id="menu-ingredients-list-label">Ingredientes seleccionados</p>
+                  <div id="menu-ingredients-list" className={s.ingredientList}>
+                    {recipe.length > 0 ? (
+                      recipe.map((ing, i) => {
+                        const allowedUnits = recipeUnitsByProduct[ing.productId] || [];
+                        const unitOptions: Opt<string>[] = allowedUnits.map((unit) => ({
+                          value: unit.abbreviation,
+                          label: unit.name && unit.name !== unit.abbreviation ? `${unit.name} (${unit.abbreviation})` : unit.abbreviation,
+                        }));
+                        const selectedUnit = unitOptions.find((option) => option.value.toLowerCase() === ing.unit.toLowerCase());
+                        if (!selectedUnit && ing.unit) unitOptions.push({ value: ing.unit, label: ing.unit });
 
-                          return (
-                            <div key={ing.id ?? `new-${ing.productId}`} className="recipe-ingredient-row">
-                              <div className="recipe-ingredient-name">
-                                <div>{ing.productName}</div>
-                                {!ing.unitConfigured && (
-                                  <span className="recipe-unit-error">Unidad no configurada</span>
-                                )}
-                              </div>
-                              {canMutateMenu ? (
-                                <>
-                                  <input
+                        return (
+                          <div key={ing.id ?? `new-${ing.productId}`} className="recipe-ingredient-row">
+                            <div className="recipe-ingredient-name">
+                              <div>{ing.productName}</div>
+                              {!ing.unitConfigured && <span className="recipe-unit-error">Unidad no configurada</span>}
+                            </div>
+                            {canMutateMenu ? (
+                              <>
+                                <div className="recipe-ingredient-quantity">
+                                  <Input
                                     type="number"
                                     min="0.001"
                                     step="0.001"
-                                    className="modal-standard-input recipe-ingredient-quantity"
                                     aria-label={`Cantidad de ${ing.productName}`}
                                     value={ing.quantity}
                                     onChange={(event) => updateIngredientQuantity(i, event.target.value)}
                                   />
-                                  <div className="recipe-ingredient-unit">
-                                    <Select
-                                      variant="modal"
-                                      options={unitOptions}
-                                      value={selectedUnitOption}
-                                      onChange={(option: SingleValue<StrOption>) => updateIngredientUnit(i, option?.value || '')}
-                                      isSearchable={unitOptions.length > 6}
-                                      isDisabled={unitOptions.length === 0}
-                                      aria-label={`Unidad de ${ing.productName}`}
-                                    />
-                                  </div>
-                                </>
-                              ) : (
-                                <span className="recipe-ingredient-measure">{ing.quantity} {ing.unit}</span>
-                              )}
-                              <div className="recipe-ingredient-cost">
-                                {ing.unitConfigured
-                                  ? formatMoney(calculateIngredientLineCost(ing))
-                                  : '—'}
-                              </div>
-                              {canMutateMenu ? (
-                                <button
-                                  type="button"
-                                  onClick={() => removeIngredient(i)}
-                                  className="recipe-ingredient-remove"
-                                  aria-label={`Quitar ${ing.productName}`}
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              ) : null}
+                                </div>
+                                <div className="recipe-ingredient-unit">
+                                  <AppSelect<string>
+                                    aria-label={`Unidad de ${ing.productName}`}
+                                    options={unitOptions}
+                                    value={selectedUnit?.value ?? (ing.unit || null)}
+                                    onChange={(v) => updateIngredientUnit(i, v ?? '')}
+                                    isClearable={false}
+                                    isDisabled={unitOptions.length === 0}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <span className="recipe-ingredient-measure">{ing.quantity} {ing.unit}</span>
+                            )}
+                            <div className="recipe-ingredient-cost">
+                              {ing.unitConfigured ? formatMoney(calculateIngredientLineCost(ing)) : 'N/D'}
                             </div>
-                          );
-                        })
-                      ) : (
-                        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral-400)', fontSize: '13px' }}>
-                          Sin ingredientes registrados
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 3. GALERÍA TAB */}
-              {activeTab === 'gallery' && (
-                <div className="modal-content-group">
-                  <div className="modal-section-header">
-                    <ImageIcon size={18} />
-                    <h3>Galería de Imágenes</h3>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                    {images.map((img, i) => (
-                      <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--color-border)' }}>
-                        <img src={img} alt="dish" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        {i === 0 && (
-                          <span style={{ position: 'absolute', top: '4px', left: '4px', background: 'var(--color-primary)', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                            Principal
-                          </span>
-                        )}
-                        {canMutateMenu ? (
-                          <button
-                            type="button"
-                            onClick={() => removeImage(i)}
-                            style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.9)', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
-                    {images.length < 3 && canMutateMenu && (
-                      <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', aspectRatio: '1', borderRadius: '8px', border: '2px dashed var(--color-border)', cursor: 'pointer', color: 'var(--color-neutral-400)', transition: 'all 0.2s' }}>
-                        <input
-                          type="file"
-                          accept=".png,.jpg,.jpeg,.gif,.webp"
-                          multiple
-                          onChange={handleImageUpload}
-                          style={{ display: 'none' }}
-                        />
-                        <ImagePlus size={24} />
-                        <span style={{ fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Cargar</span>
-                      </label>
+                            {canMutateMenu ? (
+                              <IconButton icon={Trash2} size="sm" label={`Quitar ${ing.productName}`} onClick={() => removeIngredient(i)} />
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <EmptyState title="Sin ingredientes registrados" />
                     )}
                   </div>
                 </div>
-              )}
+              </FormSection>
+            );
+          })()}
 
-              {activeTab === 'pricing' && editingItem && (
-                <div className="modal-content-group">
-                  <div className="modal-section-header">
-                    <DollarSign size={18} />
-                    <h3>Matriz de precios por sucursal</h3>
+          {activeTab === 'gallery' && (
+            <FormSection title="Galería de imágenes" description="Hasta 3 imágenes; la primera es la principal.">
+              <div className={s.gallery}>
+                {images.map((img, i) => (
+                  <div key={i} className={s.galleryItem}>
+                    <img src={img} alt={`Imagen ${i + 1} del plato`} />
+                    {i === 0 && <span className={s.galleryMain}>Principal</span>}
+                    {canMutateMenu ? (
+                      <span className={s.galleryRemove}>
+                        <IconButton icon={Trash2} size="sm" label={`Quitar imagen ${i + 1}`} onClick={() => removeImage(i)} />
+                      </span>
+                    ) : null}
                   </div>
-                  <div className="branch-pricing-panel">
-                    <div style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
-                      {formData.branchId
-                        ? 'Este plato es exclusivo de una sucursal. Los precios de abajo permiten ajustes adicionales por local.'
-                        : 'Este plato es global. Cada sucursal puede sobrescribir el precio base si lo necesita.'}
-                    </div>
-                    <div style={{ display: 'grid', gap: '8px' }}>
-                      <div className="branch-pricing-row base-price">
-                        <span>Precio base {formData.branchId ? '(sucursal propia)' : '(global)'}</span>
-                        <strong>{formatMoney(Number(formData.price || 0))}</strong>
-                      </div>
-                      {branches.map((branch) => {
-                        const existingPrice = branchPricing.find((priceRow) => priceRow.branchId === branch.id);
-                        return (
-                          <div key={branch.id} className="branch-pricing-row">
-                            <div>
-                              <div style={{ fontWeight: 600 }}>{branch.name}</div>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>
-                                {branch.code ? `${branch.code} · ` : ''}
-                                {existingPrice ? 'Override activo' : 'Usa precio base'}
-                              </div>
-                            </div>
-                            <div className="price-input-wrapper branch-pricing-price-input">
-                              <span className="price-currency-icon">{symbol}</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                className="modal-standard-input"
-                                style={{ paddingLeft: currencyInputPadding(symbol), width: '100%' }}
-                                value={branchPriceDrafts[branch.id] ?? (existingPrice ? Number(existingPrice.price).toFixed(2) : Number(formData.price || 0).toFixed(2))}
-                                onChange={(e) => setBranchPriceDrafts((prev) => ({ ...prev, [branch.id]: e.target.value }))}
-                                readOnly={!canSetBranchPrices}
-                                disabled={!canSetBranchPrices}
-                              />
-                            </div>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              onClick={() => handleSaveBranchPrice(branch.id)}
-                              disabled={!canSetBranchPrices || savingBranchPriceId === branch.id}
-                            >
-                              {savingBranchPriceId === branch.id ? 'Guardando...' : 'Guardar'}
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                ))}
+                {images.length < 3 && canMutateMenu && (
+                  <label className={s.galleryUpload}>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.gif,.webp"
+                      multiple
+                      onChange={handleImageUpload}
+                      className={s.srOnlyInput}
+                    />
+                    <ImagePlus size={24} aria-hidden="true" />
+                    <span>Cargar imagen</span>
+                  </label>
+                )}
+              </div>
+            </FormSection>
+          )}
+
+          {activeTab === 'pricing' && editingItem && (
+            <FormSection
+              title="Precios por sucursal"
+              description={formData.branchId
+                ? 'Este plato es exclusivo de una sucursal. Los precios de abajo permiten ajustes adicionales por local.'
+                : 'Este plato es global. Cada sucursal puede sobrescribir el precio base si lo necesita.'}
+            >
+              <div className={s.priceRows}>
+                <div className={s.priceRow}>
+                  <span>Precio base {formData.branchId ? '(sucursal propia)' : '(global)'}</span>
+                  <strong>{formatMoney(Number(formData.price || 0))}</strong>
                 </div>
-              )}
-            </div>
+                {branches.map((branch) => {
+                  const existingPrice = branchPricing.find((priceRow) => priceRow.branchId === branch.id);
+                  return (
+                    <div key={branch.id} className={s.priceRow}>
+                      <div>
+                        <strong>{branch.name}</strong>
+                        <span className={s.cellSub}>
+                          {branch.code ? `${branch.code} · ` : ''}
+                          {existingPrice ? 'Override activo' : 'Usa precio base'}
+                        </span>
+                      </div>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        prefix={symbol}
+                        aria-label={`Precio en ${branch.name}`}
+                        value={branchPriceDrafts[branch.id] ?? amountDraft(existingPrice ? existingPrice.price : formData.price || 0)}
+                        onChange={(e) => setBranchPriceDrafts((prev) => ({ ...prev, [branch.id]: e.target.value }))}
+                        readOnly={!canSetBranchPrices}
+                        disabled={!canSetBranchPrices}
+                      />
+                      <Button
+                        onClick={() => handleSaveBranchPrice(branch.id)}
+                        disabled={!canSetBranchPrices || savingBranchPriceId === branch.id}
+                      >
+                        {savingBranchPriceId === branch.id ? 'Guardando...' : 'Guardar'}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </FormSection>
+          )}
+        </form>
+      </FullScreenModal>
 
-            <div className="modal-footer">
-              <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                {canMutateMenu ? 'Cancelar' : 'Cerrar'}
-              </Button>
-              {canMutateMenu && (
-                <Button type="submit" variant="primary" disabled={!formData.name || saving}>
-                  {saving ? 'Guardando...' : editingItem ? 'Actualizar Plato' : 'Guardar en Catálogo'}
-                </Button>
-              )}
-            </div>
-          </form >
-        </div >
-      </Sidebar >
-
-      {/* MODIFIERS ADMIN MODAL */}
-      <Sidebar
+      <FullScreenModal
         isOpen={isModifierModalOpen}
         onClose={() => { setIsModifierModalOpen(false); resetModifierForm(); }}
         title="Modificadores"
-        width="normal"
+        subtitle="Grupos, precios extra y consumo de inventario"
+        footer={({ requestClose }) => <Button variant="ghost" onClick={requestClose}>Cerrar</Button>}
       >
-        <div className="premium-modal-content modifiers-admin">
-          <div className="modal-tab-content">
-            {/* Group selector + create */}
-            <div className="modal-section">
-              <div className="modal-section-header">
-                <SlidersHorizontal size={18} />
-                <h3>Grupos de modificadores</h3>
-              </div>
+        <div className={s.form}>
+          <FormSection title="Grupos de modificadores">
+            <div className="modifier-group-chips">
+              {modifierGroups.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  className={`modifier-group-chip ${selectedGroupId === group.id ? 'active' : ''}`}
+                  aria-pressed={selectedGroupId === group.id}
+                  onClick={() => { setSelectedGroupId(group.id); resetModifierForm(); }}
+                >
+                  {group.name}
+                  <span className="modifier-group-chip-count">{group.modifiers.length}</span>
+                </button>
+              ))}
+              {modifierGroups.length === 0 && (
+                <span className="modifier-empty-hint">Aún no hay grupos. Crea uno para empezar.</span>
+              )}
+            </div>
 
-              <div className="modifier-group-chips">
-                {modifierGroups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    className={`modifier-group-chip ${selectedGroupId === group.id ? 'active' : ''}`}
-                    onClick={() => { setSelectedGroupId(group.id); resetModifierForm(); }}
-                  >
-                    {group.name}
-                    <span className="modifier-group-chip-count">{group.modifiers.length}</span>
-                  </button>
-                ))}
-                {modifierGroups.length === 0 && (
-                  <span className="modifier-empty-hint">Aún no hay grupos. Crea uno para empezar.</span>
-                )}
-              </div>
-
-              <div className="modifier-inline-add">
-                <input
-                  className="modal-standard-input"
+            <div className={s.addRow}>
+              <div className={s.addProduct}>
+                <Input
+                  aria-label="Nuevo grupo"
                   placeholder="Nuevo grupo (ej: Extras, Tamaño)"
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateGroup(); } }}
                 />
-                <Button type="button" variant="secondary" onClick={handleCreateGroup} disabled={!newGroupName.trim()}>
-                  <Plus size={16} /> Grupo
-                </Button>
               </div>
+              <Button icon={Plus} onClick={handleCreateGroup} disabled={!newGroupName.trim()}>Grupo</Button>
             </div>
+          </FormSection>
 
-            {/* Modifiers of selected group */}
-            {selectedGroupId && (
-              <div className="modal-content-group">
-                <div className="modal-section-header">
-                  <Package size={18} />
-                  <h3>Modificadores del grupo</h3>
-                </div>
-
-                <div className="modifier-list">
-                  {(modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers || []).map((modifier) => (
-                    <div key={modifier.id} className="modifier-list-row">
-                      <div className="modifier-list-main">
-                        <span className="modifier-list-name">{modifier.name}</span>
-                        <span className="modifier-list-price">+{formatMoney(Number(modifier.price))}</span>
-                      </div>
-                      <div className="modifier-list-link">
-                        {modifier.productId ? (
-                          <span className="modifier-link-tag">
-                            <Package size={13} />
-                            Consume {Number(modifier.consumeQuantity ?? 0)} {modifier.unit?.abbreviation || ''} de {modifier.product?.name || 'producto'}
-                          </span>
-                        ) : (
-                          <span className="modifier-link-tag muted">Sin consumo de inventario</span>
-                        )}
-                      </div>
-                      <div className="modifier-list-actions">
-                        <button type="button" className="catalog-action-btn" title="Editar" onClick={() => handleEditModifier(modifier)}>
-                          <Edit2 size={16} />
-                        </button>
-                        <button type="button" className="catalog-action-btn danger" title="Eliminar" onClick={() => handleDeleteModifier(modifier)}>
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+          {selectedGroupId && (
+            <FormSection title="Modificadores del grupo">
+              <div className="modifier-list">
+                {(modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers || []).map((modifier) => (
+                  <div key={modifier.id} className="modifier-list-row">
+                    <div className="modifier-list-main">
+                      <span className="modifier-list-name">{modifier.name}</span>
+                      <span className="modifier-list-price">+{formatMoney(Number(modifier.price))}</span>
                     </div>
-                  ))}
-                  {(modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers.length ?? 0) === 0 && (
-                    <span className="modifier-empty-hint">Este grupo no tiene modificadores.</span>
-                  )}
-                </div>
-
-                {/* Add / edit modifier */}
-                <div className="modifier-edit-card">
-                  <div className="modifier-edit-title">
-                    {editingModifierId ? 'Editar modificador' : 'Nuevo modificador'}
-                  </div>
-
-                  <div className="modal-form-row">
-                    <div className="modal-input-group">
-                      <label className="modal-input-label" htmlFor="modifier-name">Nombre</label>
-                      <input
-                        id="modifier-name"
-                        className="modal-standard-input"
-                        placeholder="Ej: Queso extra"
-                        value={modifierForm.name}
-                        onChange={(e) => setModifierForm({ ...modifierForm, name: e.target.value })}
-                      />
+                    <div className="modifier-list-link">
+                      {modifier.productId ? (
+                        <span className="modifier-link-tag">
+                          <Package size={13} />
+                          Consume {formatNumber(modifier.consumeQuantity ?? 0, 3)} {modifier.unit?.abbreviation || ''} de {modifier.product?.name || 'producto'}
+                        </span>
+                      ) : (
+                        <span className="modifier-link-tag muted">Sin consumo de inventario</span>
+                      )}
                     </div>
-                    <div className="modal-input-group">
-                      <label className="modal-input-label" htmlFor="modifier-price">Precio extra</label>
-                      <div className="price-input-wrapper">
-                        <span className="price-currency-icon">{symbol}</span>
-                        <input
-                          id="modifier-price"
-                          type="number"
-                          step="0.01"
-                          className="modal-standard-input"
-                          style={{ paddingLeft: currencyInputPadding(symbol) }}
-                          placeholder="0.00"
-                          value={modifierForm.extraPrice}
-                          onChange={(e) => setModifierForm({ ...modifierForm, extraPrice: e.target.value })}
-                        />
-                      </div>
+                    <div className="modifier-list-actions">
+                      <IconButton icon={Edit2} size="sm" label={`Editar ${modifier.name}`} onClick={() => handleEditModifier(modifier)} />
+                      <IconButton icon={Trash2} size="sm" label={`Eliminar ${modifier.name}`} onClick={() => handleDeleteModifier(modifier)} />
                     </div>
                   </div>
+                ))}
+                {(modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers.length ?? 0) === 0 && (
+                  <span className="modifier-empty-hint">Este grupo no tiene modificadores.</span>
+                )}
+              </div>
 
-                  <div className="modifier-link-divider">
-                    <Package size={14} /> Consumo de inventario (opcional)
-                  </div>
-
-                  <div className="modal-form-row">
-                    <Select
-                      variant="modal"
-                      label="Producto / insumo a consumir"
-                      options={modifierProducts.map((p) => ({ value: String(p.id), label: p.sku ? `${p.name} (${p.sku})` : p.name }))}
-                      value={modifierForm.productId
-                        ? (() => {
-                          const p = modifierProducts.find((mp) => String(mp.id) === modifierForm.productId);
-                          return p ? { value: String(p.id), label: p.sku ? `${p.name} (${p.sku})` : p.name } : null;
-                        })()
-                        : null}
-                      onChange={(opt: SingleValue<StrOption>) => setModifierForm({ ...modifierForm, productId: opt ? opt.value : '', ...(opt ? {} : { consumeQuantity: '', unitId: '' }) })}
-                      placeholder="Sin vínculo de inventario"
-                      isClearable
+              <FormSection title={editingModifierId ? 'Editar modificador' : 'Nuevo modificador'}>
+                <FormGrid>
+                  <Field label="Nombre" htmlFor="modifier-name">
+                    <Input
+                      id="modifier-name"
+                      placeholder="Ej: Queso extra"
+                      value={modifierForm.name}
+                      onChange={(e) => setModifierForm({ ...modifierForm, name: e.target.value })}
                     />
-                    <div className="modal-input-group">
-                      <label className="modal-input-label" htmlFor="modifier-qty">Cantidad a consumir</label>
-                      <input
-                        id="modifier-qty"
-                        type="number"
-                        step="0.001"
-                        className="modal-standard-input"
-                        placeholder="0.000"
-                        value={modifierForm.consumeQuantity}
-                        onChange={(e) => setModifierForm({ ...modifierForm, consumeQuantity: e.target.value })}
-                        disabled={!modifierForm.productId}
-                      />
-                    </div>
-                    <Select
-                      variant="modal"
-                      label="Unidad"
+                  </Field>
+                  <Field label="Precio extra" htmlFor="modifier-price">
+                    <Input
+                      id="modifier-price"
+                      type="number"
+                      step="0.01"
+                      prefix={symbol}
+                      placeholder="0.00"
+                      value={modifierForm.extraPrice}
+                      onChange={(e) => setModifierForm({ ...modifierForm, extraPrice: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Producto / insumo a consumir (opcional)" htmlFor="modifier-product">
+                    <AppSelect<string>
+                      inputId="modifier-product"
+                      options={modifierProducts.map((p) => ({ value: String(p.id), label: p.sku ? `${p.name} (${p.sku})` : p.name }))}
+                      value={modifierForm.productId || null}
+                      onChange={(v) => setModifierForm({ ...modifierForm, productId: v ?? '', ...(v ? {} : { consumeQuantity: '', unitId: '' }) })}
+                      placeholder="Sin vínculo de inventario"
+                    />
+                  </Field>
+                  <Field label="Cantidad a consumir" htmlFor="modifier-qty">
+                    <Input
+                      id="modifier-qty"
+                      type="number"
+                      step="0.001"
+                      placeholder="0.000"
+                      value={modifierForm.consumeQuantity}
+                      onChange={(e) => setModifierForm({ ...modifierForm, consumeQuantity: e.target.value })}
+                      disabled={!modifierForm.productId}
+                    />
+                  </Field>
+                  <Field label="Unidad" htmlFor="modifier-unit">
+                    <AppSelect<string>
+                      inputId="modifier-unit"
                       options={units.map((u) => ({ value: String(u.id), label: `${u.name} (${u.abbreviation})` }))}
-                      value={modifierForm.unitId
-                        ? (() => {
-                          const u = units.find((mu) => String(mu.id) === modifierForm.unitId);
-                          return u ? { value: String(u.id), label: `${u.name} (${u.abbreviation})` } : null;
-                        })()
-                        : null}
-                      onChange={(opt: SingleValue<StrOption>) => setModifierForm({ ...modifierForm, unitId: opt ? opt.value : '' })}
+                      value={modifierForm.unitId || null}
+                      onChange={(v) => setModifierForm({ ...modifierForm, unitId: v ?? '' })}
                       placeholder="Unidad base del producto"
-                      isClearable
                       isDisabled={!modifierForm.productId}
                     />
-                  </div>
-
-                  <div className="modifier-edit-actions">
-                    {editingModifierId && (
-                      <Button type="button" variant="ghost" onClick={resetModifierForm}>Cancelar edición</Button>
-                    )}
-                    <Button type="button" variant="primary" onClick={handleSaveModifier} disabled={savingModifier || !modifierForm.name.trim()}>
-                      {savingModifier ? 'Guardando...' : editingModifierId ? 'Actualizar' : 'Agregar modificador'}
-                    </Button>
-                  </div>
+                  </Field>
+                </FormGrid>
+                <div className={s.formActions}>
+                  {editingModifierId && <Button variant="ghost" onClick={resetModifierForm}>Cancelar edición</Button>}
+                  <Button variant="primary" onClick={handleSaveModifier} disabled={savingModifier || !modifierForm.name.trim()} loading={savingModifier}>
+                    {savingModifier ? 'Guardando...' : editingModifierId ? 'Actualizar' : 'Agregar modificador'}
+                  </Button>
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div className="modal-footer">
-            <Button type="button" variant="ghost" onClick={() => { setIsModifierModalOpen(false); resetModifierForm(); }}>
-              Cerrar
-            </Button>
-          </div>
+              </FormSection>
+            </FormSection>
+          )}
         </div>
-      </Sidebar>
-    </div >
+      </FullScreenModal>
+      </div>
+    </PageContent>
   );
 }
