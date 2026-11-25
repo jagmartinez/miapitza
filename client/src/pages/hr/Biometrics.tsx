@@ -14,7 +14,7 @@ import {
     ShieldCheck,
     Trash2,
 } from 'lucide-react';
-import { PageHeader, Button } from '@/ui';
+import { Button, LoadErrorState, PageHeader } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -213,14 +213,7 @@ export default function Biometrics() {
             {!online && <OnlineOnlyNotice online={false} />}
 
             {loading && <LoadingSpinner text="Cargando estado biométrico…" />}
-            {!loading && error && !profile && (
-                <div className="state-placeholder hr-biometric-load-error" role="alert">
-                    <ShieldAlert size={44} aria-hidden="true" />
-                    <h2>No pudimos abrir tu biometría</h2>
-                    <p className="state-error">{error}</p>
-                    <Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} /> Reintentar</Button>
-                </div>
-            )}
+            {!loading && error && !profile && <LoadErrorState message={error} onRetry={() => void load()} />}
 
             {!loading && profile && policy && statusCopy && (
                 <div className="hr-biometric-workspace">

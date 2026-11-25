@@ -1,4 +1,5 @@
 import { Briefcase, Building2, Clock3, Edit2, Trash2, UserRound } from 'lucide-react';
+import { Button } from '@/ui';
 import type { HrHoliday, HrScheduleShift, HrWeeklySchedule } from '../../types/hr-schedule';
 import { shiftCrossesMidnight, sortScheduleShifts, weekDates } from './scheduleDates';
 
@@ -50,8 +51,8 @@ function ShiftCard({ item, compact = false, readOnly, onEdit, onDelete }: {
             {item.notes && <p>{item.notes}</p>}
             {editable && (
                 <div className="hr-shift-actions">
-                    <button type="button" onClick={() => onEdit?.(item, item.parentSchedule)} aria-label={`Editar turno de ${employeeName}`}><Edit2 size={15} aria-hidden="true" /><span>Editar</span></button>
-                    <button type="button" className="danger" onClick={() => onDelete?.(item, item.parentSchedule)} aria-label={`Eliminar turno de ${employeeName}`}><Trash2 size={15} aria-hidden="true" /><span>Eliminar</span></button>
+                    <Button size="sm" variant="ghost" icon={Edit2} onClick={() => onEdit?.(item, item.parentSchedule)} aria-label={`Editar turno de ${employeeName}`}>Editar</Button>
+                    <Button size="sm" variant="danger" icon={Trash2} onClick={() => onDelete?.(item, item.parentSchedule)} aria-label={`Eliminar turno de ${employeeName}`}>Eliminar</Button>
                 </div>
             )}
         </article>

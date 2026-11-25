@@ -344,15 +344,6 @@
     padding: 4px;
 }
 
-.hr-shift-card.is-compact .hr-shift-actions button span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-}
-
 .hr-shift-time,
 .hr-shift-meta {
     display: flex;

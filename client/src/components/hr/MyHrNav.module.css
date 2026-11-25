@@ -1,10 +1,10 @@
-.my-hr-nav {
+.nav {
   display: flex;
   justify-content: flex-end;
   min-width: 0;
 }
 
-.my-hr-nav a {
+.link {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -20,19 +20,19 @@
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
 
-.my-hr-nav a svg:nth-child(2) { color: var(--ui-primary); }
+.link svg:nth-child(2) { color: var(--ui-primary); }
 
-.my-hr-nav a:hover {
+.link:hover {
   border-color: color-mix(in srgb, var(--ui-primary) 42%, var(--ui-border));
   background: var(--ui-surface-2);
   color: var(--ui-text);
 }
 
-.my-hr-nav a:focus-visible {
+.link:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--ui-primary) 35%, transparent);
   outline-offset: 2px;
 }
 
 @media (max-width: 480px) {
-  .my-hr-nav a { width: 100%; justify-content: center; }
+  .link { width: 100%; justify-content: center; }
 }

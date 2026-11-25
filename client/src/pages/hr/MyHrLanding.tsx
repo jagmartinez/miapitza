@@ -5,15 +5,13 @@ import {
   Briefcase,
   CalendarClock,
   ChevronRight,
-  Clock3,
   Fingerprint,
   MapPin,
   FileText,
   RefreshCw,
-  WalletCards,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { PageHeader, Button } from '@/ui';
+import { Button, formatNumber, PageHeader, StatCard } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import { benefitsClient } from '../../components/hr/benefitsClient';
@@ -29,6 +27,7 @@ import type { HrScheduleShift } from '../../types/hr-schedule';
 import type { HrMyWorkforce } from '../../types/hr-workforce';
 import { formatHrMoney, formatHrNumber } from '../../utils/hrFormat';
 import './hr.css';
+import styles from './SelfService.module.css';
 
 interface PortalSummary {
   nextShift: HrScheduleShift | null;
@@ -175,31 +174,32 @@ export default function MyHrLanding() {
             </div>
           )}
 
-          <section className="hr-my-summary-grid" aria-label="Resumen personal de recursos humanos">
-            <button type="button" onClick={() => navigate('/rh/mi-portal/horario')}>
-              <CalendarClock size={20} aria-hidden="true" />
-              <span>Próximo turno</span>
-              <strong>{!summary.scheduleAvailable ? 'No disponible' : summary.nextShift ? `${shortDate(summary.nextShift.date)} · ${summary.nextShift.startTime}` : 'Sin turno publicado'}</strong>
-              <small>{summary.nextShift?.branch?.name ?? 'Consulta tu calendario'}</small>
-            </button>
-            <button type="button" onClick={() => navigate('/rh/mi-portal/gestion')}>
-              <Clock3 size={20} aria-hidden="true" />
-              <span>Solicitudes abiertas</span>
-              <strong>{pendingRequests ?? '—'}</strong>
-              <small>{vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()} disponibles` : 'Vacaciones, permisos y horas extra'}</small>
-            </button>
-            <button type="button" onClick={() => navigate('/rh/mi-portal/nomina')}>
-              <FileText size={20} aria-hidden="true" />
-              <span>Último recibo</span>
-              <strong>{!summary.payrollAvailable ? 'No disponible' : summary.latestReceipt ? formatHrMoney(summary.latestReceipt.currency, summary.latestReceipt.netPay) : 'Sin recibos publicados'}</strong>
-              <small>{summary.latestReceipt?.periodLabel ?? 'Consulta tus colillas de pago'}</small>
-            </button>
-            <button type="button" onClick={() => navigate('/rh/mi-portal/prestaciones')}>
-              <WalletCards size={20} aria-hidden="true" />
-              <span>Beneficios en curso</span>
-              <strong>{summary.benefitsComplete ? activeBenefits : '—'}</strong>
-              <small>Viáticos y préstamos activos o en revisión</small>
-            </button>
+          <section className={styles.stats} aria-label="Resumen personal de recursos humanos">
+            <StatCard
+              label="Próximo turno"
+              value={!summary.scheduleAvailable ? 'N/D' : summary.nextShift ? `${shortDate(summary.nextShift.date)} · ${summary.nextShift.startTime}` : 'Sin turno publicado'}
+              context={summary.nextShift?.branch?.name ?? 'Consulta tu calendario'}
+              action={{ label: 'Ver horario', to: '/rh/mi-portal/horario' }}
+            />
+            <StatCard
+              label="Solicitudes abiertas"
+              value={pendingRequests === null || pendingRequests === undefined ? 'N/D' : formatNumber(pendingRequests, 0)}
+              context={vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()} disponibles` : 'Vacaciones, permisos y horas extra'}
+              tone={pendingRequests ? 'warning' : 'neutral'}
+              action={{ label: 'Ver solicitudes', to: '/rh/mi-portal/gestion' }}
+            />
+            <StatCard
+              label="Último recibo"
+              value={!summary.payrollAvailable ? 'N/D' : summary.latestReceipt ? formatHrMoney(summary.latestReceipt.currency, summary.latestReceipt.netPay) : 'Sin recibos publicados'}
+              context={summary.latestReceipt?.periodLabel ?? 'Consulta tus colillas de pago'}
+              action={{ label: 'Ver recibos', to: '/rh/mi-portal/nomina' }}
+            />
+            <StatCard
+              label="Beneficios en curso"
+              value={summary.benefitsComplete ? formatNumber(activeBenefits, 0) : 'N/D'}
+              context="Viáticos y préstamos activos o en revisión"
+              action={{ label: 'Ver prestaciones', to: '/rh/mi-portal/prestaciones' }}
+            />
           </section>
         </>
       )}

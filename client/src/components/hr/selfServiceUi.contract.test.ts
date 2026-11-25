@@ -75,7 +75,7 @@ describe('employee self-service UX contract', () => {
 
   it('keeps empty/error recovery and creation CTAs visible', () => {
     expect(schedule).toContain('Ir a marcaje');
-    expect(schedule).toContain('Reintentar');
+    expect(schedule).toContain('LoadErrorState');
     expect(payroll).toContain('Ver recibos del año actual');
     expect(payroll).toContain('LoadErrorState');
     expect(benefits).toContain("tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'");
