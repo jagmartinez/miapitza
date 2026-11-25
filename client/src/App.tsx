@@ -66,6 +66,7 @@ const CashRegisters = lazy(() => import('./pages/CashRegisters'));
 const CashShiftPage = lazy(() => import('./pages/CashShift'));
 const Branches = lazy(() => import('./pages/Branches'));
 const Settings = lazy(() => import('./pages/Settings'));
+const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'));
 const RolesPermissions = lazy(() => import('./pages/RolesPermissions'));
 const Reservations = lazy(() => import('./pages/Reservations'));
 const InvoiceHistory = lazy(() => import('./pages/InvoiceHistory'));
@@ -187,7 +188,8 @@ function App() {
                                 {/* Configuration – admin/superadmin */}
                                 <Route path="/branches" element={<RoleGuard roles={ADMIN}><Branches /></RoleGuard>} />
                                 <Route path="/integraciones/pedidosya" element={<RoleGuard roles={ADMIN}><PedidosYaIntegration /></RoleGuard>} />
-                                <Route path="/settings" element={<RoleGuard roles={ADMIN}><Settings /></RoleGuard>} />
+                                <Route path="/settings" element={<RoleGuard roles={ADMIN}><SettingsPage /></RoleGuard>} />
+                                <Route path="/settings/legacy" element={<RoleGuard roles={ADMIN}><Settings /></RoleGuard>} />
                                 <Route path="/roles-permissions" element={<RoleGuard roles={ADMIN}><RolesPermissions /></RoleGuard>} />
                                 <Route path="/companies" element={<RoleGuard roles={PLATFORM_ADMIN}><Companies /></RoleGuard>} />
                             </Route>
