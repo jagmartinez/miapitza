@@ -5,6 +5,8 @@ import { offlineManager } from '../services/offlineManager';
 import { AuthContext } from './auth-context';
 import type { User } from '../types';
 import { isAuthoritativeSessionFailure } from '../utils/auth-session';
+import { loadUserPreferences } from '../utils/userPreferences';
+import { resetUiPrefs } from '../ui';
 
 /**
  * Normalize the roles payload from /auth/me (string names from the JWT, or
@@ -166,6 +168,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             })
             .finally(() => setIsLoading(false));
     }, []);
+
+    // Las preferencias de interfaz (filas por página, densidad) viajan con la cuenta.
+    const userId = user?.id;
+    useEffect(() => {
+        if (!userId) {
+            resetUiPrefs();
+            return;
+        }
+        void loadUserPreferences(userId);
+    }, [userId]);
 
     const login = async (username: string, password: string, twoFactorCode?: string): Promise<{ requires2FA?: boolean }> => {
         try {

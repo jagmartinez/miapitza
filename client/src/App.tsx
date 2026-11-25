@@ -14,6 +14,7 @@ import './pages/hr/hr-ui.css';
 import { LanguageProvider } from './context/LanguageContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { getUserRoleNames } from './utils/authz';
+import { readCachedPreferences } from './utils/userPreferences';
 import {
     ADMIN,
     PLATFORM_ADMIN,
@@ -26,6 +27,13 @@ import {
     CHEF_MGMT,
     HR_OWNER,
 } from './constants/roles';
+
+/** Raíz: lleva a la página de inicio elegida en Preferencias (por defecto /dashboard). */
+function HomeRedirect() {
+    const { user } = useAuth();
+    const home = user ? readCachedPreferences(user.id)?.homePage : null;
+    return <Navigate to={home && home !== '/' ? home : '/dashboard'} replace />;
+}
 
 /** Route guard: redirects to /dashboard if none of the user's roles are in the allowed list */
 function RoleGuard({ roles, children }: { roles: string[]; children: React.ReactNode }) {
@@ -204,7 +212,7 @@ function App() {
                                 <Route path="/companies" element={<RoleGuard roles={PLATFORM_ADMIN}><Companies /></RoleGuard>} />
                             </Route>
 
-                            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                            <Route path="/" element={<HomeRedirect />} />
                             <Route path="*" element={<NotFound />} />
                         </Routes>
                       </Suspense>

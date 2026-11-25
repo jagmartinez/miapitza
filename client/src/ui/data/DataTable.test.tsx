@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DataTable, type Column } from './DataTable';
 import { columnTemplate } from './columnTemplate';
+import { resetUiPrefs, setUiPrefs } from '../prefs/userPrefs';
 
 type Row = { id: number; name: string; total: number | null };
 const makeRows = (n: number): Row[] => Array.from({ length: n }, (_, i) => ({ id: i + 1, name: `Fila ${i + 1}`, total: i + 1 }));
@@ -105,5 +106,26 @@ describe('DataTable', () => {
     expect(onRowClick).not.toHaveBeenCalled();
     await userEvent.click(screen.getByText('Fila 1'));
     expect(onRowClick).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('DataTable con la preferencia "Filas por página" del usuario', () => {
+  afterEach(() => resetUiPrefs());
+
+  it('un DataTable nuevo arranca en 50 cuando el usuario eligió 50', () => {
+    setUiPrefs({ rowsPerPage: 50 });
+    render(<DataTable columns={cols} rows={makeRows(120)} rowKey={(r) => r.id} ariaLabel="T" />);
+    expect(bodyRows()).toHaveLength(50);
+    expect(screen.getByText('1–50 de 120')).toBeInTheDocument();
+  });
+
+  it('defaultPageSize explícito gana sobre la preferencia y un valor fuera de catálogo se ignora', () => {
+    setUiPrefs({ rowsPerPage: 50 });
+    const { unmount } = render(<DataTable columns={cols} rows={makeRows(120)} rowKey={(r) => r.id} ariaLabel="T" defaultPageSize={10} />);
+    expect(bodyRows()).toHaveLength(10);
+    unmount();
+    setUiPrefs({ rowsPerPage: 33 });
+    render(<DataTable columns={cols} rows={makeRows(120)} rowKey={(r) => r.id} ariaLabel="T" />);
+    expect(bodyRows()).toHaveLength(50);
   });
 });

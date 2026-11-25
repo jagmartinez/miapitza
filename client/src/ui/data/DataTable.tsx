@@ -5,6 +5,7 @@ import { Skeleton } from '../primitives/Skeleton';
 import type { Tone } from '../primitives/statusTone';
 import { columnTemplate } from './columnTemplate';
 import { Pagination } from './Pagination';
+import { getRowsPerPage } from '../prefs/userPrefs';
 import { useTablePagination } from './useTablePagination';
 import './data.css';
 
@@ -99,7 +100,7 @@ export function DataTable<T>({
   ariaLabel,
   pagination = { mode: 'client' },
   pageSizeOptions,
-  defaultPageSize = 25,
+  defaultPageSize,
   resetKey,
   loading,
   empty,
@@ -113,7 +114,7 @@ export function DataTable<T>({
   const belowMd = useMediaMatch('(max-width: 767px)');
   // Se quitan las columnas ocultas (no solo display:none) para que el grid conserve sus pistas.
   const columns = allColumns.filter((c) => !(c.hideBelow === 'lg' ? belowLg : c.hideBelow === 'md' ? belowMd : false));
-  const local = useTablePagination(rows.length, { defaultPageSize, resetKey });
+  const local = useTablePagination(rows.length, { defaultPageSize: defaultPageSize ?? getRowsPerPage(), resetKey });
 
   const visible = pagination.mode === 'server' ? rows : rows.slice(local.range[0], local.range[1]);
   const pg =
