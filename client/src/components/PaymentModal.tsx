@@ -6,7 +6,6 @@ import {
     useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { SingleValue } from 'react-select';
 import {
     Banknote,
     CreditCard,
@@ -628,7 +627,7 @@ export default function PaymentModal({
             variant="modal"
             value={options.find((option) => option.value === value) ?? null}
             options={options}
-            onChange={(option: SingleValue<MethodOption>) => onChange(option?.value ?? null)}
+            onChange={(option: MethodOption | null) => onChange(option?.value ?? null)}
             isDisabled={disabled}
             isSearchable={options.length > 6}
             placeholder="Selecciona método"

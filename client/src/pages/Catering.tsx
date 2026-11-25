@@ -6,8 +6,7 @@ import {
     Grid3x3, List, CalendarDays, ChevronLeft, ChevronRight, Phone,
     Eye
 } from 'lucide-react';
-import Select from '../components/Select';
-import type { SingleValue } from 'react-select';
+import { AppSelect, Field, PageHeader } from '@/ui';
 import Button from '../components/Button';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import Sidebar from '../components/Sidebar';
@@ -795,11 +794,10 @@ export default function Catering() {
     return (
         <div className="catering-page">
             {/* Header */}
-            <div className="catering-header">
-                <div>
-                    <h1><ConciergeBell size={32} /> Servicios de Catering</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
+            <PageHeader
+                title="Servicios de Catering"
+                actions={
+                    <div className="ui-page-actions">
                     <div className="view-toggle">
                         <button
                             type="button"
@@ -839,7 +837,8 @@ export default function Catering() {
                         </Button>
                     )}
                 </div>
-            </div>
+                }
+            />
 
             {/* Filters apply to card and table views. */}
             {viewMode !== 'calendar' && (
@@ -1270,24 +1269,17 @@ export default function Catering() {
                                         <h3>Detalles del evento</h3>
                                     </div>
                                     <div className="modal-form-row">
-                                        <Select
-                                            variant="modal"
-                                            label="Sucursal"
-                                            value={
-                                                formData.branchId
-                                                    ? {
-                                                        value: formData.branchId,
-                                                        label: allBranches.find((b) => b.id.toString() === formData.branchId)?.name || ''
-                                                    }
-                                                    : null
-                                            }
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                                setFormData({ ...formData, branchId: option?.value || '' })}
-                                            options={allBranches.map((b) => ({ value: b.id.toString(), label: b.name }))}
-                                            placeholder="Seleccione Sucursal..."
-                                            isClearable
-                                            isSearchable
-                                        />
+                                        <Field label="Sucursal" htmlFor="catering-select-1">
+                                            <AppSelect
+                                                inputId="catering-select-1"
+                                                value={formData.branchId || null}
+                                                onChange={(option) =>
+                                                    setFormData({ ...formData, branchId: option || '' })}
+                                                options={allBranches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                                                placeholder="Seleccione Sucursal..."
+                                                isClearable
+                                            />
+                                        </Field>
                                         <div className="modal-input-group">
                                             <label htmlFor="catering-event-title">Título del evento</label>
                                             <input
@@ -1322,39 +1314,39 @@ export default function Catering() {
                                         </div>
                                     </div>
                                     <div className="modal-form-row">
-                                        <Select
-                                            variant="modal"
-                                            label="Estado"
-                                            value={{ value: formData.status, label: getStatusText(formData.status) }}
-                                            onChange={(option: SingleValue<{ value: CateringEvent['status']; label: string }>) => {
-                                                if (!option) return;
-                                                setFormData({ ...formData, status: option.value });
-                                                if (option.value !== 'FINISHED') setFinishWarehouseId(null);
-                                            }}
-                                            options={getCateringStatusOptions(selectedEvent?.status).map((value) => ({
-                                                value,
-                                                label: getStatusText(value),
-                                            }))}
-                                            isDisabled={Boolean(selectedEvent && isCateringStatusTerminal(selectedEvent.status))}
-                                            isSearchable={false}
-                                        />
+                                        <Field label="Estado" htmlFor="catering-select-2">
+                                            <AppSelect
+                                                inputId="catering-select-2"
+                                                value={formData.status}
+                                                isClearable={false}
+                                                onChange={(option) => {
+                                                    if (!option) return;
+                                                    setFormData({ ...formData, status: option });
+                                                    if (option !== 'FINISHED') setFinishWarehouseId(null);
+                                                }}
+                                                options={getCateringStatusOptions(selectedEvent?.status).map((value) => ({
+                                                    value,
+                                                    label: getStatusText(value),
+                                                }))}
+                                                isDisabled={Boolean(selectedEvent && isCateringStatusTerminal(selectedEvent.status))}
+                                            />
+                                        </Field>
                                         {selectedEvent?.status === 'RESERVED' && (
                                             <small>El estado Pagado se asigna automáticamente al completar el saldo.</small>
                                         )}
                                         {selectedEvent?.status === 'PAID' && formData.status === 'FINISHED' && (
-                                            <Select
-                                                variant="modal"
-                                                label="Bodega para consumo"
-                                                options={allWarehouses
-                                                    .filter((warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === Number(formData.branchId))
-                                                    .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
-                                                value={allWarehouses
-                                                    .filter((warehouse) => warehouse.id === finishWarehouseId)
-                                                    .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))[0] ?? null}
-                                                onChange={(option: SingleValue<{ value: number; label: string }>) => setFinishWarehouseId(option?.value ?? null)}
-                                                placeholder="Seleccionar bodega de la sucursal..."
-                                                noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
-                                            />
+                                            <Field label="Bodega para consumo" htmlFor="catering-select-3">
+                                                <AppSelect
+                                                    inputId="catering-select-3"
+                                                    options={allWarehouses
+                                                        .filter((warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === Number(formData.branchId))
+                                                        .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
+                                                    value={finishWarehouseId}
+                                                    onChange={(option) => setFinishWarehouseId(option ?? null)}
+                                                    placeholder="Seleccionar bodega de la sucursal..."
+                                                    noOptionsText='No hay bodegas de sucursal disponibles'
+                                                />
+                                            </Field>
                                         )}
                                         <div className="modal-input-group">
                                             <label htmlFor="catering-people-count">Invitados</label>
@@ -1412,26 +1404,26 @@ export default function Catering() {
                                     <h3>Servicios del evento</h3>
                                 </div>
                                 <div className="catering-tab-toolbar single-control">
-                                    <Select
-                                        variant="modal"
-                                        label="Agregar Servicio"
-                                        value={null}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => {
-                                            if (option) {
-                                                const service = allServices.find((s) => s.id.toString() === option.value);
-                                                if (service) {
-                                                    setFormData({
-                                                        ...formData,
-                                                        services: [...formData.services, { service, quantity: 1, unitPrice: service.salePrice ?? 0 }]
-                                                    });
+                                    <Field label="Agregar Servicio" htmlFor="catering-select-4">
+                                        <AppSelect
+                                            inputId="catering-select-4"
+                                            value={null}
+                                            onChange={(option) => {
+                                                if (option) {
+                                                    const service = allServices.find((s) => s.id.toString() === option);
+                                                    if (service) {
+                                                        setFormData({
+                                                            ...formData,
+                                                            services: [...formData.services, { service, quantity: 1, unitPrice: service.salePrice ?? 0 }]
+                                                        });
+                                                    }
                                                 }
-                                            }
-                                        }}
-                                        options={allServices.map((s) => ({ value: s.id.toString(), label: `${s.name} - ${formatMoney(Number(s.salePrice))}` }))}
-                                        placeholder="Seleccione un servicio..."
-                                        isClearable
-                                        isSearchable
-                                    />
+                                            }}
+                                            options={allServices.map((s) => ({ value: s.id.toString(), label: `${s.name} - ${formatMoney(Number(s.salePrice))}` }))}
+                                            placeholder="Seleccione un servicio..."
+                                            isClearable
+                                        />
+                                    </Field>
                                 </div>
 
                                 <div className="items-table">
@@ -1490,34 +1482,36 @@ export default function Catering() {
                                     <h3>Menú del evento</h3>
                                 </div>
                                 <div className="catering-tab-toolbar">
-                                    <Select
-                                        variant="modal"
-                                        label="Categoría"
-                                        value={menuCategoryOptions.find((option) => option.value === menuCategoryFilter) ?? menuCategoryOptions[0]}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setMenuCategoryFilter(option?.value ?? 'all')}
-                                        options={menuCategoryOptions}
-                                        placeholder="Todas las categorías"
-                                    />
-                                    <Select
-                                        variant="modal"
-                                        label="Agregar Plato"
-                                        value={null}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => {
-                                            if (option) {
-                                                const menuItem = allMenuItems.find((m) => m.id.toString() === option.value);
-                                                if (menuItem) {
-                                                    setFormData({
-                                                        ...formData,
-                                                        menuItems: [...formData.menuItems, { menuItem, quantity: 1, unitPrice: menuItem.price || 0 }]
-                                                    });
+                                    <Field label="Categoría" htmlFor="catering-select-5">
+                                        <AppSelect
+                                            inputId="catering-select-5"
+                                            value={menuCategoryFilter}
+                                            isClearable={false}
+                                            onChange={(option) => setMenuCategoryFilter(option ?? 'all')}
+                                            options={menuCategoryOptions}
+                                            placeholder="Todas las categorías"
+                                        />
+                                    </Field>
+                                    <Field label="Agregar Plato" htmlFor="catering-select-6">
+                                        <AppSelect
+                                            inputId="catering-select-6"
+                                            value={null}
+                                            onChange={(option) => {
+                                                if (option) {
+                                                    const menuItem = allMenuItems.find((m) => m.id.toString() === option);
+                                                    if (menuItem) {
+                                                        setFormData({
+                                                            ...formData,
+                                                            menuItems: [...formData.menuItems, { menuItem, quantity: 1, unitPrice: menuItem.price || 0 }]
+                                                        });
+                                                    }
                                                 }
-                                            }
-                                        }}
-                                        options={filteredMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} · ${m.category?.name || 'Sin categoría'} - ${formatMoney(Number(m.price || 0))}` }))}
-                                        placeholder="Seleccione un plato..."
-                                        isClearable
-                                        isSearchable
-                                    />
+                                            }}
+                                            options={filteredMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} · ${m.category?.name || 'Sin categoría'} - ${formatMoney(Number(m.price || 0))}` }))}
+                                            placeholder="Seleccione un plato..."
+                                            isClearable
+                                        />
+                                    </Field>
                                     <Button
                                         type="button"
                                         variant="ghost"
@@ -1790,24 +1784,17 @@ export default function Catering() {
                                                 onChange={e => setPaymentData({ ...paymentData, amount: parseFloat(e.target.value) })}
                                             />
                                         </div>
-                                        <Select
-                                            variant="modal"
-                                            label="Método de Pago"
-                                            value={
-                                                paymentData.paymentMethodId
-                                                    ? {
-                                                        value: paymentData.paymentMethodId,
-                                                        label: paymentMethods.find((pm) => pm.id.toString() === paymentData.paymentMethodId)?.name || ''
-                                                    }
-                                                    : null
-                                            }
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                                setPaymentData({ ...paymentData, paymentMethodId: option?.value || '' })}
-                                            options={paymentMethods.map((pm) => ({ value: pm.id.toString(), label: pm.name }))}
-                                            placeholder="Seleccione..."
-                                            isClearable
-                                            isSearchable={false}
-                                        />
+                                        <Field label="Método de Pago" htmlFor="catering-select-7">
+                                            <AppSelect
+                                                inputId="catering-select-7"
+                                                value={paymentData.paymentMethodId || null}
+                                                onChange={(option) =>
+                                                    setPaymentData({ ...paymentData, paymentMethodId: option || '' })}
+                                                options={paymentMethods.map((pm) => ({ value: pm.id.toString(), label: pm.name }))}
+                                                placeholder="Seleccione..."
+                                                isClearable
+                                            />
+                                        </Field>
                                         <div className="modal-input-group" style={{ marginBottom: 0 }}>
                                             <Button type="button" onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
                                                 Agregar Pago

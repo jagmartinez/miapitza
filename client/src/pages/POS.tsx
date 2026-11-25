@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
 import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI, warehousesAPI, invoicesAPI } from '../services/api';
 import { offlineManager } from '../services/offlineManager';
@@ -23,6 +22,7 @@ import NumericKeypad from '../components/NumericKeypad';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
 import Select from '../components/Select';
+import { formatNumber } from '@/ui';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
@@ -1254,7 +1254,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                     </div>
                                 </div>
                                 <div style={{ fontWeight: 700 }}>
-                                    {currencySymbol}{activeOrderTotal.toFixed(2)}
+                                    {currencySymbol}{formatNumber(activeOrderTotal)}
                                 </div>
                             </div>
                         </div>
@@ -1338,7 +1338,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             <div className="mobile-cart-summary">
                 <div className="cart-total-preview">
                     <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Total:</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{currencySymbol}{displayTotal.toFixed(2)}</span>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{currencySymbol}{formatNumber(displayTotal)}</span>
                 </div>
                 <button className="mobile-cart-btn" onClick={() => setShowMobileCart(true)}>
                     <span>Ver Orden ({cart.reduce((acc, item) => acc + item.quantity, 0) || activeTableOrder?.items?.length || 0})</span>
@@ -1447,7 +1447,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                             placeholder="Seleccionar bodega…"
                             options={warehouseOptions}
                             value={warehouseOptions.find((option) => option.value === operationalWarehouseId) ?? null}
-                            onChange={(option: SingleValue<WarehouseOption>) => setOperationalWarehouseId(option?.value ?? null)}
+                            onChange={(option: WarehouseOption | null) => setOperationalWarehouseId(option?.value ?? null)}
                             isSearchable={warehouseOptions.length > 6}
                         />
                         {branchWarehouses.length === 0 && (
@@ -1589,7 +1589,7 @@ function ModifierSelectorModal({
                 <>
                     <div className="pos-modifier-subtotal">
                         <span>Subtotal</span>
-                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
+                        <strong>{currencySymbol}{formatNumber(subtotal)}</strong>
                     </div>
                     <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
                     <Button type="button" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
@@ -1628,7 +1628,7 @@ function ModifierSelectorModal({
                                                     <span className="pos-modifier-option-name">{mod.name}</span>
                                                     {Number(mod.price) > 0 && (
                                                         <span className="pos-modifier-option-price">
-                                                            +{currencySymbol}{Number(mod.price).toFixed(2)}
+                                                            +{currencySymbol}{formatNumber(Number(mod.price))}
                                                         </span>
                                                     )}
                                                 </button>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-    Library, Plus, Trash2, Edit2,
+    Plus, Trash2, Edit2,
     ClipboardList, FileText, BadgeDollarSign
 } from 'lucide-react';
 import Button from '../components/Button';
@@ -15,6 +15,7 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import { useCurrency } from '../hooks/useCurrency';
+import { PageHeader, formatNumber } from '@/ui';
 import './CateringMod.css';
 
 interface CateringServiceRow {
@@ -165,19 +166,19 @@ export default function CateringServices() {
 
     return (
         <div className="catering-page">
-            <div className="catering-header">
-                <div>
-                    <h1><Library size={32} /> Catálogo de Servicios</h1>
-                    <p className="catering-subtitle">Gestiona servicios, costos y precios de catering</p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <ViewToggle value={viewMode} onChange={setViewMode} />
-                    <Button onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
-                        <Plus size={20} />
-                        Nuevo Servicio
-                    </Button>
-                </div>
-            </div>
+            <PageHeader
+                title="Catálogo de Servicios"
+                description="Gestiona servicios, costos y precios de catering"
+                actions={
+                    <div className="ui-page-actions">
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        <Button onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
+                            <Plus size={20} />
+                            Nuevo Servicio
+                        </Button>
+                    </div>
+                }
+            />
 
             <div className="catering-filters">
                 <div className="filter-right-section" style={{ width: '100%', maxWidth: '400px' }}>
@@ -219,7 +220,7 @@ export default function CateringServices() {
                         },
                         { key: 'cost', header: 'Costo', align: 'right', render: (s) => money(s.internalCost) },
                         { key: 'sale', header: 'Venta', align: 'right', render: (s) => <span style={{ color: 'var(--color-success)' }}>{money(s.salePrice)}</span> },
-                        { key: 'margin', header: 'Margen', align: 'right', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{m.toFixed(1)}%</span>; } },
+                        { key: 'margin', header: 'Margen', align: 'right', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{formatNumber(m, 1)}%</span>; } },
                         ...(canManageCatering ? [{
                             key: 'actions',
                             header: 'Acciones',
@@ -246,7 +247,7 @@ export default function CateringServices() {
                                 <div className="catalog-card-rows">
                                     <div className="catalog-card-row"><span className="label">Costo</span><span className="value">{money(service.internalCost)}</span></div>
                                     <div className="catalog-card-row"><span className="label">Venta</span><span className="value" style={{ color: 'var(--color-success)' }}>{money(service.salePrice)}</span></div>
-                                    <div className="catalog-card-row"><span className="label">Margen</span><span className="value" style={{ color: marginColor(m) }}>{m.toFixed(1)}%</span></div>
+                                    <div className="catalog-card-row"><span className="label">Margen</span><span className="value" style={{ color: marginColor(m) }}>{formatNumber(m, 1)}%</span></div>
                                 </div>
                                 {canManageCatering && (
                                     <div className="catalog-card-actions">
@@ -392,7 +393,7 @@ export default function CateringServices() {
                                             </div>
                                             <div className="summary-item highlighted">
                                                 <span className="label">Margen %</span>
-                                                <span className="value">{((parseFloat(formData.salePrice) - parseFloat(formData.internalCost)) / parseFloat(formData.salePrice) * 100).toFixed(1)}%</span>
+                                                <span className="value">{formatNumber((parseFloat(formData.salePrice) - parseFloat(formData.internalCost)) / parseFloat(formData.salePrice) * 100, 1)}%</span>
                                             </div>
                                         </div>
                                     </div>
