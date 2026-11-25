@@ -3,7 +3,8 @@ import { formatPercent } from '../format/number';
 import './charts.css';
 
 /** Ranking de margen por plato con el acumulado; los platos que pierden dinero llevan barra vacía. */
-export function ParetoBars({ items, format }: {
+export function ParetoBars({ items, format, ariaLabel = 'Margen por plato con porcentaje acumulado' }: {
+  ariaLabel?: string;
   items: { name: string; value: number; cumulativePct: number }[];
   format(v: number): string;
 }) {
@@ -11,7 +12,7 @@ export function ParetoBars({ items, format }: {
   const max = Math.max(...items.map((i) => (Number.isFinite(i.value) ? i.value : 0)), 0);
   return (
     <figure className="ui-chart">
-      <ol className="ui-pareto" aria-label="Margen por plato con porcentaje acumulado">
+      <ol className="ui-pareto" aria-label={ariaLabel}>
         {items.map((it, idx) => {
           const w = max > 0 ? Math.max(Math.min((it.value / max) * 100, 100), 0) : 0;
           return (

@@ -1,42 +1,28 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, menuBrandsAPI, productionReportsAPI } from '../services/api';
-import Button from '../components/Button';
-import Pagination from '../components/Pagination';
-import Select from '../components/Select';
-import type { MultiValue, MultiValueProps, SingleValue } from 'react-select';
+import {
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, Input, LoadErrorState, PageContent, PageHeader, Switch,
+    formatMoney, formatNumber, formatPercent, type Column, type Tone,
+} from '@/ui';
+import { ParetoBars } from '@/ui/charts';
 import {
     Package, ShoppingCart, DollarSign, TrendingUp, BarChart3, AlertTriangle,
     ArrowLeft, Download, Search, FileSpreadsheet, Truck,
-    RefreshCw, FileText, Calendar, Clock, Users, PieChart, Shield,
-    GitCompare, Activity, CreditCard, Building2, Tag, Warehouse, ChevronRight, Factory
+    FileText, Calendar, Clock, Users, PieChart, Shield,
+    GitCompare, Activity, CreditCard, Building2, Factory
 } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
-import { formatCurrency } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import './Reports.css';
+import {
+    buildChartSeries, buildQuickRead, compareSummaries, isAdditiveColumn, previousPeriod,
+} from './reports/reportInsights';
+import './reports/reports.css';
 
 interface CategoryOption { id: number; name: string }
 interface WarehouseOption { id: number; name: string }
 interface BrandOption { id: number; name: string }
-interface FilterOption { value: string; label: string }
-
-function CompactCategoryMultiValue({ index, getValue, data }: MultiValueProps<FilterOption>) {
-    if (index > 0) return null;
-    const selected = getValue();
-    return (
-        <span className="report-category-summary">
-            {selected.length === 1 ? data.label : `${selected.length} categorías seleccionadas`}
-        </span>
-    );
-}
-
-const fmtNumber = (n: number) =>
-    new Intl.NumberFormat('es-NI', { maximumFractionDigits: 2 }).format(n);
-
-const fmtPercent = (n: number) => `${n.toFixed(1)}%`;
-
 const fmtDate = (d: string) => {
     if (!d) return '-';
     return new Date(d).toLocaleDateString('es-NI');
@@ -316,528 +302,159 @@ function downloadBlob(data: ArrayBuffer, filename: string) {
     URL.revokeObjectURL(url);
 }
 
-// ── Hub View ──
-function ReportsHub({ onSelect }: { onSelect: (r: ReportDef) => void }) {
-    const [search, setSearch] = useState('');
-    const term = search.toLowerCase();
-    const filtered = REPORT_CATALOG.filter(r => {
-        if (r.hiddenInHub) return false;
-        return r.name.toLowerCase().includes(term) || r.description.toLowerCase().includes(term);
-    });
-
-    const grouped = CATEGORIES_ORDER.map(cat => ({
-        category: cat,
-        reports: filtered.filter(r => r.category === cat),
-    })).filter(g => g.reports.length > 0);
-
-    return (
-        <div className="reports-hub">
-            <div className="search-box reports-search-box">
-                <Search size={16} />
-                <input
-                    type="text"
-                    placeholder="Buscar reportes..."
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                />
-            </div>
-
-            {grouped.map(g => (
-                <div key={g.category} className="reports-category-section">
-                    <h3 className="reports-category-title">{g.category}</h3>
-                    <div className="reports-card-grid">
-                        {g.reports.map(r => (
-                            <button
-                                key={r.id}
-                                type="button"
-                                className="reports-card"
-                                onClick={() => onSelect(r)}
-                            >
-                                <div className="reports-card-icon">
-                                    <r.icon size={22} />
-                                </div>
-                                <div className="reports-card-body">
-                                    <h4>{r.name}</h4>
-                                    <p>{r.description}</p>
-                                </div>
-                                <ChevronRight size={18} className="reports-card-arrow" />
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            ))}
-
-            {grouped.length === 0 && (
-                <div className="state-placeholder">
-                    <Search size={48} />
-                    <p>No se encontraron reportes que coincidan con &ldquo;{search}&rdquo;</p>
-                </div>
-            )}
-        </div>
-    );
-}
-
-// ── Report Detail ──
-function ReportDetail({ reportId }: { reportId: string }) {
-    const { formatMoney: fmtCurrency } = useCurrency();
-    const navigate = useNavigate();
-    const reportDef = REPORT_CATALOG.find(r => r.id === reportId);
-    const groupedReportIds = getGroupReports(reportId);
-    const groupedReports = groupedReportIds
-        .map(id => REPORT_CATALOG.find(r => r.id === id))
-        .filter((r): r is ReportDef => Boolean(r));
-
-    const [data, setData] = useState<{ items: Record<string, unknown>[]; summary: Record<string, number> } | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [filterWarning, setFilterWarning] = useState('');
-    const [exporting, setExporting] = useState(false);
-    const [page, setPage] = useState(1);
-    const PAGE_SIZE = 50;
-
-    const [branches, setBranches] = useState<Branch[]>([]);
-    const [categories, setCategories] = useState<CategoryOption[]>([]);
-    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-    const [brands, setBrands] = useState<BrandOption[]>([]);
-
-    const [filters, setFilters] = useState<Record<string, string>>({
-        dateFrom: monthStartStr(),
-        dateTo: todayStr(),
-        warehouseId: '',
-        categoryId: '',
-        categoryIds: '',
-        supplierId: '',
-        branchId: '',
-        brandId: '',
-        lowStockOnly: '',
-    });
-
-    useEffect(() => {
-        const labels = ['sucursales', 'categorías', 'proveedores', 'almacenes', 'marcas'];
-        Promise.allSettled([
-            branchesAPI.getAll(),
-            categoriesAPI.getAll(),
-            suppliersAPI.getAll(),
-            warehousesAPI.getAll(),
-            menuBrandsAPI.getAll(),
-        ]).then((results) => {
-            const failedNames = results
-                .map((r, i) => (r.status === 'rejected' ? labels[i] : null))
-                .filter((name): name is string => Boolean(name));
-            if (failedNames.length > 0) {
-                console.error('Error loading report filter options:', failedNames);
-                setFilterWarning(
-                    `No se pudieron cargar filtros: ${failedNames.join(', ')}. Las listas pueden estar incompletas; no asuma que "todas" incluye opciones faltantes.`
-                );
-            } else {
-                setFilterWarning('');
-            }
-            setBranches(results[0].status === 'fulfilled' ? results[0].value.data.data || [] : []);
-            setCategories(results[1].status === 'fulfilled' ? results[1].value.data.data || [] : []);
-            setSuppliers(results[2].status === 'fulfilled' ? results[2].value.data.data || [] : []);
-            setWarehouses(results[3].status === 'fulfilled' ? results[3].value.data.data || [] : []);
-            setBrands(results[4].status === 'fulfilled' ? results[4].value.data.data || [] : []);
-        });
-    }, []);
-
-    const buildParams = useCallback(() => {
-        const params: Record<string, string> = {};
-        Object.entries(filters).forEach(([k, v]) => {
-            if (v) params[k] = v;
-        });
-        return params;
-    }, [filters]);
-
-    const loadReport = useCallback(async () => {
-        setLoading(true);
-        setError('');
-        setPage(1);
-        try {
-            const params = buildParams();
-            if (PRODUCTION_REPORT_IDS.has(reportId)) {
-                setData(await loadProductionReport(reportId, params));
-                return;
-            }
-            let res;
-            switch (reportId) {
-                case 'inventory': res = await reportsAPI.getInventoryReport(params); break;
-                case 'purchases': res = await reportsAPI.getPurchasesReport(params); break;
-                case 'sales': res = await reportsAPI.getSalesReport(params); break;
-                case 'profitability': res = await reportsAPI.getProfitabilityReport(params); break;
-                case 'low-stock': res = await reportsAPI.getLowStockReport(params); break;
-                case 'purchases-by-day': res = await reportsAPI.getPurchasesByDay(params); break;
-                case 'purchases-by-month': res = await reportsAPI.getPurchasesByMonth(params); break;
-                case 'price-comparison': res = await reportsAPI.getPriceComparison(params); break;
-                case 'most-purchased': res = await reportsAPI.getMostPurchased(params); break;
-                case 'purchases-by-supplier': res = await reportsAPI.getPurchasesBySupplier(params); break;
-                case 'sales-by-category': res = await reportsAPI.getSalesByCategory(params); break;
-                case 'sales-by-product': res = await reportsAPI.getSalesByProduct(params); break;
-                case 'sales-by-brand': res = await reportsAPI.getSalesByBrand(params); break;
-                case 'sales-daily': res = await reportsAPI.getSalesDaily(params); break;
-                case 'sales-monthly': res = await reportsAPI.getSalesMonthly(params); break;
-                case 'sales-by-payment-method': res = await reportsAPI.getSalesByPaymentMethod(params); break;
-                case 'sales-by-waiter': res = await reportsAPI.getSalesByWaiter(params); break;
-                case 'sales-by-channel': res = await reportsAPI.getSalesByChannel(params); break;
-                case 'sales-by-hour': res = await reportsAPI.getSalesByHour(params); break;
-                case 'food-cost-by-category': res = await reportsAPI.getFoodCostByCategory(params); break;
-                case 'margin-by-product': res = await reportsAPI.getMarginByProduct(params); break;
-                case 'audit': res = await reportsAPI.getAuditReport(params); break;
-                case 'day-analysis': res = await reportsAPI.getDayAnalysis(params); break;
-                case 'month-comparison': res = await reportsAPI.getMonthComparison(params); break;
-                case 'recipe-cost': res = await reportsAPI.getRecipeCostAnalysis(params); break;
-                case 'production-yield': res = await reportsAPI.getProductionYield(params); break;
-                case 'menu-engineering': res = await reportsAPI.getMenuEngineering(params); break;
-                case 'purchase-projection': res = await reportsAPI.getPurchaseProjection(params); break;
-                default: throw new Error('Reporte no encontrado');
-            }
-            setData(res.data.data);
-        } catch (err: unknown) {
-            const e = err as { response?: { data?: { message?: string } }; message?: string };
-            setError(e?.response?.data?.message || e?.message || 'Error al cargar el reporte');
-        } finally {
-            setLoading(false);
-        }
-    }, [reportId, buildParams]);
-
-    useEffect(() => { loadReport(); }, [loadReport]);
-
-    const handleExport = async () => {
-        setExporting(true);
-        try {
-            const params = buildParams();
-            let res;
-            switch (reportId) {
-                case 'inventory': res = await reportsAPI.exportInventoryReport(params); break;
-                case 'purchases': res = await reportsAPI.exportPurchasesReport(params); break;
-                case 'sales': res = await reportsAPI.exportSalesReport(params); break;
-                case 'profitability': res = await reportsAPI.exportProfitabilityReport(params); break;
-                case 'low-stock': res = await reportsAPI.exportLowStockReport(params); break;
-                case 'purchases-by-day': res = await reportsAPI.exportPurchasesByDay(params); break;
-                case 'purchases-by-month': res = await reportsAPI.exportPurchasesByMonth(params); break;
-                case 'price-comparison': res = await reportsAPI.exportPriceComparison(params); break;
-                case 'most-purchased': res = await reportsAPI.exportMostPurchased(params); break;
-                case 'purchases-by-supplier': res = await reportsAPI.exportPurchasesBySupplier(params); break;
-                case 'sales-by-category': res = await reportsAPI.exportSalesByCategory(params); break;
-                case 'sales-by-product': res = await reportsAPI.exportSalesByProduct(params); break;
-                case 'sales-by-brand': res = await reportsAPI.exportSalesByBrand(params); break;
-                case 'sales-daily': res = await reportsAPI.exportSalesDaily(params); break;
-                case 'sales-monthly': res = await reportsAPI.exportSalesMonthly(params); break;
-                case 'sales-by-payment-method': res = await reportsAPI.exportSalesByPaymentMethod(params); break;
-                case 'sales-by-waiter': res = await reportsAPI.exportSalesByWaiter(params); break;
-                case 'sales-by-channel': res = await reportsAPI.exportSalesByChannel(params); break;
-                case 'sales-by-hour': res = await reportsAPI.exportSalesByHour(params); break;
-                case 'food-cost-by-category': res = await reportsAPI.exportFoodCostByCategory(params); break;
-                case 'margin-by-product': res = await reportsAPI.exportMarginByProduct(params); break;
-                case 'audit': res = await reportsAPI.exportAuditReport(params); break;
-                case 'day-analysis': res = await reportsAPI.exportDayAnalysis(params); break;
-                case 'month-comparison': res = await reportsAPI.exportMonthComparison(params); break;
-                case 'recipe-cost': res = await reportsAPI.exportRecipeCostAnalysis(params); break;
-                case 'production-yield': res = await reportsAPI.exportProductionYield(params); break;
-                case 'menu-engineering': res = await reportsAPI.exportMenuEngineering(params); break;
-                case 'purchase-projection': res = await reportsAPI.exportPurchaseProjection(params); break;
-                default: return;
-            }
-            downloadBlob(res.data, `reporte_${reportId}_${todayStr()}.xlsx`);
-        } catch {
-            setError('Error al exportar el reporte');
-        } finally {
-            setExporting(false);
-        }
-    };
-
-    const clearFilters = () => {
-        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', categoryIds: '', supplierId: '', branchId: '', brandId: '', lowStockOnly: '' });
-    };
-
-    if (!reportDef) {
-        return (
-            <div className="page-wrapper">
-                <div className="state-placeholder">
-                    <AlertTriangle size={48} />
-                    <p>Reporte no encontrado</p>
-                    <Button variant="ghost" onClick={() => navigate('/reporteria')}>
-                        <ArrowLeft size={16} /> Volver a Reportería
-                    </Button>
-                </div>
-            </div>
-        );
+async function fetchReportData(reportId: string, params: Record<string, string>): Promise<ReportData> {
+    if (PRODUCTION_REPORT_IDS.has(reportId)) return loadProductionReport(reportId, params);
+    let res;
+    switch (reportId) {
+        case 'inventory': res = await reportsAPI.getInventoryReport(params); break;
+        case 'purchases': res = await reportsAPI.getPurchasesReport(params); break;
+        case 'sales': res = await reportsAPI.getSalesReport(params); break;
+        case 'profitability': res = await reportsAPI.getProfitabilityReport(params); break;
+        case 'low-stock': res = await reportsAPI.getLowStockReport(params); break;
+        case 'purchases-by-day': res = await reportsAPI.getPurchasesByDay(params); break;
+        case 'purchases-by-month': res = await reportsAPI.getPurchasesByMonth(params); break;
+        case 'price-comparison': res = await reportsAPI.getPriceComparison(params); break;
+        case 'most-purchased': res = await reportsAPI.getMostPurchased(params); break;
+        case 'purchases-by-supplier': res = await reportsAPI.getPurchasesBySupplier(params); break;
+        case 'sales-by-category': res = await reportsAPI.getSalesByCategory(params); break;
+        case 'sales-by-product': res = await reportsAPI.getSalesByProduct(params); break;
+        case 'sales-by-brand': res = await reportsAPI.getSalesByBrand(params); break;
+        case 'sales-daily': res = await reportsAPI.getSalesDaily(params); break;
+        case 'sales-monthly': res = await reportsAPI.getSalesMonthly(params); break;
+        case 'sales-by-payment-method': res = await reportsAPI.getSalesByPaymentMethod(params); break;
+        case 'sales-by-waiter': res = await reportsAPI.getSalesByWaiter(params); break;
+        case 'sales-by-channel': res = await reportsAPI.getSalesByChannel(params); break;
+        case 'sales-by-hour': res = await reportsAPI.getSalesByHour(params); break;
+        case 'food-cost-by-category': res = await reportsAPI.getFoodCostByCategory(params); break;
+        case 'margin-by-product': res = await reportsAPI.getMarginByProduct(params); break;
+        case 'audit': res = await reportsAPI.getAuditReport(params); break;
+        case 'day-analysis': res = await reportsAPI.getDayAnalysis(params); break;
+        case 'month-comparison': res = await reportsAPI.getMonthComparison(params); break;
+        case 'recipe-cost': res = await reportsAPI.getRecipeCostAnalysis(params); break;
+        case 'production-yield': res = await reportsAPI.getProductionYield(params); break;
+        case 'menu-engineering': res = await reportsAPI.getMenuEngineering(params); break;
+        case 'purchase-projection': res = await reportsAPI.getPurchaseProjection(params); break;
+        default: throw new Error('Reporte no encontrado');
     }
-
-    const items = data?.items || [];
-    const totalPages = Math.ceil(items.length / PAGE_SIZE);
-    const paginatedItems = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-    const set = (key: string, val: string) => setFilters(f => ({ ...f, [key]: val }));
-
-    const Icon = reportDef.icon;
-    const summaryEntries = data?.summary
-        ? Object.entries(data.summary).filter(([key]) => key !== 'actionBreakdown')
-        : [];
-
-    return (
-        <div className="page-wrapper reports-detail-page">
-            {/* Header */}
-            <button
-                type="button"
-                className="back-link-btn"
-                onClick={() => navigate('/reporteria')}
-            >
-                <ArrowLeft size={14} /> Volver a Reportería
-            </button>
-
-            <div className="page-header-bar">
-                <div className="header-title-section">
-                    <h1><Icon size={28} /> {reportDef.name}</h1>
-                    <p className="header-subtitle">{reportDef.description}</p>
-                </div>
-                <div className="page-header-actions">
-                    {groupedReports.length > 1 && (
-                        <Select
-                            aria-label="Vista del reporte"
-                            className="report-view-select"
-                            value={{
-                                value: reportId,
-                                label: groupedReports.find((r) => r.id === reportId)?.name || reportId
-                            }}
-                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                option && navigate(`/reporteria/${option.value}`)}
-                            options={groupedReports.map((r) => ({ value: r.id, label: r.name }))}
-                            isSearchable={false}
-                        />
-                    )}
-                    {!PRODUCTION_REPORT_IDS.has(reportId) && (
-                        <Button onClick={handleExport} disabled={exporting || !data} title="Exportar a Excel">
-                            {exporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
-                            Excel
-                        </Button>
-                    )}
-                </div>
-            </div>
-
-            {/* Filters Toolbar */}
-            {filterWarning && (
-                <div className="state-placeholder" role="status" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
-                    <AlertTriangle size={18} />
-                    <p className="state-error" style={{ margin: 0 }}>{filterWarning}</p>
-                </div>
-            )}
-
-            <div className="filters-toolbar">
-                {hasDateFilter(reportId) && (
-                    <div className="filter-field filter-field-wide">
-                        <label className="filter-field-label">
-                            <Calendar size={12} /> Rango de Fechas
-                        </label>
-                        <div className="filter-field-date-range">
-                            <input
-                                type="date"
-                                className="filter-input"
-                                value={filters.dateFrom}
-                                onChange={e => set('dateFrom', e.target.value)}
-                            />
-                            <span className="filter-range-sep">→</span>
-                            <input
-                                type="date"
-                                className="filter-input"
-                                value={filters.dateTo}
-                                onChange={e => set('dateTo', e.target.value)}
-                            />
-                        </div>
-                    </div>
-                )}
-
-                {(reportId === 'inventory' || reportId === 'low-stock' || reportId === 'prod-kardex') && (
-                    <div className="filter-field">
-                        <Select
-                            label={<><Warehouse size={12} /> Almacén</>}
-                            options={[{ value: '', label: 'Todos los Almacenes' }, ...warehouses.map(w => ({ value: w.id.toString(), label: w.name }))]}
-                            value={{ value: filters.warehouseId, label: filters.warehouseId ? warehouses.find(w => w.id.toString() === filters.warehouseId)?.name || '' : 'Todos los Almacenes' }}
-                            onChange={(opt) => opt && set('warehouseId', (opt as { value: string }).value)}
-                            isSearchable={false}
-                        />
-                    </div>
-                )}
-
-                {hasCategoryFilter(reportId) && (
-                    <div className="filter-field filter-field-category">
-                        {hasMultiCategoryFilter(reportId) ? (
-                            <Select<FilterOption, true>
-                                className="report-category-multi"
-                                label={<><Tag size={12} /> Categorías</>}
-                                options={categories.map(c => ({ value: c.id.toString(), label: c.name }))}
-                                value={categories
-                                    .filter(c => filters.categoryIds.split(',').includes(c.id.toString()))
-                                    .map(c => ({ value: c.id.toString(), label: c.name }))}
-                                onChange={(options: MultiValue<FilterOption>) => set('categoryIds', options.map(option => option.value).join(','))}
-                                isMulti
-                                isClearable
-                                closeMenuOnSelect={false}
-                                hideSelectedOptions={false}
-                                components={{ MultiValue: CompactCategoryMultiValue }}
-                                placeholder="Todas las categorías"
-                                noOptionsMessage={() => 'No hay más categorías'}
-                            />
-                        ) : (
-                            <Select
-                                label={<><Tag size={12} /> Categoría</>}
-                                options={[{ value: '', label: 'Todas las Categorías' }, ...categories.map(c => ({ value: c.id.toString(), label: c.name }))]}
-                                value={{ value: filters.categoryId, label: filters.categoryId ? categories.find(c => c.id.toString() === filters.categoryId)?.name || '' : 'Todas las Categorías' }}
-                                onChange={(opt) => opt && set('categoryId', (opt as { value: string }).value)}
-                                isSearchable={false}
-                            />
-                        )}
-                    </div>
-                )}
-
-                {hasBrandFilter(reportId) && (
-                    <div className="filter-field">
-                        <Select
-                            label={<><Building2 size={12} /> Empresa/Marca</>}
-                            options={[{ value: '', label: 'Todas las Empresas' }, ...brands.map(b => ({ value: b.id.toString(), label: b.name }))]}
-                            value={{ value: filters.brandId, label: filters.brandId ? brands.find(b => b.id.toString() === filters.brandId)?.name || '' : 'Todas las Empresas' }}
-                            onChange={(opt) => opt && set('brandId', (opt as { value: string }).value)}
-                            isSearchable={false}
-                        />
-                    </div>
-                )}
-
-                {hasSupplierFilter(reportId) && (
-                    <div className="filter-field">
-                        <Select
-                            label={<><Truck size={12} /> Proveedor</>}
-                            options={[{ value: '', label: 'Todos los Proveedores' }, ...suppliers.map(s => ({ value: s.id.toString(), label: s.name }))]}
-                            value={{ value: filters.supplierId, label: filters.supplierId ? suppliers.find(s => s.id.toString() === filters.supplierId)?.name || '' : 'Todos los Proveedores' }}
-                            onChange={(opt) => opt && set('supplierId', (opt as { value: string }).value)}
-                            isSearchable={false}
-                        />
-                    </div>
-                )}
-
-                {hasBranchFilter(reportId) && (
-                    <div className="filter-field">
-                        <Select
-                            label={<><Building2 size={12} /> Sucursal</>}
-                            options={[{ value: '', label: 'Todas las Sucursales' }, ...branches.map(b => ({ value: b.id.toString(), label: b.name }))]}
-                            value={{ value: filters.branchId, label: filters.branchId ? branches.find(b => b.id.toString() === filters.branchId)?.name || '' : 'Todas las Sucursales' }}
-                            onChange={(opt) => opt && set('branchId', (opt as { value: string }).value)}
-                            isSearchable={false}
-                        />
-                    </div>
-                )}
-
-                {reportId === 'inventory' && (
-                    <div className="filter-field filter-field-narrow">
-                        <Select
-                            label={<><AlertTriangle size={12} /> Solo Stock Bajo</>}
-                            options={[{ value: '', label: 'No' }, { value: 'true', label: 'Sí' }]}
-                            value={{ value: filters.lowStockOnly, label: filters.lowStockOnly === 'true' ? 'Sí' : 'No' }}
-                            onChange={(opt) => opt && set('lowStockOnly', (opt as { value: string }).value)}
-                            isSearchable={false}
-                        />
-                    </div>
-                )}
-
-                <div className="filter-spacer" />
-
-                <div className="filter-actions">
-                    <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>
-                    <Button onClick={loadReport} disabled={loading}>
-                        {loading ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
-                        {loading ? 'Cargando...' : 'Aplicar Filtros'}
-                    </Button>
-                </div>
-            </div>
-
-            {/* KPI Summary Cards */}
-            {summaryEntries.length > 0 && !loading && (
-                <div className="kpi-grid">
-                    {summaryEntries.map(([key, val]) => {
-                        const isString = typeof val === 'string';
-                        const isCurrency = !isString && /value|amount|sales|cost|discount|ticket|revenue|cogs|spent|income|commission|variation/i.test(key) && !/count|pct|percent/i.test(key);
-                        const isPercent = !isString && /margin|foodcost|variation|yield/i.test(key) && /pct|percent|overall/i.test(key);
-                        return (
-                            <div key={key} className={`kpi-card ${getKpiVariant(key)}`}>
-                                <div className="kpi-label">
-                                    {getKpiIcon(key)}
-                                    {formatSummaryLabel(key)}
-                                </div>
-                                <div className="kpi-value">
-                                    {isString ? String(val) : isCurrency ? fmtCurrency(Number(val)) : isPercent ? fmtPercent(Number(val)) : fmtNumber(Number(val))}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {/* Loading */}
-            {loading && (
-                <div className="state-placeholder">
-                    <RefreshCw size={32} className="animate-spin" />
-                    <p>Cargando reporte...</p>
-                </div>
-            )}
-
-            {/* Error */}
-            {error && !loading && (
-                <div className="state-placeholder">
-                    <AlertTriangle size={32} />
-                    <p className="state-error">{error}</p>
-                    <Button variant="ghost" onClick={loadReport}>
-                        <RefreshCw size={14} /> Reintentar
-                    </Button>
-                </div>
-            )}
-
-            {/* Empty */}
-            {!loading && !error && items.length === 0 && data && (
-                <div className="state-placeholder">
-                    <FileText size={48} />
-                    <p>No se encontraron resultados con los filtros seleccionados.</p>
-                </div>
-            )}
-
-            {/* Table */}
-            {!loading && !error && items.length > 0 && (
-                <>
-                    <div className="data-table-wrapper">
-                        <div className="data-table-header">
-                            <span>{reportDef.name}</span>
-                            <span className="data-table-count">{items.length} registros</span>
-                        </div>
-                        <div className="data-table-scroll">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>{getColumns(reportId).map(col => (
-                                        <th key={col.key} className={col.align === 'right' ? 'text-right' : ''}>{col.header}</th>
-                                    ))}</tr>
-                                </thead>
-                                <tbody>
-                                    {paginatedItems.map((row, i) => (
-                                        <tr key={i}>{getColumns(reportId).map(col => (
-                                            <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
-                                                {renderCell(row[col.key], col, fmtCurrency)}
-                                            </td>
-                                        ))}</tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <Pagination
-                        page={page}
-                        totalPages={totalPages}
-                        totalItems={items.length}
-                        pageSize={PAGE_SIZE}
-                        onPageChange={setPage}
-                    />
-                </>
-            )}
-        </div>
-    );
+    return res.data.data;
 }
+
+async function exportReportData(reportId: string, params: Record<string, string>) {
+    let res;
+    switch (reportId) {
+        case 'inventory': res = await reportsAPI.exportInventoryReport(params); break;
+        case 'purchases': res = await reportsAPI.exportPurchasesReport(params); break;
+        case 'sales': res = await reportsAPI.exportSalesReport(params); break;
+        case 'profitability': res = await reportsAPI.exportProfitabilityReport(params); break;
+        case 'low-stock': res = await reportsAPI.exportLowStockReport(params); break;
+        case 'purchases-by-day': res = await reportsAPI.exportPurchasesByDay(params); break;
+        case 'purchases-by-month': res = await reportsAPI.exportPurchasesByMonth(params); break;
+        case 'price-comparison': res = await reportsAPI.exportPriceComparison(params); break;
+        case 'most-purchased': res = await reportsAPI.exportMostPurchased(params); break;
+        case 'purchases-by-supplier': res = await reportsAPI.exportPurchasesBySupplier(params); break;
+        case 'sales-by-category': res = await reportsAPI.exportSalesByCategory(params); break;
+        case 'sales-by-product': res = await reportsAPI.exportSalesByProduct(params); break;
+        case 'sales-by-brand': res = await reportsAPI.exportSalesByBrand(params); break;
+        case 'sales-daily': res = await reportsAPI.exportSalesDaily(params); break;
+        case 'sales-monthly': res = await reportsAPI.exportSalesMonthly(params); break;
+        case 'sales-by-payment-method': res = await reportsAPI.exportSalesByPaymentMethod(params); break;
+        case 'sales-by-waiter': res = await reportsAPI.exportSalesByWaiter(params); break;
+        case 'sales-by-channel': res = await reportsAPI.exportSalesByChannel(params); break;
+        case 'sales-by-hour': res = await reportsAPI.exportSalesByHour(params); break;
+        case 'food-cost-by-category': res = await reportsAPI.exportFoodCostByCategory(params); break;
+        case 'margin-by-product': res = await reportsAPI.exportMarginByProduct(params); break;
+        case 'audit': res = await reportsAPI.exportAuditReport(params); break;
+        case 'day-analysis': res = await reportsAPI.exportDayAnalysis(params); break;
+        case 'month-comparison': res = await reportsAPI.exportMonthComparison(params); break;
+        case 'recipe-cost': res = await reportsAPI.exportRecipeCostAnalysis(params); break;
+        case 'production-yield': res = await reportsAPI.exportProductionYield(params); break;
+        case 'menu-engineering': res = await reportsAPI.exportMenuEngineering(params); break;
+        case 'purchase-projection': res = await reportsAPI.exportPurchaseProjection(params); break;
+        default: return null;
+    }
+    return res;
+}
+
+// ── Presentación de celdas ──
+type ReportData = { items: Record<string, unknown>[]; summary: Record<string, number> };
+type Row = Record<string, unknown>;
+
+const ND = 'N/D';
+const isMissing = (v: unknown) => v === null || v === undefined || v === '' || !Number.isFinite(Number(v));
+
+const STATUS_LABELS: Record<string, string> = {
+    OK: 'OK', HIGH: 'Alto', MEDIUM: 'Medio', LOW: 'Bajo',
+    WARNING: 'Advertencia', CRITICAL: 'Crítico',
+    DRAFT: 'Borrador', ISSUED: 'Emitida', RECEIVED: 'Recibida', CANCELLED: 'Cancelada',
+    PENDING: 'Pendiente', IN_PROGRESS: 'En Proceso', FINISHED: 'Finalizada',
+};
+const statusTone = (s: string): Tone =>
+    s === 'OK' || s === 'HIGH' || s === 'FINISHED' ? 'success'
+        : s === 'MEDIUM' || s === 'WARNING' || s === 'LOW' || s === 'IN_PROGRESS' || s === 'PENDING' ? 'warning'
+            : s === 'CRITICAL' || s === 'CANCELLED' ? 'danger'
+                : 'neutral';
+
+function signClass(value: unknown, invert?: boolean): string {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n === 0) return '';
+    const good = invert ? n < 0 : n > 0;
+    return good ? 'reports-positive' : 'reports-negative';
+}
+
+const nd = <span className="reports-nd" title="Dato no disponible">{ND}</span>;
+
+function toTableColumns(defs: ColDef[], money: (n: number) => string): Column<Row>[] {
+    return defs.map((def, i): Column<Row> => {
+        const base: Column<Row> = {
+            key: def.key,
+            header: def.header,
+            accessor: (r) => r[def.key],
+            width: def.format ? '1fr' : i === 0 ? '1.6fr' : '1.2fr',
+        };
+        const signed = (r: Row, text: (n: number) => string) =>
+            isMissing(r[def.key])
+                ? nd
+                : def.signColor
+                    ? <span className={signClass(r[def.key], def.invertSign)}>{text(Number(r[def.key]))}</span>
+                    : text(Number(r[def.key]));
+        switch (def.format) {
+            case 'currency':
+                return { ...base, type: 'money', total: isAdditiveColumn(def), render: (r) => signed(r, money) };
+            case 'number':
+                return { ...base, type: 'number', render: (r) => signed(r, (n) => formatNumber(n)) };
+            case 'percent':
+                return { ...base, type: 'percent', render: (r) => (isMissing(r[def.key]) ? nd : formatPercent(Number(r[def.key]))) };
+            case 'date':
+                return { ...base, type: 'date', render: (r) => (r[def.key] ? fmtDate(String(r[def.key])) : '—') };
+            case 'status':
+                return {
+                    ...base,
+                    type: 'status',
+                    render: (r) => {
+                        const s = String(r[def.key] ?? '').toUpperCase();
+                        return s ? <Badge tone={statusTone(s)} dot>{STATUS_LABELS[s] || s}</Badge> : '—';
+                    },
+                };
+            default:
+                return { ...base, render: (r) => (r[def.key] === null || r[def.key] === undefined || r[def.key] === '' ? '—' : String(r[def.key])) };
+        }
+    });
+}
+
+const MONEY_SUMMARY = /value|amount|sales|cost|discount|ticket|revenue|cogs|spent|income|commission|variation/i;
+const NOT_MONEY_SUMMARY = /count|pct|percent/i;
+const PERCENT_SUMMARY = /margin|foodcost|variation|yield/i;
+const PERCENT_SUMMARY_2 = /pct|percent|overall/i;
+
+function formatSummaryValue(key: string, val: unknown, money: (n: number) => string): string {
+    if (typeof val === 'string') return val;
+    if (isMissing(val)) return ND;
+    const n = Number(val);
+    if (MONEY_SUMMARY.test(key) && !NOT_MONEY_SUMMARY.test(key)) return money(n);
+    if (PERCENT_SUMMARY.test(key) && PERCENT_SUMMARY_2.test(key)) return formatPercent(n);
+    return formatNumber(n);
+}
+
 
 // ── Filter visibility helpers ──
 const DATE_FILTER_REPORTS = new Set([
@@ -878,25 +495,7 @@ function hasMultiCategoryFilter(id: string) { return MULTI_CATEGORY_FILTER_REPOR
 function hasSupplierFilter(id: string) { return SUPPLIER_FILTER_REPORTS.has(id); }
 function hasBrandFilter(id: string) { return BRAND_FILTER_REPORTS.has(id); }
 
-// ── KPI Icons / variants ──
-function getKpiIcon(key: string) {
-    const k = key.toLowerCase();
-    if (/total|count|number|orders|items|products|users|methods|channels|categories|suppliers|portions|events|days|months/i.test(k)) return <Package size={14} />;
-    if (/value|amount|sales|cost|spent|income|revenue|commission|cogs|margin/i.test(k)) return <DollarSign size={14} />;
-    if (/critical|lowstock|low/i.test(k)) return <AlertTriangle size={14} />;
-    if (/percent|pct|variation/i.test(k)) return <TrendingUp size={14} />;
-    if (/hour|peak|time/i.test(k)) return <Clock size={14} />;
-    if (/top|max|best/i.test(k)) return <TrendingUp size={14} />;
-    return <BarChart3 size={14} />;
-}
 
-function getKpiVariant(key: string): string {
-    const k = key.toLowerCase();
-    if (/critical|urgent/i.test(k)) return 'kpi-danger';
-    if (/warning|low|lowstock/i.test(k)) return 'kpi-warning';
-    if (/total|value|sales|revenue|income|margin/i.test(k)) return 'kpi-success';
-    return '';
-}
 
 // ── Column Definitions ──
 type ColDef = { key: string; header: string; align?: 'right' | 'center'; format?: 'currency' | 'number' | 'percent' | 'date' | 'status'; signColor?: boolean; invertSign?: boolean };
@@ -1212,43 +811,6 @@ function getColumns(reportId: string): ColDef[] {
     }
 }
 
-function signClass(value: unknown, invert?: boolean): string {
-    const n = Number(value);
-    if (!Number.isFinite(n) || n === 0) return '';
-    const good = invert ? n < 0 : n > 0;
-    return good ? 'cell-positive' : 'cell-negative';
-}
-
-function renderCell(value: unknown, col: ColDef, fmtCurrency: (n: number) => string = (n) => formatCurrency(n)) {
-    if (value === null || value === undefined) return '-';
-    switch (col.format) {
-        case 'currency': {
-            const text = fmtCurrency(Number(value));
-            return col.signColor ? <span className={signClass(value, col.invertSign)}>{text}</span> : text;
-        }
-        case 'number': {
-            const text = fmtNumber(Number(value));
-            return col.signColor ? <span className={signClass(value, col.invertSign)}>{text}</span> : text;
-        }
-        case 'percent': return fmtPercent(Number(value));
-        case 'date': return fmtDate(String(value));
-        case 'status': {
-            const s = String(value).toUpperCase();
-            const cls = s === 'OK' || s === 'HIGH' || s === 'FINISHED' ? 'status-ok'
-                : s === 'MEDIUM' || s === 'WARNING' || s === 'LOW' || s === 'IN_PROGRESS' || s === 'PENDING' ? 'status-warning'
-                : s === 'CRITICAL' || s === 'CANCELLED' ? 'status-critical'
-                : 'status-default';
-            const labels: Record<string, string> = {
-                OK: 'OK', HIGH: 'Alto', MEDIUM: 'Medio', LOW: 'Bajo',
-                WARNING: 'Advertencia', CRITICAL: 'Crítico',
-                DRAFT: 'Borrador', ISSUED: 'Emitida', RECEIVED: 'Recibida', CANCELLED: 'Cancelada',
-                PENDING: 'Pendiente', IN_PROGRESS: 'En Proceso', FINISHED: 'Finalizada',
-            };
-            return <span className={`status-pill ${cls}`}>{labels[s] || s}</span>;
-        }
-        default: return String(value);
-    }
-}
 
 function formatSummaryLabel(key: string): string {
     if (key.startsWith('plannedQuantity__')) return `Planificado (${key.slice('plannedQuantity__'.length)})`;
@@ -1304,6 +866,438 @@ function formatSummaryLabel(key: string): string {
     return map[key] || key;
 }
 
+
+// ── Catálogo lateral ──
+const activeCatalogId = (reportId?: string) => {
+    if (!reportId) return undefined;
+    const group = getGroupReports(reportId);
+    return group.find((id) => REPORT_CATALOG.find((r) => r.id === id && !r.hiddenInHub)) ?? reportId;
+};
+
+function ReportsCatalog({ reportId, onSelect }: { reportId?: string; onSelect: (r: ReportDef) => void }) {
+    const [search, setSearch] = useState('');
+    const term = search.trim().toLowerCase();
+    const grouped = CATEGORIES_ORDER.map((category) => ({
+        category,
+        reports: REPORT_CATALOG.filter(
+            (r) => r.category === category && !r.hiddenInHub && (r.name.toLowerCase().includes(term) || r.description.toLowerCase().includes(term)),
+        ),
+    })).filter((g) => g.reports.length > 0);
+    const active = activeCatalogId(reportId);
+
+    const selectOptions = grouped.map((g) => ({
+        label: g.category,
+        options: g.reports.map((r) => ({ value: r.id, label: r.name })),
+    }));
+
+    return (
+        <aside className="reports-catalog" aria-label="Catálogo de reportes">
+            <Input
+                type="search"
+                aria-label="Buscar reportes"
+                placeholder="Buscar reportes..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="reports-catalog__select">
+                <AppSelect<string>
+                    aria-label="Reporte"
+                    isClearable={false}
+                    placeholder="Elige un reporte"
+                    options={selectOptions}
+                    value={active ?? null}
+                    onChange={(id) => {
+                        const def = REPORT_CATALOG.find((r) => r.id === id);
+                        if (def) onSelect(def);
+                    }}
+                />
+            </div>
+            <nav className="reports-catalog__list" aria-label="Reportes por grupo">
+                {grouped.length === 0 ? <p className="reports-catalog__empty">Sin reportes con ese texto.</p> : null}
+                {grouped.map((g) => (
+                    <section key={g.category} className="reports-catalog__group">
+                        <h2 className="reports-catalog__title">{g.category}</h2>
+                        <ul>
+                            {g.reports.map((r) => {
+                                const Icon = r.icon;
+                                return (
+                                    <li key={r.id}>
+                                        <button
+                                            type="button"
+                                            className={`reports-catalog__item ${active === r.id ? 'is-active' : ''}`}
+                                            aria-current={active === r.id ? 'page' : undefined}
+                                            onClick={() => onSelect(r)}
+                                        >
+                                            <Icon size={16} aria-hidden="true" />
+                                            <span className="reports-catalog__text">
+                                                <strong>{r.name}</strong>
+                                                <small>{r.description}</small>
+                                            </span>
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </section>
+                ))}
+            </nav>
+        </aside>
+    );
+}
+
+// ── Visor ──
+function ReportViewer({ reportId }: { reportId: string }) {
+    const { symbol } = useCurrency();
+    const money = useCallback((n: number) => formatMoney(n, symbol || 'C$'), [symbol]);
+    const navigate = useNavigate();
+    const reportDef = REPORT_CATALOG.find(r => r.id === reportId);
+    const groupedReportIds = getGroupReports(reportId);
+    const groupedReports = groupedReportIds
+        .map(id => REPORT_CATALOG.find(r => r.id === id))
+        .filter((r): r is ReportDef => Boolean(r));
+
+    const [data, setData] = useState<ReportData | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [filterWarning, setFilterWarning] = useState('');
+    const [exporting, setExporting] = useState(false);
+    const [compare, setCompare] = useState(false);
+    const [previous, setPrevious] = useState<{ summary: Record<string, number> | null; failed: boolean } | null>(null);
+
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [categories, setCategories] = useState<CategoryOption[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+    const [brands, setBrands] = useState<BrandOption[]>([]);
+
+    const [filters, setFilters] = useState<Record<string, string>>({
+        dateFrom: monthStartStr(),
+        dateTo: todayStr(),
+        warehouseId: '',
+        categoryId: '',
+        categoryIds: '',
+        supplierId: '',
+        branchId: '',
+        brandId: '',
+        lowStockOnly: '',
+    });
+
+    const loadFilterOptions = useCallback(() => {
+        const labels = ['sucursales', 'categorías', 'proveedores', 'almacenes', 'marcas'];
+        Promise.allSettled([
+            branchesAPI.getAll(),
+            categoriesAPI.getAll(),
+            suppliersAPI.getAll(),
+            warehousesAPI.getAll(),
+            menuBrandsAPI.getAll(),
+        ]).then((results) => {
+            const failedNames = results
+                .map((r, i) => (r.status === 'rejected' ? labels[i] : null))
+                .filter((name): name is string => Boolean(name));
+            if (failedNames.length > 0) {
+                console.error('Error loading report filter options:', failedNames);
+                setFilterWarning(
+                    `No se pudieron cargar filtros: ${failedNames.join(', ')}. Las listas pueden estar incompletas; no asuma que "todas" incluye opciones faltantes.`
+                );
+            } else {
+                setFilterWarning('');
+            }
+            setBranches(results[0].status === 'fulfilled' ? results[0].value.data.data || [] : []);
+            setCategories(results[1].status === 'fulfilled' ? results[1].value.data.data || [] : []);
+            setSuppliers(results[2].status === 'fulfilled' ? results[2].value.data.data || [] : []);
+            setWarehouses(results[3].status === 'fulfilled' ? results[3].value.data.data || [] : []);
+            setBrands(results[4].status === 'fulfilled' ? results[4].value.data.data || [] : []);
+        });
+    }, []);
+
+    useEffect(() => { loadFilterOptions(); }, [loadFilterOptions]);
+
+    const buildParams = useCallback(() => {
+        const params: Record<string, string> = {};
+        Object.entries(filters).forEach(([k, v]) => {
+            if (v) params[k] = v;
+        });
+        return params;
+    }, [filters]);
+
+    const loadReport = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        setPrevious(null);
+        try {
+            const params = buildParams();
+            const current = await fetchReportData(reportId, params);
+            setData(current);
+            const prevRange = hasDateFilter(reportId) ? previousPeriod(filters.dateFrom, filters.dateTo) : null;
+            if (compare && prevRange) {
+                try {
+                    const prev = await fetchReportData(reportId, { ...params, ...prevRange });
+                    setPrevious({ summary: prev.summary ?? null, failed: false });
+                } catch {
+                    setPrevious({ summary: null, failed: true });
+                }
+            }
+        } catch (err: unknown) {
+            const e = err as { response?: { data?: { message?: string } }; message?: string };
+            setData(null);
+            setError(e?.response?.data?.message || e?.message || 'Error al cargar el reporte');
+        } finally {
+            setLoading(false);
+        }
+    }, [reportId, buildParams, compare, filters.dateFrom, filters.dateTo]);
+
+    useEffect(() => { loadReport(); }, [loadReport]);
+
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const params = buildParams();
+            const res = await exportReportData(reportId, params);
+            if (!res) return;
+            downloadBlob(res.data, `reporte_${reportId}_${todayStr()}.xlsx`);
+        } catch {
+            setError('Error al exportar el reporte');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const clearFilters = () => {
+        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', categoryIds: '', supplierId: '', branchId: '', brandId: '', lowStockOnly: '' });
+    };
+
+    const set = (key: string, val: string) => setFilters(f => ({ ...f, [key]: val }));
+    const defs = useMemo(() => getColumns(reportId), [reportId]);
+    const columns = useMemo(() => toTableColumns(defs, money), [defs, money]);
+    const items = useMemo(() => data?.items ?? [], [data]);
+    const chart = useMemo(() => buildChartSeries(items, defs), [items, defs]);
+    const quickRead = useMemo(
+        () => buildQuickRead({
+            items,
+            cols: defs,
+            format: (col, v) => (col.format === 'currency' ? money(v) : formatNumber(v)),
+        }),
+        [items, defs, money],
+    );
+    const summaryEntries = useMemo(
+        () => (data?.summary ? Object.entries(data.summary).filter(([key]) => key !== 'actionBreakdown') : []),
+        [data],
+    );
+    const deltas = useMemo(
+        () => compareSummaries(data?.summary ?? {}, previous?.summary ?? null),
+        [data, previous],
+    );
+    const prevRange = hasDateFilter(reportId) ? previousPeriod(filters.dateFrom, filters.dateTo) : null;
+
+    if (!reportDef) {
+        return (
+            <EmptyState
+                icon={AlertTriangle}
+                title="Reporte no encontrado"
+                action={<Button variant="ghost" onClick={() => navigate('/reporteria')}><ArrowLeft size={16} /> Volver a Reportería</Button>}
+            />
+        );
+    }
+
+    const hasDates = hasDateFilter(reportId);
+    const opt = (all: string, list: { id: number; name: string }[]) => [
+        { value: '', label: all },
+        ...list.map((x) => ({ value: x.id.toString(), label: x.name })),
+    ];
+
+    return (
+        <section className="reports-viewer" aria-label={reportDef.name}>
+            <PageHeader
+                title={reportDef.name}
+                description={reportDef.description}
+                breadcrumb={['Reportería', reportDef.category]}
+                actions={
+                    <>
+                        {groupedReports.length > 1 && (
+                            <div className="reports-view-select">
+                                <AppSelect<string>
+                                    aria-label="Vista del reporte"
+                                    isClearable={false}
+                                    options={groupedReports.map((r) => ({ value: r.id, label: r.name }))}
+                                    value={reportId}
+                                    onChange={(id) => { if (id) navigate(`/reporteria/${id}`); }}
+                                />
+                            </div>
+                        )}
+                        {!PRODUCTION_REPORT_IDS.has(reportId) && (
+                            <Button onClick={handleExport} disabled={exporting || !data} title="Exportar a Excel">
+                                <Download size={16} aria-hidden="true" /> {exporting ? 'Exportando…' : 'Excel'}
+                            </Button>
+                        )}
+                    </>
+                }
+            />
+
+            {filterWarning && (
+                <div className="reports-warning" role="status">
+                    <AlertTriangle size={18} aria-hidden="true" />
+                    <p>{filterWarning}</p>
+                    <Button variant="ghost" size="sm" onClick={loadFilterOptions}>Reintentar filtros</Button>
+                </div>
+            )}
+
+            <div className="reports-filters" role="group" aria-label="Filtros del reporte">
+                {hasDates && (
+                    <>
+                        <Field label="Desde" htmlFor="rep-from">
+                            <DateInput id="rep-from" value={filters.dateFrom} max={filters.dateTo || undefined} onChange={e => set('dateFrom', e.target.value)} />
+                        </Field>
+                        <Field label="Hasta" htmlFor="rep-to">
+                            <DateInput id="rep-to" value={filters.dateTo} min={filters.dateFrom || undefined} onChange={e => set('dateTo', e.target.value)} />
+                        </Field>
+                    </>
+                )}
+
+                {(reportId === 'inventory' || reportId === 'low-stock' || reportId === 'prod-kardex') && (
+                    <div className="reports-filters__select">
+                        <AppSelect<string> aria-label="Almacén" isClearable={false} options={opt('Todos los almacenes', warehouses)} value={filters.warehouseId} onChange={(v) => set('warehouseId', v ?? '')} />
+                    </div>
+                )}
+
+                {hasCategoryFilter(reportId) && (
+                    <div className="reports-filters__select reports-filters__select--wide">
+                        {hasMultiCategoryFilter(reportId) ? (
+                            <AppSelect<string>
+                                kind="multi"
+                                aria-label="Categorías"
+                                placeholder="Todas las categorías"
+                                noOptionsText="No hay más categorías"
+                                options={categories.map(c => ({ value: c.id.toString(), label: c.name }))}
+                                value={filters.categoryIds ? filters.categoryIds.split(',').filter(Boolean) : []}
+                                onChange={(ids) => set('categoryIds', ids.join(','))}
+                            />
+                        ) : (
+                            <AppSelect<string> aria-label="Categoría" isClearable={false} options={opt('Todas las categorías', categories)} value={filters.categoryId} onChange={(v) => set('categoryId', v ?? '')} />
+                        )}
+                    </div>
+                )}
+
+                {hasBrandFilter(reportId) && (
+                    <div className="reports-filters__select">
+                        <AppSelect<string> aria-label="Empresa o marca" isClearable={false} options={opt('Todas las empresas', brands)} value={filters.brandId} onChange={(v) => set('brandId', v ?? '')} />
+                    </div>
+                )}
+
+                {hasSupplierFilter(reportId) && (
+                    <div className="reports-filters__select">
+                        <AppSelect<string> aria-label="Proveedor" isClearable={false} options={opt('Todos los proveedores', suppliers)} value={filters.supplierId} onChange={(v) => set('supplierId', v ?? '')} />
+                    </div>
+                )}
+
+                {hasBranchFilter(reportId) && (
+                    <div className="reports-filters__select">
+                        <AppSelect<string> aria-label="Sucursal" isClearable={false} options={opt('Todas las sucursales', branches)} value={filters.branchId} onChange={(v) => set('branchId', v ?? '')} />
+                    </div>
+                )}
+
+                {reportId === 'inventory' && (
+                    <div className="reports-filters__select reports-filters__select--narrow">
+                        <AppSelect<string>
+                            aria-label="Solo stock bajo"
+                            isClearable={false}
+                            options={[{ value: '', label: 'Todo el stock' }, { value: 'true', label: 'Solo stock bajo' }]}
+                            value={filters.lowStockOnly}
+                            onChange={(v) => set('lowStockOnly', v ?? '')}
+                        />
+                    </div>
+                )}
+
+                {prevRange && (
+                    <Switch
+                        id="rep-compare"
+                        label="Comparar con el periodo anterior"
+                        checked={compare}
+                        onChange={setCompare}
+                    />
+                )}
+
+                <div className="reports-filters__actions">
+                    <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>
+                    <Button onClick={loadReport} disabled={loading}>
+                        <Search size={16} aria-hidden="true" /> {loading ? 'Cargando…' : 'Aplicar filtros'}
+                    </Button>
+                </div>
+            </div>
+
+            {error && !loading ? <LoadErrorState message={error} onRetry={loadReport} /> : null}
+
+            {!error && data && !loading && items.length > 0 && (
+                <>
+                    <section className="reports-read" aria-label="Lectura rápida">
+                        <h2 className="reports-read__title">Lectura rápida</h2>
+                        <ul>
+                            {quickRead.map((line) => <li key={line}>{line}</li>)}
+                        </ul>
+                    </section>
+
+                    {summaryEntries.length > 0 && (
+                        <section className="reports-totals" aria-label="Totales del reporte">
+                            <h2 className="reports-read__title">Totales del periodo</h2>
+                            <dl>
+                                {summaryEntries.map(([key, val]) => {
+                                    const d = deltas.find((x) => x.key === key);
+                                    return (
+                                        <div key={key} className="reports-totals__item">
+                                            <dt>{formatSummaryLabel(key)}</dt>
+                                            <dd>{formatSummaryValue(key, val, money)}</dd>
+                                            {compare && prevRange ? (
+                                                <dd className="reports-totals__delta">
+                                                    {previous?.failed
+                                                        ? 'Comparación no disponible'
+                                                        : d
+                                                            ? d.pct === null
+                                                                ? `Periodo anterior: ${formatSummaryValue(key, d.previous, money)}`
+                                                                : `${d.pct >= 0 ? '+' : ''}${formatPercent(d.pct)} vs periodo anterior`
+                                                            : null}
+                                                </dd>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })}
+                            </dl>
+                            {compare && prevRange ? (
+                                <p className="reports-totals__range">
+                                    Periodo anterior: {fmtDate(prevRange.dateFrom)} al {fmtDate(prevRange.dateTo)}.
+                                </p>
+                            ) : null}
+                        </section>
+                    )}
+
+                    {chart && (
+                        <section className="reports-chart" aria-label={chart.title}>
+                            <h2 className="reports-read__title">{chart.title}</h2>
+                            <ParetoBars items={chart.items} format={(v) => (defs.find((c) => c.format === 'currency') ? money(v) : formatNumber(v))} ariaLabel={chart.title} />
+                            {chart.skipped > 0 ? <p className="reports-chart__note">{chart.skipped} fila{chart.skipped === 1 ? '' : 's'} sin dato (N/D) excluida{chart.skipped === 1 ? '' : 's'} del gráfico.</p> : null}
+                        </section>
+                    )}
+                </>
+            )}
+
+            {!error && (loading || items.length > 0) ? (
+                <DataTable<Row>
+                    ariaLabel={reportDef.name}
+                    columns={columns}
+                    rows={items}
+                    rowKey={(row) => items.indexOf(row)}
+                    loading={loading}
+                    resetKey={`${reportId}|${JSON.stringify(filters)}`}
+                    footerLabel="Total de la página"
+                    minWidth={`${Math.max(48, columns.length * 9)}rem`}
+                />
+            ) : null}
+
+            {!error && !loading && data && items.length === 0 ? (
+                <EmptyState icon={FileText} title="Sin resultados" description="No se encontraron resultados con los filtros seleccionados." />
+            ) : null}
+        </section>
+    );
+}
+
 // ── Main Component ──
 export default function Reports() {
     const { reportId } = useParams<{ reportId?: string }>();
@@ -1318,21 +1312,24 @@ export default function Reports() {
     };
 
     return (
-        <div className="page-wrapper reports-page">
+        <PageContent>
             {!reportId && (
-                <>
-                    <div className="page-header-bar">
-                        <div className="header-title-section">
-                            <h1><BarChart3 size={28} /> Reportería</h1>
-                            <p className="header-subtitle">
-                                Consulta, filtra y exporta información clave del negocio.
-                            </p>
-                        </div>
-                    </div>
-                    <ReportsHub onSelect={handleSelect} />
-                </>
+                <PageHeader title="Reportería" description="Consulta, filtra y exporta información clave del negocio." />
             )}
-            {reportId && <ReportDetail reportId={reportId} />}
-        </div>
+            <div className="reports-workspace">
+                <ReportsCatalog reportId={reportId} onSelect={handleSelect} />
+                <div className="reports-main">
+                    {reportId ? (
+                        <ReportViewer reportId={reportId} />
+                    ) : (
+                        <EmptyState
+                            icon={BarChart3}
+                            title="Elige un reporte"
+                            description="Selecciona un reporte del catálogo para ver su lectura rápida, gráfico y tabla."
+                        />
+                    )}
+                </div>
+            </div>
+        </PageContent>
     );
 }
