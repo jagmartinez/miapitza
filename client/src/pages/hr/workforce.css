@@ -5,7 +5,6 @@
 }
 
 .hr-header-actions,
-.hr-form-actions,
 .hr-record-actions,
 .hr-summary-card footer > div {
   display: flex;
@@ -222,16 +221,14 @@
 }
 
 .hr-summary-grid,
-.hr-balance-grid,
-.hr-type-grid {
+.hr-balance-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
   gap: var(--ui-space-3);
 }
 
 .hr-summary-card,
-.hr-balance-grid article,
-.hr-type-grid article {
+.hr-balance-grid article {
   display: flex;
   flex-direction: column;
   gap: var(--ui-space-2);
@@ -243,9 +240,7 @@
 }
 
 .hr-summary-card header,
-.hr-summary-card footer,
-.hr-type-grid article > div,
-.hr-calendar-list article {
+.hr-summary-card footer {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -254,8 +249,6 @@
 
 .hr-summary-card header > div,
 .hr-balance-grid article,
-.hr-type-grid article,
-.hr-calendar-list article > div,
 .hr-record-list article > div:first-child {
   min-width: 0;
 }
@@ -263,10 +256,8 @@
 .hr-summary-card header span,
 .hr-balance-grid span,
 .hr-balance-grid small,
-.hr-type-grid span,
 .hr-record-list span,
-.hr-record-list small,
-.hr-calendar-list span {
+.hr-record-list small {
   display: block;
   overflow-wrap: anywhere;
   color: var(--ui-text-muted);
@@ -307,15 +298,13 @@
   font-weight: 700;
 }
 
-.hr-record-list,
-.hr-calendar-list {
+.hr-record-list {
   display: flex;
   flex-direction: column;
   gap: var(--ui-space-2);
 }
 
-.hr-record-list article,
-.hr-calendar-list article {
+.hr-record-list article {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -324,8 +313,7 @@
   border-bottom: 1px solid var(--ui-border);
 }
 
-.hr-record-list article:last-child,
-.hr-calendar-list article:last-child {
+.hr-record-list article:last-child {
   border-bottom: 0;
 }
 
@@ -334,41 +322,14 @@
   justify-content: flex-end;
 }
 
-.hr-calendar-list time {
-  flex: 0 0 auto;
-  padding: var(--ui-space-1) var(--ui-space-2);
-  border-radius: var(--ui-radius-sm);
-  background: color-mix(in srgb, var(--ui-warning) 10%, transparent);
-  color: var(--ui-primary);
-  font-weight: 700;
-}
-
-.hr-type-grid code {
-  color: var(--ui-text-muted);
-}
-
 .hr-workforce-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--ui-space-3);
 }
 
-.hr-sidebar-body {
-  padding: var(--ui-space-4);
-}
-
-.hr-sidebar-body.hr-workforce-form {
-  padding: var(--ui-space-4);
-}
-
-.hr-workforce-form .span-full,
-.hr-sidebar-body > .hr-online-notice {
+.hr-workforce-form .span-full {
   grid-column: 1 / -1;
-}
-
-.hr-form-actions {
-  justify-content: flex-end;
-  padding-top: var(--ui-space-2);
 }
 
 .hr-checkbox-grid {
@@ -422,9 +383,7 @@
     grid-template-columns: 1fr;
   }
 
-  .hr-workforce-section,
-  .hr-sidebar-body,
-  .hr-sidebar-body.hr-workforce-form {
+  .hr-workforce-section {
     padding: var(--ui-space-3);
   }
 
@@ -433,18 +392,16 @@
   }
 
   .hr-section-heading,
-  .hr-summary-card header,
-  .hr-summary-card footer,
-  .hr-record-list article,
-  .hr-calendar-list article {
+.hr-summary-card header,
+.hr-summary-card footer,
+.hr-record-list article {
     align-items: stretch;
     flex-direction: column;
   }
 
   .hr-record-actions,
-  .hr-header-actions,
-  .hr-form-actions,
-  .hr-summary-card footer > div {
+.hr-header-actions,
+.hr-summary-card footer > div {
     justify-content: stretch;
   }
 
@@ -452,9 +409,8 @@
   .hr-workforce-partial-warning > span { flex-basis: calc(100% - 30px); }
 
   .hr-record-actions .btn,
-  .hr-header-actions .btn,
-  .hr-form-actions .btn,
-  .hr-summary-card footer .btn {
+.hr-header-actions .btn,
+.hr-summary-card footer .btn {
     flex: 1 1 auto;
   }
 }

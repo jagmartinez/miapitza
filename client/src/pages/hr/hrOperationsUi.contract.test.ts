@@ -32,7 +32,6 @@ describe('RH operational UI contract', () => {
   it('uses the shared Inventory-inspired operational composition without global selectors', () => {
     adminOperationalPages.forEach((source) => expect(source).toContain('hr-operation-page'));
     selfServicePages.forEach((source) => expect(source).toContain('my-hr-page'));
-    expect(adminCss).toContain('.hr-operation-page .hr-operation-kpis');
     expect(adminCss).toContain('.hr-operation-page .hr-operation-toolbar');
     expect(adminCss).toContain("[role='tabpanel']:focus-visible");
     expect(adminCss).not.toMatch(/(^|\n)\s*(body|:root)\s*\{/);

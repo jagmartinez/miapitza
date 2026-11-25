@@ -8,19 +8,6 @@
   gap: var(--ui-space-4);
 }
 
-.my-hr-page > .my-hr-page-header { margin-bottom: 0; }
-
-.my-hr-page-header .page-header-actions {
-  margin-left: auto;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-
-.my-hr-page-header .header-subtitle {
-  max-width: 720px;
-  line-height: 1.5;
-}
-
 .my-hr-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -135,13 +122,6 @@
   margin: 0;
 }
 
-.my-hr-panel {
-  min-width: 0;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface);
-}
-
 .my-hr-page button:focus-visible,
 .my-hr-page a:focus-visible,
 .my-hr-page [role='tabpanel']:focus-visible {
@@ -156,7 +136,4 @@
 @media (max-width: 680px) {
   .my-hr-page { gap: var(--ui-space-3); }
   .my-hr-summary-grid { grid-template-columns: 1fr; }
-  .my-hr-page-header .page-header-actions,
-  .my-hr-page-header .page-header-actions > *,
-  .my-hr-page-header .btn { width: 100%; }
 }

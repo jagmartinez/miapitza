@@ -5,7 +5,6 @@
 }
 
 .hr-benefits-header-actions,
-.hr-benefits-form-actions,
 .hr-benefits-actions {
   display: flex;
   align-items: center;
@@ -107,26 +106,6 @@
   color: var(--ui-text);
 }
 
-.hr-benefits-overview {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--ui-space-3);
-}
-.hr-benefits-overview > div {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px var(--ui-space-3);
-  padding: var(--ui-space-3);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface);
-}
-.hr-benefits-overview span,
-.hr-benefits-overview small { color: var(--ui-text-muted); }
-.hr-benefits-overview span { font-size: var(--ui-text-md); font-weight: 700; }
-.hr-benefits-overview small { font-size: var(--ui-text-xs); }
-.hr-benefits-overview strong { grid-column: 2; grid-row: 1 / span 2; font-size: var(--ui-text-2xl); }
-
 .hr-benefits-tabs {
   display: flex;
   gap: var(--ui-space-1);
@@ -202,81 +181,18 @@
 .my-benefits-register-head h2 { font-size: var(--ui-text-lg); }
 .my-benefits-register-head p { color: var(--ui-text-muted); font-size: var(--ui-text-md); }
 .my-benefits-register-count { flex: 0 0 auto; padding: 6px 10px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface-2); color: var(--ui-text-muted); font-size: var(--ui-text-xs); font-weight: 800; }
-
-.my-benefits-table-wrap { width: 100%; overflow-x: auto; }
-.my-benefits-table { width: 100%; min-width: 860px; margin: 0; border: 0; border-collapse: collapse; }
-.my-benefits-table :is(th, td) { padding: 12px 14px; border-bottom: 1px solid var(--ui-border); text-align: left; vertical-align: middle; }
-.my-benefits-table th { background: var(--ui-surface-2); color: var(--ui-text-muted); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
-.my-benefits-table tbody tr { transition: background-color 150ms ease; }
-.my-benefits-table tbody tr:hover,
-.my-benefits-table tbody tr.is-selected { background: color-mix(in srgb, var(--ui-primary) 7%, var(--ui-surface)); }
-.my-benefits-table tbody tr.is-selected { box-shadow: inset 3px 0 var(--ui-primary); }
-.my-benefits-table tbody tr:last-child td { border-bottom: 0; }
-.my-benefits-table :is(th, td).hr-amount-cell,
-.my-benefits-actions-col { text-align: right; white-space: nowrap; }
-.my-benefits-actions-col { width: 1%; }
-.my-benefits-actions-col .btn { min-width: 38px; padding-inline: 9px; }
 .my-benefits-register > .pagination { border-top: 1px solid var(--ui-border); }
 
 .hr-my-benefits-page .hr-benefits-workspace {
   width: 100%;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text) 14%, transparent);
 }
-.hr-benefits-list,
 .hr-benefits-workspace {
   min-width: 0;
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-md);
   background: var(--ui-surface);
   overflow: hidden;
-}
-.hr-benefits-list {
-  display: flex;
-  flex-direction: column;
-  max-height: 74vh;
-  overflow-y: auto;
-}
-.hr-benefits-list > button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ui-space-3);
-  width: 100%;
-  padding: var(--ui-space-3);
-  border: 0;
-  border-bottom: 1px solid var(--ui-border);
-  background: transparent;
-  color: var(--ui-text);
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-}
-.hr-benefits-list > button:last-child {
-  border-bottom: 0;
-}
-.hr-benefits-list > button:hover {
-  background: var(--ui-surface-2);
-}
-.hr-benefits-list > button.selected {
-  box-shadow: inset 4px 0 var(--ui-primary);
-  background: color-mix(in srgb, var(--ui-warning) 7%, transparent);
-}
-.hr-benefits-list > button > span:first-child,
-.hr-benefits-list-amount {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-}
-.hr-benefits-list small {
-  color: var(--ui-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hr-benefits-list-amount {
-  align-items: flex-end;
-  flex: 0 0 auto;
 }
 
 .hr-benefits-workspace {
@@ -390,11 +306,6 @@
 .hr-benefits-table-wrap tbody tr:last-child td {
   border-bottom: 0;
 }
-.hr-benefits-table-wrap :is(th, td).hr-amount-cell {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 
 .hr-benefits-ledger,
 .hr-benefits-trace {
@@ -459,7 +370,6 @@
   min-height: 420px;
 }
 
-.hr-benefits-table-empty,
 .hr-benefits-ledger-empty {
   padding: var(--ui-space-4) !important;
   color: var(--ui-text-muted);
@@ -544,10 +454,6 @@
   color: var(--ui-text);
   font-weight: 500;
 }
-.hr-benefits-form-actions {
-  justify-content: flex-end;
-  padding-top: var(--ui-space-2);
-}
 
 .hr-benefits-warning,
 .hr-benefits-authority-note {
@@ -578,7 +484,6 @@
   background: color-mix(in srgb, var(--ui-primary) 7%, transparent);
 }
 
-.hr-benefits-list > button:focus-visible,
 .hr-benefits-tabs button:focus-visible,
 .hr-benefits-form input:focus-visible,
 .hr-benefits-form select:focus-visible,
@@ -601,9 +506,6 @@
 }
 
 @media (max-width: 820px) {
-  .hr-benefits-overview {
-    grid-template-columns: 1fr;
-  }
   .hr-benefits-toolbar,
   .hr-benefits-toolbar.self {
     grid-template-columns: 1fr;
@@ -611,9 +513,6 @@
   }
   .hr-benefits-layout {
     grid-template-columns: 1fr;
-  }
-  .hr-benefits-list {
-    max-height: 430px;
   }
   .hr-benefits-workspace {
     padding: var(--ui-space-3);
@@ -635,19 +534,7 @@
   .hr-benefits-metrics {
     grid-template-columns: 1fr;
   }
-  .hr-benefits-list > button {
-    align-items: flex-start;
-  }
-  .hr-benefits-list-amount {
-    align-items: flex-end;
-  }
   .hr-benefits-workspace-head {
     flex-direction: column;
-  }
-  .hr-benefits-form-actions {
-    justify-content: stretch;
-  }
-  .hr-benefits-form-actions .btn {
-    flex: 1;
   }
 }

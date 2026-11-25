@@ -312,55 +312,6 @@
   white-space: nowrap;
 }
 
-.hr-admin-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--ui-space-3);
-}
-
-.hr-admin-kpis > div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 3px var(--ui-space-3);
-  min-width: 0;
-  padding: var(--ui-space-3);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface);
-}
-
-.hr-admin-kpis span,
-.hr-admin-kpis small {
-  color: var(--ui-text-muted);
-  font-size: var(--ui-text-xs);
-}
-
-.hr-admin-kpis span {
-  font-weight: 750;
-}
-
-.hr-admin-kpis strong {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: center;
-  color: var(--ui-text);
-  font-size: var(--ui-text-2xl);
-  font-variant-numeric: tabular-nums;
-}
-
-.hr-admin-catalog-page :is(.hr-admin-board, .pr-table-card) {
-  width: 100%;
-}
-
-.hr-admin-catalog-page .hr-admin-tabs {
-  padding: 7px;
-  border-bottom: 1px solid var(--ui-border);
-}
-
-.hr-admin-catalog-page .hr-admin-tabs button {
-  min-height: 40px;
-}
-
 .hr-admin-catalog-page .hr-admin-table caption {
   padding: 15px 18px;
   border-bottom: 1px solid var(--ui-border);
@@ -445,11 +396,10 @@
   }
 
   .hr-employee-facts,
-  .hr-admin-kpis,
-  .hr-detail-sections,
-  .hr-attendance-review-page .hr-attendance-filters.inventory-filters-row,
-  .hr-attendance-management-page .hr-workforce-filters.inventory-filters-row,
-  .hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
+.hr-detail-sections,
+.hr-attendance-review-page .hr-attendance-filters.inventory-filters-row,
+.hr-attendance-management-page .hr-workforce-filters.inventory-filters-row,
+.hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
     grid-template-columns: 1fr;
   }
 

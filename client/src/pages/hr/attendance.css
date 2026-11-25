@@ -33,9 +33,7 @@
 .hr-punch-evidence,
 .hr-punch-result,
 .hr-biometric-required,
-.hr-biometric-status,
-.hr-biometric-notice,
-.hr-enrollment-panel {
+.hr-biometric-status {
     margin-bottom: var(--ui-space-4);
     padding: var(--ui-space-4);
     border: 1px solid var(--ui-border);
@@ -56,8 +54,7 @@
     color: var(--ui-primary);
 }
 
-.hr-attendance-icon,
-.hr-biometric-status-icon {
+.hr-attendance-icon {
     display: grid;
     width: 48px;
     height: 48px;
@@ -538,7 +535,6 @@
 }
 
 .hr-punch-result.accepted > svg { color: var(--ui-success); }
-.hr-punch-result.review_required > svg { color: var(--ui-warning); }
 .hr-punch-result.rejected > svg { color: var(--ui-danger); }
 
 .hr-punch-result h2,
@@ -591,11 +587,6 @@
     background: color-mix(in srgb, var(--ui-success) 6%, var(--ui-surface));
 }
 
-.hr-biometric-status.status-active .hr-biometric-status-icon {
-    color: var(--ui-success);
-    background: color-mix(in srgb, var(--ui-success) 13%, var(--ui-surface-2));
-}
-
 .hr-biometric-status > svg { color: var(--ui-primary); }
 .hr-biometric-status > div { display: flex; flex: 1; flex-direction: column; }
 .hr-biometric-status span,
@@ -603,85 +594,6 @@
 .hr-biometric-status span { font-size: var(--ui-text-xs); text-transform: uppercase; }
 .hr-biometric-status > div > strong { font-size: var(--ui-text-lg); }
 .hr-biometric-status > div > small { margin-top: .2rem; }
-
-.hr-biometric-metadata {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--ui-space-3);
-    margin-bottom: var(--ui-space-4);
-}
-
-.hr-biometric-metadata > div {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: .15rem var(--ui-space-2);
-    padding: var(--ui-space-3);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-md);
-    background: var(--ui-surface);
-}
-
-.hr-biometric-metadata svg { grid-row: 1 / span 2; color: var(--ui-primary); }
-.hr-biometric-metadata span { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
-.hr-biometric-metadata strong { overflow-wrap: anywhere; }
-
-.hr-biometric-notice h2 { margin-top: 0; font-size: var(--ui-text-lg); }
-.hr-biometric-notice li,
-.hr-biometric-notice p { color: var(--ui-text-muted); line-height: 1.55; }
-
-.hr-consent-check {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--ui-space-2);
-    margin-top: var(--ui-space-3);
-    padding: var(--ui-space-3);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-sm);
-    color: var(--ui-text-muted);
-    line-height: 1.5;
-    cursor: pointer;
-}
-
-.hr-consent-check input { margin-top: 4px; accent-color: var(--ui-primary); }
-
-.hr-attendance-events {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-    gap: var(--ui-space-3);
-    margin-bottom: var(--ui-space-4);
-}
-
-.hr-attendance-event {
-    display: flex;
-    flex-direction: column;
-    gap: var(--ui-space-2);
-    padding: var(--ui-space-3);
-    border: 1px solid var(--ui-border);
-    border-top: 3px solid var(--ui-border);
-    border-radius: var(--ui-radius-md);
-    background: var(--ui-surface);
-}
-
-.hr-attendance-event.accepted { border-top-color: var(--ui-success); }
-.hr-attendance-event.review_required { border-top-color: var(--ui-warning); }
-.hr-attendance-event.rejected { border-top-color: var(--ui-danger); }
-
-.hr-attendance-event-main {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--ui-space-3);
-}
-
-.hr-attendance-event-main > div,
-.hr-attendance-event-result { display: flex; flex-direction: column; min-width: 0; }
-.hr-attendance-event-main span,
-.hr-attendance-event-main time,
-.hr-attendance-event-result small { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
-.hr-attendance-event-main time { flex: 0 0 auto; }
-.hr-attendance-event-result { gap: 3px; }
-.hr-attendance-event-result > span { font-weight: 700; }
-.hr-attendance-event-result code { width: fit-content; }
-.hr-attendance-event p { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-md); }
 
 .hr-review-summary {
     display: flex;
@@ -727,9 +639,7 @@
     .hr-evidence-actions .btn { width: 100%; }
     .hr-biometric-status { align-items: flex-start; flex-wrap: wrap; }
     .hr-biometric-status .btn { width: 100%; }
-    .hr-biometric-metadata { grid-template-columns: 1fr; }
     .hr-punch-history-head { align-items: flex-start; flex-direction: column; }
-    .hr-attendance-events { grid-template-columns: 1fr; }
     .hr-time-clock-page > .hr-time-clock-workspace { order: 1; }
     .hr-time-clock-page > .my-hr-summary-grid { order: 2; }
     .hr-time-clock-action-panel { order: -1; }
@@ -738,13 +648,10 @@
 
 @media (max-width: 480px) {
     .hr-today-summary,
-    .hr-punch-actions,
-    .hr-punch-evidence,
-    .hr-punch-result,
-    .hr-biometric-required,
-    .hr-biometric-status,
-    .hr-biometric-notice,
-    .hr-enrollment-panel { padding: var(--ui-space-3); }
-    .hr-attendance-event-main { flex-direction: column; }
+.hr-punch-actions,
+.hr-punch-evidence,
+.hr-punch-result,
+.hr-biometric-required,
+.hr-biometric-status { padding: var(--ui-space-3); }
     .hr-attendance-checks > div { grid-template-columns: 1fr; }
 }

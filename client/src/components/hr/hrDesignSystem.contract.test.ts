@@ -39,7 +39,6 @@ describe('RH and Catering UI design-system contract', () => {
     expect(hrSource).not.toMatch(/<\/?select\b/);
     expect(hrSource).toContain('<AppSelect');
     expect(hrSource).not.toContain('HrReactSelect');
-    expect(sharedStyles).toContain(":not(.react-select__input)");
   });
 
   it('keeps attendance and its settings from being active at the same time', () => {

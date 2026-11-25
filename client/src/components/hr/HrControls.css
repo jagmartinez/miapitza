@@ -1,7 +1,5 @@
 .hr-money-input,
-.hr-money,
-.hr-number,
-.hr-amount-cell {
+.hr-money {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -57,30 +55,9 @@
   text-transform: uppercase;
 }
 
-.hr-modal-form .ui-form-grid
-  :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface-2);
-  color: var(--ui-text);
-  font-size: 14px;
-  line-height: 1.35;
-  box-sizing: border-box;
-}
-
 .hr-modal-form .ui-form-grid textarea {
   min-height: 104px;
   resize: vertical;
-}
-
-.hr-modal-form .ui-form-grid
-  :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input):focus-visible {
-  border-color: var(--ui-primary);
-  outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 30%, transparent);
 }
 
 .hr-modal-form .ui-form-grid :is(input, textarea)::placeholder {

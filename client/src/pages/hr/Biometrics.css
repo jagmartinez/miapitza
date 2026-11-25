@@ -501,15 +501,6 @@
 
 .hr-biometric-alternative svg { flex: 0 0 auto; color: var(--ui-primary); }
 
-.hr-biometric-load-error {
-    min-height: 320px;
-    border: 1px dashed var(--ui-border);
-    border-radius: 1rem;
-    background: var(--ui-surface);
-}
-
-.hr-biometric-load-error h2 { font-size: 1.1rem; }
-
 @media (max-width: 1050px) {
     .hr-biometric-main-grid { grid-template-columns: 1fr; }
     .hr-biometric-privacy { position: static; }

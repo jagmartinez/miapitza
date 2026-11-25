@@ -479,14 +479,6 @@
   color: var(--ui-danger) !important;
 }
 
-.hr-settings-sidebar-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--ui-space-2);
-  margin-top: var(--ui-space-2);
-}
-
 .hr-device-secret {
   display: block;
   max-width: 100%;
