@@ -28,6 +28,7 @@ model Company {
   // Relations
   branches                        Branch[]
   settings                        Setting[]
+  branchSettingOverrides          BranchSettingOverride[]
   users                           User[]
   auditLogs                       AuditLog[]
   tables                          Table[]
@@ -196,6 +197,7 @@ model Branch {
   payrollSnapshots               PayrollSnapshotLine[]
   kitchenNotifications           KitchenNotification[]
   travelRequests                 HrTravelRequest[]
+  settingOverrides               BranchSettingOverride[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -4129,4 +4131,33 @@ model ProductionOrderItem {
 
   @@index([productionOrderId])
   @@index([componentProductId])
+}
+
+model BranchSettingOverride {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  branchId    Int
+  name        String   @db.VarChar(100)
+  value       String   @db.Text
+  updatedById Int?
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, name])
+  @@index([companyId, name])
+}
+
+model SettingAudit {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  branchId  Int?
+  name      String   @db.VarChar(100)
+  oldValue  String?  @db.Text
+  newValue  String?  @db.Text
+  userId    Int
+  createdAt DateTime @default(now())
+
+  @@index([companyId, name, createdAt])
 }
