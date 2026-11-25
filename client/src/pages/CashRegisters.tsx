@@ -5,17 +5,15 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { useNavigate } from 'react-router-dom';
 import { branchesAPI, cashRegistersAPI, cashShiftsAPI } from '../services/api';
-import LoadingSpinner from '../components/LoadingSpinner';
-import {
-    Wallet, Unlock, History, Plus,
-    Search, Calendar, User, ArrowRight,
-    Clock, Building2, Settings
-} from 'lucide-react';
+import { Wallet, Unlock, History, Plus, Search } from 'lucide-react';
 import type { Branch, CashRegister, CashShift } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import './CashRegisters.css';
-import { AppSelect, Button, Field, FullScreenModal, PageHeader } from '@/ui';
+import styles from './CashRegisters.module.css';
+import {
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, Input,
+    PageHeader, SegmentedControl, formatNumber, type Column,
+} from '@/ui';
 
 export default function CashRegisters() {
     const { user } = useAuth();
@@ -199,289 +197,217 @@ export default function CashRegisters() {
         ? registers.find((r) => r.id === selectedRegisterId)
         : null;
 
-    const filteredRegisters = registers.filter(r =>
-        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (r.branch?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+    const query = searchQuery.trim().toLowerCase();
+    const filteredRegisters = registers.filter((r) =>
+        r.name.toLowerCase().includes(query) ||
+        (r.branch?.name || '').toLowerCase().includes(query)
     );
 
-    const filteredShifts = shifts.filter(s =>
-        (s.register?.name || s.cashRegister?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.user?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredShifts = shifts.filter((s) =>
+        (s.register?.name || s.cashRegister?.name || '').toLowerCase().includes(query) ||
+        (s.user?.name || '').toLowerCase().includes(query)
     );
 
+    const registerColumns: Column<CashRegister>[] = [
+        { key: 'name', header: 'Caja', width: '1.6fr', render: (r) => <strong>{r.name}</strong> },
+        { key: 'branch', header: 'Sucursal', width: '1.4fr', render: (r) => r.branch?.name || 'Sucursal Principal' },
+        {
+            key: 'status',
+            header: 'Estado',
+            type: 'status',
+            width: '0.8fr',
+            render: (r) => <Badge tone={r.status === 'OPEN' ? 'success' : 'neutral'} dot>{r.status === 'OPEN' ? 'Abierta' : 'Cerrada'}</Badge>,
+        },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            width: '1fr',
+            render: (r) => r.status === 'CLOSED' ? (
+                <Button size="sm" variant="secondary" icon={Unlock} onClick={(e) => handleOpenShiftClick(e, r.id)}>Abrir Caja</Button>
+            ) : (
+                <Button size="sm" variant="primary" icon={History} onClick={(e) => void handleViewActiveShift(e, r.id)}>Ver Turno</Button>
+            ),
+        },
+    ];
+
+    const shiftColumns: Column<CashShift>[] = [
+        { key: 'id', header: 'Turno', width: '0.6fr', render: (s) => `#${s.id}` },
+        { key: 'register', header: 'Caja', width: '1.2fr', render: (s) => s.register?.name || s.cashRegister?.name || 'Caja' },
+        { key: 'user', header: 'Cajero', width: '1.2fr', render: (s) => s.user?.name || 'N/D' },
+        {
+            key: 'startDate',
+            header: 'Inicio',
+            width: '1.2fr',
+            render: (s) => `${new Date(s.startDate).toLocaleDateString('es-NI')} ${new Date(s.startDate).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}`,
+        },
+        {
+            key: 'state',
+            header: 'Estado',
+            type: 'status',
+            width: '0.8fr',
+            render: (s) => <Badge tone={s.endDate ? 'neutral' : 'success'} dot>{s.endDate ? 'Finalizado' : 'En Curso'}</Badge>,
+        },
+        { key: 'startAmount', header: 'Saldo Inicial', type: 'money', width: '1fr', render: (s) => formatMoney(Number(s.startAmount)) },
+        {
+            key: 'difference',
+            header: 'Diferencia',
+            type: 'money',
+            width: '1fr',
+            render: (s) => {
+                if (!s.endDate || s.difference === undefined || s.difference === null) return 'N/D';
+                const diff = Number(s.difference);
+                if (!Number.isFinite(diff)) return 'N/D';
+                return <span className={diff < 0 ? styles.loss : undefined}>{formatMoney(diff)}</span>;
+            },
+        },
+    ];
 
     return (
-        <div className="cash-registers-page">
+        <div className={styles.page}>
             <PageHeader
                 title="Cajas Registradoras"
                 description={viewTab === 'registers'
-                    ? `${registers.length} cajas registradas`
-                    : `${shifts.length} turnos encontrados`}
+                    ? `${formatNumber(registers.length, 0)} cajas registradas`
+                    : `${formatNumber(shifts.length, 0)} turnos encontrados`}
                 actions={viewTab === 'registers' && canCreateRegister ? (
-                    <Button variant="primary" onClick={() => {
+                    <Button variant="primary" icon={Plus} onClick={() => {
                         setActiveTab('general');
                         setIsCreateModalOpen(true);
                     }}>
-                        <Plus size={20} />
                         Nueva Caja
                     </Button>
                 ) : undefined}
             />
 
-            <div className="filters-row">
-                <div className="filters-left">
-                    <div className="search-container">
-                        <Search className="search-icon" size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-tertiary)' }} />
-                        <input
-                            type="text"
-                            className="premium-search-input"
-                            style={{ paddingLeft: '40px' }}
-                            placeholder={viewTab === 'registers' ? "Buscar caja o sucursal..." : "Buscar por caja o cajero..."}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
-
-                    {viewTab === 'history' && (
-                        <div className="date-filter-group">
-                            <Calendar size={18} style={{ color: 'var(--color-primary)' }} />
-                            <input
-                                type="date"
-                                className="date-input"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                            />
-                            <ArrowRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />
-                            <input
-                                type="date"
-                                className="date-input"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                            />
-                        </div>
-                    )}
-                </div>
-
-                <div className="navigation-right">
-
-                    <div className="view-tabs">
-                        <button
-                            className={`tab-btn ${viewTab === 'registers' ? 'active' : ''}`}
-                            onClick={() => setViewTab('registers')}
-                        >
-                            Cajas
-                        </button>
-                        <button
-                            className={`tab-btn ${viewTab === 'history' ? 'active' : ''}`}
-                            onClick={() => setViewTab('history')}
-                        >
-                            Historial
-                        </button>
-                    </div>
-                </div>
+            <div className={styles.filters}>
+                <Field label="Buscar" htmlFor="cash-search">
+                    <Input
+                        id="cash-search"
+                        type="search"
+                        prefix={<Search size={16} aria-hidden="true" />}
+                        placeholder={viewTab === 'registers' ? 'Buscar caja o sucursal...' : 'Buscar por caja o cajero...'}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </Field>
+                {viewTab === 'history' && (
+                    <>
+                        <Field label="Desde" htmlFor="cash-from">
+                            <DateInput id="cash-from" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                        </Field>
+                        <Field label="Hasta" htmlFor="cash-to">
+                            <DateInput id="cash-to" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                        </Field>
+                    </>
+                )}
+                <SegmentedControl
+                    ariaLabel="Vista de cajas"
+                    value={viewTab}
+                    onChange={setViewTab}
+                    options={[
+                        { value: 'registers', label: 'Cajas' },
+                        { value: 'history', label: 'Historial' },
+                    ]}
+                />
             </div>
 
-            {loading ? (
-                <LoadingSpinner text="Cargando datos..." />
+            {viewTab === 'registers' ? (
+                <DataTable<CashRegister>
+                    ariaLabel="Cajas registradoras"
+                    columns={registerColumns}
+                    rows={filteredRegisters}
+                    rowKey={(r) => r.id}
+                    loading={loading}
+                    defaultPageSize={25}
+                    resetKey={searchQuery}
+                    onRowClick={(r) => void (r.status === 'OPEN' ? handleViewActiveShift(undefined, r.id) : handleOpenShiftClick(undefined, r.id))}
+                    empty={<EmptyState icon={Wallet} title="No se encontraron cajas registradas" />}
+                />
             ) : (
-                <>
-                    {viewTab === 'registers' ? (
-                        <div className="registers-grid">
-                            {filteredRegisters.length === 0 ? (
-                                <div className="no-results-message">
-                                    <Wallet size={64} opacity={0.2} />
-                                    <p>No se encontraron cajas registradas</p>
-                                </div>
-                            ) : (
-                                filteredRegisters.map(register => (
-                                    <div
-                                        key={register.id}
-                                        className="premium-register-card"
-                                        onClick={() => register.status === 'OPEN' ? handleViewActiveShift(undefined, register.id) : handleOpenShiftClick(undefined, register.id)}
-                                    >
-                                        <div className={`register-status-badge ${register.status.toLowerCase()}`}>
-                                            {register.status === 'OPEN' ? 'Abierta' : 'Cerrada'}
-                                        </div>
-
-                                        <div className="register-card-body-premium">
-                                            <div className="register-icon-wrapper">
-                                                <Wallet size={24} />
-                                            </div>
-                                            <div className="register-info-premium">
-                                                <h3>{register.name}</h3>
-                                                <div className="branch-tag">
-                                                    <Building2 size={12} />
-                                                    {register.branch?.name || 'Sucursal Principal'}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="register-card-actions-premium">
-                                            {register.status === 'CLOSED' ? (
-                                                <button className="premium-action-btn" onClick={(e) => handleOpenShiftClick(e, register.id)}>
-                                                    <Unlock size={16} />
-                                                    <span>Abrir Caja</span>
-                                                </button>
-                                            ) : (
-                                                <button className="premium-action-btn active" onClick={(e) => handleViewActiveShift(e, register.id)}>
-                                                    <History size={16} />
-                                                    <span>Ver Turno</span>
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    ) : (
-                        <div className="shifts-grid">
-                            {filteredShifts.length === 0 ? (
-                                <div className="no-results-message">
-                                    <History size={64} opacity={0.2} />
-                                    <p>No se encontró actividad en el rango seleccionado</p>
-                                </div>
-                            ) : (
-                                filteredShifts.map(shift => (
-                                    <div
-                                        key={shift.id}
-                                        className="premium-shift-card"
-                                        onClick={() => navigate(`/cash-shifts/${shift.id}`)}
-                                    >
-                                        <div className="register-status-badge closed">
-                                            {shift.endDate ? 'Finalizado' : 'En Curso'}
-                                        </div>
-
-                                        <div className="shift-card-header-wrapper">
-                                            <div className="shift-card-header">
-                                                <span className="shift-id-badge">#{shift.id}</span>
-                                            </div>
-
-                                            <div className="shift-details-list">
-                                                <div className="shift-detail-row">
-                                                    <div className="detail-label-group">
-                                                        <Wallet size={16} />
-                                                        <span className="detail-label-text">Caja</span>
-                                                    </div>
-                                                    <span className="detail-value-text">{shift.register?.name || shift.cashRegister?.name || 'Caja'}</span>
-                                                </div>
-                                                <div className="shift-detail-row">
-                                                    <div className="detail-label-group">
-                                                        <User size={16} />
-                                                        <span className="detail-label-text">Cajero</span>
-                                                    </div>
-                                                    <span className="detail-value-text">{shift.user?.name}</span>
-                                                </div>
-                                                <div className="shift-detail-row">
-                                                    <div className="detail-label-group">
-                                                        <Calendar size={16} />
-                                                        <span className="detail-label-text">Fecha</span>
-                                                    </div>
-                                                    <span className="detail-value-text">{new Date(shift.startDate).toLocaleDateString()}</span>
-                                                </div>
-                                                <div className="shift-detail-row">
-                                                    <div className="detail-label-group">
-                                                        <Clock size={16} />
-                                                        <span className="detail-label-text">Hora Inicio</span>
-                                                    </div>
-                                                    <span className="detail-value-text">{new Date(shift.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="shift-amount-footer">
-                                            <div className="amount-display">
-                                                <span className="label">Saldo Inicial</span>
-                                                <span className="value">{formatMoney(Number(shift.startAmount))}</span>
-                                            </div>
-                                            {shift.endDate && (
-                                                <div className={`amount-display ${Number(shift.difference) >= 0 ? 'profit' : 'loss'}`}>
-                                                    <span className="label">
-                                                        Diferencia
-                                                    </span>
-                                                    <span className="value">
-                                                        {formatMoney(Math.abs(Number(shift.difference)))}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    )}
-                </>
+                <DataTable<CashShift>
+                    ariaLabel="Historial de turnos de caja"
+                    columns={shiftColumns}
+                    rows={filteredShifts}
+                    rowKey={(s) => s.id}
+                    loading={loading}
+                    defaultPageSize={25}
+                    resetKey={`${searchQuery}|${startDate}|${endDate}`}
+                    onRowClick={(s) => navigate(`/cash-shifts/${s.id}`)}
+                    empty={<EmptyState icon={History} title="No se encontró actividad en el rango seleccionado" />}
+                />
             )}
 
-            <FullScreenModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Apertura de Caja">
-                <div className="premium-modal-content">
-                    <div className="modal-tab-content">
-                        <div className="modal-section">
-                            {selectedRegister && (
-                                <p className="modal-input-hint" style={{ marginBottom: '12px' }}>
-                                    Caja: <strong>{selectedRegister.name}</strong>
-                                    {selectedRegister.branch?.name ? ` · ${selectedRegister.branch.name}` : ''}
-                                </p>
-                            )}
-                            <h3 className="section-title-v2">Saldo de Apertura</h3>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="register-start-amount">Monto Inicial en Efectivo</label>
-                                <input id="register-start-amount" type="number" className="modal-standard-input" value={startAmount} onChange={(e) => setStartAmount(e.target.value)} placeholder="0.00" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void confirmOpenShift(); } }} />
-                                <span className="modal-input-hint">Ingrese la cantidad total de efectivo disponible al iniciar.</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="modal-footer">
-                        <Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+            <FullScreenModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title="Apertura de Caja"
+                subtitle={selectedRegister ? `${selectedRegister.name}${selectedRegister.branch?.name ? ` · ${selectedRegister.branch.name}` : ''}` : undefined}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
                         <Button variant="primary" onClick={() => void confirmOpenShift()}>Abrir Turno</Button>
-                    </div>
-                </div>
+                    </>
+                )}
+            >
+                <FormSection title="Saldo de Apertura">
+                    <Field label="Monto Inicial en Efectivo" htmlFor="register-start-amount" hint="Ingrese la cantidad total de efectivo disponible al iniciar.">
+                        <Input
+                            id="register-start-amount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            inputMode="decimal"
+                            value={startAmount}
+                            onChange={(e) => setStartAmount(e.target.value)}
+                            placeholder="0.00"
+                            autoFocus
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void confirmOpenShift(); } }}
+                        />
+                    </Field>
+                </FormSection>
             </FullScreenModal>
 
-            <FullScreenModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Nueva Caja Registradora">
-                <div className="premium-modal-content">
-                    <div className="modal-tabs" role="tablist" aria-label="Configuración de caja registradora">
-                        <button type="button" role="tab" aria-selected={activeTab === 'general'} className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
-                            <Wallet size={18} />
-                            <span>General</span>
-                        </button>
-                        <button type="button" role="tab" aria-selected={activeTab === 'configuracion'} className={`modal-tab ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => setActiveTab('configuracion')}>
-                            <Settings size={18} />
-                            <span>Configuración</span>
-                        </button>
-                    </div>
-                    <div className="modal-tab-content">
-                        {activeTab === 'general' && (
-                            <div className="modal-section">
-                                <h3 className="section-title-v2">Identificación</h3>
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="register-name">Nombre de la Caja</label>
-                                    <input id="register-name" type="text" className="modal-standard-input" value={newRegisterName} onChange={(e) => setNewRegisterName(e.target.value)} placeholder="Ej: Caja Barra..." autoFocus />
-                                </div>
-                            </div>
-                        )}
-                        {activeTab === 'configuracion' && (
-                            <div className="modal-section">
-                                <h3 className="section-title-v2">Ubicación</h3>
-                                {user?.branchId ? (
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="register-branch">Sucursal</label>
-                                        <input id="register-branch" type="text" className="modal-standard-input" value={user.branch?.name || `Sucursal #${user.branchId}`} disabled />
-                                    </div>
-                                ) : (
-                                    <Field label="Sucursal" htmlFor="sel-477">
-<AppSelect isClearable={false} inputId="sel-477" options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))} value={(branches
-                                            .map((branch) => ({ value: String(branch.id), label: branch.name }))
-                                            .find((option) => option.value === newRegisterBranchId) || null)?.value ?? null} onChange={(__v) => { const option = (branches.map((branch) => ({ value: String(branch.id), label: branch.name }))).find((o) => o.value === __v) ?? null; return setNewRegisterBranchId(option?.value || ''); }} />
-</Field>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                    <div className="modal-footer">
-                        <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>Cancelar</Button>
+            <FullScreenModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                title="Nueva Caja Registradora"
+                tabs={[{ id: 'general', label: 'General' }, { id: 'configuracion', label: 'Configuración' }]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as 'general' | 'configuracion')}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button type="button" variant="ghost" onClick={requestClose}>Cancelar</Button>
                         <Button variant="primary" type="button" onClick={handleCreateRegister}>Guardar Caja</Button>
-                    </div>
-                </div>
+                    </>
+                )}
+            >
+                {activeTab === 'general' && (
+                    <FormSection title="Identificación">
+                        <Field label="Nombre de la Caja" htmlFor="register-name" required>
+                            <Input id="register-name" type="text" value={newRegisterName} onChange={(e) => setNewRegisterName(e.target.value)} placeholder="Ej: Caja Barra..." autoFocus />
+                        </Field>
+                    </FormSection>
+                )}
+                {activeTab === 'configuracion' && (
+                    <FormSection title="Ubicación">
+                        {user?.branchId ? (
+                            <Field label="Sucursal" htmlFor="register-branch">
+                                <Input id="register-branch" type="text" value={user.branch?.name || `Sucursal #${user.branchId}`} disabled />
+                            </Field>
+                        ) : (
+                            <Field label="Sucursal" htmlFor="register-branch-select" required>
+                                <AppSelect<string>
+                                    isClearable={false}
+                                    inputId="register-branch-select"
+                                    options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))}
+                                    value={newRegisterBranchId || null}
+                                    onChange={(value) => setNewRegisterBranchId(value ?? '')}
+                                />
+                            </Field>
+                        )}
+                    </FormSection>
+                )}
             </FullScreenModal>
         </div>
     );
