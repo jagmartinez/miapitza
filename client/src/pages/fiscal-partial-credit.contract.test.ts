@@ -6,7 +6,7 @@ const source = readFileSync(fileURLToPath(new URL('./InvoiceHistory.tsx', import
 
 describe('partial fiscal credit-note UI contract', () => {
     it('offers full remaining balance or explicit integer quantities per invoice line', () => {
-        expect(source).toContain("setCreditMode(event.target.value as 'FULL' | 'PARTIAL')");
+        expect(source).toContain("setCreditMode((v ?? 'FULL') as 'FULL' | 'PARTIAL')");
         expect(source).toContain('Cantidades parciales por línea');
         expect(source).toContain('orderItemId: item.id');
         expect(source).toContain("...(creditMode === 'PARTIAL' ? { lines: partialLines } : {})");
