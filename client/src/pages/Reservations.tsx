@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare, Grid3x3, CalendarDays, ChevronLeft, ChevronRight, List, Edit2, UserX } from 'lucide-react';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
-// import Input from '../components/Input';
+import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, ChevronLeft, ChevronRight, Edit2, UserX } from 'lucide-react';
+import {
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal,
+    IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, Textarea,
+    type Column, type Opt, type Tone,
+} from '@/ui';
+import SalonCards from '../components/SalonCards';
 import { branchesAPI, reservationsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { getUserRoleNames } from '../utils/authz';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import Select from '../components/Select';
-import type { SingleValue } from 'react-select';
 import type { Branch } from '../types';
 import { formatLocalDateInput } from '../utils/dateInput';
 import './Reservations.css';
@@ -55,7 +55,7 @@ export default function Reservations() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingReservation, setEditingReservation] = useState<Reservation | null>(null);
     const [filterStatus, setFilterStatus] = useState<string>('all');
-    const [viewMode, setViewMode] = useState<'cards' | 'table' | 'calendar'>('cards');
+    const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
     const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week' | 'day'>('month');
     const [searchQuery, setSearchQuery] = useState('');
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -73,6 +73,8 @@ export default function Reservations() {
     });
     const [activeTab, setActiveTab] = useState<'cliente' | 'reserva' | 'notas'>('cliente');
     const [saving, setSaving] = useState(false);
+    const [formDirty, setFormDirty] = useState(false);
+    const [loadError, setLoadError] = useState(false);
     const [branches, setBranches] = useState<Branch[]>([]);
 
 
@@ -80,8 +82,10 @@ export default function Reservations() {
         try {
             const response = await reservationsAPI.getAll();
             setReservations(response.data.data);
+            setLoadError(false);
         } catch (error) {
             console.error('Error loading reservations:', error);
+            setLoadError(true);
             showError('No se pudieron cargar las reservaciones.');
         } finally {
             setLoading(false);
@@ -144,6 +148,7 @@ export default function Reservations() {
             });
         }
         setActiveTab('cliente');
+        setFormDirty(false);
         setIsSidebarOpen(true);
     };
 
@@ -180,8 +185,8 @@ export default function Reservations() {
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!canManageReservations) {
             showWarning('No tienes permisos para guardar reservaciones');
             return;
@@ -267,6 +272,22 @@ export default function Reservations() {
             case 'NO_SHOW': return 'status-cancelled';
             default: return '';
         }
+    };
+
+    const getStatusTone = (status: string): Tone => {
+        switch (status) {
+            case 'CONFIRMED': return 'success';
+            case 'PENDING': return 'warning';
+            case 'COMPLETED': return 'primary';
+            case 'CANCELLED':
+            case 'NO_SHOW': return 'danger';
+            default: return 'neutral';
+        }
+    };
+
+    const setField = (patch: Partial<typeof formData>) => {
+        setFormData((current) => ({ ...current, ...patch }));
+        setFormDirty(true);
     };
 
     const getStatusText = (status: string) => {
@@ -398,105 +419,149 @@ export default function Reservations() {
         }
     };
 
+    const handleStatusFromForm = async (next: Reservation['status']) => {
+        if (!editingReservation) return;
+        if (!canManageReservations) return;
+        if (!canTransitionReservation(editingReservation.status, next)) return;
+        if (next === 'CANCELLED') {
+            if (!(await confirm('¿Cancelar esta reservación?', { variant: 'warning', confirmText: 'Sí, cancelar' }))) {
+                return;
+            }
+        }
+        if (next === 'NO_SHOW') {
+            if (!(await confirm('¿Marcar esta reservación como no asistió?', { variant: 'warning', confirmText: 'Sí, no asistió' }))) {
+                return;
+            }
+        }
+        try {
+            if (next === 'COMPLETED') {
+                await reservationsAPI.checkIn(editingReservation.id);
+                success('Llegada registrada y orden POS creada');
+            } else {
+                await reservationsAPI.updateStatus(editingReservation.id, next);
+            }
+            loadReservations();
+            setIsSidebarOpen(false);
+        } catch (err) {
+            console.error('Error updating status:', err);
+            const apiMsg = typeof err === 'object' && err !== null && 'response' in err
+                ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(apiMsg || 'Error al actualizar el estado');
+        }
+    };
+
     if (loading) {
         return <div className="reservations-loading">Cargando reservaciones...</div>;
     }
 
     const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
 
-    return (
-        <div className="reservations-page">
-            {/* Header */}
-            <div className="reservations-header">
-                <div>
-                    <h1><Calendar size={32} /> Reservaciones</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    {/* View Toggle */}
-                    <div className="view-toggle">
-                        <button
-                            className={`view-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
-                            onClick={() => setViewMode('cards')}
-                            title="Vista de Tarjetas"
-                        >
-                            <Grid3x3 size={18} />
-                        </button>
-                        <button
-                            className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-                            onClick={() => setViewMode('table')}
-                            title="Vista de Tabla"
-                        >
-                            <List size={18} />
-                        </button>
-                        <button
-                            className={`view-toggle-btn ${viewMode === 'calendar' ? 'active' : ''}`}
-                            onClick={() => setViewMode('calendar')}
-                            title="Vista de Calendario"
-                        >
-                            <CalendarDays size={18} />
-                        </button>
-                    </div>
-                    {canManageReservations && (
-                        <Button onClick={() => handleOpenSidebar()}>
-                            <Plus size={20} />
-                            Nueva Reservación
-                        </Button>
-                    )}
-                </div>
-            </div>
+    const statusSegments: { value: string; label: string }[] = [
+        { value: 'all', label: 'Todas' },
+        { value: 'PENDING', label: 'Pendientes' },
+        { value: 'CONFIRMED', label: 'Confirmadas' },
+        { value: 'COMPLETED', label: 'Completadas' },
+        { value: 'CANCELLED', label: 'Canceladas' },
+        { value: 'NO_SHOW', label: 'No asistió' },
+    ];
+    const branchOptions: Opt<number>[] = branches.map((branch) => ({ value: branch.id, label: branch.name }));
+    const reservationStatusOptions: Opt<Reservation['status']>[] = editingReservation
+        ? ([
+            { value: 'PENDING', label: 'Pendiente' },
+            { value: 'CONFIRMED', label: 'Confirmada' },
+            { value: 'COMPLETED', label: 'Completada' },
+            { value: 'CANCELLED', label: 'Cancelada' },
+            { value: 'NO_SHOW', label: 'No asistió' },
+        ] as Opt<Reservation['status']>[]).map((opt) => ({
+            ...opt,
+            isDisabled: !canTransitionReservation(editingReservation.status, opt.value),
+        }))
+        : [];
 
-            {/* Filters - show in cards and table views */}
+    const columns: Column<Reservation>[] = [
+        {
+            key: 'customer',
+            header: 'Cliente',
+            width: '1fr',
+            render: (r) => (
+                <span>
+                    <strong>{r.customerName}</strong>
+                    {r.phone && <small className="reservations-cell-sub">{r.phone}</small>}
+                </span>
+            ),
+        },
+        { key: 'people', header: 'Personas', width: '6rem', type: 'number', decimals: 0, accessor: (r) => r.peopleCount },
+        { key: 'table', header: 'Mesa', width: '7rem', render: (r) => r.table?.number || 'Sin asignar' },
+        { key: 'date', header: 'Fecha y hora', width: '14rem', render: (r) => `${formatDate(r.date)} · ${formatTime(r.date)}` },
+        { key: 'email', header: 'Email', width: '1fr', hideBelow: 'lg', render: (r) => r.email || '-' },
+        { key: 'status', header: 'Estado', width: '9rem', type: 'status', render: (r) => <Badge tone={getStatusTone(r.status)} dot>{getStatusText(r.status)}</Badge> },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            width: '10rem',
+            type: 'actions',
+            render: (r) => (
+                <>
+                    {canManageReservations && r.status === 'PENDING' && (
+                        <>
+                            <IconButton icon={CheckCircle} label={`Confirmar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CONFIRMED')} />
+                            <IconButton icon={XCircle} label={`Cancelar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CANCELLED')} />
+                        </>
+                    )}
+                    {canManageReservations && r.status === 'CONFIRMED' && (
+                        <>
+                            <IconButton icon={Users} label={`Completar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'COMPLETED')} />
+                            <IconButton icon={UserX} label={`Marcar no asistió a ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'NO_SHOW')} />
+                            <IconButton icon={XCircle} label={`Cancelar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CANCELLED')} />
+                        </>
+                    )}
+                    {canManageReservations && (r.status === 'PENDING' || r.status === 'CONFIRMED') && (
+                        <IconButton icon={Edit2} label={`Editar reservación de ${r.customerName}`} onClick={() => handleOpenSidebar(r)} />
+                    )}
+                </>
+            ),
+        },
+    ];
+
+    return (
+        <PageContent>
+            <PageHeader
+                title="Reservaciones"
+                description="Agenda de reservas por sucursal"
+                actions={(
+                    <>
+                        <SegmentedControl
+                            ariaLabel="Vista de reservaciones"
+                            options={[{ value: 'table', label: 'Tabla' }, { value: 'calendar', label: 'Calendario' }]}
+                            value={viewMode}
+                            onChange={setViewMode}
+                        />
+                        {canManageReservations && (
+                            <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>Nueva reservación</Button>
+                        )}
+                    </>
+                )}
+            />
+
+            <SalonCards only="reservation" />
+
+            {loadError && (
+                <div className="reservations-warning" role="alert">
+                    <span>No se pudieron cargar las reservaciones. Los datos mostrados pueden estar desactualizados.</span>
+                    <Button size="sm" onClick={() => void loadReservations()}>Reintentar</Button>
+                </div>
+            )}
+
             {viewMode !== 'calendar' && (
                 <div className="reservations-filters">
-                    {/* Status Filters */}
-                    <div className="filter-buttons">
-                        <button
-                            className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('all')}
-                        >
-                            Todas
-                        </button>
-                        <button
-                            className={`filter-btn pending ${filterStatus === 'PENDING' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('PENDING')}
-                        >
-                            Pendientes
-                        </button>
-                        <button
-                            className={`filter-btn confirmed ${filterStatus === 'CONFIRMED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('CONFIRMED')}
-                        >
-                            Confirmadas
-                        </button>
-                        <button
-                            className={`filter-btn completed ${filterStatus === 'COMPLETED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('COMPLETED')}
-                        >
-                            Completadas
-                        </button>
-                        <button
-                            className={`filter-btn cancelled ${filterStatus === 'CANCELLED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('CANCELLED')}
-                        >
-                            Canceladas
-                        </button>
-                        <button
-                            className={`filter-btn cancelled ${filterStatus === 'NO_SHOW' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('NO_SHOW')}
-                        >
-                            No asistió
-                        </button>
-                    </div>
-
-                    {/* Stats and Search */}
-                    <div className="filter-right-section">
-                        {/* Stats Counters */}
-                        <input
-                            type="text"
+                    <SegmentedControl ariaLabel="Estado de la reservación" options={statusSegments} value={filterStatus} onChange={setFilterStatus} />
+                    <div className="reservations-search">
+                        <Input
+                            aria-label="Buscar reservación"
                             placeholder="Buscar por nombre, teléfono o fecha..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="search-input reservations-search"
                         />
                     </div>
                 </div>
@@ -508,39 +573,22 @@ export default function Reservations() {
                     {/* Calendar Header */}
                     <div className="calendar-header">
                         <div className="calendar-month-year">
-                            <button className="calendar-nav-btn" onClick={handlePrevPeriod}>
+                            <button className="calendar-nav-btn" onClick={handlePrevPeriod} aria-label="Periodo anterior">
                                 <ChevronLeft size={20} />
                             </button>
                             <h2>{getCalendarTitle()}</h2>
-                            <button className="calendar-nav-btn" onClick={handleNextPeriod}>
+                            <button className="calendar-nav-btn" onClick={handleNextPeriod} aria-label="Periodo siguiente">
                                 <ChevronRight size={20} />
                             </button>
                         </div>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             {/* Calendar View Mode Selector */}
-                            <div className="view-toggle" style={{ marginRight: '8px' }}>
-                                <button
-                                    className={`view-toggle-btn ${calendarViewMode === 'day' ? 'active' : ''}`}
-                                    onClick={() => setCalendarViewMode('day')}
-                                    title="Vista de día"
-                                >
-                                    Día
-                                </button>
-                                <button
-                                    className={`view-toggle-btn ${calendarViewMode === 'week' ? 'active' : ''}`}
-                                    onClick={() => setCalendarViewMode('week')}
-                                    title="Vista de semana"
-                                >
-                                    Semana
-                                </button>
-                                <button
-                                    className={`view-toggle-btn ${calendarViewMode === 'month' ? 'active' : ''}`}
-                                    onClick={() => setCalendarViewMode('month')}
-                                    title="Vista de mes"
-                                >
-                                    Mes
-                                </button>
-                            </div>
+                            <SegmentedControl
+                                ariaLabel="Escala del calendario"
+                                options={[{ value: 'day', label: 'Día' }, { value: 'week', label: 'Semana' }, { value: 'month', label: 'Mes' }]}
+                                value={calendarViewMode}
+                                onChange={setCalendarViewMode}
+                            />
                             <button className="today-btn" onClick={handleToday}>
                                 Hoy
                             </button>
@@ -704,430 +752,147 @@ export default function Reservations() {
                 </div>
             )}
 
-            {/* Cards View */}
-            {viewMode === 'cards' && (
-                <>
-                    {sortedReservations.length === 0 ? (
-                        <div className="reservations-empty">
-                            <Calendar size={64} />
-                            <p>No hay reservaciones</p>
-                            <small>{searchQuery ? 'No se encontraron resultados para tu búsqueda' : 'Crea una nueva reservación para comenzar'}</small>
-                        </div>
-                    ) : (
-                        <div className="reservations-grid">
-                            {sortedReservations.map(reservation => (
-                                <div key={reservation.id} className={`reservation-card status-${reservation.status.toLowerCase()}`} onClick={() => handleOpenSidebar(reservation)}>
-                                    {/* Status Badge */}
-                                    <div className={`status-badge-new status-${reservation.status.toLowerCase()}`}>
-                                        <span>{getStatusText(reservation.status)}</span>
-                                    </div>
-
-                                    {/* Card Body */}
-                                    <div className="reservation-card-body-new">
-                                        <div className="reservation-name-new">{reservation.customerName}</div>
-
-                                        <div className="reservation-details-new">
-                                            <div className="detail-item-new">
-                                                <Users size={16} />
-                                                <span>{reservation.peopleCount} personas{reservation.table ? ` · Mesa ${reservation.table.number}` : ''}</span>
-                                            </div>
-                                            {reservation.phone && (
-                                                <div className="detail-item-new">
-                                                    <Phone size={16} />
-                                                    <span>{reservation.phone}</span>
-                                                </div>
-                                            )}
-                                            <div className="detail-item-new" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--color-border)', opacity: 0.8 }}>
-                                                <Calendar size={14} />
-                                                <span>{formatDate(reservation.date)} • {formatTime(reservation.date)}</span>
-                                            </div>
-                                            {reservation.email && (
-                                                <div className="detail-item-new" style={{ opacity: 0.8 }}>
-                                                    <Mail size={14} />
-                                                    <span>{reservation.email}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Actions Footer */}
-                                    <div className="reservation-card-actions-new" onClick={(e) => e.stopPropagation()}>
-                                        {canManageReservations && reservation.status === 'PENDING' && (
-                                            <>
-                                                <button
-                                                    className="action-btn-new"
-                                                    onClick={() => handleUpdateStatus(reservation.id, 'CONFIRMED')}
-                                                    title="Confirmar"
-                                                >
-                                                    <CheckCircle size={20} />
-                                                    <span>Confirmar</span>
-                                                </button>
-                                                <button
-                                                    className="action-btn-new delete"
-                                                    onClick={() => handleUpdateStatus(reservation.id, 'CANCELLED')}
-                                                    title="Cancelar"
-                                                >
-                                                    <XCircle size={20} />
-                                                </button>
-                                            </>
-                                        )}
-                                        {canManageReservations && reservation.status === 'CONFIRMED' && (
-                                            <>
-                                                <button
-                                                    className="action-btn-new"
-                                                    onClick={() => handleUpdateStatus(reservation.id, 'COMPLETED')}
-                                                    title="Marcar como Llegó"
-                                                >
-                                                    <Users size={20} />
-                                                    <span>Completar</span>
-                                                </button>
-                                                <button
-                                                    className="action-btn-new delete"
-                                                    onClick={() => handleUpdateStatus(reservation.id, 'NO_SHOW')}
-                                                    title="No asistió"
-                                                >
-                                                    <UserX size={20} />
-                                                </button>
-                                                <button
-                                                    className="action-btn-new delete"
-                                                    onClick={() => handleUpdateStatus(reservation.id, 'CANCELLED')}
-                                                    title="Cancelar"
-                                                >
-                                                    <XCircle size={20} />
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-
-                            ))}
-                        </div>
-                    )}
-                </>
-            )}
-
-            {/* Table View */}
             {viewMode === 'table' && (
-                sortedReservations.length === 0 ? (
-                    <div className="reservations-empty">
-                        <Calendar size={64} />
-                        <p>No hay reservaciones</p>
-                        <small>{searchQuery ? 'No se encontraron resultados para tu búsqueda' : 'Crea una nueva reservación para comenzar'}</small>
-                    </div>
-                ) : (
-                    <CatalogTable<Reservation>
-                        rows={sortedReservations}
-                        rowKey={(r) => r.id}
-                        resetKey={`${filterStatus}|${searchQuery}`}
-                        columns={[
-                            {
-                                key: 'customer',
-                                header: 'Cliente',
-                                render: (r) => (
-                                    <div className="catalog-cell-stack">
-                                        <span className="cell-title">{r.customerName}</span>
-                                        {r.phone && <span className="cell-sub">{r.phone}</span>}
-                                    </div>
-                                )
-                            },
-                            { key: 'people', header: 'Personas', align: 'center', render: (r) => r.peopleCount },
-                            { key: 'table', header: 'Mesa', align: 'center', render: (r) => r.table?.number || 'Sin asignar' },
-                            { key: 'date', header: 'Fecha y hora', render: (r) => `${formatDate(r.date)} • ${formatTime(r.date)}` },
-                            { key: 'email', header: 'Email', render: (r) => r.email || '-' },
-                            {
-                                key: 'status',
-                                header: 'Estado',
-                                render: (r) => {
-                                    const tone = r.status === 'CONFIRMED' ? 'ok'
-                                        : r.status === 'PENDING' ? 'warning'
-                                        : r.status === 'COMPLETED' ? 'neutral'
-                                        : 'danger';
-                                    return <span className={`catalog-pill ${tone}`}>{getStatusText(r.status)}</span>;
-                                }
-                            },
-                            {
-                                key: 'actions',
-                                header: 'Acciones',
-                                align: 'right',
-                                render: (r) => (
-                                    <div className="catalog-table-actions">
-                                        {canManageReservations && r.status === 'PENDING' && (
-                                            <>
-                                                <button className="catalog-action-btn" onClick={() => handleUpdateStatus(r.id, 'CONFIRMED')} title="Confirmar">
-                                                    <CheckCircle size={16} />
-                                                </button>
-                                                <button className="catalog-action-btn danger" onClick={() => handleUpdateStatus(r.id, 'CANCELLED')} title="Cancelar">
-                                                    <XCircle size={16} />
-                                                </button>
-                                            </>
-                                        )}
-                                        {canManageReservations && r.status === 'CONFIRMED' && (
-                                            <>
-                                                <button className="catalog-action-btn" onClick={() => handleUpdateStatus(r.id, 'COMPLETED')} title="Completar">
-                                                    <Users size={16} />
-                                                </button>
-                                                <button className="catalog-action-btn danger" onClick={() => handleUpdateStatus(r.id, 'NO_SHOW')} title="No asistió">
-                                                    <UserX size={16} />
-                                                </button>
-                                                <button className="catalog-action-btn danger" onClick={() => handleUpdateStatus(r.id, 'CANCELLED')} title="Cancelar">
-                                                    <XCircle size={16} />
-                                                </button>
-                                            </>
-                                        )}
-                                        {canManageReservations && (r.status === 'PENDING' || r.status === 'CONFIRMED') && (
-                                            <button className="catalog-action-btn" onClick={() => handleOpenSidebar(r)} title="Editar">
-                                                <Edit2 size={16} />
-                                            </button>
-                                        )}
-                                    </div>
-                                )
-                            }
-                        ] as CatalogColumn<Reservation>[]}
-                    />
-                )
+                <DataTable
+                    ariaLabel="Reservaciones"
+                    columns={columns}
+                    rows={sortedReservations}
+                    rowKey={(r) => r.id}
+                    resetKey={`${filterStatus}|${searchQuery}`}
+                    empty={(
+                        <EmptyState
+                            icon={Calendar}
+                            title="No hay reservaciones"
+                            description={searchQuery ? 'No se encontraron resultados para tu búsqueda' : 'Crea una nueva reservación para comenzar'}
+                        />
+                    )}
+                />
             )}
 
-            {/* Sidebar Form */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
-                title={editingReservation ? 'Editar Reservación' : 'Nueva Reservación'}
-            >
-                <div className="premium-modal-content reservation-modal-content">
-                    {/* Tabs Navigation */}
-                    <div className="modal-tabs" role="tablist">
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'cliente'}
-                            className={`modal-tab ${activeTab === 'cliente' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('cliente')}
-                        >
-                            <Users size={18} />
-                            <span>Cliente</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'reserva'}
-                            className={`modal-tab ${activeTab === 'reserva' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('reserva')}
-                        >
-                            <Calendar size={18} />
-                            <span>Reserva</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'notas'}
-                            className={`modal-tab ${activeTab === 'notas' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('notas')}
-                        >
-                            <MessageSquare size={18} />
-                            <span>Notas</span>
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            {activeTab === 'cliente' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Users size={18} />
-                                        <h3>Información del Cliente</h3>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="reservation-customer-name">Nombre del Cliente</label>
-                                        <input
-                                            id="reservation-customer-name"
-                                            type="text"
-                                            className="modal-standard-input"
-                                            value={formData.customerName}
-                                            onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                                            required
-                                            placeholder="Nombre completo"
-                                        />
-                                    </div>
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="reservation-phone">Teléfono</label>
-                                            <input
-                                                id="reservation-phone"
-                                                type="tel"
-                                                className="modal-standard-input"
-                                                value={formData.customerPhone}
-                                                onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                                                required
-                                                placeholder="Ej: +505 8888 8888"
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="reservation-email">Email (opcional)</label>
-                                            <input
-                                                id="reservation-email"
-                                                type="email"
-                                                className="modal-standard-input"
-                                                value={formData.customerEmail}
-                                                onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
-                                                placeholder="cliente@email.com"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'reserva' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Calendar size={18} />
-                                        <h3>Detalles de la Reserva</h3>
-                                    </div>
-
-                                    <Select
-                                        variant="modal"
-                                        label="Sucursal"
-                                        options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))}
-                                        value={branches
-                                            .map((branch) => ({ value: String(branch.id), label: branch.name }))
-                                            .find((option) => option.value === formData.branchId) || null}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                            setFormData({ ...formData, branchId: option?.value || '' })}
-                                        isDisabled={Boolean(editingReservation) || (Boolean(user?.branchId) && !canChooseReservationBranch)}
-                                        isSearchable
-                                    />
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="reservation-date">Fecha</label>
-                                            <input
-                                                id="reservation-date"
-                                                type="date"
-                                                className="modal-standard-input"
-                                                value={formData.date}
-                                                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                                                required
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="reservation-time">Hora</label>
-                                            <input
-                                                id="reservation-time"
-                                                type="time"
-                                                className="modal-standard-input"
-                                                value={formData.time}
-                                                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="reservation-guests">Número de Personas</label>
-                                            <input
-                                                id="reservation-guests"
-                                                type="number"
-                                                className="modal-standard-input"
-                                                min="1"
-                                                value={formData.guests}
-                                                onChange={(e) => setFormData({ ...formData, guests: e.target.value })}
-                                                required
-                                            />
-                                        </div>
-                                        {editingReservation && canManageReservations && (
-                                            <Select
-                                                variant="modal"
-                                                label="Estado"
-                                                options={([
-                                                    { value: 'PENDING', label: 'Pendiente' },
-                                                    { value: 'CONFIRMED', label: 'Confirmada' },
-                                                    { value: 'COMPLETED', label: 'Completada' },
-                                                    { value: 'CANCELLED', label: 'Cancelada' },
-                                                    { value: 'NO_SHOW', label: 'No Asistió' }
-                                                ] as { value: Reservation['status']; label: string }[]).map((opt) => ({
-                                                    ...opt,
-                                                    isDisabled: !canTransitionReservation(editingReservation.status, opt.value)
-                                                }))}
-                                                value={{
-                                                    value: editingReservation.status,
-                                                    label: getStatusText(editingReservation.status)
-                                                }}
-                                                onChange={async (option: SingleValue<{ value: Reservation['status']; label: string }>) => {
-                                                    if (!option) return;
-                                                    if (!canManageReservations) return;
-                                                    if (!canTransitionReservation(editingReservation.status, option.value)) return;
-                                                    if (option.value === 'CANCELLED') {
-                                                        if (!(await confirm('¿Cancelar esta reservación?', { variant: 'warning', confirmText: 'Sí, cancelar' }))) {
-                                                            return;
-                                                        }
-                                                    }
-                                                    if (option.value === 'NO_SHOW') {
-                                                        if (!(await confirm('¿Marcar esta reservación como no asistió?', { variant: 'warning', confirmText: 'Sí, no asistió' }))) {
-                                                            return;
-                                                        }
-                                                    }
-                                                    try {
-                                                        if (option.value === 'COMPLETED') {
-                                                            await reservationsAPI.checkIn(editingReservation.id);
-                                                            success('Llegada registrada y orden POS creada');
-                                                        } else {
-                                                            await reservationsAPI.updateStatus(editingReservation.id, option.value);
-                                                        }
-                                                        loadReservations();
-                                                        setIsSidebarOpen(false);
-                                                    } catch (err) {
-                                                        console.error('Error updating status:', err);
-                                                        const apiMsg = typeof err === 'object' && err !== null && 'response' in err
-                                                            ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-                                                            : undefined;
-                                                        showError(apiMsg || 'Error al actualizar el estado');
-                                                    }
-                                                }}
-                                                isSearchable={false}
-                                            />
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'notas' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <MessageSquare size={18} />
-                                        <h3>Notas y Observaciones</h3>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="reservation-notes">Notas Adicionales</label>
-                                        <textarea
-                                            id="reservation-notes"
-                                            className="modal-textarea"
-                                            rows={8}
-                                            value={formData.notes}
-                                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                            placeholder="Alergias, preferencias, ocasión especial (cumpleaños, aniversario)..."
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                                Cancelar
+                title={editingReservation ? 'Editar reservación' : 'Nueva reservación'}
+                dirty={formDirty}
+                tabs={[{ id: 'cliente', label: 'Cliente' }, { id: 'reserva', label: 'Reserva' }, { id: 'notas', label: 'Notas' }]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as 'cliente' | 'reserva' | 'notas')}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="secondary" onClick={requestClose}>Cancelar</Button>
+                        {canManageReservations && (
+                            <Button type="submit" form="reservation-form" variant="primary" loading={saving}>
+                                {saving ? 'Guardando...' : editingReservation ? 'Actualizar reservación' : 'Crear reservación'}
                             </Button>
-                            {canManageReservations && (
-                                <Button type="submit" variant="primary" disabled={saving}>
-                                    {saving ? 'Guardando...' : editingReservation ? 'Actualizar Reservación' : 'Crear Reservación'}
-                                </Button>
-                            )}
-                        </div>
-                    </form>
-                </div>
-            </Sidebar>
+                        )}
+                    </>
+                )}
+            >
+                <form id="reservation-form" onSubmit={handleSubmit} noValidate>
+                    {activeTab === 'cliente' && (
+                        <FormSection title="Información del cliente">
+                            <FormGrid>
+                                <Field label="Nombre del cliente" htmlFor="reservation-customer-name" required>
+                                    <Input
+                                        id="reservation-customer-name"
+                                        value={formData.customerName}
+                                        onChange={(e) => setField({ customerName: e.target.value })}
+                                        required
+                                        placeholder="Nombre completo"
+                                    />
+                                </Field>
+                                <Field label="Teléfono" htmlFor="reservation-phone" required>
+                                    <Input
+                                        id="reservation-phone"
+                                        type="tel"
+                                        value={formData.customerPhone}
+                                        onChange={(e) => setField({ customerPhone: e.target.value })}
+                                        required
+                                        placeholder="Ej: +505 8888 8888"
+                                    />
+                                </Field>
+                                <Field label="Email (opcional)" htmlFor="reservation-email">
+                                    <Input
+                                        id="reservation-email"
+                                        type="email"
+                                        value={formData.customerEmail}
+                                        onChange={(e) => setField({ customerEmail: e.target.value })}
+                                        placeholder="cliente@email.com"
+                                    />
+                                </Field>
+                            </FormGrid>
+                        </FormSection>
+                    )}
 
-        </div>
+                    {activeTab === 'reserva' && (
+                        <FormSection title="Detalles de la reserva">
+                            <FormGrid>
+                                <Field label="Sucursal" htmlFor="reservation-branch" required>
+                                    <AppSelect<number>
+                                        inputId="reservation-branch"
+                                        options={branchOptions}
+                                        value={formData.branchId ? Number(formData.branchId) : null}
+                                        onChange={(value) => setField({ branchId: value ? String(value) : '' })}
+                                        isDisabled={Boolean(editingReservation) || (Boolean(user?.branchId) && !canChooseReservationBranch)}
+                                        isClearable={false}
+                                    />
+                                </Field>
+                                <Field label="Fecha" htmlFor="reservation-date" required>
+                                    <DateInput
+                                        id="reservation-date"
+                                        value={formData.date}
+                                        onChange={(e) => setField({ date: e.target.value })}
+                                        required
+                                    />
+                                </Field>
+                                <Field label="Hora" htmlFor="reservation-time" required>
+                                    <Input
+                                        id="reservation-time"
+                                        type="time"
+                                        value={formData.time}
+                                        onChange={(e) => setField({ time: e.target.value })}
+                                        required
+                                    />
+                                </Field>
+                                <Field label="Número de personas" htmlFor="reservation-guests" required>
+                                    <NumberInput
+                                        id="reservation-guests"
+                                        decimals={0}
+                                        min={1}
+                                        value={formData.guests === '' ? null : Number(formData.guests)}
+                                        onChange={(value) => setField({ guests: value === null ? '' : String(value) })}
+                                    />
+                                </Field>
+                                {editingReservation && canManageReservations && (
+                                    <Field label="Estado" htmlFor="reservation-status">
+                                        <AppSelect<Reservation['status']>
+                                            inputId="reservation-status"
+                                            options={reservationStatusOptions}
+                                            value={editingReservation.status}
+                                            isClearable={false}
+                                            onChange={(value) => { if (value) void handleStatusFromForm(value); }}
+                                        />
+                                    </Field>
+                                )}
+                            </FormGrid>
+                        </FormSection>
+                    )}
+
+                    {activeTab === 'notas' && (
+                        <FormSection title="Notas y observaciones">
+                            <Field label="Notas adicionales" htmlFor="reservation-notes">
+                                <Textarea
+                                    id="reservation-notes"
+                                    rows={8}
+                                    value={formData.notes}
+                                    onChange={(e) => setField({ notes: e.target.value })}
+                                    placeholder="Alergias, preferencias, ocasión especial (cumpleaños, aniversario)..."
+                                />
+                            </Field>
+                        </FormSection>
+                    )}
+                </form>
+            </FullScreenModal>
+        </PageContent>
     );
 }

@@ -48,9 +48,9 @@
 .table-map-action-divider { width: 1px; height: 30px; background: var(--color-border); margin: 0 2px; }
 .table-map-status-filter,
 .table-map-area-selector {
-    min-width: 174px;
-    width: 190px;
-    flex: 0 0 190px;
+    min-width: 0;
+    flex: 1 1 11rem;
+    max-width: 15rem;
     display: grid;
     gap: 2px;
     color: var(--color-text-secondary);
@@ -58,15 +58,7 @@
     font-weight: 750;
     letter-spacing: .04em;
 }
-.table-map-status-filter .react-select__control,
-.table-map-area-selector .react-select__control { min-height: 40px; background: var(--color-background); }
-.table-map-status-filter .react-select__value-container,
-.table-map-area-selector .react-select__value-container { padding: 0 8px; }
-.table-map-status-filter .react-select__single-value,
-.table-map-area-selector .react-select__single-value { font-size: var(--font-size-sm); font-weight: 650; }
-.table-map-branch-control { width: 178px; min-width: 150px; flex: 0 0 178px; }
-.table-map-branch-control .select-group.standard .react-select__control { min-height: 40px; background: var(--color-background); }
-.table-map-branch-control .react-select__value-container { padding: 0 8px; }
+.table-map-branch-control { min-width: 0; flex: 1 1 10rem; max-width: 14rem; }
 
 .table-map-workspace { min-height: 0; flex: 1; display: flex; position: relative; }
 .table-map-viewport {
@@ -223,8 +215,7 @@
     background: var(--color-background);
     color: var(--color-text);
 }
-.table-map-inspector .select-group .react-select__control { min-height: 42px; background: var(--color-background); }
-.table-map-inspector .select-group .react-select__value-container { padding: 0 10px; }
+.table-map-inspector .inspector-field { display: grid; gap: 6px; min-width: 0; color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 700; }
 .table-map-inspector input[type='color'] { width: 100%; height: 42px; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); }
 .table-map-inspector input[type='range'] { width: 100%; accent-color: var(--color-primary); }
 .table-map-inspector output { color: var(--color-text); font-weight: 800; }
@@ -277,3 +268,6 @@
     .table-map-actions output { order: -1; }
     .table-map-inspector { max-height: 44vh; }
 }
+
+.table-map-insights { flex: 0 0 auto; max-height: 45dvh; overflow-y: auto; padding: 10px 12px 0; border-bottom: 1px solid var(--color-border); background: var(--color-background); }
+.table-map-insights .salon-cards { margin-bottom: 10px; }

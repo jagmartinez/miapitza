@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import Modal from './Modal';
-import Button from './Button';
-import Select from './Select';
+import { AppSelect, Button, Field, FullScreenModal, Textarea } from '@/ui';
 import { ordersAPI } from '../services/api';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import type { Order, Table } from '../types';
-import type { SingleValue } from 'react-select';
 import { Search } from 'lucide-react';
 import './TableOperationModal.css';
 
@@ -148,18 +145,18 @@ export default function TableOperationModal({
         : Boolean(destinationTableId && sourceTableIds.length > 0 && !sourceTableIds.includes(Number(destinationTableId)));
 
     return (
-        <Modal
+        <FullScreenModal
             isOpen={isOpen}
             onClose={submitting ? () => undefined : onClose}
             title={operation === 'TRANSFER' ? 'Cambiar consumo de mesa' : 'Consolidar cuentas de mesas'}
-            size={operation === 'CONSOLIDATE' ? 'lg' : 'md'}
-            description={operation === 'TRANSFER'
+            subtitle={operation === 'TRANSFER'
                 ? 'El traslado completo conserva productos, notas, modificadores y estado de cocina.'
                 : 'Las órdenes origen se absorben en una cuenta principal y las mesas secundarias se liberan atómicamente.'}
-            footer={(
+            dirty={Boolean(sourceTableId || destinationTableId || sourceTableIds.length || reason.trim()) && !submitting}
+            footer={({ requestClose }) => (
                 <>
-                    <Button type="button" variant="ghost" disabled={submitting} onClick={onClose}>Cancelar</Button>
-                    <Button type="button" disabled={!valid || submitting} onClick={submit}>
+                    <Button variant="secondary" disabled={submitting} onClick={requestClose}>Cancelar</Button>
+                    <Button variant="primary" disabled={!valid || submitting} loading={submitting} onClick={submit}>
                         {submitting ? 'Procesando…' : operation === 'TRANSFER' ? 'Cambiar mesa' : 'Consolidar cuentas'}
                     </Button>
                 </>
@@ -171,50 +168,49 @@ export default function TableOperationModal({
                     <div><strong>{operation === 'TRANSFER' ? 'Define el traslado' : 'Elige la cuenta principal'}</strong><small>{operation === 'TRANSFER' ? 'Selecciona origen, destino y alcance.' : 'Después marca las mesas que se unirán.'}</small></div>
                 </div>
                 {operation === 'TRANSFER' && (
-                    <Select<OperationOption>
-                        variant="modal"
-                        label="Mesa origen"
-                        placeholder="Selecciona una mesa ocupada"
-                        options={sourceOptions}
-                        value={sourceOptions.find((option) => option.value === sourceTableId) || null}
-                        onChange={(option: SingleValue<OperationOption>) => {
-                            const nextId = option?.value || '';
-                            setSourceTableId(nextId);
-                            if (nextId === destinationTableId) setDestinationTableId('');
-                        }}
-                        isSearchable={sourceOptions.length > 6}
-                    />
+                    <Field label="Mesa origen" htmlFor="operation-source">
+                        <AppSelect<string>
+                            inputId="operation-source"
+                            placeholder="Selecciona una mesa ocupada"
+                            options={sourceOptions}
+                            value={sourceTableId || null}
+                            onChange={(value) => {
+                                const nextId = value || '';
+                                setSourceTableId(nextId);
+                                if (nextId === destinationTableId) setDestinationTableId('');
+                            }}
+                        />
+                    </Field>
                 )}
 
-                <Select<OperationOption>
-                    variant="modal"
-                    label={operation === 'TRANSFER' ? 'Mesa destino' : 'Cuenta principal / mesa destino'}
-                    placeholder={operation === 'TRANSFER' ? 'Selecciona la mesa destino' : 'Selecciona dónde quedará la cuenta'}
-                    options={destinationOptions}
-                    value={destinationOptions.find((option) => option.value === destinationTableId) || null}
-                    onChange={(option: SingleValue<OperationOption>) => {
-                        const nextId = option?.value || '';
-                        setDestinationTableId(nextId);
-                        setSourceTableIds((current) => current.filter((id) => id !== Number(nextId)));
-                    }}
-                    isSearchable={destinationOptions.length > 6}
-                />
+                <Field label={operation === 'TRANSFER' ? 'Mesa destino' : 'Cuenta principal / mesa destino'} htmlFor="operation-destination">
+                    <AppSelect<string>
+                        inputId="operation-destination"
+                        placeholder={operation === 'TRANSFER' ? 'Selecciona la mesa destino' : 'Selecciona dónde quedará la cuenta'}
+                        options={destinationOptions}
+                        value={destinationTableId || null}
+                        onChange={(value) => {
+                            const nextId = value || '';
+                            setDestinationTableId(nextId);
+                            setSourceTableIds((current) => current.filter((id) => id !== Number(nextId)));
+                        }}
+                    />
+                </Field>
 
                 {operation === 'TRANSFER' && (
-                    <div>
-                        <Select<OperationOption>
-                            variant="modal"
-                            label="Orden a trasladar"
+                    <Field label="Orden a trasladar" htmlFor="operation-order" error={ordersError || undefined}>
+                        <AppSelect<string>
+                            inputId="operation-order"
                             placeholder={loadingOrders ? 'Cargando órdenes…' : 'Selecciona una orden'}
                             options={orderOptions}
-                            value={orderOptions.find((option) => option.value === orderId) || null}
+                            value={orderId || null}
                             isDisabled={!sourceTableId || loadingOrders}
-                            onChange={(option: SingleValue<OperationOption>) => {
-                            setOrderId(option?.value || '');
-                            setTransferQuantities({});
-                        }} isSearchable={orderOptions.length > 6} />
-                        {ordersError && <span className="table-operation-error" role="alert">{ordersError}</span>}
-                    </div>
+                            onChange={(value) => {
+                                setOrderId(value || '');
+                                setTransferQuantities({});
+                            }}
+                        />
+                    </Field>
                 )}
 
                 {operation === 'TRANSFER' && selectedOrder && (
@@ -294,11 +290,10 @@ export default function TableOperationModal({
                     </fieldset>
                 )}
 
-                <label>
-                    Motivo (opcional)
-                    <textarea value={reason} maxLength={500} rows={3} onChange={(event) => setReason(event.target.value)} placeholder="Ej.: clientes se movieron a la terraza" />
-                </label>
+                <Field label="Motivo (opcional)" htmlFor="operation-reason">
+                    <Textarea id="operation-reason" value={reason} maxLength={500} rows={3} onChange={(event) => setReason(event.target.value)} placeholder="Ej.: clientes se movieron a la terraza" />
+                </Field>
             </div>
-        </Modal>
+        </FullScreenModal>
     );
 }
