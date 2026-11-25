@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Select, { type GroupBase, type StylesConfig } from 'react-select';
 import AsyncSelect from 'react-select/async';
 import CreatableSelect from 'react-select/creatable';
@@ -81,6 +81,17 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
     [size, invalid],
   );
 
+  // Dentro de un diálogo el menú se monta en el propio diálogo: respeta la trampa de foco y el límite
+  // de aria-modal, y el diálogo (fijo, sin recorte) deja que el menú salga del cuerpo con scroll.
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return;
+    const dialog = anchorRef.current?.closest<HTMLElement>('[role="dialog"]');
+    setPortalTarget(dialog ?? document.body);
+  }, []);
+  const wrap = (node: ReactNode) => <span ref={anchorRef} className="app-select-anchor">{node}</span>;
+
   // Debounce local para el modo async.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<((o: Opt<V>[]) => void) | null>(null);
@@ -115,7 +126,7 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
     isDisabled,
     isClearable,
     classNamePrefix: 'app-select',
-    menuPortalTarget: typeof document !== 'undefined' ? document.body : null,
+    menuPortalTarget: portalTarget ?? (typeof document !== 'undefined' ? document.body : null),
     menuPosition: 'fixed' as const,
     styles,
     noOptionsMessage: () => noOptionsText,
@@ -126,7 +137,7 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
   if (props.kind === 'multi') {
     const flat = props.options;
     const selected = flat.filter((o) => props.value.includes(o.value));
-    return (
+    return wrap(
       <Select<Opt<V>, true>
         {...shared}
         isMulti
@@ -138,7 +149,7 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
   }
 
   if (props.kind === 'async') {
-    return (
+    return wrap(
       <AsyncSelect<Opt<V>>
         {...shared}
         cacheOptions
@@ -152,7 +163,7 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
 
   if (props.kind === 'creatable') {
     const selected = props.options.find((o) => o.value === props.value) ?? null;
-    return (
+    return wrap(
       <CreatableSelect<Opt<V>>
         {...shared}
         options={props.options}
@@ -165,7 +176,7 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
   }
 
   const selected = flatten(props.options).find((o) => o.value === props.value) ?? null;
-  return (
+  return wrap(
     <Select<Opt<V>>
       {...shared}
       options={props.options}

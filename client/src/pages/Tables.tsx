@@ -103,15 +103,18 @@ export default function Tables() {
     const mapBranchId = branchFilter ?? (loadedBranchIds.length === 1 ? loadedBranchIds[0] : undefined);
 
     const loadTables = useCallback(async () => {
+        setLoading(true);
         try {
             const response = await tablesAPI.getAll(branchFilter ?? undefined);
             setTables(response.data.data);
         } catch (error) {
             console.error('Error loading tables:', error);
+            setTables([]);
+            showError(extractApiError(error, 'No se pudieron cargar las mesas. No se mostrará un salón vacío como si fuera real.'));
         } finally {
             setLoading(false);
         }
-    }, [branchFilter]);
+    }, [branchFilter, showError]);
 
     useEffect(() => {
         loadTables();
@@ -139,8 +142,12 @@ export default function Tables() {
         if (!canChooseBranch) return;
         branchesAPI.getAll()
             .then((res) => setBranches(res.data.data || []))
-            .catch((error) => console.error('Error loading branches:', error));
-    }, [canChooseBranch]);
+            .catch((error) => {
+                console.error('Error loading branches:', error);
+                setBranches([]);
+                showError(extractApiError(error, 'No se pudieron cargar las sucursales para filtrar las mesas.'));
+            });
+    }, [canChooseBranch, showError]);
 
     useEffect(() => {
         if (!showMap || !canChooseBranch || branchFilter || branches.length === 0) return;
@@ -285,7 +292,7 @@ export default function Tables() {
         }
         setBusyOrderId(order.id);
         try {
-            const response = await invoicesAPI.getData(order.id);
+            const response = await invoicesAPI.issue(order.id);
             const invoiceNumber = response.data?.data?.invoiceNumber as string | undefined;
             const refreshed = await ordersAPI.getById(order.id);
             const nextOrder = refreshed.data.data as Order;
@@ -744,26 +751,32 @@ export default function Tables() {
                 <div className="premium-modal-content table-modal-content">
                     {/* Tabs Navigation */}
                     <div className="modal-tabs">
-                        <div
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'general'}
                             className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
                             onClick={() => setActiveTab('general')}
                         >
                             <Grid3x3 size={18} />
                             <span>General</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'ubicacion'}
                             className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
                             onClick={() => setActiveTab('ubicacion')}
                         >
                             <MapPin size={18} />
                             <span>Ubicación</span>
-                        </div>
+                        </button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
                             {activeTab === 'general' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Users size={18} />
                                         <h3>Información de la Mesa</h3>
@@ -829,7 +842,7 @@ export default function Tables() {
                             )}
 
                             {activeTab === 'ubicacion' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <MapPin size={18} />
                                         <h3>Localización y Estado</h3>

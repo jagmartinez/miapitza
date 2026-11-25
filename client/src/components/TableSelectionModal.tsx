@@ -1,8 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
-import { X, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import type { Table } from '../types';
-import { useDialogA11y } from '../hooks/useDialogA11y';
-import './Modal.css';
+import Modal from './Modal';
 import './TableSelectionModal.css';
 
 interface TableSelectionModalProps {
@@ -20,8 +19,6 @@ function matchesTableSearch(table: Table, query: string): boolean {
 }
 
 export default function TableSelectionModal({ tables, onSelectTable, onClose }: TableSelectionModalProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const { titleId } = useDialogA11y(true, onClose, containerRef);
     const [searchQuery, setSearchQuery] = useState('');
 
     const filteredTables = useMemo(
@@ -33,23 +30,8 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
     const occupiedTables = filteredTables.filter(t => t.status === 'OCCUPIED');
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div
-                ref={containerRef}
-                className="table-selection-modal-content"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
-                tabIndex={-1}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="table-selection-modal-header">
-                    <h2 id={titleId}>Seleccionar Mesa</h2>
-                    <button type="button" className="close-btn" onClick={onClose} aria-label="Cerrar">
-                        <X size={24} aria-hidden="true" />
-                    </button>
-                </div>
-
+        <Modal isOpen onClose={onClose} title="Seleccionar Mesa" size="lg">
+            <div className="table-selection-modal-content">
                 <div className="table-selection-modal-toolbar">
                     <div className="table-selection-search">
                         <Search size={18} className="table-selection-search-icon" aria-hidden="true" />
@@ -117,6 +99,6 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
                     )}
                 </div>
             </div>
-        </div>
+        </Modal>
     );
 }

@@ -1,10 +1,17 @@
+import HrReactSelect from './HrReactSelect';
+import HrMoneyInput from './HrMoneyInput';
+import HrModalFormShell from './HrModalFormShell';
+import PayrollOnlineNotice from './PayrollOnlineNotice';
 import { useState } from 'react';
+import { CircleDollarSign } from 'lucide-react';
 import Button from '../Button';
 import type { HrUserSummary } from '../../types/hr';
-import type { HrPayrollComponentPayload, HrPayrollComponentType } from '../../types/hr-payroll';
+import type { HrPayrollComponentPayload, HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
 
 interface PayrollComponentFormProps {
   users: HrUserSummary[];
+  concepts: HrPayrollPaymentConceptDefinition[];
+  incomeTaxApplicability: 'APPLIES' | 'DOES_NOT_APPLY' | null;
   online: boolean;
   saving: boolean;
   onSubmit: (payload: HrPayrollComponentPayload) => Promise<void>;
@@ -13,6 +20,8 @@ interface PayrollComponentFormProps {
 
 export default function PayrollComponentForm({
   users,
+  concepts,
+  incomeTaxApplicability,
   online,
   saving,
   onSubmit,
@@ -20,73 +29,96 @@ export default function PayrollComponentForm({
 }: PayrollComponentFormProps) {
   const [userId, setUserId] = useState('');
   const [code, setCode] = useState('');
-  const [type, setType] = useState<HrPayrollComponentType>('INCOME');
   const [inputAmount, setInputAmount] = useState('');
+  const [classificationConfirmed, setClassificationConfirmed] = useState(false);
   const [reason, setReason] = useState('');
   const [reference, setReference] = useState('');
 
+  const selectedConcept = concepts.find((concept) => concept.code === code) ?? null;
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!classificationConfirmed || !selectedConcept) return;
     await onSubmit({
       userId: Number(userId),
-      code: code.trim().toUpperCase(),
-      type,
+      code: selectedConcept.code,
+      type: selectedConcept.type,
       inputAmount,
+      taxable: selectedConcept.type === 'INCOME' && selectedConcept.incomeTaxTreatment !== null,
+      incomeTaxTreatment: selectedConcept.incomeTaxTreatment ?? undefined,
+      incomeTaxDeductible: selectedConcept.incomeTaxDeductible,
+      socialSecurityApplicable: selectedConcept.socialSecurityApplicable,
+      trainingContributionApplicable: selectedConcept.trainingContributionApplicable,
+      classificationConfirmed: true,
       reason: reason.trim(),
-      reference: reference.trim() || undefined,
+      reference: reference.trim() || selectedConcept.sourceReference,
     });
   };
 
   return (
-    <form className="hr-payroll-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Agregar concepto a la corrida"
+      tabLabel="Concepto"
+      sectionTitle="Colaborador, importe y clasificación legal"
+      icon={<CircleDollarSign size={18} aria-hidden="true" />}
+      formClassName="hr-payroll-form"
+      notice={<PayrollOnlineNotice online={online} compact />}
+      onSubmit={(event) => void submit(event)}
+      footer={<>
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button
+          type="submit"
+          disabled={!online || saving || !userId || !selectedConcept || !inputAmount || !reason.trim() || !classificationConfirmed}
+        >
+          {saving ? 'Agregando…' : 'Agregar componente'}
+        </Button>
+      </>}
+    >
       <label>
         Persona
-        <select value={userId} onChange={(event) => setUserId(event.target.value)} required>
+        <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
           <option value="">Seleccionar…</option>
           {users.map((user) => (
             <option key={user.id} value={user.id}>
               {user.name} · @{user.username}
             </option>
           ))}
-        </select>
+        </HrReactSelect>
       </label>
       <label>
-        Tipo
-        <select
-          value={type}
-          onChange={(event) => setType(event.target.value as HrPayrollComponentType)}
-        >
-          <option value="INCOME">Ingreso</option>
-          <option value="DEDUCTION">Deducción</option>
-        </select>
-      </label>
-      <label>
-        Código configurado
-        <input
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-          maxLength={50}
-          required
-        />
+        Concepto configurado
+        <HrReactSelect value={code} onChange={(event) => { setCode(event.target.value); setClassificationConfirmed(false); }} required>
+          <option value="">Seleccionar…</option>
+          {concepts.map((concept) => <option key={concept.code} value={concept.code}>{concept.name} · {concept.code}</option>)}
+        </HrReactSelect>
       </label>
       <label>
         Importe de entrada
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          inputMode="decimal"
+        <HrMoneyInput
           value={inputAmount}
-          onChange={(event) => setInputAmount(event.target.value)}
+          onValueChange={setInputAmount}
           required
         />
       </label>
+      {selectedConcept && <fieldset className="span-full hr-payroll-component-classification">
+        <legend>Tratamiento congelado del catálogo</legend>
+        <span>Tipo: {selectedConcept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</span>
+        <span>INSS laboral: {selectedConcept.socialSecurityApplicable ? 'Aplica' : 'No aplica'}</span>
+        <span>INATEC: {selectedConcept.trainingContributionApplicable ? 'Aplica' : 'No aplica'}</span>
+        <span>IR laboral: {selectedConcept.incomeTaxTreatment ?? (selectedConcept.incomeTaxDeductible ? 'Deducción autorizada' : 'No aplica')}</span>
+        <span>IR por régimen empresarial: {incomeTaxApplicability === 'APPLIES' ? 'Se calcula' : incomeTaxApplicability === 'DOES_NOT_APPLY' ? 'No se calcula' : 'Sin configuración disponible'}</span>
+        <small>Fuente configurada: {selectedConcept.sourceReference}</small>
+        <label><input type="checkbox" checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} /> Confirmo que este es el concepto correcto; las banderas no pueden modificarse en la corrida.</label>
+      </fieldset>}
       <label>
-        Referencia
+        Referencia de soporte
         <input
           value={reference}
           onChange={(event) => setReference(event.target.value)}
-          maxLength={160}
+          maxLength={500}
+          placeholder={selectedConcept?.sourceReference}
         />
       </label>
       <label className="span-full">
@@ -100,20 +132,9 @@ export default function PayrollComponentForm({
         />
       </label>
       <p className="hr-payroll-help span-full">
-        El importe es una entrada manual auditable. El servidor valida el código y vuelve a calcular
-        totales; la UI no envía bruto, deducciones totales ni neto.
+        El importe es una entrada manual auditable. El servidor recalcula INSS, INATEC, IR y totales
+        desde el catálogo congelado; la UI no permite alterar las banderas INSS o IR dentro de la corrida.
       </p>
-      <div className="hr-payroll-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button
-          type="submit"
-          disabled={!online || saving || !userId || !code.trim() || !inputAmount || !reason.trim()}
-        >
-          {saving ? 'Agregando…' : 'Agregar componente'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

@@ -53,10 +53,6 @@ export default function ImageViewer({ images, initialIndex = 0, isOpen, onClose 
 
     return createPortal(
         <div className="image-viewer-overlay" onClick={onClose}>
-            <button type="button" className="viewer-close-btn" onClick={onClose} aria-label="Cerrar visor de imagen">
-                <X size={24} aria-hidden="true" />
-            </button>
-
             <div
                 ref={containerRef}
                 className="viewer-content"
@@ -66,9 +62,12 @@ export default function ImageViewer({ images, initialIndex = 0, isOpen, onClose 
                 tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
             >
+                <button type="button" className="viewer-close-btn" onClick={onClose} aria-label="Cerrar visor de imagen">
+                    <X size={24} aria-hidden="true" />
+                </button>
                 <img
                     src={images[currentIndex]}
-                    alt={`View ${currentIndex + 1}`}
+                    alt={`Imagen ${currentIndex + 1} de ${images.length}`}
                     className="viewer-image"
                 />
 

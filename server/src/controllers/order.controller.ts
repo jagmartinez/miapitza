@@ -5,7 +5,6 @@ import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../uti
 import { parseQueryDateFrom, parseQueryDateTo } from '../utils/date-range';
 import { SettingService } from '../services/setting.service';
 import { KitchenNotificationService } from '../services/kitchen-notification.service';
-import prisma from '../utils/prisma';
 
 export class OrderController {
     /** Load an order and assert the caller's branch may access it. */
@@ -426,6 +425,24 @@ export class OrderController {
         }
     }
 
+    static async updateFiscalCustomer(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            await OrderController.assertOrderBranch(req, id);
+            const order = await OrderService.updateFiscalCustomer(
+                id,
+                companyId,
+                req.user!.userId,
+                req.body
+            );
+            res.json({ success: true, message: 'Datos fiscales del cliente actualizados', data: order });
+        } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
     static async getKitchenConfig(req: Request, res: Response, next: NextFunction) {
         try {
             const data = await SettingService.getKdsTimingConfig(req.user!.companyId);
@@ -485,17 +502,7 @@ export class OrderController {
             const id = Number(req.params.id);
             const companyId = req.user!.companyId;
             await OrderController.assertOrderBranch(req, id);
-            const order = await OrderService.updateStatus(id, companyId, 'READY');
-            await prisma.auditLog.create({
-                data: {
-                    companyId,
-                    entityType: 'Order',
-                    entityId: id,
-                    action: 'KITCHEN_READY',
-                    userId: req.user!.userId,
-                    details: { status: 'READY' }
-                }
-            });
+            const order = await OrderService.updateStatus(id, companyId, 'READY', req.user!.userId);
             await KitchenNotificationService.notifyReady({ companyId, orderId: id, complete: true });
             WebSocketService.broadcastOrderReady(id, order.table?.number, { companyId, branchId: order.branchId });
             WebSocketService.broadcastOrderUpdate(id, 'KITCHEN_READY', order, { companyId, branchId: order.branchId });

@@ -6,6 +6,7 @@ export type HrEmploymentStatus =
     | 'TERMINATED';
 
 export type HrAccountType = 'INTERNAL' | 'EXTERNAL';
+export type HrPayFrequency = 'WEEKLY' | 'BIWEEKLY' | 'FORTNIGHTLY' | 'MONTHLY';
 
 export interface HrNamedEntity {
     id: number;
@@ -55,6 +56,48 @@ export interface HrContractSummary {
     status?: string | null;
 }
 
+export interface HrEmploymentContract {
+    id: number;
+    employeeId: number;
+    contractNumber: string;
+    employmentType: string;
+    startDate: string;
+    endDate?: string | null;
+    status: 'DRAFT' | 'ACTIVE' | 'EXPIRED' | 'TERMINATED';
+    signedAt?: string | null;
+    notes?: string | null;
+    jobPosition?: HrNamedEntity | null;
+    costCenter?: HrNamedEntity | null;
+}
+
+export interface HrCompensationRecord {
+    id: number;
+    employeeId: number;
+    contractId?: number | null;
+    compensationType: 'SALARY' | 'HOURLY';
+    payFrequency: HrPayFrequency;
+    amount: string;
+    currency: string;
+    effectiveFrom: string;
+    effectiveTo?: string | null;
+    reason?: string | null;
+    changedBy?: Pick<HrUserSummary, 'id' | 'name' | 'username'> | null;
+}
+
+export interface HrEmployeeDocument {
+    id: number;
+    employeeId: number;
+    documentType: string;
+    fileName: string;
+    contentHash: string;
+    mimeType: string;
+    sizeBytes: number;
+    expiresAt?: string | null;
+    status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+    createdAt: string;
+    uploadedBy?: Pick<HrUserSummary, 'id' | 'name' | 'username'> | null;
+}
+
 export interface HrEmployee {
     id: number;
     companyId?: number;
@@ -92,6 +135,8 @@ export interface HrEmployee {
     primaryBranch?: HrNamedEntity | null;
     branchAssignments?: HrBranchAssignment[];
     currentContract?: HrContractSummary | null;
+    /** Present only when the caller may read sensitive employee compensation. */
+    compensation?: HrCompensationRecord[];
     createdAt?: string;
     updatedAt?: string;
 }
@@ -138,11 +183,18 @@ export interface HrEmployeePayload {
     userId?: number;
     employeeCode: string;
     legalName: string;
+    preferredName?: string | null;
     employmentType?: string | null;
+    documentType?: string | null;
     documentNumber?: string | null;
+    socialSecurityNumber?: string | null;
+    taxId?: string | null;
     workEmail?: string | null;
     workPhone?: string | null;
     address?: string | null;
+    emergencyContactName?: string | null;
+    emergencyContactPhone?: string | null;
+    emergencyContactRelationship?: string | null;
     notes?: string | null;
     hireDate: string;
     departmentId?: number | null;
@@ -150,6 +202,14 @@ export interface HrEmployeePayload {
     costCenterId?: number | null;
     branchIds?: number[];
     primaryBranchId?: number | null;
+    /** Required only for creation; compensation changes remain append-only afterwards. */
+    initialCompensation?: {
+        compensationType: 'SALARY' | 'HOURLY';
+        payFrequency: HrPayFrequency;
+        amount: string;
+        currency: string;
+        reason: string;
+    };
 }
 
 export interface HrDashboardData {
@@ -171,6 +231,19 @@ export interface HrDashboardData {
         total: number;
         geofenceConfigured: number;
         attendanceEnabled: number;
+    };
+    attention: {
+        leaveRequests: number;
+        overtimeRequests: number;
+        attendanceCorrections: number;
+        attendanceIncidents: number;
+        loanRequests: number;
+    };
+    payroll: {
+        activeRule: boolean;
+        draftRuns: number;
+        reviewRuns: number;
+        approvedRuns: number;
     };
 }
 

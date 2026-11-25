@@ -27,7 +27,7 @@ export class MenuBrandController {
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const brand = await MenuBrandService.create(companyId, req.body);
+            const brand = await MenuBrandService.create(companyId, req.body, req.user!.userId);
             res.status(201).json({
                 success: true,
                 message: 'Marca creada exitosamente',
@@ -42,7 +42,7 @@ export class MenuBrandController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            const brand = await MenuBrandService.update(id, companyId, req.body);
+            const brand = await MenuBrandService.update(id, companyId, req.body, req.user!.userId);
             res.json({
                 success: true,
                 message: 'Marca actualizada exitosamente',
@@ -57,7 +57,7 @@ export class MenuBrandController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            await MenuBrandService.delete(id, companyId);
+            await MenuBrandService.delete(id, companyId, req.user!.userId);
             res.json({
                 success: true,
                 message: 'Marca eliminada exitosamente'

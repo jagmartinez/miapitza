@@ -7,11 +7,12 @@ interface PageHeaderProps {
     icon?: LucideIcon;
     actions?: ReactNode;
     backButton?: ReactNode;
+    className?: string;
 }
 
-export default function PageHeader({ title, subtitle, icon: Icon, actions, backButton }: PageHeaderProps) {
+export default function PageHeader({ title, subtitle, icon: Icon, actions, backButton, className = '' }: PageHeaderProps) {
     return (
-        <header className="page-header-bar">
+        <header className={`page-header-bar ${className}`.trim()}>
             <div className="header-title-section">
                 {backButton}
                 <h1>

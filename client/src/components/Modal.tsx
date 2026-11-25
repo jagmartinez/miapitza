@@ -52,21 +52,25 @@ export default function Modal({
 
     return createPortal(
         <div
+            ref={containerRef}
             className="modal-overlay"
-            onClick={closeOnBackdrop ? onClose : undefined}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            aria-describedby={description ? descriptionId : undefined}
+            tabIndex={-1}
+            onClick={closeOnBackdrop ? (event) => {
+                if (event.target === event.currentTarget) onClose();
+            } : undefined}
         >
             <div
-                ref={containerRef}
                 className={containerClass}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
-                aria-describedby={description ? descriptionId : undefined}
-                tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="modal-header">
-                    <h2 id={titleId}>{title}</h2>
+                    <div className="modal-heading">
+                        <h2 id={titleId}>{title}</h2>
+                    </div>
                     <button type="button" className="modal-close" onClick={onClose} aria-label={`Cerrar ${title}`}>
                         <X size={24} aria-hidden="true" />
                     </button>

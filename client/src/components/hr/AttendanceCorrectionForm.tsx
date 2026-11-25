@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import HrReactSelect from './HrReactSelect';
+import { useState, type ReactNode } from 'react';
+import { Pencil } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrAttendanceCorrectionPayload, HrCorrectionType } from '../../types/hr-workforce';
 import type { HrAttendanceAction } from '../../types/hr-attendance';
@@ -23,6 +26,7 @@ interface AttendanceCorrectionFormProps {
   saving: boolean;
   onSubmit: (payload: HrAttendanceCorrectionPayload) => Promise<void>;
   onCancel?: () => void;
+  notice?: ReactNode;
 }
 
 export default function AttendanceCorrectionForm({
@@ -36,6 +40,7 @@ export default function AttendanceCorrectionForm({
   saving,
   onSubmit,
   onCancel,
+  notice,
 }: AttendanceCorrectionFormProps) {
   const [userId, setUserId] = useState(initialUserId ? String(initialUserId) : '');
   const [type, setType] = useState<HrCorrectionType>('ADD_PUNCH');
@@ -62,23 +67,37 @@ export default function AttendanceCorrectionForm({
   };
 
   return (
-    <form className="hr-workforce-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de corrección de asistencia"
+      tabLabel="Corrección"
+      sectionTitle="Marcaje, cambio solicitado y evidencia"
+      icon={<Pencil size={18} aria-hidden="true" />}
+      formClassName="hr-workforce-form"
+      notice={notice}
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>}
+          <Button type="submit" disabled={!online || saving || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar corrección'}</Button>
+        </>
+      }
+    >
       {users && (
         <label>
           Usuario
-          <select value={userId} onChange={(event) => setUserId(event.target.value)} required>
+          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
             <option value="">Seleccionar…</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name} · @{user.username}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>
         Tipo de corrección
-        <select value={type} onChange={(event) => setType(event.target.value as HrCorrectionType)}>
+        <HrReactSelect value={type} onChange={(event) => setType(event.target.value as HrCorrectionType)}>
           {TYPE_OPTIONS.filter(
             (option) => option.value !== 'ASSIGN_BRANCH' || branches !== undefined
           ).map((option) => (
@@ -86,12 +105,12 @@ export default function AttendanceCorrectionForm({
               {option.label}
             </option>
           ))}
-        </select>
+        </HrReactSelect>
       </label>
       {type === 'ADD_PUNCH' && (
         <label>
           Acción del marcaje
-          <select
+          <HrReactSelect
             value={requestedAction}
             onChange={(event) => setRequestedAction(event.target.value as HrAttendanceAction)}
           >
@@ -99,7 +118,7 @@ export default function AttendanceCorrectionForm({
             <option value="BREAK_START">Inicio de descanso</option>
             <option value="BREAK_END">Fin de descanso</option>
             <option value="CHECK_OUT">Salida</option>
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>
@@ -128,7 +147,7 @@ export default function AttendanceCorrectionForm({
       {type === 'ASSIGN_BRANCH' && (
         <label>
           Sucursal solicitada
-          <select
+          <HrReactSelect
             value={requestedBranchId}
             onChange={(event) => setRequestedBranchId(event.target.value)}
             required
@@ -139,7 +158,7 @@ export default function AttendanceCorrectionForm({
                 {branch.name}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label className="span-full">
@@ -156,19 +175,6 @@ export default function AttendanceCorrectionForm({
         La solicitud no reescribe historial: el servidor crea una corrección compensatoria con
         actor, versión y trazabilidad.
       </p>
-      <div className="hr-form-actions span-full">
-        {onCancel && (
-          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-            Cancelar
-          </Button>
-        )}
-        <Button
-          type="submit"
-          disabled={!online || saving || !reason.trim() || Boolean(users && !userId)}
-        >
-          {saving ? 'Enviando…' : 'Solicitar corrección'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

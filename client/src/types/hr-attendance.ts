@@ -62,6 +62,14 @@ export interface HrBiometricMaintenanceResult {
   pendingChecked: number;
 }
 
+export interface HrBiometricProviderHealth {
+  provider: string;
+  model: string;
+  status: 'AVAILABLE' | 'UNAVAILABLE';
+  checkedAt: string;
+  detail?: string;
+}
+
 export interface HrAttendanceSettingsLookups {
   branches: HrNamedEntity[];
   users: HrUserSummary[];
@@ -74,7 +82,14 @@ export interface HrAttendanceChallenge {
   token?: string;
   instruction?: string;
   livenessInstruction?: string;
+  livenessAction?: 'TURN_LEFT' | 'TURN_RIGHT';
+  captureFrameCount?: number;
+  captureIntervalMs?: number;
   expiresAt: string;
+}
+
+export interface HrFaceCaptureEvidence {
+  frames: Blob[];
 }
 
 export interface HrCapturedLocation {
@@ -116,8 +131,17 @@ export interface HrAttendancePunch {
 export interface HrTodayAttendance {
   serverTime: string;
   timezone: string;
+  policy: HrAttendancePolicy;
+  targetBranch: HrNamedEntity | null;
   availableActions: HrAttendanceAction[];
   punches: HrAttendancePunch[];
+  blockingIssue: {
+    code: 'STALE_OPEN_ATTENDANCE';
+    message: string;
+    occurredAt: string;
+    branch: HrNamedEntity | null;
+    resolution: 'REQUEST_CORRECTION';
+  } | null;
   scheduledShift?: {
     id: number;
     branchId: number;
@@ -151,7 +175,7 @@ export interface HrAttendancePunchPayload {
   challengeId: string;
   challengeToken?: string;
   location?: HrCapturedLocation | null;
-  faceImage?: Blob | null;
+  faceEvidence?: HrFaceCaptureEvidence | null;
 }
 
 export interface HrBiometricEnrollPayload {
@@ -159,7 +183,7 @@ export interface HrBiometricEnrollPayload {
   challengeToken?: string;
   consentAccepted: true;
   consentVersion: string;
-  faceImage: Blob;
+  faceEvidence: HrFaceCaptureEvidence;
 }
 
 export interface HrAttendanceEvent {

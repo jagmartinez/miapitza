@@ -16,6 +16,7 @@ import type {
   HrAttendanceReviewPayload,
   HrBiometricEnrollPayload,
   HrBiometricMaintenanceResult,
+  HrBiometricProviderHealth,
   HrBiometricProfile,
   HrAttendanceSettingsLookups,
   HrTodayAttendance,
@@ -46,7 +47,12 @@ function punchForm(payload: HrAttendancePunchPayload): FormData {
     form.append('accuracyM', String(payload.location.accuracyM));
     form.append('locationCapturedAt', payload.location.capturedAt);
   }
-  if (payload.faceImage) form.append('faceImage', payload.faceImage, 'face-evidence.jpg');
+  if (payload.faceEvidence?.frames.length) {
+    form.append('faceImage', payload.faceEvidence.frames[0], 'face-evidence-0.jpg');
+    payload.faceEvidence.frames.slice(1).forEach((frame, index) => {
+      form.append('faceFrames', frame, `face-evidence-${index + 1}.jpg`);
+    });
+  }
   return form;
 }
 
@@ -56,7 +62,10 @@ function enrollmentForm(payload: HrBiometricEnrollPayload): FormData {
   appendIfPresent(form, 'challengeToken', payload.challengeToken);
   form.append('consentAccepted', 'true');
   form.append('consentVersion', payload.consentVersion);
-  form.append('faceImage', payload.faceImage, 'face-enrollment.jpg');
+  form.append('faceImage', payload.faceEvidence.frames[0], 'face-enrollment-0.jpg');
+  payload.faceEvidence.frames.slice(1).forEach((frame, index) => {
+    form.append('faceFrames', frame, `face-enrollment-${index + 1}.jpg`);
+  });
   return form;
 }
 
@@ -148,7 +157,11 @@ export const attendanceClient = {
   },
 
   async enrollBiometrics(payload: HrBiometricEnrollPayload): Promise<HrBiometricProfile> {
-    const response = await api.post(`${HR_BASE}/biometrics/enroll`, enrollmentForm(payload));
+    // Override the API instance's JSON default. Axios keeps FormData intact and
+    // lets the browser attach the multipart boundary before sending the request.
+    const response = await api.post(`${HR_BASE}/biometrics/enroll`, enrollmentForm(payload), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return unwrap(response.data);
   },
 
@@ -161,8 +174,12 @@ export const attendanceClient = {
     idempotencyKey: string
   ): Promise<HrAttendancePunchResult> {
     try {
+      // Punch evidence follows the same multipart contract as enrollment.
       const response = await api.post(`${HR_BASE}/attendance/punches`, punchForm(payload), {
-        headers: { 'Idempotency-Key': idempotencyKey },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Idempotency-Key': idempotencyKey,
+        },
       });
       return unwrap(response.data);
     } catch (error) {
@@ -239,6 +256,19 @@ export const attendanceClient = {
   async runBiometricMaintenance(): Promise<HrBiometricMaintenanceResult> {
     const response = await api.post(`${HR_BASE}/biometrics/maintenance/run`, {});
     return unwrap(response.data);
+  },
+
+  async getBiometricProviderHealth(): Promise<HrBiometricProviderHealth> {
+    try {
+      const response = await api.get(`${HR_BASE}/biometrics/provider/health`, { skipOfflineCache: true });
+      return unwrap(response.data);
+    } catch (error) {
+      const response = (error as { response?: { status?: number; data?: unknown } }).response;
+      if (response?.status === 503 && response.data && typeof response.data === 'object' && 'data' in response.data) {
+        return (response.data as { data: HrBiometricProviderHealth }).data;
+      }
+      throw error;
+    }
   },
 };
 

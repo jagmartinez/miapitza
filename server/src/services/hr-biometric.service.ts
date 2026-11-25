@@ -7,6 +7,9 @@ import { AuditLogService } from './audit-log.service';
 import {
     createFaceVerificationProvider,
     createFaceVerificationProviderForName,
+    FaceProviderUnavailableError,
+    type FaceCaptureEvidence,
+    type FaceLivenessAction,
     type FaceVerificationProvider,
 } from './hr-face-provider';
 
@@ -78,6 +81,17 @@ export function hashChallengeToken(nonce: string, token: string): string {
     return createHash('sha256').update(`${nonce}.${token}`).digest('hex');
 }
 
+export function livenessActionFromNonce(nonce: string): FaceLivenessAction {
+    const discriminator = createHash('sha256').update(`hr-active-liveness-v1.${nonce}`).digest()[0];
+    return discriminator % 2 === 0 ? 'TURN_LEFT' : 'TURN_RIGHT';
+}
+
+function livenessInstruction(action: FaceLivenessAction): string {
+    return action === 'TURN_LEFT'
+        ? 'Mantén primero el rostro al frente. Solo cuando la cámara muestre “AHORA GIRA”, gira despacio hacia tu hombro izquierdo y mantén la posición.'
+        : 'Mantén primero el rostro al frente. Solo cuando la cámara muestre “AHORA GIRA”, gira despacio hacia tu hombro derecho y mantén la posición.';
+}
+
 function safeEqualHex(left: string, right: string): boolean {
     if (!/^[0-9a-f]{64}$/i.test(left) || !/^[0-9a-f]{64}$/i.test(right)) return false;
     return timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
@@ -139,7 +153,15 @@ export class AttendancePolicyService {
         for (const currentKey of keys) {
             const policy = await prisma.attendancePolicy.findFirst({ where: { companyId, currentKey, active: true } });
             if (policy) {
-                return branchTimezone ? { ...policy, timezone: branchTimezone } : policy;
+                const enforced = {
+                    ...policy,
+                    // Self-service identity and location evidence are mandatory.
+                    // Legacy WARN/REVIEW rows remain readable but are normalized
+                    // fail-closed before they reach any punch decision.
+                    geofenceViolationMode: 'BLOCK' as const,
+                    biometricViolationMode: 'BLOCK' as const,
+                };
+                return branchTimezone ? { ...enforced, timezone: branchTimezone } : enforced;
             }
         }
         return { ...this.defaults, timezone: branchTimezone || this.defaults.timezone, id: undefined, branchId: branchId || null };
@@ -176,8 +198,8 @@ export class AttendancePolicyService {
             earlyCheckOutToleranceM: input.earlyCheckOutToleranceM === undefined ? base.earlyCheckOutToleranceM : integer(input.earlyCheckOutToleranceM, 'earlyCheckOutToleranceM', 0, 1440),
             lateCheckOutMinutes: input.lateCheckOutMinutes === undefined ? base.lateCheckOutMinutes : integer(input.lateCheckOutMinutes, 'lateCheckOutMinutes', 0, 2880),
             scheduleViolationMode: mode(input.scheduleViolationMode, 'scheduleViolationMode', base.scheduleViolationMode),
-            geofenceViolationMode: mode(input.geofenceViolationMode, 'geofenceViolationMode', base.geofenceViolationMode),
-            biometricViolationMode: mode(input.biometricViolationMode, 'biometricViolationMode', base.biometricViolationMode),
+            geofenceViolationMode: 'BLOCK' as const,
+            biometricViolationMode: 'BLOCK' as const,
             allowUnscheduledPunch: booleanValue(input.allowUnscheduledPunch, 'allowUnscheduledPunch', base.allowUnscheduledPunch),
             unscheduledViolationMode: mode(input.unscheduledViolationMode, 'unscheduledViolationMode', base.unscheduledViolationMode),
             allowManualFallback: booleanValue(input.allowManualFallback, 'allowManualFallback', base.allowManualFallback),
@@ -199,19 +221,36 @@ export class AttendancePolicyService {
                 companyId, userId: actorUserId, entityType: 'AttendancePolicy', entityId: policy.id,
                 action: current ? 'UPDATE' : 'CREATE', details: { branchId: branchId || null, version: policy.version },
             }, tx);
-            return policy;
+            return {
+                ...policy,
+                geofenceViolationMode: 'BLOCK' as const,
+                biometricViolationMode: 'BLOCK' as const,
+            };
         });
     }
 }
 
 export class BiometricService {
+    static async providerHealth(provider: FaceVerificationProvider = createFaceVerificationProvider()) {
+        if (!provider.healthCheck) {
+            return { provider: provider.name, model: provider.model, status: 'UNAVAILABLE' as const, checkedAt: new Date().toISOString(), detail: 'El adaptador no implementa health check' };
+        }
+        return provider.healthCheck();
+    }
+
     static async getMyProfile(companyId: number, userId: number) {
         await assertInternalEmployee(companyId, userId);
         const profile = await prisma.biometricProfile.findFirst({ where: { companyId, userId }, select: safeProfileSelect });
         return mapBiometricProfile(profile);
     }
 
-    static async createChallenge(companyId: number, userId: number, purposeValue: unknown, actionValue?: unknown) {
+    static async createChallenge(
+        companyId: number,
+        userId: number,
+        purposeValue: unknown,
+        actionValue?: unknown,
+        provider: FaceVerificationProvider = createFaceVerificationProvider(),
+    ) {
         await assertInternalEmployee(companyId, userId);
         if (typeof purposeValue !== 'string' || !PURPOSES.includes(purposeValue as typeof PURPOSES[number])) throw new HrAttendanceError('purpose inválido');
         const purpose = purposeValue as BiometricChallengePurpose;
@@ -222,9 +261,18 @@ export class BiometricService {
         }
         if (purpose === 'ATTENDANCE_PUNCH' && !action) throw new HrAttendanceError('action es requerida para marcaje');
         if (purpose === 'BIOMETRIC_ENROLLMENT' && action) throw new HrAttendanceError('action no aplica al enrolamiento');
+        if (purpose === 'BIOMETRIC_ENROLLMENT') {
+            const health = await this.providerHealth(provider);
+            if (health.status !== 'AVAILABLE') {
+                throw new FaceProviderUnavailableError(
+                    'El enrolamiento biométrico no está disponible porque el proveedor facial no está configurado o no responde',
+                );
+            }
+        }
         const token = randomBytes(32).toString('base64url');
         const nonce = randomBytes(24).toString('base64url');
         const expiresAt = new Date(Date.now() + 5 * 60_000);
+        const livenessAction = livenessActionFromNonce(nonce);
         const challenge = await prisma.biometricChallenge.create({
             data: {
                 id: randomUUID(), companyId, userId, purpose, action,
@@ -234,7 +282,10 @@ export class BiometricService {
         });
         return {
             ...challenge, token,
-            livenessInstruction: 'Mira al frente y gira suavemente la cabeza antes de capturar.',
+            livenessAction,
+            captureFrameCount: 6,
+            captureIntervalMs: 450,
+            livenessInstruction: livenessInstruction(livenessAction),
         };
     }
 
@@ -286,27 +337,35 @@ export class BiometricService {
 
     static async enroll(input: {
         companyId: number; userId: number; challengeId: string; challengeToken?: string;
-        consentAccepted: boolean; consentVersion: string; capture: Buffer; branchId?: number;
+        consentAccepted: boolean; consentVersion: string; evidence: FaceCaptureEvidence; branchId?: number;
     }, provider: FaceVerificationProvider = createFaceVerificationProvider()) {
         await assertInternalEmployee(input.companyId, input.userId);
         if (input.consentAccepted !== true) throw new HrAttendanceError('Se requiere consentimiento biométrico explícito', 400, 'CONSENT_REQUIRED');
         const policy = await AttendancePolicyService.getCurrent(input.companyId, input.branchId);
         if (input.consentVersion !== policy.biometricConsentVersion) throw new HrAttendanceError('La versión de consentimiento cambió; recargue la política', 409, 'CONSENT_VERSION_MISMATCH');
-        await this.consumeChallenge({
+        const challenge = await this.consumeChallenge({
             companyId: input.companyId, userId: input.userId, challengeId: input.challengeId,
             challengeToken: input.challengeToken, purpose: 'BIOMETRIC_ENROLLMENT',
         });
         const existing = await prisma.biometricProfile.findFirst({ where: { companyId: input.companyId, userId: input.userId } });
-        const enrolled = await provider.enroll(input.capture);
+        const providerContext = {
+            tenantRef: String(input.companyId),
+            subjectRef: String(input.userId),
+            challengeRef: challenge.id,
+            livenessAction: livenessActionFromNonce(challenge.nonce),
+            requireLiveness: policy.requireLiveness,
+            retentionDays: policy.biometricRetentionDays,
+        } as const;
+        const enrolled = await provider.enroll(input.evidence, providerContext);
         if (policy.requireLiveness && !enrolled.livenessPassed) {
-            try { await provider.revokeTemplate(enrolled.templateRef); } catch { /* provider reconciliation remains operational */ }
+            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* provider reconciliation remains operational */ }
             throw new HrAttendanceError('La prueba de vida no fue superada', 422, 'LIVENESS_FAILED');
         }
         let encryptedTemplate: string;
         try {
             encryptedTemplate = encryptBiometricTemplate(enrolled.templateRef);
         } catch (error) {
-            try { await provider.revokeTemplate(enrolled.templateRef); } catch { /* best-effort compensation */ }
+            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* best-effort compensation */ }
             throw error;
         }
         const now = new Date();
@@ -365,7 +424,7 @@ export class BiometricService {
             }
             return mapBiometricProfile(result.saved);
         } catch (error) {
-            try { await provider.revokeTemplate(enrolled.templateRef); } catch { /* best-effort compensation */ }
+            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* best-effort compensation */ }
             throw error;
         }
     }
@@ -420,20 +479,41 @@ export class BiometricService {
     }
 
     static async processPurgeRequest(id: number, provider: FaceVerificationProvider = createFaceVerificationProvider()) {
+        const now = new Date();
         const request = await prisma.biometricPurgeRequest.findFirst({
-            where: { id, status: { in: ['PENDING', 'FAILED'] } },
+            where: {
+                id,
+                status: { in: ['PENDING', 'FAILED'] },
+                OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+            },
+            include: { profile: { select: { userId: true } } },
         });
         if (!request) return false;
         if (request.encryptedTemplateRef === 'PURGED') return false;
+        const claimedAttempts = request.attempts + 1;
+        const claim = await prisma.biometricPurgeRequest.updateMany({
+            where: {
+                id,
+                status: request.status,
+                attempts: request.attempts,
+                OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+            },
+            data: {
+                attempts: claimedAttempts,
+                nextAttemptAt: new Date(now.getTime() + 60 * 60_000),
+                lastError: null,
+            },
+        });
+        if (claim.count !== 1) return false;
         let requestProvider = provider;
         if (request.provider !== provider.name) {
             try {
                 requestProvider = createFaceVerificationProviderForName(request.provider);
             } catch (error) {
                 await prisma.biometricPurgeRequest.updateMany({
-                    where: { id, status: { in: ['PENDING', 'FAILED'] } },
+                    where: { id, status: request.status, attempts: claimedAttempts },
                     data: {
-                        status: 'FAILED', attempts: { increment: 1 },
+                        status: 'FAILED',
                         nextAttemptAt: new Date(Date.now() + 24 * 3600_000),
                         lastError: `Adaptador de purga no disponible para ${request.provider}: ${error instanceof Error ? error.message : 'error desconocido'}`.slice(0, 1000),
                     },
@@ -442,22 +522,24 @@ export class BiometricService {
             }
         }
         try {
-            await requestProvider.revokeTemplate(decryptBiometricTemplate(request.encryptedTemplateRef));
-            await prisma.biometricPurgeRequest.updateMany({
-                where: { id, status: { in: ['PENDING', 'FAILED'] } },
+            await requestProvider.revokeTemplate(decryptBiometricTemplate(request.encryptedTemplateRef), {
+                tenantRef: String(request.companyId),
+                subjectRef: String(request.profile.userId),
+            });
+            const completed = await prisma.biometricPurgeRequest.updateMany({
+                where: { id, status: request.status, attempts: claimedAttempts },
                 data: {
-                    status: 'COMPLETED', encryptedTemplateRef: 'PURGED', attempts: { increment: 1 },
+                    status: 'COMPLETED', encryptedTemplateRef: 'PURGED',
                     nextAttemptAt: null, lastError: null, completedAt: new Date(),
                 },
             });
-            return true;
+            return completed.count === 1;
         } catch (error) {
-            const attempts = request.attempts + 1;
             await prisma.biometricPurgeRequest.updateMany({
-                where: { id, status: { in: ['PENDING', 'FAILED'] } },
+                where: { id, status: request.status, attempts: claimedAttempts },
                 data: {
-                    status: 'FAILED', attempts: { increment: 1 },
-                    nextAttemptAt: new Date(Date.now() + Math.min(24 * 3600_000, 2 ** Math.min(attempts, 10) * 60_000)),
+                    status: 'FAILED',
+                    nextAttemptAt: new Date(Date.now() + Math.min(24 * 3600_000, 2 ** Math.min(claimedAttempts, 10) * 60_000)),
                     lastError: error instanceof Error ? error.message.slice(0, 1000) : 'Provider purge failed',
                 },
             });

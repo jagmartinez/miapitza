@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import ExcelJS from 'exceljs';
 import { getErrorMessage } from '../utils/error';
-import { effectiveUnitCost } from '../utils/product-cost';
+import { resolveEffectiveUnitCost } from '../utils/product-cost';
 
 /**
  * Service for generating Kardex (inventory movement) reports
@@ -30,6 +30,9 @@ export class KardexService {
                     sku: true,
                     unit: true,
                     currentAverageCost: true,
+                    averageCostKnown: true,
+                    cost: true,
+                    referenceCostKnown: true,
                     baseUnit: {
                         select: {
                             abbreviation: true
@@ -96,9 +99,13 @@ export class KardexService {
                         }
                     }
                 },
-                orderBy: {
-                    createdAt: 'asc'
-                }
+                // `createdAt` only has millisecond precision. Use the immutable id
+                // as a tie-breaker so simultaneous movements always replay in the
+                // same order as the persisted ledger.
+                orderBy: [
+                    { createdAt: 'asc' },
+                    { id: 'asc' }
+                ]
             });
 
             // Calculate opening balance (stock before first movement in range).
@@ -128,10 +135,12 @@ export class KardexService {
                 // Walk movements oldest-first so the last entry per warehouse wins.
                 const previousMovements = await prisma.inventoryMovement.findMany({
                     where: openingWhere,
-                    orderBy: {
-                        createdAt: 'asc'
-                    },
+                    orderBy: [
+                        { createdAt: 'asc' },
+                        { id: 'asc' }
+                    ],
                     select: {
+                        id: true,
                         warehouseId: true,
                         balanceQty: true,
                         balanceCost: true
@@ -139,9 +148,14 @@ export class KardexService {
                 });
 
                 for (const mv of previousMovements) {
+                    if (mv.balanceQty == null || mv.balanceCost == null) {
+                        throw new Error(
+                            `El movimiento ${mv.id} no tiene saldo histórico íntegro para calcular la apertura del kardex`
+                        );
+                    }
                     openingByWarehouse.set(mv.warehouseId, {
-                        quantity: Number(mv.balanceQty || 0),
-                        cost: Number(mv.balanceCost || 0)
+                        quantity: Number(mv.balanceQty),
+                        cost: Number(mv.balanceCost)
                     });
                 }
 
@@ -163,16 +177,40 @@ export class KardexService {
 
             const enrichedMovements = movements.map((movement) => {
                 const quantity = Number(movement.quantity);
-                const unitCost = effectiveUnitCost(movement.unitCost, product.currentAverageCost);
+                const persistedUnitCost = movement.unitCost === null
+                    ? Number.NaN
+                    : Number(movement.unitCost);
+                const persistedTotalCost = movement.totalCost === null
+                    ? Number.NaN
+                    : Number(movement.totalCost);
+                // A legitimate historical cost of zero must stay zero. Replacing it
+                // with today's product average would rewrite the financial meaning
+                // of an immutable inventory movement in reports and exports.
+                const unitCost = Number.isFinite(persistedUnitCost) && persistedUnitCost >= 0
+                    ? persistedUnitCost
+                    : Number.isFinite(persistedTotalCost) && persistedTotalCost >= 0 && quantity !== 0
+                        ? persistedTotalCost / quantity
+                        : Number.NaN;
+                const totalCost = Number.isFinite(persistedTotalCost) && persistedTotalCost >= 0
+                    ? persistedTotalCost
+                    : quantity * unitCost;
+                if (!Number.isFinite(unitCost) || !Number.isFinite(totalCost)) {
+                    throw new Error(
+                        `El movimiento ${movement.id} no tiene costo histórico total ni unitario íntegro; no se sustituye con el costo actual del producto`
+                    );
+                }
 
                 // A TRANSFER has two legs sharing a transferGroupId: the OUT leg (source
                 // warehouse) and the IN leg (destination warehouse). Distinguish them by
                 // the stored reason so each side shows the correct sign in the kardex.
                 const isTransferIn = movement.type === 'TRANSFER'
                     && (movement.reason || '').toLowerCase().startsWith('transfer in');
-                const isIncoming = movement.type === 'IN'
-                    || movement.type === 'ADJUSTMENT'
-                    || isTransferIn;
+                const isIncoming = movement.direction === 'IN'
+                    || (movement.direction == null && (
+                        movement.type === 'IN'
+                        || movement.type === 'ADJUSTMENT'
+                        || isTransferIn
+                    ));
 
                 let balance: number;
                 let balanceCost: number;
@@ -205,7 +243,7 @@ export class KardexService {
                     out: isIncoming ? null : quantity,
                     balance,
                     unitCost,
-                    totalCost: quantity * unitCost,
+                    totalCost,
                     balanceCost,
                     // Original unit/quantity as entered by the user (before conversion
                     // to the base unit). Exposed so the UI can show e.g. "2 caja".
@@ -215,7 +253,10 @@ export class KardexService {
                         : null,
                     warehouse: movement.warehouse.name,
                     branch: movement.warehouse.branch?.name || '-',
-                    user: movement.user.name
+                    user: movement.user.name,
+                    reversalOfId: movement.reversalOfId,
+                    reversalGroupId: movement.reversalGroupId,
+                    isReversal: movement.reversalOfId != null
                 };
             });
 
@@ -240,6 +281,14 @@ export class KardexService {
 
             return {
                 product,
+                productCostQuality: resolveEffectiveUnitCost(
+                    product.currentAverageCost,
+                    product.cost,
+                    {
+                        averageCostKnown: product.averageCostKnown,
+                        referenceCostKnown: product.referenceCostKnown
+                    }
+                ),
                 baseUnitAbbr,
                 warehouse: filters.warehouseId ? movements[0]?.warehouse : null,
                 dateRange: {
@@ -373,7 +422,10 @@ export class KardexService {
             const startRow = kardex.dateRange.from || kardex.dateRange.to ? 5 : 4;
             worksheet.mergeCells(`A${startRow}:K${startRow}`);
             const openingCell = worksheet.getCell(`A${startRow}`);
-            openingCell.value = `Saldo Inicial: ${kardex.openingBalance.quantity} ${kardex.baseUnitAbbr} @ $${(kardex.openingBalance.cost / kardex.openingBalance.quantity || 0).toFixed(2)} = $${kardex.openingBalance.cost.toFixed(2)}`;
+            const openingUnitCost = kardex.openingBalance.quantity === 0
+                ? (kardex.openingBalance.cost === 0 ? 0 : null)
+                : kardex.openingBalance.cost / kardex.openingBalance.quantity;
+            openingCell.value = `Saldo Inicial: ${kardex.openingBalance.quantity} ${kardex.baseUnitAbbr} @ ${openingUnitCost == null ? 'N/D' : `$${openingUnitCost.toFixed(2)}`} = $${kardex.openingBalance.cost.toFixed(2)}`;
             openingCell.font = { bold: true };
             openingCell.fill = {
                 type: 'pattern',
@@ -443,7 +495,10 @@ export class KardexService {
             currentRow++;
             worksheet.mergeCells(`A${currentRow}:K${currentRow}`);
             const closingCell = worksheet.getCell(`A${currentRow}`);
-            closingCell.value = `Saldo Final: ${kardex.closingBalance.quantity} ${kardex.baseUnitAbbr} @ $${(kardex.closingBalance.cost / kardex.closingBalance.quantity || 0).toFixed(2)} = $${kardex.closingBalance.cost.toFixed(2)}`;
+            const closingUnitCost = kardex.closingBalance.quantity === 0
+                ? (kardex.closingBalance.cost === 0 ? 0 : null)
+                : kardex.closingBalance.cost / kardex.closingBalance.quantity;
+            closingCell.value = `Saldo Final: ${kardex.closingBalance.quantity} ${kardex.baseUnitAbbr} @ ${closingUnitCost == null ? 'N/D' : `$${closingUnitCost.toFixed(2)}`} = $${kardex.closingBalance.cost.toFixed(2)}`;
             closingCell.font = { bold: true };
             closingCell.fill = {
                 type: 'pattern',

@@ -1,8 +1,11 @@
+import HrReactSelect from '../../components/hr/HrReactSelect';
+import { formatHrMoney } from '../../utils/hrFormat';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Download, FileText, Gift, RefreshCw, WalletCards } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
+import MyHrNav from '../../components/hr/MyHrNav';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollReceiptBreakdown from '../../components/hr/PayrollReceiptBreakdown';
 import PayrollStatusPill from '../../components/hr/PayrollStatusPill';
@@ -15,6 +18,7 @@ import type {
   HrPayrollRunKind,
 } from '../../types/hr-payroll';
 import './payroll.css';
+import './self-service.css';
 
 const currentYear = new Date().getFullYear();
 
@@ -92,27 +96,40 @@ export default function MyPayroll() {
     }
   };
 
+  const regularReceiptCount = receipts.filter((receipt) => receipt.runKind === 'REGULAR').length;
+  const bonusReceiptCount = receipts.filter((receipt) => receipt.runKind === 'AGUINALDO').length;
+
   return (
-    <div className="page-wrapper hr-payroll-page hr-my-payroll-page">
+    <div className="page-wrapper hr-payroll-page hr-my-payroll-page my-hr-page">
       <PageHeader
+        className="my-hr-page-header"
         title="Mis recibos"
-        subtitle="Consulta el desglose publicado de nómina y aguinaldo"
+        subtitle="Consulta y descarga el desglose exacto publicado por nómina"
         icon={WalletCards}
+        actions={<MyHrNav />}
       />
 
-      <PayrollOnlineNotice online={online} />
+      {!online && <PayrollOnlineNotice online={false} />}
 
-      <div className="hr-payroll-filterbar" aria-label="Filtros de recibos">
+      {!loading && !error && (
+        <section className="my-hr-summary-grid" aria-label="Resumen de recibos publicados">
+          <article><WalletCards size={19} aria-hidden="true" /><span>Recibos visibles</span><strong>{receipts.length}</strong><small>Según el tipo y año seleccionados</small></article>
+          <article><FileText size={19} aria-hidden="true" /><span>Nómina ordinaria</span><strong>{regularReceiptCount}</strong><small>Colillas regulares publicadas</small></article>
+          <article><Gift size={19} aria-hidden="true" /><span>Aguinaldo</span><strong>{bonusReceiptCount}</strong><small>Recibos de aguinaldo publicados</small></article>
+        </section>
+      )}
+
+      <div className="hr-payroll-filterbar my-hr-toolbar" aria-label="Filtros de recibos">
         <label>
           Tipo
-          <select
+          <HrReactSelect
             value={kind}
             onChange={(event) => setKind(event.target.value as '' | HrPayrollRunKind)}
           >
             <option value="">Todos</option>
             <option value="REGULAR">Nómina ordinaria</option>
             <option value="AGUINALDO">Aguinaldo</option>
-          </select>
+          </HrReactSelect>
         </label>
         <label>
           Año
@@ -161,6 +178,11 @@ export default function MyPayroll() {
               <div className="hr-payroll-empty">
                 <FileText size={34} aria-hidden="true" />
                 <p>No hay recibos publicados para los filtros seleccionados.</p>
+                {(kind || year !== String(currentYear)) && (
+                  <Button size="sm" variant="ghost" onClick={() => { setKind(''); setYear(String(currentYear)); }}>
+                    Ver recibos del año actual
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="hr-my-receipt-list">
@@ -188,7 +210,7 @@ export default function MyPayroll() {
                     </span>
                     <span className="hr-my-receipt-amount">
                       <strong>
-                        {receipt.currency} {receipt.netPay}
+                        {formatHrMoney(receipt.currency, receipt.netPay)}
                       </strong>
                       <PayrollStatusPill status={receipt.status} />
                     </span>

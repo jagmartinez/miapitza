@@ -4,6 +4,7 @@ export type HrPayrollRuleStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
 export type HrPayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'REVIEW' | 'APPROVED' | 'PAID' | 'VOID';
 export type HrPayrollRunKind = 'REGULAR' | 'AGUINALDO';
 export type HrPayrollComponentType = 'INCOME' | 'DEDUCTION';
+export type HrPayrollIncomeTaxTreatment = 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL';
 export type HrPayrollAnomalySeverity = 'INFO' | 'WARNING' | 'BLOCKING';
 export type HrPayrollAction =
   | 'CALCULATE'
@@ -49,12 +50,23 @@ export interface HrPayrollRuleVersion {
   createdBy?: HrPayrollActor | null;
 }
 
+export interface HrPayrollCompanyTaxProfile {
+  companyId: number;
+  companyName: string;
+  taxRegime: 'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER';
+  incomeTaxWithholding: boolean;
+  sourceReference: string | null;
+  incomeTaxException: string | null;
+  ready: boolean;
+  updatedAt: string;
+}
+
 export interface HrPayrollLegalConfiguration {
-  schema: 'HR_PAYROLL_PARAMETRIC_V1';
+  schema: 'HR_PAYROLL_PARAMETRIC_V4';
   legallyValidated: true;
   currency: string;
   regular: {
-    minuteDivisors: { WEEKLY: string; BIWEEKLY: string; MONTHLY: string };
+    minuteDivisors: { WEEKLY: string; BIWEEKLY: string; FORTNIGHTLY: string; MONTHLY: string };
     overtimeMultiplier: string;
     paidLeaveUnitMinutes: { DAYS: string; HOURS: string; MINUTES: string };
   };
@@ -66,6 +78,61 @@ export interface HrPayrollLegalConfiguration {
     eligibleSources: string[];
     roundingScale: 2;
   };
+  statutory: {
+    companyTaxRegime: {
+      code: 'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER';
+      sourceReference: string;
+      incomeTaxApplicability: 'APPLIES' | 'DOES_NOT_APPLY';
+      incomeTaxExceptionReason?: string;
+    };
+    inss: {
+      applicability: 'APPLIES' | 'DOES_NOT_APPLY';
+      sourceReference: string;
+      exceptionReason?: string;
+      regime: 'INTEGRAL' | 'IVM_RP' | 'FACULTATIVE_INTEGRAL' | 'FACULTATIVE_IVM' | 'OTHER';
+      employeeRate: string;
+      employerRateBelowThreshold: string;
+      employerRateAtOrAboveThreshold: string;
+      employerSizeThreshold: number;
+      minimumMonthlyContributionBase: string;
+      minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO';
+      annualPeriods: { WEEKLY: number; BIWEEKLY: number; FORTNIGHTLY: number; MONTHLY: number };
+    };
+    inatec: {
+      applicability: 'APPLIES' | 'DOES_NOT_APPLY';
+      sourceReference: string;
+      exceptionReason?: string;
+      employerRate: string;
+    };
+    incomeTax: {
+      sourceReference: string;
+      regimeApplicabilityAcknowledged: true;
+      calculationMethods: {
+        fixed: 'FIXED_PERIOD_PROJECTION';
+        salaryChange: 'FIXED_SALARY_CHANGE';
+        variable: 'VARIABLE_ACCUMULATED';
+        occasional: 'OCCASIONAL_INCREMENTAL';
+      };
+      inssEmployeeContributionDeductible: true;
+      occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET';
+      adjustmentMode: 'WITHHOLD_OR_REFUND';
+      annualPeriods: { WEEKLY: number; BIWEEKLY: number; FORTNIGHTLY: number; MONTHLY: number };
+      brackets: Array<{ lowerBound: string; upperBound: string | null; baseTax: string; rate: string; excessOver: string }>;
+    };
+    paymentConceptCatalog: HrPayrollPaymentConceptDefinition[];
+  };
+}
+
+export interface HrPayrollPaymentConceptDefinition {
+  code: string;
+  name: string;
+  active: boolean;
+  type: HrPayrollComponentType;
+  socialSecurityApplicable: boolean;
+  trainingContributionApplicable: boolean;
+  incomeTaxTreatment: HrPayrollIncomeTaxTreatment | null;
+  incomeTaxDeductible: boolean;
+  sourceReference: string;
 }
 
 export interface HrPayrollRuleConfigurationRevision {
@@ -73,6 +140,7 @@ export interface HrPayrollRuleConfigurationRevision {
   ruleVersionId: number;
   revision: number;
   configurationHash: string;
+  configuration: HrPayrollLegalConfiguration;
   sourceReference: string;
   evidenceReference: string;
   uploadReason: string;
@@ -170,6 +238,10 @@ export interface HrPayrollComponent {
   source: 'RULE' | 'ATTENDANCE' | 'OVERTIME' | 'LEAVE' | 'MANUAL' | 'LOAN' | string;
   amount: string;
   taxable?: boolean | null;
+  incomeTaxTreatment?: 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL' | null;
+  incomeTaxDeductible?: boolean | null;
+  socialSecurityApplicable?: boolean | null;
+  trainingContributionApplicable?: boolean | null;
   traceReference?: string | null;
   createdAt?: string;
 }
@@ -179,8 +251,93 @@ export interface HrPayrollComponentPayload {
   code: string;
   type: HrPayrollComponentType;
   inputAmount: string;
+  taxable?: boolean;
+  incomeTaxTreatment?: 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL';
+  incomeTaxDeductible: boolean;
+  socialSecurityApplicable?: boolean;
+  trainingContributionApplicable?: boolean;
+  classificationConfirmed: true;
   reason: string;
   reference?: string;
+}
+
+export interface HrPayrollEmployerContribution {
+  id: number;
+  runId: number;
+  userId: number;
+  user?: HrUserSummary | null;
+  calculationRevision: number;
+  code: string;
+  name: string;
+  baseAmount: string;
+  rate: string;
+  amount: string;
+  traceReference?: string | null;
+}
+
+export interface HrPayrollStatutoryCalculation {
+  id: number;
+  runId: number;
+  userId: number;
+  user?: HrUserSummary | null;
+  calculationRevision: number;
+  configurationRevisionId: number;
+  companyTaxRegime: string;
+  methodVersion: string;
+  incomeTaxMethod: 'FIXED_PERIOD_PROJECTION' | 'FIXED_SALARY_CHANGE' | 'VARIABLE_ACCUMULATED' | string;
+  payFrequency: string;
+  employerHeadcount: number;
+  inssBase: string;
+  employeeInss: string;
+  regularEmployeeInss: string;
+  occasionalEmployeeInss: string;
+  employerInssRate: string;
+  employerInss: string;
+  inatecBase: string;
+  employerInatec: string;
+  fixedIncomeTaxGross: string;
+  variableIncomeTaxGross: string;
+  occasionalIncomeTaxGross: string;
+  fixedCompensationAmount: string;
+  currentRegularIncomeTaxNet: string;
+  currentOccasionalIncomeTaxNet: string;
+  currentIncomeTaxNet: string;
+  otherIncomeTaxDeductions: string;
+  priorIncomeTaxNet: string;
+  priorOccasionalIncomeTaxNet: string;
+  priorHadVariableIncome: boolean;
+  accumulatedIncomeTaxNet: string;
+  elapsedPeriods: number;
+  elapsedFiscalMonths: number;
+  annualPeriods: number;
+  annualProjection: string;
+  regularAnnualIncomeTax: string;
+  annualIncomeTaxWithOccasional: string;
+  annualIncomeTax: string;
+  priorRegularIncomeTaxWithheld: string;
+  priorOccasionalIncomeTaxWithheld: string;
+  priorIncomeTaxWithheld: string;
+  regularIncomeTaxWithheld: string;
+  occasionalIncomeTaxWithheld: string;
+  currentIncomeTaxWithheld: string;
+  incomeTaxRefund: string;
+  incomeTaxCreditBalance: string;
+  bracketSnapshot: {
+    regular: HrPayrollIncomeTaxBracket | null;
+    beforeCurrentOccasional: HrPayrollIncomeTaxBracket | null;
+    withCurrentOccasional: HrPayrollIncomeTaxBracket | null;
+    effective: HrPayrollIncomeTaxBracket | null;
+  } | null;
+  historyFingerprint: string;
+  createdAt: string;
+}
+
+export interface HrPayrollIncomeTaxBracket {
+  lowerBound: string;
+  upperBound: string | null;
+  baseTax: string;
+  rate: string;
+  excessOver: string;
 }
 
 export interface HrPayrollRunTotals {
@@ -200,6 +357,7 @@ export interface HrPayrollRun {
   periodId?: number | null;
   period?: HrPayrollPeriod | null;
   ruleVersionId: number;
+  configurationRevisionId?: number | null;
   ruleVersion?: HrPayrollRuleVersion | null;
   year?: number | null;
   cutoffDate?: string | null;
@@ -227,6 +385,41 @@ export interface HrPayrollRunDetail extends HrPayrollRun {
   snapshot: HrPayrollSnapshotLine[];
   components: HrPayrollComponent[];
   receipts: HrPayrollReceiptSummary[];
+  employerContributions: HrPayrollEmployerContribution[];
+  statutoryCalculations: HrPayrollStatutoryCalculation[];
+}
+
+export interface HrPayrollReconciliationPayload {
+  expectedGrossIncome: string;
+  expectedTotalDeductions: string;
+  expectedEmployerContributions: string;
+  expectedNetPay: string;
+  expectedEmployeeCount: number;
+  controlSource: string;
+  evidenceReference: string;
+}
+
+export interface HrPayrollReconciliationCheck {
+  code: string;
+  label: string;
+  passed: boolean;
+  expected: string | number;
+  actual: string | number;
+  detail?: string | null;
+}
+
+export interface HrPayrollReconciliationReport {
+  run: { id: number; code: string; kind: HrPayrollRunKind; status: HrPayrollRunStatus; revision: number; calculationRevision?: number | null; currency: string };
+  control: { source: string; evidenceReference: string };
+  expected: { grossIncome: string; totalDeductions: string; employerContributions: string; netPay: string; employeeCount: number };
+  actual: { grossIncome: string; totalDeductions: string; employerContributions: string; netPay: string; employeeCount: number };
+  checks: HrPayrollReconciliationCheck[];
+  perEmployee: Array<{ userId: number; grossIncome: string; totalDeductions: string; employerContributions: string; netPay: string }>;
+  readyForParallelSignoff: boolean;
+  legalValidationAsserted: false;
+  productionCertificationAsserted: false;
+  reconciliationHash: string;
+  generatedAt: string;
 }
 
 export interface HrPayrollRunPayload {
@@ -261,6 +454,7 @@ export interface HrPayrollTransitionPayload {
 export interface HrPayrollReceiptSummary {
   id: number;
   runId: number;
+  userId: number;
   runKind: HrPayrollRunKind;
   runCode: string;
   periodLabel: string;

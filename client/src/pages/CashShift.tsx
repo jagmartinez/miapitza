@@ -364,8 +364,12 @@ export default function CashShiftPage() {
             const safeCurrencySymbol = escapeHtml(symbol);
 
             const printWindow = window.open('', '_blank');
-            if (printWindow) {
-                printWindow.document.write(`
+            if (!printWindow) {
+                showError('No se pudo abrir el reporte. Permite ventanas emergentes e inténtalo de nuevo.');
+                return;
+            }
+
+            printWindow.document.write(`
                     <html>
                         <head>
                             <title>Reporte de Caja - Turno #${shift.id}</title>
@@ -507,9 +511,8 @@ export default function CashShiftPage() {
                             </div>
                         </body>
                     </html>
-                `);
-                printWindow.document.close();
-            }
+            `);
+            printWindow.document.close();
         } catch (error) {
             console.error('Error printing report:', error);
             showError('Error al generar el reporte');

@@ -26,6 +26,8 @@ interface BroadcastCriteria {
     branchId?: number;
     roles?: string[];
     userIds?: number[];
+    /** Explicit escape hatch for intentionally platform-wide system events. */
+    allowCrossTenant?: boolean;
 }
 
 export class WebSocketService {
@@ -46,6 +48,10 @@ export class WebSocketService {
                     callback(false, 403, 'Forbidden origin');
                 }
             }
+        });
+        const initializedServer = this.wss;
+        initializedServer.on('close', () => {
+            if (this.wss === initializedServer) this.wss = null;
         });
 
         this.wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
@@ -220,7 +226,7 @@ export class WebSocketService {
     }
 
     private static isClientAllowed(client: WebSocketClient, criteria: BroadcastCriteria): boolean {
-        if (!client.authenticated && client.companyId === undefined) {
+        if (client.authenticated !== true) {
             return false;
         }
 
@@ -299,6 +305,14 @@ export class WebSocketService {
     }
 
     static broadcast(message: WebSocketMessage, criteria: BroadcastCriteria = {}): void {
+        // A missing tenant criterion must never degrade into broadcasting
+        // restaurant data to every connected company. Platform-wide events
+        // must opt in explicitly at the call site.
+        if (criteria.companyId === undefined && criteria.allowCrossTenant !== true) {
+            console.error(`[WS] Blocked unscoped broadcast for event ${message.type}`);
+            return;
+        }
+
         const data = JSON.stringify(message);
 
         this.clients.forEach((client) => {
@@ -436,6 +450,10 @@ export class WebSocketService {
         return this.clients.size;
     }
 
+    static isInitialized(): boolean {
+        return this.wss !== null;
+    }
+
     static shutdown(): void {
         this.clients.forEach((client) => {
             client.close(1000, 'Server shutting down');
@@ -445,6 +463,7 @@ export class WebSocketService {
 
         if (this.wss) {
             this.wss.close();
+            this.wss = null;
         }
     }
 }

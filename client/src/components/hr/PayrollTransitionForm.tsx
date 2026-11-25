@@ -1,3 +1,6 @@
+import HrReactSelect from './HrReactSelect';
+import HrModalFormShell from './HrModalFormShell';
+import PayrollOnlineNotice from './PayrollOnlineNotice';
 import { useState } from 'react';
 import { AlertTriangle, UsersRound } from 'lucide-react';
 import Button from '../Button';
@@ -36,7 +39,9 @@ export default function PayrollTransitionForm({
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [paymentReference, setPaymentReference] = useState('');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate] = useState(() =>
+    (run.kind === 'REGULAR' ? run.period?.payDate : run.cutoffDate)?.slice(0, 10) ?? ''
+  );
   const [paymentMethod, setPaymentMethod] = useState('TRANSFERENCIA');
   const [batchReference, setBatchReference] = useState('');
   const [evidenceReference, setEvidenceReference] = useState('');
@@ -74,7 +79,31 @@ export default function PayrollTransitionForm({
   const sensitive = action === 'APPROVE' || action === 'MARK_PAID' || action === 'VOID';
 
   return (
-    <form className="hr-payroll-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel={`Acción de nómina: ${LABELS[action]}`}
+      tabLabel={LABELS[action]}
+      sectionTitle={`${LABELS[action]} · ${run.code}`}
+      icon={<UsersRound size={18} aria-hidden="true" />}
+      formClassName="hr-payroll-form"
+      notice={<PayrollOnlineNotice online={online} compact />}
+      onSubmit={(event) => void submit(event)}
+      footer={<>
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+          Volver
+        </Button>
+        <Button
+          type="submit"
+          variant={sensitive ? 'danger' : 'primary'}
+          disabled={
+            !online || saving || !confirmed || !reason.trim() ||
+            (action === 'MARK_PAID' && (!paymentReference.trim() || !paymentDate || !paymentMethod || !evidenceReference.trim())) ||
+            (action === 'VOID' && run.status === 'PAID' && (!reversalReference.trim() || !reversalDate || !reversalMethod || !evidenceReference.trim()))
+          }
+        >
+          {saving ? 'Registrando…' : LABELS[action]}
+        </Button>
+      </>}
+    >
       <div className={`hr-payroll-warning span-full ${sensitive ? 'danger' : ''}`} role="note">
         <AlertTriangle size={20} aria-hidden="true" />
         <span>
@@ -117,17 +146,17 @@ export default function PayrollTransitionForm({
             <input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} maxLength={160} required />
           </label>
           <label>
-            Fecha efectiva
-            <input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} required />
+            Fecha fiscal congelada
+            <input type="date" value={paymentDate} readOnly required />
           </label>
           <label>
             Método
-            <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+            <HrReactSelect value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
               <option value="TRANSFERENCIA">Transferencia</option>
               <option value="CHEQUE">Cheque</option>
               <option value="EFECTIVO">Efectivo</option>
               <option value="OTRO">Otro</option>
-            </select>
+            </HrReactSelect>
           </label>
           <label>
             Lote bancario o contable
@@ -151,12 +180,12 @@ export default function PayrollTransitionForm({
           </label>
           <label>
             Método de reversión
-            <select value={reversalMethod} onChange={(event) => setReversalMethod(event.target.value)}>
+            <HrReactSelect value={reversalMethod} onChange={(event) => setReversalMethod(event.target.value)}>
               <option value="TRANSFERENCIA_REVERSA">Transferencia reversa</option>
               <option value="ANULACION_CHEQUE">Anulación de cheque</option>
               <option value="DEVOLUCION_EFECTIVO">Devolución de efectivo</option>
               <option value="OTRO">Otro</option>
-            </select>
+            </HrReactSelect>
           </label>
           <label className="span-full">
             Evidencia de reversión
@@ -175,22 +204,6 @@ export default function PayrollTransitionForm({
           revisé anomalías, snapshot y componentes.
         </span>
       </label>
-      <div className="hr-payroll-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Volver
-        </Button>
-        <Button
-          type="submit"
-          variant={sensitive ? 'danger' : 'primary'}
-          disabled={
-            !online || saving || !confirmed || !reason.trim() ||
-            (action === 'MARK_PAID' && (!paymentReference.trim() || !paymentDate || !paymentMethod || !evidenceReference.trim())) ||
-            (action === 'VOID' && run.status === 'PAID' && (!reversalReference.trim() || !reversalDate || !reversalMethod || !evidenceReference.trim()))
-          }
-        >
-          {saving ? 'Registrando…' : LABELS[action]}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

@@ -44,7 +44,8 @@ describe('PaymentService.delete financial-state reversal', () => {
                 }]),
                 create: jest.fn(async (_args: unknown) => ({}))
             },
-            cashShift: { findFirst: jest.fn(async () => ({ id: 8 })) },
+            cashShift: { findFirst: jest.fn(async () => ({ id: 8, startDate: new Date() })) },
+            setting: { findUnique: jest.fn(async () => null) },
             user: { findFirst: jest.fn(async () => ({ id: 9 })) },
             order: { update: jest.fn(async (_args: unknown) => ({})) },
             table: { update: jest.fn(async (_args: unknown) => ({})) },
@@ -176,7 +177,8 @@ describe('OrderService.cancel paid-like states', () => {
                 }]),
                 create: jest.fn(async (_args: unknown) => ({}))
             },
-            cashShift: { findFirst: jest.fn(async () => ({ id: 8 })) },
+            cashShift: { findFirst: jest.fn(async () => ({ id: 8, startDate: new Date() })) },
+            setting: { findUnique: jest.fn(async () => null) },
             payment: { updateMany: jest.fn(async (_args: unknown) => ({ count: 1 })) },
             promotion: {
                 findFirst: jest.fn(async () => ({ id: 4, usageCount: 1 })),

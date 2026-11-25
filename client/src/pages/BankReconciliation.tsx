@@ -86,6 +86,9 @@ const BankReconciliation: React.FC = () => {
     const [selectedShifts, setSelectedShifts] = useState<number[]>([]);
     const [loading, setLoading] = useState(false);
     const [settings, setSettings] = useState<CurrencySettings>({});
+    const [statusLoadError, setStatusLoadError] = useState<string | null>(null);
+    const [pendingLoadError, setPendingLoadError] = useState<string | null>(null);
+    const [depositsLoadError, setDepositsLoadError] = useState<string | null>(null);
 
     const [dateRange, setDateRange] = useState({
         startDate: formatLocalDateInput(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
@@ -106,11 +109,13 @@ const BankReconciliation: React.FC = () => {
             setSettings(response.data.data || {});
         } catch (error) {
             console.error('Error loading settings:', error);
+            showError('No se pudo cargar la configuración monetaria. Verifique los importes antes de conciliar.');
         }
-    }, []);
+    }, [showError]);
 
     const loadReconciliationStatus = useCallback(async () => {
         setLoading(true);
+        setStatusLoadError(null);
         try {
             const response = await api.get(
                 `/advanced/reconciliation?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
@@ -118,28 +123,39 @@ const BankReconciliation: React.FC = () => {
             setStatus(response.data.data);
         } catch (error: unknown) {
             console.error('Error loading status:', error);
+            const message = 'No se pudo cargar el estado de conciliación: ' + errorMessage(error);
+            setStatusLoadError(message);
+            showError(message);
         } finally {
             setLoading(false);
         }
-    }, [dateRange.endDate, dateRange.startDate]);
+    }, [dateRange.endDate, dateRange.startDate, showError]);
 
     const loadPendingReconciliations = useCallback(async () => {
+        setPendingLoadError(null);
         try {
             const response = await api.get('/advanced/reconciliation/pending');
             setPending(response.data.data || []);
         } catch (error: unknown) {
             console.error('Error loading pending:', error);
+            const message = 'No se pudieron cargar los turnos pendientes: ' + errorMessage(error);
+            setPendingLoadError(message);
+            showError(message);
         }
-    }, []);
+    }, [showError]);
 
     const loadDeposits = useCallback(async () => {
+        setDepositsLoadError(null);
         try {
             const response = await api.get('/advanced/reconciliation/deposits');
             setDeposits(response.data.data || []);
         } catch (error: unknown) {
             console.error('Error loading deposits:', error);
+            const message = 'No se pudo cargar el historial de depósitos: ' + errorMessage(error);
+            setDepositsLoadError(message);
+            showError(message);
         }
-    }, []);
+    }, [showError]);
 
     useEffect(() => {
         void loadSettings();
@@ -389,7 +405,14 @@ const BankReconciliation: React.FC = () => {
                         </>
                     )}
 
-                    {!status && !loading && (
+                    {!status && !loading && statusLoadError && (
+                        <div className="state-placeholder">
+                            <AlertTriangle size={48} />
+                            <p>{statusLoadError}</p>
+                        </div>
+                    )}
+
+                    {!status && !loading && !statusLoadError && (
                         <div className="state-placeholder">
                             <BarChart3 size={48} />
                             <p>No hay datos disponibles para el período seleccionado.</p>
@@ -409,7 +432,12 @@ const BankReconciliation: React.FC = () => {
                             </Button>
                         )}
                     </div>
-                    {pending.length > 0 ? (
+                    {pendingLoadError ? (
+                        <div className="state-placeholder" style={{ borderTop: 'none', borderRadius: 0 }}>
+                            <AlertTriangle size={48} />
+                            <p>{pendingLoadError}</p>
+                        </div>
+                    ) : pending.length > 0 ? (
                         <>
                             <div className="data-table-scroll">
                                 <table className="data-table">
@@ -634,7 +662,10 @@ const BankReconciliation: React.FC = () => {
                                             </td>
                                         </tr>
                                     ))}
-                                    {deposits.length === 0 && (
+                                    {depositsLoadError && (
+                                        <tr><td colSpan={7} className="text-center text-secondary">{depositsLoadError}</td></tr>
+                                    )}
+                                    {!depositsLoadError && deposits.length === 0 && (
                                         <tr><td colSpan={7} className="text-center text-secondary">Sin depósitos registrados.</td></tr>
                                     )}
                                 </tbody>

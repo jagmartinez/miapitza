@@ -95,7 +95,7 @@ export default function Users() {
             const [usersRes, branchesRes, rolesRes] = await Promise.all([
                 usersAPI.getAll(isSuperAdmin ? { companyId } : undefined),
                 branchesAPI.getAll(isSuperAdmin ? { companyId } : undefined),
-                rolesAPI.getAll()
+                rolesAPI.getAll(isSuperAdmin ? { companyId } : undefined)
             ]);
             setUsers(usersRes.data.data);
             setBranches(branchesRes.data.data);
@@ -573,7 +573,7 @@ export default function Users() {
                         <div className="modal-tab-content">
                             {/* 1. PERFIL TAB */}
                             {activeTab === 'perfil' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <UserIcon size={18} />
                                         <h3>Información de Perfil</h3>
@@ -644,7 +644,7 @@ export default function Users() {
 
                             {/* 2. ACCESO TAB */}
                             {activeTab === 'acceso' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Shield size={18} />
                                         <h3>Configuración de Acceso</h3>

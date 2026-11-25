@@ -1,9 +1,12 @@
+import HrReactSelect from '../../components/hr/HrReactSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CalendarClock,
-  ClipboardList as FilePenLine,
   LockKeyhole,
+  Clock3,
+  Eye,
+  Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -11,8 +14,11 @@ import {
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
+import Pagination from '../../components/Pagination';
 import Sidebar from '../../components/Sidebar';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
+import { collectAllPages } from '../../components/hr/collectAllPages';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import OvertimeRequestForm from '../../components/hr/OvertimeRequestForm';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -36,6 +42,10 @@ import type {
   HrOvertimeRequestPayload,
 } from '../../types/hr-workforce';
 import './workforce.css';
+import './attendance.css';
+import './admin-tables.css';
+import './hr-admin-operations.css';
+import '../Inventory.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
   departments: [],
@@ -58,6 +68,14 @@ function displayDateTime(value?: string | null): string {
     : '—';
 }
 
+function dateLabel(value?: string | null): string {
+  if (!value) return '—';
+  const parsed = new Date(`${value.slice(0, 10)}T12:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium' }).format(parsed);
+}
+
 type CreatePanel =
   | { kind: 'correction'; summary?: HrDailyAttendanceSummary; incident?: HrAttendanceIncident }
   | { kind: 'overtime'; summary?: HrDailyAttendanceSummary }
@@ -68,6 +86,9 @@ type DecisionPanel =
   | { kind: 'overtime'; item: HrOvertimeRequest }
   | { kind: 'close' | 'reopen'; item: HrAttendancePeriod }
   | null;
+
+type AttendanceTable = 'DAY' | 'INCIDENTS' | 'CORRECTIONS' | 'OVERTIME' | 'PERIODS';
+const PAGE_SIZE = 12;
 
 export default function AttendanceManagement() {
   const online = useWorkforceOnline();
@@ -90,13 +111,14 @@ export default function AttendanceManagement() {
   const [reason, setReason] = useState('');
   const [approvedMinutes, setApprovedMinutes] = useState('');
   const [periodForm, setPeriodForm] = useState({ dateFrom: date, dateTo: date, reason: '' });
+  const [activeTable, setActiveTable] = useState<AttendanceTable>('DAY');
+  const [tablePage, setTablePage] = useState(1);
 
   const filters = useMemo(
     () => ({
       date,
       branchId: branchId ? Number(branchId) : undefined,
       userId: userId ? Number(userId) : undefined,
-      limit: 100,
     }),
     [branchId, date, userId]
   );
@@ -114,18 +136,25 @@ export default function AttendanceManagement() {
         periodResult,
       ] = await Promise.all([
         hrClient.getOrganization(),
-        workforceClient.getDailySummaries(filters),
-        workforceClient.getIncidents(filters),
-        workforceClient.getCorrections(filters),
-        workforceClient.getOvertimeRequests(filters),
-        workforceClient.getPeriods({ dateFrom: date, dateTo: date, limit: 50 }),
+        collectAllPages((page) => workforceClient.getDailySummaries({ ...filters, page, limit: 100 })),
+        collectAllPages((page) => workforceClient.getIncidents({ ...filters, page, limit: 100 })),
+        collectAllPages((page) => workforceClient.getCorrections({ ...filters, page, limit: 100 })),
+        collectAllPages((page) => workforceClient.getOvertimeRequests({ ...filters, page, limit: 100 })),
+        collectAllPages((page) => workforceClient.getPeriods({
+          dateFrom: date,
+          dateTo: date,
+          branchId: filters.branchId,
+          userId: filters.userId,
+          page,
+          limit: 100,
+        })),
       ]);
       setLookups(organization);
-      setSummaries(summaryResult.items);
-      setIncidents(incidentResult.items);
-      setCorrections(correctionResult.items);
-      setOvertime(overtimeResult.items);
-      setPeriods(periodResult.items);
+      setSummaries(summaryResult);
+      setIncidents(incidentResult);
+      setCorrections(correctionResult);
+      setOvertime(overtimeResult);
+      setPeriods(periodResult);
     } catch (loadError) {
       setSummaries([]);
       setIncidents([]);
@@ -141,6 +170,8 @@ export default function AttendanceManagement() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => { setTablePage(1); }, [activeTable, branchId, date, userId]);
 
   const createCorrection = async (payload: HrAttendanceCorrectionPayload) => {
     setSaving(true);
@@ -236,12 +267,20 @@ export default function AttendanceManagement() {
     (user) => user.accountType === 'INTERNAL' && Boolean(user.employeeId ?? user.employee?.id)
   );
   const branches = lookups.branches ?? [];
+  const activeTableCount = activeTable === 'DAY' ? summaries.length
+    : activeTable === 'INCIDENTS' ? incidents.length
+      : activeTable === 'CORRECTIONS' ? corrections.length
+        : activeTable === 'OVERTIME' ? overtime.length
+          : periods.length;
+  const pageSlice = <T,>(items: T[]) => items.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
+  useEffect(() => { setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE)))); }, [activeTableCount]);
 
   return (
-    <div className="page-wrapper hr-workforce-page">
+    <div className="page-wrapper inventory-page hr-workforce-page hr-attendance-management-page hr-admin-catalog-page hr-operation-page">
       <PageHeader
+        className="inventory-header-new hr-operation-header"
         title="Control diario de asistencia"
-        subtitle="Minutos autoritativos, incidencias, correcciones, extras y periodos"
+        subtitle="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
         icon={CalendarClock}
         actions={
           <Button
@@ -257,37 +296,59 @@ export default function AttendanceManagement() {
       />
       <OnlineOnlyNotice online={online} />
 
-      <section className="hr-workforce-filters" aria-label="Filtros del resumen diario">
+      <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros del resumen diario">
         <label>
           Fecha
           <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </label>
         <label>
           Sucursal
-          <select value={branchId} onChange={(event) => setBranchId(event.target.value)}>
+          <HrReactSelect value={branchId} onChange={(event) => setBranchId(event.target.value)}>
             <option value="">Todas</option>
             {branches.map((branch) => (
               <option key={branch.id} value={branch.id}>
                 {branch.name}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
         <label>
-          Usuario
-          <select value={userId} onChange={(event) => setUserId(event.target.value)}>
+          Empleado
+          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)}>
             <option value="">Todos</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
         <Button variant="ghost" onClick={() => void load()}>
           <RefreshCw size={16} /> Actualizar
         </Button>
       </section>
+
+      {!loading && !error && <div className="filters-toolbar hr-admin-tab-toolbar" role="tablist" aria-label="Bandejas de asistencia">
+        {([
+          ['DAY', 'Jornadas', summaries.length],
+          ['INCIDENTS', 'Incidencias', incidents.filter((item) => item.status === 'OPEN').length],
+          ['CORRECTIONS', 'Correcciones', corrections.filter((item) => item.status === 'PENDING').length],
+          ['OVERTIME', 'Horas extra', overtime.filter((item) => item.status === 'PENDING').length],
+          ['PERIODS', 'Periodos', periods.length],
+        ] as Array<[AttendanceTable, string, number]>).map(([value, label, count]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            id={`attendance-tab-${value.toLowerCase()}`}
+            aria-controls={`attendance-panel-${value.toLowerCase()}`}
+            aria-selected={activeTable === value}
+            onClick={() => setActiveTable(value)}
+          >
+            {label} <span>{count}</span>
+          </button>
+        ))}
+      </div>}
 
       {loading && <LoadingSpinner text="Cargando control diario…" />}
       {!loading && error && (
@@ -300,265 +361,79 @@ export default function AttendanceManagement() {
         </div>
       )}
       {!loading && !error && (
-        <>
-          <section className="hr-workforce-section" aria-labelledby="daily-summary-title">
-            <div className="hr-section-heading">
-              <div>
-                <h2 id="daily-summary-title">Resumen diario</h2>
-                <p>Todos los minutos provienen del cálculo versionado del servidor.</p>
-              </div>
-            </div>
-            {summaries.length === 0 ? (
-              <p className="hr-empty">Sin resúmenes para el alcance seleccionado.</p>
-            ) : (
-              <div className="hr-summary-grid">
-                {summaries.map((summary) => (
-                  <article key={summary.id} className="hr-summary-card">
-                    <header>
-                      <div>
-                        <strong>{summary.user?.name ?? `Usuario #${summary.userId}`}</strong>
-                        <span>
-                          {summary.branch?.name ?? 'Sin sucursal'} · {summary.date}
-                        </span>
-                      </div>
-                      {summary.periodStatus && (
-                        <WorkforceStatusPill status={summary.periodStatus} />
-                      )}
-                    </header>
-                    <dl className="hr-minute-grid">
-                      <div>
-                        <dt>Ordinarios</dt>
-                        <dd>{summary.ordinaryMinutes} min</dd>
-                      </div>
-                      <div>
-                        <dt>Descanso</dt>
-                        <dd>{summary.breakMinutes} min</dd>
-                      </div>
-                      <div>
-                        <dt>Tardanza</dt>
-                        <dd>{summary.lateMinutes} min</dd>
-                      </div>
-                      <div>
-                        <dt>Salida temprana</dt>
-                        <dd>{summary.earlyDepartureMinutes} min</dd>
-                      </div>
-                      <div>
-                        <dt>Extra candidato</dt>
-                        <dd>{summary.candidateOvertimeMinutes} min</dd>
-                      </div>
-                      <div>
-                        <dt>Extra aprobado</dt>
-                        <dd>{summary.approvedOvertimeMinutes ?? 0} min</dd>
-                      </div>
-                    </dl>
-                    <footer>
-                      <small>
-                        Revisión fuente: {summary.sourceRevision ?? '—'} · calculado{' '}
-                        {displayDateTime(summary.calculatedAt)}
-                      </small>
-                      <div>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setCreatePanel({ kind: 'correction', summary })}
-                          disabled={!online}
-                        >
-                          <FilePenLine size={15} /> Corregir
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setCreatePanel({ kind: 'overtime', summary })}
-                          disabled={!online}
-                        >
-                          Solicitar extra
-                        </Button>
-                      </div>
-                    </footer>
-                  </article>
-                ))}
-              </div>
+        <section className="pr-table-card" aria-label="Administración diaria de asistencia">
+          <div
+            className="hr-admin-table-wrap"
+            role="tabpanel"
+            id={`attendance-panel-${activeTable.toLowerCase()}`}
+            aria-labelledby={`attendance-tab-${activeTable.toLowerCase()}`}
+            tabIndex={0}
+          >
+            {activeTable === 'DAY' && (
+              <table className="hr-admin-table inventory-table" aria-label={`Jornadas del ${dateLabel(date)}`}>
+                <thead><tr><th scope="col">Empleado</th><th scope="col">Sucursal</th><th scope="col">Programado</th><th scope="col">Trabajado</th><th scope="col">Descanso</th><th scope="col">Tardanza</th><th scope="col">Salida antes</th><th scope="col">Extra</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acciones</th></tr></thead>
+                <tbody>
+                  {summaries.length === 0 ? (
+                    <tr><td colSpan={10}><div className="hr-admin-empty"><strong>No hay jornadas para este filtro</strong><span>Cambia la fecha, sucursal o empleado y actualiza la consulta.</span><Button size="sm" variant="ghost" onClick={() => void load()}><RefreshCw size={15} /> Actualizar</Button></div></td></tr>
+                  ) : pageSlice(summaries).map((summary) => (
+                    <tr key={summary.id}>
+                      <td><strong>{summary.user?.name ?? `Usuario #${summary.userId}`}</strong><small>{summary.incidentCount ? `${summary.incidentCount} incidencia(s)` : 'Sin incidencias'}</small></td>
+                      <td>{summary.branch?.name ?? 'Sin sucursal'}</td>
+                      <td>{summary.scheduledMinutes ?? 0} min</td>
+                      <td>{summary.ordinaryMinutes} min</td>
+                      <td>{summary.breakMinutes} min</td>
+                      <td className={summary.lateMinutes > 0 ? 'hr-admin-cell-warning' : ''}>{summary.lateMinutes} min</td>
+                      <td className={summary.earlyDepartureMinutes > 0 ? 'hr-admin-cell-warning' : ''}>{summary.earlyDepartureMinutes} min</td>
+                      <td>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</td>
+                      <td>{summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : 'Sin periodo'}</td>
+                      <td className="hr-admin-actions-col"><div className="hr-admin-row-actions table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`}><Pencil size={16} /></Button><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} title="Registrar horas extra" aria-label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`}><Clock3 size={16} /></Button></div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </section>
 
-          <div className="hr-workforce-columns">
-            <section className="hr-workforce-section">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>Incidencias</h2>
-                  <p>Señales generadas por las reglas del servidor.</p>
-                </div>
-              </div>
-              {incidents.length === 0 ? (
-                <p className="hr-empty">Sin incidencias.</p>
-              ) : (
-                <div className="hr-record-list">
-                  {incidents.map((incident) => (
-                    <article key={incident.id}>
-                      <div>
-                        <strong>{incident.user?.name ?? `Usuario #${incident.userId}`}</strong>
-                        <span>{incident.message}</span>
-                        <small>
-                          {incident.date} · {incident.reasonCode ?? incident.type}
-                        </small>
-                      </div>
-                      <div className="hr-record-actions">
-                        <WorkforceStatusPill status={incident.severity} />
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setCreatePanel({ kind: 'correction', incident })}
-                          disabled={!online}
-                        >
-                          Corregir
-                        </Button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-            <section className="hr-workforce-section">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>Correcciones</h2>
-                  <p>Solicitudes compensatorias; nunca se borra el historial original.</p>
-                </div>
-              </div>
-              {corrections.length === 0 ? (
-                <p className="hr-empty">Sin correcciones.</p>
-              ) : (
-                <div className="hr-record-list">
-                  {corrections.map((item) => (
-                    <article key={item.id}>
-                      <div>
-                        <strong>
-                          {item.user?.name ?? `Usuario #${item.userId}`} · {item.type}
-                        </strong>
-                        <span>{item.reason}</span>
-                        <small>
-                          {displayDateTime(item.createdAt)}{' '}
-                          {item.auditReference ? `· ${item.auditReference}` : ''}
-                        </small>
-                      </div>
-                      <div className="hr-record-actions">
-                        <WorkforceStatusPill status={item.status} />
-                        {item.status === 'PENDING' && (
-                          <Button
-                            size="sm"
-                            onClick={() => openDecision({ kind: 'correction', item })}
-                            disabled={!online}
-                          >
-                            Decidir
-                          </Button>
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
+            {activeTable === 'INCIDENTS' && (
+              <table className="hr-admin-table inventory-table" aria-label="Incidencias que requieren revisión">
+                <thead><tr><th scope="col">Empleado</th><th scope="col">Fecha</th><th scope="col">Motivo</th><th scope="col">Gravedad</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
+                <tbody>{incidents.length === 0 ? <tr><td colSpan={6}><div className="hr-admin-empty"><strong>No hay incidencias</strong><span>Las jornadas del filtro actual están al día.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div></td></tr> : pageSlice(incidents).map((incident) => <tr key={incident.id}><td><strong>{incident.user?.name ?? `Usuario #${incident.userId}`}</strong></td><td>{dateLabel(incident.date)}</td><td><strong>{incident.message}</strong><small>{incident.reasonCode ?? incident.type}</small></td><td><WorkforceStatusPill status={incident.severity} /></td><td><WorkforceStatusPill status={incident.status} /></td><td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', incident })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${incident.user?.name ?? incident.userId}`}><Pencil size={16} /></Button></div></td></tr>)}</tbody>
+              </table>
+            )}
 
-          <div className="hr-workforce-columns">
-            <section className="hr-workforce-section">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>Horas extra</h2>
-                  <p>Candidato no significa aprobado.</p>
-                </div>
-              </div>
-              {overtime.length === 0 ? (
-                <p className="hr-empty">Sin solicitudes.</p>
-              ) : (
-                <div className="hr-record-list">
-                  {overtime.map((item) => (
-                    <article key={item.id}>
-                      <div>
-                        <strong>
-                          {item.user?.name ?? `Usuario #${item.userId}`} · {item.date}
-                        </strong>
-                        <span>
-                          {item.requestedMinutes} min solicitados · {item.approvedMinutes ?? 0} min
-                          aprobados
-                        </span>
-                        <small>{item.reason}</small>
-                      </div>
-                      <div className="hr-record-actions">
-                        <WorkforceStatusPill status={item.status} />
-                        {item.status === 'PENDING' && (
-                          <Button
-                            size="sm"
-                            onClick={() => openDecision({ kind: 'overtime', item })}
-                            disabled={!online}
-                          >
-                            Decidir
-                          </Button>
-                        )}
-                      </div>
-                    </article>
-                  ))}
+            {activeTable === 'CORRECTIONS' && (
+              <table className="hr-admin-table inventory-table" aria-label="Solicitudes de corrección">
+                <thead><tr><th scope="col">Empleado</th><th scope="col">Solicitada</th><th scope="col">Tipo</th><th scope="col">Motivo</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
+                <tbody>{corrections.length === 0 ? <tr><td colSpan={6}><div className="hr-admin-empty"><strong>No hay correcciones</strong><span>Cuando alguien solicite un ajuste aparecerá aquí.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div></td></tr> : pageSlice(corrections).map((item) => <tr key={item.id}><td><strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong></td><td>{displayDateTime(item.createdAt)}</td><td>{item.type}</td><td>{item.reason}</td><td><WorkforceStatusPill status={item.status} /></td><td className="hr-admin-actions-col">{item.status === 'PENDING' ? <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'correction', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar corrección de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button></div> : <span className="hr-admin-muted">Finalizada</span>}</td></tr>)}</tbody>
+              </table>
+            )}
+
+            {activeTable === 'OVERTIME' && (
+              <table className="hr-admin-table inventory-table" aria-label="Solicitudes de horas extra">
+                <thead><tr><th scope="col">Empleado</th><th scope="col">Fecha</th><th scope="col">Solicitado</th><th scope="col">Aprobado</th><th scope="col">Motivo</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
+                <tbody>{overtime.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><strong>No hay solicitudes de horas extra</strong><span>Puedes registrar una desde la jornada de un empleado.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div></td></tr> : pageSlice(overtime).map((item) => <tr key={item.id}><td><strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong></td><td>{dateLabel(item.date)}</td><td>{item.requestedMinutes} min</td><td>{item.approvedMinutes ?? '—'}</td><td>{item.reason}</td><td><WorkforceStatusPill status={item.status} /></td><td className="hr-admin-actions-col">{item.status === 'PENDING' ? <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar horas extra de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button></div> : <span className="hr-admin-muted">Finalizada</span>}</td></tr>)}</tbody>
+              </table>
+            )}
+
+            {activeTable === 'PERIODS' && (
+              <>
+              {(branchId || userId) && (
+                <div className="hr-attendance-alert info" role="status">
+                  Los periodos de asistencia son de toda la empresa. Los contadores pendientes respetan el filtro de sucursal/empleado seleccionado arriba.
                 </div>
               )}
-            </section>
-            <section className="hr-workforce-section">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>Periodos</h2>
-                  <p>Cierre y reapertura impactan conciliación y pueden afectar nómina.</p>
-                </div>
-              </div>
-              {periods.length === 0 ? (
-                <p className="hr-empty">Sin periodos.</p>
-              ) : (
-                <div className="hr-record-list">
-                  {periods.map((period) => (
-                    <article key={period.id}>
-                      <div>
-                        <strong>
-                          {period.dateFrom} – {period.dateTo}
-                        </strong>
-                        <span>
-                          {period.summaryCount ?? 0} resúmenes ·{' '}
-                          {period.unresolvedIncidentCount ?? 0} incidencias abiertas
-                        </span>
-                        <small>
-                          {period.payrollReference
-                            ? `Nómina: ${period.payrollReference}`
-                            : 'Sin referencia de nómina'}
-                        </small>
-                      </div>
-                      <div className="hr-record-actions">
-                        <WorkforceStatusPill status={period.status} />
-                        {period.status === 'CLOSED' ? (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => openDecision({ kind: 'reopen', item: period })}
-                            disabled={!online}
-                          >
-                            <RotateCcw size={15} /> Reabrir
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() => openDecision({ kind: 'close', item: period })}
-                            disabled={!online}
-                          >
-                            <LockKeyhole size={15} /> Cerrar
-                          </Button>
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
+              <table className="hr-admin-table inventory-table" aria-label="Periodos de asistencia">
+                <thead><tr><th scope="col">Periodo</th><th scope="col">Empleados</th><th scope="col">Incidencias</th><th scope="col">Correcciones</th><th scope="col">Horas extra</th><th scope="col">Nómina</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
+                <tbody>{periods.length === 0 ? <tr><td colSpan={8}><div className="hr-admin-empty"><strong>No hay periodos</strong><span>Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina.</span><Button size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button></div></td></tr> : pageSlice(periods).map((period) => {
+                  const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0);
+                  return <tr key={period.id}><td><strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong></td><td>{period.summaryCount ?? 0}</td><td className={(period.unresolvedIncidentCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.unresolvedIncidentCount ?? 0}</td><td className={(period.pendingCorrectionCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingCorrectionCount ?? 0}</td><td className={(period.pendingOvertimeCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingOvertimeCount ?? 0}</td><td>{period.payrollReference ?? 'No vinculada'}</td><td><WorkforceStatusPill status={period.status} /></td><td className="hr-admin-actions-col"><div className="table-actions">{period.status === 'CLOSED' ? <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} title="Reabrir periodo" aria-label={`Reabrir periodo ${period.id}`}><RotateCcw size={16} /></Button> : <Button className="table-action-btn danger" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} title={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} aria-label={`Cerrar periodo ${period.id}`}><LockKeyhole size={16} /></Button>}</div></td></tr>;
+                })}</tbody>
+              </table>
+              </>
+            )}
           </div>
-        </>
+          <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE))} totalItems={activeTableCount} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />
+        </section>
       )}
-
       <Sidebar
         isOpen={Boolean(createPanel)}
         onClose={() => !saving && setCreatePanel(null)}
@@ -569,87 +444,100 @@ export default function AttendanceManagement() {
               ? 'Solicitud de horas extra'
               : 'Nuevo periodo'
         }
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <div className="hr-sidebar-body">
-          <OnlineOnlyNotice online={online} compact />
-          {createPanel?.kind === 'correction' && (
-            <AttendanceCorrectionForm
-              users={users}
-              branches={branches}
-              initialUserId={createPanel.summary?.userId ?? createPanel.incident?.userId}
-              dailySummaryId={
-                createPanel.summary?.id ?? createPanel.incident?.dailySummaryId ?? undefined
-              }
-              incidentId={createPanel.incident?.id}
-              timezone={createPanel.summary?.timezone}
-              online={online}
-              saving={saving}
-              onSubmit={createCorrection}
-              onCancel={() => setCreatePanel(null)}
-            />
-          )}
-          {createPanel?.kind === 'overtime' && (
-            <OvertimeRequestForm
-              users={users}
-              initialUserId={createPanel.summary?.userId}
-              initialDate={createPanel.summary?.date ?? date}
-              dailySummaryId={createPanel.summary?.id}
-              candidateMinutes={createPanel.summary?.candidateOvertimeMinutes}
-              online={online}
-              saving={saving}
-              onSubmit={createOvertime}
-              onCancel={() => setCreatePanel(null)}
-            />
-          )}
-          {createPanel?.kind === 'period' && (
-            <form className="hr-workforce-form" onSubmit={(event) => void createPeriod(event)}>
-              <label>
-                Desde
-                <input
-                  type="date"
-                  value={periodForm.dateFrom}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Hasta
-                <input
-                  type="date"
-                  min={periodForm.dateFrom}
-                  value={periodForm.dateTo}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label className="span-full">
-                Razón de apertura
-                <textarea
-                  rows={4}
-                  value={periodForm.reason}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, reason: event.target.value }))
-                  }
-                />
-              </label>
-              <div className="hr-form-actions span-full">
+        {createPanel?.kind !== 'period' && (
+          <>
+            {createPanel?.kind === 'correction' && (
+              <AttendanceCorrectionForm
+                users={users}
+                branches={branches}
+                initialUserId={createPanel.summary?.userId ?? createPanel.incident?.userId}
+                dailySummaryId={
+                  createPanel.summary?.id ?? createPanel.incident?.dailySummaryId ?? undefined
+                }
+                incidentId={createPanel.incident?.id}
+                timezone={createPanel.summary?.timezone}
+                online={online}
+                saving={saving}
+                notice={<OnlineOnlyNotice online={online} compact />}
+                onSubmit={createCorrection}
+                onCancel={() => setCreatePanel(null)}
+              />
+            )}
+            {createPanel?.kind === 'overtime' && (
+              <OvertimeRequestForm
+                users={users}
+                initialUserId={createPanel.summary?.userId}
+                initialDate={createPanel.summary?.date ?? date}
+                dailySummaryId={createPanel.summary?.id}
+                candidateMinutes={createPanel.summary?.candidateOvertimeMinutes}
+                online={online}
+                saving={saving}
+                notice={<OnlineOnlyNotice online={online} compact />}
+                onSubmit={createOvertime}
+                onCancel={() => setCreatePanel(null)}
+              />
+            )}
+          </>
+        )}
+        {createPanel?.kind === 'period' && (
+          <HrModalFormShell
+            ariaLabel="Sección de periodo de asistencia"
+            tabLabel="Periodo"
+            sectionTitle="Rango y motivo de apertura"
+            icon={<CalendarClock size={18} aria-hidden="true" />}
+            formClassName="hr-workforce-form"
+            notice={<OnlineOnlyNotice online={online} compact />}
+            onSubmit={(event) => void createPeriod(event)}
+            footer={
+              <>
                 <Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={!online || saving}>
                   {saving ? 'Creando…' : 'Crear periodo'}
                 </Button>
-              </div>
-            </form>
-          )}
-        </div>
+              </>
+            }
+          >
+            <label>
+              Desde
+              <input
+                type="date"
+                value={periodForm.dateFrom}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Hasta
+              <input
+                type="date"
+                min={periodForm.dateFrom}
+                value={periodForm.dateTo}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label className="span-full">
+              Razón de apertura
+              <textarea
+                rows={4}
+                value={periodForm.reason}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, reason: event.target.value }))
+                }
+              />
+            </label>
+          </HrModalFormShell>
+        )}
       </Sidebar>
 
       <Sidebar
@@ -662,15 +550,25 @@ export default function AttendanceManagement() {
               ? 'Reabrir periodo'
               : 'Registrar decisión'
         }
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <form
-          className="hr-workforce-form hr-sidebar-body"
+        <HrModalFormShell
+          ariaLabel="Sección de decisión de asistencia"
+          tabLabel={decisionPanel?.kind === 'close' ? 'Cierre' : decisionPanel?.kind === 'reopen' ? 'Reapertura' : 'Decisión'}
+          sectionTitle="Resolución y justificación"
+          icon={decisionPanel?.kind === 'close' ? <LockKeyhole size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+          formClassName="hr-workforce-form"
+          notice={<OnlineOnlyNotice online={online} compact />}
           onSubmit={(event) => void submitDecision(event)}
+          footer={
+            <>
+              <Button type="button" variant="ghost" onClick={() => setDecisionPanel(null)} disabled={saving}>Cancelar</Button>
+              <Button type="submit" variant={decisionPanel?.kind === 'close' ? 'danger' : 'primary'} disabled={!online || saving || !reason.trim()}>{saving ? 'Registrando…' : 'Confirmar con auditoría'}</Button>
+            </>
+          }
         >
-          <OnlineOnlyNotice online={online} compact />
           {decisionPanel?.kind === 'close' || decisionPanel?.kind === 'reopen' ? (
             <div className="hr-sensitive-warning span-full" role="alert">
               <AlertTriangle size={20} />
@@ -683,26 +581,30 @@ export default function AttendanceManagement() {
           ) : (
             <label>
               Decisión
-              <select
+              <HrReactSelect
                 value={decision}
                 onChange={(event) => setDecision(event.target.value as HrDecision)}
               >
                 <option value="APPROVED">Aprobar</option>
                 <option value="REJECTED">Rechazar</option>
-              </select>
+              </HrReactSelect>
             </label>
           )}
           {decisionPanel?.kind === 'overtime' && decision === 'APPROVED' && (
             <label>
-              Minutos aprobados por el servidor
+              Minutos a aprobar
               <input
                 type="number"
                 min="0"
+                max={decisionPanel.item.requestedMinutes}
                 step="1"
                 value={approvedMinutes}
                 onChange={(event) => setApprovedMinutes(event.target.value)}
                 required
               />
+              <small>
+                Solicitados: {decisionPanel.item.requestedMinutes} min. El servidor valida el tope final contra la jornada.
+              </small>
             </label>
           )}
           <label className="span-full">
@@ -715,24 +617,7 @@ export default function AttendanceManagement() {
               required
             />
           </label>
-          <div className="hr-form-actions span-full">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setDecisionPanel(null)}
-              disabled={saving}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              variant={decisionPanel?.kind === 'close' ? 'danger' : 'primary'}
-              disabled={!online || saving || !reason.trim()}
-            >
-              {saving ? 'Registrando…' : 'Confirmar con auditoría'}
-            </Button>
-          </div>
-        </form>
+        </HrModalFormShell>
       </Sidebar>
     </div>
   );

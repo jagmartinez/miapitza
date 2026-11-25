@@ -24,4 +24,11 @@ router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), C
 router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN'), validate(s.addCateringPayment), CateringController.addPayment);
 router.post('/:id/payments/:paymentId/reverse', requireRole('SUPERADMIN', 'ADMIN'), validate(s.reverseCateringPayment), CateringController.reversePayment);
 
+// Fiscal writes are POST and require a caller-provided X-Idempotency-Key.
+// Reads never allocate sequences or mutate money/inventory.
+router.post('/:id/fiscal-invoice', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.issueFiscalInvoice);
+router.get('/:id/fiscal-invoice', validate(s.idParam), CateringController.getFiscalInvoice);
+router.post('/:id/fiscal-credit-note', requireRole('SUPERADMIN', 'ADMIN'), validate(s.issueCateringFiscalCreditNote), CateringController.issueFiscalCreditNote);
+router.get('/:id/fiscal-credit-note', validate(s.idParam), CateringController.getFiscalCreditNote);
+
 export default router;

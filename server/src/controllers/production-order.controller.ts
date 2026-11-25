@@ -120,13 +120,20 @@ export class ProductionOrderController {
         try {
             const id = parseInt(req.params.id);
             await ProductionOrderController.assertBranch(req, id);
+            const allowNegative = req.body.allowNegative === true;
+            if (allowNegative && !req.user!.roles.some((role) => role === 'SUPERADMIN' || role === 'ADMIN')) {
+                return next({
+                    statusCode: 403,
+                    message: 'Solo un administrador puede autorizar inventario negativo al finalizar producción'
+                });
+            }
             const data = await ProductionOrderService.finish(
                 id, req.user!.companyId, req.user!.userId,
                 {
                     producedQuantity: req.body.producedQuantity !== undefined ? Number(req.body.producedQuantity) : undefined,
                     consumptions: Array.isArray(req.body.consumptions) ? req.body.consumptions : undefined,
                     notes: req.body.notes,
-                    allowNegative: !!req.body.allowNegative
+                    allowNegative
                 }
             );
             res.json({ success: true, message: 'Producción finalizada', data });

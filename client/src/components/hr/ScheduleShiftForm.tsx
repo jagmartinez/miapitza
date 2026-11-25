@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SingleValue } from 'react-select';
-import { Clock3 } from 'lucide-react';
+import { Clock3, UserRound } from 'lucide-react';
 import Button from '../Button';
 import Select from '../Select';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
@@ -8,6 +8,7 @@ import type { HrScheduleShift, HrScheduleShiftInput, HrShiftTemplate } from '../
 import { addDaysDateOnly, isDateInWeek, shiftCrossesMidnight } from './scheduleDates';
 
 type Option = { value: string; label: string };
+type FormTab = 'assignment' | 'schedule';
 
 interface ScheduleShiftFormProps {
     weekStart: string;
@@ -55,10 +56,12 @@ export default function ScheduleShiftForm({
 }: ScheduleShiftFormProps) {
     const [form, setForm] = useState(() => stateFor(weekStart, shift));
     const [error, setError] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<FormTab>('assignment');
 
     useEffect(() => {
         setForm(stateFor(weekStart, shift));
         setError(null);
+        setActiveTab('assignment');
     }, [shift, weekStart]);
 
     const activeTemplates = useMemo(() => templates.filter((template) => template.active !== false), [templates]);
@@ -87,23 +90,28 @@ export default function ScheduleShiftForm({
         event.preventDefault();
         if (!form.userId || !form.branchId || !form.jobPositionId) {
             setError('Selecciona usuario, sucursal y puesto.');
+            setActiveTab('assignment');
             return;
         }
         if (!isDateInWeek(form.date, weekStart)) {
             setError('La fecha debe pertenecer a la semana abierta.');
+            setActiveTab('schedule');
             return;
         }
         if (!form.startTime || !form.endTime) {
             setError('Define la hora de inicio y fin.');
+            setActiveTab('schedule');
             return;
         }
         if (form.startTime === form.endTime) {
             setError('La hora de inicio y fin no pueden ser iguales.');
+            setActiveTab('schedule');
             return;
         }
         const breakMinutes = Number(form.breakMinutes);
         if (!Number.isInteger(breakMinutes) || breakMinutes < 0 || breakMinutes > 720) {
             setError('El descanso debe ser un entero entre 0 y 720 minutos.');
+            setActiveTab('schedule');
             return;
         }
         await onSubmit({
@@ -120,8 +128,17 @@ export default function ScheduleShiftForm({
     };
 
     return (
-        <form className="modal-form-new hr-shift-form" onSubmit={submit}>
-            <div className="modal-tab-content">
+        <div className="premium-modal-content hr-shift-modal-content">
+            <div className="modal-tabs" role="tablist" aria-label="Secciones del turno">
+                <button type="button" role="tab" aria-selected={activeTab === 'assignment'} className={`modal-tab ${activeTab === 'assignment' ? 'active' : ''}`} onClick={() => setActiveTab('assignment')}>
+                    <UserRound size={18} aria-hidden="true" /><span>Asignación</span>
+                </button>
+                <button type="button" role="tab" aria-selected={activeTab === 'schedule'} className={`modal-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>
+                    <Clock3 size={18} aria-hidden="true" /><span>Jornada</span>
+                </button>
+            </div>
+            <form className="modal-form-new hr-shift-form" onSubmit={submit}>
+              <div className="modal-tab-content">
                 {error && <div className="hr-schedule-alert danger" role="alert">{error}</div>}
                 {conflicts.length > 0 && (
                     <div className="hr-schedule-form-conflicts" role="alert" aria-label="Conflictos del turno">
@@ -133,6 +150,8 @@ export default function ScheduleShiftForm({
                         </ul>
                     </div>
                 )}
+                {activeTab === 'assignment' && <section className="modal-content-group" role="tabpanel">
+                <div className="modal-section-header"><UserRound size={18} aria-hidden="true" /><h3>Persona y lugar de trabajo</h3></div>
                 {activeTemplates.length > 0 && (
                     <Select<Option>
                         variant="modal"
@@ -177,6 +196,9 @@ export default function ScheduleShiftForm({
                         isSearchable
                     />
                 </div>
+                </section>}
+                {activeTab === 'schedule' && <section className="modal-content-group" role="tabpanel">
+                <div className="modal-section-header"><Clock3 size={18} aria-hidden="true" /><h3>Fecha y horario</h3></div>
                 <div className="modal-input-group">
                     <label htmlFor="hr-shift-date">Fecha</label>
                     <input id="hr-shift-date" className="modal-standard-input" type="date" min={weekStart} max={addDaysDateOnly(weekStart, 6)} value={form.date} onChange={(event) => update('date', event.target.value)} required />
@@ -200,11 +222,15 @@ export default function ScheduleShiftForm({
                     <label htmlFor="hr-shift-notes">Notas</label>
                     <textarea id="hr-shift-notes" className="modal-textarea" rows={3} maxLength={500} value={form.notes} onChange={(event) => update('notes', event.target.value)} />
                 </div>
-            </div>
-            <div className="modal-footer">
+                </section>}
+              </div>
+              <div className="modal-footer">
                 <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
-                <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : shift ? 'Guardar turno' : 'Agregar turno'}</Button>
-            </div>
-        </form>
+                {activeTab === 'assignment'
+                    ? <Button type="button" onClick={() => setActiveTab('schedule')}>Continuar</Button>
+                    : <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : shift ? 'Guardar turno' : 'Agregar turno'}</Button>}
+              </div>
+            </form>
+        </div>
     );
 }

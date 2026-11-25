@@ -32,6 +32,17 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
             });
             adminRoleId = createdRole.id;
         }
+        const invoicePermissions = await Promise.all(['invoices.issue', 'invoices.view'].map((name) =>
+            prisma.permission.upsert({
+                where: { name },
+                update: {},
+                create: { name, description: `Invoice integration ${name}` }
+            })
+        ));
+        await prisma.role.update({
+            where: { id: adminRoleId },
+            data: { permissions: { connect: invoicePermissions.map(({ id }) => ({ id })) } }
+        });
 
         company1 = await prisma.company.upsert({
             where: { id: 998 },
@@ -175,8 +186,24 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
         await prisma.company.deleteMany({ where: { id: { in: [998, 999] } } });
     });
 
-    describe('GET /api/invoices/:id', () => {
-        it('should return invoice data for authorized company', async () => {
+    describe('POST issuance and immutable GET /api/invoices/:id', () => {
+        it('does not issue on GET and keeps the emitted rendering immutable', async () => {
+            const beforeIssue = await request(app)
+                .get(`/api/invoices/${order1.id}`)
+                .set('Authorization', `Bearer ${adminToken1}`);
+            expect(beforeIssue.status).toBe(409);
+
+            const issued = await request(app)
+                .post(`/api/invoices/${order1.id}/issue`)
+                .set('Authorization', `Bearer ${adminToken1}`);
+            expect(issued.status).toBe(201);
+            expect(issued.body.data.orderId).toBe(order1.id);
+            expect(issued.body.data.companyName).toBe(company1.name);
+            expect(issued.body.data.invoiceNumber).toMatch(/^FAC-/);
+
+            await prisma.menuItem.update({ where: { id: menuItemId }, data: { name: 'Nombre maestro modificado' } });
+            await prisma.company.update({ where: { id: company1.id }, data: { name: 'Empresa maestra modificada' } });
+
             const response = await request(app)
                 .get(`/api/invoices/${order1.id}`)
                 .set('Authorization', `Bearer ${adminToken1}`);
@@ -184,6 +211,7 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
             expect(response.status).toBe(200);
             expect(response.body.data.orderId).toBe(order1.id);
             expect(response.body.data.companyName).toBe(company1.name);
+            expect(response.body.data.items[0].name).not.toBe('Nombre maestro modificado');
             expect(response.body.data.invoiceNumber).toMatch(/^FAC-/);
         });
 

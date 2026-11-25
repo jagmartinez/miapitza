@@ -21,13 +21,20 @@ describe('Operational route permission contract', () => {
         expect(routes).not.toContain('requireRole(');
     });
 
-    it('treats existing invoice generation endpoints as issuance and exposes no fake cancellation route', () => {
+    it('separates mutating invoice issuance from immutable invoice reads', () => {
         const routes = readRoute('invoice.routes.ts');
 
         expect(routes).toContain("requirePermission('invoices.issue', 'SUPERADMIN', 'ADMIN', 'CAJERO')");
-        expect(routes).toContain("router.get('/:id', canIssueInvoice");
-        expect(routes).toContain("router.get('/:id/pdf', canIssueInvoice");
-        expect(routes).not.toMatch(/router\.(post|patch|delete)\([^\n]*cancel/i);
+        expect(routes).toContain("requirePermission('invoices.view', 'SUPERADMIN', 'ADMIN', 'CAJERO')");
+        expect(routes).toContain("router.post('/:id/issue', canIssueInvoice");
+        expect(routes).toContain("router.get('/:id', canViewInvoice");
+        expect(routes).toContain("router.get('/:id/pdf', canViewInvoice");
+        expect(routes).toContain("requirePermission('invoices.cancel', 'SUPERADMIN', 'ADMIN')");
+        expect(routes).toContain("requirePermission('invoices.credit', 'SUPERADMIN', 'ADMIN')");
+        expect(routes).toContain("router.post('/:id/cancel', canCancelInvoice");
+        expect(routes).toContain("router.post('/:id/credit-note', canIssueCreditNote");
+        expect(routes).toContain("router.get('/:id/cancellation', canViewInvoice");
+        expect(routes).toContain("router.get('/:id/credit-note', canViewInvoice");
         expect(routes).not.toContain('requireRole(');
     });
 
@@ -43,10 +50,15 @@ describe('Operational route permission contract', () => {
     });
 
     it('ships every operational permission and production grants in an additive migration', () => {
-        const migration = fs.readFileSync(
+        const operationalMigration = fs.readFileSync(
             path.resolve(__dirname, '../../../prisma/migrations/20260714_add_operational_permissions/migration.sql'),
             'utf8'
         );
+        const fiscalMigration = fs.readFileSync(
+            path.resolve(__dirname, '../../../prisma/migrations/20260714_fiscal_credit_notes_customer_tax/migration.sql'),
+            'utf8'
+        );
+        const migration = `${operationalMigration}\n${fiscalMigration}`;
         const seed = fs.readFileSync(path.resolve(__dirname, '../../../prisma/seed.ts'), 'utf8');
         const permissions = [
             'orders.view',
@@ -57,6 +69,7 @@ describe('Operational route permission contract', () => {
             'invoices.issue',
             'invoices.view',
             'invoices.cancel',
+            'invoices.credit',
             'payments.process',
             'payments.reverse',
             'bills.split',

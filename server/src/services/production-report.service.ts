@@ -35,6 +35,77 @@ function homogeneousTotal(rows: QuantityByUnit[]): number | null {
     return rows.length <= 1 ? (rows[0]?.quantity ?? 0) : null;
 }
 
+type FinishedProductionMetrics = {
+    planned: number;
+    produced: number;
+    estimatedCost: number;
+    realCost: number;
+};
+
+function productionRef(order: { id?: unknown; code?: unknown }): string {
+    if (typeof order.code === 'string' && order.code.trim()) return order.code;
+    if (order.id != null) return `#${String(order.id)}`;
+    return 'sin identificador';
+}
+
+function requireFiniteNonNegative(value: unknown, field: string, ref: string): number {
+    if (value == null) {
+        throw new Error(`Producción ${ref}: ${field} no tiene un valor histórico. Reconcílie la orden antes de emitir reportes.`);
+    }
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue) || numberValue < 0) {
+        throw new Error(`Producción ${ref}: ${field} es inválido. Reconcílie la orden antes de emitir reportes.`);
+    }
+    return numberValue;
+}
+
+function requireFinishedMetrics(order: {
+    id?: unknown;
+    code?: unknown;
+    plannedQuantity: unknown;
+    producedQuantity: unknown;
+    estimatedCost: unknown;
+    realCost: unknown;
+    finishedAt?: unknown;
+}): FinishedProductionMetrics {
+    const ref = productionRef(order);
+    const planned = requireFiniteNonNegative(order.plannedQuantity, 'cantidad planificada', ref);
+    const produced = requireFiniteNonNegative(order.producedQuantity, 'cantidad producida', ref);
+    const estimatedCost = requireFiniteNonNegative(order.estimatedCost, 'costo estimado', ref);
+    const realCost = requireFiniteNonNegative(order.realCost, 'costo real', ref);
+    if (planned <= 0 || produced <= 0) {
+        throw new Error(
+            `Producción ${ref}: una orden FINALIZADA debe tener cantidades planificada y producida mayores que cero. ` +
+            'Reconcílie la orden antes de emitir reportes.'
+        );
+    }
+    if (!(order.finishedAt instanceof Date) || Number.isNaN(order.finishedAt.getTime())) {
+        throw new Error(`Producción ${ref}: una orden FINALIZADA no tiene fecha de finalización válida.`);
+    }
+    return { planned, produced, estimatedCost, realCost };
+}
+
+function requireConsumedItemMetrics(item: {
+    id?: unknown;
+    consumedQuantity: unknown;
+    unitCost: unknown;
+    totalCost: unknown;
+}, orderRef: string): { consumed: number; unitCost: number; totalCost: number } {
+    const itemRef = item.id != null ? `, insumo #${String(item.id)}` : '';
+    const consumed = requireFiniteNonNegative(item.consumedQuantity, `cantidad consumida${itemRef}`, orderRef);
+    const unitCost = requireFiniteNonNegative(item.unitCost, `costo unitario${itemRef}`, orderRef);
+    const totalCost = requireFiniteNonNegative(item.totalCost, `costo total${itemRef}`, orderRef);
+    const expectedTotal = consumed * unitCost;
+    const tolerance = Math.max(0.01, Math.abs(totalCost) * 0.000001);
+    if (Math.abs(expectedTotal - totalCost) > tolerance) {
+        throw new Error(
+            `Producción ${orderRef}${itemRef}: el costo total no coincide con cantidad por costo unitario. ` +
+            'Reconcílie la orden antes de emitir reportes.'
+        );
+    }
+    return { consumed, unitCost, totalCost };
+}
+
 export class ProductionReportService {
     /** Producciones realizadas: listado + resumen por periodo. */
     static async getProductions(companyId: number, filters: BaseFilters) {
@@ -79,8 +150,9 @@ export class ProductionReportService {
                     acc.totalEstimatedCost += Number(o.estimatedCost);
                 }
                 if (o.status === 'FINISHED') {
-                    addQuantity(producedByUnit, o.product.baseUnit?.abbreviation || o.product.unit, Number(o.producedQuantity));
-                    acc.totalRealCost += Number(o.realCost);
+                    const metrics = requireFinishedMetrics(o);
+                    addQuantity(producedByUnit, o.product.baseUnit?.abbreviation || o.product.unit, metrics.produced);
+                    acc.totalRealCost += metrics.realCost;
                 }
                 return acc;
             },
@@ -129,8 +201,10 @@ export class ProductionReportService {
 
         const byComponent = new Map<number, { componentProductId: number; name: string; sku: string | null; unit: string; consumedQuantity: number; totalCost: number; orders: number }>();
         for (const o of orders) {
+            requireFinishedMetrics(o);
+            const ref = productionRef(o);
             for (const it of o.items) {
-                const consumed = Number(it.consumedQuantity);
+                const { consumed, totalCost } = requireConsumedItemMetrics(it, ref);
                 if (consumed <= 0) continue;
                 const key = it.componentProductId;
                 const prev = byComponent.get(key) || {
@@ -143,7 +217,7 @@ export class ProductionReportService {
                     orders: 0
                 };
                 prev.consumedQuantity += consumed;
-                prev.totalCost += Number(it.totalCost);
+                prev.totalCost += totalCost;
                 prev.orders += 1;
                 byComponent.set(key, prev);
             }
@@ -176,12 +250,11 @@ export class ProductionReportService {
         });
 
         const items = orders.map((o) => {
-            const planned = Number(o.plannedQuantity);
-            const produced = Number(o.producedQuantity);
+            const { planned, produced, estimatedCost, realCost } = requireFinishedMetrics(o);
             const qtyDiff = produced - planned;
-            const yieldPct = planned > 0 ? (produced / planned) * 100 : 0;
-            const estimatedCost = Number(o.estimatedCost);
-            const realCost = Number(o.realCost);
+            const yieldPct = (produced / planned) * 100;
+            const estimatedUnitCost = requireFiniteNonNegative(o.estimatedUnitCost, 'costo unitario estimado', productionRef(o));
+            const realUnitCost = requireFiniteNonNegative(o.realUnitCost, 'costo unitario real', productionRef(o));
             return {
                 id: o.id,
                 code: o.code,
@@ -195,8 +268,8 @@ export class ProductionReportService {
                 estimatedCost,
                 realCost,
                 costVariance: realCost - estimatedCost,
-                estimatedUnitCost: Number(o.estimatedUnitCost),
-                realUnitCost: Number(o.realUnitCost)
+                estimatedUnitCost,
+                realUnitCost
             };
         });
 
@@ -466,22 +539,20 @@ export class ProductionReportService {
         }
 
         for (const o of finishedOrders) {
+                const metrics = requireFinishedMetrics(o);
                 const outputUnit = o.product.baseUnit?.abbreviation || o.product.unit;
-                addQuantity(plannedByUnit, outputUnit, Number(o.plannedQuantity));
-                addQuantity(producedByUnit, outputUnit, Number(o.producedQuantity));
-                kpis.totalEstimatedCost += Number(o.estimatedCost);
-                kpis.totalRealCost += Number(o.realCost);
-                const plannedQuantity = Number(o.plannedQuantity);
-                if (plannedQuantity > 0) {
-                    yieldPctSum += (Number(o.producedQuantity) / plannedQuantity) * 100;
-                    yieldOrderCount += 1;
-                }
+                addQuantity(plannedByUnit, outputUnit, metrics.planned);
+                addQuantity(producedByUnit, outputUnit, metrics.produced);
+                kpis.totalEstimatedCost += metrics.estimatedCost;
+                kpis.totalRealCost += metrics.realCost;
+                yieldPctSum += (metrics.produced / metrics.planned) * 100;
+                yieldOrderCount += 1;
 
                 const key = zonedDateKey(o.finishedAt as Date, timeZone);
                 const day = dayMap.get(key) || { date: key, orders: 0, realCost: 0, estimatedCost: 0 };
                 day.orders += 1;
-                day.realCost += Number(o.realCost);
-                day.estimatedCost += Number(o.estimatedCost);
+                day.realCost += metrics.realCost;
+                day.estimatedCost += metrics.estimatedCost;
                 dayMap.set(key, day);
 
                 const pp = producedMap.get(o.productId) || {
@@ -497,10 +568,10 @@ export class ProductionReportService {
                     estimatedCost: 0
                 };
                 pp.orders += 1;
-                pp.produced += Number(o.producedQuantity);
-                pp.planned += Number(o.plannedQuantity);
-                pp.realCost += Number(o.realCost);
-                pp.estimatedCost += Number(o.estimatedCost);
+                pp.produced += metrics.produced;
+                pp.planned += metrics.planned;
+                pp.realCost += metrics.realCost;
+                pp.estimatedCost += metrics.estimatedCost;
                 producedMap.set(o.productId, pp);
 
                 const bp = branchMap.get(o.branchId) || {
@@ -510,7 +581,7 @@ export class ProductionReportService {
                     realCost: 0
                 };
                 bp.orders += 1;
-                bp.realCost += Number(o.realCost);
+                bp.realCost += metrics.realCost;
                 branchMap.set(o.branchId, bp);
 
                 if (o.userId != null && o.user) {
@@ -521,12 +592,12 @@ export class ProductionReportService {
                         realCost: 0
                     };
                     op.orders += 1;
-                    op.realCost += Number(o.realCost);
+                    op.realCost += metrics.realCost;
                     operatorMap.set(o.userId, op);
                 }
 
                 for (const it of o.items) {
-                    const consumed = Number(it.consumedQuantity);
+                    const { consumed, totalCost } = requireConsumedItemMetrics(it, productionRef(o));
                     if (consumed <= 0) continue;
                     const ip = inputMap.get(it.componentProductId) || {
                         componentProductId: it.componentProductId,
@@ -537,7 +608,7 @@ export class ProductionReportService {
                         totalCost: 0
                     };
                     ip.consumedQuantity += consumed;
-                    ip.totalCost += Number(it.totalCost);
+                    ip.totalCost += totalCost;
                     inputMap.set(it.componentProductId, ip);
                 }
         }
@@ -633,10 +704,13 @@ export class ProductionReportService {
             }), prisma.productionOrder.findMany({
                 where: { companyId, ...(filters.branchId ? { branchId: filters.branchId } : {}), status: 'FINISHED', finishedAt: { gte: prevFrom, lte: prevTo } },
                 select: {
+                    id: true,
+                    code: true,
                     plannedQuantity: true,
                     producedQuantity: true,
                     estimatedCost: true,
                     realCost: true,
+                    finishedAt: true,
                     product: { select: { unit: true, baseUnit: { select: { abbreviation: true } } } }
                 }
             })]);
@@ -655,18 +729,16 @@ export class ProductionReportService {
             let previousYieldOrderCount = 0;
             const previousProducedByUnit = new Map<string, number>();
             for (const o of prevFinishedOrders) {
+                const metrics = requireFinishedMetrics(o);
                 addQuantity(
                     previousProducedByUnit,
                     o.product.baseUnit?.abbreviation || o.product.unit,
-                    Number(o.producedQuantity)
+                    metrics.produced
                 );
-                prevAgg.totalEstimatedCost += Number(o.estimatedCost);
-                prevAgg.totalRealCost += Number(o.realCost);
-                const plannedQuantity = Number(o.plannedQuantity);
-                if (plannedQuantity > 0) {
-                    previousYieldPctSum += (Number(o.producedQuantity) / plannedQuantity) * 100;
-                    previousYieldOrderCount += 1;
-                }
+                prevAgg.totalEstimatedCost += metrics.estimatedCost;
+                prevAgg.totalRealCost += metrics.realCost;
+                previousYieldPctSum += (metrics.produced / metrics.planned) * 100;
+                previousYieldOrderCount += 1;
             }
             const previousProducedQuantities = quantityRows(previousProducedByUnit);
 

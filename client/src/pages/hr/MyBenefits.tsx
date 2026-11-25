@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { formatHrMoney } from '../../utils/hrFormat';
 import {
   AlertTriangle,
   Banknote,
+  Eye,
   FileMinus2,
   WalletCards,
   Plus,
@@ -11,7 +13,9 @@ import {
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
+import Pagination from '../../components/Pagination';
 import Sidebar from '../../components/Sidebar';
+import MyHrNav from '../../components/hr/MyHrNav';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
 import BenefitsTransitionForm from '../../components/hr/BenefitsTransitionForm';
@@ -38,6 +42,7 @@ import type {
   HrTravelRequestPayload,
 } from '../../types/hr-benefits';
 import './benefits.css';
+import './self-service.css';
 
 type Tab = 'TRAVEL' | 'LOAN' | 'DEDUCTION';
 type Selected =
@@ -45,6 +50,7 @@ type Selected =
   | { resource: 'LOAN'; item: HrLoan }
   | { resource: 'DEDUCTION'; item: HrDeduction };
 type SelfTravelAction = 'SUBMIT' | 'START_SETTLEMENT' | 'CANCEL';
+const PAGE_SIZE = 10;
 
 function dateLabel(value?: string | null): string {
   if (!value) return '—';
@@ -55,7 +61,7 @@ function dateLabel(value?: string | null): string {
 }
 
 function money(currency: string, amount?: string | null): string {
-  return `${currency} ${amount ?? '0.00'}`;
+  return formatHrMoney(currency, amount);
 }
 
 export default function MyBenefits() {
@@ -77,6 +83,7 @@ export default function MyBenefits() {
     item: HrTravelRequest;
     action: SelfTravelAction;
   } | null>(null);
+  const [tablePage, setTablePage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -219,26 +226,50 @@ export default function MyBenefits() {
   };
 
   const items = tab === 'TRAVEL' ? travel : tab === 'LOAN' ? loans : deductions;
+  const pagedItems = items.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
+  const actionableCount = items.filter((entry) => entry.allowedActions.length > 0).length;
+  const closedCount = items.filter((entry) =>
+    ['SETTLED', 'PAID', 'CLOSED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(entry.status)
+  ).length;
+  const activePanelId = `my-benefits-panel-${tab.toLowerCase()}`;
+
+  useEffect(() => {
+    setTablePage(1);
+  }, [tab]);
 
   return (
-    <div className="page-wrapper hr-benefits-page hr-my-benefits-page">
+    <div className="page-wrapper hr-benefits-page hr-my-benefits-page my-hr-page">
       <PageHeader
+        className="my-hr-page-header"
         title="Mis viáticos y beneficios"
-        subtitle="Solicitudes, saldos, cuotas y deducciones publicadas"
+        subtitle="Consulta solicitudes, saldos, cuotas y deducciones con su estado oficial"
         icon={WalletCards}
         actions={
-          tab !== 'DEDUCTION' ? (
-            <Button onClick={() => setPanel(tab)} disabled={!online}>
-              <Plus size={17} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}
-            </Button>
-          ) : undefined
+          <>
+            {tab !== 'DEDUCTION' && (
+              <Button onClick={() => setPanel(tab)} disabled={!online}>
+                <Plus size={17} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}
+              </Button>
+            )}
+            <MyHrNav />
+          </>
         }
       />
-      <BenefitsOnlineNotice online={online} />
-      <div className="hr-benefits-toolbar self">
+      {!online && <BenefitsOnlineNotice online={false} />}
+      {!loading && !error && (
+        <section className="my-hr-summary-grid" aria-label="Resumen de mis beneficios">
+          <article><WalletCards size={19} aria-hidden="true" /><span>Registros visibles</span><strong>{items.length}</strong><small>{tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}</small></article>
+          <article className={actionableCount > 0 ? 'is-warning' : undefined}><RefreshCw size={19} aria-hidden="true" /><span>Con siguiente paso</span><strong>{actionableCount}</strong><small>Acciones permitidas por el servidor</small></article>
+          <article><FileMinus2 size={19} aria-hidden="true" /><span>Finalizados</span><strong>{closedCount}</strong><small>Incluye cancelados o rechazados</small></article>
+        </section>
+      )}
+      <div className="hr-benefits-toolbar self my-hr-toolbar">
         <div className="hr-benefits-tabs" role="tablist" aria-label="Mis beneficios">
           <button
+            type="button"
             role="tab"
+            id="my-benefits-tab-travel"
+            aria-controls="my-benefits-panel-travel"
             aria-selected={tab === 'TRAVEL'}
             onClick={() => {
               setTab('TRAVEL');
@@ -248,7 +279,10 @@ export default function MyBenefits() {
             <Route size={17} /> Viáticos <span>{travel.length}</span>
           </button>
           <button
+            type="button"
             role="tab"
+            id="my-benefits-tab-loan"
+            aria-controls="my-benefits-panel-loan"
             aria-selected={tab === 'LOAN'}
             onClick={() => {
               setTab('LOAN');
@@ -258,7 +292,10 @@ export default function MyBenefits() {
             <Banknote size={17} /> Préstamos <span>{loans.length}</span>
           </button>
           <button
+            type="button"
             role="tab"
+            id="my-benefits-tab-deduction"
+            aria-controls="my-benefits-panel-deduction"
             aria-selected={tab === 'DEDUCTION'}
             onClick={() => {
               setTab('DEDUCTION');
@@ -283,59 +320,37 @@ export default function MyBenefits() {
         </div>
       )}
       {!loading && !error && (
-        <div className="hr-benefits-layout">
-          <section className="hr-benefits-list" aria-label="Mis registros">
-            {items.length === 0 ? (
-              <div className="hr-benefits-empty">
-                <WalletCards size={36} />
-                <p>No tienes registros en esta sección.</p>
+        <div className="hr-benefits-layout" id={activePanelId} role="tabpanel" aria-labelledby={`my-benefits-tab-${tab.toLowerCase()}`} tabIndex={0}>
+          <section className="my-benefits-register" aria-label="Mis registros">
+            <header className="my-benefits-register-head">
+              <div>
+                <span>{tab === 'TRAVEL' ? 'Movilidad y liquidaciones' : tab === 'LOAN' ? 'Financiamiento personal' : 'Descuentos programados'}</span>
+                <h2>{tab === 'TRAVEL' ? 'Mis viáticos' : tab === 'LOAN' ? 'Mis préstamos' : 'Mis deducciones'}</h2>
+                <p>{tab === 'TRAVEL' ? 'Consulta destino, importe aprobado y etapa de liquidación.' : tab === 'LOAN' ? 'Revisa desembolsos, saldo vigente y estado de cada solicitud.' : 'Comprueba vigencia, importe aplicable y estado oficial.'}</p>
               </div>
-            ) : (
-              items.map((entry) => {
-                const item = entry as HrTravelRequest | HrLoan | HrDeduction;
-                const amount =
-                  tab === 'TRAVEL'
-                    ? money(
-                        (item as HrTravelRequest).currency,
-                        (item as HrTravelRequest).approvedAmount ??
-                          (item as HrTravelRequest).requestedAmount
-                      )
-                    : tab === 'LOAN'
-                      ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
-                      : money(
-                          (item as HrDeduction).currency,
-                          (item as HrDeduction).applicableAmount
-                        );
-                return (
-                  <button
-                    type="button"
-                    key={`${tab}-${item.id}`}
-                    className={
-                      selected?.resource === tab && selected.item.id === item.id ? 'selected' : ''
-                    }
-                    onClick={() => void openDetail({ resource: tab, item } as Selected)}
-                  >
-                    <span>
-                      <strong>{item.code}</strong>
-                      <small>
-                        {tab === 'TRAVEL'
-                          ? (item as HrTravelRequest).destination
-                          : tab === 'LOAN'
-                            ? (item as HrLoan).purpose
-                            : (item as HrDeduction).name}
-                      </small>
-                      <small>Actualizado {dateLabel(item.updatedAt)}</small>
-                    </span>
-                    <span className="hr-benefits-list-amount">
-                      <strong>{amount}</strong>
-                      <BenefitsStatusPill status={item.status} />
-                    </span>
-                  </button>
-                );
-              })
-            )}
+              <span className="my-benefits-register-count">{items.length} registro{items.length === 1 ? '' : 's'}</span>
+            </header>
+            <div className="my-benefits-table-wrap">
+              <table className="inventory-table my-benefits-table">
+                <thead><tr><th scope="col">Código</th><th scope="col">Detalle</th><th scope="col">Actualizado</th><th scope="col" className="hr-amount-cell">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th><th scope="col">Estado</th><th scope="col" className="my-benefits-actions-col">Acción</th></tr></thead>
+                <tbody>
+                  {items.length === 0 ? <tr><td colSpan={6}><div className="hr-benefits-empty"><WalletCards size={36} /><p>{tab === 'TRAVEL' ? 'Aún no tienes viáticos registrados.' : tab === 'LOAN' ? 'Aún no tienes préstamos registrados.' : 'No tienes deducciones asignadas.'}</p>{tab !== 'DEDUCTION' && <Button size="sm" onClick={() => setPanel(tab)} disabled={!online}><Plus size={15} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button>}</div></td></tr> : pagedItems.map((entry) => {
+                    const item = entry as HrTravelRequest | HrLoan | HrDeduction;
+                    const detail = tab === 'TRAVEL' ? (item as HrTravelRequest).destination : tab === 'LOAN' ? (item as HrLoan).purpose : (item as HrDeduction).name;
+                    const amount = tab === 'TRAVEL'
+                      ? money((item as HrTravelRequest).currency, (item as HrTravelRequest).approvedAmount ?? (item as HrTravelRequest).requestedAmount)
+                      : tab === 'LOAN'
+                        ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
+                        : money((item as HrDeduction).currency, (item as HrDeduction).applicableAmount);
+                    const isSelected = selected?.resource === tab && selected.item.id === item.id;
+                    return <tr key={`${tab}-${item.id}`} className={isSelected ? 'is-selected' : undefined}><td><strong>{item.code}</strong></td><td>{detail}</td><td>{dateLabel(item.updatedAt)}</td><td className="hr-amount-cell"><strong>{amount}</strong></td><td><BenefitsStatusPill status={item.status} /></td><td className="my-benefits-actions-col"><Button className="table-action-btn" size="sm" variant={isSelected ? 'secondary' : 'ghost'} onClick={() => void openDetail({ resource: tab, item } as Selected)} aria-label={`Ver detalle de ${item.code}`} title="Ver detalle"><Eye size={16} /></Button></td></tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(items.length / PAGE_SIZE))} totalItems={items.length} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />
           </section>
-          <section className="hr-benefits-workspace" aria-live="polite">
+          {(detailLoading || selected) && <section className="hr-benefits-workspace" aria-live="polite">
             {detailLoading ? (
               <LoadingSpinner text="Abriendo detalle…" />
             ) : selected ? (
@@ -476,18 +491,21 @@ export default function MyBenefits() {
                           <tr>
                             <th>Fecha</th>
                             <th>Descripción</th>
-                            <th>Reclamado</th>
-                            <th>Reconocido</th>
+                            <th className="hr-amount-cell">Reclamado</th>
+                            <th className="hr-amount-cell">Reconocido</th>
                             <th>Estado</th>
                           </tr>
                         </thead>
                         <tbody>
+                          {(selected.item.expenses ?? []).length === 0 && (
+                            <tr><td colSpan={5} className="hr-benefits-table-empty">Aún no has reportado gastos para este viático.</td></tr>
+                          )}
                           {(selected.item.expenses ?? []).map((expense) => (
                             <tr key={expense.id}>
                               <td>{dateLabel(expense.occurredOn)}</td>
                               <td>{expense.description}</td>
-                              <td>{money(expense.currency, expense.claimedAmount)}</td>
-                              <td>{money(expense.currency, expense.recognizedAmount)}</td>
+                              <td className="hr-amount-cell">{money(expense.currency, expense.claimedAmount)}</td>
+                              <td className="hr-amount-cell">{money(expense.currency, expense.recognizedAmount)}</td>
                               <td>
                                 <BenefitsStatusPill status={expense.status} />
                               </td>
@@ -511,20 +529,23 @@ export default function MyBenefits() {
                           <tr>
                             <th>#</th>
                             <th>Vence</th>
-                            <th>Cuota</th>
-                            <th>Pagado</th>
-                            <th>Saldo</th>
+                            <th className="hr-amount-cell">Cuota</th>
+                            <th className="hr-amount-cell">Pagado</th>
+                            <th className="hr-amount-cell">Saldo</th>
                             <th>Estado</th>
                           </tr>
                         </thead>
                         <tbody>
+                          {(selected.item.schedule ?? []).length === 0 && (
+                            <tr><td colSpan={6} className="hr-benefits-table-empty">El calendario de cuotas todavía no está publicado.</td></tr>
+                          )}
                           {(selected.item.schedule ?? []).map((installment) => (
                             <tr key={installment.id}>
                               <td>{installment.number}</td>
                               <td>{dateLabel(installment.dueDate)}</td>
-                              <td>{money(selected.item.currency, installment.scheduledTotal)}</td>
-                              <td>{money(selected.item.currency, installment.paidAmount)}</td>
-                              <td>
+                              <td className="hr-amount-cell">{money(selected.item.currency, installment.scheduledTotal)}</td>
+                              <td className="hr-amount-cell">{money(selected.item.currency, installment.paidAmount)}</td>
+                              <td className="hr-amount-cell">
                                 {money(selected.item.currency, installment.outstandingAmount)}
                               </td>
                               <td>
@@ -537,6 +558,9 @@ export default function MyBenefits() {
                     </div>
                     <h3>Movimientos</h3>
                     <div className="hr-benefits-ledger">
+                      {(selected.item.ledger ?? []).length === 0 && (
+                        <p className="hr-benefits-ledger-empty">Aún no hay movimientos registrados.</p>
+                      )}
                       {(selected.item.ledger ?? []).map((entry) => (
                         <div key={entry.id}>
                           <span>
@@ -558,14 +582,8 @@ export default function MyBenefits() {
                   </div>
                 )}
               </>
-            ) : (
-              <div className="hr-benefits-empty workspace">
-                <WalletCards size={44} />
-                <h2>Selecciona un registro</h2>
-                <p>Consulta importes, saldos y estados publicados por el servidor.</p>
-              </div>
-            )}
-          </section>
+            ) : null}
+          </section>}
         </div>
       )}
       <Sidebar
@@ -583,7 +601,7 @@ export default function MyBenefits() {
               ? 'Solicitar préstamo'
               : 'Registrar gasto'
         }
-        width="wide"
+        width="large"
       >
         {panel === 'TRAVEL' && (
           <TravelRequestForm
@@ -620,7 +638,7 @@ export default function MyBenefits() {
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar acción"
-        width="wide"
+        width="large"
       >
         {transition && (
           <BenefitsTransitionForm

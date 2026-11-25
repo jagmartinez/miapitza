@@ -19,12 +19,25 @@ describe('Phase 3 attendance API contract', () => {
     expect(source).toContain('`${HR_BASE}/attendance/devices/${id}/revoke`');
     expect(source).toContain('`${HR_BASE}/biometrics/users/${userId}/revoke`');
     expect(source).toContain('`${HR_BASE}/biometrics/maintenance/run`');
+    expect(source).toContain('`${HR_BASE}/biometrics/provider/health`');
   });
 
   it('sends evidence as multipart and requires idempotency headers', () => {
+    const enrollmentRequest = source.slice(
+      source.indexOf('async enrollBiometrics'),
+      source.indexOf('async revokeMyBiometrics')
+    );
+    const punchRequest = source.slice(
+      source.indexOf('async createPunch'),
+      source.indexOf('async getEvents')
+    );
+
     expect(source).toContain('new FormData()');
     expect(source).toContain("form.append('faceImage'");
-    expect(source).toContain("headers: { 'Idempotency-Key': idempotencyKey }");
+    expect(source).toContain("form.append('faceFrames'");
+    expect(enrollmentRequest).toContain("'Content-Type': 'multipart/form-data'");
+    expect(punchRequest).toContain("'Content-Type': 'multipart/form-data'");
+    expect(punchRequest).toContain("'Idempotency-Key': idempotencyKey");
     expect(source).not.toContain('localStorage');
     expect(source).not.toContain('sessionStorage');
     expect(source).not.toContain('toDataURL');
@@ -46,6 +59,19 @@ describe('Phase 3 attendance API contract', () => {
     expect(captureSources).not.toContain('console.log');
     expect(captureSources).toContain('URL.revokeObjectURL');
     expect(captureSources).toContain('track.stop()');
+    expect(captureSources).toContain('Comenzar prueba guiada');
+    expect(captureSources).toContain('¡AHORA GIRA!');
+    expect(captureSources).toContain('hr-camera-recording-dot');
+    expect(captureSources).toContain('Capturando giro: cuadro');
+    expect(captureSources).toContain('livenessAction={challenge.livenessAction}');
+    expect(captureSources).toContain('await wait(900)');
+    expect(captureSources).toContain('frames.push(await captureFrame())');
+    expect(captureSources).toContain('ESTÁS MARCANDO');
+    expect(captureSources).toContain('Sucursal a validar');
+    expect(captureSources).toContain('Geocerca de la sucursal');
+    expect(captureSources).toContain('Cancelar intento');
+    expect(captureSources).toContain('No se creó una salida automática ni se abrió una jornada nueva.');
+    expect(captureSources).toContain('Solicitar corrección');
   });
 
   it('bypasses offline cache for every sensitive owner settings read', () => {

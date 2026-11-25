@@ -6,6 +6,7 @@ import prisma from '../../utils/prisma';
 import {
     AttendanceService,
     availableActionsFrom,
+    decisionForSelfEvidence,
     evaluateGeofence,
     haversineDistanceM,
     locationFreshness,
@@ -14,9 +15,11 @@ import {
     AttendancePolicyService,
     BiometricService,
     hashChallengeToken,
+    livenessActionFromNonce,
 } from '../../services/hr-biometric.service';
 import {
     createFaceVerificationProvider,
+    FaceEvidenceRejectedError,
     FaceProviderUnavailableError,
     type FaceVerificationProvider,
 } from '../../services/hr-face-provider';
@@ -63,6 +66,16 @@ function eventFixture(overrides: Record<string, unknown> = {}) {
     };
 }
 
+function assignmentFixture(overrides: Record<string, unknown> = {}) {
+    return {
+        id: 4, companyId: 4, employeeId: 6, branchId: 10, isPrimary: true,
+        effectiveFrom: new Date('2025-01-01T00:00:00.000Z'), effectiveTo: null,
+        createdAt: new Date(), updatedAt: new Date(),
+        branch: { id: 10, name: 'Centro', code: 'CTR', timezone: 'America/Managua', status: 'ACTIVE' },
+        ...overrides,
+    };
+}
+
 describe('HR attendance security and invariants', () => {
     const originalKey = process.env.HR_BIOMETRIC_ENCRYPTION_KEY;
 
@@ -80,7 +93,116 @@ describe('HR attendance security and invariants', () => {
 
     it('fails closed when no production face provider is configured', async () => {
         const provider = createFaceVerificationProvider({ NODE_ENV: 'production', HR_FACE_PROVIDER: 'disabled' });
-        await expect(provider.verifyOneToOne(Buffer.from('capture'), 'template')).rejects.toBeInstanceOf(FaceProviderUnavailableError);
+        await expect(provider.verifyOneToOne(
+            { frames: [{ buffer: Buffer.from('capture'), mimeType: 'image/jpeg' }] },
+            'template',
+            {
+                tenantRef: '4', subjectRef: '8', challengeRef: 'challenge',
+                livenessAction: 'TURN_LEFT', requireLiveness: true,
+            },
+        )).rejects.toBeInstanceOf(FaceProviderUnavailableError);
+    });
+
+    it('requires HTTPS and credentials for the external HTTP provider in production', () => {
+        expect(() => createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http', HR_FACE_PROVIDER_BASE_URL: 'http://faces.internal', HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
+        })).toThrow('HTTPS');
+        expect(() => createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http', HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal',
+        })).toThrow('URL y token');
+        expect(() => createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'http://faces.public.example',
+            HR_FACE_PROVIDER_ALLOW_HTTP_INTERNAL: 'true', HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
+        })).toThrow('HTTPS');
+        expect(() => createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'http://face-provider.railway.internal:8080',
+            HR_FACE_PROVIDER_ALLOW_HTTP_INTERNAL: 'true', HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
+        })).not.toThrow();
+    });
+
+    it('maps provider evidence rejection separately from infrastructure outage', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+            code: 'ACTIVE_LIVENESS_FAILED', message: 'No se detectó el giro solicitado', retryable: true,
+        }), { status: 422, headers: { 'Content-Type': 'application/json' } }));
+        const provider = createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal.example', HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
+        });
+        await expect(provider.enroll(
+            { frames: [{ buffer: Buffer.from('capture'), mimeType: 'image/jpeg' }] },
+            {
+                tenantRef: '4', subjectRef: '8', challengeRef: 'challenge',
+                livenessAction: 'TURN_LEFT', requireLiveness: true, retentionDays: 365,
+            },
+        )).rejects.toMatchObject({
+            code: 'ACTIVE_LIVENESS_FAILED', statusCode: 422,
+        } satisfies Partial<FaceEvidenceRejectedError>);
+    });
+
+    it('derives the active liveness action deterministically from the secret nonce', () => {
+        expect(livenessActionFromNonce('nonce-a')).toBe(livenessActionFromNonce('nonce-a'));
+        expect(['TURN_LEFT', 'TURN_RIGHT']).toContain(livenessActionFromNonce('nonce-b'));
+    });
+
+    it('issues a six-frame guided challenge with enough time to obey the turn instruction', async () => {
+        jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
+        jest.spyOn(prisma.biometricChallenge, 'create').mockResolvedValue({
+            id: 'guided-challenge',
+            purpose: 'BIOMETRIC_ENROLLMENT',
+            action: null,
+            expiresAt: new Date(Date.now() + 300_000),
+        } as never);
+        const provider: FaceVerificationProvider = {
+            name: 'guided-test',
+            model: 'test-model',
+            healthCheck: async () => ({
+                provider: 'guided-test', model: 'test-model', status: 'AVAILABLE', checkedAt: new Date().toISOString(),
+            }),
+            enroll: async () => { throw new Error('not used'); },
+            verifyOneToOne: async () => { throw new Error('not used'); },
+            revokeTemplate: async () => undefined,
+        };
+
+        const challenge = await BiometricService.createChallenge(4, 8, 'BIOMETRIC_ENROLLMENT', undefined, provider);
+
+        expect(challenge).toEqual(expect.objectContaining({
+            captureFrameCount: 6,
+            captureIntervalMs: 450,
+            livenessAction: expect.stringMatching(/^TURN_(LEFT|RIGHT)$/),
+            livenessInstruction: expect.stringContaining('“AHORA GIRA”'),
+        }));
+        expect(challenge.livenessInstruction).toContain('hombro');
+    });
+
+    it('exposes a fail-closed provider health status without leaking credentials', async () => {
+        const provider = createFaceVerificationProvider({ NODE_ENV: 'production', HR_FACE_PROVIDER: 'disabled' });
+        await expect(provider.healthCheck?.()).resolves.toEqual(expect.objectContaining({ provider: 'disabled', status: 'UNAVAILABLE' }));
+    });
+
+    it('rejects enrollment before creating a challenge when the provider is unavailable', async () => {
+        jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
+        const create = jest.spyOn(prisma.biometricChallenge, 'create');
+        const provider: FaceVerificationProvider = {
+            name: 'unavailable-test',
+            model: 'none',
+            healthCheck: async () => ({
+                provider: 'unavailable-test', model: 'none', status: 'UNAVAILABLE',
+                checkedAt: new Date().toISOString(), detail: 'Proveedor deshabilitado',
+            }),
+            enroll: async () => { throw new FaceProviderUnavailableError(); },
+            verifyOneToOne: async () => { throw new FaceProviderUnavailableError(); },
+            revokeTemplate: async () => undefined,
+        };
+
+        await expect(BiometricService.createChallenge(
+            4, 8, 'BIOMETRIC_ENROLLMENT', undefined, provider,
+        )).rejects.toMatchObject({
+            statusCode: 503,
+            message: expect.stringContaining('proveedor facial'),
+        });
+        expect(create).not.toHaveBeenCalled();
     });
 
     it('rejects replayed challenges without attempting another CAS update', async () => {
@@ -147,9 +269,17 @@ describe('HR attendance security and invariants', () => {
         expect(availableActionsFrom([{ action: 'CHECK_OUT' }])).toEqual([]);
     });
 
+    it('fails closed for biometric or geofence failures even if policy says WARN', () => {
+        expect(decisionForSelfEvidence('ACCEPTED', 'FAILED')).toBe('REJECTED');
+        expect(decisionForSelfEvidence('ACCEPTED', 'ERROR')).toBe('REJECTED');
+        expect(decisionForSelfEvidence('ACCEPTED', 'REVIEW')).toBe('REVIEW');
+        expect(decisionForSelfEvidence('ACCEPTED', 'PASSED')).toBe('ACCEPTED');
+    });
+
     it('keeps an overnight shift session open across the local date boundary', async () => {
         const now = new Date('2026-07-14T11:00:00Z');
         jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ branchId: 10 } as never);
+        jest.spyOn(prisma.employeeBranchAssignment, 'findMany').mockResolvedValue([assignmentFixture()] as never);
         jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue(policy as never);
         jest.spyOn(prisma.scheduledShift, 'findMany').mockResolvedValue([{
             id: 20, companyId: 4, scheduleId: 9, userId: 8, branchId: 10,
@@ -171,6 +301,7 @@ describe('HR attendance security and invariants', () => {
     it('allows check-in for a second adjacent shift after the prior session closed', async () => {
         const now = new Date('2026-07-14T20:00:00Z');
         jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ branchId: 10 } as never);
+        jest.spyOn(prisma.employeeBranchAssignment, 'findMany').mockResolvedValue([assignmentFixture()] as never);
         jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue(policy as never);
         const shift = (id: number, startAt: string, endAt: string) => ({
             id, companyId: 4, scheduleId: 9, userId: 8, branchId: 10,
@@ -192,6 +323,46 @@ describe('HR attendance security and invariants', () => {
         expect(result.availableActions).toEqual(['CHECK_IN']);
     });
 
+    it('blocks a new day when an older unscheduled entry has no checkout', async () => {
+        const now = new Date('2026-07-17T14:00:00Z');
+        jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
+        jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue(policy as never);
+        jest.spyOn(prisma.scheduledShift, 'findMany').mockResolvedValue([] as never);
+        const history = jest.spyOn(prisma.attendanceEvent, 'findMany').mockResolvedValue([eventFixture({
+            id: 73, action: 'CHECK_IN', decision: 'ACCEPTED', review: null,
+            scheduledShiftId: null, sessionKey: 'UNSCHEDULED:8:2026-07-13:1',
+            serverAt: new Date('2026-07-13T14:00:00Z'),
+        })] as never);
+        jest.spyOn(prisma.employeeBranchAssignment, 'findMany').mockResolvedValue([assignmentFixture()] as never);
+
+        const result = await AttendanceService.today(4, 8, 10, now);
+
+        expect(result.availableActions).toEqual([]);
+        expect(result.blockingIssue).toEqual(expect.objectContaining({
+            code: 'STALE_OPEN_ATTENDANCE', resolution: 'REQUEST_CORRECTION',
+        }));
+        expect(history).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ serverAt: { gte: new Date(0), lt: new Date(now.getTime() + 1000) } }),
+        }));
+    });
+
+    it('treats an RH branch assignment effectiveTo as inclusive for its local date', async () => {
+        const now = new Date('2026-07-14T20:00:00Z');
+        jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
+        jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue(policy as never);
+        jest.spyOn(prisma.scheduledShift, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.attendanceEvent, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.employeeBranchAssignment, 'findMany').mockResolvedValue([
+            assignmentFixture({ effectiveTo: new Date('2026-07-14T00:00:00.000Z') }),
+        ] as never);
+
+        const result = await AttendanceService.today(4, 8, 10, now);
+
+        expect(result.availableActions).toEqual(['CHECK_IN']);
+        expect(result.targetBranch).toEqual(expect.objectContaining({ id: 10, name: 'Centro' }));
+        expect(result.policy).toEqual(expect.objectContaining({ id: 2, branchId: 10, requireBiometric: true }));
+    });
+
     it('persists a provider failure as a non-effective immutable review without capture/template leakage', async () => {
         process.env.HR_BIOMETRIC_ENCRYPTION_KEY = 'a'.repeat(64);
         jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue({ ...policy, biometricViolationMode: 'WARN' } as never);
@@ -200,6 +371,7 @@ describe('HR attendance security and invariants', () => {
         jest.spyOn(prisma.attendancePunchRequest, 'findUnique').mockResolvedValue(null as never);
         jest.spyOn(prisma.attendancePunchRequest, 'create').mockResolvedValue({ id: 501 } as never);
         jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8, branchId: 10, allowedBranches: [] } as never);
+        jest.spyOn(prisma.employeeBranchAssignment, 'findMany').mockResolvedValue([assignmentFixture()] as never);
         jest.spyOn(prisma.scheduledShift, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({
             id: 10, name: 'Centro', code: 'CTR', status: 'ACTIVE', timezone: 'America/Managua', attendanceEnabled: true,
@@ -237,7 +409,7 @@ describe('HR attendance security and invariants', () => {
         const result = await AttendanceService.punch({
             companyId: 4, userId: 8, activeBranchId: 10, idempotencyKey: 'idem-1',
             action: 'CHECK_IN', challengeId: 'challenge', challengeToken: 'token',
-            capture: Buffer.from('ephemeral-face-capture'),
+            evidence: { frames: [{ buffer: Buffer.from('ephemeral-face-capture'), mimeType: 'image/jpeg' }] },
         }, provider, new Date('2026-07-13T14:00:00Z'));
 
         expect(result).toEqual(expect.objectContaining({ decision: 'REVIEW_REQUIRED', serviceUnavailable: true }));
@@ -302,6 +474,28 @@ describe('HR attendance security and invariants', () => {
         }));
     });
 
+    it('never lets human review turn unavailable biometric evidence into worked time', async () => {
+        jest.spyOn(prisma.attendanceEvent, 'findFirst').mockResolvedValue({
+            id: 70, userId: 8, branchId: 10, scheduledShiftId: null, scheduledShift: null,
+            sessionKey: 'UNSCHEDULED:8:2026-07-14:1', action: 'CHECK_IN', serverAt: new Date('2026-07-14T14:00:00Z'),
+            providerStatus: 'UNAVAILABLE', faceStatus: 'ERROR', livenessStatus: 'ERROR',
+            checks: { biometric: { status: 'REVIEW', reasonCode: 'FACE_PROVIDER_UNAVAILABLE', message: 'Proveedor no disponible' } },
+        } as never);
+        jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue(policy as never);
+        const tx = {
+            $queryRaw: jest.fn()
+                .mockResolvedValueOnce([] as never)
+                .mockResolvedValueOnce([{ id: 8 }] as never),
+            attendanceEvent: { findFirst: jest.fn().mockResolvedValue({ id: 70 } as never) },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never,
+        );
+
+        await expect(AttendanceService.review(70, 4, 3, 'APPROVED', 'Aprobación manual'))
+            .rejects.toMatchObject({ code: 'ATTENDANCE_EVIDENCE_NOT_APPROVABLE', statusCode: 409 });
+    });
+
     it('selects biometric profiles without the encrypted template', async () => {
         jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
         const findFirst = jest.spyOn(prisma.biometricProfile, 'findFirst').mockResolvedValue(null as never);
@@ -309,5 +503,34 @@ describe('HR attendance security and invariants', () => {
         const select = findFirst.mock.calls[0][0]?.select as Record<string, unknown>;
         expect(select).not.toHaveProperty('templateRef');
         expect(select).not.toHaveProperty('provider');
+    });
+
+    it('claims a biometric purge with CAS before invoking the external provider', async () => {
+        jest.spyOn(prisma.biometricPurgeRequest, 'findFirst').mockResolvedValue({
+            id: 91, companyId: 4, biometricProfileId: 3, provider: 'test-provider',
+            encryptedTemplateRef: 'encrypted', reason: 'SELF_REVOKED', status: 'PENDING',
+            attempts: 0, nextAttemptAt: null, lastError: null, createdAt: new Date(), completedAt: null,
+        } as never);
+        const claim = jest.spyOn(prisma.biometricPurgeRequest, 'updateMany').mockResolvedValue({ count: 0 });
+        const revokeTemplate = jest.fn(async () => undefined);
+        const provider: FaceVerificationProvider = {
+            name: 'test-provider', model: 'test',
+            enroll: async () => ({
+                provider: 'test-provider', model: 'test', templateRef: 'template',
+                livenessPassed: true, providerStatus: 'TEST_ENROLLED',
+            }),
+            verifyOneToOne: async () => ({
+                matched: true, livenessPassed: true, score: 1, providerStatus: 'TEST_VERIFIED',
+            }),
+            revokeTemplate,
+        };
+
+        await expect(BiometricService.processPurgeRequest(91, provider)).resolves.toBe(false);
+
+        expect(claim).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ id: 91, status: 'PENDING', attempts: 0 }),
+            data: expect.objectContaining({ attempts: 1 }),
+        }));
+        expect(revokeTemplate).not.toHaveBeenCalled();
     });
 });
