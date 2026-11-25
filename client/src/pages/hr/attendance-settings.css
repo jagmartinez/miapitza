@@ -402,7 +402,7 @@
   gap: var(--ui-space-3);
 }
 
-.hr-settings-action-form > .btn {
+.hr-settings-action-form > .ui-button {
   width: fit-content;
   justify-self: end;
 }
@@ -540,8 +540,8 @@
     justify-content: space-between;
   }
 
-  .hr-settings-savebar .btn,
-  .hr-settings-action-form > .btn {
+  .hr-settings-savebar .ui-button,
+  .hr-settings-action-form > .ui-button {
     width: 100%;
   }
 }

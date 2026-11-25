@@ -306,8 +306,8 @@
   box-shadow: none;
 }
 
-.hr-attendance-management-page .hr-workforce-filters > .btn,
-.hr-leave-management-page .hr-workforce-filters > .btn {
+.hr-attendance-management-page .hr-workforce-filters > .ui-button,
+.hr-leave-management-page .hr-workforce-filters > .ui-button {
   min-height: 42px;
   white-space: nowrap;
 }
@@ -419,8 +419,8 @@
     border-right: 0;
   }
 
-  .hr-attendance-management-page .hr-workforce-filters > .btn,
-  .hr-leave-management-page .hr-workforce-filters > .btn {
+  .hr-attendance-management-page .hr-workforce-filters > .ui-button,
+  .hr-leave-management-page .hr-workforce-filters > .ui-button {
     width: 100%;
   }
 

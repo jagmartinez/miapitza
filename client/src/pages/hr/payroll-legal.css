@@ -37,7 +37,7 @@
 .hr-legal-command-intro h2,
 .hr-legal-command-intro p { margin: 0; }
 .hr-legal-command-intro p { color: var(--ui-text-muted); font-size: var(--ui-text-md); line-height: 1.45; }
-.hr-legal-command-intro .btn { grid-column: 2; justify-self: start; margin-top: 4px; }
+.hr-legal-command-intro .ui-button { grid-column: 2; justify-self: start; margin-top: 4px; }
 .hr-legal-command-icon { display: grid; width: 48px; height: 48px; place-items: center; align-self: start; border-radius: var(--ui-radius-md); background: var(--legal-accent-soft); color: var(--legal-accent); }
 
 .hr-legal-command-facts {
@@ -86,7 +86,7 @@
 .hr-legal-date-range > div { display: grid; }
 .hr-legal-date-range strong { color: var(--ui-text); font-variant-numeric: tabular-nums; }
 .hr-legal-row-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap; gap: 8px; padding-inline: 2px; }
-.hr-legal-table-action.btn {
+.hr-legal-table-action.ui-button {
   display: inline-flex;
   min-width: auto;
   min-height: 34px;
@@ -98,7 +98,7 @@
   box-shadow: none;
   white-space: nowrap;
 }
-.hr-legal-table-action.btn:hover:not(:disabled) { border-color: var(--legal-accent); color: var(--legal-accent); transform: none; box-shadow: none; }
+.hr-legal-table-action.ui-button:hover:not(:disabled) { border-color: var(--legal-accent); color: var(--legal-accent); transform: none; box-shadow: none; }
 
 .hr-legal-rule-toolbar {
   display: grid;
@@ -154,7 +154,7 @@
 .hr-legal-rule-meta { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
 .hr-legal-rule-meta > span svg { color: var(--legal-accent); }
 .hr-legal-rule-meta > small { flex: 1 1 100%; color: var(--ui-text-muted); text-align: right; overflow-wrap: anywhere; }
-.hr-legal-rule-meta .btn { padding-inline: 11px; }
+.hr-legal-rule-meta .ui-button { padding-inline: 11px; }
 .hr-legal-profile-warning { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--ui-space-3); padding: var(--ui-space-3); border: 1px solid color-mix(in srgb, var(--ui-warning) 42%, var(--ui-border)); border-radius: var(--ui-radius-md); background: color-mix(in srgb, var(--ui-warning) 9%, var(--ui-surface)); }
 .hr-legal-profile-warning svg { color: var(--ui-warning); }
 .hr-legal-profile-warning p { margin: 3px 0 0; color: var(--ui-text-muted); }
@@ -726,8 +726,8 @@
   .hr-legal-submit-bar { position: static; align-items: stretch; flex-direction: column; }
   .hr-legal-tax-table-heading { align-items: stretch; flex-direction: column; }
   .hr-legal-version-table-toolbar { align-items: flex-start; flex-direction: column; }
-  .hr-legal-submit-bar .btn,
-  .hr-legal-activation > .btn { width: 100%; }
+  .hr-legal-submit-bar .ui-button,
+  .hr-legal-activation > .ui-button { width: 100%; }
   .hr-legal-readonly-note { margin: var(--ui-space-3); }
   .hr-legal-readonly-config > section { padding: var(--ui-space-3); }
   .hr-legal-readonly-kpis, .hr-legal-readonly-obligations, .hr-legal-readonly-operational dl { grid-template-columns: 1fr; }

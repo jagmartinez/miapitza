@@ -416,7 +416,7 @@
   color: var(--ui-text);
 }
 
-.hr-payroll-legal-empty .btn {
+.hr-payroll-legal-empty .ui-button {
   margin-top: var(--ui-space-2);
 }
 

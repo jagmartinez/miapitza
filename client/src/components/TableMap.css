@@ -102,7 +102,7 @@
 }
 
 .table-floor-area {
-    --area-color: #e4eeff;
+    --area-color: var(--ui-primary-soft, var(--ui-surface-muted));
     position: absolute;
     z-index: 1;
     box-sizing: border-box;

@@ -174,17 +174,19 @@
     margin-top: var(--ui-space-4);
 }
 
-.hr-punch-action-grid .btn {
+.hr-punch-action-grid .ui-button {
+    height: auto;
+    white-space: normal;
     min-height: 78px;
     justify-content: flex-start;
     padding: var(--ui-space-3);
     text-align: left;
 }
 
-.hr-punch-action-grid .btn > svg { flex: 0 0 auto; }
-.hr-punch-action-grid .btn > span { display: grid; gap: .2rem; }
-.hr-punch-action-grid .btn strong { font-size: var(--ui-text-md); }
-.hr-punch-action-grid .btn small { color: inherit; font-weight: 500; opacity: .8; }
+.hr-punch-action-grid .ui-button > svg { flex: 0 0 auto; }
+.hr-punch-action-grid .ui-button > span { display: grid; gap: .2rem; }
+.hr-punch-action-grid .ui-button strong { font-size: var(--ui-text-md); }
+.hr-punch-action-grid .ui-button small { color: inherit; font-weight: 500; opacity: .8; }
 
 .hr-punch-action-banner {
     display: flex;
@@ -274,7 +276,7 @@
 .hr-attendance-blocking > div { display: grid; gap: var(--ui-space-1); }
 .hr-attendance-blocking p { margin: 0; color: var(--ui-text-muted); line-height: 1.5; }
 .hr-attendance-blocking small { color: var(--ui-text-muted); }
-.hr-attendance-blocking .btn { justify-self: start; margin-top: var(--ui-space-2); }
+.hr-attendance-blocking .ui-button { justify-self: start; margin-top: var(--ui-space-2); }
 .hr-attendance-blocking.danger { border-color: color-mix(in srgb, var(--ui-danger) 38%, transparent); background: color-mix(in srgb, var(--ui-danger) 8%, transparent); }
 .hr-attendance-blocking.danger > svg { color: var(--ui-danger); }
 
@@ -635,10 +637,10 @@
     .hr-review-decisions { grid-template-columns: 1fr; }
     .hr-wizard-actions,
     .hr-evidence-actions { align-items: stretch; flex-direction: column-reverse; }
-    .hr-wizard-actions .btn,
-    .hr-evidence-actions .btn { width: 100%; }
+    .hr-wizard-actions .ui-button,
+    .hr-evidence-actions .ui-button { width: 100%; }
     .hr-biometric-status { align-items: flex-start; flex-wrap: wrap; }
-    .hr-biometric-status .btn { width: 100%; }
+    .hr-biometric-status .ui-button { width: 100%; }
     .hr-punch-history-head { align-items: flex-start; flex-direction: column; }
     .hr-time-clock-page > .hr-time-clock-workspace { order: 1; }
     .hr-time-clock-page > .my-hr-summary-grid { order: 2; }

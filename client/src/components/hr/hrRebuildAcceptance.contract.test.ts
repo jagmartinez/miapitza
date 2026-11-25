@@ -85,7 +85,7 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
     expect(layoutCss).toContain('.ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within)');
     expect(layoutCss).toContain('@media (min-width: 769px)');
     expect(layoutCss).toContain('@media (max-width: 767px)');
-    expect(adminCss).toContain('.table-action-btn.btn');
+    expect(adminCss).toContain('.table-action-btn.ui-button');
     expect(adminCss).toContain('scrollbar-gutter: stable');
   });
 

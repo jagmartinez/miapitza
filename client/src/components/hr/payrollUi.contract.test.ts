@@ -126,7 +126,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(legalSettings).toContain('<Eye size={15}');
     expect(legalSettings).toContain('<Copy size={15}');
     expect(legalCss).toContain('.hr-legal-rule-toolbar');
-    expect(legalCss).toContain('.hr-legal-table-action.btn');
+    expect(legalCss).toContain('.hr-legal-table-action.ui-button');
   });
 
   it('uses self-only endpoints for employee receipts and exposes published breakdowns', () => {

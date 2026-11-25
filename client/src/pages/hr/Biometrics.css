@@ -526,10 +526,10 @@
     .hr-biometric-hero__identity { align-items: flex-start; }
     .hr-biometric-hero__icon { width: 48px; height: 48px; }
     .hr-biometric-hero__actions,
-    .hr-biometric-hero__actions .btn,
-    .hr-biometric-start-panel .btn,
+    .hr-biometric-hero__actions .ui-button,
+    .hr-biometric-start-panel .ui-button,
     .hr-biometric-actions,
-    .hr-biometric-actions .btn { width: 100%; }
+    .hr-biometric-actions .ui-button { width: 100%; }
     .hr-biometric-actions { align-items: stretch; flex-direction: column-reverse; }
     .hr-biometric-start-panel { align-items: stretch; flex-direction: column; }
     .hr-biometric-consent { grid-template-columns: auto minmax(0, 1fr); }

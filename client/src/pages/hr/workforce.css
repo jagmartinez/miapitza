@@ -408,9 +408,9 @@
   .hr-workforce-partial-warning { align-items: stretch; flex-wrap: wrap; }
   .hr-workforce-partial-warning > span { flex-basis: calc(100% - 30px); }
 
-  .hr-record-actions .btn,
-.hr-header-actions .btn,
-.hr-summary-card footer .btn {
+  .hr-record-actions .ui-button,
+.hr-header-actions .ui-button,
+.hr-summary-card footer .ui-button {
     flex: 1 1 auto;
   }
 }

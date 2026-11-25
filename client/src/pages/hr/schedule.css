@@ -94,7 +94,7 @@
     color: var(--ui-danger);
 }
 
-.hr-schedule-alert .btn {
+.hr-schedule-alert .ui-button {
     margin-left: auto;
 }
 
@@ -482,7 +482,7 @@
         width: 100%;
     }
 
-    .hr-schedule-filters .filter-actions .btn {
+    .hr-schedule-filters .filter-actions .ui-button {
         flex: 1 1 150px;
     }
 
@@ -520,7 +520,7 @@
         flex-direction: column;
     }
 
-    .hr-my-schedule-statuses .btn {
+    .hr-my-schedule-statuses .ui-button {
         width: 100%;
     }
 }
