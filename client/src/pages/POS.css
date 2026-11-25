@@ -1245,3 +1245,12 @@
 .product-card-new { min-height: 88px; }
 
 .pos-order-type { margin-bottom: 0.75rem; min-width: 0; overflow-x: auto; }
+
+.product-stock-badge {
+    position: absolute;
+    top: var(--ui-space-2);
+    left: var(--ui-space-2);
+    z-index: 2;
+    max-width: calc(100% - var(--ui-space-4));
+    pointer-events: none;
+}
