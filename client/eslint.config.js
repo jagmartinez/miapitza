@@ -34,6 +34,35 @@ export default tseslint.config(
     },
   },
   {
+    // Guardas del design system (Plan 01): en `warn` hasta que el Plan 05 las suba a error.
+    // La lista de archivos pendientes vive en src/ui/legacy-allowlist.json.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/ui/**'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          paths: [
+            {
+              name: 'react-select',
+              message: 'Usa AppSelect de @/ui en lugar de importar react-select directamente.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['react-select/*'],
+              message: 'Usa AppSelect de @/ui en lugar de importar react-select directamente.',
+            },
+            {
+              group: ['**/components/Modal', '**/components/Sidebar', '**/components/CatalogTable'],
+              message: 'Componentes heredados: usa FullScreenModal, Drawer o DataTable de @/ui en archivos nuevos.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Context modules intentionally colocate their provider and consumer hook.
     // They are application singletons, not leaf components eligible for HMR
     // replacement in isolation.
