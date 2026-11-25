@@ -9,9 +9,11 @@ export interface UpcomingReservation {
     table?: { id: number; number: string } | null;
 }
 
-const toNumber = (value: unknown): number => {
+/** Total válido de una orden, o null si falta o no es numérico (nunca se asume 0). */
+const validTotal = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null;
     const n = Number(value);
-    return Number.isFinite(n) ? n : 0;
+    return Number.isFinite(n) ? n : null;
 };
 
 /** Órdenes de mesa con consumo abierto (sin cobrar y no canceladas). */
@@ -26,13 +28,17 @@ export interface OpenConsumption {
     /** Facturadas (pre-cuenta emitida) y todavía sin cobrar. */
     invoicedUnpaid: number;
     partialCount: number;
+    /** Órdenes sin cobrar cuyo total no está disponible: se excluyen del monto. */
+    unknownTotalCount: number;
 }
 
 export function computeOpenConsumption(orders: Order[]): OpenConsumption {
     const open = openTableOrders(orders);
     const unpaid = open.filter((o) => o.financialStatus === 'UNPAID');
+    const totals = unpaid.map((o) => validTotal(o.total));
     return {
-        amount: unpaid.reduce((sum, o) => sum + toNumber(o.total), 0),
+        amount: totals.reduce<number>((sum, t) => sum + (t ?? 0), 0),
+        unknownTotalCount: totals.filter((t) => t === null).length,
         orderCount: unpaid.length,
         invoicedUnpaid: unpaid.filter((o) => !!o.invoiceNumber).length,
         partialCount: open.length - unpaid.length,
@@ -70,12 +76,17 @@ export function openMinutesByTable(orders: Order[], now: number): Map<number, nu
     return result;
 }
 
+/** Consumo abierto por mesa; las mesas con algún total no disponible quedan fuera (N/D). */
 export function openAmountByTable(orders: Order[]): Map<number, number> {
     const result = new Map<number, number>();
+    const unknown = new Set<number>();
     for (const order of openTableOrders(orders)) {
         if (order.tableId == null || order.financialStatus !== 'UNPAID') continue;
-        result.set(order.tableId, (result.get(order.tableId) ?? 0) + toNumber(order.total));
+        const total = validTotal(order.total);
+        if (total === null) { unknown.add(order.tableId); continue; }
+        result.set(order.tableId, (result.get(order.tableId) ?? 0) + total);
     }
+    unknown.forEach((id) => result.delete(id));
     return result;
 }
 

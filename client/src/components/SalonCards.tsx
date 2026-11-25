@@ -38,7 +38,7 @@ export default function SalonCards({ branchId, tables, onReviewOrders, only }: {
         setReservations({ status: 'loading' });
         if (ownsTables) setOwnTables({ status: 'loading' });
         const [o, r, t] = await Promise.allSettled([
-            onlyReservation ? Promise.resolve(null) : ordersAPI.getActive(branchId ?? undefined),
+            onlyReservation ? Promise.resolve(null) : ordersAPI.getActive(branchId ?? undefined, true),
             reservationsAPI.getUpcoming(1, branchId ?? undefined),
             ownsTables ? tablesAPI.getAll(branchId ?? undefined) : Promise.resolve(null),
         ]);
@@ -86,7 +86,7 @@ export default function SalonCards({ branchId, tables, onReviewOrders, only }: {
                     label="Consumo abierto"
                     value={consumption ? `${symbol} ${formatNumber(consumption.amount)}` : '...'}
                     context={consumption
-                        ? `${consumption.orderCount} órdenes de mesa sin cobrar · ${consumption.invoicedUnpaid} facturadas sin cobrar${consumption.partialCount ? ` · ${consumption.partialCount} con pago parcial no incluidas` : ''}`
+                        ? `${consumption.orderCount} órdenes de mesa sin cobrar · ${consumption.invoicedUnpaid} facturadas sin cobrar${consumption.partialCount ? ` · ${consumption.partialCount} con pago parcial no incluidas` : ''}${consumption.unknownTotalCount ? ` · ${consumption.unknownTotalCount} sin total disponible (N/D) no incluidas` : ''}`
                         : 'Cargando órdenes activas'}
                     tone={consumption && consumption.invoicedUnpaid > 0 ? 'warning' : 'neutral'}
                     action={onReviewOrders ? { label: 'Ver órdenes', onClick: onReviewOrders } : undefined}

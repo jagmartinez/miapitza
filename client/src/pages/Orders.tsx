@@ -466,15 +466,15 @@ export default function Orders() {
     const rangeLabel = dateOptions.find((o) => o.value === dateRange)?.label ?? '';
 
     const columns: Column<Order>[] = [
-        { key: 'id', header: '#', width: '5rem', render: (o) => `#${o.id}` },
-        { key: 'time', header: 'Hora', width: '6rem', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
-        { key: 'status', header: 'Estado', width: '9rem', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
-        { key: 'financial', header: 'Pago', width: '10rem', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
-        { key: 'table', header: 'Mesa', width: '8rem', render: (o) => (o.table ? `Mesa ${o.table.number}` : 'Para llevar') },
+        { key: 'id', header: '#', width: '0.8fr', render: (o) => `#${o.id}` },
+        { key: 'time', header: 'Hora', width: '1fr', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+        { key: 'status', header: 'Estado', width: '1.5fr', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
+        { key: 'financial', header: 'Pago', width: '1.7fr', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
+        { key: 'table', header: 'Mesa', width: '1.3fr', render: (o) => (o.table ? `Mesa ${o.table.number}` : 'Para llevar') },
         { key: 'waiter', header: 'Mesero', width: '1fr', render: (o) => o.user?.name || 'N/D' },
         { key: 'customer', header: 'Cliente', width: '1fr', hideBelow: 'lg', render: (o) => o.customerName || '' },
-        { key: 'items', header: 'Items', width: '5rem', type: 'number', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
-        { key: 'total', header: `Total (${currencySymbol})`, width: '8rem', type: 'money', accessor: (o) => Number(o.total) },
+        { key: 'items', header: 'Items', width: '0.8fr', type: 'number', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
+        { key: 'total', header: `Total (${currencySymbol})`, width: '1.3fr', type: 'money', accessor: (o) => Number(o.total) },
     ];
 
     return (
@@ -612,22 +612,22 @@ export default function Orders() {
                                             </div>
                                         )}
                                         {selectedOrder.status === 'CANCELLED' && (
-                                            <div style={{ marginTop: '8px', padding: '10px', background: 'var(--color-error, #ef4444)10', border: '1px solid var(--color-error, #ef4444)30', borderRadius: '8px' }}>
+                                            <div className="order-cancel-block">
                                                 {selectedOrder.cancelledBy && (
                                                     <div className="detail-info-item">
-                                                        <span className="detail-label" style={{ color: 'var(--color-error)' }}>Cancelada por</span>
+                                                        <span className="detail-label order-cancel-label">Cancelada por</span>
                                                         <span className="detail-value">{selectedOrder.cancelledBy.name}</span>
                                                     </div>
                                                 )}
                                                 {selectedOrder.cancelReason && (
                                                     <div className="detail-info-item">
-                                                        <span className="detail-label" style={{ color: 'var(--color-error)' }}>Motivo</span>
+                                                        <span className="detail-label order-cancel-label">Motivo</span>
                                                         <span className="detail-value">{selectedOrder.cancelReason}</span>
                                                     </div>
                                                 )}
                                                 {selectedOrder.cancelledAt && (
                                                     <div className="detail-info-item">
-                                                        <span className="detail-label" style={{ color: 'var(--color-error)' }}>Fecha cancelación</span>
+                                                        <span className="detail-label order-cancel-label">Fecha cancelación</span>
                                                         <span className="detail-value">{new Date(selectedOrder.cancelledAt).toLocaleString('es-ES')}</span>
                                                     </div>
                                                 )}

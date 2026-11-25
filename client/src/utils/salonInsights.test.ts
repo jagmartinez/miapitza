@@ -32,7 +32,20 @@ describe('salonInsights', () => {
             mk(5, { total: 20, status: 'CANCELLED' }),
             mk(6, { tableId: undefined, total: 40 }),
         ];
-        expect(computeOpenConsumption(orders)).toEqual({ amount: 150.5, orderCount: 2, invoicedUnpaid: 1, partialCount: 1 });
+        expect(computeOpenConsumption(orders)).toEqual({ amount: 150.5, orderCount: 2, invoicedUnpaid: 1, partialCount: 1, unknownTotalCount: 0 });
+    });
+
+    it('incluye entregadas sin cobrar y excluye totales no disponibles en vez de contarlos como 0', () => {
+        const orders = [
+            mk(1, { status: 'DELIVERED', total: 80, invoiceNumber: 'F-9' }),
+            mk(2, { total: undefined as unknown as number }),
+            mk(3, { total: 'abc' as unknown as number }),
+        ];
+        expect(computeOpenConsumption(orders)).toEqual({ amount: 80, orderCount: 3, invoicedUnpaid: 1, partialCount: 0, unknownTotalCount: 2 });
+        const byTable = openAmountByTable(orders);
+        expect(byTable.get(1)).toBe(80);
+        expect(byTable.has(2)).toBe(false);
+        expect(longestOpenTable([mk(1, { status: 'DELIVERED' })], NOW)?.tableNumber).toBe('1');
     });
 
     it('mesa abierta más tiempo y minutos por mesa', () => {

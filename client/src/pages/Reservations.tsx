@@ -202,6 +202,11 @@ export default function Reservations() {
             setActiveTab('cliente');
             return;
         }
+        if (formData.customerEmail?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.customerEmail.trim())) {
+            showError('El email no tiene un formato válido');
+            setActiveTab('cliente');
+            return;
+        }
         if (!formData.date) {
             showError('La fecha es obligatoria');
             setActiveTab('reserva');
@@ -491,15 +496,15 @@ export default function Reservations() {
                 </span>
             ),
         },
-        { key: 'people', header: 'Personas', width: '6rem', type: 'number', decimals: 0, accessor: (r) => r.peopleCount },
-        { key: 'table', header: 'Mesa', width: '7rem', render: (r) => r.table?.number || 'Sin asignar' },
-        { key: 'date', header: 'Fecha y hora', width: '14rem', render: (r) => `${formatDate(r.date)} · ${formatTime(r.date)}` },
+        { key: 'people', header: 'Personas', width: '1fr', type: 'number', decimals: 0, accessor: (r) => r.peopleCount },
+        { key: 'table', header: 'Mesa', width: '1.2fr', render: (r) => r.table?.number || 'Sin asignar' },
+        { key: 'date', header: 'Fecha y hora', width: '2.3fr', render: (r) => `${formatDate(r.date)} · ${formatTime(r.date)}` },
         { key: 'email', header: 'Email', width: '1fr', hideBelow: 'lg', render: (r) => r.email || '-' },
-        { key: 'status', header: 'Estado', width: '9rem', type: 'status', render: (r) => <Badge tone={getStatusTone(r.status)} dot>{getStatusText(r.status)}</Badge> },
+        { key: 'status', header: 'Estado', width: '1.5fr', type: 'status', render: (r) => <Badge tone={getStatusTone(r.status)} dot>{getStatusText(r.status)}</Badge> },
         {
             key: 'actions',
             header: 'Acciones',
-            width: '10rem',
+            width: '1.7fr',
             type: 'actions',
             render: (r) => (
                 <>

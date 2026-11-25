@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { tablesAPI, ordersAPI, branchesAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
 import {
@@ -24,6 +24,7 @@ import POS from './POS';
 import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { useCurrency } from '../hooks/useCurrency';
+import { openMinutesByTable, openAmountByTable, openTableOrders } from '../utils/salonInsights';
 import ThemeToggle from '../components/ThemeToggle';
 import KitchenNotificationBell from '../components/KitchenNotificationBell';
 import { useNavigate } from 'react-router-dom';
@@ -86,6 +87,9 @@ export default function Tables() {
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
     const [showMap, setShowMap] = useState(true);
+    const [openOrders, setOpenOrders] = useState<Order[] | null>(null);
+    const [openOrdersFailed, setOpenOrdersFailed] = useState(false);
+    const [metaNow, setMetaNow] = useState(() => Date.now());
     const [savingLayout, setSavingLayout] = useState(false);
     const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
     const [operationTableId, setOperationTableId] = useState<number | null>(null);
@@ -203,20 +207,26 @@ export default function Tables() {
             showWarning('Selecciona la sucursal a la que pertenece la mesa.');
             return;
         }
+        const capacity = parseInt(formData.capacity);
+        if (!Number.isFinite(capacity) || capacity < 1) {
+            setActiveTab('general');
+            showWarning('Indica la capacidad (mínimo 1 persona).');
+            return;
+        }
 
         try {
             if (editingTable) {
                 // La sucursal de una mesa no se reasigna desde la edición.
                 await tablesAPI.update(editingTable.id, {
                     number: formData.number,
-                    capacity: parseInt(formData.capacity),
+                    capacity,
                     location: formData.location,
                     status: formData.status
                 });
             } else {
                 await tablesAPI.create({
                     number: formData.number,
-                    capacity: parseInt(formData.capacity),
+                    capacity,
                     location: formData.location,
                     ...(formData.branchId ? { branchId: parseInt(formData.branchId) } : {})
                 });
@@ -493,6 +503,37 @@ export default function Tables() {
         },
     ];
 
+    const mapBranchForMeta = mapBranchId;
+    useEffect(() => {
+        let cancelled = false;
+        const loadOpenOrders = async () => {
+            try {
+                const res = await ordersAPI.getActive(mapBranchForMeta, true);
+                if (cancelled) return;
+                setOpenOrders((res.data.data ?? []) as Order[]);
+                setOpenOrdersFailed(false);
+            } catch {
+                if (!cancelled) setOpenOrdersFailed(true);
+            }
+            if (!cancelled) setMetaNow(Date.now());
+        };
+        void loadOpenOrders();
+        const timer = window.setInterval(() => { void loadOpenOrders(); }, 60000);
+        return () => { cancelled = true; window.clearInterval(timer); };
+    }, [mapBranchForMeta]);
+
+    const tableMeta = useMemo(() => {
+        if (!openOrders) return undefined;
+        const minutes = openMinutesByTable(openOrders, metaNow);
+        const amounts = openAmountByTable(openOrders);
+        const meta = new Map<number, { minutes: number; amount: number | null }>();
+        for (const order of openTableOrders(openOrders)) {
+            if (order.tableId == null) continue;
+            meta.set(order.tableId, { minutes: minutes.get(order.tableId) ?? 0, amount: amounts.get(order.tableId) ?? null });
+        }
+        return meta;
+    }, [openOrders, metaNow]);
+
     if (loading) return <div className="tables-loading">Cargando...</div>;
 
     return (
@@ -570,6 +611,9 @@ export default function Tables() {
                 <TableMap
                     plan={floorPlan}
                     statusFilter={statusFilter}
+                    tableMeta={tableMeta}
+                    tableMetaUnavailable={openOrdersFailed && !openOrders}
+                    currencySymbol={currencySymbol}
                     onStatusFilterChange={setStatusFilter}
                     canEdit={canEditMap}
                     saving={savingLayout}

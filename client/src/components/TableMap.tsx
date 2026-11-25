@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Armchair, CopyPlus, LayoutDashboard, Lock, Maximize2, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
-import { AppSelect } from '@/ui';
+import { AppSelect, SegmentedControl, formatMoney } from '@/ui';
 import './TableMap.css';
 
 interface PositionedTable extends Table {
@@ -43,6 +43,11 @@ interface TableMapProps {
     themeControl?: ReactNode;
     /** Indicadores del salón (tarjetas KPI); se despliegan desde el botón Indicadores. */
     insights?: ReactNode;
+    /** Minutos abiertos y consumo por mesa; amount null = N/D. Si se omite, no se muestra. */
+    tableMeta?: Map<number, { minutes: number; amount: number | null }>;
+    /** Las órdenes no se pudieron cargar: minutos y consumo se muestran como N/D. */
+    tableMetaUnavailable?: boolean;
+    currencySymbol?: string;
 }
 
 type Selection = { kind: 'table'; key: number } | { kind: 'area'; key: string };
@@ -150,6 +155,9 @@ function areaKey(area: EditableArea): string { return area.id ? `id:${area.id}` 
 export default function TableMap({
     plan,
     statusFilter,
+    tableMeta,
+    tableMetaUnavailable,
+    currencySymbol = '',
     onStatusFilterChange,
     canEdit,
     saving,
@@ -333,6 +341,13 @@ export default function TableMap({
         setEditing((value) => !value);
     };
 
+    const [zoneFilter, setZoneFilter] = useState<string>('ALL');
+    const zoneOptions = useMemo(
+        () => [{ value: 'ALL', label: 'Todas' }, ...areas.filter((a) => a.id).map((a) => ({ value: `id:${a.id}`, label: a.name }))],
+        [areas],
+    );
+    const activeZone = zoneOptions.some((o) => o.value === zoneFilter) ? zoneFilter : 'ALL';
+
     const legendStates = useMemo(() => Array.from(new Set(layout.map(resolveOperationalState))), [layout]);
 
     return (
@@ -352,6 +367,11 @@ export default function TableMap({
                                 onChange={(value) => onStatusFilterChange(value || null)}
                                 isClearable={false}
                             />
+                        </div>
+                    )}
+                    {!editing && zoneOptions.length > 2 && (
+                        <div className="table-map-zone-filter">
+                            <SegmentedControl ariaLabel="Zona del salón" size="sm" options={zoneOptions} value={activeZone} onChange={setZoneFilter} />
                         </div>
                     )}
                     {!editing && branchControl}
@@ -415,7 +435,10 @@ export default function TableMap({
                             })}
                             {layout.map((table) => {
                                 const state = resolveOperationalState(table);
-                                const filteredOut = Boolean(!editing && statusFilter && table.status !== statusFilter);
+                                const outOfZone = !editing && activeZone !== 'ALL' && `id:${table.floorAreaId ?? ''}` !== activeZone;
+                                const filteredOut = Boolean(!editing && ((statusFilter && table.status !== statusFilter) || outOfZone));
+                                const meta = tableMeta?.get(table.id);
+                                const isOpen = !editing && tableMeta !== undefined && (table.status === 'OCCUPIED' || meta !== undefined);
                                 const selected = selection?.kind === 'table' && selection.key === table.id;
                                 return (
                                     <button key={table.id} type="button"
@@ -431,6 +454,13 @@ export default function TableMap({
                                         <span className="map-table-number">{table.number}</span>
                                         <span className="map-table-status">{operationalLabel[state]}</span>
                                         <span className="map-table-capacity">{table.capacity} personas</span>
+                                        {isOpen && (
+                                            <span className="map-table-consumption">
+                                                {tableMetaUnavailable
+                                                    ? 'N/D'
+                                                    : `${meta ? `${meta.minutes} min` : 'N/D'} · ${meta?.amount != null ? formatMoney(meta.amount, currencySymbol || 'C$') : 'N/D'}`}
+                                            </span>
+                                        )}
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar mesa ${table.number}`} onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'RESIZE')} />}
                                     </button>
                                 );

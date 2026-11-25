@@ -49,3 +49,12 @@
   position: sticky; bottom: 0; background: var(--color-surface); padding: 16px 0;
   border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: 12px;
 }
+
+.order-cancel-block {
+    margin-top: 8px;
+    padding: 10px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-error) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+}
+.order-cancel-label { color: var(--color-error); }

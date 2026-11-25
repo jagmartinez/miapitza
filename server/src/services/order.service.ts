@@ -1925,13 +1925,23 @@ export class OrderService {
     }
 
     // Get active orders (OPEN or SENT_TO_KITCHEN)
-    static async getActiveOrders(companyId: number, branchId?: number) {
-        const where: Prisma.OrderWhereInput = {
-            companyId,
-            status: {
-                in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY']
+    // includeServedUnpaid adds DELIVERED orders not yet PAID (same criterion as table.service open consumption).
+    static async getActiveOrders(companyId: number, branchId?: number, includeServedUnpaid = false) {
+        const activeStatuses = ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] as const;
+        const where: Prisma.OrderWhereInput = includeServedUnpaid
+            ? {
+                companyId,
+                OR: [
+                    { status: { in: [...activeStatuses] } },
+                    { status: 'DELIVERED', financialStatus: { not: 'PAID' } }
+                ]
             }
-        };
+            : {
+                companyId,
+                status: {
+                    in: [...activeStatuses]
+                }
+            };
 
         if (branchId) {
             where.branchId = branchId;

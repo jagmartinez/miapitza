@@ -108,7 +108,7 @@ export class OrderController {
             const companyId = req.user!.companyId;
             const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = resolveBranchScope(req.user!, requested);
-            const orders = await OrderService.getActiveOrders(companyId, branchId);
+            const orders = await OrderService.getActiveOrders(companyId, branchId, req.query.includeServedUnpaid === 'true');
             res.json({
                 success: true,
                 data: orders
