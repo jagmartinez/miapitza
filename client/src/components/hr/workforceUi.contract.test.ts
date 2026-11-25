@@ -50,7 +50,7 @@ describe('Phase 4 workforce UI safety contract', () => {
   it('keeps leave tabs inside the operational toolbar and makes employee filtering searchable', () => {
     expect(leave).toMatch(/hr-workforce-filters inventory-filters-row hr-operation-toolbar[\s\S]*filters-toolbar hr-admin-tab-toolbar/);
     expect(leave).toContain('aria-label="Filtrar por empleado"');
-    expect(leave).toContain('isSearchable');
+    expect(leave).toContain('<AppSelect');
   });
 
   it('loads every authoritative server page and exposes accessible tabs and column headers', () => {

@@ -1,4 +1,3 @@
-import HrReactSelect from '../../components/hr/HrReactSelect';
 import { formatHrNumber } from '../../utils/hrFormat';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -12,8 +11,7 @@ import {
   RefreshCw,
   SlidersHorizontal,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { DataTable, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -302,7 +300,7 @@ export default function LeaveManagement() {
             <Button variant="secondary" onClick={() => setPanel('adjustment')} disabled={!online}>
               <SlidersHorizontal size={17} /> Ajustar
             </Button>
-            <Button onClick={() => setPanel('request')} disabled={!online}>
+            <Button variant="primary" onClick={() => setPanel('request')} disabled={!online}>
               <Plus size={17} /> Solicitud
             </Button>
           </div>
@@ -340,14 +338,16 @@ export default function LeaveManagement() {
         </label>
         <label>
           Empleado
-          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} isSearchable aria-label="Filtrar por empleado">
-            <option value="">Todos</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name}
-              </option>
-            ))}
-          </HrReactSelect>
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Todos' },
+              ...users.map((user) => ({ value: String(user.id), label: user.name })),
+            ]}
+            value={userId}
+            onChange={(next) => setUserId(next ?? '')}
+            aria-label="Filtrar por empleado"
+            isClearable={false}
+          />
         </label>
         <Button variant="ghost" onClick={() => void load()}>
           <RefreshCw size={16} /> Actualizar
@@ -375,7 +375,7 @@ export default function LeaveManagement() {
                 pagination={{ mode: 'client' }}
                 minWidth="56rem"
                 rowTone={(item) => (focusedRequestId === item.id ? 'primary' : undefined)}
-                empty={<div className="hr-admin-empty"><strong>No hay solicitudes en este periodo</strong><span>Puedes registrar una solicitud en nombre de un empleado.</span><Button size="sm" onClick={() => setPanel('request')} disabled={!online} aria-label="Crear ausencia"><Plus size={15} /> Nueva solicitud</Button></div>}
+                empty={<div className="hr-admin-empty"><strong>No hay solicitudes en este periodo</strong><span>Puedes registrar una solicitud en nombre de un empleado.</span><Button variant="primary" size="sm" onClick={() => setPanel('request')} disabled={!online} aria-label="Crear ausencia"><Plus size={15} /> Nueva solicitud</Button></div>}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
                   { key: 'c1', header: 'Tipo', render: (item) => <>{item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}</> },
@@ -415,7 +415,7 @@ export default function LeaveManagement() {
                 rowKey={(balance) => balance.id}
                 pagination={{ mode: 'client' }}
                 minWidth="72rem"
-                empty={<div className="hr-admin-empty"><strong>No hay saldos configurados</strong><span>Registra un ajuste inicial para comenzar el control.</span><Button size="sm" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button></div>}
+                empty={<div className="hr-admin-empty"><strong>No hay saldos configurados</strong><span>Registra un ajuste inicial para comenzar el control.</span><Button variant="primary" size="sm" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button></div>}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (balance) => <strong>{balance.user?.name ?? `Usuario #${balance.userId}`}</strong> },
                   { key: 'c1', header: 'Tipo', render: (balance) => <>{balance.leaveType?.name ?? 'Vacaciones'}</> },
@@ -437,7 +437,7 @@ export default function LeaveManagement() {
                 rowKey={(type) => type.id}
                 pagination={{ mode: 'client' }}
                 minWidth="64rem"
-                empty={<div className="hr-admin-empty"><strong>No hay tipos de ausencia</strong><span>Crea vacaciones, permisos, subsidios u otras políticas.</span><Button size="sm" onClick={() => openType()} disabled={!online}><Plus size={15} /> Crear tipo</Button></div>}
+                empty={<div className="hr-admin-empty"><strong>No hay tipos de ausencia</strong><span>Crea vacaciones, permisos, subsidios u otras políticas.</span><Button variant="primary" size="sm" onClick={() => openType()} disabled={!online}><Plus size={15} /> Crear tipo</Button></div>}
                 columns={[
                   { key: 'c0', header: 'Nombre', render: (type) => <><strong>{type.name}</strong><small>{type.description || 'Sin descripción'}</small></> },
                   { key: 'c1', header: 'Código', render: (type) => <code>{type.code}</code> },
@@ -510,7 +510,7 @@ export default function LeaveManagement() {
                 <Button type="button" variant="ghost" onClick={() => setPanel(null)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={!online || saving}>
+                <Button variant="primary" type="submit" disabled={!online || saving}>
                   {saving ? 'Guardando…' : 'Guardar tipo'}
                 </Button>
               </>
@@ -541,19 +541,21 @@ export default function LeaveManagement() {
             </label>
             <label>
               Unidad
-              <HrReactSelect
+              <AppSelect<string>
+                options={[
+                  { value: 'DAYS', label: 'Días' },
+                  { value: 'HOURS', label: 'Horas' },
+                  { value: 'MINUTES', label: 'Minutos' },
+                ]}
                 value={typeForm.unit}
-                onChange={(event) =>
+                onChange={(next) =>
                   setTypeForm((current) => ({
                     ...current,
-                    unit: event.target.value as HrBalanceUnit,
+                    unit: (next ?? '') as HrBalanceUnit,
                   }))
                 }
-              >
-                <option value="DAYS">Días</option>
-                <option value="HOURS">Horas</option>
-                <option value="MINUTES">Minutos</option>
-              </HrReactSelect>
+                isClearable={false}
+              />
             </label>
             <label className="span-full">
               Descripción
@@ -629,7 +631,7 @@ export default function LeaveManagement() {
                 <Button type="button" variant="ghost" onClick={() => setPanel(null)}>
                   Cancelar
                 </Button>
-                <Button
+                <Button variant="primary"
                   type="submit"
                   disabled={
                     !online ||
@@ -646,47 +648,45 @@ export default function LeaveManagement() {
           >
             <label>
               Usuario
-              <HrReactSelect
+              <AppSelect<string>
+                options={[
+                  { value: '', label: 'Seleccionar…' },
+                  ...users.map((user) => ({ value: String(user.id), label: user.name })),
+                ]}
                 value={adjustment.userId}
-                onChange={(event) =>
+                onChange={(next) =>
                   setAdjustment((current) => ({
                     ...current,
-                    userId: event.target.value,
+                    userId: next ?? '',
                     balanceId: '',
                   }))
                 }
-                required
-              >
-                <option value="">Seleccionar…</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </HrReactSelect>
+                isClearable={false}
+              />
             </label>
             <label>
               Saldo objetivo
-              <HrReactSelect
+              <AppSelect<string>
+                options={[
+                  { value: '', label: 'Resolver en servidor' },
+                  ...balances
+                    .filter((balance) => String(balance.userId) === adjustment.userId)
+                    .map((balance) => ({
+                      value: String(balance.id),
+                      label: `${balance.periodLabel ?? `Saldo #${balance.id}`} · ${balance.unit}`,
+                    })),
+                ]}
                 value={adjustment.balanceId}
-                onChange={(event) => {
-                  const balance = balances.find((item) => String(item.id) === event.target.value);
+                onChange={(next) => {
+                  const balance = balances.find((item) => String(item.id) === (next ?? ''));
                   setAdjustment((current) => ({
                     ...current,
-                    balanceId: event.target.value,
+                    balanceId: next ?? '',
                     unit: balance?.unit ?? current.unit,
                   }));
                 }}
-              >
-                <option value="">Resolver en servidor</option>
-                {balances
-                  .filter((balance) => String(balance.userId) === adjustment.userId)
-                  .map((balance) => (
-                    <option key={balance.id} value={balance.id}>
-                      {balance.periodLabel ?? `Saldo #${balance.id}`} · {balance.unit}
-                    </option>
-                  ))}
-              </HrReactSelect>
+                isClearable={false}
+              />
             </label>
             <label>
               Fecha efectiva
@@ -713,19 +713,21 @@ export default function LeaveManagement() {
             </label>
             <label>
               Unidad
-              <HrReactSelect
+              <AppSelect<string>
+                options={[
+                  { value: 'DAYS', label: 'Días' },
+                  { value: 'HOURS', label: 'Horas' },
+                  { value: 'MINUTES', label: 'Minutos' },
+                ]}
                 value={adjustment.unit}
-                onChange={(event) =>
+                onChange={(next) =>
                   setAdjustment((current) => ({
                     ...current,
-                    unit: event.target.value as HrBalanceUnit,
+                    unit: (next ?? '') as HrBalanceUnit,
                   }))
                 }
-              >
-                <option value="DAYS">Días</option>
-                <option value="HOURS">Horas</option>
-                <option value="MINUTES">Minutos</option>
-              </HrReactSelect>
+                isClearable={false}
+              />
             </label>
             <label>
               Referencia
@@ -775,20 +777,22 @@ export default function LeaveManagement() {
           footer={
             <>
               <Button type="button" variant="ghost" onClick={() => setRequestAction(null)}>Volver</Button>
-              <Button type="submit" disabled={!online || saving || !actionReason.trim()}>{saving ? 'Registrando…' : 'Confirmar'}</Button>
+              <Button variant="primary" type="submit" disabled={!online || saving || !actionReason.trim()}>{saving ? 'Registrando…' : 'Confirmar'}</Button>
             </>
           }
         >
           {requestAction?.kind === 'decide' && (
             <label>
               Decisión
-              <HrReactSelect
+              <AppSelect<string>
+                options={[
+                  { value: 'APPROVED', label: 'Aprobar' },
+                  { value: 'REJECTED', label: 'Rechazar' },
+                ]}
                 value={decision}
-                onChange={(event) => setDecision(event.target.value as HrDecision)}
-              >
-                <option value="APPROVED">Aprobar</option>
-                <option value="REJECTED">Rechazar</option>
-              </HrReactSelect>
+                onChange={(next) => setDecision((next ?? '') as HrDecision)}
+                isClearable={false}
+              />
             </label>
           )}
           <label className="span-full">

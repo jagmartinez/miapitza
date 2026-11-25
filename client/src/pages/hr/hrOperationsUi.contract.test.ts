@@ -94,7 +94,7 @@ describe('RH operational UI contract', () => {
   it('keeps react-select and grouped money in financial self-service views', () => {
     expect(myBenefits).toContain('formatHrMoney');
     expect(myBenefits).toContain('role="tabpanel"');
-    expect(myPayroll).toContain('HrReactSelect');
+    expect(myPayroll).toContain('<AppSelect');
     expect(myPayroll).toContain('formatHrMoney(receipt.currency, receipt.netPay)');
     expect(myPayroll).toContain('my-hr-summary-grid');
   });

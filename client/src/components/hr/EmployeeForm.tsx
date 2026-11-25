@@ -7,8 +7,7 @@ import {
     UserRound,
     WalletCards,
 } from 'lucide-react';
-import { Tabs } from '@/ui';
-import Button from '../Button';
+import { Tabs, Button } from '@/ui';
 import Select from './HrOptionSelect';
 import HrMoneyInput from './HrMoneyInput';
 import type {
@@ -547,7 +546,7 @@ export default function EmployeeForm({
 
                 <div className="hr-modal-form-footer">
                     <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
-                    <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : employee ? 'Guardar cambios' : 'Crear empleado'}</Button>
+                    <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando…' : employee ? 'Guardar cambios' : 'Crear empleado'}</Button>
                 </div>
             </form>
         </div>

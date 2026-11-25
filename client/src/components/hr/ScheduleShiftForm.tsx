@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SingleValue } from './HrOptionSelect';
 import { Clock3, UserRound } from 'lucide-react';
-import { Tabs } from '@/ui';
-import Button from '../Button';
+import { Tabs, Button } from '@/ui';
 import Select from './HrOptionSelect';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrScheduleShift, HrScheduleShiftInput, HrShiftTemplate } from '../../types/hr-schedule';
@@ -229,8 +228,8 @@ export default function ScheduleShiftForm({
               <div className="hr-modal-form-footer">
                 <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
                 {activeTab === 'assignment'
-                    ? <Button type="button" onClick={() => setActiveTab('schedule')}>Continuar</Button>
-                    : <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : shift ? 'Guardar turno' : 'Agregar turno'}</Button>}
+                    ? <Button variant="primary" type="button" onClick={() => setActiveTab('schedule')}>Continuar</Button>
+                    : <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando…' : shift ? 'Guardar turno' : 'Agregar turno'}</Button>}
               </div>
             </form>
         </div>

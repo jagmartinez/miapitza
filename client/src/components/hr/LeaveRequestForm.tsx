@@ -1,7 +1,6 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
-import Button from '../Button';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrLeaveFraction, HrLeaveRequestPayload, HrLeaveType } from '../../types/hr-workforce';
@@ -71,7 +70,7 @@ export default function LeaveRequestForm({
               Cancelar
             </Button>
           )}
-          <Button
+          <Button variant="primary"
             type="submit"
             disabled={
               !online ||
@@ -93,37 +92,36 @@ export default function LeaveRequestForm({
       {users && (
         <label>
           Usuario
-          <HrReactSelect
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Seleccionar…' },
+              ...users.map((user) => ({
+                value: String(user.id),
+                label: `${user.name} · @${user.username}`,
+              })),
+            ]}
             value={userId}
-            onChange={(event) => setUserId(event.target.value)}
-            required
-          >
-            <option value="">Seleccionar…</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name} · @{user.username}
-              </option>
-            ))}
-          </HrReactSelect>
+            onChange={(next) => setUserId(next ?? '')}
+            isClearable={false}
+          />
         </label>
       )}
       <label>
         Tipo de ausencia
-        <HrReactSelect
+        <AppSelect<string>
+          options={[
+            { value: '', label: 'Seleccionar…' },
+            ...leaveTypes
+              .filter((type) => type.active)
+              .map((type) => ({
+                value: String(type.id),
+                label: `${type.name} ${type.paid ? ' · remunerada' : ''}`,
+              })),
+          ]}
           value={leaveTypeId}
-          onChange={(event) => setLeaveTypeId(event.target.value)}
-          required
-        >
-          <option value="">Seleccionar…</option>
-          {leaveTypes
-            .filter((type) => type.active)
-            .map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-                {type.paid ? ' · remunerada' : ''}
-              </option>
-            ))}
-        </HrReactSelect>
+          onChange={(next) => setLeaveTypeId(next ?? '')}
+          isClearable={false}
+        />
       </label>
       <label>
         Desde
@@ -149,14 +147,16 @@ export default function LeaveRequestForm({
       </label>
       <label>
         Fracción
-        <HrReactSelect
+        <AppSelect<string>
+          options={[
+            { value: 'FULL_DAY', label: 'Día completo' },
+            { value: 'HALF_DAY', label: 'Medio día' },
+            { value: 'HOURS', label: 'Rango de horas' },
+          ]}
           value={fraction}
-          onChange={(event) => setFraction(event.target.value as HrLeaveFraction)}
-        >
-          <option value="FULL_DAY">Día completo</option>
-          <option value="HALF_DAY">Medio día</option>
-          <option value="HOURS">Rango de horas</option>
-        </HrReactSelect>
+          onChange={(next) => setFraction((next ?? '') as HrLeaveFraction)}
+          isClearable={false}
+        />
       </label>
       {(fraction === 'HOURS' || fraction === 'HALF_DAY') && (
         <>

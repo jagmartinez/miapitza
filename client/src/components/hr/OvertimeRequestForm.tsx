@@ -1,7 +1,6 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { Clock3 } from 'lucide-react';
-import Button from '../Button';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrOvertimeRequestPayload } from '../../types/hr-workforce';
@@ -61,21 +60,25 @@ export default function OvertimeRequestForm({
       footer={
         <>
           {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>}
-          <Button type="submit" disabled={!online || saving || !date || Number(requestedMinutes) <= 0 || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar horas extra'}</Button>
+          <Button variant="primary" type="submit" disabled={!online || saving || !date || Number(requestedMinutes) <= 0 || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar horas extra'}</Button>
         </>
       }
     >
       {users && (
         <label>
           Usuario
-          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
-            <option value="">Seleccionar…</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name} · @{user.username}
-              </option>
-            ))}
-          </HrReactSelect>
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Seleccionar…' },
+              ...users.map((user) => ({
+                value: String(user.id),
+                label: `${user.name} · @${user.username}`,
+              })),
+            ]}
+            value={userId}
+            onChange={(next) => setUserId(next ?? '')}
+            isClearable={false}
+          />
         </label>
       )}
       <label>

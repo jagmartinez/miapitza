@@ -16,8 +16,7 @@ import {
     UserCheck,
     WalletCards,
 } from 'lucide-react';
-import { PageHeader, StatCard, formatNumber } from '@/ui';
-import Button from '../../components/Button';
+import { PageHeader, StatCard, formatNumber, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import type { HrDashboardData } from '../../types/hr';
@@ -72,7 +71,7 @@ export default function HrDashboard() {
         actions={
                     <div className={styles.headerActions}>
                         <Button variant="ghost" onClick={() => navigate('/rh/personal')}>Gestionar personal</Button>
-                        <Button onClick={() => navigate('/rh/nomina')}>Abrir nómina</Button>
+                        <Button variant="primary" onClick={() => navigate('/rh/nomina')}>Abrir nómina</Button>
                     </div>
                 }
       />

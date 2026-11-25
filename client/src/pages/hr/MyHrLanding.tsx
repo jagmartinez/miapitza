@@ -13,8 +13,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { PageHeader, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import { benefitsClient } from '../../components/hr/benefitsClient';

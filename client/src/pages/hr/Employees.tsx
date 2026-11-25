@@ -13,8 +13,7 @@ import {
     UsersRound,
     WalletCards,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, Pagination, type Column } from '@/ui';
-import Button from '../../components/Button';
+import { DataTable, FullScreenModal, PageHeader, Pagination, type Column, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ViewToggle from '../../components/ViewToggle';
 import EmployeeForm from '../../components/hr/EmployeeForm';
@@ -311,7 +310,7 @@ export default function Employees() {
         actions={
                     <>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button onClick={openCreate}><Plus size={18} /> Nuevo empleado</Button>
+                        <Button variant="primary" onClick={openCreate}><Plus size={18} /> Nuevo empleado</Button>
                     </>
                 }
       />

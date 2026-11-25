@@ -1,6 +1,6 @@
+import { Button } from '@/ui';
 import { useCallback, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock3, Coffee, Fingerprint, LogIn, LogOut, MapPin, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
-import Button from '../Button';
 import type {
     HrAttendanceAction,
     HrAttendanceChallenge,
@@ -243,7 +243,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
             </div>
             <div className="hr-wizard-actions">
                 <Button type="button" variant="ghost" onClick={restart} disabled={submitting}>Cancelar intento</Button>
-                <Button type="button" onClick={() => void submit()} disabled={submitting || !biometricReady || !locationReady}>{submitting ? 'Validando rostro y ubicación…' : `Confirmar ${ATTENDANCE_ACTION_LABELS[action].toLowerCase()}`}</Button>
+                <Button variant="primary" type="button" onClick={() => void submit()} disabled={submitting || !biometricReady || !locationReady}>{submitting ? 'Validando rostro y ubicación…' : `Confirmar ${ATTENDANCE_ACTION_LABELS[action].toLowerCase()}`}</Button>
             </div>
         </section>
     );

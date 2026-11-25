@@ -1,9 +1,7 @@
-import HrReactSelect from '../../components/hr/HrReactSelect';
 import { formatHrMoney } from '../../utils/hrFormat';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Download, FileText, Gift, RefreshCw, WalletCards } from 'lucide-react';
-import { PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { PageHeader, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
@@ -120,14 +118,16 @@ export default function MyPayroll() {
       <div className="hr-payroll-filterbar my-hr-toolbar" aria-label="Filtros de recibos">
         <label>
           Tipo
-          <HrReactSelect
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Todos' },
+              { value: 'REGULAR', label: 'Nómina ordinaria' },
+              { value: 'AGUINALDO', label: 'Aguinaldo' },
+            ]}
             value={kind}
-            onChange={(event) => setKind(event.target.value as '' | HrPayrollRunKind)}
-          >
-            <option value="">Todos</option>
-            <option value="REGULAR">Nómina ordinaria</option>
-            <option value="AGUINALDO">Aguinaldo</option>
-          </HrReactSelect>
+            onChange={(next) => setKind((next ?? '') as '' | HrPayrollRunKind)}
+            isClearable={false}
+          />
         </label>
         <label>
           Año

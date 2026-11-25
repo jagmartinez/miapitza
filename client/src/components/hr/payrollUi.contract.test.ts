@@ -161,7 +161,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
   it('requires a fresh legal classification confirmation when manual classification changes', () => {
     expect(componentForm).toContain('classificationConfirmed: true');
     expect(componentForm).toContain('if (!classificationConfirmed || !selectedConcept) return');
-    expect(componentForm).toMatch(/setCode\(event\.target\.value\);\s*setClassificationConfirmed\(false\);/);
+    expect(componentForm).toMatch(/setCode\(next \?\? ''\);\s*setClassificationConfirmed\(false\);/);
     expect(componentForm).toContain('selectedConcept.socialSecurityApplicable');
     expect(componentForm).toContain('las banderas no pueden modificarse');
     expect(componentForm).toContain('!classificationConfirmed');

@@ -17,8 +17,7 @@ import {
     ShieldCheck,
     UserRound,
 } from 'lucide-react';
-import { PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { PageHeader, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrStatusPill from '../../components/hr/HrStatusPill';
 import EmployeeRecordPanel from '../../components/hr/EmployeeRecordPanel';

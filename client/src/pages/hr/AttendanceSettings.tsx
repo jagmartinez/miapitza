@@ -1,4 +1,3 @@
-import HrReactSelect from '../../components/hr/HrReactSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -14,8 +13,7 @@ import {
   ShieldCheck,
   TabletSmartphone,
 } from 'lucide-react';
-import { FormSection, FullScreenModal, PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { FormSection, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -339,11 +337,18 @@ export default function AttendanceSettings() {
           </div>
           {scopeMode === 'BRANCH' && <label>
             Sucursal que tendrá reglas propias
-            <HrReactSelect value={scope} onChange={(event) => setScope(event.target.value)} isSearchable aria-label="Seleccionar sucursal para reglas de marcaje">
-              {lookups.branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>{branch.name}</option>
-              ))}
-            </HrReactSelect>
+            <AppSelect<string>
+              options={[
+                ...lookups.branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: branch.name,
+                })),
+              ]}
+              value={scope}
+              onChange={(next) => setScope(next ?? '')}
+              aria-label="Seleccionar sucursal para reglas de marcaje"
+              isClearable={false}
+            />
           </label>}
         </div>
         <p className="hr-settings-scope-note">
@@ -467,59 +472,63 @@ export default function AttendanceSettings() {
               <div className="hr-settings-fields three-columns">
                 <label>
                   Si marca fuera del horario
-                  <HrReactSelect
+                  <AppSelect<string>
+                    options={[
+                      ...MODES.map((mode) => ({
+                        value: String(mode.value),
+                        label: mode.label,
+                      })),
+                    ]}
                     value={policy.scheduleViolationMode}
-                    onChange={(event) =>
+                    onChange={(next) =>
                       updatePolicyField(
                         'scheduleViolationMode',
-                        event.target.value as HrAttendanceViolationMode
+                        (next ?? '') as HrAttendanceViolationMode
                       )
                     }
-                  >
-                    {MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
-                  </HrReactSelect>
+                    isClearable={false}
+                  />
                 </label>
                 <label>
                   Si marca fuera del lugar permitido
-                  <HrReactSelect
-                    value="BLOCK"
-                    disabled
-                  >
-                    <option value="BLOCK">Bloquear (obligatorio)</option>
-                  </HrReactSelect>
+                  <AppSelect<string>
+                    options={[{ value: 'BLOCK', label: 'Bloquear (obligatorio)' }]}
+                    value={'BLOCK'}
+                    isDisabled
+                    onChange={() => undefined}
+                    isClearable={false}
+                  />
                   <small>Una ubicación fuera de geocerca requiere corrección auditada.</small>
                 </label>
                 <label>
                   Si no valida su identidad
-                  <HrReactSelect
-                    value="BLOCK"
-                    disabled
-                  >
-                    <option value="BLOCK">Bloquear (obligatorio)</option>
-                  </HrReactSelect>
+                  <AppSelect<string>
+                    options={[{ value: 'BLOCK', label: 'Bloquear (obligatorio)' }]}
+                    value={'BLOCK'}
+                    isDisabled
+                    onChange={() => undefined}
+                    isClearable={false}
+                  />
                   <small>Un rostro no coincidente nunca genera tiempo trabajado.</small>
                 </label>
                 <label>
                   Marcaje sin turno
-                  <HrReactSelect
+                  <AppSelect<string>
+                    options={[
+                      ...MODES.map((mode) => ({
+                        value: String(mode.value),
+                        label: mode.label,
+                      })),
+                    ]}
                     value={policy.unscheduledViolationMode}
-                    onChange={(event) =>
+                    onChange={(next) =>
                       updatePolicyField(
                         'unscheduledViolationMode',
-                        event.target.value as HrAttendanceViolationMode
+                        (next ?? '') as HrAttendanceViolationMode
                       )
                     }
-                  >
-                    {MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
-                  </HrReactSelect>
+                    isClearable={false}
+                  />
                 </label>
               </div>
               <p className="hr-form-help">
@@ -670,7 +679,7 @@ export default function AttendanceSettings() {
 
             <div className="hr-settings-savebar">
               <p>Al guardar, estas reglas quedan vigentes y la versión anterior se conserva en el historial.</p>
-              <Button type="submit" disabled={!online || saving}>
+              <Button variant="primary" type="submit" disabled={!online || saving}>
                 {saving ? 'Guardando reglas…' : 'Guardar y aplicar reglas'}
               </Button>
             </div>
@@ -682,7 +691,7 @@ export default function AttendanceSettings() {
                 <h2 id="devices-title">Credenciales de dispositivos</h2>
                 <p>Inventario por sucursal; una revocación es irreversible para esa clave.</p>
               </div>
-              <Button size="sm" onClick={openDevicePanel} disabled={!online}>
+              <Button variant="primary" size="sm" onClick={openDevicePanel} disabled={!online}>
                 <Plus size={16} /> Crear credencial
               </Button>
             </header>
@@ -774,21 +783,21 @@ export default function AttendanceSettings() {
               >
                 <label>
                   Usuario interno
-                  <HrReactSelect
+                  <AppSelect<string>
+                    options={[
+                      { value: '', label: 'Seleccionar…' },
+                      ...internalUsers.map((user) => ({
+                        value: String(user.id),
+                        label: `${user.name} · ${user.username}`,
+                      })),
+                    ]}
                     value={biometricUserId}
-                    onChange={(event) => {
-                      setBiometricUserId(event.target.value);
+                    onChange={(next) => {
+                      setBiometricUserId(next ?? '');
                       setRevokedStatus(null);
                     }}
-                    required
-                  >
-                    <option value="">Seleccionar…</option>
-                    {internalUsers.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name} · {user.username}
-                      </option>
-                    ))}
-                  </HrReactSelect>
+                    isClearable={false}
+                  />
                 </label>
                 <label>
                   Razón obligatoria
@@ -845,7 +854,7 @@ export default function AttendanceSettings() {
                     </div>
                   </dl>
                 )}
-                <Button onClick={() => void runMaintenance()} disabled={!online || saving}>
+                <Button variant="primary" onClick={() => void runMaintenance()} disabled={!online || saving}>
                   <RefreshCw size={16} /> Ejecutar mantenimiento
                 </Button>
               </div>
@@ -870,7 +879,7 @@ export default function AttendanceSettings() {
           footer={
             <>
               <Button type="button" variant="ghost" onClick={() => setDevicePanelOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={!online || saving}>{saving ? 'Creando…' : 'Crear y mostrar clave'}</Button>
+              <Button variant="primary" type="submit" disabled={!online || saving}>{saving ? 'Creando…' : 'Crear y mostrar clave'}</Button>
             </>
           }
         >
@@ -880,20 +889,20 @@ export default function AttendanceSettings() {
           </div>
           <label>
             Sucursal
-            <HrReactSelect
+            <AppSelect<string>
+              options={[
+                { value: '', label: 'Seleccionar…' },
+                ...lookups.branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: branch.name,
+                })),
+              ]}
               value={deviceForm.branchId}
-              onChange={(event) =>
-                setDeviceForm((current) => ({ ...current, branchId: event.target.value }))
+              onChange={(next) =>
+                setDeviceForm((current) => ({ ...current, branchId: next ?? '' }))
               }
-              required
-            >
-              <option value="">Seleccionar…</option>
-              {lookups.branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </HrReactSelect>
+              isClearable={false}
+            />
           </label>
           <label>
             Nombre descriptivo
@@ -928,7 +937,7 @@ export default function AttendanceSettings() {
         title="Clave mostrada una sola vez"
         dirty
         dirtyMessage="La clave se muestra una sola vez y el servidor no volverá a entregarla. Si cierras sin guardarla tendrás que generar otra."
-        footer={<Button onClick={() => setCredential(null)}>Ya guardé la clave; cerrar definitivamente</Button>}
+        footer={<Button variant="primary" onClick={() => setCredential(null)}>Ya guardé la clave; cerrar definitivamente</Button>}
       >
         {credential && (
           <div className="hr-attendance-sensitive-modal">

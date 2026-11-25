@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PageHeader, FullScreenModal } from '@/ui';
+import { PageHeader, FullScreenModal, Button } from '@/ui';
 import {
     CalendarDays,
     ChevronLeft,
@@ -11,7 +11,6 @@ import {
     Send,
     AlertTriangle,
 } from 'lucide-react';
-import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrFilterSelect from '../../components/hr/HrFilterSelect';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
@@ -368,7 +367,7 @@ export default function Schedules() {
             <PageHeader
         title="Horarios semanales"
         description="Planificación por usuario, puesto y sucursal"
-        actions={<Button onClick={openCreate} disabled={Boolean(lookupsError) || loading || mutationBusy || fromCache}><Plus size={18} aria-hidden="true" /> Nuevo turno</Button>}
+        actions={<Button variant="primary" onClick={openCreate} disabled={Boolean(lookupsError) || loading || mutationBusy || fromCache}><Plus size={18} aria-hidden="true" /> Nuevo turno</Button>}
       />
 
             <section className="hr-week-navigation" aria-label="Navegación semanal">
@@ -385,7 +384,7 @@ export default function Schedules() {
                 <div className="filter-actions">
                     <Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
                     {!loading && !error && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
-                    {!loading && !error && primarySchedule?.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
+                    {!loading && !error && primarySchedule?.status === 'DRAFT' && <Button variant="primary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
                     {!loading && !error && primarySchedule && ['DRAFT', 'PUBLISHED'].includes(primarySchedule.status) && (
                         <Button variant="ghost" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void cancelWeek()}>
                             <Ban size={17} aria-hidden="true" /> {mutationKind === 'cancel' ? 'Cancelando…' : 'Cancelar semana'}

@@ -1,4 +1,4 @@
-import { DataTable, formatMoney } from '@/ui';
+import { DataTable, formatMoney, AppSelect, Button } from '@/ui';
 import { useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -14,9 +14,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react';
-import Button from '../Button';
 import HrMoneyInput from './HrMoneyInput';
-import HrReactSelect from './HrReactSelect';
 import PayrollPaymentConceptCatalogEditor from './PayrollPaymentConceptCatalogEditor';
 import { DEFAULT_PAYMENT_CONCEPTS } from './payrollPaymentConceptDefaults';
 import type {
@@ -333,8 +331,39 @@ export default function PayrollRuleConfigurationPanel({
             <div className="hr-legal-obligation-grid">
               <fieldset>
                 <legend>INSS</legend>
-                <label>Aplicación<HrReactSelect value={inssApplicability} onChange={(event) => setInssApplicability(event.target.value as typeof inssApplicability)}><option value="APPLIES">Aplica</option><option value="DOES_NOT_APPLY">No aplica (documentar)</option></HrReactSelect></label>
-                <label>Régimen INSS<HrReactSelect value={inssRegime} onChange={(event) => setInssRegime(event.target.value as typeof inssRegime)}><option value="INTEGRAL">Integral</option><option value="IVM_RP">IVM-RP</option><option value="FACULTATIVE_INTEGRAL">Facultativo integral</option><option value="FACULTATIVE_IVM">Facultativo IVM</option><option value="OTHER">Otro</option></HrReactSelect></label>
+                <label>Aplicación<AppSelect<string>
+                                   options={[
+                                     { value: 'APPLIES', label: 'Aplica' },
+                                     {
+                                       value: 'DOES_NOT_APPLY',
+                                       label: 'No aplica (documentar)',
+                                     },
+                                   ]}
+                                   value={inssApplicability}
+                                   onChange={(next) =>
+                                     setInssApplicability(
+                                       (next ?? '') as typeof inssApplicability
+                                     )
+                                   }
+                                   isClearable={false}
+                                 /></label>
+                <label>Régimen INSS<AppSelect<string>
+                                     options={[
+                                       { value: 'INTEGRAL', label: 'Integral' },
+                                       { value: 'IVM_RP', label: 'IVM-RP' },
+                                       {
+                                         value: 'FACULTATIVE_INTEGRAL',
+                                         label: 'Facultativo integral',
+                                       },
+                                       { value: 'FACULTATIVE_IVM', label: 'Facultativo IVM' },
+                                       { value: 'OTHER', label: 'Otro' },
+                                     ]}
+                                     value={inssRegime}
+                                     onChange={(next) =>
+                                       setInssRegime((next ?? '') as typeof inssRegime)
+                                     }
+                                     isClearable={false}
+                                   /></label>
                 <div className="hr-legal-rate-grid">
                   <label>Tasa del empleado<span className="hr-legal-input-suffix"><input aria-label="Tasa INSS del empleado en porcentaje" type="number" min="0" max="100" step="0.0001" value={inssEmployeeRate} onChange={(event) => setInssEmployeeRate(event.target.value)} /><span>%</span></span><small>Se deduce al empleado.</small></label>
                   <label>Patronal, menor al umbral<span className="hr-legal-input-suffix"><input aria-label="Tasa INSS patronal menor al umbral en porcentaje" type="number" min="0" max="100" step="0.0001" value={inssEmployerBelow} onChange={(event) => setInssEmployerBelow(event.target.value)} /><span>%</span></span></label>
@@ -347,7 +376,22 @@ export default function PayrollRuleConfigurationPanel({
               </fieldset>
               <fieldset>
                 <legend>INATEC</legend>
-                <label>Aplicación<HrReactSelect value={inatecApplicability} onChange={(event) => setInatecApplicability(event.target.value as typeof inatecApplicability)}><option value="APPLIES">Aplica</option><option value="DOES_NOT_APPLY">No aplica (documentar)</option></HrReactSelect></label>
+                <label>Aplicación<AppSelect<string>
+                                   options={[
+                                     { value: 'APPLIES', label: 'Aplica' },
+                                     {
+                                       value: 'DOES_NOT_APPLY',
+                                       label: 'No aplica (documentar)',
+                                     },
+                                   ]}
+                                   value={inatecApplicability}
+                                   onChange={(next) =>
+                                     setInatecApplicability(
+                                       (next ?? '') as typeof inatecApplicability
+                                     )
+                                   }
+                                   isClearable={false}
+                                 /></label>
                 <label>Tasa patronal<span className="hr-legal-input-suffix"><input aria-label="Tasa INATEC patronal en porcentaje" type="number" min="0" max="100" step="0.0001" value={inatecRate} onChange={(event) => setInatecRate(event.target.value)} /><span>%</span></span><small>Es un costo patronal; no se deduce al empleado.</small></label>
                 <label>Fuente INATEC<input value={inatecReference} onChange={(event) => setInatecReference(event.target.value)} maxLength={500} required /></label>
                 {inatecApplicability === 'DOES_NOT_APPLY' && <label>Fundamento de excepción<textarea value={inatecException} onChange={(event) => setInatecException(event.target.value)} required /></label>}
@@ -419,7 +463,20 @@ export default function PayrollRuleConfigurationPanel({
               <fieldset><legend>Aguinaldo</legend><div className="hr-legal-field-grid">
                 <label>Días históricos<input type="number" min="1" max="731" value={lookbackDays} onChange={(event) => setLookbackDays(event.target.value)} /><small>Ventana de componentes pagados que alimenta el cálculo.</small></label>
                 <label>Divisor de ingreso<input type="number" min="0.0001" step="0.0001" value={incomeDivisor} onChange={(event) => setIncomeDivisor(event.target.value)} /></label>
-                <label>Prorrateo<HrReactSelect value={prorationMode} onChange={(event) => setProrationMode(event.target.value as typeof prorationMode)}><option value="SERVICE_DAYS_RATIO">Proporción por días de servicio</option><option value="NONE">Sin prorrateo</option></HrReactSelect></label>
+                <label>Prorrateo<AppSelect<string>
+                                  options={[
+                                    {
+                                      value: 'SERVICE_DAYS_RATIO',
+                                      label: 'Proporción por días de servicio',
+                                    },
+                                    { value: 'NONE', label: 'Sin prorrateo' },
+                                  ]}
+                                  value={prorationMode}
+                                  onChange={(next) =>
+                                    setProrationMode((next ?? '') as typeof prorationMode)
+                                  }
+                                  isClearable={false}
+                                /></label>
                 <label className="span-full">Fuentes elegibles<input value={eligibleSources} onChange={(event) => setEligibleSources(event.target.value)} placeholder="ORDINARY, OVERTIME" /><small>Códigos separados por coma.</small></label>
               </div></fieldset>
             </div>
@@ -438,7 +495,7 @@ export default function PayrollRuleConfigurationPanel({
             <label className="hr-payroll-confirm"><input type="checkbox" checked={regimeRuleConfirmed} onChange={(event) => setRegimeRuleConfirmed(event.target.checked)} /><span>Confirmo que el perfil fiscal empresarial mostrado y la clasificación de cada concepto son correctos.</span></label>
             <label className="hr-payroll-confirm"><input type="checkbox" checked={sourceConfirmed} onChange={(event) => setSourceConfirmed(event.target.checked)} /><span>Confirmo que tasas, topes, bases y tramos fueron transcritos de fuentes autorizadas y vigentes.</span></label>
             {validationIssues.length > 0 && <div className="hr-legal-validation-summary" role="alert"><AlertCircle size={20} aria-hidden="true" /><div><strong>Antes de enviar, revisa:</strong><ul>{validationIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div></div>}
-            <div className="hr-legal-submit-bar"><div><strong>{uploadReady ? 'Configuración lista para revisión' : `${validationIssues.length} ${validationIssues.length === 1 ? 'pendiente' : 'pendientes'}`}</strong><span>Después de guardar, otra persona debe validar y luego activar.</span></div><Button type="submit" disabled={!online || saving || !uploadReady}>{saving ? 'Guardando…' : 'Guardar y enviar a validación'}</Button></div>
+            <div className="hr-legal-submit-bar"><div><strong>{uploadReady ? 'Configuración lista para revisión' : `${validationIssues.length} ${validationIssues.length === 1 ? 'pendiente' : 'pendientes'}`}</strong><span>Después de guardar, otra persona debe validar y luego activar.</span></div><Button variant="primary" type="submit" disabled={!online || saving || !uploadReady}>{saving ? 'Guardando…' : 'Guardar y enviar a validación'}</Button></div>
           </section>
         </form>
       ) : (
@@ -461,7 +518,7 @@ export default function PayrollRuleConfigurationPanel({
               <dl><div><dt>Cargó</dt><dd>{actorName(revision.uploadedBy)}</dd></div><div><dt>Fuente</dt><dd>{revision.sourceReference}</dd></div><div><dt>Motivo</dt><dd>{revision.uploadReason}</dd></div>{revision.reviewer && <div><dt>Revisó</dt><dd>{actorName(revision.reviewer)} · {revision.reviewReason}</dd></div>}</dl>
               <details className="hr-legal-audit-details"><summary>Ver evidencia y huella técnica</summary><div><span><strong>Evidencia:</strong> {revision.evidenceReference}</span><code title={revision.configurationHash}>SHA-256 · {revision.configurationHash}</code><small>La huella permite comprobar que los parámetros no cambiaron después de la carga.</small></div></details>
             </div>
-            {revision.status === 'UPLOADED' && rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId && <div className="hr-payroll-config-review hr-legal-review-box"><div><strong>Dictamen independiente</strong><p>Debe realizarlo una persona distinta de quien cargó la revisión.</p></div><label>Justificación del dictamen<textarea rows={3} value={reviewReason} onChange={(event) => setReviewReasonById((current) => ({ ...current, [revision.id]: event.target.value }))} maxLength={900} /></label><label className="hr-payroll-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmedById((current) => ({ ...current, [revision.id]: event.target.checked }))} /><span>Revisé tasas, tramos, conceptos, fuentes, evidencia y vigencia.</span></label><div><Button type="button" size="sm" variant="danger" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'REJECTED')}>Rechazar</Button><Button type="button" size="sm" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'VALIDATED')}><FileCheck2 size={15} aria-hidden="true" /> Validar configuración</Button></div></div>}
+            {revision.status === 'UPLOADED' && rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId && <div className="hr-payroll-config-review hr-legal-review-box"><div><strong>Dictamen independiente</strong><p>Debe realizarlo una persona distinta de quien cargó la revisión.</p></div><label>Justificación del dictamen<textarea rows={3} value={reviewReason} onChange={(event) => setReviewReasonById((current) => ({ ...current, [revision.id]: event.target.value }))} maxLength={900} /></label><label className="hr-payroll-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmedById((current) => ({ ...current, [revision.id]: event.target.checked }))} /><span>Revisé tasas, tramos, conceptos, fuentes, evidencia y vigencia.</span></label><div><Button type="button" size="sm" variant="danger" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'REJECTED')}>Rechazar</Button><Button variant="primary" type="button" size="sm" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'VALIDATED')}><FileCheck2 size={15} aria-hidden="true" /> Validar configuración</Button></div></div>}
           </article>;
         })}
       </section>

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, Clock3, Fingerprint, MapPin, RefreshCw } from 'lucide-react';
-import { PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { PageHeader, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -96,7 +95,7 @@ export default function TimeClock() {
                     {!online ? (
                         <section className="hr-biometric-required" role="alert"><Clock3 size={36} aria-hidden="true" /><h2>Marcaje no disponible sin conexión</h2><p>La hora, la secuencia y la evidencia deben validarse en línea. No se guardará ningún intento en este dispositivo.</p><Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} /> Reintentar conexión</Button></section>
                     ) : biometricBlocked ? (
-                        <section className="hr-biometric-required" role="alert"><Fingerprint size={36} aria-hidden="true" /><h2>Enrolamiento requerido</h2><p>La política exige un perfil biométrico activo. El reconocimiento se ejecuta únicamente en el servidor y puede requerir revisión humana.</p><Button onClick={() => navigate('/rh/biometria')}>Gestionar biometría</Button></section>
+                        <section className="hr-biometric-required" role="alert"><Fingerprint size={36} aria-hidden="true" /><h2>Enrolamiento requerido</h2><p>La política exige un perfil biométrico activo. El reconocimiento se ejecuta únicamente en el servidor y puede requerir revisión humana.</p><Button variant="primary" onClick={() => navigate('/rh/biometria')}>Gestionar biometría</Button></section>
                     ) : <AttendancePunchWizard policy={policy} today={today} onCompleted={completed} onRequestCorrection={() => navigate('/rh/mi-portal/gestion')} />}
                     </div>
                     </div>

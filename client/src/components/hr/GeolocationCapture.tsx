@@ -1,6 +1,6 @@
+import { Button } from '@/ui';
 import { useState } from 'react';
 import { AlertTriangle, LocateFixed, RefreshCw } from 'lucide-react';
-import Button from '../Button';
 import type { HrCapturedLocation } from '../../types/hr-attendance';
 
 interface GeolocationCaptureProps {

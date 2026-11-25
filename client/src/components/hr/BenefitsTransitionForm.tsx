@@ -1,6 +1,6 @@
+import { Button } from '@/ui';
 import { useState } from 'react';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
-import Button from '../Button';
 import HrMoneyInput from './HrMoneyInput';
 import HrModalFormShell from './HrModalFormShell';
 import type {

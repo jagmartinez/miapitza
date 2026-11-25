@@ -18,8 +18,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, formatMoney, formatPercent } from '@/ui';
-import Button from '../Button';
+import { DataTable, FullScreenModal, formatMoney, formatPercent, Button } from '@/ui';
 import type {
   HrPayrollAction,
   HrPayrollComponent,
@@ -249,7 +248,7 @@ export default function PayrollOperationWorkspace({
           </span>
         </div>
         <div className="payroll-operation-actions">
-          {primaryAction && <Button onClick={() => onAction(primaryAction)} disabled={!online || busy}>{ACTION_LABELS[primaryAction]}</Button>}
+          {primaryAction && <Button variant="primary" onClick={() => onAction(primaryAction)} disabled={!online || busy}>{ACTION_LABELS[primaryAction]}</Button>}
           {run.allowedActions.filter((action) => action !== 'VOID' && action !== primaryAction).map((action) => <Button key={action} size="sm" variant="secondary" onClick={() => onAction(action)} disabled={!online || busy}>{ACTION_LABELS[action]}</Button>)}
           {run.allowedActions.includes('VOID') && (
             <Button size="sm" variant="ghost" onClick={() => onAction('VOID')} disabled={!online || busy}>Anular</Button>
@@ -273,7 +272,7 @@ export default function PayrollOperationWorkspace({
         <div>
           <Button size="sm" variant="secondary" onClick={() => onExport('xlsx')} disabled={!online || busy || run.snapshot.length === 0}><FileSpreadsheet size={15} /> Descargar reporte Excel</Button>
           <Button size="sm" variant="ghost" onClick={() => onExport('csv')} disabled={!online || busy || run.snapshot.length === 0}>Exportar CSV</Button>
-          <Button size="sm" onClick={() => onDownloadReceiptBatch(receiptIds)} disabled={!online || busy || receiptIds.length === 0}><Download size={15} /> Descargar todas las colillas ({receiptIds.length})</Button>
+          <Button variant="primary" size="sm" onClick={() => onDownloadReceiptBatch(receiptIds)} disabled={!online || busy || receiptIds.length === 0}><Download size={15} /> Descargar todas las colillas ({receiptIds.length})</Button>
         </div>
         {run.status !== 'PAID' && <p className="payroll-operation-report-note"><Info size={15} /> Las colillas estarán disponibles cuando registres el pago.</p>}
       </section>
@@ -283,7 +282,7 @@ export default function PayrollOperationWorkspace({
           <UsersRound size={38} />
           <h3>Aún no hay resultados por colaborador</h3>
           <p>Calcula la corrida para congelar asistencia, horas extra, permisos, préstamos y conceptos aplicables.</p>
-          {run.allowedActions.includes('CALCULATE') && <Button onClick={() => onAction('CALCULATE')} disabled={!online}>Calcular ahora</Button>}
+          {run.allowedActions.includes('CALCULATE') && <Button variant="primary" onClick={() => onAction('CALCULATE')} disabled={!online}>Calcular ahora</Button>}
         </div>
       ) : (
         <section className="payroll-operation-employees" aria-labelledby="payroll-employees-title">

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarCheck, ChevronLeft, ChevronRight, CheckCheck, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { PageHeader, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import ScheduleStatusPill from '../../components/hr/ScheduleStatusPill';
@@ -116,7 +115,7 @@ export default function MySchedule() {
                             <div><ScheduleStatusPill status={schedule.status} /><span>Versión {schedule.version}</span></div>
                             {schedule.acknowledgedAt
                                 ? <span className="hr-acknowledged"><CheckCheck size={17} aria-hidden="true" /> Recibido</span>
-                                : <Button size="sm" onClick={() => void acknowledge(schedule)} disabled={acknowledgingId !== null || fromCache}>{acknowledgingId === schedule.id ? 'Confirmando…' : 'Confirmar recepción'}</Button>}
+                                : <Button variant="primary" size="sm" onClick={() => void acknowledge(schedule)} disabled={acknowledgingId !== null || fromCache}>{acknowledgingId === schedule.id ? 'Confirmando…' : 'Confirmar recepción'}</Button>}
                         </div>
                     ))}
                 </div>
@@ -133,7 +132,7 @@ export default function MySchedule() {
                     <CalendarCheck size={48} aria-hidden="true" />
                     <p>No tienes turnos publicados para esta semana.</p>
                     <div className="hr-schedule-empty-actions">
-                        <Button onClick={() => navigate('/rh/marcaje')}>Ir a marcaje</Button>
+                        <Button variant="primary" onClick={() => navigate('/rh/marcaje')}>Ir a marcaje</Button>
                         <Button variant="ghost" onClick={() => navigate('/rh/mi-portal/gestion')}>Ver solicitudes</Button>
                     </div>
                 </div>
