@@ -40,3 +40,6 @@ th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); tex
 
 .ui-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-3); }
 .ui-toolbar__filters, .ui-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); min-width: 0; max-width: 100%; }
+
+.ui-loaderror { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--ui-space-2) var(--ui-space-3); padding: var(--ui-space-5) var(--ui-space-3); color: var(--ui-danger); }
+.ui-loaderror__msg { margin: 0; min-width: 0; font-size: var(--ui-text-md); color: var(--ui-text); overflow-wrap: anywhere; }

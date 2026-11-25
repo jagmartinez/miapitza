@@ -27,6 +27,7 @@ export { DataTable } from './data/DataTable';
 export type { Column, ColumnType, DataTableProps, PaginationMode } from './data/DataTable';
 export { Pagination } from './data/Pagination';
 export { EmptyState } from './data/EmptyState';
+export { LoadErrorState } from './data/LoadErrorState';
 export { TableToolbar } from './data/TableToolbar';
 export { useTablePagination } from './data/useTablePagination';
 export { columnTemplate } from './data/columnTemplate';

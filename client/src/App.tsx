@@ -37,6 +37,13 @@ function RoleGuard({ roles, children }: { roles: string[]; children: React.React
     return <>{children}</>;
 }
 
+/** Administradores ven el Dashboard BI; el resto conserva su panel personal. */
+function DashboardHome() {
+    const { user } = useAuth();
+    const isAdmin = getUserRoleNames(user).some((rn) => (ADMIN as string[]).includes(rn));
+    return isAdmin ? <BiDashboard /> : <Dashboard />;
+}
+
 /** Self-service is only meaningful for users with a persisted employee profile. */
 function InternalEmployeeGuard({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
@@ -48,6 +55,7 @@ function InternalEmployeeGuard({ children }: { children: React.ReactNode }) {
 
 // Lazy-loaded pages (code-split per route)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const BiDashboard = lazy(() => import('./pages/dashboard/BiDashboard'));
 const UiPlayground = import.meta.env.DEV ? lazy(() => import('./pages/UiPlayground')) : null;
 const Tables = lazy(() => import('./pages/Tables'));
 const Kitchen = lazy(() => import('./pages/Kitchen'));
@@ -124,7 +132,7 @@ function App() {
 
                             <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
                                 {/* Open to all authenticated users */}
-                                <Route path="/dashboard" element={<Dashboard />} />
+                                <Route path="/dashboard" element={<DashboardHome />} />
                                 {UiPlayground && <Route path="/dev/ui" element={<UiPlayground />} />}
                                 <Route path="/profile" element={<Profile />} />
                                 <Route path="/rh/mi-portal" element={<InternalEmployeeGuard><Navigate to="/profile?tab=hr" replace /></InternalEmployeeGuard>} />
