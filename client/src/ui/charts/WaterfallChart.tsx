@@ -4,7 +4,8 @@ import { waterfallBars } from './geometry';
 import type { BridgeStep } from './types';
 import './charts.css';
 
-function barClass(step: BridgeStep): string {
+function barClass(step: BridgeStep, laborQ?: string): string {
+  if (step.key === 'operating' && (laborQ === 'partial' || laborQ === 'unavailable')) return 'ui-waterfall__bar ui-waterfall__bar--partial';
   if (step.quality === 'unavailable') return 'ui-waterfall__bar ui-waterfall__bar--unavailable';
   if (step.quality === 'partial') return 'ui-waterfall__bar ui-waterfall__bar--partial';
   if (step.kind === 'negative') return 'ui-waterfall__bar ui-waterfall__bar--negative';
@@ -13,7 +14,8 @@ function barClass(step: BridgeStep): string {
 }
 
 /** Un monto que no se pudo calcular se muestra como N/D, nunca como 0. */
-function amountLabel(step: BridgeStep): string {
+function amountLabel(step: BridgeStep, laborQ?: string): string {
+  if (step.key === 'operating' && (laborQ === 'partial' || laborQ === 'unavailable')) return `${formatMoney(step.amount)} (sin personal)`;
   if (step.quality === 'unavailable') return 'N/D';
   const text = formatMoney(step.kind === 'negative' ? -step.amount : step.amount);
   return step.quality === 'partial' ? `${text} (parcial)` : text;
@@ -23,16 +25,17 @@ function amountLabel(step: BridgeStep): string {
 export function WaterfallChart({ steps }: { steps: BridgeStep[] }) {
   if (steps.length === 0) return <p className="ui-chart__empty">Sin datos en el periodo</p>;
   const bars = waterfallBars(steps);
+  const laborQ = steps.find((s) => s.key === 'labor')?.quality;
   const label = 'Puente de la venta bruta a la utilidad operativa';
   return (
     <figure className="ui-chart">
       <div className="ui-waterfall" role="img" aria-label={label} style={{ '--steps': steps.length } as CSSProperties}>
         {steps.map((s, i) => (
           <div key={s.key} className="ui-waterfall__col">
-            <span className="ui-waterfall__amount">{amountLabel(s)}</span>
+            <span className="ui-waterfall__amount">{amountLabel(s, laborQ)}</span>
             <div className="ui-waterfall__plot">
               <div
-                className={barClass(s)}
+                className={barClass(s, laborQ)}
                 style={{ '--b': bars[i].bottomPct, '--h': bars[i].heightPct } as CSSProperties}
               />
             </div>
@@ -45,7 +48,7 @@ export function WaterfallChart({ steps }: { steps: BridgeStep[] }) {
         <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
         <tbody>
           {steps.map((s) => (
-            <tr key={s.key}><td>{s.label}</td><td>{amountLabel(s)}</td></tr>
+            <tr key={s.key}><td>{s.label}</td><td>{amountLabel(s, laborQ)}</td></tr>
           ))}
         </tbody>
       </table>

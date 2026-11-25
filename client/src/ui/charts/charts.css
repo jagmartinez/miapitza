@@ -36,6 +36,8 @@
 .ui-heatmap { display: grid; gap: 2px; min-width: 0; font-size: var(--ui-text-xs); }
 .ui-heatmap__head, .ui-heatmap__rowlabel { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; align-self: center; }
 .ui-heatmap__head { text-align: center; }
+.ui-heatmap__head { overflow: visible; white-space: nowrap; }
+@media (max-width: 639px) { .ui-heatmap__head { font-size: 10px; } .ui-heatmap__head--minor { visibility: hidden; } }
 .ui-heatmap__cell { min-height: 28px; border-radius: 3px; background: color-mix(in srgb, var(--ui-primary) var(--heat, 0%), var(--ui-surface-2)); }
 .ui-heatmap__caption { margin-top: var(--ui-space-2); font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
 

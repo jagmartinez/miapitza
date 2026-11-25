@@ -10,7 +10,7 @@ import {
     biAPI, type BiCompare, type BiParams, type BiPeriod, type BiSummary, type BiTrendMetric, type BranchRow, type Money, type TrafficLight,
 } from '../../services/bi';
 import { LiveOperations } from './LiveOperations';
-import { loadSavedViews, saveView, useBiFilters, type SavedView } from './useBiFilters';
+import { deleteView, loadSavedViews, saveView, useBiFilters, type SavedView } from './useBiFilters';
 import { useSection } from './useSection';
 import './bi-dashboard.css';
 
@@ -270,6 +270,10 @@ export default function BiDashboard() {
             key: 'deltaPct', header: 'Vs comparación', type: 'percent', width: '1.3fr',
             render: (r) => (r.deltaPct === null ? 'Sin comparación' : formatPercent(r.deltaPct)),
         },
+        {
+            key: 'spark', header: 'Tendencia', width: '1.2fr', hideBelow: 'md',
+            render: (r) => (r.spark.length > 1 ? <Sparkline values={r.spark} tone="primary" /> : <span className="bi-cell-light">N/D</span>),
+        },
         { key: 'avgTicket', header: 'Ticket promedio', type: 'money', width: '1.3fr', hideBelow: 'md' },
         {
             key: 'foodCostPct', header: 'Costo de alimentos', type: 'percent', width: '1.6fr',
@@ -320,6 +324,9 @@ export default function BiDashboard() {
                                     onChange={(q) => { if (q) navigate({ pathname: location.pathname, search: `?${q}` }, { replace: true }); }}
                                 />
                             </div>
+                        ) : null}
+                        {views.some((v) => v.query === currentQuery) ? (
+                            <Button onClick={() => setViews(deleteView(views.find((v) => v.query === currentQuery)!.id))}>Eliminar vista</Button>
                         ) : null}
                         <Button onClick={() => setViews(saveView(viewName(), currentQuery))}>Guardar vista</Button>
                     </>

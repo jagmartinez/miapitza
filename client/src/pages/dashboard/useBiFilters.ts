@@ -80,6 +80,17 @@ export function loadSavedViews(): SavedView[] {
     }
 }
 
+/** Elimina una vista guardada; devuelve la lista resultante. */
+export function deleteView(id: string): SavedView[] {
+    const next = loadSavedViews().filter((v) => v.id !== id);
+    try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch {
+        /* sin almacenamiento disponible */
+    }
+    return next;
+}
+
 /** Guarda (o reemplaza por nombre) la vista actual; devuelve la lista resultante. */
 export function saveView(name: string, query: string): SavedView[] {
     const current = loadSavedViews().filter((v) => v.name !== name && v.query !== query);

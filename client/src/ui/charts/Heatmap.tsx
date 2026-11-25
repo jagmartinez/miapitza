@@ -23,7 +23,7 @@ export function Heatmap({ rows, columns, format, caption }: {
         style={{ gridTemplateColumns: `minmax(0, auto) repeat(${columns.length}, minmax(0, 1fr))` }}
       >
         <span />
-        {columns.map((c) => <span key={c} className="ui-heatmap__head">{c}</span>)}
+        {columns.map((c, i) => <span key={c} className={`ui-heatmap__head${i % 6 === 0 ? '' : ' ui-heatmap__head--minor'}`}>{c}</span>)}
         {rows.map((r) => (
           <div key={r.label} style={{ display: 'contents' }}>
             <span className="ui-heatmap__rowlabel">{r.label}</span>

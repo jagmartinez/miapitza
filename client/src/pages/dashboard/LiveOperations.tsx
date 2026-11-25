@@ -12,7 +12,7 @@ interface LiveStats {
     settledOrdersCount?: number;
 }
 interface KitchenOrder { id: number; status: string }
-interface ReservationRow { id: number; time: string; name: string; pax: number; status: string; table?: string }
+interface ReservationRow { id: number; day?: string; time: string; name: string; pax: number; status: string; table?: string }
 interface LowStockItem { name: string }
 
 const KITCHEN_STATUSES = ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'];
@@ -64,6 +64,7 @@ export function LiveOperations() {
     ].filter(Boolean) as string[];
 
     const columns: Column<ReservationRow>[] = [
+        { key: 'day', header: 'Día', width: '1.3fr', accessor: (r) => r.day ?? '' },
         { key: 'time', header: 'Hora', width: '1fr' },
         { key: 'name', header: 'Cliente', width: '3fr' },
         { key: 'pax', header: 'Personas', type: 'number', decimals: 0, width: '1fr' },
@@ -128,7 +129,7 @@ export function LiveOperations() {
             </section>
 
             <section className="bi-section" aria-labelledby="bi-reservations">
-                <header className="bi-section__head"><h2 id="bi-reservations" className="bi-section__title">Reservas de hoy</h2></header>
+                <header className="bi-section__head"><h2 id="bi-reservations" className="bi-section__title">Próximas reservas</h2></header>
                 {reservations.loading && !reservations.data ? <Skeleton height={120} /> : reservations.error && !reservations.data ? (
                     <LoadErrorState message={reservations.error} onRetry={reservations.reload} />
                 ) : (
@@ -136,8 +137,8 @@ export function LiveOperations() {
                         columns={columns}
                         rows={reservations.data ?? []}
                         rowKey={(r) => r.id}
-                        ariaLabel="Reservas de hoy"
-                        empty={<EmptyState title="Sin reservas para hoy" />}
+                        ariaLabel="Próximas reservas"
+                        empty={<EmptyState title="Sin reservas próximas" />}
                         minWidth="0"
                     />
                 )}
