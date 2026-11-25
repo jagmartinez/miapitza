@@ -33,7 +33,7 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('allowedActions.map');
     expect(owner).toContain('createBenefitsIdempotencyKey()');
     expect(owner).toContain('STATUS_OPTIONS[tab].map');
-    expect(owner).toContain('className="hr-admin-table inventory-table"');
+    expect(owner).toContain('<DataTable');
     expect(owner).toContain('className="hr-benefits-admin-register"');
     expect(owner).toContain('placeholder="Código, empleado o detalle"');
     expect(owner).toContain('filteredCards');
