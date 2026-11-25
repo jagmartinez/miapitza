@@ -116,7 +116,7 @@ export default function Inventory() {
     const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
         (localStorage.getItem('inventory_view_mode') as 'cards' | 'table') || 'cards'
     );
-    const TABLE_PAGE_SIZE = 10;
+    const TABLE_PAGE_SIZE = 25;
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -918,7 +918,7 @@ export default function Inventory() {
                         />
                         <StatCard
                             label="Concentración del capital"
-                            value={formatPercent(kpis.concentrationPct, 1)}
+                            value={formatPercent(kpis.concentrationPct)}
                             context={[kpis.topNames.length > 0 ? `En: ${kpis.topNames.join(', ')}` : 'Sin existencias valorizadas', unknownCostNote].filter(Boolean).join(' · ')}
                         />
                     </>
