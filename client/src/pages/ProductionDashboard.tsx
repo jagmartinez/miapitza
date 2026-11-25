@@ -4,22 +4,19 @@ import { productionReportsAPI, branchesAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
-import { formatCurrencyGrouped } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import Button from '../components/Button';
-import Select from '../components/Select';
-import type { SingleValue } from 'react-select';
-import type { Branch } from '../types';
 import {
-    Factory, RefreshCw, ClipboardCheck, Boxes, DollarSign, TrendingDown,
-    TrendingUp, Percent, FlaskConical, Package, ArrowRight, Activity,
-    CheckCircle2, Coins, Scale, Building2, Users
-} from 'lucide-react';
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, PageContent, PageHeader, Skeleton, StatCard, TableToolbar,
+    formatNumber, formatPercent,
+    type Column, type Opt, type Tone,
+} from '@/ui';
+import type { Branch } from '../types';
+import { Building2, Package, RefreshCw, Users } from 'lucide-react';
 import {
     ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     PieChart, Pie, Cell, Legend, ComposedChart, Area, Line
 } from 'recharts';
-import './ProductionDashboard.css';
+import s from './Production.module.css';
 
 interface Kpis {
     total: number; draft: number; pending: number; inProgress: number; finished: number; cancelled: number;
@@ -59,23 +56,21 @@ interface DashboardData {
     catalog: { activeRecipes: number; producibleProducts: number };
 }
 
-const STATUS_META: Record<string, { label: string; color: string }> = {
-    DRAFT: { label: 'Borrador', color: '#94a3b8' },
-    PENDING: { label: 'Pendiente', color: '#f59e0b' },
-    IN_PROGRESS: { label: 'En Proceso', color: '#3b82f6' },
-    FINISHED: { label: 'Finalizada', color: '#22c55e' },
-    CANCELLED: { label: 'Anulada', color: '#ef4444' }
+const STATUS_META: Record<string, { label: string; color: string; tone: Tone }> = {
+    DRAFT: { label: 'Borrador', color: '#94a3b8', tone: 'neutral' },
+    PENDING: { label: 'Pendiente', color: '#f59e0b', tone: 'warning' },
+    IN_PROGRESS: { label: 'En proceso', color: '#3b82f6', tone: 'primary' },
+    FINISHED: { label: 'Finalizada', color: '#22c55e', tone: 'success' },
+    CANCELLED: { label: 'Anulada', color: '#ef4444', tone: 'neutral' }
 };
 
-const fmtNum = (n: number) => new Intl.NumberFormat('es-NI', { maximumFractionDigits: 2 }).format(n);
-const fmtPct = (n: number) => `${new Intl.NumberFormat('es-NI', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n)}%`;
 const fmtDay = (d: string) => {
     const parts = d.split('-');
     return parts.length === 3 ? `${parts[2]}/${parts[1]}` : d;
 };
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('es-NI') : '-');
 
-const yieldTone = (pct: number) => (pct >= 100 ? 'green' : pct >= 90 ? 'amber' : 'red');
+const yieldTone = (pct: number): Tone => (pct >= 100 ? 'success' : pct >= 90 ? 'warning' : 'danger');
 
 const todayStr = () => formatLocalDateInput();
 const monthStartStr = () => {
@@ -91,10 +86,20 @@ function apiErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : 'Error al cargar el panel';
 }
 
+/** Comparación contra el período anterior como texto de contexto; null si no hay base comparable. */
+function deltaText(current: number, previous: number | null | undefined): string | null {
+    if (previous == null) return null;
+    if (previous === 0) return current === 0 ? null : 'nuevo frente al período anterior';
+    const pct = ((current - previous) / Math.abs(previous)) * 100;
+    if (!Number.isFinite(pct)) return null;
+    if (Math.abs(pct) < 0.05) return 'sin cambio frente al período anterior';
+    return `${pct > 0 ? '+' : '-'}${formatPercent(Math.abs(pct))} frente al período anterior`;
+}
+
 export default function ProductionDashboard() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { settings } = useCurrency();
+    const { formatMoney, symbol } = useCurrency();
     const roles = getUserRoleNames(user);
     const isAdmin = roles.includes('SUPERADMIN') || roles.includes('ADMIN');
 
@@ -135,126 +140,191 @@ export default function ProductionDashboard() {
         }
     }, [dateFrom, dateTo, branchId, isAdmin]);
 
-    useEffect(() => { load(); }, [load]);
+    useEffect(() => { void load(); }, [load]);
 
-    const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.map(b => ({ value: String(b.id), label: b.name }))];
-    const selectedBranch = branchOptions.find(o => o.value === branchId) || branchOptions[0];
+    const branchOptions: Opt<string>[] = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.map(b => ({ value: String(b.id), label: b.name }))];
 
     const kpis = data?.kpis;
     const prev = data?.previous ?? null;
     const tooltipStyle = {
-        backgroundColor: 'var(--color-surface)',
-        border: '1px solid var(--color-border)',
+        backgroundColor: 'var(--ui-surface)',
+        border: '1px solid var(--ui-border)',
         borderRadius: '8px',
-        color: 'var(--color-text)',
+        color: 'var(--ui-text)',
         fontSize: '12px'
     };
+    const unitOf = (o: RecentRow) => o.product?.baseUnit?.abbreviation || o.product?.unit || '';
+
+    const producedColumns: Column<ProducedRow>[] = [
+        { key: 'name', header: 'Producto', width: '2fr', render: (p) => <span className={s.cellTitle}>{p.name}</span> },
+        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md', render: (p) => p.sku || '-' },
+        { key: 'orders', header: 'Órdenes', type: 'number', width: '0.8fr', decimals: 0 },
+        { key: 'produced', header: 'Producido', type: 'qty', width: '1.2fr', render: (p) => `${formatNumber(p.produced)} ${p.unit}` },
+        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money', width: '1.1fr' },
+        {
+            key: 'costVariance',
+            header: `Variación (${symbol})`,
+            type: 'money',
+            width: '1.1fr',
+            render: (p) => <span className={p.costVariance > 0 ? s.bad : s.good}>{formatNumber(p.costVariance)}</span>,
+        },
+        {
+            key: 'yieldPct',
+            header: 'Rendimiento',
+            type: 'percent',
+            width: '1fr',
+            render: (p) => <Badge tone={yieldTone(p.yieldPct)}>{formatPercent(p.yieldPct)}</Badge>,
+        },
+    ];
+
+    const operatorColumns: Column<OperatorRow>[] = [
+        { key: 'name', header: 'Operario', width: '2fr', render: (op) => <span className={s.cellTitle}>{op.name}</span> },
+        { key: 'orders', header: 'Órdenes', type: 'number', width: '1fr', decimals: 0 },
+        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money', width: '1.2fr' },
+    ];
+
+    const consumedColumns: Column<ConsumedRow>[] = [
+        { key: 'name', header: 'Insumo', width: '2fr' },
+        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md', render: (c) => c.sku || '-' },
+        { key: 'qty', header: 'Cantidad', type: 'qty', width: '1.2fr', render: (c) => `${formatNumber(c.consumedQuantity)} ${c.unit}` },
+        { key: 'totalCost', header: `Costo total (${symbol})`, type: 'money', width: '1.2fr' },
+    ];
+
+    const recentColumns: Column<RecentRow>[] = [
+        { key: 'code', header: 'Código', width: '1fr', render: (o) => <span className={s.cellTitle}>{o.code}</span> },
+        { key: 'product', header: 'Producto', width: '2fr', render: (o) => o.product?.name || '-' },
+        {
+            key: 'status',
+            header: 'Estado',
+            type: 'status',
+            width: '1fr',
+            render: (o) => <Badge tone={STATUS_META[o.status]?.tone ?? 'neutral'}>{STATUS_META[o.status]?.label || o.status}</Badge>,
+        },
+        { key: 'planned', header: 'Plan.', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.plannedQuantity)} ${unitOf(o)}` },
+        { key: 'produced', header: 'Prod.', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.producedQuantity)} ${unitOf(o)}` },
+        {
+            key: 'realCost',
+            header: `Costo real (${symbol})`,
+            type: 'money',
+            width: '1.1fr',
+            render: (o) => (o.status === 'FINISHED' && Number(o.realCost) > 0 ? formatNumber(o.realCost) : <span className={s.nd}>N/D</span>),
+        },
+        { key: 'date', header: 'Fecha', type: 'date', width: '1fr', hideBelow: 'lg', render: (o) => fmtDate(o.finishedAt || o.date) },
+    ];
+
+    const hasRealized = (kpis?.realizedOrders ?? 0) > 0;
 
     return (
-        <div className="prod-dash">
-            {/* Header */}
-            <div className="prod-dash-header">
-                <div className="prod-dash-title">
-                    <div className="prod-dash-title-icon"><Factory size={22} /></div>
-                    <div>
-                        <h1>Panel de Producción</h1>
-                        <p>Inteligencia de negocios: rendimiento, costos y consumo de tus órdenes de producción</p>
-                    </div>
-                </div>
-                <div className="prod-dash-filters">
-                    <div className="prod-dash-field">
-                        <label>Desde</label>
-                        <input type="date" value={dateFrom} max={dateTo} onChange={(e) => setDateFrom(e.target.value)} />
-                    </div>
-                    <div className="prod-dash-field">
-                        <label>Hasta</label>
-                        <input type="date" value={dateTo} min={dateFrom} max={todayStr()} onChange={(e) => setDateTo(e.target.value)} />
-                    </div>
-                    {isAdmin && branches.length > 0 && (
-                        <div className="prod-dash-field prod-dash-branch">
-                            <label>Sucursal</label>
-                            <Select
-                                value={selectedBranch}
-                                onChange={(opt: SingleValue<{ value: string; label: string }>) => opt && setBranchId(opt.value)}
-                                options={branchOptions}
-                                isSearchable={false}
-                            />
-                        </div>
-                    )}
-                    <Button variant="secondary" onClick={load}><RefreshCw size={16} /> Actualizar</Button>
-                </div>
-            </div>
+        <PageContent>
+            <PageHeader
+                title="Panel de producción"
+                description="Rendimiento, costos y consumo de tus órdenes de producción"
+                actions={<Button icon={RefreshCw} onClick={() => void load()}>Actualizar</Button>}
+            />
 
-            {branchWarning && <div className="prod-dash-error" role="status">{branchWarning}</div>}
-            {error && <div className="prod-dash-error">{error}</div>}
+            <TableToolbar>
+                <div className={s.filter}>
+                    <Field label="Desde" htmlFor="pd-from">
+                        <DateInput id="pd-from" value={dateFrom} max={dateTo} onChange={(e) => setDateFrom(e.target.value)} />
+                    </Field>
+                </div>
+                <div className={s.filter}>
+                    <Field label="Hasta" htmlFor="pd-to">
+                        <DateInput id="pd-to" value={dateTo} min={dateFrom} max={todayStr()} onChange={(e) => setDateTo(e.target.value)} />
+                    </Field>
+                </div>
+                {isAdmin && branches.length > 0 && (
+                    <div className={s.filter}>
+                        <Field label="Sucursal" htmlFor="pd-branch">
+                            <AppSelect<string>
+                                inputId="pd-branch"
+                                options={branchOptions}
+                                value={branchId}
+                                onChange={(v) => setBranchId(v ?? 'all')}
+                                isClearable={false}
+                            />
+                        </Field>
+                    </div>
+                )}
+            </TableToolbar>
+
+            {branchWarning && <div className={s.banner} role="status">{branchWarning}</div>}
+            {error && (
+                <div className={s.banner} role="alert">
+                    <span>{error}</span>
+                    <Button size="sm" onClick={() => void load()}>Reintentar</Button>
+                </div>
+            )}
 
             {loading ? (
-                <div className="prod-dash-loading">Cargando panel de producción...</div>
-            ) : !kpis ? (
-                <div className="prod-dash-loading">Sin datos para el período seleccionado.</div>
+                <Skeleton height={240} />
+            ) : !kpis || !data ? (
+                !error && <EmptyState icon={Package} title="Sin datos para el período seleccionado" />
             ) : (
                 <>
-                    {/* Primary KPI cards (with period-over-period comparison) */}
-                    <div className="prod-kpis-section">
-                        <div className="prod-section-label">Resumen del período</div>
-                        <div className="prod-dash-kpis">
-                            <KpiCard icon={<ClipboardCheck size={18} />} tone="indigo" label="Órdenes" value={fmtNum(kpis.total)}
-                                hint={`${fmtNum(kpis.finished)} finalizadas · ${fmtNum(kpis.inProgress)} en proceso`}
-                                badge={<DeltaBadge current={kpis.total} previous={prev?.total} />} />
-                            <KpiCard icon={<Boxes size={18} />} tone="blue" label="Producciones realizadas" value={fmtNum(kpis.realizedOrders)}
-                                hint="Finalizadas dentro del período seleccionado" />
-                            <KpiCard icon={<DollarSign size={18} />} tone="green" label="Costo real" value={formatCurrencyGrouped(kpis.totalRealCost, settings)}
-                                hint={`Estimado: ${formatCurrencyGrouped(kpis.totalEstimatedCost, settings)}`}
-                                badge={<DeltaBadge current={kpis.totalRealCost} previous={prev?.totalRealCost} invert />} />
-                            <KpiCard icon={kpis.costVariance > 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-                                tone={kpis.costVariance > 0 ? 'red' : 'green'} label="Variación de costo"
-                                value={formatCurrencyGrouped(kpis.costVariance, settings)}
-                                hint={`${fmtPct(kpis.costVariancePct)} vs estimado`}
-                                badge={<DeltaBadge current={kpis.costVariance} previous={prev?.costVariance} invert />} />
-                            <KpiCard icon={<Percent size={18} />} tone={yieldTone(kpis.avgYieldPct)}
-                                label="Rendimiento prom." value={fmtPct(kpis.avgYieldPct)} hint="Producido / Planificado"
-                                badge={<DeltaBadge current={kpis.avgYieldPct} previous={prev?.avgYieldPct} />} />
-                        </div>
+                    <div className={s.stats}>
+                        <StatCard
+                            label="Costo real"
+                            value={hasRealized ? formatMoney(kpis.totalRealCost) : 'N/D'}
+                            context={hasRealized
+                                ? `Estimado ${formatMoney(kpis.totalEstimatedCost)} en ${formatNumber(kpis.realizedOrders, 0)} producciones realizadas.${deltaText(kpis.totalRealCost, prev?.totalRealCost) ? ` ${deltaText(kpis.totalRealCost, prev?.totalRealCost)}.` : ''}`
+                                : 'Sin producciones finalizadas en el período.'}
+                            tone="primary"
+                        />
+                        <StatCard
+                            label="Variación de costo"
+                            value={hasRealized ? formatMoney(kpis.costVariance) : 'N/D'}
+                            context={hasRealized
+                                ? `${formatPercent(kpis.costVariancePct)} frente al estimado.${deltaText(kpis.costVariance, prev?.costVariance) ? ` ${deltaText(kpis.costVariance, prev?.costVariance)}.` : ''}`
+                                : 'Requiere producciones finalizadas con costo estimado.'}
+                            tone={!hasRealized ? 'neutral' : kpis.costVariance > 0 ? 'danger' : 'success'}
+                            action={hasRealized && kpis.costVariance > 0 ? { label: 'Ver órdenes', onClick: () => navigate('/production-orders') } : undefined}
+                        />
+                        <StatCard
+                            label="Rendimiento promedio"
+                            value={hasRealized ? formatPercent(kpis.avgYieldPct) : 'N/D'}
+                            context={hasRealized
+                                ? `Producido sobre planificado.${deltaText(kpis.avgYieldPct, prev?.avgYieldPct) ? ` ${deltaText(kpis.avgYieldPct, prev?.avgYieldPct)}.` : ''}`
+                                : 'Sin producciones finalizadas en el período.'}
+                            tone={hasRealized ? yieldTone(kpis.avgYieldPct) : 'neutral'}
+                        />
+                        <StatCard
+                            label="Tasa de finalización"
+                            value={kpis.total > 0 ? formatPercent(kpis.completionRate) : 'N/D'}
+                            context={kpis.total > 0
+                                ? `${formatNumber(kpis.finished, 0)} de ${formatNumber(kpis.total, 0)} órdenes; ${formatNumber(kpis.cancelled, 0)} anuladas (${formatPercent(kpis.cancelRate)}); ${formatNumber(kpis.activeOrders, 0)} sin finalizar.`
+                                : 'No hay órdenes en el período.'}
+                            tone={kpis.total === 0 ? 'neutral' : kpis.completionRate >= 80 ? 'success' : kpis.completionRate >= 50 ? 'warning' : 'danger'}
+                            action={kpis.activeOrders > 0 ? { label: 'Ver órdenes', onClick: () => navigate('/production-orders') } : undefined}
+                        />
+                        <StatCard
+                            label="Costo promedio por orden"
+                            value={hasRealized ? formatMoney(kpis.avgRealOrderCost) : 'N/D'}
+                            context="Costo real entre producciones realizadas."
+                            tone="neutral"
+                        />
                     </div>
 
-                    {/* Secondary KPIs */}
-                    <div className="prod-kpis-section">
-                        <div className="prod-section-label">Indicadores operativos</div>
-                        <div className="prod-dash-kpis prod-dash-kpis-sm">
-                            <KpiCard icon={<CheckCircle2 size={18} />} tone={kpis.completionRate >= 80 ? 'green' : kpis.completionRate >= 50 ? 'amber' : 'red'}
-                                label="Tasa de finalización" value={fmtPct(kpis.completionRate)} hint={`${fmtNum(kpis.cancelled)} anuladas (${fmtPct(kpis.cancelRate)})`} />
-                            <KpiCard icon={<Activity size={18} />} tone="blue" label="Órdenes activas" value={fmtNum(kpis.activeOrders)}
-                                hint={`${fmtNum(kpis.draft)} borrador · ${fmtNum(kpis.pending)} pend.`} />
-                            <KpiCard icon={<Coins size={18} />} tone="amber" label="Costo promedio por orden" value={formatCurrencyGrouped(kpis.avgRealOrderCost, settings)}
-                                hint="Costo real / producciones realizadas" />
-                            <KpiCard icon={<Scale size={18} />} tone={kpis.costVariancePct > 0 ? 'red' : 'green'} label="% variación de costo"
-                                value={fmtPct(kpis.costVariancePct)} hint="Real vs estimado" />
-                            <KpiCard icon={<FlaskConical size={18} />} tone="violet" label="Recetas activas" value={fmtNum(data!.catalog.activeRecipes)}
-                                hint={`${fmtNum(data!.catalog.producibleProducts)} productos producibles`} />
-                        </div>
-                    </div>
-
-                    {/* Charts */}
-                    <div className="prod-dash-grid">
-                        <div className="prod-card prod-card-wide">
-                            <div className="prod-card-head"><h3>Costo real vs estimado por día</h3><span>Costos y órdenes finalizadas por fecha de finalización</span></div>
-                            {data!.timeSeries.length === 0 ? (
-                                <div className="prod-empty">Sin producciones finalizadas en el período.</div>
+                    <div className={s.chartGrid}>
+                        <section className={`${s.panel} ${s.panelWide}`} aria-label="Costo real vs estimado por día">
+                            <header className={s.panelHead}><h3>Costo real vs estimado por día</h3><span>Costos y órdenes finalizadas por fecha de finalización</span></header>
+                            {data.timeSeries.length === 0 ? (
+                                <EmptyState title="Sin producciones finalizadas en el período" />
                             ) : (
                                 <ResponsiveContainer width="100%" height={300}>
-                                    <ComposedChart data={data!.timeSeries} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+                                    <ComposedChart data={data.timeSeries} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="prodArea" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
                                                 <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--ui-border)" />
                                         <XAxis dataKey="date" tickFormatter={fmtDay} tick={{ fontSize: 11 }} />
-                                        <YAxis yAxisId="left" allowDecimals={false} tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
-                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
+                                        <YAxis yAxisId="left" allowDecimals={false} tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(Number(v), 0)} />
+                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(Number(v), 0)} />
                                         <Tooltip contentStyle={tooltipStyle} labelFormatter={(l) => `Día ${fmtDay(String(l))}`}
-                                            formatter={(value: number, name: string) => [name === 'Órdenes finalizadas' ? fmtNum(Number(value)) : formatCurrencyGrouped(Number(value), settings), name]} />
+                                            formatter={(value: number, name: string) => [name === 'Órdenes finalizadas' ? formatNumber(Number(value), 0) : formatMoney(Number(value)), name]} />
                                         <Legend wrapperStyle={{ fontSize: '12px' }} />
                                         <Area yAxisId="left" type="monotone" dataKey="orders" name="Órdenes finalizadas" stroke="#3b82f6" strokeWidth={2} fill="url(#prodArea)" />
                                         <Line yAxisId="right" type="monotone" dataKey="estimatedCost" name="Costo estimado" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 4" dot={false} />
@@ -262,244 +332,118 @@ export default function ProductionDashboard() {
                                     </ComposedChart>
                                 </ResponsiveContainer>
                             )}
-                        </div>
+                        </section>
 
-                        <div className="prod-card">
-                            <div className="prod-card-head"><h3>Órdenes por estado</h3><span>Distribución del período</span></div>
+                        <section className={s.panel} aria-label="Órdenes por estado">
+                            <header className={s.panelHead}><h3>Órdenes por estado</h3><span>Distribución del período</span></header>
                             {kpis.total === 0 ? (
-                                <div className="prod-empty">Sin órdenes.</div>
+                                <EmptyState title="Sin órdenes" />
                             ) : (
                                 <ResponsiveContainer width="100%" height={300}>
                                     <PieChart>
-                                        <Pie data={data!.statusBreakdown.filter(s => s.count > 0)} dataKey="count" nameKey="status"
+                                        <Pie data={data.statusBreakdown.filter(st => st.count > 0)} dataKey="count" nameKey="status"
                                             cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                                            {data!.statusBreakdown.filter(s => s.count > 0).map((s) => (
-                                                <Cell key={s.status} fill={STATUS_META[s.status]?.color || '#94a3b8'} />
+                                            {data.statusBreakdown.filter(st => st.count > 0).map((st) => (
+                                                <Cell key={st.status} fill={STATUS_META[st.status]?.color || '#94a3b8'} />
                                             ))}
                                         </Pie>
                                         <Tooltip contentStyle={tooltipStyle}
-                                            formatter={(value: number, name: string) => [fmtNum(Number(value)), STATUS_META[name]?.label || name]} />
+                                            formatter={(value: number, name: string) => [formatNumber(Number(value), 0), STATUS_META[name]?.label || name]} />
                                         <Legend wrapperStyle={{ fontSize: '12px' }} formatter={(v) => STATUS_META[v]?.label || v} />
                                     </PieChart>
                                 </ResponsiveContainer>
                             )}
-                        </div>
+                        </section>
                     </div>
 
-                    {/* Top products fabricados */}
-                    <div className="prod-card">
-                        <div className="prod-card-head"><h3>Top productos fabricados</h3><span>Producción, costo y rendimiento</span></div>
-                        {data!.topProduced.length === 0 ? (
-                            <div className="prod-empty">Sin datos.</div>
-                        ) : (
-                            <div className="prod-table-wrap">
-                                <table className="prod-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Producto</th><th>SKU</th><th className="num">Órdenes</th>
-                                            <th className="num">Producido</th><th className="num">Costo real</th>
-                                            <th className="num">Variación</th><th className="num">Rendimiento</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {data!.topProduced.map((p) => (
-                                            <tr key={p.productId}>
-                                                <td className="strong">{p.name}</td>
-                                                <td className="muted">{p.sku || '-'}</td>
-                                                <td className="num">{fmtNum(p.orders)}</td>
-                                                <td className="num">{fmtNum(p.produced)} {p.unit}</td>
-                                                <td className="num">{formatCurrencyGrouped(p.realCost, settings)}</td>
-                                                <td className={`num ${p.costVariance > 0 ? 'neg' : 'pos'}`}>
-                                                    {formatCurrencyGrouped(p.costVariance, settings)}
-                                                </td>
-                                                <td className="num">
-                                                    <span className={`prod-yield prod-yield-${yieldTone(p.yieldPct)}`}>{fmtPct(p.yieldPct)}</span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
+                    <section className={s.panel} aria-label="Top productos fabricados">
+                        <header className={s.panelHead}><h3>Top productos fabricados</h3><span>Producción, costo y rendimiento</span></header>
+                        <DataTable<ProducedRow>
+                            ariaLabel="Top productos fabricados"
+                            columns={producedColumns}
+                            rows={data.topProduced}
+                            rowKey={(p) => p.productId}
+                            minWidth="40rem"
+                            empty={<EmptyState title="Sin datos" />}
+                        />
+                    </section>
 
-                    {/* Branch comparison + Operators */}
-                    <div className="prod-dash-grid">
-                        <div className="prod-card">
-                            <div className="prod-card-head"><h3>Comparativa por sucursal</h3><span>Órdenes finalizadas y costo real</span></div>
-                            {data!.branchComparison.length === 0 ? (
-                                <div className="prod-empty"><Building2 size={26} /><p>Sin datos por sucursal en el período.</p></div>
-                            ) : data!.branchComparison.length === 1 ? (
-                                <SingleBranchSummary branch={data!.branchComparison[0]} settings={settings} />
+                    <div className={s.chartGrid}>
+                        <section className={s.panel} aria-label="Comparativa por sucursal">
+                            <header className={s.panelHead}><h3>Comparativa por sucursal</h3><span>Órdenes finalizadas y costo real</span></header>
+                            {data.branchComparison.length === 0 ? (
+                                <EmptyState icon={Building2} title="Sin datos por sucursal en el período" />
+                            ) : data.branchComparison.length === 1 ? (
+                                <dl className={s.facts}>
+                                    <div><dt>Sucursal</dt><dd>{data.branchComparison[0].name}</dd></div>
+                                    <div><dt>Órdenes finalizadas</dt><dd>{formatNumber(data.branchComparison[0].orders, 0)}</dd></div>
+                                    <div><dt>Costo real</dt><dd>{formatMoney(data.branchComparison[0].realCost)}</dd></div>
+                                </dl>
                             ) : (
                                 <ResponsiveContainer width="100%" height={300}>
-                                    <BarChart data={data!.branchComparison} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
+                                    <BarChart data={data.branchComparison} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--ui-border)" />
                                         <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                                        <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
-                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
+                                        <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(Number(v), 0)} />
+                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(Number(v), 0)} />
                                         <Tooltip contentStyle={tooltipStyle}
-                                            formatter={(value: number, name: string) => [name === 'Órdenes finalizadas' ? fmtNum(Number(value)) : formatCurrencyGrouped(Number(value), settings), name]} />
+                                            formatter={(value: number, name: string) => [name === 'Órdenes finalizadas' ? formatNumber(Number(value), 0) : formatMoney(Number(value)), name]} />
                                         <Legend wrapperStyle={{ fontSize: '12px' }} />
                                         <Bar yAxisId="left" dataKey="orders" name="Órdenes finalizadas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                                         <Bar yAxisId="right" dataKey="realCost" name="Costo real" fill="#22c55e" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             )}
-                        </div>
+                        </section>
 
-                        <div className="prod-card">
-                            <div className="prod-card-head"><h3>Producción por operario</h3><span>Órdenes finalizadas por usuario</span></div>
-                            {data!.topOperators.length === 0 ? (
-                                <div className="prod-empty"><Users size={26} /><p>Sin producción por operario en el período.</p></div>
-                            ) : (
-                                <div className="prod-table-wrap">
-                                    <table className="prod-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Operario</th><th className="num">Órdenes</th>
-                                                <th className="num">Costo real</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {data!.topOperators.map((op) => (
-                                                <tr key={op.userId}>
-                                                    <td className="strong">{op.name}</td>
-                                                    <td className="num">{fmtNum(op.orders)}</td>
-                                                    <td className="num">{formatCurrencyGrouped(op.realCost, settings)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
+                        <section className={s.panel} aria-label="Producción por operario">
+                            <header className={s.panelHead}><h3>Producción por operario</h3><span>Órdenes finalizadas por usuario</span></header>
+                            <DataTable<OperatorRow>
+                                ariaLabel="Producción por operario"
+                                columns={operatorColumns}
+                                rows={data.topOperators}
+                                rowKey={(op) => op.userId}
+                                minWidth="24rem"
+                                empty={<EmptyState icon={Users} title="Sin producción por operario en el período" />}
+                            />
+                        </section>
                     </div>
 
-                    {/* Top insumos consumidos */}
-                    <div className="prod-card">
-                        <div className="prod-card-head"><h3>Top insumos consumidos</h3><span>Por costo total</span></div>
-                        {data!.topConsumed.length === 0 ? (
-                            <div className="prod-empty">Sin consumos registrados.</div>
-                        ) : (
-                            <div className="prod-table-wrap">
-                                <table className="prod-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Insumo</th><th>SKU</th><th className="num">Cantidad</th><th className="num">Costo total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {data!.topConsumed.map((c) => (
-                                            <tr key={c.componentProductId}>
-                                                <td>{c.name}</td>
-                                                <td className="muted">{c.sku || '-'}</td>
-                                                <td className="num">{fmtNum(c.consumedQuantity)} {c.unit}</td>
-                                                <td className="num strong">{formatCurrencyGrouped(c.totalCost, settings)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
+                    <section className={s.panel} aria-label="Top insumos consumidos">
+                        <header className={s.panelHead}><h3>Top insumos consumidos</h3><span>Por costo total</span></header>
+                        <DataTable<ConsumedRow>
+                            ariaLabel="Top insumos consumidos"
+                            columns={consumedColumns}
+                            rows={data.topConsumed}
+                            rowKey={(c) => c.componentProductId}
+                            minWidth="32rem"
+                            empty={<EmptyState title="Sin consumos registrados" />}
+                        />
+                    </section>
 
-                    {/* Recent orders */}
-                    <div className="prod-card">
-                        <div className="prod-card-head">
+                    <section className={s.panel} aria-label="Órdenes recientes">
+                        <header className={s.panelHead}>
                             <h3>Órdenes recientes</h3>
-                            <button className="prod-link" onClick={() => navigate('/production-orders')}>Ver todas <ArrowRight size={14} /></button>
-                        </div>
-                        {data!.recentOrders.length === 0 ? (
-                            <div className="prod-empty">
-                                <Package size={28} />
-                                <p>No hay órdenes de producción en el período.</p>
-                                <Button variant="primary" onClick={() => navigate('/production-orders')}>Crear producción</Button>
-                            </div>
-                        ) : (
-                            <div className="prod-table-wrap">
-                                <table className="prod-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Código</th><th>Producto</th><th>Estado</th>
-                                            <th className="num">Plan.</th><th className="num">Prod.</th>
-                                            <th className="num">Costo real</th><th>Fecha</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {data!.recentOrders.map((o) => (
-                                            <tr key={o.id} className="prod-row" onClick={() => navigate('/production-orders')}>
-                                                <td className="strong">{o.code}</td>
-                                                <td>{o.product?.name || '-'}</td>
-                                                <td>
-                                                    <span className="prod-pill" style={{
-                                                        color: STATUS_META[o.status]?.color,
-                                                        background: `${STATUS_META[o.status]?.color}1a`
-                                                    }}>{STATUS_META[o.status]?.label || o.status}</span>
-                                                </td>
-                                                <td className="num">{fmtNum(o.plannedQuantity)} {o.product?.baseUnit?.abbreviation || o.product?.unit || ''}</td>
-                                                <td className="num">{fmtNum(o.producedQuantity)} {o.product?.baseUnit?.abbreviation || o.product?.unit || ''}</td>
-                                                <td className="num">{formatCurrencyGrouped(o.realCost, settings)}</td>
-                                                <td className="muted">{fmtDate(o.finishedAt || o.date)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
+                            <Button size="sm" variant="ghost" onClick={() => navigate('/production-orders')}>Ver todas</Button>
+                        </header>
+                        <DataTable<RecentRow>
+                            ariaLabel="Órdenes recientes"
+                            columns={recentColumns}
+                            rows={data.recentOrders}
+                            rowKey={(o) => o.id}
+                            minWidth="40rem"
+                            onRowClick={() => navigate('/production-orders')}
+                            empty={
+                                <EmptyState
+                                    icon={Package}
+                                    title="No hay órdenes de producción en el período"
+                                    action={<Button variant="primary" onClick={() => navigate('/production-orders')}>Crear producción</Button>}
+                                />
+                            }
+                        />
+                    </section>
                 </>
             )}
-        </div>
-    );
-}
-
-function DeltaBadge({ current, previous, invert = false }: { current: number; previous: number | null | undefined; invert?: boolean }) {
-    if (previous == null) return null;
-    if (previous === 0) {
-        if (current === 0) return null;
-        return <span className="prod-delta prod-delta-neutral">nuevo</span>;
-    }
-    const pct = ((current - previous) / Math.abs(previous)) * 100;
-    if (!Number.isFinite(pct)) return null;
-    const flat = Math.abs(pct) < 0.05;
-    const good = invert ? pct < 0 : pct > 0;
-    const tone = flat ? 'neutral' : good ? 'up' : 'down';
-    const Icon = pct > 0 ? TrendingUp : TrendingDown;
-    return (
-        <span className={`prod-delta prod-delta-${tone}`}>
-            {!flat && <Icon size={12} />}
-            {fmtPct(Math.abs(pct))}
-        </span>
-    );
-}
-
-function SingleBranchSummary({ branch, settings }: { branch: BranchRow; settings: ReturnType<typeof useCurrency>['settings'] }) {
-    return (
-        <div className="prod-branch-single">
-            <div className="prod-branch-single-name"><Building2 size={16} /> {branch.name}</div>
-            <div className="prod-branch-single-grid">
-                <div><span className="prod-branch-single-label">Órdenes finalizadas</span><span className="prod-branch-single-val">{fmtNum(branch.orders)}</span></div>
-                <div><span className="prod-branch-single-label">Costo real</span><span className="prod-branch-single-val">{formatCurrencyGrouped(branch.realCost, settings)}</span></div>
-            </div>
-        </div>
-    );
-}
-
-function KpiCard({ icon, label, value, hint, tone, badge }: {
-    icon: React.ReactNode; label: string; value: string; hint?: string; tone: string; badge?: React.ReactNode;
-}) {
-    return (
-        <div className={`prod-kpi prod-kpi-${tone}`}>
-            <div className="prod-kpi-icon">{icon}</div>
-            <div className="prod-kpi-body">
-                <div className="prod-kpi-top">
-                    <span className="prod-kpi-label">{label}</span>
-                    {badge}
-                </div>
-                <span className="prod-kpi-value">{value}</span>
-                {hint && <span className="prod-kpi-hint">{hint}</span>}
-            </div>
-        </div>
+        </PageContent>
     );
 }
