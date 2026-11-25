@@ -15,6 +15,9 @@ import { useAppToast } from '../../context/ToastContext';
 import { useSettingsDraft } from './useSettingsDraft';
 import './settings-page.css';
 
+/** Sección solo de lectura: las tasas legales viven en la versión legal de nómina, no en el registro. */
+const NOMINA_SECTION = 'nomina-legal';
+
 const GROUP_LABELS: Record<string, string> = {
   organizacion: 'Organización',
   ventas: 'Ventas',
@@ -189,6 +192,17 @@ export default function SettingsPage() {
             </div>
           ))}
           <div className="settings-page__group">
+            <p className="settings-page__group-title">{GROUP_LABELS.rrhh}</p>
+            <button
+              type="button"
+              className={`settings-page__navitem ${!searching && activeSection === NOMINA_SECTION ? 'is-active' : ''}`}
+              aria-current={!searching && activeSection === NOMINA_SECTION ? 'page' : undefined}
+              onClick={() => { setQuery(''); setActiveSection(NOMINA_SECTION); }}
+            >
+              <span>Nómina (solo lectura)</span>
+            </button>
+          </div>
+          <div className="settings-page__group">
             <p className="settings-page__group-title">Administración</p>
             {ADMIN_LINKS.map((l) => (
               <Link key={l.to} className="settings-page__navitem settings-page__navlink" to={l.to}>{l.label}</Link>
@@ -226,7 +240,7 @@ export default function SettingsPage() {
             </section>
           ))}
 
-          {!searching ? (
+          {!searching && activeSection === NOMINA_SECTION ? (
             <section className="settings-page__section">
               <h2 className="settings-page__section-title">Nómina</h2>
               <p className="settings-page__note">
