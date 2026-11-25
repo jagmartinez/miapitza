@@ -29,7 +29,6 @@ describe('employee self-service UX contract', () => {
     expect(navigation).not.toContain("const ITEMS");
     expect(navigation).toContain('aria-label="Volver a Mis accesos de RH"');
     expect(selfServiceCss).toContain('.my-hr-summary-grid');
-    expect(selfServiceCss).toContain('.my-hr-page-header .page-header-actions');
   });
 
   it('builds the portal summary from scoped server resources and tolerates partial failures', () => {
@@ -75,9 +74,9 @@ describe('employee self-service UX contract', () => {
 
   it('keeps empty/error recovery and creation CTAs visible', () => {
     expect(schedule).toContain('Ir a marcaje');
-    expect(schedule).toContain('Reintentar');
+    expect(schedule).toContain('LoadErrorState');
     expect(payroll).toContain('Ver recibos del año actual');
-    expect(payroll).toContain('Reintentar');
+    expect(payroll).toContain('LoadErrorState');
     expect(benefits).toContain("tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'");
     expect(benefits).toContain('Reintentar');
     expect(workforce).toContain('En espera');

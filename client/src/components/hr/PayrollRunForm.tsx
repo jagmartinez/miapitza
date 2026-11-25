@@ -1,7 +1,6 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { Calculator, Gift } from 'lucide-react';
-import Button from '../Button';
 import HrModalFormShell from './HrModalFormShell';
 import type {
   HrAguinaldoRunPayload,
@@ -81,7 +80,7 @@ export default function PayrollRunForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={!online || saving || !valid}>
+          <Button variant="primary" type="submit" disabled={!online || saving || !valid}>
             {saving ? 'Creando…' : isAguinaldo ? 'Crear aguinaldo' : 'Crear corrida'}
           </Button>
         </>
@@ -90,20 +89,20 @@ export default function PayrollRunForm({
       {kind === 'REGULAR' ? (
         <label>
           Periodo
-          <HrReactSelect
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Seleccionar…' },
+              ...periods
+                .filter((period) => period.status !== 'VOID')
+                .map((period) => ({
+                  value: String(period.id),
+                  label: `${period.code} · ${period.dateFrom} – ${period.dateTo}`,
+                })),
+            ]}
             value={periodId}
-            onChange={(event) => setPeriodId(event.target.value)}
-            required
-          >
-            <option value="">Seleccionar…</option>
-            {periods
-              .filter((period) => period.status !== 'VOID')
-              .map((period) => (
-                <option key={period.id} value={period.id}>
-                  {period.code} · {period.dateFrom} – {period.dateTo}
-                </option>
-              ))}
-          </HrReactSelect>
+            onChange={(next) => setPeriodId(next ?? '')}
+            isClearable={false}
+          />
         </label>
       ) : (
         <>
@@ -131,20 +130,20 @@ export default function PayrollRunForm({
       )}
       <label>
         Regla activa
-        <HrReactSelect
+        <AppSelect<string>
+          options={[
+            { value: '', label: 'Seleccionar…' },
+            ...rules
+              .filter((rule) => rule.status === 'ACTIVE')
+              .map((rule) => ({
+                value: String(rule.id),
+                label: `${rule.name} · v${rule.version}`,
+              })),
+          ]}
           value={ruleVersionId}
-          onChange={(event) => setRuleVersionId(event.target.value)}
-          required
-        >
-          <option value="">Seleccionar…</option>
-          {rules
-            .filter((rule) => rule.status === 'ACTIVE')
-            .map((rule) => (
-              <option key={rule.id} value={rule.id}>
-                {rule.name} · v{rule.version}
-              </option>
-            ))}
-        </HrReactSelect>
+          onChange={(next) => setRuleVersionId(next ?? '')}
+          isClearable={false}
+        />
       </label>
       <label className="span-full">
         Razón de apertura

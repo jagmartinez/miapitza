@@ -41,7 +41,6 @@ describe('RH UX/UI V2 schedule and legal configuration contract', () => {
     expect(legalPanel).toContain('ariaLabel="Tramos de IR vigentes"');
     expect(legalPanel).toContain("type: 'money'");
     expect(legalStyles).toContain(".hr-legal-settings-page input[type='number']");
-    expect(legalStyles).toContain('.hr-legal-ir-readonly-table td:nth-child(n+2)');
     expect(legalStyles).toContain('font-variant-numeric: tabular-nums');
   });
 

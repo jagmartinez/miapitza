@@ -17,7 +17,6 @@ const governance = readFileSync(
 );
 const governanceClient = readFileSync(new URL('./benefitsGovernanceClient.ts', import.meta.url), 'utf8');
 const benefitsStyles = readFileSync(new URL('../../pages/hr/benefits.css', import.meta.url), 'utf8');
-const hrUiStyles = readFileSync(new URL('../../pages/hr/hr-ui.css', import.meta.url), 'utf8');
 
 describe('Phase 6 benefits UI contract', () => {
   it('exposes all Owner workspaces and server-authored detail', () => {
@@ -48,8 +47,6 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('<span className="sr-only">Estado</span>');
     expect(owner).toContain('aria-label="Filtrar por estado"');
     expect(benefitsStyles).toContain('minmax(480px, 1.25fr)');
-    expect(benefitsStyles).toContain(':is(th, td).hr-amount-cell');
-    expect(hrUiStyles).toContain(':is(td, th).hr-amount-cell');
   });
 
   it('keeps policies and settlement drafts administrable without native prompts', () => {

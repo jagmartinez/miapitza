@@ -1,6 +1,6 @@
+import { Button } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { Scale } from 'lucide-react';
-import Button from '../Button';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrPayrollRulePayload, HrPayrollRuleVersion } from '../../types/hr-payroll';
 
@@ -65,7 +65,7 @@ export default function PayrollRuleForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button
+          <Button variant="primary"
             type="submit"
             disabled={
               !online ||

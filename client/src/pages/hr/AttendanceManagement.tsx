@@ -1,4 +1,3 @@
-import HrReactSelect from '../../components/hr/HrReactSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -11,8 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { DataTable, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -269,7 +267,7 @@ export default function AttendanceManagement() {
         title="Control diario de asistencia"
         description="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
         actions={
-          <Button
+          <Button variant="primary"
             onClick={() => {
               setPeriodForm({ dateFrom: date, dateTo: date, reason: '' });
               setCreatePanel({ kind: 'period' });
@@ -289,25 +287,27 @@ export default function AttendanceManagement() {
         </label>
         <label>
           Sucursal
-          <HrReactSelect value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-            <option value="">Todas</option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
-          </HrReactSelect>
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Todas' },
+              ...branches.map((branch) => ({ value: String(branch.id), label: branch.name })),
+            ]}
+            value={branchId}
+            onChange={(next) => setBranchId(next ?? '')}
+            isClearable={false}
+          />
         </label>
         <label>
           Empleado
-          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)}>
-            <option value="">Todos</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name}
-              </option>
-            ))}
-          </HrReactSelect>
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Todos' },
+              ...users.map((user) => ({ value: String(user.id), label: user.name })),
+            ]}
+            value={userId}
+            onChange={(next) => setUserId(next ?? '')}
+            isClearable={false}
+          />
         </label>
         <Button variant="ghost" onClick={() => void load()}>
           <RefreshCw size={16} /> Actualizar
@@ -449,7 +449,7 @@ export default function AttendanceManagement() {
                 rowKey={(period) => period.id}
                 pagination={{ mode: 'client' }}
                 minWidth="64rem"
-                empty={<div className="hr-admin-empty"><strong>No hay periodos</strong><span>Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina.</span><Button size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button></div>}
+                empty={<div className="hr-admin-empty"><strong>No hay periodos</strong><span>Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina.</span><Button variant="primary" size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button></div>}
                 columns={[
                   { key: 'c0', header: 'Periodo', render: (period) => <strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong> },
                   { key: 'c1', header: 'Empleados', render: (period) => <>{period.summaryCount ?? 0}</> },
@@ -526,7 +526,7 @@ export default function AttendanceManagement() {
                 <Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={!online || saving}>
+                <Button variant="primary" type="submit" disabled={!online || saving}>
                   {saving ? 'Creando…' : 'Crear periodo'}
                 </Button>
               </>
@@ -607,13 +607,15 @@ export default function AttendanceManagement() {
           ) : (
             <label>
               Decisión
-              <HrReactSelect
+              <AppSelect<string>
+                options={[
+                  { value: 'APPROVED', label: 'Aprobar' },
+                  { value: 'REJECTED', label: 'Rechazar' },
+                ]}
                 value={decision}
-                onChange={(event) => setDecision(event.target.value as HrDecision)}
-              >
-                <option value="APPROVED">Aprobar</option>
-                <option value="REJECTED">Rechazar</option>
-              </HrReactSelect>
+                onChange={(next) => setDecision((next ?? '') as HrDecision)}
+                isClearable={false}
+              />
             </label>
           )}
           {decisionPanel?.kind === 'overtime' && decision === 'APPROVED' && (

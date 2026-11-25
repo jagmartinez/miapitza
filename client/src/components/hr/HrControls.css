@@ -1,17 +1,5 @@
-.hr-react-select {
-  display: block;
-  width: 100%;
-  min-width: 0;
-}
-
-.hr-react-select .react-select__control {
-  min-height: 42px;
-}
-
 .hr-money-input,
-.hr-money,
-.hr-number,
-.hr-amount-cell {
+.hr-money {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -30,12 +18,12 @@
 .hr-modal-form {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: var(--ui-space-4);
   min-width: 0;
   font-family: inherit;
   font-size: 14px;
   line-height: 1.45;
-  color: var(--color-text);
+  color: var(--ui-text);
 }
 
 .hr-modal-form :is(button, input, textarea, select) {
@@ -59,26 +47,12 @@
   label:not(.hr-payroll-confirm):not(.hr-benefits-confirm):not(.hr-benefits-check):not(.hr-inline-choice) {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-  color: var(--color-text-secondary);
+  gap: var(--ui-space-1);
+  color: var(--ui-text-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.hr-modal-form .ui-form-grid
-  :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-background);
-  color: var(--color-text);
-  font-size: 14px;
-  line-height: 1.35;
-  box-sizing: border-box;
 }
 
 .hr-modal-form .ui-form-grid textarea {
@@ -86,15 +60,8 @@
   resize: vertical;
 }
 
-.hr-modal-form .ui-form-grid
-  :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input):focus-visible {
-  border-color: var(--color-primary);
-  outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 30%, transparent);
-}
-
 .hr-modal-form .ui-form-grid :is(input, textarea)::placeholder {
-  color: var(--color-text-tertiary);
+  color: var(--ui-text-muted);
 }
 
 .hr-modal-form .ui-form-grid .hr-inline-choice {
@@ -105,10 +72,10 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: var(--spacing-sm);
+  gap: var(--ui-space-2);
   min-height: 42px;
-  padding-top: var(--spacing-md);
-  border-top: 1px solid var(--color-border);
+  padding-top: var(--ui-space-3);
+  border-top: 1px solid var(--ui-border);
 }
 
 .hr-modal-form-footer .btn {
@@ -127,9 +94,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: var(--spacing-md);
+  gap: var(--ui-space-3);
   min-width: 0;
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: var(--ui-space-4);
 }
 
 .hr-filters > * {
@@ -150,7 +117,7 @@
 .hr-filters .hr-filters-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-sm);
+  gap: var(--ui-space-2);
   margin-left: auto;
 }
 
@@ -158,7 +125,7 @@
 .hr-kpi-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
+  gap: var(--ui-space-3);
+  margin-bottom: var(--ui-space-4);
   min-width: 0;
 }

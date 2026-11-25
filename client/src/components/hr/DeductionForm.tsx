@@ -1,8 +1,7 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { AlertTriangle, BadgeMinus } from 'lucide-react';
-import Button from '../Button';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrDeductionFrequency, HrDeductionPayload } from '../../types/hr-benefits';
@@ -61,7 +60,7 @@ export default function DeductionForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={!online || saving || !confirmed || !form.userId}>
+          <Button variant="primary" type="submit" disabled={!online || saving || !confirmed || !form.userId}>
             {saving ? 'Guardando…' : 'Crear deducción'}
           </Button>
         </>
@@ -76,20 +75,20 @@ export default function DeductionForm({
       </div>
       <label>
         Persona
-        <HrReactSelect
-          required
-          value={form.userId || ''}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, userId: Number(event.target.value) }))
+        <AppSelect<string>
+          options={[
+            { value: '', label: 'Selecciona una persona' },
+            ...users.map((user) => ({
+              value: String(user.id),
+              label: user.name || user.username,
+            })),
+          ]}
+          value={String(form.userId || '')}
+          onChange={(next) =>
+            setForm((current) => ({ ...current, userId: Number(next ?? '') }))
           }
-        >
-          <option value="">Selecciona una persona</option>
-          {users.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.name || user.username}
-            </option>
-          ))}
-        </HrReactSelect>
+          isClearable={false}
+        />
       </label>
       <label>
         Nombre
@@ -102,28 +101,32 @@ export default function DeductionForm({
       </label>
       <label>
         Frecuencia
-        <HrReactSelect
+        <AppSelect<string>
+          options={[
+            { value: 'ONCE', label: 'Única' },
+            { value: 'RECURRING', label: 'Recurrente' },
+          ]}
           value={form.frequency}
-          onChange={(event) =>
+          onChange={(next) =>
             setForm((current) => ({
               ...current,
-              frequency: event.target.value as HrDeductionFrequency,
+              frequency: (next ?? '') as HrDeductionFrequency,
             }))
           }
-        >
-          <option value="ONCE">Única</option>
-          <option value="RECURRING">Recurrente</option>
-        </HrReactSelect>
+          isClearable={false}
+        />
       </label>
       <label>
         Moneda
-        <HrReactSelect
+        <AppSelect<string>
+          options={[
+            { value: 'NIO', label: 'NIO — Córdoba' },
+            { value: 'USD', label: 'USD — Dólar' },
+          ]}
           value={form.currency}
-          onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
-        >
-          <option value="NIO">NIO — Córdoba</option>
-          <option value="USD">USD — Dólar</option>
-        </HrReactSelect>
+          onChange={(next) => setForm((current) => ({ ...current, currency: next ?? '' }))}
+          isClearable={false}
+        />
       </label>
       <label>
         Monto solicitado

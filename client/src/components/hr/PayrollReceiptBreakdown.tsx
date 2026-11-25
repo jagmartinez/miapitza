@@ -1,6 +1,6 @@
+import { Button } from '@/ui';
 import { CalendarDays, Download, FileText, UserRound } from 'lucide-react';
 import { formatHrMoney } from '../../utils/hrFormat';
-import Button from '../Button';
 import type { HrPayrollComponent, HrPayrollReceiptDetail } from '../../types/hr-payroll';
 import PayrollStatusPill from './PayrollStatusPill';
 
@@ -62,7 +62,7 @@ export default function PayrollReceiptBreakdown({
         </div>
         <div className="hr-receipt-header-actions">
           <PayrollStatusPill status={receipt.status} />
-          <Button onClick={onDownload} disabled={!online || downloading}>
+          <Button variant="primary" onClick={onDownload} disabled={!online || downloading}>
             <Download size={16} /> {downloading ? 'Preparando PDF…' : 'Descargar PDF'}
           </Button>
         </div>

@@ -126,7 +126,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(legalSettings).toContain('<Eye size={15}');
     expect(legalSettings).toContain('<Copy size={15}');
     expect(legalCss).toContain('.hr-legal-rule-toolbar');
-    expect(legalCss).toContain('.hr-legal-table-action.btn');
+    expect(legalCss).toContain('.hr-legal-table-action.ui-button');
   });
 
   it('uses self-only endpoints for employee receipts and exposes published breakdowns', () => {
@@ -161,7 +161,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
   it('requires a fresh legal classification confirmation when manual classification changes', () => {
     expect(componentForm).toContain('classificationConfirmed: true');
     expect(componentForm).toContain('if (!classificationConfirmed || !selectedConcept) return');
-    expect(componentForm).toMatch(/setCode\(event\.target\.value\);\s*setClassificationConfirmed\(false\);/);
+    expect(componentForm).toMatch(/setCode\(next \?\? ''\);\s*setClassificationConfirmed\(false\);/);
     expect(componentForm).toContain('selectedConcept.socialSecurityApplicable');
     expect(componentForm).toContain('las banderas no pueden modificarse');
     expect(componentForm).toContain('!classificationConfirmed');
@@ -186,14 +186,14 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
 
   it('includes keyboard focus, responsive layouts and accessible live states', () => {
     expect(mine).toContain('aria-live="polite"');
-    expect(mine).toContain('aria-current=');
-    expect(mine).toContain('role="alert"');
+    expect(mine).toContain('rowTone=');
+    expect(mine).toContain('LoadErrorState');
     expect(css).toContain(':focus-visible');
     expect(css).toContain('@media (max-width: 760px)');
-    expect(css).toContain('.hr-my-payroll-layout');
+    expect(mine).toContain('styles.layout');
     expect(operationCss).toContain('@media (max-width: 760px)');
     expect(operationCss).toContain(':focus-visible');
-    expect(operationCss).toContain('background: var(--color-surface)');
+    expect(operationCss).toContain('background: var(--ui-surface)');
     expect(operationCss).not.toContain('var(--surface, #fff)');
   });
 

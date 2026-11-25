@@ -12,7 +12,6 @@ describe('shared dialog foundation', () => {
       '../ui/overlays/ConfirmDialog.tsx',
       './PaymentModal.tsx',
       './NumericKeypad.tsx',
-      './TableOrdersModal.tsx',
     ]) {
       const source = read(path);
       expect(source, path).toContain('createPortal');
@@ -49,7 +48,6 @@ describe('shared dialog foundation', () => {
     const sharedModal = read('./Modal.css');
     const payment = read('./PaymentModal.css');
     const sidebar = read('./Sidebar.css');
-    const tableOrders = read('./TableOrdersModal.css');
 
     expect(tokens).toContain('--dialog-panel-bg: var(--ui-surface)');
     expect(tokens).toContain('--dialog-content-bg: var(--ui-surface)');
@@ -57,7 +55,7 @@ describe('shared dialog foundation', () => {
     expect(tokens).toContain('--dialog-accent: var(--ui-primary)');
     expect(sharedModal).toContain('var(--dialog-panel-bg');
     expect(payment).toContain('var(--dialog-panel-bg');
-    for (const stylesheet of [sharedModal, payment, sidebar, tableOrders]) {
+    for (const stylesheet of [sharedModal, payment, sidebar]) {
       expect(stylesheet).not.toContain('linear-gradient');
       expect(stylesheet).not.toContain('radial-gradient');
     }

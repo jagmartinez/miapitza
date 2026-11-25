@@ -23,6 +23,7 @@ import Modal from '../components/Modal';
 import Button from '../components/Button';
 import { AppSelect, Field, SegmentedControl, formatNumber } from '@/ui';
 import POSProductCard from '../components/POSProductCard';
+import { loadMenuAvailability, type MenuAvailabilityItem } from '../services/posAvailability';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
 import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table, Warehouse } from '../types';
@@ -166,6 +167,27 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [branchWarehouses, setBranchWarehouses] = useState<Warehouse[]>([]);
     const [warehouseAction, setWarehouseAction] = useState<'DELIVER' | 'CANCEL' | null>(null);
     const [operationalWarehouseId, setOperationalWarehouseId] = useState<number | null>(null);
+    // Aviso de existencia: solo con una bodega de sucursal inequívoca; ante cualquier fallo no se muestra nada.
+    const availabilityWarehouseId = branchWarehouses.length === 1 ? branchWarehouses[0].id : null;
+    const [menuAvailability, setMenuAvailability] = useState<Map<number, MenuAvailabilityItem> | null>(null);
+    useEffect(() => {
+        if (!availabilityWarehouseId) {
+            setMenuAvailability(null);
+            return undefined;
+        }
+        let cancelled = false;
+        const refresh = () => {
+            void loadMenuAvailability(availabilityWarehouseId).then((map) => {
+                if (!cancelled) setMenuAvailability(map);
+            });
+        };
+        refresh();
+        const timer = window.setInterval(refresh, 60_000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+        };
+    }, [availabilityWarehouseId]);
     const warehouseOptions = useMemo<WarehouseOption[]>(() => branchWarehouses.map((warehouse) => ({
         value: warehouse.id,
         label: `${warehouse.name} (${warehouse.code})`,
@@ -1167,6 +1189,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 onContextMenu={handleItemRightClick}
                                 onQuantityEdit={handleQuantityEdit}
                                 currencySymbol={currencySymbol}
+                                availability={menuAvailability?.get(item.id)?.status ?? null}
                             />
                         ))}
                         {filteredMenuItems.length === 0 && (

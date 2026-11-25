@@ -12,7 +12,7 @@ const operationSource = read('./TableOperationModal.tsx');
 const kitchenSource = read('../pages/Kitchen.tsx');
 const layoutSource = read('./Layout.tsx');
 const bellSource = read('./KitchenNotificationBell.tsx');
-const panelStyles = read('./TableOrdersModal.css');
+const panelStyles = read('./TableOrdersModal.module.css');
 
 describe('table operational center contract', () => {
     it('opens the real POS workspace with the selected table', () => {
@@ -46,7 +46,7 @@ describe('table operational center contract', () => {
     it('renders editable persisted floor areas and table geometry', () => {
         expect(mapSource).toContain('plan.areas.map(normalizeArea)');
         expect(mapSource).toContain('Agregar salón');
-        expect(mapSource).toContain("mapShape: 'ROUND'");
+        expect(mapSource).toContain("value: 'ROUND'");
         expect(mapSource).toContain('Guardar plano');
         expect(tablesSource).toContain('tablesAPI.updateFloorPlan');
     });
@@ -102,13 +102,14 @@ describe('table operational center contract', () => {
         expect(panelSource).not.toContain('role="tablist"');
     });
 
-    it('uses a full-height, non-overflowing mobile order workspace', () => {
-        expect(panelStyles).toContain('height: 100dvh');
-        expect(panelStyles).toContain('grid-template-columns: minmax(0, 1fr) max-content');
-        expect(panelStyles).toContain('overscroll-behavior: contain');
-        expect(panelStyles).toContain('.orders-modal-footer .btn-modal-secondary:first-child { display: none; }');
-        expect(panelStyles).toContain('.table-order-add-products { display: none !important; }');
-        expect(panelStyles).toContain('env(safe-area-inset-bottom)');
+    it('uses the full-screen modal with touch-sized actions and no horizontal overflow', () => {
+        expect(panelSource).toContain('<FullScreenModal');
+        expect(panelSource).toContain('<DataTable');
+        expect(panelSource).toContain('formatMoney(');
+        expect(panelStyles).toContain('min-height: var(--ui-control-touch)');
+        expect(panelStyles).toContain('flex-wrap: wrap');
+        expect(panelStyles).toContain('.addProducts');
+        expect(panelStyles).toContain('display: none');
     });
 
     it('limits kitchen fullscreen and administration navigation to the KDS rules', () => {

@@ -12,9 +12,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader } from '@/ui';
-import Button from '../../components/Button';
-import HrReactSelect from '../../components/hr/HrReactSelect';
+import { DataTable, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
@@ -510,14 +508,19 @@ export default function BenefitsManagement() {
         </label>
         <label className="hr-benefits-status-filter">
           <span className="sr-only">Estado</span>
-          <HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filtrar por estado">
-            <option value="">Todos</option>
-            {STATUS_OPTIONS[tab].map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </HrReactSelect>
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Todos' },
+              ...STATUS_OPTIONS[tab].map((option) => ({
+                value: String(option.value),
+                label: option.label,
+              })),
+            ]}
+            value={status}
+            onChange={(next) => setStatus(next ?? '')}
+            aria-label="Filtrar por estado"
+            isClearable={false}
+          />
         </label>
         <Button variant="ghost" onClick={() => void load()} disabled={loading || !online}>
           <RefreshCw size={16} /> Actualizar
@@ -556,7 +559,7 @@ export default function BenefitsManagement() {
                                 Mostrar todos
                               </Button>
                             )}
-                            <Button
+                            <Button variant="primary"
                               size="sm"
                               onClick={() => setCreatePanel(tab)}
                               disabled={!online}

@@ -12,7 +12,6 @@ function readTsx(directory: URL): string {
 }
 
 const hrSource = `${readTsx(componentDirectory)}\n${readTsx(pageDirectory)}`;
-const selectAdapter = readFileSync(new URL('./HrReactSelect.tsx', import.meta.url), 'utf8');
 const moneyInput = readFileSync(new URL('./HrMoneyInput.tsx', import.meta.url), 'utf8');
 const moneyInputFormat = readFileSync(new URL('./hrMoneyInputFormat.ts', import.meta.url), 'utf8');
 const sharedStyles = readFileSync(new URL('../../pages/hr/hr-ui.css', import.meta.url), 'utf8');
@@ -38,9 +37,8 @@ describe('RH and Catering UI design-system contract', () => {
 
   it('uses the project React Select adapter instead of native selects in RH', () => {
     expect(hrSource).not.toMatch(/<\/?select\b/);
-    expect(selectAdapter).toContain('AppSelect');
-    expect(hrSource).toContain('<HrReactSelect');
-    expect(sharedStyles).toContain(":not(.react-select__input)");
+    expect(hrSource).toContain('<AppSelect');
+    expect(hrSource).not.toContain('HrReactSelect');
   });
 
   it('keeps attendance and its settings from being active at the same time', () => {

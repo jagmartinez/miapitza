@@ -10,8 +10,7 @@ import {
   RefreshCw,
   Route,
 } from 'lucide-react';
-import { DataTable, PageHeader, FullScreenModal } from '@/ui';
-import Button from '../../components/Button';
+import { DataTable, PageHeader, FullScreenModal, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
@@ -237,7 +236,7 @@ export default function MyBenefits() {
         actions={
           <>
             {tab !== 'DEDUCTION' && (
-              <Button onClick={() => setPanel(tab)} disabled={!online}>
+              <Button variant="primary" onClick={() => setPanel(tab)} disabled={!online}>
                 <Plus size={17} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}
               </Button>
             )}
@@ -371,7 +370,7 @@ export default function MyBenefits() {
                 <div className="hr-benefits-empty">
                   <WalletCards size={36} />
                   <p>{tab === 'TRAVEL' ? 'Aún no tienes viáticos registrados.' : tab === 'LOAN' ? 'Aún no tienes préstamos registrados.' : 'No tienes deducciones asignadas.'}</p>
-                  {tab !== 'DEDUCTION' && <Button size="sm" onClick={() => setPanel(tab)} disabled={!online}><Plus size={15} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button>}
+                  {tab !== 'DEDUCTION' && <Button variant="primary" size="sm" onClick={() => setPanel(tab)} disabled={!online}><Plus size={15} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button>}
                 </div>
               }
             />

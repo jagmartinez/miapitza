@@ -1,4 +1,4 @@
-import { DataTable, PageHeader, FullScreenModal } from '@/ui';
+import { DataTable, PageHeader, FullScreenModal, AppSelect, Button } from '@/ui';
 import { useCallback, useEffect, useState } from 'react';
 import {
   BadgeDollarSign,
@@ -11,9 +11,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import HrReactSelect from '../../components/hr/HrReactSelect';
 import { benefitsGovernanceClient } from '../../components/hr/benefitsGovernanceClient';
 import { getBenefitsErrorMessage } from '../../components/hr/benefitsClient';
 import { hrClient } from '../../components/hr/hrClient';
@@ -458,25 +456,23 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 />
                 <label>
                   <span>Estado</span>
-                  <HrReactSelect
+                  <AppSelect<string>
+                    options={[
+                      { value: '', label: 'Todos' },
+                      ...Object.entries(statusLabel)
+                        .filter(([value]) => !['ACTIVE', 'RETIRED'].includes(value))
+                        .map(([value, label]) => ({ value: String(value), label: label })),
+                    ]}
                     aria-label="Filtrar liquidaciones por estado"
                     value={settlementStatus}
-                    onChange={(event) => {
-                      setSettlementStatus(event.target.value);
+                    onChange={(next) => {
+                      setSettlementStatus(next ?? '');
                       setPage(1);
                     }}
-                  >
-                    <option value="">Todos</option>
-                    {Object.entries(statusLabel)
-                      .filter(([value]) => !['ACTIVE', 'RETIRED'].includes(value))
-                      .map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                  </HrReactSelect>
+                    isClearable={false}
+                  />
                 </label>
-                <Button onClick={() => setShowSettlement(true)}>
+                <Button variant="primary" onClick={() => setShowSettlement(true)}>
                   <Plus size={17} /> Nueva liquidación
                 </Button>
               </div>
@@ -494,22 +490,20 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 <div className="governance-grid">
                   <label>
                     Empleado
-                    <HrReactSelect
-                      value={previewInput.userId}
-                      onChange={(event) =>
+                    <AppSelect<string>
+                      options={[
+                        { value: String(0), label: 'Seleccione' },
+                        ...users.map((user) => ({ value: String(user.id), label: user.name })),
+                      ]}
+                      value={String(previewInput.userId)}
+                      onChange={(next) =>
                         setPreviewInput((value) => ({
                           ...value,
-                          userId: Number(event.target.value),
+                          userId: Number(next ?? ''),
                         }))
                       }
-                    >
-                      <option value={0}>Seleccione</option>
-                      {users.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name}
-                        </option>
-                      ))}
-                    </HrReactSelect>
+                      isClearable={false}
+                    />
                   </label>
                   <label>
                     Fecha de terminación
@@ -526,21 +520,23 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Tipo de salida
-                    <HrReactSelect
+                    <AppSelect<string>
+                      options={[
+                        { value: 'RESIGNATION', label: 'Renuncia' },
+                        { value: 'DISMISSAL', label: 'Despido' },
+                        { value: 'MUTUAL_AGREEMENT', label: 'Mutuo acuerdo' },
+                        { value: 'CONTRACT_END', label: 'Fin de contrato' },
+                        { value: 'OTHER', label: 'Otro' },
+                      ]}
                       value={settlementMeta.exitType}
-                      onChange={(event) =>
+                      onChange={(next) =>
                         setSettlementMeta((value) => ({
                           ...value,
-                          exitType: event.target.value as SettlementExitType,
+                          exitType: (next ?? '') as SettlementExitType,
                         }))
                       }
-                    >
-                      <option value="RESIGNATION">Renuncia</option>
-                      <option value="DISMISSAL">Despido</option>
-                      <option value="MUTUAL_AGREEMENT">Mutuo acuerdo</option>
-                      <option value="CONTRACT_END">Fin de contrato</option>
-                      <option value="OTHER">Otro</option>
-                    </HrReactSelect>
+                      isClearable={false}
+                    />
                   </label>
                   <label>
                     Días de salario pendientes
@@ -650,7 +646,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     </label>
                   </>
                 )}
-                <Button disabled={busy || !previewInput.userId} onClick={() => void runPreview()}>
+                <Button variant="primary" disabled={busy || !previewInput.userId} onClick={() => void runPreview()}>
                   Calcular vista previa
                 </Button>
                 {preview && (
@@ -720,7 +716,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         </label>
                       </div>
                     )}
-                    <Button
+                    <Button variant="primary"
                       disabled={
                         !preview.canSubmit ||
                         !settlementMeta.cause ||
@@ -804,21 +800,23 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               <div className="governance-toolbar-actions">
                 <label>
                   <span>Estado</span>
-                  <HrReactSelect
+                  <AppSelect<string>
+                    options={[
+                      { value: '', label: 'Todos' },
+                      { value: 'DRAFT', label: 'Borrador' },
+                      { value: 'ACTIVE', label: 'Activa' },
+                      { value: 'RETIRED', label: 'Retirada' },
+                    ]}
                     aria-label="Filtrar políticas por estado"
                     value={policyStatus}
-                    onChange={(event) => {
-                      setPolicyStatus(event.target.value);
+                    onChange={(next) => {
+                      setPolicyStatus(next ?? '');
                       setPolicyPage(1);
                     }}
-                  >
-                    <option value="">Todos</option>
-                    <option value="DRAFT">Borrador</option>
-                    <option value="ACTIVE">Activa</option>
-                    <option value="RETIRED">Retirada</option>
-                  </HrReactSelect>
+                    isClearable={false}
+                  />
                 </label>
-                <Button onClick={() => openPolicyEditor()}>
+                <Button variant="primary" onClick={() => openPolicyEditor()}>
                   <Plus size={17} /> Nueva versión
                 </Button>
               </div>
@@ -1054,7 +1052,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   >
                     <Plus size={15} /> Categoría
                   </Button>
-                  <Button
+                  <Button variant="primary"
                     disabled={
                       busy ||
                       !policy.sourceReference ||
@@ -1158,22 +1156,22 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             <div className="governance-grid">
               <label>
                 Tipo de salida
-                <HrReactSelect
+                <AppSelect<string>
+                  options={[
+                    { value: 'RESIGNATION', label: 'Renuncia' },
+                    { value: 'DISMISSAL', label: 'Despido' },
+                    { value: 'MUTUAL_AGREEMENT', label: 'Mutuo acuerdo' },
+                    { value: 'CONTRACT_END', label: 'Fin de contrato' },
+                    { value: 'OTHER', label: 'Otro' },
+                  ]}
                   value={draftSettlement.exitType}
-                  onChange={(event) =>
+                  onChange={(next) =>
                     setDraftSettlement((value) =>
-                      value
-                        ? { ...value, exitType: event.target.value as SettlementExitType }
-                        : value
+                      value ? { ...value, exitType: (next ?? '') as SettlementExitType } : value
                     )
                   }
-                >
-                  <option value="RESIGNATION">Renuncia</option>
-                  <option value="DISMISSAL">Despido</option>
-                  <option value="MUTUAL_AGREEMENT">Mutuo acuerdo</option>
-                  <option value="CONTRACT_END">Fin de contrato</option>
-                  <option value="OTHER">Otro</option>
-                </HrReactSelect>
+                  isClearable={false}
+                />
               </label>
               <label>
                 Fecha de terminación
@@ -1251,18 +1249,22 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 minWidth="48rem"
                 empty={'Sin registros'}
                 columns={[
-                  { key: 'c0', header: 'Tipo', render: ({ line, index }) => (<HrReactSelect
-                          aria-label={`Tipo de concepto ${index + 1}`}
-                          value={line.type}
-                          onChange={(event) => updateDraftLine(index, 'type', event.target.value)}
-                        >
-                          <option value="EARNED_SALARY">Salario</option>
-                          <option value="VACATION">Vacaciones</option>
-                          <option value="AGUINALDO">Aguinaldo</option>
-                          <option value="INDEMNITY">Indemnización</option>
-                          <option value="OTHER_EARNING">Otro ingreso</option>
-                          <option value="DEDUCTION">Deducción</option>
-                        </HrReactSelect>) },
+                  { key: 'c0', header: 'Tipo', render: ({ line, index }) => (<AppSelect<string>
+                                                                               options={[
+                                                                                 { value: 'EARNED_SALARY', label: 'Salario' },
+                                                                                 { value: 'VACATION', label: 'Vacaciones' },
+                                                                                 { value: 'AGUINALDO', label: 'Aguinaldo' },
+                                                                                 { value: 'INDEMNITY', label: 'Indemnización' },
+                                                                                 { value: 'OTHER_EARNING', label: 'Otro ingreso' },
+                                                                                 { value: 'DEDUCTION', label: 'Deducción' },
+                                                                               ]}
+                                                                               aria-label={`Tipo de concepto ${index + 1}`}
+                                                                               value={line.type}
+                                                                               onChange={(next) =>
+                                                                                 updateDraftLine(index, 'type', next ?? '')
+                                                                               }
+                                                                               isClearable={false}
+                                                                             />) },
                   { key: 'c1', header: 'Concepto', render: ({ line, index }) => (<><input
                           aria-label={`Concepto ${index + 1}`}
                           value={line.concept}
@@ -1367,7 +1369,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               >
                 Cancelar
               </Button>
-              <Button
+              <Button variant="primary"
                 disabled={
                   busy ||
                   !draftAdjustmentReason.trim() ||
@@ -1478,7 +1480,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   >
                     Cancelar
                   </Button>
-                  <Button
+                  <Button variant="primary"
                     disabled={
                       busy ||
                       !actionConfirmed ||
@@ -1553,7 +1555,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               <Button variant="ghost" onClick={() => setPolicyToActivate(null)}>
                 Cancelar
               </Button>
-              <Button
+              <Button variant="primary"
                 disabled={busy || !policyActivationConfirmed}
                 onClick={() => {
                   setBusy(true);

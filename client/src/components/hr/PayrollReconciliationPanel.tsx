@@ -1,6 +1,6 @@
+import { Button } from '@/ui';
 import { useState } from 'react';
 import { CheckCircle2, Scale, ShieldAlert, XCircle } from 'lucide-react';
-import Button from '../Button';
 import { getPayrollErrorMessage, payrollClient } from './payrollClient';
 import type { HrPayrollReconciliationPayload, HrPayrollReconciliationReport, HrPayrollRun } from '../../types/hr-payroll';
 
@@ -39,7 +39,7 @@ export default function PayrollReconciliationPanel({ run }: { run: HrPayrollRun 
         <label>Personas externas<input type="number" min={0} step={1} value={form.expectedEmployeeCount} onChange={event => set('expectedEmployeeCount', Number(event.target.value))} required /></label>
         <label>Fuente del control<input value={form.controlSource} minLength={3} maxLength={160} onChange={event => set('controlSource', event.target.value)} placeholder="Hoja o sistema independiente" required /></label>
         <label>Referencia de evidencia<input value={form.evidenceReference} minLength={3} maxLength={500} onChange={event => set('evidenceReference', event.target.value)} placeholder="Ruta/folio/hash del soporte" required /></label>
-        <Button type="submit" disabled={saving || ['DRAFT', 'VOID'].includes(run.status)}>{saving ? 'Conciliando…' : 'Ejecutar conciliación'}</Button>
+        <Button variant="primary" type="submit" disabled={saving || ['DRAFT', 'VOID'].includes(run.status)}>{saving ? 'Conciliando…' : 'Ejecutar conciliación'}</Button>
       </form>
       {error && <div className="hr-payroll-reconciliation-alert danger" role="alert"><ShieldAlert size={18} />{error}</div>}
       {report && (

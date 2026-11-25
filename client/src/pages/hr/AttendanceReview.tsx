@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DataTable, FullScreenModal, PageHeader } from '@/ui';
+import { DataTable, FullScreenModal, PageHeader, Button } from '@/ui';
 import type { SingleValue } from '../../components/hr/HrOptionSelect';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, Plus, RefreshCw, XCircle } from 'lucide-react';
-import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrFilterSelect from '../../components/hr/HrFilterSelect';
 import Select from '../../components/hr/HrOptionSelect';
@@ -180,7 +179,7 @@ export default function AttendanceReview() {
             <PageHeader
         title="Revisión de asistencia"
         description="Resuelve incidencias y registra marcajes manuales sin perder trazabilidad"
-        actions={<Button onClick={() => setManualOpen(true)} disabled={!online || Boolean(lookupsError)}><Plus size={18} /> Marcaje manual</Button>}
+        actions={<Button variant="primary" onClick={() => setManualOpen(true)} disabled={!online || Boolean(lookupsError)}><Plus size={18} /> Marcaje manual</Button>}
       />
             <OnlineOnlyNotice online={online} />
             {lookupsError && (
@@ -235,7 +234,7 @@ export default function AttendanceReview() {
                         icon={<ClipboardCheck size={18} aria-hidden="true" />}
                         formClassName="hr-attendance-review-form"
                         onSubmit={review}
-                        footer={<><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={!online || saving || !reviewForm.reason.trim()}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></>}
+                        footer={<><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button variant="primary" type="submit" disabled={!online || saving || !reviewForm.reason.trim()}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></>}
                     >
                         <div className="hr-review-summary span-full"><strong>{selected.user?.name ?? `Usuario #${selected.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[selected.action]} · {displayDate(selected.occurredAt)}</span><p>{selected.message ?? selected.reasonCode ?? 'Sin explicación adicional.'}</p></div>
                         <div className="hr-review-decisions span-full" role="radiogroup" aria-label="Decisión de revisión"><label className={`hr-inline-choice ${reviewForm.decision === 'APPROVED' ? 'selected' : ''}`}><input type="radio" name="review-decision" checked={reviewForm.decision === 'APPROVED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'APPROVED' }))} /><CheckCircle2 size={18} /> Aprobar</label><label className={`hr-inline-choice danger ${reviewForm.decision === 'REJECTED' ? 'selected' : ''}`}><input type="radio" name="review-decision" checked={reviewForm.decision === 'REJECTED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'REJECTED' }))} /><XCircle size={18} /> Rechazar</label></div>
@@ -257,7 +256,7 @@ export default function AttendanceReview() {
                     formClassName="hr-attendance-manual-form"
                     notice={<div className="hr-attendance-alert warning"><AlertTriangle size={18} /><span>Este fallback no simula biometría ni GPS: crea un evento manual identificado, con actor y razón para auditoría.</span></div>}
                     onSubmit={createManual}
-                    footer={<><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={!online || saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></>}
+                    footer={<><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button variant="primary" type="submit" disabled={!online || saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></>}
                 >
                     <div className="span-full"><Select<Option> variant="modal" label="Evento a compensar (opcional)" options={targetOptions} value={targetOptions.find((option) => option.value === manual.targetEventId)} onChange={(option: SingleValue<Option>) => { const target = events.find((item) => String(item.id) === option?.value); setManual((current) => ({ ...current, targetEventId: option?.value ?? '', ...(target ? { userId: String(target.userId), branchId: String(target.branchId ?? ''), action: target.action } : {}) })); }} isSearchable /></div>
                     <Select<Option> variant="modal" label="Usuario" options={userOptions.filter((option) => option.value)} value={userOptions.find((option) => option.value === manual.userId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, userId: option?.value ?? '' }))} isSearchable />

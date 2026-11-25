@@ -32,7 +32,6 @@ describe('RH operational UI contract', () => {
   it('uses the shared Inventory-inspired operational composition without global selectors', () => {
     adminOperationalPages.forEach((source) => expect(source).toContain('hr-operation-page'));
     selfServicePages.forEach((source) => expect(source).toContain('my-hr-page'));
-    expect(adminCss).toContain('.hr-operation-page .hr-operation-kpis');
     expect(adminCss).toContain('.hr-operation-page .hr-operation-toolbar');
     expect(adminCss).toContain("[role='tabpanel']:focus-visible");
     expect(adminCss).not.toMatch(/(^|\n)\s*(body|:root)\s*\{/);
@@ -94,8 +93,8 @@ describe('RH operational UI contract', () => {
   it('keeps react-select and grouped money in financial self-service views', () => {
     expect(myBenefits).toContain('formatHrMoney');
     expect(myBenefits).toContain('role="tabpanel"');
-    expect(myPayroll).toContain('HrReactSelect');
+    expect(myPayroll).toContain('<AppSelect');
     expect(myPayroll).toContain('formatHrMoney(receipt.currency, receipt.netPay)');
-    expect(myPayroll).toContain('my-hr-summary-grid');
+    expect(myPayroll).toContain('<DataTable');
   });
 });

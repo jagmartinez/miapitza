@@ -1,7 +1,7 @@
+import { Button } from '@/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Camera, CameraOff, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { HrAttendanceChallenge, HrFaceCaptureEvidence } from '../../types/hr-attendance';
-import Button from '../Button';
 
 interface CameraCaptureProps {
     onCapture: (evidence: HrFaceCaptureEvidence | null) => void;
@@ -348,8 +348,8 @@ export default function CameraCapture({
             <div className="hr-evidence-actions">
                 {(state === 'IDLE' || state === 'ERROR') && <Button type="button" variant="secondary" onClick={() => void startCamera()} disabled={disabled}><Camera size={17} /> Activar cámara</Button>}
                 {state === 'REQUESTING' && <Button type="button" variant="secondary" disabled>Solicitando permiso…</Button>}
-                {state === 'LIVE' && <Button type="button" onClick={() => void captureSequence()} disabled={disabled}><Camera size={17} /> Comenzar prueba guiada</Button>}
-                {state === 'CAPTURING' && <Button type="button" disabled>Prueba de vida en curso…</Button>}
+                {state === 'LIVE' && <Button variant="primary" type="button" onClick={() => void captureSequence()} disabled={disabled}><Camera size={17} /> Comenzar prueba guiada</Button>}
+                {state === 'CAPTURING' && <Button variant="primary" type="button" disabled>Prueba de vida en curso…</Button>}
                 {state === 'CAPTURED' && <Button type="button" variant="secondary" onClick={() => void startCamera()} disabled={disabled}><RefreshCw size={17} /> Repetir secuencia</Button>}
             </div>
         </section>

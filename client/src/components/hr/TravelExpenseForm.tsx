@@ -1,8 +1,7 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { FileCheck2 } from 'lucide-react';
-import Button from '../Button';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrTravelExpensePayload } from '../../types/hr-benefits';
 
@@ -62,7 +61,7 @@ export default function TravelExpenseForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={!online || saving || !confirmed}>
+          <Button variant="primary" type="submit" disabled={!online || saving || !confirmed}>
             {saving ? 'Registrando…' : 'Registrar gasto'}
           </Button>
         </>
@@ -70,15 +69,17 @@ export default function TravelExpenseForm({
     >
       <label>
         Categoría
-        <HrReactSelect
+        <AppSelect<string>
+          options={[
+            { value: 'ALIMENTACION', label: 'Alimentación' },
+            { value: 'TRANSPORTE', label: 'Transporte' },
+            { value: 'HOSPEDAJE', label: 'Hospedaje' },
+            { value: 'OTRO', label: 'Otro' },
+          ]}
           value={form.category}
-          onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-        >
-          <option value="ALIMENTACION">Alimentación</option>
-          <option value="TRANSPORTE">Transporte</option>
-          <option value="HOSPEDAJE">Hospedaje</option>
-          <option value="OTRO">Otro</option>
-        </HrReactSelect>
+          onChange={(next) => setForm((current) => ({ ...current, category: next ?? '' }))}
+          isClearable={false}
+        />
       </label>
       <label>
         Fecha
@@ -93,13 +94,15 @@ export default function TravelExpenseForm({
       </label>
       <label>
         Moneda
-        <HrReactSelect
+        <AppSelect<string>
+          options={[
+            { value: 'NIO', label: 'NIO' },
+            { value: 'USD', label: 'USD' },
+          ]}
           value={form.currency}
-          onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
-        >
-          <option value="NIO">NIO</option>
-          <option value="USD">USD</option>
-        </HrReactSelect>
+          onChange={(next) => setForm((current) => ({ ...current, currency: next ?? '' }))}
+          isClearable={false}
+        />
       </label>
       <label>
         Monto reclamado

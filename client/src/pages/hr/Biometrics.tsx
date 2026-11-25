@@ -14,8 +14,7 @@ import {
     ShieldCheck,
     Trash2,
 } from 'lucide-react';
-import { PageHeader } from '@/ui';
-import Button from '../../components/Button';
+import { Button, LoadErrorState, PageHeader } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -214,14 +213,7 @@ export default function Biometrics() {
             {!online && <OnlineOnlyNotice online={false} />}
 
             {loading && <LoadingSpinner text="Cargando estado biométrico…" />}
-            {!loading && error && !profile && (
-                <div className="state-placeholder hr-biometric-load-error" role="alert">
-                    <ShieldAlert size={44} aria-hidden="true" />
-                    <h2>No pudimos abrir tu biometría</h2>
-                    <p className="state-error">{error}</p>
-                    <Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} /> Reintentar</Button>
-                </div>
-            )}
+            {!loading && error && !profile && <LoadErrorState message={error} onRetry={() => void load()} />}
 
             {!loading && profile && policy && statusCopy && (
                 <div className="hr-biometric-workspace">
@@ -297,7 +289,7 @@ export default function Biometrics() {
                                         <p>{profile.status === 'ACTIVE' ? 'No necesitas repetirlo. Puedes revocar el consentimiento desde el estado superior.' : 'El reto dura pocos minutos y no almacena evidencia en este dispositivo.'}</p>
                                     </div>
                                     {profile.status !== 'ACTIVE' && profile.status !== 'PENDING' && (
-                                        <Button onClick={() => void beginEnrollment()} disabled={!online || saving || profile.canEnroll === false}>
+                                        <Button variant="primary" onClick={() => void beginEnrollment()} disabled={!online || saving || profile.canEnroll === false}>
                                             <Fingerprint size={17} /> {saving ? 'Creando reto…' : 'Iniciar enrolamiento'}
                                         </Button>
                                     )}
@@ -333,9 +325,9 @@ export default function Biometrics() {
                                     <div className="hr-biometric-actions">
                                         <Button variant="ghost" onClick={cancelEnrollment} disabled={saving}>Cancelar</Button>
                                         {error?.includes('expiró') ? (
-                                            <Button onClick={() => void beginEnrollment()} disabled={!online || saving}><RefreshCw size={16} /> Crear reto nuevo</Button>
+                                            <Button variant="primary" onClick={() => void beginEnrollment()} disabled={!online || saving}><RefreshCw size={16} /> Crear reto nuevo</Button>
                                         ) : (
-                                            <Button onClick={() => void enroll()} disabled={!online || saving || !faceEvidence || !consent}>
+                                            <Button variant="primary" onClick={() => void enroll()} disabled={!online || saving || !faceEvidence || !consent}>
                                                 <ShieldCheck size={17} /> {saving ? 'Enrolando en servidor…' : 'Confirmar enrolamiento'}
                                             </Button>
                                         )}

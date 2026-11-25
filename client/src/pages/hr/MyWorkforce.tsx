@@ -11,8 +11,7 @@ import {
   RefreshCw,
   WalletCards,
 } from 'lucide-react';
-import { PageHeader, FullScreenModal } from '@/ui';
-import Button from '../../components/Button';
+import { PageHeader, FullScreenModal, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
@@ -266,7 +265,7 @@ export default function MyWorkforce() {
               >
                 <FilePenLine size={16} /> Corrección
               </Button>
-              <Button onClick={() => setPanel({ kind: 'leave' })} disabled={!online || leaveTypes.length === 0} title={leaveTypes.length === 0 ? 'Los tipos de permiso no están disponibles' : undefined}>
+              <Button variant="primary" onClick={() => setPanel({ kind: 'leave' })} disabled={!online || leaveTypes.length === 0} title={leaveTypes.length === 0 ? 'Los tipos de permiso no están disponibles' : undefined}>
                 <CalendarPlus size={16} /> Permiso
               </Button>
             </div>
@@ -349,7 +348,7 @@ export default function MyWorkforce() {
                 </h2>
                 <p>Minutos calculados por el servidor, no por este dispositivo.</p>
               </div>
-              <Button size="sm" onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>
+              <Button variant="primary" size="sm" onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>
                 <Plus size={15} /> Horas extra
               </Button>
             </div>
@@ -558,7 +557,7 @@ export default function MyWorkforce() {
                       <div className="hr-record-actions">
                         <WorkforceStatusPill status={item.status} />
                         {item.status === 'DRAFT' && (
-                          <Button
+                          <Button variant="primary"
                             size="sm"
                             onClick={() => void submitLeave(item)}
                             disabled={!online || saving}

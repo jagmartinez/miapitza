@@ -1,7 +1,6 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
-import Button from '../Button';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrAttendanceCorrectionPayload, HrCorrectionType } from '../../types/hr-workforce';
@@ -78,47 +77,54 @@ export default function AttendanceCorrectionForm({
       footer={
         <>
           {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>}
-          <Button type="submit" disabled={!online || saving || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar corrección'}</Button>
+          <Button variant="primary" type="submit" disabled={!online || saving || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar corrección'}</Button>
         </>
       }
     >
       {users && (
         <label>
           Usuario
-          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
-            <option value="">Seleccionar…</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name} · @{user.username}
-              </option>
-            ))}
-          </HrReactSelect>
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Seleccionar…' },
+              ...users.map((user) => ({
+                value: String(user.id),
+                label: `${user.name} · @${user.username}`,
+              })),
+            ]}
+            value={userId}
+            onChange={(next) => setUserId(next ?? '')}
+            isClearable={false}
+          />
         </label>
       )}
       <label>
         Tipo de corrección
-        <HrReactSelect value={type} onChange={(event) => setType(event.target.value as HrCorrectionType)}>
-          {TYPE_OPTIONS.filter(
-            (option) => option.value !== 'ASSIGN_BRANCH' || branches !== undefined
-          ).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </HrReactSelect>
+        <AppSelect<string>
+          options={[
+            ...TYPE_OPTIONS.filter(
+              (option) => option.value !== 'ASSIGN_BRANCH' || branches !== undefined
+            ).map((option) => ({ value: String(option.value), label: option.label })),
+          ]}
+          value={type}
+          onChange={(next) => setType((next ?? '') as HrCorrectionType)}
+          isClearable={false}
+        />
       </label>
       {type === 'ADD_PUNCH' && (
         <label>
           Acción del marcaje
-          <HrReactSelect
+          <AppSelect<string>
+            options={[
+              { value: 'CHECK_IN', label: 'Entrada' },
+              { value: 'BREAK_START', label: 'Inicio de descanso' },
+              { value: 'BREAK_END', label: 'Fin de descanso' },
+              { value: 'CHECK_OUT', label: 'Salida' },
+            ]}
             value={requestedAction}
-            onChange={(event) => setRequestedAction(event.target.value as HrAttendanceAction)}
-          >
-            <option value="CHECK_IN">Entrada</option>
-            <option value="BREAK_START">Inicio de descanso</option>
-            <option value="BREAK_END">Fin de descanso</option>
-            <option value="CHECK_OUT">Salida</option>
-          </HrReactSelect>
+            onChange={(next) => setRequestedAction((next ?? '') as HrAttendanceAction)}
+            isClearable={false}
+          />
         </label>
       )}
       <label>
@@ -147,18 +153,18 @@ export default function AttendanceCorrectionForm({
       {type === 'ASSIGN_BRANCH' && (
         <label>
           Sucursal solicitada
-          <HrReactSelect
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Seleccionar…' },
+              ...(branches ?? []).map((branch) => ({
+                value: String(branch.id),
+                label: branch.name,
+              })),
+            ]}
             value={requestedBranchId}
-            onChange={(event) => setRequestedBranchId(event.target.value)}
-            required
-          >
-            <option value="">Seleccionar…</option>
-            {(branches ?? []).map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
-          </HrReactSelect>
+            onChange={(next) => setRequestedBranchId(next ?? '')}
+            isClearable={false}
+          />
         </label>
       )}
       <label className="span-full">

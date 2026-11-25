@@ -1,6 +1,7 @@
-import { formatNumber } from '@/ui';
+import { Badge, formatNumber } from '@/ui';
 import React, { memo, useRef } from 'react';
 import type { MenuItem } from '../types';
+import type { MenuAvailabilityStatus } from '../services/posAvailability';
 
 interface POSProductCardProps {
     item: MenuItem;
@@ -8,11 +9,13 @@ interface POSProductCardProps {
     onContextMenu: (e: React.MouseEvent, item: MenuItem) => void;
     onQuantityEdit?: (item: MenuItem) => void;
     currencySymbol?: string;
+    /** Aviso de existencia; solo informa, nunca bloquea la venta. Ausente = sin dato. */
+    availability?: MenuAvailabilityStatus | null;
 }
 
 const LONG_PRESS_MS = 500;
 
-const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, currencySymbol = '$' }: POSProductCardProps) => {
+const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, currencySymbol = '$', availability = null }: POSProductCardProps) => {
     const hasImage = item.images && item.images.length > 0;
     const backgroundImage = hasImage ? `url(${item.images?.[0]?.imageUrl})` : 'none';
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,6 +66,13 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
                     style={{ backgroundImage }}
                 />
             )}
+            {(availability === 'OUT' || availability === 'LOW') && (
+                <span className="product-stock-badge">
+                    <Badge tone={availability === 'OUT' ? 'danger' : 'warning'} dot>
+                        {availability === 'OUT' ? 'Agotado' : 'Pocas'}
+                    </Badge>
+                </span>
+            )}
             <div className="product-info-overlay">
                 <div className="product-name-new">{item.name}</div>
                 <div className="product-price-new">{currencySymbol}{formatNumber(Number(item.price))}</div>
@@ -74,7 +84,8 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
         prevProps.item.name === nextProps.item.name &&
         prevProps.item.price === nextProps.item.price &&
         prevProps.item.images?.[0]?.imageUrl === nextProps.item.images?.[0]?.imageUrl &&
-        prevProps.currencySymbol === nextProps.currencySymbol;
+        prevProps.currencySymbol === nextProps.currencySymbol &&
+        prevProps.availability === nextProps.availability;
 });
 
 export default POSProductCard;

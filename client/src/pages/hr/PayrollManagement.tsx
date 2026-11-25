@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, StatCard, formatMoney, formatNumber, formatPercent } from '@/ui';
-import Button from '../../components/Button';
+import { DataTable, FullScreenModal, PageHeader, StatCard, formatMoney, formatNumber, formatPercent, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
-import HrReactSelect from '../../components/hr/HrReactSelect';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import PayrollComponentForm from '../../components/hr/PayrollComponentForm';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
@@ -401,7 +399,7 @@ export default function PayrollManagement() {
           <button type="button" role="tab" id="payroll-tab-regular" aria-controls="payroll-panel-regular" aria-selected={activeKind === 'REGULAR'} className={activeKind === 'REGULAR' ? 'active' : ''} onClick={() => { setActiveKind('REGULAR'); setSelected(null); }}><Receipt size={17} /> Nómina ordinaria <small>{regularRuns.length}</small></button>
           <button type="button" role="tab" id="payroll-tab-aguinaldo" aria-controls="payroll-panel-aguinaldo" aria-selected={activeKind === 'AGUINALDO'} className={activeKind === 'AGUINALDO' ? 'active' : ''} onClick={() => { setActiveKind('AGUINALDO'); setSelected(null); }}><Gift size={17} /> Aguinaldo <small>{aguinaldoRuns.length}</small></button>
         </div>
-        <Button onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!online || !operationReady}><Plus size={16} /> {activeKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'}</Button>
+        <Button variant="primary" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!online || !operationReady}><Plus size={16} /> {activeKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'}</Button>
       </div>
 
       {!operationReady && !loading && (
@@ -426,7 +424,20 @@ export default function PayrollManagement() {
               </div>
               <div className="payroll-run-register-tools">
                 <label htmlFor="payroll-run-search">Buscar código o periodo<div className="payroll-run-search"><Search size={15} aria-hidden="true" /><input id="payroll-run-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Ej. 2026-Q1" /></div></label>
-                <label>Estado<HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos los estados</option>{(Object.keys(STATUS_LABELS) as HrPayrollRun['status'][]).map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}</HrReactSelect></label>
+                <label>Estado<AppSelect<string>
+                               options={[
+                                 { value: '', label: 'Todos los estados' },
+                                 ...(
+                                   Object.keys(STATUS_LABELS) as HrPayrollRun['status'][]
+                                 ).map((value) => ({
+                                   value: String(value),
+                                   label: STATUS_LABELS[value],
+                                 })),
+                               ]}
+                               value={status}
+                               onChange={(next) => setStatus(next ?? '')}
+                               isClearable={false}
+                             /></label>
                 {activeKind === 'REGULAR' && <Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'period' })}><FilePlus2 size={15} /> Periodos</Button>}
               </div>
             </header>
@@ -438,7 +449,7 @@ export default function PayrollManagement() {
               resetKey={`${activeKind}|${searchQuery}|${status}`}
               minWidth="64rem"
               rowTone={(run) => (selected?.id === run.id && selected.kind === run.kind ? 'primary' : undefined)}
-              empty={<div className="payroll-operation-empty-list"><strong>No hay corridas que coincidan con los filtros.</strong><span>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</span>{runs.length === 0 && <Button size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}</div>}
+              empty={<div className="payroll-operation-empty-list"><strong>No hay corridas que coincidan con los filtros.</strong><span>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</span>{runs.length === 0 && <Button variant="primary" size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}</div>}
               columns={[
                 { key: 'code', header: 'Corrida', width: '1.4fr', render: (run) => <><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></> },
                 { key: 'period', header: 'Periodo', width: '1fr', render: (run) => runPeriodLabel(run) },
@@ -489,7 +500,7 @@ export default function PayrollManagement() {
         {createPanel?.kind === 'component' && selected && <PayrollComponentForm users={lookups.users ?? []} concepts={selectedPaymentConcepts} incomeTaxApplicability={selectedIncomeTaxApplicability} online={online} saving={saving} onSubmit={saveComponent} onCancel={() => { componentOperationKey.current = null; setCreatePanel(null); }} />}
         {createPanel?.kind === 'rule' && <PayrollRuleForm initial={createPanel.rule} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={saveRule} onCancel={() => setCreatePanel(null)} />}
         {createPanel?.kind === 'period' && (
-          <HrModalFormShell ariaLabel="Crear periodo de nómina" tabLabel="1. Periodo" sectionTitle="Define las fechas que se pagarán" icon={<FilePlus2 size={18} />} formClassName="hr-payroll-form" notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(event) => void savePeriod(event)} footer={<><Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>Cancelar</Button><Button type="submit" disabled={!online || saving || !periodForm.code.trim() || !periodForm.reason.trim()}>{saving ? 'Creando…' : 'Crear y continuar'}</Button></>}>
+          <HrModalFormShell ariaLabel="Crear periodo de nómina" tabLabel="1. Periodo" sectionTitle="Define las fechas que se pagarán" icon={<FilePlus2 size={18} />} formClassName="hr-payroll-form" notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(event) => void savePeriod(event)} footer={<><Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>Cancelar</Button><Button variant="primary" type="submit" disabled={!online || saving || !periodForm.code.trim() || !periodForm.reason.trim()}>{saving ? 'Creando…' : 'Crear y continuar'}</Button></>}>
             <label>Código<input value={periodForm.code} onChange={(event) => setPeriodForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="2026-Q15" required /></label>
             <label>Desde<input type="date" value={periodForm.dateFrom} onChange={(event) => setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))} required /></label>
             <label>Hasta<input type="date" min={periodForm.dateFrom} value={periodForm.dateTo} onChange={(event) => setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))} required /></label>

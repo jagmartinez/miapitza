@@ -7,7 +7,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { usersAPI, reportsAPI } from '../services/api';
 import {
     Badge, Button, DataTable, EmptyState, Field, FormGrid, Input, LoadErrorState, PageContent, PageHeader, StatCard, Tabs,
-    formatMoney, toneFor, type Column,
+    formatMoney, formatNumber, toneFor, type Column,
 } from '@/ui';
 import { TrendChart } from '@/ui/charts';
 import {
@@ -315,7 +315,7 @@ export default function Profile() {
                         <div><dt>Empleado</dt><dd>{user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}`}</dd></div>
                         <div className="profile-hr-vacation-balance"><dt>Saldo de vacaciones</dt><dd>{myHrLoading ? 'Cargando…' : vacationBalance ? `${formatHrNumber(vacationBalance.available)} ${vacationBalance.unit.toLowerCase()}` : 'Sin saldo disponible'}</dd></div>
                         <div><dt>Solicitudes en espera</dt><dd>{myHrLoading ? '…' : myPendingRequests ?? 'No disponible'}</dd></div>
-                        <div><dt>Horas extra aprobadas</dt><dd>{myHrLoading ? '…' : myApprovedOvertimeMinutes != null ? `${formatHrNumber(myApprovedOvertimeMinutes)} min` : 'No disponible'}</dd></div>
+                        <div><dt>Horas extra aprobadas</dt><dd>{myHrLoading ? '…' : myApprovedOvertimeMinutes != null ? `${formatNumber(myApprovedOvertimeMinutes, 0)} min` : 'No disponible'}</dd></div>
                         <div><dt>Estado laboral</dt><dd>{user?.employee?.status ?? 'Vinculado'}</dd></div>
                         <div><dt>Sucursal</dt><dd>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</dd></div>
                     </dl>
