@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import Pagination from '../../components/Pagination';
 import HrReactSelect from '../../components/hr/HrReactSelect';
 import { benefitsGovernanceClient } from '../../components/hr/benefitsGovernanceClient';
 import { getBenefitsErrorMessage } from '../../components/hr/benefitsClient';
@@ -742,7 +741,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 ariaLabel="Liquidaciones"
                 rows={settlements}
                 rowKey={(row) => row.id}
-                pagination={{ mode: 'client' }}
+                pagination={{ mode: 'server', page: pagination.page, pageSize: pagination.pageSize, total: pagination.total, onChange: (nextPage) => setPage(nextPage) }}
+                pageSizeOptions={[pagination.pageSize]}
                 minWidth="48rem"
                 empty={<div className="hr-admin-empty">
                           <strong>No hay liquidaciones en este filtro</strong>
@@ -791,15 +791,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                             )}
                           </div>) },
                 ]}
-              />
-              <Pagination
-                page={pagination.page}
-                totalPages={pagination.totalPages}
-                totalItems={pagination.total}
-                pageSize={pagination.pageSize}
-                onPageChange={setPage}
-                alwaysShow
-                emptyLabel="Sin liquidaciones"
               />
             </div>
           </>
@@ -1082,7 +1073,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 ariaLabel="Políticas de beneficios"
                 rows={policies}
                 rowKey={(row) => row.id}
-                pagination={{ mode: 'client' }}
+                pagination={{ mode: 'server', page: policyPagination.page, pageSize: policyPagination.pageSize, total: policyPagination.total, onChange: (nextPage) => setPolicyPage(nextPage) }}
+                pageSizeOptions={[policyPagination.pageSize]}
                 minWidth="48rem"
                 empty={<div className="hr-admin-empty">
                           <strong>No hay políticas en este filtro</strong>
@@ -1141,15 +1133,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                             )}
                           </div>) },
                 ]}
-              />
-              <Pagination
-                page={policyPagination.page}
-                totalPages={policyPagination.totalPages}
-                totalItems={policyPagination.total}
-                pageSize={policyPagination.pageSize}
-                onPageChange={setPolicyPage}
-                alwaysShow
-                emptyLabel="Sin políticas"
               />
             </div>
           </>

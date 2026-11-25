@@ -13,11 +13,9 @@ import {
     UsersRound,
     WalletCards,
 } from 'lucide-react';
-import { PageHeader, FullScreenModal } from '@/ui';
+import { DataTable, FullScreenModal, PageHeader, Pagination, type Column } from '@/ui';
 import Button from '../../components/Button';
-import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import Pagination from '../../components/Pagination';
 import ViewToggle from '../../components/ViewToggle';
 import EmployeeForm from '../../components/hr/EmployeeForm';
 import HrFilterSelect from '../../components/hr/HrFilterSelect';
@@ -241,7 +239,7 @@ export default function Employees() {
         setBranchId('');
     };
 
-    const columns: CatalogColumn<HrEmployee>[] = [
+    const columns: Column<HrEmployee>[] = [
         {
             key: 'employee',
             header: 'Empleado',
@@ -273,7 +271,7 @@ export default function Employees() {
         {
             key: 'compensation',
             header: 'Compensación vigente',
-            align: 'right',
+            type: 'money',
             render: (employee) => {
                 const compensation = currentCompensation(employee);
                 if (employee.compensation === undefined) return <span className="cell-sub">Acceso restringido</span>;
@@ -292,7 +290,7 @@ export default function Employees() {
         {
             key: 'actions',
             header: 'Acciones',
-            align: 'right',
+            type: 'actions',
             render: (employee) => (
                 <div className="catalog-table-actions">
                     <button className="catalog-action-btn" type="button" onClick={() => navigate(`/rh/personal/${employee.id}`)} title="Ver expediente" aria-label={`Ver expediente de ${employee.legalName}`}><Eye size={16} /></button>
@@ -375,11 +373,14 @@ export default function Employees() {
             )}
 
             {!loading && !error && employees.length > 0 && viewMode === 'table' && (
-                <CatalogTable<HrEmployee>
+                <DataTable<HrEmployee>
                     rows={employees}
                     rowKey={(employee) => employee.id}
                     columns={columns}
-                    pagination={{ page, pageSize: 25, total: totalItems, onPageChange: setPage }}
+                    ariaLabel="Personal"
+                    pagination={{ mode: 'server', page, pageSize: 25, total: totalItems, onChange: (nextPage) => setPage(nextPage) }}
+                    pageSizeOptions={[25]}
+                    minWidth="72rem"
                     resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
                 />
             )}
@@ -426,7 +427,7 @@ export default function Employees() {
             )}
 
             {!loading && !error && viewMode === 'cards' && totalPages > 1 && (
-                <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={25} onPageChange={setPage} />
+                <Pagination page={page} pageSize={25} total={totalItems} pageSizeOptions={[25]} hidePageSize onChange={(nextPage) => setPage(nextPage)} />
             )}
 
             <FullScreenModal
