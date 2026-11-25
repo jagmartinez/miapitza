@@ -1,4 +1,8 @@
-/** Ingeniería de menú: popularidad × margen (mismas reglas que el reporte del servidor). */
+/**
+ * Ingeniería de menú: popularidad × margen.
+ * Difiere a propósito del reporte del servidor: aquí los platos sin costo conocido (N/D)
+ * quedan fuera de los promedios en vez de contar con costo 0, para no inflar el margen medio.
+ */
 export type MenuClass = 'ESTRELLA' | 'CABALLO' | 'PUZZLE' | 'PERRO' | 'SIN_VENTAS' | 'SIN_COSTO';
 
 export interface MenuSalesRow {

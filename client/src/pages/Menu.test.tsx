@@ -49,7 +49,7 @@ describe('Menu', () => {
 
   it('clasifica los platos en los 4 cuadrantes y muestra N/D donde falta el costo', async () => {
     mocks.engineering.mockResolvedValue({ data: { data: { items: [
-      eng(1, 100, 30, 90), eng(2, 50, 40, 80), eng(3, 120, 40, 10), eng(4, 40, 35, 5), eng(5, 30, 0, 12),
+      eng(1, 100, 30, 90), eng(2, 50, 40, 80), eng(3, 120, 40, 10), eng(4, 40, 35, 5), eng(5, 30, 0, 12), eng(6, 30, 12, 0),
     ] } } });
     render(<MemoryRouter><Menu /></MemoryRouter>);
     const table = await screen.findByRole('table', { name: 'Platos del menú' });
@@ -61,12 +61,14 @@ describe('Menu', () => {
     expect(within(rowOf('Sopa')).getByText('Perro')).toBeInTheDocument();
     expect(within(rowOf('Agua')).getByText('Sin receta')).toBeInTheDocument();
     expect(within(rowOf('Café')).getByText('Sin ventas')).toBeInTheDocument();
+    // Plato sin ventas con receta: muestra su costo, no N/D.
+    expect(within(rowOf('Café')).getByText('12.00')).toBeInTheDocument();
     // Sin receta: costo N/D, nunca 0.00.
     expect(within(rowOf('Agua')).getAllByText('N/D').length).toBeGreaterThan(0);
     expect(within(rowOf('Agua')).queryByText('0.00')).toBeNull();
     // Food cost = costo / precio.
     expect(within(rowOf('Pizza')).getByText('30.00 %')).toBeInTheDocument();
-    expect(mocks.engineering).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: expect.any(String), dateTo: expect.any(String) }));
+    expect(mocks.engineering).toHaveBeenCalledWith(expect.objectContaining({ includeUnsold: '1', dateFrom: expect.any(String), dateTo: expect.any(String) }));
   });
 
   it('si fallan los costos avisa con reintento y no muestra ceros', async () => {

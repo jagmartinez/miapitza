@@ -250,7 +250,7 @@ export default function Menu() {
     try {
       const to = new Date();
       const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const params: Record<string, string> = { dateFrom: formatLocalDateInput(from), dateTo: formatLocalDateInput(to) };
+      const params: Record<string, string> = { dateFrom: formatLocalDateInput(from), dateTo: formatLocalDateInput(to), includeUnsold: '1' };
       if (selectedBranch !== 'all') params.branchId = selectedBranch;
       const res = await reportsAPI.getMenuEngineering(params);
       const items = (res.data.data?.items ?? []) as EngineeringApiRow[];
@@ -877,7 +877,7 @@ export default function Menu() {
             render: (item) => {
               const row = costRow(item);
               if (row) return formatNumber(row.cost);
-              return nd(itemClass(item) === 'SIN_RECETA' ? 'El plato no tiene receta' : engineering ? 'Sin ventas en 30 días: el costo no se calculó' : 'No se pudo cargar el costo');
+              return nd(itemClass(item) === 'SIN_RECETA' ? 'El plato no tiene receta' : engineering ? 'No se pudo calcular el costo de la receta (revisa unidades y costos de los insumos)' : 'No se pudo cargar el costo');
             },
           },
           {

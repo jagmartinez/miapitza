@@ -85,6 +85,27 @@ describe('Production report physical scope', () => {
         expect(result.summary.totalRevenue).toBe(100);
     });
 
+    it('includeUnsold returns unsold dishes with cost and flags uncomputable costs without aborting', async () => {
+        jest.spyOn(prisma.orderItem, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.menuItem, 'findMany').mockResolvedValue([
+            { id: 1, name: 'Nuevo', price: 100, category: null, recipes: [{ quantity: 2, unit: 'unit', product: { id: 20, unit: 'unit' } }] },
+            { id: 2, name: 'Roto', price: 50, category: null, recipes: [{ quantity: 1, unit: 'xx', product: { id: 21, unit: 'unit' } }] }
+        ] as never);
+        jest.spyOn(UnitConversionService, 'convert').mockImplementation((async (productId: number, _c: number, qty: number) => {
+            if (productId === 21) throw new Error('sin conversión');
+            return { originalQuantity: qty, originalUnit: 'unit', baseQuantity: qty, baseUnit: 'unit', conversionFactor: 1 };
+        }) as never);
+        jest.spyOn(ProductionRecipeService, 'resolveProductUnitCost').mockResolvedValue(10);
+
+        const result = await ReportProductionService.getMenuEngineering(1, { includeUnsold: true });
+
+        expect(result.items).toEqual(expect.arrayContaining([
+            expect.objectContaining({ menuItemId: 1, qtySold: 0, cost: 20, margin: 80, costError: false }),
+            expect.objectContaining({ menuItemId: 2, qtySold: 0, cost: 0, costError: true })
+        ]));
+        await expect(ReportProductionService.getMenuEngineering(1)).rejects.toThrow('sin conversión');
+    });
+
     it('subtracts credited quantities from purchase demand projection', async () => {
         jest.spyOn(prisma.orderItem, 'findMany').mockResolvedValue([{
             menuItemId: 10,
