@@ -20,3 +20,6 @@ export { SegmentedControl } from './forms/SegmentedControl';
 export { FormSection } from './forms/FormSection';
 export { FormGrid } from './forms/FormGrid';
 export { DateInput } from './forms/DateInput';
+export { AppSelect } from './forms/AppSelect';
+export type { AppSelectProps, Opt } from './forms/AppSelect';
+export { appSelectStyles } from './forms/appSelectStyles';

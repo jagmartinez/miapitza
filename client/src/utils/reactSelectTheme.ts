@@ -133,3 +133,5 @@ export function mergeReactSelectStyles<
 
     return merged as StylesConfig<Option, IsMulti, Group>;
 }
+
+export { appSelectStyles } from '../ui/forms/appSelectStyles';
