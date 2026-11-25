@@ -101,7 +101,7 @@ export class ReportProductionController {
     static async getMenuEngineering(req: Request, res: Response) {
         try {
             const companyId = req.user!.companyId;
-            const filters = parseFilters(req);
+            const filters = { ...parseFilters(req), includeUnsold: req.query.includeUnsold === '1' };
             const data = await ReportProductionService.getMenuEngineering(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
