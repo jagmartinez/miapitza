@@ -26,6 +26,12 @@ const publishedShift = {
     status: 'SCHEDULED',
 };
 
+const activeBranchAssignment = {
+    branchId: 10,
+    effectiveFrom: new Date('2025-01-01T00:00:00Z'),
+    effectiveTo: null,
+};
+
 describe('HR weekly schedule invariants', () => {
     afterEach(() => { jest.restoreAllMocks(); });
 
@@ -45,7 +51,10 @@ describe('HR weekly schedule invariants', () => {
 
     it('converts local cross-midnight input with the branch timezone before persisting UTC', async () => {
         jest.spyOn(prisma.branch, 'findMany').mockResolvedValue([{ id: 10, timezone: 'America/Managua' }] as never);
-        jest.spyOn(prisma.user, 'findMany').mockResolvedValue([{ id: 8, branchId: 10, allowedBranches: [] }] as never);
+        jest.spyOn(prisma.user, 'findMany').mockResolvedValue([{
+            id: 8, branchId: 10, allowedBranches: [],
+            employee: { branchAssignments: [activeBranchAssignment] },
+        }] as never);
         jest.spyOn(prisma.jobPosition, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(prisma.shiftTemplate, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(prisma.weeklySchedule, 'findFirst').mockResolvedValue(null as never);
@@ -78,7 +87,10 @@ describe('HR weekly schedule invariants', () => {
 
     it('rejects a local time that does not exist during a DST transition', async () => {
         jest.spyOn(prisma.branch, 'findMany').mockResolvedValue([{ id: 10, timezone: 'America/New_York' }] as never);
-        jest.spyOn(prisma.user, 'findMany').mockResolvedValue([{ id: 8, branchId: 10, allowedBranches: [] }] as never);
+        jest.spyOn(prisma.user, 'findMany').mockResolvedValue([{
+            id: 8, branchId: 10, allowedBranches: [],
+            employee: { branchAssignments: [activeBranchAssignment] },
+        }] as never);
         jest.spyOn(prisma.jobPosition, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(prisma.shiftTemplate, 'findMany').mockResolvedValue([] as never);
 
@@ -110,6 +122,23 @@ describe('HR weekly schedule invariants', () => {
         }, 3)).rejects.toThrow('paidBreak debe ser booleano');
     });
 
+    it('rejects a shift without an effective RH branch assignment', async () => {
+        jest.spyOn(prisma.branch, 'findMany').mockResolvedValue([{ id: 10, timezone: 'America/Managua' }] as never);
+        jest.spyOn(prisma.user, 'findMany').mockResolvedValue([{
+            id: 8, branchId: 10, allowedBranches: [], employee: { branchAssignments: [] },
+        }] as never);
+        jest.spyOn(prisma.jobPosition, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.shiftTemplate, 'findMany').mockResolvedValue([] as never);
+
+        await expect(WeeklyScheduleService.createDraft(4, {
+            weekStart: '2026-07-13',
+            shifts: [{
+                userId: 8, branchId: 10, date: '2026-07-14',
+                startTime: '08:00', endTime: '16:00',
+            }],
+        }, 3)).rejects.toMatchObject({ statusCode: 409 });
+    });
+
     it('keeps published schedules immutable', async () => {
         jest.spyOn(WeeklyScheduleService, 'getById').mockResolvedValue({
             id: 9, companyId: 4, status: 'PUBLISHED', revision: 2,
@@ -131,7 +160,10 @@ describe('HR weekly schedule invariants', () => {
         } as never);
         jest.spyOn(prisma.scheduledShift, 'findMany').mockResolvedValue([] as never);
         const tx = {
-            user: { findMany: jest.fn().mockResolvedValue([{ id: 8, branchId: 10, allowedBranches: [] }] as never) },
+            user: { findMany: jest.fn().mockResolvedValue([{
+                id: 8, branchId: 10, allowedBranches: [],
+                employee: { branchAssignments: [activeBranchAssignment] },
+            }] as never) },
             scheduledShift: { findMany: jest.fn().mockResolvedValue([] as never) },
             weeklySchedule: {
                 updateMany: jest.fn().mockResolvedValue({ count: 0 } as never),
@@ -264,6 +296,7 @@ describe('HR weekly schedule invariants', () => {
                 deleteMany: jest.fn().mockResolvedValue({ count: 2 } as never),
             },
             user: { count: jest.fn().mockResolvedValue(2 as never) },
+            employee: { findFirst: jest.fn().mockResolvedValue({ id: 1 } as never) },
             auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
         };
         jest.spyOn(prisma, '$transaction').mockImplementation(
@@ -279,6 +312,32 @@ describe('HR weekly schedule invariants', () => {
             ]),
         }));
         expect(tx.shiftSwapReservation.deleteMany).toHaveBeenCalledWith({ where: { swapRequestId: 44, companyId: 4 } });
+    });
+
+    it('revalidates effective RH branch assignments before approving a swap', async () => {
+        const futureShift = {
+            ...publishedShift,
+            startAt: new Date('2030-07-14T14:00:00Z'),
+            endAt: new Date('2030-07-14T22:00:00Z'),
+        };
+        const tx = {
+            shiftSwapRequest: { findFirst: jest.fn().mockResolvedValue({
+                id: 44, companyId: 4, status: 'ACCEPTED', requesterShiftId: 20, offeredShiftId: null,
+                scheduleId: 9, requestedById: 8, targetUserId: 99,
+                requesterShift: { ...futureShift, assignmentOverride: null }, offeredShift: null,
+            } as never) },
+            shiftSwapReservation: { count: jest.fn().mockResolvedValue(1 as never) },
+            user: { count: jest.fn().mockResolvedValue(2 as never) },
+            employee: { findFirst: jest.fn().mockResolvedValue(null as never) },
+            shiftAssignmentOverride: { createMany: jest.fn() },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never,
+        );
+
+        await expect(ShiftSwapService.approve(44, 4, 3)).rejects.toMatchObject({ statusCode: 409 });
+
+        expect(tx.shiftAssignmentOverride.createMany).not.toHaveBeenCalled();
     });
 
     it('refuses to approve a swap when its published schedule is no longer current', async () => {

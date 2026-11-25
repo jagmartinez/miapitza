@@ -1,18 +1,41 @@
+export type ProductCostResolution = {
+    value: number;
+    known: boolean;
+    source: 'AVERAGE' | 'REFERENCE' | 'MISSING';
+    anomaly: 'PRODUCT_COST_MISSING' | null;
+};
+
 /**
- * Returns the operational unit cost without pretending a reference price was a
- * received purchase. A positive weighted-average cost always wins; otherwise
- * the catalog reference cost is used. Zero/invalid values do not mask a valid
- * fallback.
+ * Resolve cost and its quality separately. Positive legacy values remain
+ * compatible and are considered known; an explicit flag is required for zero.
  */
-export function effectiveUnitCost(
+export function resolveEffectiveUnitCost(
     currentAverageCost: unknown,
-    referenceCost: unknown
-): number {
+    referenceCost: unknown,
+    signals?: { averageCostKnown?: unknown; referenceCostKnown?: unknown }
+): ProductCostResolution {
     const average = Number(currentAverageCost);
-    if (Number.isFinite(average) && average > 0) return average;
+    const averageKnown = signals?.averageCostKnown === true
+        || (Number.isFinite(average) && average > 0);
+    if (averageKnown && Number.isFinite(average) && average >= 0) {
+        return { value: average, known: true, source: 'AVERAGE', anomaly: null };
+    }
 
     const reference = Number(referenceCost);
-    if (Number.isFinite(reference) && reference > 0) return reference;
+    const referenceKnown = signals?.referenceCostKnown === true
+        || (Number.isFinite(reference) && reference > 0);
+    if (referenceKnown && Number.isFinite(reference) && reference >= 0) {
+        return { value: reference, known: true, source: 'REFERENCE', anomaly: null };
+    }
 
-    return 0;
+    return { value: 0, known: false, source: 'MISSING', anomaly: 'PRODUCT_COST_MISSING' };
+}
+
+/** Backward-compatible numeric projection for UI/read-only callers. */
+export function effectiveUnitCost(
+    currentAverageCost: unknown,
+    referenceCost: unknown,
+    signals?: { averageCostKnown?: unknown; referenceCostKnown?: unknown }
+): number {
+    return resolveEffectiveUnitCost(currentAverageCost, referenceCost, signals).value;
 }

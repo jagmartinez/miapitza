@@ -59,29 +59,53 @@ export const hasAnyRole = (user: User | null | undefined, roles: string[]): bool
     return userRoles.some((role) => roles.includes(role));
 };
 
+/**
+ * Effective permissions are authoritative when supplied by the API. The role
+ * fallback only supports sessions created against a pre-permission backend.
+ */
+export const hasPermission = (
+    user: User | null | undefined,
+    permission: string,
+    legacyRoles: string[] = [],
+): boolean => {
+    if (!user) return false;
+    if (Array.isArray(user.permissions)) {
+        return user.permissions.includes(permission);
+    }
+    return hasAnyRole(user, legacyRoles);
+};
+
 /** POST /orders/:id/send-to-kitchen */
 export const canSendOrderToKitchen = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO]);
+    hasPermission(user, 'orders.edit', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO]);
 
 /** POST /orders/:id/cancel */
 export const canCancelOrder = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO]);
+    hasPermission(user, 'orders.cancel', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO]);
 
 /** POST /payments (registrar cobro) */
 export const canCreatePayment = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CAJERO]);
+    hasPermission(user, 'payments.process', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CAJERO]);
 
 /** DELETE /payments/:id (reverso financiero inmutable) */
 export const canReversePayment = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN]);
+    hasPermission(user, 'payments.reverse', [ROLES.SUPERADMIN, ROLES.ADMIN]);
+
+/** POST /invoices/:id/cancel */
+export const canCancelInvoice = (user: User | null | undefined): boolean =>
+    hasPermission(user, 'invoices.cancel', [ROLES.SUPERADMIN, ROLES.ADMIN]);
+
+/** POST /invoices/:id/credit-note */
+export const canIssueCreditNote = (user: User | null | undefined): boolean =>
+    hasPermission(user, 'invoices.credit', [ROLES.SUPERADMIN, ROLES.ADMIN]);
 
 /** PATCH items start/finish, POST report-problem */
 export const canOperateKitchenLineItems = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.COCINA, ROLES.CHEF]);
+    hasPermission(user, 'kds.manage', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.COCINA, ROLES.CHEF]);
 
 /** PATCH /orders/:id/status. Kitchen-only roles must finish line items instead. */
 export const canUpdateWholeOrderStatus = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.CAJERO]);
+    hasPermission(user, 'orders.edit', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.CAJERO]);
 
 export const getPrimaryRoleName = (user?: User | null): string => {
     return getUserRoleNames(user)[0] || user?.role?.name || '';

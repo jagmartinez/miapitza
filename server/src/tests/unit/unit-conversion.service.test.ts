@@ -189,3 +189,56 @@ describe('UnitConversionService.convertWithCost — base cost', () => {
         ).rejects.toThrow(/Factor de conversión inválido/i);
     });
 });
+
+describe('UnitConversionService immutable physical contracts', () => {
+    function contractDb(options?: { references?: number; baseUnitId?: number | null }) {
+        const count = jest.fn(async () => 0);
+        const db = {
+            product: {
+                findFirst: jest.fn(async () => ({
+                    unit: 'g',
+                    baseUnitId: options && 'baseUnitId' in options ? options.baseUnitId : 1,
+                    allowedUnits: [{ unitId: 2, conversionFactor: 1000 }]
+                })),
+                count
+            },
+            unitOfMeasure: { findFirst: jest.fn(async () => ({ abbreviation: 'g' })) },
+            productUnit: { count },
+            recipe: { count },
+            modifier: { count },
+            productionRecipe: { count },
+            productionRecipeComponent: { count },
+            productionOrderItem: { count },
+            stock: { count: jest.fn(async () => options?.references ?? 0) },
+            inventoryMovement: { count },
+            inventoryBatch: { count },
+            purchaseOrderItem: { count },
+            productionOrder: { count }
+        };
+        return db as unknown as Tx;
+    }
+
+    it('blocks changing an existing factor after physical history exists', async () => {
+        await expect(UnitConversionService.assertProductUnitContractCanChange(
+            7,
+            1,
+            1,
+            [{ unitId: 2, conversionFactor: 500 }],
+            contractDb({ references: 1 })
+        )).rejects.toThrow(/reinterpretar/i);
+    });
+
+    it('allows pinning an equivalent legacy abbreviation without reinterpreting history', async () => {
+        const db = contractDb({ references: 1, baseUnitId: null });
+
+        await expect(UnitConversionService.assertProductUnitContractCanChange(
+            7,
+            1,
+            1,
+            [{ unitId: 2, conversionFactor: 1000 }],
+            db
+        )).resolves.toBeUndefined();
+
+        expect((db.stock.count as ReturnType<typeof jest.fn>)).not.toHaveBeenCalled();
+    });
+});

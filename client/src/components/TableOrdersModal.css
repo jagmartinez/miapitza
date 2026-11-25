@@ -4,8 +4,8 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background: var(--dialog-overlay, rgba(15, 23, 42, 0.66));
+    backdrop-filter: blur(8px) saturate(0.85);
     display: flex;
     align-items: stretch;
     justify-content: flex-end;
@@ -14,13 +14,15 @@
 }
 
 .orders-modal {
-    background: var(--color-surface);
+    position: relative;
+    background: var(--dialog-panel-bg, var(--color-surface));
     width: 90%;
     max-width: 560px;
     height: 100vh;
     display: flex;
     flex-direction: column;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+    border-left: 1px solid var(--dialog-panel-border, var(--color-border));
+    box-shadow: var(--dialog-panel-shadow, -4px 0 20px rgba(0, 0, 0, 0.3));
     animation: slideInRight 0.3s ease-out;
 }
 
@@ -40,7 +42,8 @@
     justify-content: space-between;
     align-items: center;
     padding: var(--spacing-xl);
-    border-bottom: 2px solid var(--color-border);
+    border-bottom: 1px solid var(--dialog-panel-border, var(--color-border));
+    background: var(--dialog-header-bg, var(--color-surface));
 }
 
 .header-title h2 {
@@ -62,16 +65,22 @@
     width: 36px;
     height: 36px;
     border-radius: var(--radius-md);
-    background: var(--color-background);
-    border: 1px solid var(--color-border);
+    background: var(--dialog-muted-bg, var(--color-background));
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
     color: var(--color-text-secondary);
     cursor: pointer;
     transition: all var(--transition-fast);
 }
 
 .close-btn-orders:hover {
-    background: var(--color-danger);
-    color: white;
+    background: var(--color-surface-hover);
+    border-color: var(--color-text-secondary);
+    color: var(--color-text);
+}
+
+.close-btn-orders:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
 }
 
 /* Summary Bar (Removed in favor of Tabs) */
@@ -80,7 +89,7 @@
 }
 
 /* Tabs Navigation (New) */
-.modal-tabs {
+.orders-modal .modal-tabs {
     display: flex;
     padding: var(--spacing-md) var(--spacing-xl);
     background: var(--color-background);
@@ -88,7 +97,7 @@
     gap: var(--spacing-sm);
 }
 
-.modal-tab {
+.orders-modal .modal-tab {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
@@ -103,24 +112,24 @@
     transition: all var(--transition-fast);
 }
 
-.modal-tab:hover {
+.orders-modal .modal-tab:hover {
     background: var(--color-background);
 }
 
-.modal-tab.active {
+.orders-modal .modal-tab.active {
     background: var(--color-primary);
     color: white;
     border-color: var(--color-primary);
     box-shadow: var(--shadow-sm);
 }
 
-.modal-tab svg {
+.orders-modal .modal-tab svg {
     width: 16px;
     height: 16px;
     opacity: 0.8;
 }
 
-.modal-tab.active svg {
+.orders-modal .modal-tab.active svg {
     opacity: 1;
 }
 
@@ -283,14 +292,18 @@
 }
 
 .order-item-line {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: center;
+    gap: 12px;
     padding: 6px 0;
     font-size: 14px;
 }
 
 .item-quantity-name {
-    display: flex;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
     gap: var(--spacing-sm);
 }
 
@@ -302,9 +315,11 @@
 }
 
 .order-card-modal .item-name {
+    min-width: 0;
     color: var(--color-text);
     font-weight: 500;
     font-size: 14px;
+    overflow-wrap: anywhere;
 }
 
 .order-card-modal .item-price {
@@ -312,6 +327,9 @@
     color: var(--color-text);
     /* Higher contrast in dark cards */
     font-size: 14px;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 /* Order Footer */
@@ -339,8 +357,8 @@
     display: flex;
     gap: var(--spacing-md);
     padding: var(--spacing-lg) var(--spacing-xl);
-    border-top: 2px solid var(--color-border);
-    background: var(--color-background);
+    border-top: 1px solid var(--dialog-panel-border, var(--color-border));
+    background: var(--dialog-muted-bg, var(--color-background));
 }
 
 .btn-modal-secondary,
@@ -376,8 +394,6 @@
 
 .btn-modal-primary:hover {
     background: var(--color-primary-dark);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-lg);
 }
 
 /* Scrollbar */
@@ -578,7 +594,7 @@
     gap: var(--spacing-sm);
     padding: var(--spacing-md) var(--spacing-xl);
     border-bottom: 1px solid var(--color-border);
-    background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+    background: var(--color-surface);
 }
 
 .table-command-strip button,
@@ -649,18 +665,10 @@
     font-weight: 700;
 }
 
-@media (max-width: 600px) {
-    .table-command-strip { padding: var(--spacing-md); }
-    .orders-modal-footer { flex-wrap: wrap; }
-    .orders-modal-footer button { flex: 1 1 130px; }
-}
-
 /* ===== Table command center redesign ===== */
 .orders-modal {
     max-width: 620px;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 4%, transparent), transparent 190px),
-        var(--color-surface);
+    background: var(--dialog-panel-bg, var(--color-surface));
 }
 
 .orders-modal-header {
@@ -675,22 +683,10 @@
     gap: 12px;
 }
 
-.table-detail-icon {
-    width: 44px;
-    height: 44px;
-    display: grid;
-    flex: 0 0 auto;
-    place-items: center;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 38%, var(--color-border));
-    border-radius: 13px;
-    background: color-mix(in srgb, var(--color-primary) 13%, var(--color-background));
-    color: var(--color-primary);
-}
-
 .table-detail-eyebrow {
     display: block;
     margin-bottom: 2px;
-    color: var(--color-primary);
+    color: var(--color-text-secondary);
     font-size: 10px;
     font-weight: 800;
     letter-spacing: .09em;
@@ -764,8 +760,16 @@
 }
 
 .modal-tab-content-orders {
+    width: 100%;
+    min-width: 0;
     padding: 16px 22px 22px;
-    background: color-mix(in srgb, var(--color-background) 76%, var(--color-surface));
+    background: var(--color-surface);
+}
+
+.orders-list,
+.no-orders-message {
+    width: 100%;
+    min-width: 0;
 }
 
 .order-card-modal {
@@ -773,12 +777,12 @@
     padding: 16px;
     border-width: 1px;
     border-radius: 14px;
-    box-shadow: 0 8px 24px rgb(2 6 23 / 10%);
+    box-shadow: none;
 }
 
 .order-card-modal:hover {
     transform: none;
-    box-shadow: 0 10px 28px rgb(2 6 23 / 16%);
+    box-shadow: none;
 }
 
 .order-waiter-row {
@@ -823,18 +827,196 @@
 .orders-modal-footer {
     padding: 14px 22px;
     border-top-width: 1px;
-    background: var(--color-surface);
+    background: var(--dialog-muted-bg, var(--color-background));
 }
 
 .orders-modal-footer .btn-modal-primary { flex: 1.45; }
 .orders-modal-footer .print-bill-action { flex: 1.15; }
 
 @media (max-width: 600px) {
-    .orders-modal-header { padding-inline: 16px; }
-    .table-detail-summary { grid-template-columns: 1fr 1fr; padding-inline: 16px; }
-    .table-detail-summary .summary-total { grid-column: 1 / -1; }
-    .table-command-strip,
-    .modal-tab-content-orders,
-    .orders-modal-footer { padding-inline: 16px; }
-    .orders-modal-footer .btn-modal-secondary:first-child { flex: .7 1 90px; }
+    .modal-overlay-orders {
+        align-items: stretch;
+        background: var(--dialog-panel-bg, var(--color-surface));
+        backdrop-filter: none;
+    }
+
+    .orders-modal {
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        max-height: none;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .orders-modal-header {
+        flex: 0 0 auto;
+        min-height: 68px;
+        padding: max(10px, env(safe-area-inset-top)) 12px 8px;
+        border-bottom: 0;
+    }
+
+    .header-title h2 {
+        margin-bottom: 1px;
+        font-size: 18px;
+        line-height: 1.15;
+    }
+
+    .header-subtitle { font-size: 12px; }
+    .table-detail-eyebrow { margin-bottom: 1px; font-size: 9px; }
+    .close-btn-orders { width: 38px; height: 38px; }
+
+    .table-detail-summary {
+        flex: 0 0 auto;
+        grid-template-columns: .92fr .92fr 1.24fr;
+        gap: 6px;
+        padding: 0 12px 10px;
+    }
+
+    .table-detail-summary > div {
+        gap: 0;
+        min-height: 58px;
+        padding: 9px 8px;
+        border-radius: 10px;
+    }
+
+    .table-detail-summary svg { display: none; }
+    .table-detail-summary small { font-size: 9px; }
+    .table-detail-summary strong,
+    .table-detail-summary .summary-total strong {
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .table-detail-summary .summary-total { grid-column: auto; }
+
+    .table-command-strip {
+        flex: 0 0 auto;
+        gap: 6px;
+        padding: 0 12px 10px;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .table-command-strip button {
+        min-height: 38px;
+        padding: 7px 8px;
+        font-size: 11px;
+    }
+
+    .table-command-strip button svg { width: 15px; height: 15px; }
+
+    .modal-tab-content-orders {
+        min-height: 0;
+        overscroll-behavior: contain;
+        padding: 10px 12px 14px;
+        background: var(--dialog-content-bg, var(--color-surface));
+    }
+
+    .orders-list { gap: 10px; }
+
+    .order-card-modal {
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    .order-card-modal:hover { border-color: var(--color-border); }
+
+    .order-card-header {
+        gap: 8px;
+        margin-bottom: 9px;
+        padding-bottom: 9px;
+    }
+
+    .order-id-time { min-width: 0; gap: 8px; }
+    .order-id-badge { font-size: 12px; }
+    .order-time { font-size: 11px; }
+    .order-status-badge { padding: 3px 7px; font-size: 9px; }
+
+    .order-waiter-row { margin-bottom: 9px; }
+    .order-waiter-row > small { white-space: nowrap; }
+
+    .order-items-list {
+        margin-bottom: 10px;
+        border-radius: 9px;
+    }
+
+    .order-item-line {
+        grid-template-columns: minmax(0, 1fr) max-content;
+        gap: 8px;
+        padding: 9px;
+    }
+
+    .item-quantity-name {
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 5px;
+    }
+
+    .item-qty {
+        min-width: 0;
+        font-size: 12px;
+    }
+
+    .order-card-modal .item-name,
+    .order-card-modal .item-price { font-size: 12px; }
+    .kitchen-line-status { font-size: 9px; }
+
+    .order-card-footer { padding-top: 9px; }
+    .order-total-label { font-size: 11px; }
+    .order-total-amount { font-size: 16px; }
+
+    .table-order-actions {
+        gap: 6px;
+        margin-top: 9px;
+        padding-top: 9px;
+    }
+
+    .table-order-actions button {
+        min-height: 38px;
+        padding: 7px 8px;
+        font-size: 10px;
+    }
+
+    .table-order-add-products { display: none !important; }
+    .table-order-actions:has(> .table-order-add-products:only-child) { display: none; }
+
+    .orders-modal-footer {
+        flex: 0 0 auto;
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+        gap: 8px;
+        padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+        box-shadow: 0 -8px 22px rgba(0, 0, 0, .1);
+    }
+
+    .orders-modal-footer .btn-modal-secondary:first-child { display: none; }
+
+    .orders-modal-footer .btn-modal-primary,
+    .orders-modal-footer .print-bill-action {
+        min-width: 0;
+        min-height: 46px;
+        padding: 9px 10px;
+        border-width: 1px;
+        border-radius: 10px;
+        font-size: 11px;
+    }
+
+    .orders-modal-footer .btn-modal-primary {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .orders-modal-footer .print-bill-action {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .no-orders-message { min-height: 100%; padding: 28px 16px; }
+}
+
+@media (max-width: 340px) {
+    .table-detail-summary strong,
+    .table-detail-summary .summary-total strong { font-size: 11px; }
+    .orders-modal-footer .btn-modal-primary,
+    .orders-modal-footer .print-bill-action { font-size: 10px; }
 }

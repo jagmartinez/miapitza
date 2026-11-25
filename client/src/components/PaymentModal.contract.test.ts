@@ -22,7 +22,21 @@ describe('PaymentModal contract', () => {
     it('requires exact cent allocation and only renders change for cash legs', () => {
         expect(source).toContain('summarizePaymentAllocation(balance');
         expect(source).toContain('&& mixedAllocation.exact');
+        expect(source).toContain('!previewAllocation.exact');
         expect(source).toContain("{cash && <div className=\"leg-change\"");
+    });
+
+    it('includes usable cash in mixed payment and simplifies item division around exact payer totals', () => {
+        expect(source).toContain('canUsePaymentMethodInMixed(type, hasUsableCashShift)');
+        expect(source).toContain("splitStrategy !== 'by-items' && <div className=\"payment-leg-list\"");
+        expect(source).toContain('¿Quién paga cada plato?');
+        expect(source).toContain('className="split-payer-totals"');
+        expect(source).toContain('Totales exactos por comensal');
+        expect(source).toContain("itemPreviewReady ? displayMoney(amount) : 'Pendiente'");
+        expect(source).toContain('lastItemPreviewSignatureRef');
+        expect(source).toContain('personName: normalizePayerName(leg.payerName)');
+        expect(source).toContain('hasUniqueNormalizedPayerNames');
+        expect(source).toContain('Cada comensal necesita un nombre único.');
     });
 
     it('formats initial money fields and keeps split controls in the panel header', () => {

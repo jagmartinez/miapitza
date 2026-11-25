@@ -4,6 +4,7 @@ import {
     CalendarDays,
     ChevronLeft,
     ChevronRight,
+    Ban,
     ClipboardCopy,
     Plus,
     RefreshCw,
@@ -16,7 +17,6 @@ import PageHeader from '../../components/PageHeader';
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
-import ScheduleStatusPill from '../../components/hr/ScheduleStatusPill';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
 import {
     addDaysDateOnly,
@@ -44,7 +44,7 @@ import type {
 import './schedule.css';
 
 type Option = { value: string; label: string };
-type MutationKind = 'save' | 'delete' | 'publish' | 'copy';
+type MutationKind = 'save' | 'delete' | 'publish' | 'copy' | 'cancel';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
 const weekFormatter = new Intl.DateTimeFormat('es-NI', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -174,13 +174,15 @@ export default function Schedules() {
 
     const draftSchedule = schedules.find((schedule) => schedule.status === 'DRAFT') ?? null;
     const publishedSchedule = schedules.find((schedule) => schedule.status === 'PUBLISHED') ?? null;
-    const primarySchedule = draftSchedule ?? publishedSchedule;
+    const historicalSchedules = schedules.filter((schedule) => ['CANCELLED', 'SUPERSEDED'].includes(schedule.status));
+    const historicalSchedule = historicalSchedules[0] ?? null;
+    const activeSchedule = draftSchedule ?? publishedSchedule;
+    const primarySchedule = activeSchedule ?? historicalSchedule;
     const visibleSchedules = useMemo(
-        () => filteredSchedules(draftSchedule ? [draftSchedule] : publishedSchedule ? [publishedSchedule] : [], branchId, userId, jobPositionId),
-        [branchId, draftSchedule, jobPositionId, publishedSchedule, userId]
+        () => filteredSchedules(primarySchedule ? [primarySchedule] : [], branchId, userId, jobPositionId),
+        [branchId, jobPositionId, primarySchedule, userId]
     );
     const hasShifts = visibleSchedules.some((schedule) => schedule.shifts.length > 0);
-
     const openCreate = () => {
         if (mutationBusy || fromCache) return;
         setEditingShift(null);
@@ -312,6 +314,31 @@ export default function Schedules() {
         }
     };
 
+    const cancelWeek = async () => {
+        if (!primarySchedule || !['DRAFT', 'PUBLISHED'].includes(primarySchedule.status) || hasActiveFilters || !beginMutation('cancel')) return;
+        const operationScope = scopeKey;
+        const accepted = await confirm(
+            primarySchedule.status === 'PUBLISHED'
+                ? 'Al cancelar, esta versión dejará de estar vigente. Los intercambios abiertos de esta semana también se cancelarán.'
+                : 'Se cancelará este borrador. No podrá publicarse ni editarse después.',
+            { title: 'Cancelar horario semanal', confirmText: 'Cancelar horario', variant: 'danger' }
+        );
+        if (!accepted) {
+            finishMutation();
+            return;
+        }
+        try {
+            await scheduleClient.cancelSchedule(primarySchedule.id, { expectedRevision: primarySchedule.revision });
+            setConflicts([]);
+            showSuccess('Horario cancelado correctamente.');
+            await reloadIfScopeIsCurrent(operationScope);
+        } catch (cancelError) {
+            showError(getScheduleErrorMessage(cancelError, 'No fue posible cancelar el horario.'));
+        } finally {
+            finishMutation();
+        }
+    };
+
     const copyToNextWeek = async () => {
         if (!primarySchedule || hasActiveFilters || !beginMutation('copy')) return;
         const targetWeekStart = addDaysDateOnly(weekStart, 7);
@@ -358,8 +385,16 @@ export default function Schedules() {
                 <div className="filter-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
                 <div className="filter-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
                 <div className="filter-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
-                <div className="filter-spacer" />
-                <div className="filter-actions"><Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button></div>
+                <div className="filter-actions">
+                    <Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
+                    {!loading && !error && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
+                    {!loading && !error && primarySchedule?.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
+                    {!loading && !error && primarySchedule && ['DRAFT', 'PUBLISHED'].includes(primarySchedule.status) && (
+                        <Button variant="ghost" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void cancelWeek()}>
+                            <Ban size={17} aria-hidden="true" /> {mutationKind === 'cancel' ? 'Cancelando…' : 'Cancelar semana'}
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {lookupsError && (
@@ -371,7 +406,23 @@ export default function Schedules() {
 
             {fromCache && (
                 <div className="hr-schedule-alert info" role="status">
-                    Mostrando una copia guardada sin conexión. La edición, publicación y copia permanecerán bloqueadas hasta recuperar conexión.
+                    Mostrando una copia guardada sin conexión. La edición, publicación, cancelación y copia permanecerán bloqueadas hasta recuperar conexión.
+                </div>
+            )}
+            {!loading && !error && primarySchedule?.status === 'CANCELLED' && (
+                <div className="hr-schedule-alert danger" role="status">
+                    Esta versión está cancelada y sus turnos se conservan solo como histórico; puede crear un nuevo borrador para reemplazarla.
+                </div>
+            )}
+
+            {!loading && !error && primarySchedule?.status === 'SUPERSEDED' && (
+                <div className="hr-schedule-alert info" role="status">
+                    Mostrando una versión histórica sustituida por una publicación posterior; sus turnos ya no aplican a marcaje.
+                </div>
+            )}
+            {!loading && !error && historicalSchedules.length > 1 && (
+                <div className="hr-schedule-alert info" role="status">
+                    Esta semana conserva {historicalSchedules.length} versiones canceladas o sustituidas en el historial de auditoría.
                 </div>
             )}
 
@@ -395,16 +446,6 @@ export default function Schedules() {
                 </section>
             )}
 
-            {!loading && !error && primarySchedule && (
-                <div className="hr-schedule-actions-bar">
-                    <div><ScheduleStatusPill status={primarySchedule.status} /><span>Versión {primarySchedule.version} · revisión {primarySchedule.revision}</span></div>
-                    <div>
-                        <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar a semana siguiente'}</Button>
-                        {primarySchedule.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
-                    </div>
-                </div>
-            )}
-
             {loading && <LoadingSpinner text="Cargando horarios…" />}
             {!loading && error && (
                 <div className="state-placeholder" role="alert"><CalendarDays size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></div>
@@ -412,9 +453,9 @@ export default function Schedules() {
             {!loading && !error && !hasShifts && (
                 <div className="state-placeholder"><CalendarDays size={44} aria-hidden="true" /><p>No hay turnos para esta semana y filtros.</p><Button variant="ghost" onClick={openCreate} disabled={Boolean(lookupsError) || mutationBusy || fromCache}>Agregar primer turno</Button></div>
             )}
-            {!loading && !error && hasShifts && <ScheduleWeekView weekStart={weekStart} schedules={visibleSchedules} holidays={holidays} readOnly={mutationBusy || fromCache} onEdit={openEdit} onDelete={(shift, schedule) => void deleteShift(shift, schedule)} />}
+            {!loading && !error && hasShifts && <ScheduleWeekView weekStart={weekStart} schedules={visibleSchedules} holidays={holidays} readOnly={mutationBusy || fromCache || !activeSchedule} onEdit={openEdit} onDelete={(shift, schedule) => void deleteShift(shift, schedule)} />}
 
-            <Sidebar isOpen={editorOpen} onClose={closeEditor} title={editingShift ? 'Editar turno' : 'Nuevo turno'} width="wide" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+            <Sidebar isOpen={editorOpen} onClose={closeEditor} title={editingShift ? 'Editar turno' : 'Nuevo turno'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
                 <ScheduleShiftForm
                     weekStart={weekStart}
                     shift={editingShift}

@@ -89,6 +89,13 @@ async function main() {
         WHERE p.active = 1
           AND COALESCE(p.currentAverageCost, 0) <= 0
           AND COALESCE(p.cost, 0) <= 0
+          AND NOT EXISTS (
+            SELECT 1
+            FROM ProductionRecipe produced
+            WHERE produced.productId = p.id
+              AND produced.companyId = p.companyId
+              AND produced.status = 'ACTIVE'
+          )
       `],
       ['active-production-component-without-cost', `
         SELECT COUNT(DISTINCT component.componentProductId) AS count
@@ -162,7 +169,8 @@ async function main() {
 
     const [migrationRows] = await connection.query<RowDataPacket[]>(`
       SELECT COUNT(*) AS total,
-             SUM(CASE WHEN finished_at IS NULL OR rolled_back_at IS NOT NULL THEN 1 ELSE 0 END) AS failed
+             SUM(CASE WHEN finished_at IS NULL AND rolled_back_at IS NULL THEN 1 ELSE 0 END) AS unresolved,
+             SUM(CASE WHEN rolled_back_at IS NOT NULL THEN 1 ELSE 0 END) AS rolledBack
       FROM _prisma_migrations
     `);
 
@@ -252,11 +260,17 @@ async function main() {
         WHERE p.active = 1
           AND COALESCE(p.currentAverageCost, 0) <= 0
           AND COALESCE(p.cost, 0) <= 0
-          AND EXISTS (
-            SELECT 1 FROM Recipe r
-            JOIN MenuItem menu_item ON menu_item.id = r.menuItemId AND menu_item.active = 1
-            WHERE r.productId = p.id
-          )
+           AND EXISTS (
+             SELECT 1 FROM Recipe r
+             JOIN MenuItem menu_item ON menu_item.id = r.menuItemId AND menu_item.active = 1
+             WHERE r.productId = p.id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM ProductionRecipe produced
+             WHERE produced.productId = p.id
+               AND produced.companyId = p.companyId
+               AND produced.status = 'ACTIVE'
+           )
         UNION ALL
         SELECT 'PRODUCTION_RECIPE', p.id, p.sku, p.name, p.active,
                CAST(p.currentAverageCost AS CHAR), CAST(p.cost AS CHAR), NULL
@@ -281,7 +295,8 @@ async function main() {
       invariantsChecked: invariantQueries.length,
       migrations: {
         total: Number(migrationRows[0].total),
-        failed: Number(migrationRows[0].failed),
+        unresolved: Number(migrationRows[0].unresolved),
+        rolledBack: Number(migrationRows[0].rolledBack),
       },
       issues,
       invalidActivePaymentSamples,

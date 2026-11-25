@@ -36,10 +36,16 @@
 }
 
 .hr-schedule-filters .filter-field {
-    min-width: 210px;
+    flex: 1 1 330px;
+    min-width: min(300px, 100%);
+    max-width: 440px;
 }
 
-.hr-schedule-actions-bar,
+.hr-schedule-filters .filter-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
 .hr-my-schedule-statuses > div {
     display: flex;
     align-items: center;
@@ -52,16 +58,13 @@
     background: var(--color-surface);
 }
 
-.hr-schedule-actions-bar > div,
-.hr-my-schedule-statuses > div > div,
-.hr-schedule-actions-bar > div:last-child {
+.hr-my-schedule-statuses > div > div {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: var(--spacing-sm);
 }
 
-.hr-schedule-actions-bar span,
 .hr-my-schedule-statuses span {
     color: var(--color-text-secondary);
     font-size: var(--font-size-sm);
@@ -122,6 +125,130 @@
 .hr-schedule-conflicts li span {
     margin-left: var(--spacing-xs);
     color: var(--color-text-secondary);
+}
+
+.hr-schedule-workspace {
+    display: grid;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.hr-schedule-matrix-wrap {
+    min-width: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    overflow: hidden;
+}
+
+.hr-schedule-matrix-wrap:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+    outline-offset: 2px;
+}
+
+.hr-schedule-matrix {
+    min-width: 0;
+}
+
+.hr-schedule-matrix-row {
+    display: grid;
+    grid-template-columns: minmax(170px, 1.35fr) repeat(7, minmax(0, 1fr));
+    min-width: 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.hr-schedule-matrix-row:last-child {
+    border-bottom: 0;
+}
+
+.hr-schedule-matrix-row > * {
+    min-width: 0;
+    padding: var(--spacing-sm);
+    border-right: 1px solid var(--color-border);
+}
+
+.hr-schedule-matrix-row > *:last-child {
+    border-right: 0;
+}
+
+.hr-schedule-matrix-row.is-header {
+    background: var(--color-background);
+}
+
+.hr-schedule-matrix-row.is-header > div {
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    min-height: 54px;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    text-transform: capitalize;
+}
+
+.hr-schedule-matrix-row.is-header strong {
+    color: var(--color-text);
+}
+
+.hr-schedule-matrix-row.is-header span {
+    color: var(--color-warning);
+    font-size: 10px;
+}
+
+.hr-schedule-employee {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    background: color-mix(in srgb, var(--color-surface) 92%, var(--color-primary));
+}
+
+.hr-schedule-employee > span {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-primary);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.hr-schedule-employee > div {
+    display: grid;
+    min-width: 0;
+}
+
+.hr-schedule-employee strong,
+.hr-schedule-employee small {
+    overflow-wrap: anywhere;
+}
+
+.hr-schedule-employee strong {
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+}
+
+.hr-schedule-employee small {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+}
+
+.hr-schedule-matrix-cell {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-height: 112px;
+    background: var(--color-surface);
+}
+
+.hr-schedule-matrix-cell.is-empty {
+    place-items: center;
+    background: color-mix(in srgb, var(--color-background) 65%, var(--color-surface));
+}
+
+.hr-schedule-no-shift {
+    color: color-mix(in srgb, var(--color-text-secondary) 55%, transparent);
 }
 
 .hr-schedule-week-grid {
@@ -191,6 +318,39 @@
     border-left: 3px solid var(--color-primary);
     border-radius: var(--radius-md);
     background: var(--color-background);
+}
+
+.hr-shift-card.is-compact {
+    padding: 7px;
+    border-left-width: 2px;
+}
+
+.hr-shift-card.is-compact .hr-shift-time {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    font-size: 12px;
+}
+
+.hr-shift-card.is-compact .hr-shift-meta {
+    font-size: 10px;
+}
+
+.hr-shift-card.is-compact .hr-shift-actions {
+    margin: 6px -7px -7px;
+}
+
+.hr-shift-card.is-compact .hr-shift-actions button {
+    min-height: 34px;
+    padding: 4px;
+}
+
+.hr-shift-card.is-compact .hr-shift-actions button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
 }
 
 .hr-shift-time,
@@ -325,7 +485,44 @@
     font-size: var(--font-size-sm);
 }
 
+.hr-schedule-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--spacing-sm);
+}
+
+@media (max-width: 1100px) {
+    .hr-schedule-matrix-wrap {
+        display: none;
+    }
+
+    .hr-schedule-mobile-list {
+        display: grid;
+        gap: var(--spacing-md);
+    }
+
+    .hr-schedule-mobile-list section {
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface);
+        overflow: hidden;
+    }
+
+    .hr-schedule-mobile-list .hr-shift-card {
+        margin: var(--spacing-sm);
+    }
+}
+
 @media (max-width: 768px) {
+    .hr-schedule-filters .filter-actions {
+        width: 100%;
+    }
+
+    .hr-schedule-filters .filter-actions .btn {
+        flex: 1 1 150px;
+    }
+
     .hr-week-navigation {
         grid-template-columns: 1fr 1fr;
     }
@@ -359,14 +556,11 @@
         margin: var(--spacing-sm);
     }
 
-    .hr-schedule-actions-bar,
     .hr-my-schedule-statuses > div {
         align-items: stretch;
         flex-direction: column;
     }
 
-    .hr-schedule-actions-bar > div:last-child,
-    .hr-schedule-actions-bar .btn,
     .hr-my-schedule-statuses .btn {
         width: 100%;
     }
@@ -375,7 +569,6 @@
 @media print {
     .hr-week-navigation,
     .hr-schedule-filters,
-    .hr-schedule-actions-bar,
     .hr-shift-actions {
         display: none !important;
     }

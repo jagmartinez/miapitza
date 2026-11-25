@@ -4,20 +4,22 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background: var(--dialog-overlay, rgba(15, 23, 42, 0.66));
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(8px) saturate(0.85);
     padding: var(--spacing-lg);
     box-sizing: border-box;
 }
 
 .modal-container {
-    background-color: var(--color-surface);
+    position: relative;
+    background-color: var(--dialog-panel-bg, var(--color-surface));
     border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-xl);
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    box-shadow: var(--dialog-panel-shadow, var(--shadow-xl));
     max-height: 90vh;
     overflow: hidden;
     animation: modalSlideIn 0.2s ease-out;
@@ -57,17 +59,29 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--spacing-xl);
-    border-bottom: 1px solid var(--color-border);
+    min-height: 76px;
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border-bottom: 1px solid var(--dialog-panel-border, var(--color-border));
+    background: var(--dialog-header-bg, var(--color-surface));
     flex: 0 0 auto;
     gap: var(--spacing-md);
 }
 
+.modal-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
 .modal-header h2 {
     margin: 0;
-    font-size: var(--font-size-2xl);
+    font-size: clamp(var(--font-size-lg), 2vw, var(--font-size-xl));
     min-width: 0;
     overflow-wrap: anywhere;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    color: var(--dialog-title-color, var(--color-text));
 }
 
 .modal-close {
@@ -77,20 +91,22 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-md);
-    background-color: transparent;
-    border: none;
+    flex: 0 0 auto;
+    background: color-mix(in srgb, var(--dialog-panel-bg, var(--color-surface)) 82%, transparent);
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
     color: var(--color-text-secondary);
     cursor: pointer;
     transition: all var(--transition-fast);
 }
 
 .modal-close:hover {
-    background-color: var(--color-background);
+    background-color: var(--color-surface-hover);
+    border-color: var(--color-text-secondary);
     color: var(--color-text);
 }
 
 .modal-close:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--dialog-accent, var(--color-primary));
     outline-offset: 2px;
 }
 
@@ -99,7 +115,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
+    background: var(--dialog-content-bg, color-mix(in srgb, var(--color-surface) 96%, var(--color-background) 4%));
 }
 
 .modal-description {
@@ -115,8 +131,8 @@
     justify-content: flex-end;
     gap: var(--spacing-md);
     padding: var(--spacing-lg) var(--spacing-xl);
-    border-top: 1px solid var(--color-border);
-    background: var(--color-background);
+    border-top: 1px solid var(--dialog-panel-border, var(--color-border));
+    background: var(--dialog-muted-bg, var(--color-background));
 }
 
 /* Subtle scrollbar matching the main sidebar. */
@@ -160,12 +176,13 @@
 }
 
 .modal-sidebar {
-    background-color: var(--color-surface);
+    position: relative;
+    background-color: var(--dialog-panel-bg, var(--color-surface));
     height: 100% !important;
     max-height: 100vh;
     border-radius: 0 !important;
-    border-left: 1px solid var(--color-border);
-    box-shadow: -4px 0 30px rgba(0, 0, 0, 0.15);
+    border-left: 1px solid var(--dialog-panel-border, var(--color-border));
+    box-shadow: var(--dialog-panel-shadow, -4px 0 30px rgba(0, 0, 0, 0.15));
     animation: slideInRight 0.3s ease-out !important;
     display: flex;
     flex-direction: column;
@@ -263,6 +280,7 @@
     }
 
     .modal-header {
+        min-height: 68px;
         padding: var(--spacing-md) var(--spacing-lg);
         position: sticky;
         top: 0;

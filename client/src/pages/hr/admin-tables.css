@@ -1,0 +1,457 @@
+.hr-admin-board {
+  margin-top: var(--spacing-lg);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-surface);
+}
+
+/* RH catalogues intentionally reuse the same visual grammar as Production
+   Recipes: wide centered canvas, compact filter toolbar, one bordered table
+   card and the shared Pagination footer. */
+.hr-admin-catalog-page {
+  max-width: 1700px;
+  min-width: 0;
+}
+
+.hr-admin-catalog-page .page-header-bar {
+  margin-bottom: var(--spacing-xl);
+}
+
+.hr-admin-catalog-page .inventory-filters-row,
+.hr-admin-catalog-page .hr-workforce-filters,
+.hr-admin-catalog-page .hr-benefits-toolbar,
+.hr-admin-catalog-page .payroll-operation-switcher {
+  margin-bottom: var(--spacing-xl);
+}
+
+.hr-admin-catalog-page .pr-table-card,
+.hr-admin-catalog-page .hr-admin-board,
+.hr-admin-catalog-page .payroll-run-register {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.hr-admin-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background-secondary);
+}
+
+.hr-admin-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hr-admin-tabs button:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.hr-admin-tabs button[aria-selected='true'] {
+  border-color: transparent;
+  background: var(--color-neutral-700);
+  color: white;
+}
+
+.hr-admin-tabs button span {
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+/* Operational tabs live in their own compact control bar, matching the
+   Production Recipes filter grammar instead of becoming a second table
+   header. The table card below remains a single, uninterrupted surface. */
+.filters-toolbar.hr-admin-tab-toolbar {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 7px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.hr-admin-tab-toolbar button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hr-admin-tab-toolbar button:hover {
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.hr-admin-tab-toolbar button[aria-selected='true'] {
+  background: var(--color-neutral-700);
+  color: white;
+}
+
+.hr-admin-tab-toolbar button > span {
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.hr-admin-tab-toolbar button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.hr-admin-table-wrap {
+  width: 100%;
+  overflow: auto;
+}
+
+.hr-admin-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.hr-admin-catalog-page .hr-admin-table,
+.hr-admin-catalog-page .payroll-run-table {
+  margin: 0;
+  border: 0;
+}
+
+.hr-admin-catalog-page .hr-admin-table tbody tr,
+.hr-admin-catalog-page .payroll-run-table tbody tr {
+  transition: background-color var(--transition-fast);
+}
+
+.hr-admin-table caption {
+  padding: 16px 18px;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: 800;
+  text-align: left;
+}
+
+.hr-admin-table:not(.inventory-table) th,
+.hr-admin-table:not(.inventory-table) td {
+  padding: 13px 14px;
+  border-top: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.hr-admin-table:not(.inventory-table) th {
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hr-admin-table tbody tr:not(:has(.hr-admin-empty)):hover,
+.hr-admin-table tbody tr.is-selected {
+  background: rgba(59, 130, 246, 0.07);
+}
+
+.hr-admin-table td > small,
+.hr-admin-table td > strong + small {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-admin-actions-col {
+  width: 1%;
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.hr-admin-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.hr-admin-catalog-page .hr-admin-row-actions,
+.hr-admin-catalog-page .payroll-run-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.hr-admin-catalog-page .table-action-btn.btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  box-shadow: none;
+  transform: none;
+}
+
+.hr-admin-catalog-page .table-action-btn.btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  box-shadow: none;
+  transform: none;
+}
+
+.hr-admin-catalog-page .table-action-btn.btn.danger:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.hr-admin-catalog-page .table-pagination {
+  border-top: 1px solid var(--color-border);
+}
+
+.hr-admin-cell-warning {
+  color: var(--color-warning);
+  font-weight: 800;
+}
+
+.hr-admin-muted {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-admin-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 116px;
+  padding: var(--spacing-lg);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.hr-admin-empty strong {
+  color: var(--color-text);
+}
+
+.hr-benefits-admin-layout {
+  display: block;
+}
+
+.hr-benefits-admin-board {
+  margin-top: 0;
+}
+
+.hr-benefits-page:not(.hr-my-benefits-page) .hr-benefits-workspace.is-empty {
+  display: none;
+}
+
+.hr-benefits-page:not(.hr-my-benefits-page) .hr-benefits-workspace.is-visible {
+  margin-top: var(--spacing-lg);
+}
+
+/* Shared operational grammar for the RH surfaces requested to follow
+   Inventory: task header, compact control bar, useful counters and one clear
+   working tray. Every selector is opt-in to avoid changing unrelated pages. */
+.hr-operation-page {
+  width: 100%;
+  max-width: 1700px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.hr-operation-page > .hr-operation-header { margin-bottom: 0; }
+
+.hr-operation-page .hr-operation-header .header-subtitle {
+  max-width: 760px;
+  line-height: 1.55;
+}
+
+.hr-operation-page .hr-operation-toolbar {
+  margin-block: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.hr-operation-page .hr-operation-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-md);
+  margin: 0;
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 3px 12px;
+  min-width: 0;
+  min-height: 86px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: inset 3px 0 color-mix(in srgb, var(--color-primary) 68%, transparent);
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) > svg {
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 38px;
+  height: 38px;
+  padding: 9px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 13%, var(--color-background));
+  color: var(--color-primary);
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) > span {
+  align-self: end;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 750;
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) > strong {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--color-text);
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) > small {
+  grid-column: 2;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.hr-operation-page .hr-operation-kpis > .is-warning { box-shadow: inset 3px 0 var(--color-warning); }
+.hr-operation-page .hr-operation-kpis > .is-warning > svg { background: color-mix(in srgb, var(--color-warning) 13%, var(--color-background)); color: var(--color-warning); }
+.hr-operation-page .hr-operation-kpis > .is-danger { box-shadow: inset 3px 0 var(--color-danger); }
+.hr-operation-page .hr-operation-kpis > .is-danger > svg { background: color-mix(in srgb, var(--color-danger) 12%, var(--color-background)); color: var(--color-danger); }
+.hr-operation-page .hr-operation-kpis > .is-success { box-shadow: inset 3px 0 var(--color-success); }
+.hr-operation-page .hr-operation-kpis > .is-success > svg { background: color-mix(in srgb, var(--color-success) 12%, var(--color-background)); color: var(--color-success); }
+
+.hr-operation-tabs button {
+  display: inline-flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  min-height: 44px;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hr-operation-tabs button:hover { background: var(--color-background); color: var(--color-text); }
+.hr-operation-tabs button[aria-selected='true'] { background: var(--color-neutral-700); color: white; }
+.hr-operation-tabs button > span { min-width: 22px; padding: 2px 7px; border-radius: var(--radius-full); background: var(--color-background); color: var(--color-text); font-size: 11px; line-height: 1.35; text-align: center; }
+
+.hr-operation-tabs button:focus-visible,
+.hr-operation-page .hr-admin-tabs button:focus-visible,
+.hr-operation-page .hr-benefits-tabs button:focus-visible,
+.hr-operation-page [role='tabpanel']:focus-visible,
+.hr-operation-panel:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.hr-operation-panel { display: flex; min-width: 0; flex-direction: column; gap: var(--spacing-lg); }
+
+@media (max-width: 760px) {
+  .hr-admin-catalog-page.inventory-page {
+    padding: 0;
+  }
+
+  .hr-admin-catalog-page .page-header-bar,
+  .hr-admin-catalog-page .inventory-filters-row {
+    align-items: stretch;
+  }
+
+  .hr-admin-catalog-page .inventory-status-filters {
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .hr-admin-catalog-page .hr-admin-table-wrap,
+  .hr-admin-catalog-page .payroll-run-table-wrap {
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .hr-admin-empty {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hr-admin-tabs button {
+    min-height: 42px;
+  }
+
+  .hr-operation-page .hr-operation-kpis { grid-template-columns: 1fr; }
+
+  .hr-operation-page .hr-operation-header .page-header-actions,
+  .hr-operation-page .hr-operation-header .page-header-actions > *,
+  .hr-operation-page .hr-operation-header .btn { width: 100%; }
+}

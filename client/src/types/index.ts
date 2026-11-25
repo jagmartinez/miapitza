@@ -28,6 +28,8 @@ export interface User {
       name: string;
     };
   }[];
+  /** Effective grants across the primary and secondary roles. */
+  permissions?: string[];
   companyId: number;
   /** Effective company timezone supplied by the authenticated session. */
   timezone?: string;
@@ -223,8 +225,16 @@ export interface Order {
   status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
   financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   customerName?: string;
+  customerTaxId?: string;
+  customerTaxIdType?: string;
+  customerFiscalAddress?: string;
+  customerEmail?: string;
+  customerPhone?: string;
   invoiceNumber?: string;
   invoicedAt?: string;
+  invoiceFiscalStatus?: 'NOT_ISSUED' | 'ISSUED' | 'PARTIALLY_CREDITED' | 'CREDITED' | 'CANCELLED';
+  fiscalCreditNote?: { id: number; number: string; status: 'ISSUED'; issuedAt: string } | null;
+  fiscalInvoiceCancellation?: { id: number; cancelledAt: string; reason: string } | null;
   closedAt?: string;
   deliveredAt?: string;
   kitchenStartedAt?: string | null;
@@ -308,6 +318,7 @@ export interface Product {
   baseUnitId?: number;
   baseUnit?: UnitOfMeasure;
   cost: number;
+  referenceCostKnown?: boolean;
   price?: number;
   minStock: number;
   categoryId?: number;
@@ -317,7 +328,15 @@ export interface Product {
   active: boolean;
   allowedUnits?: ProductAllowedUnit[];
   currentAverageCost?: number;
+  averageCostKnown?: boolean;
   lastPurchaseCost?: number;
+  lastPurchaseCostKnown?: boolean;
+  costQuality?: {
+    value: number;
+    known: boolean;
+    source: 'AVERAGE' | 'REFERENCE' | 'MISSING';
+    anomaly: 'PRODUCT_COST_MISSING' | null;
+  };
 }
 
 export type ProductType = 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INTERMEDIATE' | 'PACKAGING';
@@ -684,6 +703,11 @@ export interface Company {
   name: string;
   ruc: string | null;
   logo: string | null;
+  payrollTaxRegime: 'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER';
+  payrollIncomeTaxWithholding: boolean;
+  payrollTaxRegimeReference: string | null;
+  payrollIncomeTaxException: string | null;
+  payrollTaxProfileReady: boolean;
   active: boolean;
   createdAt: string;
 }

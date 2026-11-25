@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { User } from '../types';
-import { canOperateKitchenLineItems, canReversePayment, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole } from './authz';
+import { canCreatePayment, canOperateKitchenLineItems, canReversePayment, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole, hasPermission } from './authz';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
     id: 1,
@@ -58,5 +58,25 @@ describe('authz utils', () => {
         expect(canReversePayment(buildUser({ role: { id: 2, name: 'ADMIN' } }))).toBe(true);
         expect(canReversePayment(buildUser({ role: { id: 3, name: 'CAJERO' } }))).toBe(false);
         expect(canReversePayment(buildUser({ role: { id: 4, name: 'MESERO' } }))).toBe(false);
+    });
+
+    it('treats effective permission grants as authoritative over legacy roles', () => {
+        const revokedAdmin = buildUser({
+            role: { id: 2, name: 'ADMIN' },
+            permissions: ['payments.process'],
+        });
+
+        expect(canCreatePayment(revokedAdmin)).toBe(true);
+        expect(canReversePayment(revokedAdmin)).toBe(false);
+        expect(hasPermission(revokedAdmin, 'payments.reverse', ['ADMIN'])).toBe(false);
+    });
+
+    it('allows a custom role through its effective permission grant', () => {
+        const customRole = buildUser({
+            role: { id: 9, name: 'AUDITOR_CAJA' },
+            permissions: ['payments.reverse'],
+        });
+
+        expect(canReversePayment(customRole)).toBe(true);
     });
 });

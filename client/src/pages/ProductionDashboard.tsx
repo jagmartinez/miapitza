@@ -105,12 +105,19 @@ export default function ProductionDashboard() {
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [branchWarning, setBranchWarning] = useState<string | null>(null);
 
     useEffect(() => {
         if (!isAdmin) return;
         branchesAPI.getAll()
-            .then((res) => setBranches((res.data?.data ?? res.data ?? []) as Branch[]))
-            .catch(() => setBranches([]));
+            .then((res) => {
+                setBranches((res.data?.data ?? res.data ?? []) as Branch[]);
+                setBranchWarning(null);
+            })
+            .catch(() => {
+                setBranches([]);
+                setBranchWarning('No se pudieron cargar las sucursales. El filtro de sucursal puede estar incompleto.');
+            });
     }, [isAdmin]);
 
     const load = useCallback(async () => {
@@ -178,6 +185,7 @@ export default function ProductionDashboard() {
                 </div>
             </div>
 
+            {branchWarning && <div className="prod-dash-error" role="status">{branchWarning}</div>}
             {error && <div className="prod-dash-error">{error}</div>}
 
             {loading ? (

@@ -67,7 +67,10 @@ export const apiKeyAuth = async (
             role: 'API_CLIENT',
             roles: scopes,
             companyId: record.companyId,
-            timezone: await SettingService.getTimezone(record.companyId)
+            timezone: await SettingService.getTimezone(record.companyId),
+            // API scopes are a separate, experimental namespace and must not
+            // be mistaken for interactive role-permission grants.
+            permissions: [],
         };
 
         // Fire-and-forget: update lastUsedAt

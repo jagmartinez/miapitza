@@ -1,0 +1,169 @@
+.hr-react-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.hr-react-select .react-select__control {
+  min-height: 42px;
+}
+
+.hr-money-input,
+.hr-money,
+.hr-number,
+.hr-amount-cell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hr-money-input {
+  width: 100%;
+}
+
+.hr-money {
+  display: inline-block;
+  min-width: 7ch;
+  white-space: nowrap;
+}
+
+/* Canonical layout for every RH create/edit dialog. */
+.hr-flow-modal-content {
+  width: 100%;
+  height: 100%;
+  background: var(--dialog-content-bg, color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%));
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.hr-flow-modal-content :is(button, input, textarea, select) {
+  font-family: inherit;
+}
+
+.hr-flow-modal-content .modal-tabs {
+  min-height: 62px;
+  padding: var(--spacing-md) var(--spacing-xl);
+}
+
+.hr-flow-modal-content .modal-tab {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.hr-flow-modal-content .modal-tab-content {
+  padding: var(--spacing-xl);
+}
+
+.hr-flow-modal-content .modal-content-group {
+  gap: var(--spacing-lg);
+}
+
+.hr-flow-modal-content .modal-section-header {
+  margin: 0;
+}
+
+.hr-flow-modal-content .modal-section-header h3 {
+  font-size: var(--font-size-base);
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.hr-modal-form {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.hr-modal-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-lg);
+  align-items: start;
+  min-width: 0;
+}
+
+.hr-modal-form-grid > * {
+  min-width: 0;
+}
+
+.hr-modal-form-grid > .span-full {
+  grid-column: 1 / -1;
+}
+
+.hr-modal-form-grid
+  label:not(.hr-payroll-confirm):not(.hr-benefits-confirm):not(.hr-benefits-check):not(.hr-inline-choice) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hr-modal-form-grid
+  :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--dialog-panel-border, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--dialog-field-bg, var(--color-background));
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.35;
+  box-sizing: border-box;
+}
+
+.hr-modal-form-grid textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.hr-modal-form-grid
+  :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input):focus-visible {
+  border-color: var(--dialog-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--dialog-focus-ring);
+}
+
+.hr-modal-form-grid :is(input, textarea)::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.hr-modal-form-grid .hr-inline-choice {
+  text-transform: none;
+}
+
+.hr-flow-modal-content .modal-footer {
+  min-height: 72px;
+  padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+.hr-flow-modal-content .modal-footer .btn {
+  min-width: 118px;
+}
+
+@media (max-width: 680px) {
+  .hr-flow-modal-content .modal-tabs,
+  .hr-flow-modal-content .modal-tab-content,
+  .hr-flow-modal-content .modal-footer {
+    padding-inline: var(--spacing-md);
+  }
+
+  .hr-modal-form-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+
+  .hr-modal-form-grid > * {
+    grid-column: 1 !important;
+  }
+
+  .hr-flow-modal-content .modal-footer .btn {
+    min-width: 0;
+  }
+}

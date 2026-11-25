@@ -1,19 +1,10 @@
 {
-  "nativeSelect": [
-    "src/components/hr/AttendanceCorrectionForm.tsx",
-    "src/components/hr/LeaveRequestForm.tsx",
-    "src/components/hr/OvertimeRequestForm.tsx",
-    "src/components/hr/PayrollComponentForm.tsx",
-    "src/components/hr/PayrollRuleConfigurationPanel.tsx",
-    "src/components/hr/PayrollRunForm.tsx",
-    "src/components/hr/PayrollTransitionForm.tsx",
-    "src/pages/hr/AttendanceManagement.tsx",
-    "src/pages/hr/AttendanceSettings.tsx",
-    "src/pages/hr/LeaveManagement.tsx",
-    "src/pages/hr/PayrollManagement.tsx"
-  ],
+  "nativeSelect": [],
   "rawTable": [
     "src/components/PurchaseOrderImport.tsx",
+    "src/components/hr/PayrollPaymentConceptCatalogEditor.tsx",
+    "src/components/hr/PayrollRuleConfigurationPanel.tsx",
+    "src/components/hr/payroll-operation-workspace.tsx",
     "src/pages/BankReconciliation.tsx",
     "src/pages/CashShift.tsx",
     "src/pages/CostReport.tsx",
@@ -29,8 +20,14 @@
     "src/pages/Reports.tsx",
     "src/pages/Suppliers.tsx",
     "src/pages/WasteReport.tsx",
+    "src/pages/hr/AttendanceManagement.tsx",
+    "src/pages/hr/AttendanceReview.tsx",
+    "src/pages/hr/BenefitsGovernance.tsx",
     "src/pages/hr/BenefitsManagement.tsx",
-    "src/pages/hr/MyBenefits.tsx"
+    "src/pages/hr/LeaveManagement.tsx",
+    "src/pages/hr/MyBenefits.tsx",
+    "src/pages/hr/PayrollLegalSettings.tsx",
+    "src/pages/hr/PayrollManagement.tsx"
   ],
   "reactSelectImport": [
     "src/components/OrderCart.tsx",
@@ -53,6 +50,7 @@
     "src/pages/Kitchen.tsx",
     "src/pages/Menu.tsx",
     "src/pages/Orders.tsx",
+    "src/pages/POS.tsx",
     "src/pages/PedidosYaIntegration.tsx",
     "src/pages/ProductUnitSettings.tsx",
     "src/pages/ProductionDashboard.tsx",
@@ -78,6 +76,7 @@
     "src/components/POSProductCard.tsx",
     "src/components/TableOrdersModal.tsx",
     "src/components/TicketPrintModal.tsx",
+    "src/components/hr/payroll-operation-workspace.tsx",
     "src/pages/CashShift.tsx",
     "src/pages/CateringServices.tsx",
     "src/pages/CostReport.tsx",

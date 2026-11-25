@@ -440,7 +440,8 @@ export class ProductionOrderService {
         if (order.status !== 'IN_PROGRESS') throw new Error('La orden debe estar En Proceso antes de finalizarse.');
         if (order.items.length === 0) throw new Error('La orden no tiene insumos definidos.');
 
-        // Re-validate the recipe still exists / active for traceability
+        // Mid-flight recipe version changes deactivate the source version; finish
+        // still uses the order's BOM snapshot. Only a hard-deleted recipe is blocked.
         if (order.recipeId) {
             const recipe = await prisma.productionRecipe.findFirst({ where: { id: order.recipeId, companyId } });
             if (!recipe) throw new Error('La receta utilizada ya no existe.');
@@ -461,6 +462,29 @@ export class ProductionOrderService {
                 throw new Error(`El componente ${componentProductId} está duplicado en los consumos.`);
             }
             overrides.set(componentProductId, consumedQuantity);
+        }
+
+        const hasPositiveConsumption = order.items.some((item) => {
+            const quantity = overrides.has(item.componentProductId)
+                ? Number(overrides.get(item.componentProductId))
+                : Number(item.requiredQuantity);
+            return Number.isFinite(quantity) && quantity > 0;
+        });
+        if (!hasPositiveConsumption) {
+            throw new Error('La producción debe consumir al menos un insumo en cantidad mayor a 0.');
+        }
+
+        if (payload.allowNegative) {
+            const company = await prisma.company.findUnique({
+                where: { id: companyId },
+                select: { costingMethod: true }
+            });
+            if ((company?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO') {
+                throw new Error(
+                    'El override de stock negativo no es compatible con costeo FIFO: ' +
+                    'las capas de costo deben cubrir cada unidad. Reconcilie inventario o use promedio ponderado.'
+                );
+            }
         }
 
         const result = await prisma.$transaction(async (tx) => {
@@ -485,6 +509,16 @@ export class ProductionOrderService {
                 }
             }
 
+            const lockedHasPositiveConsumption = lockedOrder.items.some((item) => {
+                const quantity = overrides.has(item.componentProductId)
+                    ? Number(overrides.get(item.componentProductId))
+                    : Number(item.requiredQuantity);
+                return Number.isFinite(quantity) && quantity > 0;
+            });
+            if (!lockedHasPositiveConsumption) {
+                throw new Error('La producción debe consumir al menos un insumo en cantidad mayor a 0.');
+            }
+
             if (lockedOrder.recipeId) {
                 const recipe = await tx.productionRecipe.findFirst({ where: { id: lockedOrder.recipeId, companyId } });
                 if (!recipe) throw new Error('La receta utilizada ya no existe.');
@@ -493,6 +527,19 @@ export class ProductionOrderService {
             const producedQuantity = payload.producedQuantity ?? Number(lockedOrder.plannedQuantity);
             if (!Number.isFinite(producedQuantity) || !(producedQuantity > 0)) {
                 throw new Error('La cantidad producida debe ser un número finito mayor a 0.');
+            }
+
+            // The inventory engine publishes a company-wide product average while
+            // mutating warehouse-local stock/layers. Acquire every involved product
+            // lock in a deterministic order before the first movement so concurrent
+            // productions with crossed BOM/output products cannot deadlock or leave
+            // a stale FIFO display cost.
+            const productIds = [...new Set([
+                lockedOrder.productId,
+                ...lockedOrder.items.map((item) => item.componentProductId)
+            ])].sort((a, b) => a - b);
+            for (const productId of productIds) {
+                await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
             }
 
             let realCost = 0;
@@ -653,6 +700,13 @@ export class ProductionOrderService {
 
             const wasFinished = lockedOrder.status === 'FINISHED';
             if (wasFinished) {
+                const productIds = [...new Set([
+                    lockedOrder.productId,
+                    ...lockedOrder.items.map((item) => item.componentProductId)
+                ])].sort((a, b) => a - b);
+                for (const productId of productIds) {
+                    await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
+                }
                 // Reverse the produced OUTPUT: take it back OUT of stock (valued at
                 // the product's current moving-average cost — bespoke, passed
                 // explicitly so the engine preserves the legacy number).
@@ -695,8 +749,18 @@ export class ProductionOrderService {
                 }
 
                 // Restore consumed inputs back IN (valued at the cost they were
-                // consumed at — bespoke item.unitCost).
-                for (const item of lockedOrder.items) {
+                // consumed at — bespoke item.unitCost) and fold that inbound into
+                // the component's moving average when using WA. Without this, WA
+                // stays stale when an intervening receipt changed the average
+                // between finish and cancel. FIFO averages are refreshed by the
+                // engine from remaining layers.
+                const companyCosting = await tx.company.findUnique({
+                    where: { id: companyId },
+                    select: { costingMethod: true }
+                });
+                const isFifoCosting = (companyCosting?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO';
+                const orderedItems = [...lockedOrder.items].sort((a, b) => a.componentProductId - b.componentProductId);
+                for (const item of orderedItems) {
                     const consumed = Number(item.consumedQuantity);
                     if (consumed <= 0) continue;
                     const storedLayers = Array.isArray(item.consumedLayers)
@@ -719,6 +783,17 @@ export class ProductionOrderService {
                         : [];
                     const restoredQuantity = storedLayers.reduce((sum, layer) => sum + layer.quantity, 0);
                     const exactLayers = Math.abs(restoredQuantity - consumed) <= 1e-6 ? storedLayers : undefined;
+                    const restoreUnitCost = exactLayers && exactLayers.length > 0
+                        ? exactLayers.reduce((sum, layer) => sum + layer.quantity * layer.unitCost, 0) / consumed
+                        : Number(item.unitCost);
+
+                    await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${item.componentProductId} AND companyId = ${companyId} FOR UPDATE`;
+                    const componentGlobalAgg = await tx.stock.aggregate({
+                        where: { productId: item.componentProductId, companyId },
+                        _sum: { quantity: true }
+                    });
+                    const previousComponentStock = Number(componentGlobalAgg._sum.quantity || 0);
+
                     await InventoryEngineService.applyMovement(tx, {
                         type: 'IN',
                         companyId,
@@ -726,12 +801,31 @@ export class ProductionOrderService {
                         productId: item.componentProductId,
                         userId,
                         quantity: consumed,
-                        unitCost: Number(item.unitCost),
+                        unitCost: restoreUnitCost,
                         inboundLayers: exactLayers,
                         reason: `Anulación producción ${lockedOrder.code}: reversa de insumo`,
                         reference: PROD_REF(lockedOrder.id),
                         sourceType: exactLayers ? undefined : 'ADJUSTMENT'
                     });
+
+                    // WA needs an explicit fold. FIFO IN does not auto-sync
+                    // (preserves receipt history snapshots), so refresh here.
+                    if (isFifoCosting) {
+                        await CostingService.syncFifoCurrentAverageCost(
+                            tx,
+                            item.componentProductId,
+                            companyId
+                        );
+                    } else {
+                        await CostingService.applyProductionCost(
+                            tx,
+                            item.componentProductId,
+                            companyId,
+                            consumed,
+                            restoreUnitCost,
+                            previousComponentStock
+                        );
+                    }
                 }
 
                 // Exact cost reversal (#1): remove this order's ProductCostHistory

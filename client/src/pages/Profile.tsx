@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useTheme } from '../hooks/useTheme';
@@ -14,10 +15,16 @@ import {
     Calendar, TrendingUp, Shield, Smartphone, Monitor, LogOut,
     ShoppingBag, CreditCard, Star, Languages,
     Moon, Sun, Bell, Settings,
+    Briefcase as BriefcaseBusiness, CalendarClock, ChevronRight, Fingerprint, MapPin, FileText, WalletCards,
+    Building2, BadgeCheck, KeyRound, CircleUserRound, AlertCircle,
     type LucideIcon
 } from 'lucide-react';
 import type { User as AppUser } from '../types';
 import type { Language } from '../utils/translations';
+import { workforceClient } from '../components/hr/workforceClient';
+import { selectVacationBalance } from '../components/hr/vacationBalance';
+import type { HrMyWorkforce } from '../types/hr-workforce';
+import { formatHrNumber } from '../utils/hrFormat';
 import './Profile.css';
 
 function axiosErr(err: unknown, fallback: string): string {
@@ -66,7 +73,7 @@ interface SessionRow {
     createdAt: string;
 }
 
-type ProfileTab = 'info' | 'stats' | 'permissions' | 'settings' | 'security' | 'sessions' | '2fa';
+type ProfileTab = 'info' | 'hr' | 'stats' | 'permissions' | 'settings' | 'security' | 'sessions' | '2fa';
 
 interface MyStats {
     salesToday: number;
@@ -92,13 +99,21 @@ export default function Profile() {
     const { user, logout } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const { language, setLanguage } = useLanguage();
+    const [searchParams, setSearchParams] = useSearchParams();
 
-    const [activeTab, setActiveTab] = useState<ProfileTab>('info');
+    const requestedTab = searchParams.get('tab');
+    const [activeTab, setActiveTab] = useState<ProfileTab>(() =>
+        requestedTab === 'hr' || (user?.accountType === 'INTERNAL' && Boolean(user.employeeId)) ? 'hr' : 'info'
+    );
     const [stats, setStats] = useState<MyStats | null>(null);
     const [fullUserData, setFullUserData] = useState<FullProfileUser | null>(null);
     const [activities, setActivities] = useState<ActivityEntry[]>([]);
     const [performance, setPerformance] = useState<PerformanceData | null>(null);
     const [passwordInfo, setPasswordInfo] = useState<PasswordInfoState | null>(null);
+    const [myWorkforce, setMyWorkforce] = useState<HrMyWorkforce | null>(null);
+    const [myHrLoading, setMyHrLoading] = useState(false);
+    const [profileLoading, setProfileLoading] = useState(true);
+    const [profileLoadWarning, setProfileLoadWarning] = useState<string | null>(null);
 
     const [formData, setFormData] = useState({
         name: user?.name || '', email: user?.email || '',
@@ -110,24 +125,59 @@ export default function Profile() {
     useEffect(() => {
         if (!user) return;
         (async () => {
+            setProfileLoading(true);
+            setProfileLoadWarning(null);
             try {
-                const [statsRes, userRes, actRes, perfRes, pwdRes] = await Promise.all([
-                    reportsAPI.getMyStats(),
-                    usersAPI.getById(user.id),
-                    reportsAPI.getMyActivity(10),
-                    reportsAPI.getMyPerformance().catch(() => null),
-                    reportsAPI.getMyPasswordInfo().catch(() => null),
-                ]);
-                setStats(statsRes.data.data);
-                setFullUserData(userRes.data.data);
-                setActivities(actRes.data.data);
-                if (perfRes) setPerformance(perfRes.data.data);
-                if (pwdRes) setPasswordInfo(pwdRes.data.data);
+                const userRes = await usersAPI.getById(user.id);
                 const full = userRes.data.data;
-                setFormData(prev => ({ ...prev, nif: full.nif || '', address: full.address || '', phone: full.phone || '' }));
-            } catch (e) { console.error('Error loading profile data:', e); }
+                setFullUserData(full);
+                setFormData(prev => ({ ...prev, name: full.name || prev.name, email: full.email || prev.email, nif: full.nif || '', address: full.address || '', phone: full.phone || '' }));
+
+                const [statsRes, actRes, perfRes, pwdRes] = await Promise.allSettled([
+                    reportsAPI.getMyStats(),
+                    reportsAPI.getMyActivity(10),
+                    reportsAPI.getMyPerformance(),
+                    reportsAPI.getMyPasswordInfo(),
+                ]);
+                if (statsRes.status === 'fulfilled') setStats(statsRes.value.data.data);
+                if (actRes.status === 'fulfilled') setActivities(actRes.value.data.data);
+                if (perfRes.status === 'fulfilled') setPerformance(perfRes.value.data.data);
+                if (pwdRes.status === 'fulfilled') setPasswordInfo(pwdRes.value.data.data);
+                if ([statsRes, actRes, perfRes, pwdRes].some(result => result.status === 'rejected')) {
+                    setProfileLoadWarning('Tu identidad está disponible, pero algunos datos secundarios no pudieron actualizarse.');
+                }
+            } catch {
+                setProfileLoadWarning('No pudimos actualizar todos los datos del perfil. Se muestra la información disponible en tu sesión.');
+            } finally {
+                setProfileLoading(false);
+            }
         })();
     }, [user]);
+
+    useEffect(() => {
+        if (user?.accountType !== 'INTERNAL' || !user.employeeId) {
+            setMyWorkforce(null);
+            return;
+        }
+        let active = true;
+        setMyHrLoading(true);
+        void workforceClient.getMyWorkforce({ limit: 30 })
+            .then((data) => { if (active) setMyWorkforce(data); })
+            .catch(() => { if (active) setMyWorkforce(null); })
+            .finally(() => { if (active) setMyHrLoading(false); });
+        return () => { active = false; };
+    }, [user?.accountType, user?.employeeId]);
+
+    useEffect(() => {
+        if (requestedTab && ['info', 'hr', 'stats', 'permissions', 'settings', 'security', 'sessions', '2fa'].includes(requestedTab)) {
+            setActiveTab(requestedTab as ProfileTab);
+        }
+    }, [requestedTab]);
+
+    const selectTab = (tab: ProfileTab) => {
+        setActiveTab(tab);
+        setSearchParams(tab === 'info' ? {} : { tab }, { replace: true });
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -146,9 +196,20 @@ export default function Profile() {
 
     const roleLower = (user?.role?.name || '').toLowerCase();
     const initials = getInitials(user?.name || 'U');
+    const hasEmployeeContext = user?.accountType === 'INTERNAL' && Boolean(user.employeeId);
+    const canManageEmployeeLinks = roleLower.includes('admin') || roleLower.includes('human') || roleLower.includes('rh');
+    const vacationBalance = selectVacationBalance(myWorkforce?.vacationBalances);
+    const myPendingRequests = myWorkforce
+        ? [...myWorkforce.corrections, ...myWorkforce.overtimeRequests, ...myWorkforce.leaveRequests]
+            .filter(item => item.status === 'DRAFT' || item.status === 'PENDING').length
+        : null;
+    const myApprovedOvertimeMinutes = myWorkforce?.overtimeRequests
+        .filter(item => item.status === 'APPROVED')
+        .reduce((total, item) => total + (item.approvedMinutes ?? 0), 0) ?? null;
 
     const tabs: { id: ProfileTab; icon: LucideIcon; label: string }[] = [
         { id: 'info', icon: User, label: 'Información' },
+        { id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' },
         { id: 'stats', icon: TrendingUp, label: 'Mi Desempeño' },
         { id: 'permissions', icon: Shield, label: 'Permisos' },
         { id: 'settings', icon: Settings, label: 'Preferencias' },
@@ -160,53 +221,57 @@ export default function Profile() {
     return (
         <div className="profile-page">
             <h1 className="sr-only">Mi perfil</h1>
-            {/* ── Left Sidebar ── */}
-            <aside className="profile-sidebar">
-                <div className="profile-identity-card">
-                    <div className={`profile-avatar role-${roleLower}`}>{initials}</div>
-                    <h2 className="profile-user-name">{user?.name}</h2>
-                    <p className="profile-user-email">{user?.email}</p>
-                    <span className="profile-role-badge">{user?.role?.name ?? ''}</span>
-
-                    <div className="profile-meta-list">
-                        <div className="profile-meta-item">
-                            <span className="meta-label">Usuario</span>
-                            <span className="meta-value">@{user?.username}</span>
+            <header className="profile-overview" aria-labelledby="profile-overview-title">
+                <div className="profile-overview-main">
+                    <div className={`profile-avatar role-${roleLower}`} aria-hidden="true">{initials}</div>
+                    <div className="profile-overview-identity">
+                        <span className="profile-eyebrow"><CircleUserRound size={14} /> Centro de cuenta</span>
+                        <div className="profile-name-row">
+                            <h2 id="profile-overview-title" className="profile-user-name">{user?.name}</h2>
+                            <span className="profile-role-badge"><BadgeCheck size={14} /> {user?.role?.name ?? 'Sin rol'}</span>
                         </div>
-                        <div className="profile-meta-item">
-                            <span className="meta-label">Empresa</span>
-                            <span className="meta-value">{fullUserData?.company?.name || user?.company?.name || '—'}</span>
-                        </div>
-                        <div className="profile-meta-item">
-                            <span className="meta-label">Sucursal</span>
-                            <span className="meta-value">{fullUserData?.branch?.name || '—'}</span>
-                        </div>
-                        <div className="profile-meta-item">
-                            <span className="meta-label">Miembro desde</span>
-                            <span className="meta-value">
-                                {fullUserData?.createdAt ? new Date(fullUserData.createdAt).toLocaleDateString('es-MX', { month: 'short', year: 'numeric' }) : '—'}
-                            </span>
+                        <p className="profile-user-email">{user?.email || 'Correo no disponible'} · @{user?.username}</p>
+                        <div className="profile-overview-status">
+                            <span><Building2 size={15} /> {fullUserData?.company?.name || user?.company?.name || 'Empresa no disponible'}</span>
+                            <span><MapPin size={15} /> {fullUserData?.branch?.name || user?.branch?.name || 'Sin sucursal asignada'}</span>
+                            <span className={hasEmployeeContext ? 'linked' : 'pending'}><BriefcaseBusiness size={15} /> {hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}</span>
                         </div>
                     </div>
                 </div>
+                <div className="profile-overview-security">
+                    <span className="profile-security-icon"><KeyRound size={21} /></span>
+                    <div><strong>Seguridad de la cuenta</strong><small>Contraseña, sesiones y verificación en dos pasos</small></div>
+                    <button type="button" onClick={() => selectTab('security')}>Revisar <ChevronRight size={16} /></button>
+                </div>
+                <dl className="profile-overview-facts">
+                    <div><dt>Tipo de cuenta</dt><dd>{user?.accountType === 'INTERNAL' ? 'Interna' : user?.accountType === 'EXTERNAL' ? 'Externa' : 'No definido'}</dd></div>
+                    <div><dt>Estado</dt><dd>{user?.status || 'No disponible'}</dd></div>
+                    <div><dt>Miembro desde</dt><dd>{profileLoading ? 'Actualizando…' : fullUserData?.createdAt ? new Date(fullUserData.createdAt).toLocaleDateString('es-NI', { month: 'short', year: 'numeric' }) : 'No disponible'}</dd></div>
+                    <div><dt>Empleado</dt><dd>{hasEmployeeContext ? user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}` : 'No vinculado'}</dd></div>
+                </dl>
+            </header>
 
-                <nav className="profile-nav">
+            {profileLoadWarning && <div className="profile-load-warning" role="status"><AlertCircle size={18} /><span>{profileLoadWarning}</span></div>}
+
+            <div className="profile-workspace">
+                <nav className="profile-nav" role="tablist" aria-label="Secciones de mi perfil">
                     {tabs.map(t => (
                         <button
                             key={t.id}
                             className={`profile-nav-item ${activeTab === t.id ? 'active' : ''}`}
-                            onClick={() => setActiveTab(t.id)}
+                            onClick={() => selectTab(t.id)}
+                            role="tab"
+                            aria-selected={activeTab === t.id}
+                            aria-controls="profile-active-panel"
                         >
-                            <t.icon size={18} />
-                            {t.label}
+                            <t.icon size={17} aria-hidden="true" />
+                            <strong>{t.label}</strong>
                         </button>
                     ))}
                 </nav>
-            </aside>
 
-            {/* ── Right Content ── */}
-            <div className="profile-content">
-                <div className="profile-content-card">
+                <main className="profile-content">
+                <div className="profile-content-card" id="profile-active-panel" role="tabpanel" aria-label={tabs.find(tab => tab.id === activeTab)?.label}>
 
                     {/* INFO */}
                     {activeTab === 'info' && (
@@ -215,31 +280,31 @@ export default function Profile() {
                             <form onSubmit={handleSubmit} className="profile-edit-form">
                                 <div className="profile-form-row">
                                     <div className="profile-field">
-                                        <label>Nombre Completo</label>
-                                        <input type="text" className="profile-input" value={formData.name}
+                                        <label htmlFor="profile-name">Nombre completo</label>
+                                        <input id="profile-name" name="name" type="text" className="profile-input" value={formData.name}
                                             onChange={e => setFormData({ ...formData, name: e.target.value })} />
                                     </div>
                                     <div className="profile-field">
-                                        <label>Email</label>
-                                        <input type="email" className="profile-input" value={formData.email}
+                                        <label htmlFor="profile-email">Correo electrónico</label>
+                                        <input id="profile-email" name="email" type="email" className="profile-input" value={formData.email}
                                             onChange={e => setFormData({ ...formData, email: e.target.value })} />
                                     </div>
                                 </div>
                                 <div className="profile-form-row">
                                     <div className="profile-field">
-                                        <label>Cédula / NIF</label>
-                                        <input type="text" className="profile-input" placeholder="001-010101-0001A"
+                                        <label htmlFor="profile-nif">Cédula / NIF</label>
+                                        <input id="profile-nif" name="nif" type="text" className="profile-input" placeholder="001-010101-0001A"
                                             value={formData.nif} onChange={e => setFormData({ ...formData, nif: e.target.value })} />
                                     </div>
                                     <div className="profile-field">
-                                        <label>Teléfono</label>
-                                        <input type="text" className="profile-input" placeholder="+505 0000 0000"
+                                        <label htmlFor="profile-phone">Teléfono</label>
+                                        <input id="profile-phone" name="phone" type="tel" autoComplete="tel" className="profile-input" placeholder="+505 0000 0000"
                                             value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
                                     </div>
                                 </div>
                                 <div className="profile-field">
-                                    <label>Dirección</label>
-                                    <input type="text" className="profile-input" placeholder="Calle, Barrio, Ciudad..."
+                                    <label htmlFor="profile-address">Dirección</label>
+                                    <input id="profile-address" name="address" type="text" autoComplete="street-address" className="profile-input" placeholder="Calle, barrio, ciudad…"
                                         value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                                 </div>
                                 <div className="profile-form-footer">
@@ -247,8 +312,59 @@ export default function Profile() {
                                         <Save size={18} /> {loading ? 'Guardando...' : 'Guardar Cambios'}
                                     </Button>
                                 </div>
-                                {message && <div className={`profile-msg ${message.type}`}>{message.text}</div>}
+                                {message && <div className={`profile-msg ${message.type}`} role={message.type === 'error' ? 'alert' : 'status'} aria-live="polite">{message.text}</div>}
                             </form>
+                        </div>
+                    )}
+
+                    {/* EMPLOYEE SELF-SERVICE */}
+                    {activeTab === 'hr' && (
+                        <div className="profile-tab-fade">
+                            {!hasEmployeeContext ? (
+                                <section className="profile-hr-unlinked" aria-labelledby="profile-hr-unlinked-title">
+                                    <span className="profile-hr-unlinked-icon"><BriefcaseBusiness size={28} aria-hidden="true" /></span>
+                                    <div>
+                                        <p className="profile-hr-kicker">Mi expediente laboral</p>
+                                        <h3 id="profile-hr-unlinked-title">Esta cuenta todavía no está vinculada a un empleado</h3>
+                                        <p>Por eso no podemos mostrar horario, marcajes, horas extra, vacaciones, préstamos ni colillas personales. No significa que el módulo esté vacío: falta relacionar este usuario con su expediente en Personal.</p>
+                                        <dl className="profile-hr-link-status">
+                                            <div><dt>Tipo de cuenta</dt><dd>{user?.accountType === 'INTERNAL' ? 'Interna, pendiente de vínculo' : 'Externa'}</dd></div>
+                                            <div><dt>Expediente</dt><dd>No vinculado</dd></div>
+                                        </dl>
+                                        {canManageEmployeeLinks ? (
+                                            <Link to="/rh/personal" className="profile-hr-main-link">Vincular en Personal <ChevronRight size={17} aria-hidden="true" /></Link>
+                                        ) : (
+                                            <p className="profile-hr-help">Solicita a Recursos Humanos que vincule tu usuario con tu expediente laboral.</p>
+                                        )}
+                                    </div>
+                                </section>
+                            ) : <>
+                            <div className="profile-hr-hero">
+                                <div>
+                                    <p className="profile-hr-kicker">EXPEDIENTE PERSONAL</p>
+                                    <h3><BriefcaseBusiness size={22} /> Mi información laboral</h3>
+                                    <p>Consulta tu jornada, registra marcajes y gestiona solicitudes, pagos y beneficios desde un solo lugar.</p>
+                                </div>
+                                <Link to="/rh/marcaje" className="profile-hr-main-link"><MapPin size={17} /> Ir a marcaje <ChevronRight size={17} aria-hidden="true" /></Link>
+                            </div>
+                            <dl className="profile-hr-identity">
+                                <div><dt>Empleado</dt><dd>{user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}`}</dd></div>
+                                <div className="profile-hr-vacation-balance"><dt>Saldo de vacaciones</dt><dd>{myHrLoading ? 'Cargando…' : vacationBalance ? `${formatHrNumber(vacationBalance.available)} ${vacationBalance.unit.toLowerCase()}` : 'Sin saldo disponible'}</dd></div>
+                                <div><dt>Solicitudes en espera</dt><dd>{myHrLoading ? '…' : myPendingRequests ?? '—'}</dd></div>
+                                <div><dt>Horas extra aprobadas</dt><dd>{myHrLoading ? '…' : myApprovedOvertimeMinutes != null ? `${formatHrNumber(myApprovedOvertimeMinutes)} min` : '—'}</dd></div>
+                            </dl>
+                            <div className="profile-hr-context"><span><strong>{user?.employee?.status ?? 'Vinculado'}</strong> Estado laboral</span><span><strong>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</strong> Sucursal</span></div>
+                            <div className="profile-hr-section-heading"><div><h4>Accesos de Mi RH</h4><p>Abre cada sección para consultar datos emitidos por el servidor o iniciar una gestión.</p></div></div>
+                            <div className="profile-hr-grid">
+                                <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Mi horario</strong><small>Turnos publicados y acuse de lectura</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/marcaje"><MapPin size={22} /><span><strong>Marcajes</strong><small>Entrada, descansos y salida</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/gestion?tab=OVERTIME"><TrendingUp size={22} /><span><strong>Horas extra</strong><small>Solicitadas, aprobadas y rechazadas</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/gestion?tab=LEAVE"><Calendar size={22} /><span><strong>Vacaciones y permisos</strong><small>Crea solicitudes y revisa sus estados</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/nomina"><FileText size={22} /><span><strong>Recibos de pago</strong><small>Ingresos, deducciones y colillas</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/prestaciones"><WalletCards size={22} /><span><strong>Beneficios</strong><small>Viáticos, préstamos y deducciones</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/biometria"><Fingerprint size={22} /><span><strong>Mi biometría</strong><small>Consentimiento, enrolamiento y revocación</small></span><ChevronRight size={17} /></Link>
+                            </div>
+                            </>}
                         </div>
                     )}
 
@@ -412,7 +528,7 @@ export default function Profile() {
                                         <Bell size={22} />
                                         <div><h4>Notificaciones</h4><p>Alertas en tiempo real</p></div>
                                     </div>
-                                    <label className="switch"><input type="checkbox" defaultChecked /><span className="slider round"></span></label>
+                                    <label className="switch"><span className="sr-only">Activar notificaciones en tiempo real</span><input type="checkbox" defaultChecked aria-label="Activar notificaciones en tiempo real" /><span className="slider round"></span></label>
                                 </div>
                             </div>
                         </div>
@@ -428,6 +544,7 @@ export default function Profile() {
                     {activeTab === '2fa' && <TwoFactorSection />}
 
                 </div>
+                </main>
             </div>
         </div>
     );
@@ -518,22 +635,22 @@ function SecuritySection({ logout, passwordInfo }: { logout: () => void; passwor
                 {msg && <div className={`profile-msg ${msg.type}`}>{msg.text}</div>}
 
                 <div className="profile-field">
-                    <label>Contraseña Actual</label>
+                    <label htmlFor="profile-current-password">Contraseña actual</label>
                     <div className="profile-pass-wrap">
-                        <input type={showOld ? 'text' : 'password'} className="profile-input"
+                        <input id="profile-current-password" name="currentPassword" autoComplete="current-password" type={showOld ? 'text' : 'password'} className="profile-input"
                             value={oldPwd} onChange={e => setOldPwd(e.target.value)} placeholder="Contraseña actual" />
-                        <button type="button" className="profile-pass-toggle" onClick={() => setShowOld(!showOld)}>
+                        <button type="button" className="profile-pass-toggle" onClick={() => setShowOld(!showOld)} aria-label={showOld ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'} aria-pressed={showOld}>
                             {showOld ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
                 </div>
 
                 <div className="profile-field">
-                    <label>Nueva Contraseña</label>
+                    <label htmlFor="profile-new-password">Nueva contraseña</label>
                     <div className="profile-pass-wrap">
-                        <input type={showNew ? 'text' : 'password'} className="profile-input"
+                        <input id="profile-new-password" name="newPassword" autoComplete="new-password" type={showNew ? 'text' : 'password'} className="profile-input"
                             value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Nueva contraseña" />
-                        <button type="button" className="profile-pass-toggle" onClick={() => setShowNew(!showNew)}>
+                        <button type="button" className="profile-pass-toggle" onClick={() => setShowNew(!showNew)} aria-label={showNew ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'} aria-pressed={showNew}>
                             {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
@@ -549,10 +666,10 @@ function SecuritySection({ logout, passwordInfo }: { logout: () => void; passwor
                 </div>
 
                 <div className="profile-field">
-                    <label>Confirmar Nueva Contraseña</label>
-                    <input type="password" className="profile-input" value={confirmPwd}
-                        onChange={e => setConfirmPwd(e.target.value)} placeholder="Repite la nueva contraseña" />
-                    {confirmPwd.length > 0 && !match && <span className="pwd-mismatch-msg">No coinciden</span>}
+                    <label htmlFor="profile-confirm-password">Confirmar nueva contraseña</label>
+                    <input id="profile-confirm-password" name="confirmPassword" autoComplete="new-password" type="password" className="profile-input" value={confirmPwd}
+                        onChange={e => setConfirmPwd(e.target.value)} placeholder="Repite la nueva contraseña" aria-invalid={confirmPwd.length > 0 && !match} aria-describedby={confirmPwd.length > 0 && !match ? 'profile-password-mismatch' : undefined} />
+                    {confirmPwd.length > 0 && !match && <span className="pwd-mismatch-msg" id="profile-password-mismatch">No coinciden</span>}
                 </div>
 
                 <div className="profile-form-footer">
@@ -623,7 +740,7 @@ function SessionsSection() {
                                     </div>
                                 </div>
                                 {!s.isCurrent && (
-                                    <button className="session-revoke-btn" onClick={() => handleRevoke(s.id)} title="Cerrar sesión">
+                                    <button type="button" className="session-revoke-btn" onClick={() => handleRevoke(s.id)} aria-label={`Cerrar sesión en ${s.device || 'navegador'}`}>
                                         <LogOut size={16} />
                                     </button>
                                 )}
@@ -631,7 +748,7 @@ function SessionsSection() {
                         ))}
                     </div>
                     {sessions.length > 1 && (
-                        <button className="revoke-all-btn" onClick={handleRevokeAll}>
+                        <button type="button" className="revoke-all-btn" onClick={handleRevokeAll}>
                             <LogOut size={16} /> Cerrar todas las demás sesiones
                         </button>
                     )}
@@ -644,24 +761,30 @@ function SessionsSection() {
 /** Two-Factor Authentication */
 function TwoFactorSection() {
     const { user } = useAuth();
-    const [status, setStatus] = useState<'loading' | 'off' | 'setup' | 'on'>('loading');
+    const [status, setStatus] = useState<'loading' | 'unavailable' | 'off' | 'setup' | 'on'>('loading');
     const [qrCode, setQrCode] = useState('');
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
 
     const checkStatus = useCallback(async () => {
+        setError('');
+        setStatus('loading');
         try {
             if (!user?.id) {
-                setStatus('off');
+                setStatus('unavailable');
+                setError('No se pudo identificar la cuenta para consultar el estado de 2FA.');
                 return;
             }
 
-            const userRes = await usersAPI.getById(user.id).catch(() => null);
-            const enabled = Boolean(userRes?.data?.data?.twoFactorEnabled);
+            const userRes = await usersAPI.getById(user.id);
+            const enabled = Boolean(userRes.data?.data?.twoFactorEnabled);
             setStatus(enabled ? 'on' : 'off');
-        } catch {
-            setStatus('off');
+        } catch (err: unknown) {
+            // Unknown is not the same as disabled: exposing the enable flow on
+            // a failed read can misrepresent or overwrite security state.
+            setStatus('unavailable');
+            setError(axiosErr(err, 'No se pudo consultar el estado de 2FA.'));
         }
     }, [user?.id]);
 
@@ -708,9 +831,22 @@ function TwoFactorSection() {
             <h3 className="profile-section-title"><Smartphone size={20} /> Autenticación de Dos Factores</h3>
             <p className="security-note">Agrega una capa extra de seguridad usando Google Authenticator, Authy u otra app TOTP.</p>
 
-            {error && <div className="profile-msg error">{error}</div>}
+            {error && <div className="profile-msg error" role="alert" aria-live="assertive">{error}</div>}
 
-            {status === 'loading' && <p style={{ color: 'var(--color-text-secondary)' }}>Cargando...</p>}
+            {status === 'loading' && <p className="profile-inline-loading" role="status">Cargando estado de seguridad…</p>}
+
+            {status === 'unavailable' && (
+                <div className="twofa-status-card">
+                    <div className="twofa-status-info">
+                        <Shield size={24} style={{ color: 'var(--color-warning)' }} />
+                        <div>
+                            <strong>Estado de 2FA no disponible</strong>
+                            <p>No se habilitarán cambios hasta confirmar el estado actual.</p>
+                        </div>
+                    </div>
+                    <button type="button" className="twofa-enable-btn" onClick={() => void checkStatus()}>Reintentar</button>
+                </div>
+            )}
 
             {status === 'off' && (
                 <div className="twofa-status-card">
@@ -721,7 +857,7 @@ function TwoFactorSection() {
                             <p>Tu cuenta solo está protegida con contraseña.</p>
                         </div>
                     </div>
-                    <button className="twofa-enable-btn" onClick={handleSetup}>Activar 2FA</button>
+                    <button type="button" className="twofa-enable-btn" onClick={handleSetup}>Activar 2FA</button>
                 </div>
             )}
 
@@ -732,11 +868,11 @@ function TwoFactorSection() {
                     <p style={{ fontWeight: 600, marginTop: 16, marginBottom: 8 }}>2. Ingresa el código de 6 dígitos que muestra la app:</p>
                     <div className="twofa-verify-row">
                         <input
-                            type="text" maxLength={6} placeholder="000000"
+                            id="profile-2fa-setup-code" name="twoFactorCode" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="000000" aria-label="Código de verificación de 6 dígitos"
                             value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
                             className="twofa-code-input"
                         />
-                        <button className="twofa-enable-btn" onClick={handleVerify} disabled={code.length !== 6 || saving}>
+                        <button type="button" className="twofa-enable-btn" onClick={handleVerify} disabled={code.length !== 6 || saving}>
                             {saving ? 'Verificando...' : 'Verificar y Activar'}
                         </button>
                     </div>
@@ -754,11 +890,11 @@ function TwoFactorSection() {
                     </div>
                     <div className="twofa-disable-area">
                         <input
-                            type="text" maxLength={6} placeholder="Código para desactivar"
+                            id="profile-2fa-disable-code" name="twoFactorDisableCode" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="Código para desactivar" aria-label="Código de 6 dígitos para desactivar 2FA"
                             value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
                             className="twofa-code-input small"
                         />
-                        <button className="twofa-disable-btn" onClick={handleDisable} disabled={code.length !== 6 || saving}>
+                        <button type="button" className="twofa-disable-btn" onClick={handleDisable} disabled={code.length !== 6 || saving}>
                             Desactivar
                         </button>
                     </div>

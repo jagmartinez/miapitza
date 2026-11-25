@@ -3,10 +3,12 @@ import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { AuditLogService } from './audit-log.service';
 import { OrderService } from './order.service';
-import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
+import { encrypt, decrypt, isEncrypted, isLegacyEncryptionCandidate } from '../utils/encryption';
 import { DynamicPricingService } from './dynamic-pricing.service';
+import { externalHttpTimeoutMs, fetchWithTimeout } from '../utils/external-http';
 
 const SECRET_FIELDS = ['clientSecret', 'webhookSecret', 'accessToken', 'refreshToken'] as const;
+const pedidosYaTimeoutMs = () => externalHttpTimeoutMs(process.env.PEDIDOSYA_HTTP_TIMEOUT_MS);
 
 export class PedidosYaService {
     static async resolveWebhookConfig(companyId: number, payload?: Record<string, unknown>) {
@@ -32,7 +34,7 @@ export class PedidosYaService {
     /** Decrypts a stored secret, tolerating legacy plaintext values. */
     static decryptSecret(value: string | null | undefined): string | null {
         if (!value) return null;
-        if (!isEncrypted(value)) return value;
+        if (!isEncrypted(value) && !isLegacyEncryptionCandidate(value)) return value;
         try {
             return decrypt(value);
         } catch (error) {
@@ -44,7 +46,11 @@ export class PedidosYaService {
     /** Encrypts a secret for storage; passes through empty values. */
     private static encryptSecret(value: string | null | undefined): string | null | undefined {
         if (value === null || value === undefined || value === '') return value;
-        return isEncrypted(value) ? value : encrypt(value);
+        if (isEncrypted(value)) return value;
+        // Incoming configuration is explicit plaintext. Encrypt even when it
+        // happens to look like base64 so an operator can replace an ambiguous
+        // legacy value with a valid base64-formatted provider secret.
+        return encrypt(value);
     }
 
     /** Masks a secret for client responses, exposing only the last 4 chars. */
@@ -170,7 +176,7 @@ export class PedidosYaService {
         const clientSecret = this.decryptSecret(config.clientSecret);
         if (!clientSecret) throw new Error('No se pudo leer la credencial PedidosYa');
 
-        const response = await fetch(`${baseUrl}/oauth/token`, {
+        const response = await fetchWithTimeout(`${baseUrl}/oauth/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -178,7 +184,7 @@ export class PedidosYaService {
                 client_id: config.clientId,
                 client_secret: clientSecret,
             }),
-        });
+        }, pedidosYaTimeoutMs());
 
         if (!response.ok) {
             throw new Error(`OAuth token refresh failed: ${response.status}`);
@@ -428,7 +434,10 @@ export class PedidosYaService {
                 // Channel cancellations are authoritative even for PAID orders.
                 {
                     allowPaidReversal: true,
-                    wasteWarehouseId: config.defaultWarehouseId ?? undefined
+                    wasteWarehouseId: config.defaultWarehouseId ?? undefined,
+                    // The signed provider cancellation is the external refund
+                    // evidence for non-cash channel payments.
+                    externalRefundReference: `PEDIDOSYA-CANCEL-${externalId}`
                 }
             );
         } catch (err) {
@@ -517,9 +526,23 @@ export class PedidosYaService {
             if (item.id) {
                 const mapping = await prisma.pedidosYaProductMapping.findFirst({
                     where: { companyId, externalId: item.id, isActive: true },
-                    include: { menuItem: { select: { id: true, price: true, branchId: true, active: true } } },
+                    include: {
+                        menuItem: {
+                            select: {
+                                id: true,
+                                price: true,
+                                branchId: true,
+                                active: true,
+                                type: true,
+                                _count: { select: { recipes: true } }
+                            }
+                        }
+                    },
                 });
-                if (mapping?.menuItem?.active && (mapping.menuItem.branchId === null || mapping.menuItem.branchId === branchId)) {
+                const mappedItemReady = mapping?.menuItem?.type === 'DIRECT'
+                    || (mapping?.menuItem?.type === 'PREPARED' && mapping.menuItem._count.recipes > 0);
+                if (mapping?.menuItem?.active && mappedItemReady
+                    && (mapping.menuItem.branchId === null || mapping.menuItem.branchId === branchId)) {
                     menuItemId = mapping.menuItem.id;
                     const basePrice = await DynamicPricingService.getPrice(menuItemId, branchId, companyId);
                     price = price ?? Math.round(basePrice * (1 + markupPct / 100) * 100) / 100;
@@ -528,7 +551,20 @@ export class PedidosYaService {
 
             if (!menuItemId) {
                 const candidates = await prisma.menuItem.findMany({
-                    where: { companyId, name: { contains: item.name.trim() }, active: true, OR: [{ branchId: null }, { branchId }] },
+                    where: {
+                        companyId,
+                        name: { contains: item.name.trim() },
+                        active: true,
+                        AND: [
+                            { OR: [{ branchId: null }, { branchId }] },
+                            {
+                                OR: [
+                                    { type: 'DIRECT' },
+                                    { type: 'PREPARED', recipes: { some: {} } }
+                                ]
+                            }
+                        ]
+                    },
                     select: { id: true, name: true, price: true },
                 });
                 const exact = candidates.filter((candidate) =>
@@ -595,14 +631,14 @@ export class PedidosYaService {
                 ? 'https://api.pedidosya.com'
                 : 'https://api-sandbox.pedidosya.com';
 
-            const response = await fetch(`${baseUrl}/v3/orders/${sync.externalId}/status`, {
+            const response = await fetchWithTimeout(`${baseUrl}/v3/orders/${sync.externalId}/status`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ status: platformStatus }),
-            });
+            }, pedidosYaTimeoutMs());
             if (!response.ok) throw new Error(`PedidosYa status sync failed: HTTP ${response.status}`);
 
             await prisma.pedidosYaOrderSync.update({

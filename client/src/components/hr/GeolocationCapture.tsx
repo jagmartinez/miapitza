@@ -61,7 +61,11 @@ export default function GeolocationCapture({ maxAccuracyM, onCapture, disabled =
             {location && (
                 <div className={`hr-location-result ${acceptable ? 'ok' : 'warning'}`} role="status">
                     {acceptable ? <LocateFixed size={20} aria-hidden="true" /> : <AlertTriangle size={20} aria-hidden="true" />}
-                    <div><strong>Precisión reportada: ±{Math.round(location.accuracyM)} m</strong><span>{acceptable ? `Dentro del máximo de ${maxAccuracyM} m.` : `Supera el máximo de ${maxAccuracyM} m; el servidor puede enviar el intento a revisión.`}</span></div>
+                    <div>
+                        <strong>Ubicación capturada · precisión ±{Math.round(location.accuracyM)} m</strong>
+                        <span>{acceptable ? `Precisión dentro del máximo de ${maxAccuracyM} m.` : `Supera el máximo de ${maxAccuracyM} m; el servidor aplicará la política configurada.`}</span>
+                        <small>La distancia y la geocerca de tu sucursal se validan al confirmar.</small>
+                    </div>
                 </div>
             )}
             {error && <div className="hr-attendance-alert danger" role="alert">{error}</div>}

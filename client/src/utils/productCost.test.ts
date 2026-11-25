@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { effectiveUnitCost } from './productCost';
+import { effectiveUnitCost, resolveEffectiveUnitCost } from './productCost';
 
 describe('effectiveUnitCost', () => {
   it('prefers the positive weighted average', () => {
@@ -12,5 +12,12 @@ describe('effectiveUnitCost', () => {
 
   it('returns zero for invalid values', () => {
     expect(effectiveUnitCost(undefined, -1)).toBe(0);
+  });
+
+  it('reports missing zero separately from a confirmed zero', () => {
+    expect(resolveEffectiveUnitCost(0, 0).anomaly).toBe('PRODUCT_COST_MISSING');
+    expect(resolveEffectiveUnitCost(0, 8, { averageCostKnown: true })).toEqual({
+      value: 0, known: true, source: 'AVERAGE', anomaly: null,
+    });
   });
 });

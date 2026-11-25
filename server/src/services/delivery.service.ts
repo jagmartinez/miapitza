@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import { SalesChannelService } from './sales-channel.service';
-import { decrypt, isEncrypted } from '../utils/encryption';
+import { decrypt, isEncrypted, isLegacyEncryptionCandidate } from '../utils/encryption';
 
 /**
  * Delivery Platform Integration Service
@@ -140,7 +140,8 @@ export class DeliveryService {
             'RAPPI': 'DELIVERY',
             'OTHER': 'DELIVERY',
         };
-        const salesChannel = channelMap[deliveryOrder.platform] || 'DELIVERY';
+        const salesChannel = channelMap[deliveryOrder.platform];
+        if (!salesChannel) throw new Error(`Unsupported delivery platform: ${String(deliveryOrder.platform)}`);
 
         let channelCommission = 0;
         let channelMarkup = 0;
@@ -218,11 +219,17 @@ export class DeliveryService {
             });
             if (!config?.webhookSecret) return null;
             try {
-                return isEncrypted(config.webhookSecret)
+                // Legacy ciphertext has no prefix. If it has the structural
+                // shape of the old envelope, always authenticate it instead of
+                // downgrading a wrong-key/corrupt value to plaintext.
+                return (isEncrypted(config.webhookSecret) || isLegacyEncryptionCandidate(config.webhookSecret))
                     ? decrypt(config.webhookSecret)
                     : config.webhookSecret;
-            } catch {
-                return config.webhookSecret;
+            } catch (error) {
+                // An encrypted value that cannot be decrypted is corrupt. Never
+                // reinterpret its ciphertext as a legacy plaintext HMAC secret.
+                console.error('[DeliveryService] No se pudo descifrar el secreto webhook PedidosYa:', error);
+                return null;
             }
         }
 
@@ -286,7 +293,15 @@ export class DeliveryService {
             where: {
                 companyId,
                 active: true,
-                OR: [{ branchId: null }, { branchId }]
+                AND: [
+                    { OR: [{ branchId: null }, { branchId }] },
+                    {
+                        OR: [
+                            { type: 'DIRECT' },
+                            { type: 'PREPARED', recipes: { some: {} } }
+                        ]
+                    }
+                ]
             },
             select: { id: true, name: true, price: true }
         });
@@ -358,24 +373,28 @@ export class DeliveryService {
     static mapStatusToPlatform(
         platform: string,
         internalStatus: string
-    ): string {
-        const statusMap: Record<string, Record<string, string>> = {
+    ): DeliveryStatusUpdate['status'] | null {
+        const statusMap: Record<string, Partial<Record<string, DeliveryStatusUpdate['status']>>> = {
             UBER_EATS: {
                 'OPEN': 'ACCEPTED',
                 'SENT_TO_KITCHEN': 'PREPARING',
+                'IN_PREPARATION': 'PREPARING',
                 'READY': 'READY_FOR_PICKUP',
                 'DELIVERED': 'PICKED_UP',
                 'CANCELLED': 'CANCELLED'
             },
             RAPPI: {
                 'OPEN': 'ACCEPTED',
-                'SENT_TO_KITCHEN': 'IN_PROGRESS',
-                'READY': 'READY',
+                'SENT_TO_KITCHEN': 'PREPARING',
+                'IN_PREPARATION': 'PREPARING',
+                'READY': 'READY_FOR_PICKUP',
                 'DELIVERED': 'DELIVERED',
-                'CANCELLED': 'REJECTED'
+                'CANCELLED': 'CANCELLED'
             }
         };
 
-        return statusMap[platform]?.[internalStatus] || internalStatus;
+        const normalizedPlatform = String(platform || '').trim().toUpperCase().replace(/-/g, '_');
+        const normalizedStatus = String(internalStatus || '').trim().toUpperCase();
+        return statusMap[normalizedPlatform]?.[normalizedStatus] ?? null;
     }
 }

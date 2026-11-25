@@ -1,8 +1,9 @@
 import { useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     X, Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
-    MapPin, Users, CircleDollarSign
+    Users, CircleDollarSign
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -10,6 +11,7 @@ import { getUserAccentColor } from '../utils/authz';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useCurrency } from '../hooks/useCurrency';
+import { useAppToast } from '../context/ToastContext';
 import './TableOrdersModal.css';
 
 interface TableOrdersModalProps {
@@ -50,6 +52,7 @@ export default function TableOrdersModal({
     onConsolidate
 }: TableOrdersModalProps) {
     const { formatMoney, symbol } = useCurrency();
+    const { error: showError } = useAppToast();
     const containerRef = useRef<HTMLDivElement>(null);
     const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
     if (!isOpen || !table) return null;
@@ -81,7 +84,10 @@ export default function TableOrdersModal({
     const handlePrintBill = () => {
         // ... (print logic remains the same)
         const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
+        if (!printWindow) {
+            showError('No se pudo abrir la impresión. Permite ventanas emergentes e inténtalo de nuevo.');
+            return;
+        }
 
         const e = escapeHtml;
         const billHTML = `
@@ -142,7 +148,7 @@ export default function TableOrdersModal({
         }, 250);
     };
 
-    return (
+    return createPortal(
         <div className="modal-overlay-orders" onClick={onClose}>
             <div
                 ref={containerRef}
@@ -155,7 +161,6 @@ export default function TableOrdersModal({
             >
                 <div className="orders-modal-header">
                     <div className="table-detail-title">
-                        <span className="table-detail-icon" aria-hidden="true"><MapPin size={21} /></span>
                         <div className="header-title">
                             <span className="table-detail-eyebrow">Centro operativo</span>
                             <h2 id={titleId}>Mesa {tableNumber}</h2>
@@ -239,7 +244,7 @@ export default function TableOrdersModal({
                                         </div>
                                         <div className="table-order-actions">
                                             {canOperatePOS && !order.invoiceNumber && order.financialStatus === 'UNPAID' && (
-                                                <button type="button" onClick={() => onOpenPOS(table)}>
+                                                <button type="button" className="table-order-add-products" onClick={() => onOpenPOS(table)}>
                                                     <ShoppingCart size={16} /> Agregar productos
                                                 </button>
                                             )}
@@ -292,6 +297,7 @@ export default function TableOrdersModal({
                     </button>}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

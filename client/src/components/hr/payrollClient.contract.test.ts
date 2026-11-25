@@ -89,7 +89,16 @@ describe('Phase 5 payroll API contract', () => {
     expect(source).toContain('getRuleConfigurations');
     expect(source).toContain('uploadRuleConfiguration');
     expect(source).toContain('reviewRuleConfiguration');
-    expect(types).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V1'");
+    expect(types).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V4'");
+    expect(types).toContain('paymentConceptCatalog: HrPayrollPaymentConceptDefinition[]');
+    expect(types).toContain("incomeTaxTreatment?: 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL'");
+    expect(types).toContain("occasional: 'OCCASIONAL_INCREMENTAL'");
+    expect(types).toContain("occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET'");
+    expect(types).not.toContain("occasionalInssDeductionTreatment: 'DEDUCT_FROM_REGULAR_NET'");
+    expect(interfaceBody('HrPayrollComponentPayload')).toContain('classificationConfirmed: true');
+    for (const field of ['configurationRevisionId', 'fixedCompensationAmount', 'elapsedFiscalMonths', 'bracketSnapshot', 'historyFingerprint', 'createdAt']) {
+      expect(interfaceBody('HrPayrollStatutoryCalculation')).toContain(field);
+    }
     expect(types).toContain("decision: 'VALIDATED' | 'REJECTED'");
   });
 });

@@ -20,9 +20,9 @@ describe('visibleNav', () => {
     expect(labels(userWith('CAJERO'))).not.toContain('Nómina y aguinaldo');
     expect(labels(userWith('SUPERADMIN'))).toContain('Nómina y aguinaldo');
   });
-  it('solo muestra ítems internos a empleados internos con ficha', () => {
+  it('deja las herramientas del empleado en el Perfil, no en el menú', () => {
     expect(labels(userWith('CAJERO'))).not.toContain('Marcaje');
-    expect(labels(userWith('CAJERO', { accountType: 'INTERNAL', employeeId: 5 }))).toContain('Marcaje');
+    expect(labels(userWith('CAJERO', { accountType: 'INTERNAL', employeeId: 5 }))).not.toContain('Marcaje');
   });
   it('descarta grupos sin ítems visibles', () => {
     const ids = visibleNav(NAV_GROUPS, userWith('CAJERO')).map((g) => g.id);
@@ -41,7 +41,7 @@ describe('NavRail', () => {
     const active = screen.getByRole('link', { name: 'Inventario' });
     expect(active).toHaveAttribute('aria-current', 'page');
     expect(active).toHaveAttribute('title', 'Inventario');
-    expect(screen.getByRole('link', { name: 'Kardex' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Reporte Mermas' })).not.toHaveAttribute('aria-current');
   });
 });
 

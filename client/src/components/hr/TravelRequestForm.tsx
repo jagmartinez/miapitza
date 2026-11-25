@@ -1,6 +1,9 @@
+import HrReactSelect from './HrReactSelect';
+import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { MapPin, ShieldCheck } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrTravelRequestPayload } from '../../types/hr-benefits';
 
@@ -47,11 +50,28 @@ export default function TravelRequestForm({
   };
 
   return (
-    <form className="hr-benefits-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de viático"
+      tabLabel="Viático"
+      sectionTitle="Persona, destino y presupuesto"
+      icon={<MapPin size={18} aria-hidden="true" />}
+      formClassName="hr-benefits-form"
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!online || saving || !confirmed}>
+            {saving ? 'Guardando…' : 'Crear borrador'}
+          </Button>
+        </>
+      }
+    >
       {!selfService && (
         <label>
           Persona
-          <select
+          <HrReactSelect
             required
             value={form.userId ?? ''}
             onChange={(event) =>
@@ -64,12 +84,12 @@ export default function TravelRequestForm({
                 {user.name ?? user.username}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>
         Sucursal de origen
-        <select
+        <HrReactSelect
           value={form.branchId ?? ''}
           onChange={(event) =>
             setForm((current) => ({
@@ -84,7 +104,7 @@ export default function TravelRequestForm({
               {branch.name}
             </option>
           ))}
-        </select>
+        </HrReactSelect>
       </label>
       <label className="span-full">
         Destino
@@ -125,24 +145,20 @@ export default function TravelRequestForm({
       </label>
       <label>
         Moneda
-        <select
+        <HrReactSelect
           value={form.currency}
           onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
         >
           <option value="NIO">NIO — Córdoba</option>
           <option value="USD">USD — Dólar</option>
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Estimado solicitado
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          inputMode="decimal"
+        <HrMoneyInput
           value={form.requestedAmount}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, requestedAmount: event.target.value }))
+          onValueChange={(requestedAmount) =>
+            setForm((current) => ({ ...current, requestedAmount }))
           }
           required
         />
@@ -169,14 +185,6 @@ export default function TravelRequestForm({
           solicitado.
         </span>
       </label>
-      <div className="hr-benefits-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={!online || saving || !confirmed}>
-          {saving ? 'Guardando…' : 'Crear borrador'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

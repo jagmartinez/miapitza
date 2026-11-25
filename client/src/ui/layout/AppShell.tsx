@@ -25,7 +25,7 @@ export function AppShell({ nav, collapsed, onToggleCollapsed, topbar, children, 
   if (bare) {
     return (
       <div className="ui-shell ui-shell--bare">
-        <main className="ui-shell__main">{children}</main>
+        <main className="ui-shell__main"><div className="ui-shell__inner">{children}</div></main>
       </div>
     );
   }
@@ -48,7 +48,7 @@ export function AppShell({ nav, collapsed, onToggleCollapsed, topbar, children, 
           <IconButton className="ui-shell__menubtn" icon={Menu} label="Abrir menú" onClick={() => setMobileOpen(true)} />
           {topbar}
         </header>
-        <main className="ui-shell__main">{children}</main>
+        <main className="ui-shell__main"><div className="ui-shell__inner">{children}</div></main>
       </div>
       <Drawer isOpen={mobileOpen} onClose={() => setMobileOpen(false)} title="Menú" width="sm">
         <NavRail nav={nav} activePath={pathname} expanded onNavigate={() => setMobileOpen(false)} />

@@ -835,7 +835,7 @@ export default function ProductionRecipes() {
                     </div>
                     <div className="modal-form-new">
                         <div className="modal-tab-content">
-                            {activeFormTab === 'recipe' && <div className="modal-section animate-slide-in">
+                            {activeFormTab === 'recipe' && <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <Info size={18} />
                                     <h3>Datos de la receta</h3>
@@ -906,7 +906,7 @@ export default function ProductionRecipes() {
                                 </div>
                             </div>}
 
-                            {activeFormTab === 'components' && <div className="modal-section animate-slide-in">
+                            {activeFormTab === 'components' && <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <Layers size={18} />
                                     <h3>Componentes</h3>
@@ -977,7 +977,7 @@ export default function ProductionRecipes() {
                                 </Button>
                             </div>}
 
-                            {activeFormTab === 'cost' && <div className="modal-section animate-slide-in">
+                            {activeFormTab === 'cost' && <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <Info size={18} />
                                     <h3>Costo estimado</h3>
@@ -1029,7 +1029,7 @@ export default function ProductionRecipes() {
                             </div>}
 
                             {activeFormTab === 'cost' && !editingRecipe && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <label className="pr-activate-toggle">
                                         <input
                                             type="checkbox"

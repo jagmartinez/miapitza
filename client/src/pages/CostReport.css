@@ -23,7 +23,7 @@
 .cost-report-page {
     /* Extend page-wrapper if applied alongside it; otherwise use defaults. */
     padding: var(--spacing-lg);
-    max-width: 1400px;
+    max-width: 1700px;
     margin: 0 auto;
 }
 

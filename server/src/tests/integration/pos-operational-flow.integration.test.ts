@@ -14,11 +14,25 @@ describe('POS operational flow', () => {
     const companyId = 990;
     const branchId = 990;
     const username = 'pos_flow_admin';
+    const requiredPermissionNames = [
+        'orders.view',
+        'orders.create',
+        'orders.edit',
+        'orders.cancel',
+        'orders.deliver',
+        'kds.manage',
+        'invoices.issue',
+        'invoices.view',
+        'payments.process',
+        'payments.reverse',
+        'bills.split'
+    ] as const;
     let token: string;
     let userId: number;
     let tableId: number;
     let menuItemId: number;
     let directMenuItemId: number;
+    let ingredientProductId: number;
     let paymentMethodId: number;
     let registerId: number;
     let shiftId: number;
@@ -29,12 +43,30 @@ describe('POS operational flow', () => {
     let reservationId: number;
 
     beforeAll(async () => {
-        const role = await prisma.role.findFirst({ where: { name: 'ADMIN', companyId: null } })
-            ?? await prisma.role.create({ data: { name: 'ADMIN', description: 'Integration admin' } });
         await prisma.company.upsert({
             where: { id: companyId },
             update: { active: true },
             create: { id: companyId, name: 'POS Flow Integration', active: true }
+        });
+        const requiredPermissions = await Promise.all(requiredPermissionNames.map((name) =>
+            prisma.permission.upsert({
+                where: { name },
+                update: {},
+                create: { name, description: `POS integration ${name}` }
+            })
+        ));
+        const role = await prisma.role.upsert({
+            where: { companyId_name: { companyId, name: 'ADMIN' } },
+            update: {
+                description: 'POS integration administrator',
+                permissions: { set: requiredPermissions.map(({ id }) => ({ id })) }
+            },
+            create: {
+                companyId,
+                name: 'ADMIN',
+                description: 'POS integration administrator',
+                permissions: { connect: requiredPermissions.map(({ id }) => ({ id })) }
+            }
         });
         await prisma.branch.upsert({
             where: { id: branchId },
@@ -51,6 +83,11 @@ describe('POS operational flow', () => {
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.reservation.deleteMany({ where: { companyId } });
+        await prisma.inventoryMovement.deleteMany({ where: { companyId } });
+        await prisma.inventoryBatch.deleteMany({ where: { companyId } });
+        await prisma.stock.deleteMany({ where: { companyId } });
+        await prisma.menuItem.deleteMany({ where: { companyId } });
+        await prisma.product.deleteMany({ where: { companyId } });
         const staleUsers = await prisma.user.findMany({ where: { username }, select: { id: true } });
         if (staleUsers.length) {
             await prisma.auditLog.deleteMany({ where: { userId: { in: staleUsers.map((user) => user.id) } } });
@@ -70,8 +107,31 @@ describe('POS operational flow', () => {
             update: {},
             create: { companyId, name: 'POS Integration Menu' }
         });
+        const ingredient = await prisma.product.create({
+            data: {
+                companyId,
+                categoryId: category.id,
+                name: 'Integration Ingredient',
+                sku: 'POS-IT-INGREDIENT',
+                unit: 'unit',
+                type: 'INGREDIENT',
+                cost: 5,
+                currentAverageCost: 5
+            }
+        });
+        ingredientProductId = ingredient.id;
         const menuItem = await prisma.menuItem.create({
-            data: { companyId, branchId, categoryId: category.id, name: 'Integration Plate', price: 100 }
+            data: {
+                companyId,
+                branchId,
+                categoryId: category.id,
+                name: 'Integration Plate',
+                price: 100,
+                type: 'PREPARED',
+                recipes: {
+                    create: { productId: ingredientProductId, quantity: 1, unit: 'unit' }
+                }
+            }
         });
         menuItemId = menuItem.id;
         const directMenuItem = await prisma.menuItem.create({
@@ -94,6 +154,9 @@ describe('POS operational flow', () => {
             create: { companyId, branchId, name: 'Integration Warehouse', code: 'POS-IT-WH' }
         });
         warehouseId = warehouse.id;
+        await prisma.stock.create({
+            data: { companyId, warehouseId, productId: ingredientProductId, quantity: 10 }
+        });
         await prisma.promotion.deleteMany({ where: { companyId } });
         await prisma.promotion.create({
             data: { companyId, code: 'POS10', name: 'POS integration 10%', type: 'PERCENTAGE', value: 10, usageLimit: 1 }
@@ -114,7 +177,11 @@ describe('POS operational flow', () => {
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.reservation.deleteMany({ where: { companyId } });
         await prisma.promotion.deleteMany({ where: { companyId } });
+        await prisma.inventoryMovement.deleteMany({ where: { companyId } });
+        await prisma.inventoryBatch.deleteMany({ where: { companyId } });
+        await prisma.stock.deleteMany({ where: { companyId } });
         await prisma.menuItem.deleteMany({ where: { companyId } });
+        await prisma.product.deleteMany({ where: { companyId } });
         await prisma.category.deleteMany({ where: { companyId } });
         await prisma.table.deleteMany({ where: { companyId } });
         await prisma.warehouse.deleteMany({ where: { companyId } });
@@ -124,6 +191,7 @@ describe('POS operational flow', () => {
         await prisma.auditLog.deleteMany({ where: { companyId } });
         await prisma.setting.deleteMany({ where: { companyId } });
         await prisma.user.deleteMany({ where: { id: userId } });
+        await prisma.role.deleteMany({ where: { companyId, name: 'ADMIN' } });
         await prisma.branch.deleteMany({ where: { id: branchId } });
         await prisma.company.deleteMany({ where: { id: companyId } });
     });
@@ -155,14 +223,15 @@ describe('POS operational flow', () => {
         expect(priced.status).toBe(200);
         expect(Number(priced.body.data.discount)).toBe(10);
         expect(priced.body.data.discountCode).toBe('POS10');
-        expect(Number(priced.body.data.total)).toBe(90);
+        expect(Number(priced.body.data.tax)).toBe(13.5);
+        expect(Number(priced.body.data.total)).toBe(103.5);
 
-        const issuedInvoice = await request(app).get(`/api/invoices/${paidOrderId}`).set('Authorization', `Bearer ${token}`);
-        expect(issuedInvoice.status).toBe(200);
+        const issuedInvoice = await request(app).post(`/api/invoices/${paidOrderId}/issue`).set('Authorization', `Bearer ${token}`);
+        expect(issuedInvoice.status).toBe(201);
         expect(issuedInvoice.body.data.invoiceNumber).toMatch(/^FAC-/);
 
         const paid = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
-            .send({ orderId: paidOrderId, paymentMethodId, amount: 90 });
+            .send({ orderId: paidOrderId, paymentMethodId, amount: 103.5 });
         expect(paid.status).toBe(201);
         expect(await prisma.order.findUnique({ where: { id: paidOrderId } })).toEqual(expect.objectContaining({
             status: 'OPEN',
@@ -221,6 +290,9 @@ describe('POS operational flow', () => {
 
         await request(app).post(`/api/orders/${orderId}/send-to-kitchen`).set('Authorization', `Bearer ${token}`).expect(200);
         expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe('SENT_TO_KITCHEN');
+        await request(app).patch(`/api/orders/${orderId}/status`).set('Authorization', `Bearer ${token}`)
+            .send({ status: 'READY' }).expect(400);
+        expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe('SENT_TO_KITCHEN');
         await request(app).patch(`/api/orders/${orderId}/items/${itemId}/start`).set('Authorization', `Bearer ${token}`).expect(200);
         expect((await prisma.orderItem.findUniqueOrThrow({ where: { id: itemId } })).status).toBe('IN_PROGRESS');
         const finished = await request(app).patch(`/api/orders/${orderId}/items/${itemId}/finish`).set('Authorization', `Bearer ${token}`);
@@ -258,15 +330,16 @@ describe('POS operational flow', () => {
             .send({ menuItemId: directMenuItemId, quantity: 1 }).expect(201);
         const priced = await request(app).patch(`/api/orders/${splitOrderId}/pricing`).set('Authorization', `Bearer ${token}`)
             .send({ tax: 0.01, tipAmount: 0.02 });
-        expect(Number(priced.body.data.total)).toBe(100.03);
+        expect(Number(priced.body.data.tax)).toBe(15);
+        expect(Number(priced.body.data.total)).toBe(115.02);
 
         const split = await request(app).post(`/api/split-bill/${splitOrderId}/evenly`).set('Authorization', `Bearer ${token}`)
             .send({ numberOfPeople: 3 });
         expect(split.status).toBe(200);
-        expect(split.body.data.splits.map((entry: { amount: number }) => entry.amount)).toEqual([33.35, 33.34, 33.34]);
-        expect(split.body.data.splits.reduce((sum: number, entry: { amount: number }) => sum + entry.amount, 0)).toBe(100.03);
+        expect(split.body.data.splits.map((entry: { amount: number }) => entry.amount)).toEqual([38.34, 38.34, 38.34]);
+        expect(split.body.data.splits.reduce((sum: number, entry: { amount: number }) => sum + entry.amount, 0)).toBeCloseTo(115.02, 2);
 
-        await request(app).get(`/api/invoices/${splitOrderId}`).set('Authorization', `Bearer ${token}`).expect(200);
+        await request(app).post(`/api/invoices/${splitOrderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
 
         const first = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
             .send({ orderId: splitOrderId, paymentMethodId, amount: 40 });
@@ -275,10 +348,10 @@ describe('POS operational flow', () => {
             status: 'OPEN', financialStatus: 'PARTIAL'
         }));
         const summary = await request(app).get(`/api/payments/order/${splitOrderId}/summary`).set('Authorization', `Bearer ${token}`);
-        expect(summary.body.data.remaining).toBeCloseTo(60.03, 2);
+        expect(summary.body.data.remaining).toBeCloseTo(75.02, 2);
 
         const second = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
-            .send({ orderId: splitOrderId, paymentMethodId, amount: 60.03 });
+            .send({ orderId: splitOrderId, paymentMethodId, amount: 75.02 });
         expect(second.status).toBe(201);
         expect(await prisma.order.findUnique({ where: { id: splitOrderId } })).toEqual(expect.objectContaining({
             status: 'OPEN', financialStatus: 'PAID'
@@ -346,12 +419,12 @@ describe('POS operational flow', () => {
                 .send({ menuItemId, quantity: 1 }).expect(201);
             await request(app).patch(`/api/orders/${orderId}/pricing`).set('Authorization', `Bearer ${token}`)
                 .send({ discount: 1, discountCode: 'RACE1' }).expect(200);
-            await request(app).get(`/api/invoices/${orderId}`).set('Authorization', `Bearer ${token}`).expect(200);
+            await request(app).post(`/api/invoices/${orderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
         }
 
         const attempts = await Promise.all(orderIds.map((orderId) =>
             request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
-                .send({ orderId, paymentMethodId, amount: 99 })
+                .send({ orderId, paymentMethodId, amount: 113.85 })
         ));
         expect(attempts.map((response) => response.status).sort()).toEqual([201, 400]);
         expect((await prisma.promotion.findFirst({ where: { companyId, code: 'RACE1' } }))?.usageCount).toBe(1);
@@ -393,9 +466,9 @@ describe('POS operational flow', () => {
             new Date(Date.now() - 60 * 60 * 1000),
             new Date(Date.now() + 60 * 60 * 1000)
         );
-        expect(reconciliation.totals.totalSales).toBe(90);
-        expect(reconciliation.totals.byMethod.cash).toBe(90);
-        expect(reconciliation.reconciliation.cashExpected).toBe(140);
-        expect(reconciliation.reconciliation.cashActual).toBe(140);
+        expect(reconciliation.totals.totalSales).toBe(103.5);
+        expect(reconciliation.totals.byMethod.cash).toBe(103.5);
+        expect(reconciliation.reconciliation.cashExpected).toBe(153.5);
+        expect(reconciliation.reconciliation.cashActual).toBe(153.5);
     });
 });

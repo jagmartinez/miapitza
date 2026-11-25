@@ -10,6 +10,7 @@ import Layout from './components/Layout';
 import LoadingSpinner from './components/LoadingSpinner';
 
 import { ThemeProvider } from './context/ThemeContext';
+import './pages/hr/hr-ui.css';
 import { LanguageProvider } from './context/LanguageContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { getUserRoleNames } from './utils/authz';
@@ -88,7 +89,6 @@ const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const HrDashboard = lazy(() => import('./pages/hr/HrDashboard'));
 const Employees = lazy(() => import('./pages/hr/Employees'));
 const EmployeeDetail = lazy(() => import('./pages/hr/EmployeeDetail'));
-const MyHrLanding = lazy(() => import('./pages/hr/MyHrLanding'));
 const Schedules = lazy(() => import('./pages/hr/Schedules'));
 const MySchedule = lazy(() => import('./pages/hr/MySchedule'));
 const TimeClock = lazy(() => import('./pages/hr/TimeClock'));
@@ -99,6 +99,7 @@ const AttendanceManagement = lazy(() => import('./pages/hr/AttendanceManagement'
 const LeaveManagement = lazy(() => import('./pages/hr/LeaveManagement'));
 const MyWorkforce = lazy(() => import('./pages/hr/MyWorkforce'));
 const PayrollManagement = lazy(() => import('./pages/hr/PayrollManagement'));
+const PayrollLegalSettings = lazy(() => import('./pages/hr/PayrollLegalSettings'));
 const MyPayroll = lazy(() => import('./pages/hr/MyPayroll'));
 const BenefitsManagement = lazy(() => import('./pages/hr/BenefitsManagement'));
 const MyBenefits = lazy(() => import('./pages/hr/MyBenefits'));
@@ -126,7 +127,7 @@ function App() {
                                 <Route path="/dashboard" element={<Dashboard />} />
                                 {UiPlayground && <Route path="/dev/ui" element={<UiPlayground />} />}
                                 <Route path="/profile" element={<Profile />} />
-                                <Route path="/rh/mi-portal" element={<InternalEmployeeGuard><MyHrLanding /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal" element={<InternalEmployeeGuard><Navigate to="/profile?tab=hr" replace /></InternalEmployeeGuard>} />
                                 <Route path="/rh/mi-portal/horario" element={<InternalEmployeeGuard><MySchedule /></InternalEmployeeGuard>} />
                                 <Route path="/rh/marcaje" element={<InternalEmployeeGuard><TimeClock /></InternalEmployeeGuard>} />
                                 <Route path="/rh/biometria" element={<InternalEmployeeGuard><Biometrics /></InternalEmployeeGuard>} />
@@ -146,6 +147,7 @@ function App() {
                                 <Route path="/rh/jornadas" element={<RoleGuard roles={HR_OWNER}><AttendanceManagement /></RoleGuard>} />
                                 <Route path="/rh/ausencias" element={<RoleGuard roles={HR_OWNER}><LeaveManagement /></RoleGuard>} />
                                 <Route path="/rh/nomina" element={<RoleGuard roles={HR_OWNER}><PayrollManagement /></RoleGuard>} />
+                                <Route path="/rh/nomina/configuracion-legal" element={<RoleGuard roles={HR_OWNER}><PayrollLegalSettings /></RoleGuard>} />
                                 <Route path="/rh/prestaciones" element={<RoleGuard roles={HR_OWNER}><BenefitsManagement /></RoleGuard>} />
 
                                 {/* Operations – role-restricted */}

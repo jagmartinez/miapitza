@@ -56,7 +56,8 @@ describe('API key tenant context', () => {
 
         expect(req.user).toEqual(expect.objectContaining({
             companyId: 4,
-            timezone: 'America/Managua'
+            timezone: 'America/Managua',
+            permissions: [],
         }));
         expect(next).toHaveBeenCalledTimes(1);
     });

@@ -4,6 +4,8 @@ import { PedidosYaService } from './pedidosya.service';
 import { InventoryConsumptionService } from './inventory-consumption.service';
 import { DynamicPricingService } from './dynamic-pricing.service';
 import { calculatePromotionDiscount } from './promotion.service';
+import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
+import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -19,7 +21,63 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     'CANCELLED': [], // terminal
 };
 
+export interface FiscalCustomerInput {
+    customerName?: unknown;
+    customerTaxId?: unknown;
+    customerTaxIdType?: unknown;
+    customerFiscalAddress?: unknown;
+    customerEmail?: unknown;
+    customerPhone?: unknown;
+}
+
+export interface OrderCancelOptions {
+    allowPaidReversal?: boolean;
+    wasteWarehouseId?: number;
+    fiscalCreditNoteId?: number;
+    fiscalInvoiceCancellationId?: number;
+    externalRefundReference?: string;
+    externalRefundReferences?: Array<{ paymentId: number; reference: string }>;
+}
+
 export class OrderService {
+    private static assertMenuItemSellable(menuItem: {
+        name: string;
+        type: string;
+        _count?: { recipes: number };
+    }): void {
+        if (menuItem.type === 'PREPARED' && Number(menuItem._count?.recipes ?? 0) === 0) {
+            throw new Error(
+                `El plato preparado "${menuItem.name}" no tiene receta de venta y está bloqueado hasta corregir su BOM`
+            );
+        }
+    }
+
+    private static normalizeFiscalCustomer(data: FiscalCustomerInput) {
+        const text = (value: unknown, max: number, field: string): string | null => {
+            if (value === undefined || value === null) return null;
+            const normalized = String(value).trim();
+            if (!normalized) return null;
+            if (normalized.length > max) throw new Error(`${field} excede la longitud permitida`);
+            return normalized;
+        };
+        const normalized = {
+            customerName: text(data.customerName, 191, 'Nombre fiscal del cliente'),
+            customerTaxId: text(data.customerTaxId, 100, 'Identificación tributaria'),
+            customerTaxIdType: text(data.customerTaxIdType, 50, 'Tipo de identificación tributaria'),
+            customerFiscalAddress: text(data.customerFiscalAddress, 1000, 'Dirección fiscal'),
+            customerEmail: text(data.customerEmail, 191, 'Correo del cliente'),
+            customerPhone: text(data.customerPhone, 50, 'Teléfono del cliente')
+        };
+        if (normalized.customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.customerEmail)) {
+            throw new Error('El correo fiscal del cliente no es válido');
+        }
+        const hasTaxIdentity = Boolean(normalized.customerTaxId || normalized.customerTaxIdType);
+        if (hasTaxIdentity && (!normalized.customerName || !normalized.customerTaxId || !normalized.customerTaxIdType)) {
+            throw new Error('Nombre, identificación tributaria y tipo de identificación deben registrarse juntos');
+        }
+        return normalized;
+    }
+
     private static syncPedidosYaStatus(companyId: number, order: { id: number; salesChannel?: string; status: string }) {
         if (order.salesChannel !== 'PEDIDOSYA') return;
         PedidosYaService.syncOrderStatus(companyId, order.id, order.status).catch((error) => {
@@ -37,6 +95,50 @@ export class OrderService {
         const safeTip = Math.max(0, Number(tipAmount) || 0);
         const discountedSubtotal = Math.max(0, safeSubtotal - safeDiscount);
         return Math.round((discountedSubtotal + safeTax + safeTip) * 100) / 100;
+    }
+
+    private static taxFromRate(discountedSubtotal: number, taxRatePercent: number): number {
+        const base = Math.max(0, Number(discountedSubtotal) || 0);
+        const rate = Number(taxRatePercent);
+        if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+            throw new Error('La tasa de impuesto configurada no es válida');
+        }
+        return Math.round(base * (rate / 100) * 100) / 100;
+    }
+
+    private static async getCompanyTaxRate(
+        tx: Prisma.TransactionClient,
+        companyId: number
+    ): Promise<number> {
+        // Prefer canonical `tax_rate`; fall back to legacy `taxRate` rows written by older Settings UI.
+        const settings = await tx.setting.findMany({
+            where: {
+                companyId,
+                name: { in: [`${companyId}_tax_rate`, `${companyId}_taxRate`] }
+            },
+            select: { name: true, value: true }
+        });
+        const byName = new Map(settings.map((row) => [row.name, row.value]));
+        const raw = byName.get(`${companyId}_tax_rate`)
+            ?? byName.get(`${companyId}_taxRate`)
+            ?? DEFAULT_COMPANY_SETTINGS.tax_rate;
+        const rate = Number.parseFloat(raw);
+        if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+            throw new Error('La tasa de impuesto configurada no es válida');
+        }
+        return rate;
+    }
+
+    /** Tax is always derived from company tax_rate × discounted subtotal — never trusted from the client. */
+    private static async repriceTax(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        subtotal: number,
+        discount: number
+    ): Promise<number> {
+        const discountedSubtotal = Math.max(0, Number(subtotal) - Math.max(0, Number(discount)));
+        const taxRate = await this.getCompanyTaxRate(tx, companyId);
+        return this.taxFromRate(discountedSubtotal, taxRate);
     }
 
     private static async getOrderItemsSubtotal(
@@ -102,14 +204,22 @@ export class OrderService {
 
     private static deriveStatusFromItems(order: { items?: Array<{ sentAt?: Date | null; status?: string }> }) {
         const items = order.items || [];
-        const hasSentItems = items.some(item => item.sentAt != null);
-        const hasInProgressItem = items.some(item => item.status === 'IN_PROGRESS');
-        const hasPendingKitchenItem = items.some(item => item.sentAt != null && item.status !== 'DONE');
-        const hasReadyItems = items.length > 0 && items.every(item => item.status === 'DONE');
+        const sentItems = items.filter((item) => item.sentAt != null);
+        const hasSentItems = sentItems.length > 0;
+        const hasInProgressItem = sentItems.some((item) => item.status === 'IN_PROGRESS');
+        const hasPendingKitchenItem = sentItems.some((item) => item.status !== 'DONE');
+        const hasUnsentItem = items.some((item) => item.sentAt == null);
+        const wholeOrderReady = items.length > 0
+            && !hasUnsentItem
+            && sentItems.every((item) => item.status === 'DONE');
 
-        if (hasReadyItems) return 'READY';
+        if (wholeOrderReady) return 'READY';
         if (hasInProgressItem) return 'IN_PREPARATION';
-        if (hasPendingKitchenItem || hasSentItems) return 'SENT_TO_KITCHEN';
+        if (hasPendingKitchenItem) return 'SENT_TO_KITCHEN';
+        // A completed wave followed by unsent additions is operationally open
+        // again. It cannot be released or delivered until the new wave is sent.
+        if (hasUnsentItem) return 'OPEN';
+        if (hasSentItems) return 'SENT_TO_KITCHEN';
         return 'OPEN';
     }
 
@@ -224,6 +334,14 @@ export class OrderService {
                         include: {
                             menuItem: true
                         }
+                    },
+                    fiscalCreditNotes: {
+                        select: { id: true, number: true, status: true, issuedAt: true },
+                        orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+                        take: 1
+                    },
+                    fiscalInvoiceCancellation: {
+                        select: { id: true, cancelledAt: true, reason: true }
                     }
                 },
                 orderBy: {
@@ -236,7 +354,10 @@ export class OrderService {
         ]);
 
         return {
-            data: data.map((order) => this.withTimeline(order)),
+            data: data.map((order) => {
+                const { fiscalCreditNotes, ...rest } = order;
+                return this.withTimeline({ ...rest, fiscalCreditNote: fiscalCreditNotes[0] || null });
+            }),
             pagination: {
                 page,
                 limit,
@@ -291,6 +412,14 @@ export class OrderService {
                             }
                         }
                     }
+                },
+                fiscalCreditNotes: {
+                    select: { id: true, number: true, status: true, issuedAt: true },
+                    orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+                    take: 1
+                },
+                fiscalInvoiceCancellation: {
+                    select: { id: true, cancelledAt: true, reason: true }
                 }
             }
         });
@@ -299,7 +428,8 @@ export class OrderService {
             throw new Error('Order not found');
         }
 
-        return this.withTimeline(order);
+        const { fiscalCreditNotes, ...rest } = order;
+        return this.withTimeline({ ...rest, fiscalCreditNote: fiscalCreditNotes[0] || null });
     }
 
     /**
@@ -354,6 +484,11 @@ export class OrderService {
         tableId?: number;
         userId: number;
         customerName?: string;
+        customerTaxId?: string;
+        customerTaxIdType?: string;
+        customerFiscalAddress?: string;
+        customerEmail?: string;
+        customerPhone?: string;
         orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
         items?: Array<{
             menuItemId: number;
@@ -364,6 +499,7 @@ export class OrderService {
         }>;
     }) {
         if (!Number.isInteger(data.branchId) || data.branchId <= 0) throw new Error('Sucursal inválida');
+        const fiscalCustomer = this.normalizeFiscalCustomer(data);
         for (const item of data.items || []) {
             if (!Number.isInteger(item.quantity) || item.quantity <= 0) throw new Error('Quantity must be a positive integer');
         }
@@ -415,6 +551,7 @@ export class OrderService {
                             const menuItem = await tx.menuItem.findFirst({
                                 where: { id: item.menuItemId, companyId, active: true, OR: [{ branchId: null }, { branchId: data.branchId }] },
                                 include: {
+                                    _count: { select: { recipes: true } },
                                     modifierGroups: {
                                         where: { active: true },
                                         include: { modifiers: { where: { active: true }, select: { id: true } } }
@@ -424,6 +561,7 @@ export class OrderService {
                             if (!menuItem) {
                                 throw new Error('Elemento de menú no encontrado o inactivo');
                             }
+                            this.assertMenuItemSellable(menuItem);
 
                             // Validate + price the selected modifiers (same rule as addItem).
                             const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, item.modifierIds);
@@ -454,10 +592,11 @@ export class OrderService {
                         const repricedDiscount = await this.repriceStoredDiscount(
                             tx, companyId, newSubtotal, existingOrder.discount, existingOrder.discountCode
                         );
+                        const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
                         const newTotal = this.calculateFinalTotal(
                             newSubtotal,
                             repricedDiscount,
-                            Number(existingOrder.tax || 0),
+                            repricedTax,
                             Number(existingOrder.tipAmount || 0)
                         );
                         await tx.order.update({
@@ -465,6 +604,8 @@ export class OrderService {
                             data: {
                                 total: newTotal,
                                 discount: repricedDiscount,
+                                tax: repricedTax,
+                                ...fiscalCustomer,
                                 ...(existingOrder.status === 'READY' ? {
                                     status: 'SENT_TO_KITCHEN' as const,
                                     kitchenReleasedAt: null,
@@ -502,7 +643,13 @@ export class OrderService {
                     throw new Error('La mesa no está disponible para abrir una nueva orden');
                 }
 
+                // Block walk-ins under the same tenant-configured window used by
+                // reservation allocation. One shared setting prevents the two
+                // entry points from disagreeing about table availability.
                 const now = new Date();
+                const reservationWindowMs = (
+                    await SettingService.getReservationTableWindowMinutes(companyId, tx)
+                ) * 60 * 1000;
                 const reservationConflicts = await tx.reservation.findMany({
                     where: {
                         companyId,
@@ -510,8 +657,8 @@ export class OrderService {
                         tableId: data.tableId,
                         status: { in: ['PENDING', 'CONFIRMED'] },
                         date: {
-                            gt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
-                            lt: new Date(now.getTime() + 2 * 60 * 60 * 1000)
+                            gt: new Date(now.getTime() - reservationWindowMs),
+                            lt: new Date(now.getTime() + reservationWindowMs)
                         }
                     },
                     select: { id: true, status: true }
@@ -528,7 +675,7 @@ export class OrderService {
                     branchId: data.branchId,
                     tableId: data.tableId,
                     userId: data.userId,
-                    customerName: data.customerName,
+                    ...fiscalCustomer,
                     orderType: data.orderType,
                     total: 0,
                     status: 'OPEN'
@@ -547,6 +694,7 @@ export class OrderService {
                     const menuItem = await tx.menuItem.findFirst({
                         where: { id: item.menuItemId, companyId, active: true, OR: [{ branchId: null }, { branchId: data.branchId }] },
                         include: {
+                            _count: { select: { recipes: true } },
                             modifierGroups: {
                                 where: { active: true },
                                 include: { modifiers: { where: { active: true }, select: { id: true } } }
@@ -556,6 +704,7 @@ export class OrderService {
                     if (!menuItem) {
                         throw new Error('Elemento de menú no encontrado o inactivo');
                     }
+                    this.assertMenuItemSellable(menuItem);
 
                     // Validate + price the selected modifiers (same rule as addItem).
                     const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, item.modifierIds);
@@ -583,16 +732,18 @@ export class OrderService {
                     });
                 }
 
-                // Update order total from subtotal + stored adjustments.
+                // Update order total from subtotal + company tax rate + stored tip.
+                const initialDiscount = Number(order.discount || 0);
+                const initialTax = await this.repriceTax(tx, companyId, totalAmount, initialDiscount);
                 const newTotal = this.calculateFinalTotal(
                     totalAmount,
-                    Number(order.discount || 0),
-                    Number(order.tax || 0),
+                    initialDiscount,
+                    initialTax,
                     Number(order.tipAmount || 0)
                 );
                 await tx.order.update({
                     where: { id: order.id },
-                    data: { total: newTotal }
+                    data: { total: newTotal, tax: initialTax }
                 });
 
                 (order as { total: number | typeof order.total }).total = newTotal;
@@ -662,6 +813,7 @@ export class OrderService {
                     OR: [{ branchId: null }, { branchId: order.branchId }]
                 },
                 include: {
+                    _count: { select: { recipes: true } },
                     modifierGroups: {
                         where: { active: true },
                         include: { modifiers: { where: { active: true }, select: { id: true } } }
@@ -671,6 +823,7 @@ export class OrderService {
             if (!menuItem) {
                 throw new Error('Elemento de menú no encontrado, inactivo o no disponible en la sucursal');
             }
+            this.assertMenuItemSellable(menuItem);
             const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, data.modifierIds);
 
             // Resolve the branch-effective price for the order's branch (falls
@@ -703,10 +856,11 @@ export class OrderService {
             const repricedDiscount = await this.repriceStoredDiscount(
                 tx, companyId, newSubtotal, order.discount, order.discountCode
             );
+            const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
             const newTotal = this.calculateFinalTotal(
                 newSubtotal,
                 repricedDiscount,
-                Number(order.tax || 0),
+                repricedTax,
                 Number(order.tipAmount || 0)
             );
 
@@ -715,6 +869,7 @@ export class OrderService {
                 data: {
                     total: newTotal,
                     discount: repricedDiscount,
+                    tax: repricedTax,
                     // READY is no longer truthful after appending an unsent line.
                     ...(order.status === 'READY' ? {
                         status: 'SENT_TO_KITCHEN' as const,
@@ -777,16 +932,17 @@ export class OrderService {
             const repricedDiscount = await this.repriceStoredDiscount(
                 tx, companyId, newSubtotal, item.order.discount, item.order.discountCode
             );
+            const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
             const newTotal = this.calculateFinalTotal(
                 newSubtotal,
                 repricedDiscount,
-                Number(item.order.tax || 0),
+                repricedTax,
                 Number(item.order.tipAmount || 0)
             );
 
             await tx.order.update({
                 where: { id: item.orderId },
-                data: { total: newTotal, discount: repricedDiscount }
+                data: { total: newTotal, discount: repricedDiscount, tax: repricedTax }
             });
 
             return { success: true };
@@ -796,8 +952,15 @@ export class OrderService {
     static async updateStatus(
         id: number,
         companyId: number,
-        status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED'
+        status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED',
+        kitchenActorUserId?: number
     ) {
+        // READY is a kitchen-controlled transition. Keeping the actor explicit
+        // prevents the generic waiter/cashier status endpoint from bypassing KDS
+        // permissions and lets the state change + audit record commit atomically.
+        if (status === 'READY' && (!Number.isInteger(kitchenActorUserId) || Number(kitchenActorUserId) <= 0)) {
+            throw new Error('Use el flujo dedicado de cocina para marcar una orden como lista');
+        }
         const updatedOrder = await prisma.$transaction(async (tx) => {
             // Lock order row to keep transition validation and update atomic.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
@@ -809,6 +972,34 @@ export class OrderService {
 
             if (!existing) {
                 throw new Error('Order not found');
+            }
+
+            if (status === 'READY') {
+                const kitchenActor = await tx.user.findFirst({
+                    where: { id: kitchenActorUserId!, companyId, status: 'ACTIVE' },
+                    select: { id: true }
+                });
+                if (!kitchenActor) throw new Error('Usuario de cocina no válido para esta empresa');
+            }
+
+            // The dedicated KDS operation can be retried after the state/audit
+            // transaction committed but a notification response failed. Return
+            // the already-ready order so the durable, deduplicated notifier can
+            // be attempted again without manufacturing a second transition.
+            if (status === 'READY' && existing.status === 'READY') {
+                if (existing.items.length === 0 || existing.items.some((item) => item.sentAt === null)) {
+                    throw new Error('La orden marcada como lista contiene productos sin enviar a cocina');
+                }
+                const readyOrder = await tx.order.findUnique({
+                    where: { id },
+                    include: {
+                        table: true,
+                        user: { select: { id: true, name: true, color: true } },
+                        items: { include: { menuItem: true, modifiers: true } }
+                    }
+                });
+                if (!readyOrder) throw new Error('Order not found');
+                return readyOrder;
             }
 
             // Cancellation has inventory/payment/table/audit counterflows and may
@@ -829,8 +1020,9 @@ export class OrderService {
             }
 
             // When the whole order is marked as READY (e.g. "Todo Listo" in KDS),
-            // force every still-open item to DONE so the kitchen timeline (firstStartedAt / readyAt)
-            // reflects the actual completion time instead of staying blank.
+            // force every still-open sent item to DONE so the kitchen timeline
+            // (firstStartedAt / readyAt) reflects completion. READY is an order-
+            // level assertion, so every line must already have been sent.
             if (status === 'READY') {
                 if (existing.items.length === 0) {
                     throw new Error('Cannot mark an empty order as ready');
@@ -840,11 +1032,11 @@ export class OrderService {
                 }
                 const now = new Date();
                 await tx.orderItem.updateMany({
-                    where: { orderId: id, status: { not: 'DONE' } },
+                    where: { orderId: id, sentAt: { not: null }, status: { not: 'DONE' } },
                     data: { status: 'DONE', finishedAt: now }
                 });
                 await tx.orderItem.updateMany({
-                    where: { orderId: id, startedAt: null },
+                    where: { orderId: id, sentAt: { not: null }, startedAt: null },
                     data: { startedAt: now }
                 });
             }
@@ -872,6 +1064,19 @@ export class OrderService {
                 }
             });
 
+            if (status === 'READY') {
+                await tx.auditLog.create({
+                    data: {
+                        companyId,
+                        entityType: 'Order',
+                        entityId: id,
+                        action: 'KITCHEN_READY',
+                        userId: kitchenActorUserId!,
+                        details: { status: 'READY' }
+                    }
+                });
+            }
+
             return updated;
         });
 
@@ -895,7 +1100,7 @@ export class OrderService {
                 throw new Error('Order not found');
             }
 
-            if (!['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION'].includes(order.status)) {
+            if (!['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'].includes(order.status)) {
                 throw new Error(`Cannot send order to kitchen when status is ${order.status}`);
             }
 
@@ -933,7 +1138,15 @@ export class OrderService {
                 ? refreshed
                 : tx.order.update({
                     where: { id },
-                    data: { status: nextStatus },
+                    data: {
+                        status: nextStatus,
+                        ...(order.status === 'READY' ? {
+                            kitchenReleasedAt: null,
+                            kitchenReleasedById: null,
+                            kitchenStartedAt: null,
+                            kitchenStartedById: null
+                        } : {})
+                    },
                     include: {
                         items: {
                             include: { menuItem: true, modifiers: true }
@@ -943,6 +1156,50 @@ export class OrderService {
         });
         this.syncPedidosYaStatus(companyId, updatedOrder);
         return updatedOrder;
+    }
+
+    static async updateFiscalCustomer(
+        id: number,
+        companyId: number,
+        userId: number,
+        data: FiscalCustomerInput
+    ) {
+        const normalized = this.normalizeFiscalCustomer(data);
+        return prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id, companyId },
+                select: { id: true, branchId: true, invoiceNumber: true }
+            });
+            if (!order) throw new Error('Order not found');
+            if (order.invoiceNumber) {
+                throw new Error('Los datos fiscales no pueden modificarse después de emitir la factura');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: userId, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Invalid user for this company');
+
+            const updated = await tx.order.update({ where: { id }, data: normalized });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    userId,
+                    entityType: 'Order',
+                    entityId: id,
+                    action: 'FISCAL_CUSTOMER_UPDATED',
+                    details: {
+                        hasTaxIdentity: Boolean(normalized.customerTaxId),
+                        taxIdType: normalized.customerTaxIdType,
+                        hasFiscalAddress: Boolean(normalized.customerFiscalAddress),
+                        hasEmail: Boolean(normalized.customerEmail),
+                        hasPhone: Boolean(normalized.customerPhone)
+                    }
+                }
+            });
+            return updated;
+        });
     }
 
     static async startItem(orderId: number, itemId: number, companyId: number) {
@@ -1041,11 +1298,6 @@ export class OrderService {
             });
             if (!updated) throw new Error('Item no encontrado');
 
-            // Check if all items in the order are DONE
-            const pendingItems = await tx.orderItem.count({
-                where: { orderId, status: { not: 'DONE' } }
-            });
-
             const orderInclude = {
                 table: true,
                 user: {
@@ -1063,20 +1315,25 @@ export class OrderService {
                 }
             } as const;
 
-            let updatedOrder = await tx.order.findUnique({
+            const currentOrder = await tx.order.findUnique({
                 where: { id: orderId },
                 include: orderInclude
             });
+            if (!currentOrder) throw new Error('Order not found');
 
-            if (pendingItems === 0) {
-                updatedOrder = await tx.order.update({
+            const nextStatus = this.deriveStatusFromItems(currentOrder);
+            const updatedOrder = nextStatus !== currentOrder.status
+                ? await tx.order.update({
                     where: { id: orderId },
-                    data: { status: 'READY' },
+                    data: { status: nextStatus },
                     include: orderInclude
-                });
-            }
+                })
+                : currentOrder;
 
-            return { item: updated, allDone: pendingItems === 0, order: this.withTimeline(updatedOrder!) };
+            const allDone = updatedOrder.items.length > 0
+                && updatedOrder.items.every((item) => item.sentAt != null && item.status === 'DONE');
+
+            return { item: updated, allDone, order: this.withTimeline(updatedOrder) };
         });
         this.syncPedidosYaStatus(companyId, result.order);
         return result;
@@ -1122,10 +1379,18 @@ export class OrderService {
             });
             if (!order) throw new Error('Order not found');
             if (order.status !== 'READY') throw new Error('Order must be ready before completing');
+            if (order.items.some((item) => item.sentAt == null)) {
+                throw new Error('No se puede entregar una orden con productos sin enviar a cocina');
+            }
 
             const isZeroTotal = Math.round(Number(order.total) * 100) === 0;
             if (order.financialStatus !== 'PAID' && !isZeroTotal) {
                 throw new Error('Order must be paid before completing');
+            }
+
+            const itemSubtotal = order.items.reduce((sum, item) => sum + Number(item.subtotal), 0);
+            if (order.financialStatus !== 'PAID' && isZeroTotal && !order.discountCode && itemSubtotal > 0) {
+                throw new Error('Una orden con consumo y total cero requiere una promoción válida; el descuento manual no puede cerrar la venta');
             }
 
             const actor = await tx.user.findFirst({
@@ -1140,10 +1405,22 @@ export class OrderService {
             if (order.financialStatus !== 'PAID' && isZeroTotal) {
                 if (order.discountCode) {
                     const promotion = await tx.promotion.findFirst({
-                        where: { companyId, code: order.discountCode.toUpperCase() },
-                        select: { id: true, usageLimit: true }
+                        where: { companyId, code: order.discountCode.toUpperCase() }
                     });
                     if (!promotion) throw new Error('Promotion is not active');
+                    const authoritativeDiscount = calculatePromotionDiscount(promotion, itemSubtotal);
+                    const authoritativeTotal = this.calculateFinalTotal(
+                        itemSubtotal,
+                        authoritativeDiscount,
+                        Number(order.tax || 0),
+                        Number(order.tipAmount || 0)
+                    );
+                    if (
+                        Math.round(authoritativeDiscount * 100) !== Math.round(Number(order.discount) * 100)
+                        || Math.round(authoritativeTotal * 100) !== Math.round(Number(order.total) * 100)
+                    ) {
+                        throw new Error('La promoción cambió; recalcule la orden antes de completarla');
+                    }
                     const claimed = await tx.promotion.updateMany({
                         where: {
                             id: promotion.id,
@@ -1244,9 +1521,22 @@ export class OrderService {
         // `allowPaidReversal` is reserved for authoritative channel cancellations.
         // Prepared local cancellations additionally require an explicit warehouse
         // so their physical consumption is recorded as waste, not silently lost.
-        options?: { allowPaidReversal?: boolean; wasteWarehouseId?: number }
+        options?: OrderCancelOptions
     ) {
-        return await prisma.$transaction(async (tx) => {
+        return prisma.$transaction((tx) => this.cancelWithTransaction(
+            tx, id, companyId, cancelledById, cancelReason, options
+        ));
+    }
+
+    /** Internal atomic cancellation used by fiscal credit notes. */
+    static async cancelWithTransaction(
+        tx: Prisma.TransactionClient,
+        id: number,
+        companyId: number,
+        cancelledById?: number,
+        cancelReason?: string,
+        options?: OrderCancelOptions
+    ) {
             // Serialize cancel with payment, delivery and another cancellation.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
@@ -1267,13 +1557,16 @@ export class OrderService {
                                 }
                             }
                         }
+                    },
+                    fiscalCreditNotes: {
+                        select: { id: true, number: true, status: true, issuedAt: true }
                     }
                 }
             });
 
             if (!order) throw new Error('Order not found');
             if (order.status === 'CANCELLED') throw new Error('Order is already cancelled');
-            if (order.invoiceNumber) {
+            if (order.invoiceNumber && !options?.fiscalCreditNoteId && !options?.fiscalInvoiceCancellationId) {
                 throw new Error('No se puede cancelar una orden facturada; emita una nota de crédito');
             }
 
@@ -1285,7 +1578,7 @@ export class OrderService {
             if (fullyPaid && !options?.allowPaidReversal) {
                 throw new Error('Cannot cancel paid orders');
             }
-            if (!fullyPaid && totalPaid > 0) {
+            if (!fullyPaid && totalPaid > 0 && !options?.allowPaidReversal) {
                 throw new Error(`Order has existing payments totaling ${totalPaid.toFixed(2)}. Please refund/delete payments before cancelling.`);
             }
 
@@ -1348,10 +1641,30 @@ export class OrderService {
             // Authoritative channel cancellations also reverse the local payment
             // ledger. This prevents cancelled delivery orders from remaining as
             // revenue/cash and mirrors PaymentService.delete semantics atomically.
-            if (fullyPaid && options?.allowPaidReversal) {
+            if (totalPaid > 0 && options?.allowPaidReversal) {
                 const paymentIds = order.payments.map((payment) => payment.id);
                 if (paymentIds.length > 0) {
                     const cashPayments = order.payments.filter((payment) => payment.methodType === 'CASH');
+                    const nonCashPayments = order.payments.filter((payment) => payment.methodType !== 'CASH');
+                    const explicitReferences = new Map(
+                        (options.externalRefundReferences || []).map((entry) => [entry.paymentId, entry.reference.trim()])
+                    );
+                    for (const payment of nonCashPayments) {
+                        const refundReference = explicitReferences.get(payment.id)
+                            || options.externalRefundReference?.trim();
+                        if (!refundReference) {
+                            throw new Error(`El pago no efectivo #${payment.id} requiere referencia verificable del reembolso externo`);
+                        }
+                        if (refundReference.length > 191) {
+                            throw new Error(`La referencia de reembolso del pago #${payment.id} es demasiado larga`);
+                        }
+                    }
+                    const unexpectedReference = [...explicitReferences.keys()].find((paymentId) =>
+                        !nonCashPayments.some((payment) => payment.id === paymentId)
+                    );
+                    if (unexpectedReference !== undefined) {
+                        throw new Error(`La referencia de reembolso corresponde a un pago no activo o en efectivo: #${unexpectedReference}`);
+                    }
                     for (const payment of cashPayments) {
                         const cashEntries = await tx.cashMovement.findMany({
                             where: { reference: { in: [`PAY-${payment.id}`, `REV-PAY-${payment.id}`] } },
@@ -1389,10 +1702,21 @@ export class OrderService {
                                 endDate: null,
                                 cashRegister: { branchId: order.branchId }
                             },
-                            select: { id: true }
+                            select: { id: true, startDate: true }
                         });
                         if (!refundShift) {
                             throw new Error('Debe existir un turno de caja abierto en la sucursal para registrar el reembolso en efectivo');
+                        }
+                        const timezoneSetting = await tx.setting.findUnique({
+                            where: { companyId_name: { companyId, name: `${companyId}_timezone` } },
+                            select: { value: true }
+                        });
+                        const configuredTz = timezoneSetting?.value?.trim();
+                        const timezone = configuredTz && isValidTimeZone(configuredTz)
+                            ? configuredTz
+                            : DEFAULT_COMPANY_SETTINGS.timezone;
+                        if (zonedDateKey(new Date(refundShift.startDate), timezone) !== zonedDateKey(new Date(), timezone)) {
+                            throw new Error('Tiene un turno de caja de un día anterior; ciérrelo y abra uno nuevo antes de registrar el reembolso en efectivo');
                         }
                         await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${refundShift.id} AND companyId = ${companyId} FOR UPDATE`;
                         const lockedRefundShift = await tx.cashShift.findFirst({
@@ -1403,9 +1727,12 @@ export class OrderService {
                                 endDate: null,
                                 cashRegister: { branchId: order.branchId }
                             },
-                            select: { id: true }
+                            select: { id: true, startDate: true }
                         });
                         if (!lockedRefundShift) throw new Error('El turno de caja para el reembolso ya fue cerrado');
+                        if (zonedDateKey(new Date(lockedRefundShift.startDate), timezone) !== zonedDateKey(new Date(), timezone)) {
+                            throw new Error('Tiene un turno de caja de un día anterior; ciérrelo y abra uno nuevo antes de registrar el reembolso en efectivo');
+                        }
                         await tx.cashMovement.create({
                             data: {
                                 shiftId: lockedRefundShift.id, type: 'OUT', amount: payment.amount,
@@ -1418,9 +1745,18 @@ export class OrderService {
                         where: { id: { in: paymentIds }, orderId: id, status: 'ACTIVE' },
                         data: { status: 'REVERSED', reversedAt: new Date(), reversedById: reversalUserId, reversalReason: cancelReason || 'Order cancellation' }
                     });
+                    for (const payment of nonCashPayments) {
+                        await tx.payment.update({
+                            where: { id: payment.id },
+                            data: {
+                                refundReference: explicitReferences.get(payment.id)
+                                    || options.externalRefundReference!.trim()
+                            }
+                        });
+                    }
                 }
 
-                if (order.discountCode) {
+                if (fullyPaid && order.discountCode) {
                     const promo = await tx.promotion.findFirst({
                         where: { companyId, code: order.discountCode.toUpperCase() },
                         select: { id: true, usageCount: true }
@@ -1438,11 +1774,11 @@ export class OrderService {
                 where: { id },
                 data: {
                     status: 'CANCELLED',
-                    ...(fullyPaid && options?.allowPaidReversal ? { financialStatus: 'UNPAID' as const } : {}),
+                    ...(totalPaid > 0 && options?.allowPaidReversal ? { financialStatus: 'UNPAID' as const } : {}),
                     cancelledById: cancelledById || null,
                     cancelReason: cancelReason || null,
                     cancelledAt: new Date(),
-                    closedAt: fullyPaid && options?.allowPaidReversal ? null : order.closedAt
+                    closedAt: totalPaid > 0 && options?.allowPaidReversal ? null : order.closedAt
                 }
             });
 
@@ -1475,15 +1811,16 @@ export class OrderService {
                             tableId: order.tableId,
                             wasteWarehouseId: requiresWaste ? options?.wasteWarehouseId : null,
                             wastedItemIds: requiresWaste ? preparedItems.map((item) => item.id) : [],
-                            reversedPayments: fullyPaid ? order.payments.length : 0,
-                            reversedAmount: fullyPaid ? totalPaid : 0
+                            reversedPayments: options?.allowPaidReversal ? order.payments.length : 0,
+                            reversedAmount: options?.allowPaidReversal ? totalPaid : 0,
+                            fiscalCreditNoteId: options?.fiscalCreditNoteId || null,
+                            fiscalInvoiceCancellationId: options?.fiscalInvoiceCancellationId || null
                         }
                     }
                 });
             }
 
             return updatedOrder;
-        });
     }
 
     static async updatePricing(
@@ -1549,11 +1886,8 @@ export class OrderService {
                 Math.max(0, Number(authoritativeDiscount)),
                 Math.max(0, subtotal)
             ) * 100) / 100;
-            const discountedSubtotal = Math.max(0, subtotal - nextDiscount);
-            const nextTax = Math.round(Math.min(
-                Math.max(0, Number(data.tax ?? Number(order.tax || 0))),
-                discountedSubtotal
-            ) * 100) / 100;
+            // Client-supplied tax is ignored: IVA is always company tax_rate × net subtotal.
+            const nextTax = await this.repriceTax(tx, companyId, subtotal, nextDiscount);
             const nextTip = Math.round(Math.max(0, Number(data.tipAmount ?? Number(order.tipAmount || 0))) * 100) / 100;
             const nextTotal = this.calculateFinalTotal(subtotal, nextDiscount, nextTax, nextTip);
 

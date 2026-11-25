@@ -4,18 +4,21 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
-import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
+import { encrypt, decrypt, isEncrypted, isLegacyEncryptionCandidate } from '../utils/encryption';
 import { BCRYPT_ROUNDS } from '../utils/password-policy';
 
 const RECOVERY_CODE_COUNT = 10;
 
 function decryptSecret(stored: string): string {
     if (!stored) return stored;
-    try {
-        return isEncrypted(stored) ? decrypt(stored) : stored;
-    } catch {
-        return stored;
+    if (isEncrypted(stored)) return decrypt(stored);
+    // A structurally valid legacy envelope that cannot authenticate with the
+    // configured key is corrupt (or belongs to another key). Never pass it to
+    // the TOTP verifier as if it were plaintext.
+    if (isLegacyEncryptionCandidate(stored)) {
+        throw new Error('El secreto 2FA almacenado no se puede descifrar');
     }
+    return stored;
 }
 
 async function checkCode(token: string, storedSecret: string): Promise<boolean> {
@@ -222,8 +225,15 @@ export class TwoFactorService {
                     details: details ? (details as Prisma.InputJsonValue) : Prisma.JsonNull,
                 },
             });
-        } catch {
-            // Audit failure must not block the 2FA operation
+        } catch (error) {
+            // Audit failure must not block the 2FA operation, but it must be
+            // observable without logging any secret or recovery code.
+            console.error('[TwoFactorService] Failed to persist 2FA audit event', {
+                action,
+                companyId,
+                userId,
+                error: error instanceof Error ? error.message : 'unknown error',
+            });
         }
     }
 }

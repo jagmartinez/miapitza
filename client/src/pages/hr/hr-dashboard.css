@@ -1,0 +1,128 @@
+.hr-dashboard-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+
+.hr-dashboard-overview {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--spacing-md);
+}
+
+.hr-dashboard-overview article,
+.hr-dashboard-card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.hr-dashboard-overview article {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+    padding: var(--spacing-lg);
+    border-top: 3px solid var(--color-primary);
+}
+
+.hr-dashboard-overview article.needs-attention { border-top-color: var(--color-warning); }
+.hr-dashboard-overview article.is-ready { border-top-color: var(--color-success); }
+.hr-dashboard-overview span { color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: 700; }
+.hr-dashboard-overview strong { color: var(--color-text); font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.1; }
+.hr-dashboard-overview small { color: var(--color-text-secondary); line-height: 1.4; }
+
+.hr-dashboard-workgrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+    gap: var(--spacing-lg);
+    align-items: start;
+}
+
+.hr-dashboard-card { overflow: hidden; }
+.hr-dashboard-card > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-background) 92%, var(--color-primary) 8%);
+}
+.hr-dashboard-card > header h2 { margin: 0.2rem 0 0; color: var(--color-text); font-size: var(--font-size-xl); }
+.hr-dashboard-card > header > svg { color: var(--color-primary); }
+.hr-dashboard-eyebrow { color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.hr-dashboard-count { display: grid; min-width: 2.25rem; height: 2.25rem; padding-inline: 0.55rem; place-items: center; border-radius: 999px; background: var(--color-primary); color: white; font-weight: 800; }
+
+.hr-dashboard-task-list { display: grid; }
+.hr-dashboard-task-list button,
+.hr-dashboard-payroll-route button,
+.hr-dashboard-setup-grid button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    text-align: left;
+}
+.hr-dashboard-task-list button {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+}
+.hr-dashboard-task-list button:last-child { border-bottom: 0; }
+.hr-dashboard-task-list button > svg:first-child { color: var(--color-primary); }
+.hr-dashboard-task-list button > svg:last-child { color: var(--color-text-secondary); }
+.hr-dashboard-task-list button span,
+.hr-dashboard-task-list button small,
+.hr-dashboard-payroll-route button span,
+.hr-dashboard-payroll-route button small,
+.hr-dashboard-setup-grid button span,
+.hr-dashboard-setup-grid button small { display: block; }
+.hr-dashboard-task-list small,
+.hr-dashboard-payroll-route small,
+.hr-dashboard-setup-grid small { margin-top: 0.2rem; color: var(--color-text-secondary); line-height: 1.35; }
+.hr-dashboard-task-list b { min-width: 2rem; padding: 0.3rem 0.55rem; border-radius: 999px; background: var(--color-background); color: var(--color-text); text-align: center; font-variant-numeric: tabular-nums; }
+
+.hr-dashboard-task-list button:hover,
+.hr-dashboard-payroll-route button:hover,
+.hr-dashboard-setup-grid button:hover { background: color-mix(in srgb, var(--color-primary) 7%, transparent); }
+.hr-dashboard-task-list button:focus-visible,
+.hr-dashboard-payroll-route button:focus-visible,
+.hr-dashboard-setup-grid button:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-primary) 35%, transparent); outline-offset: -3px; }
+
+.hr-dashboard-payroll-route { display: grid; margin: 0; padding: 0; list-style: none; }
+.hr-dashboard-payroll-route li { border-bottom: 1px solid var(--color-border); }
+.hr-dashboard-payroll-route li:last-child { border-bottom: 0; }
+.hr-dashboard-payroll-route button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); }
+.hr-dashboard-payroll-route .step-number { display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-background); font-weight: 800; }
+.hr-dashboard-payroll-route li.complete .step-number { border-color: var(--color-success); background: color-mix(in srgb, var(--color-success) 14%, var(--color-surface)); color: var(--color-success); }
+.hr-dashboard-payroll-route li.complete button > svg { color: var(--color-success); }
+.hr-dashboard-payroll-route li.current { box-shadow: inset 3px 0 var(--color-primary); }
+
+.hr-dashboard-setup-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.hr-dashboard-setup-grid button { display: flex; align-items: flex-start; gap: var(--spacing-sm); padding: var(--spacing-lg); border-right: 1px solid var(--color-border); }
+.hr-dashboard-setup-grid button:last-child { border-right: 0; }
+.hr-dashboard-setup-grid svg { flex: 0 0 auto; color: var(--color-primary); }
+
+@media (max-width: 1100px) {
+    .hr-dashboard-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hr-dashboard-workgrid { grid-template-columns: 1fr; }
+    .hr-dashboard-setup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hr-dashboard-setup-grid button:nth-child(2) { border-right: 0; }
+    .hr-dashboard-setup-grid button:nth-child(-n + 2) { border-bottom: 1px solid var(--color-border); }
+}
+
+@media (max-width: 640px) {
+    .hr-dashboard-header-actions,
+    .hr-dashboard-header-actions button { width: 100%; }
+    .hr-dashboard-overview,
+    .hr-dashboard-setup-grid { grid-template-columns: 1fr; }
+    .hr-dashboard-setup-grid button { border-right: 0; border-bottom: 1px solid var(--color-border); }
+    .hr-dashboard-setup-grid button:last-child { border-bottom: 0; }
+    .hr-dashboard-task-list button { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .hr-dashboard-task-list button > svg:last-child { display: none; }
+}

@@ -1,34 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  AlertTriangle,
-  Calculator,
-  Download,
-  FilePlus2,
-  Gift,
-  Plus,
-  Receipt,
-  RefreshCw,
-  Scale,
-  ShieldCheck,
-} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
+import Pagination from '../../components/Pagination';
 import Sidebar from '../../components/Sidebar';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import HrReactSelect from '../../components/hr/HrReactSelect';
+import { collectAllPages } from '../../components/hr/collectAllPages';
 import PayrollComponentForm from '../../components/hr/PayrollComponentForm';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
-import PayrollRuleConfigurationPanel from '../../components/hr/PayrollRuleConfigurationPanel';
+import PayrollOperationWorkspace from '../../components/hr/payroll-operation-workspace';
 import PayrollRuleForm from '../../components/hr/PayrollRuleForm';
 import PayrollRunForm from '../../components/hr/PayrollRunForm';
 import PayrollStatusPill from '../../components/hr/PayrollStatusPill';
 import PayrollTransitionForm from '../../components/hr/PayrollTransitionForm';
 import usePayrollOnline from '../../components/hr/usePayrollOnline';
 import { hrClient } from '../../components/hr/hrClient';
-import {
-  createPayrollIdempotencyKey,
-  getPayrollErrorMessage,
-  payrollClient,
-} from '../../components/hr/payrollClient';
+import { createPayrollIdempotencyKey, getPayrollErrorMessage, payrollClient } from '../../components/hr/payrollClient';
 import { useConfirmDialog } from '../../context/ConfirmContext';
 import { useAppToast } from '../../context/ToastContext';
 import type { HrOrganizationCatalogs } from '../../types/hr';
@@ -36,12 +26,10 @@ import type {
   HrAguinaldoRunPayload,
   HrPayrollAction,
   HrPayrollComponentPayload,
-  HrPayrollConfigurationReviewPayload,
-  HrPayrollConfigurationUploadPayload,
+  HrPayrollPaymentConceptDefinition,
   HrPayrollPeriod,
   HrPayrollPeriodPayload,
   HrPayrollRulePayload,
-  HrPayrollRuleConfigurationRevision,
   HrPayrollRuleVersion,
   HrPayrollRun,
   HrPayrollRunDetail,
@@ -50,23 +38,41 @@ import type {
   HrPayrollTransitionPayload,
 } from '../../types/hr-payroll';
 import './payroll.css';
+import './payroll-operations.css';
+import './admin-tables.css';
+import '../Inventory.css';
 
-const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
-  departments: [],
-  positions: [],
-  costCenters: [],
-  branches: [],
-  users: [],
-};
+const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
+const PAGE_SIZE = 12;
 
 const ACTION_LABELS: Record<HrPayrollAction, string> = {
-  CALCULATE: 'Calcular',
-  RECALCULATE: 'Recalcular',
+  CALCULATE: 'Calcular nómina',
+  RECALCULATE: 'Recalcular nómina',
   SUBMIT_REVIEW: 'Enviar a revisión',
-  APPROVE: 'Aprobar',
-  MARK_PAID: 'Marcar pagada',
-  VOID: 'Anular',
+  APPROVE: 'Aprobar nómina',
+  MARK_PAID: 'Registrar pago y publicar colillas',
+  VOID: 'Anular corrida',
 };
+
+const STATUS_LABELS: Record<HrPayrollRun['status'], string> = {
+  DRAFT: 'Borrador',
+  CALCULATED: 'Calculada',
+  REVIEW: 'En revisión',
+  APPROVED: 'Aprobada',
+  PAID: 'Pagada',
+  VOID: 'Anulada',
+};
+
+function formatDate(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value.length === 10 ? `${value}T12:00:00` : value);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium' }).format(date);
+}
+
+function runPeriodLabel(run: HrPayrollRun) {
+  if (run.kind === 'AGUINALDO') return `Aguinaldo ${run.year ?? ''}`.trim();
+  return run.period?.code ?? `Periodo #${run.periodId ?? '—'}`;
+}
 
 type CreatePanel =
   | { kind: 'rule'; rule?: HrPayrollRuleVersion }
@@ -75,8 +81,6 @@ type CreatePanel =
   | { kind: 'component' }
   | null;
 
-type RuleAction = { rule: HrPayrollRuleVersion; action: 'activate' | 'retire' } | null;
-
 function periodDefaults(): HrPayrollPeriodPayload {
   const value = new Date();
   const date = `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
@@ -84,6 +88,7 @@ function periodDefaults(): HrPayrollPeriodPayload {
 }
 
 export default function PayrollManagement() {
+  const navigate = useNavigate();
   const online = usePayrollOnline();
   const { confirm } = useConfirmDialog();
   const { success: showSuccess, error: showError } = useAppToast();
@@ -92,73 +97,86 @@ export default function PayrollManagement() {
   const [periods, setPeriods] = useState<HrPayrollPeriod[]>([]);
   const [regularRuns, setRegularRuns] = useState<HrPayrollRun[]>([]);
   const [aguinaldoRuns, setAguinaldoRuns] = useState<HrPayrollRun[]>([]);
+  const [activeKind, setActiveKind] = useState<HrPayrollRunKind>('REGULAR');
   const [status, setStatus] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [selected, setSelected] = useState<HrPayrollRunDetail | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [selected, setSelected] = useState<HrPayrollRunDetail | null>(null);
+  const [selectedPaymentConcepts, setSelectedPaymentConcepts] = useState<HrPayrollPaymentConceptDefinition[]>([]);
+  const [selectedIncomeTaxApplicability, setSelectedIncomeTaxApplicability] = useState<'APPLIES' | 'DOES_NOT_APPLY' | null>(null);
+  const [tablePage, setTablePage] = useState(1);
   const [createPanel, setCreatePanel] = useState<CreatePanel>(null);
+  const [transition, setTransition] = useState<{ run: HrPayrollRun; action: HrPayrollAction } | null>(null);
+  const [periodForm, setPeriodForm] = useState<HrPayrollPeriodPayload>(periodDefaults());
   const componentOperationKey = useRef<string | null>(null);
   const transitionOperationKey = useRef<string | null>(null);
-  const [transition, setTransition] = useState<{
-    run: HrPayrollRun;
-    action: HrPayrollAction;
-  } | null>(null);
-  const [ruleAction, setRuleAction] = useState<RuleAction>(null);
-  const [configurationRule, setConfigurationRule] = useState<HrPayrollRuleVersion | null>(null);
-  const [configurationRevisions, setConfigurationRevisions] = useState<HrPayrollRuleConfigurationRevision[]>([]);
-  const [configurationLoading, setConfigurationLoading] = useState(false);
-  const [ruleReason, setRuleReason] = useState('');
-  const [ruleConfirmed, setRuleConfirmed] = useState(false);
-  const [periodForm, setPeriodForm] = useState<HrPayrollPeriodPayload>(periodDefaults());
-  const [downloading, setDownloading] = useState(false);
+  const autoOpenedRunKey = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const filters = { status: status || undefined, limit: 100 };
-      const [organization, ruleResult, periodResult, runResult, aguinaldoResult] =
-        await Promise.all([
-          hrClient.getOrganization(),
-          payrollClient.getRules({ limit: 100 }),
-          payrollClient.getPeriods({ limit: 100 }),
-          payrollClient.getRuns('REGULAR', filters),
-          payrollClient.getRuns('AGUINALDO', filters),
-        ]);
+      const filters = { status: status || undefined };
+      const [organization, ruleResult, periodResult, runResult, aguinaldoResult] = await Promise.all([
+        hrClient.getOrganization(),
+        collectAllPages((page) => payrollClient.getRules({ page, limit: 100 })),
+        collectAllPages((page) => payrollClient.getPeriods({ page, limit: 100 })),
+        collectAllPages((page) => payrollClient.getRuns('REGULAR', { ...filters, page, limit: 100 })),
+        collectAllPages((page) => payrollClient.getRuns('AGUINALDO', { ...filters, page, limit: 100 })),
+      ]);
       setLookups(organization);
-      setRules(ruleResult.items);
-      setPeriods(periodResult.items);
-      setRegularRuns(runResult.items);
-      setAguinaldoRuns(aguinaldoResult.items);
+      setRules(ruleResult);
+      setPeriods(periodResult);
+      setRegularRuns(runResult);
+      setAguinaldoRuns(aguinaldoResult);
+      setSelected((current) => current && [...runResult, ...aguinaldoResult].some((run) => run.id === current.id && run.kind === current.kind) ? current : null);
     } catch (loadError) {
-      setRules([]);
-      setPeriods([]);
-      setRegularRuns([]);
-      setAguinaldoRuns([]);
       setError(getPayrollErrorMessage(loadError, 'No fue posible cargar nómina y aguinaldo.'));
     } finally {
       setLoading(false);
     }
   }, [status]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setTablePage(1); }, [activeKind, searchQuery, status]);
 
-  const openWorkspace = async (run: HrPayrollRun) => {
+  const openWorkspace = useCallback(async (run: HrPayrollRun) => {
     setWorkspaceLoading(true);
     try {
-      setSelected(await payrollClient.getRunWorkspace(run.kind, run.id));
+      const [workspace, revisions] = await Promise.all([
+        payrollClient.getRunWorkspace(run.kind, run.id),
+        payrollClient.getRuleConfigurations(run.ruleVersionId),
+      ]);
+      const configurationRevisionId = workspace.configurationRevisionId ?? workspace.ruleVersion?.activeConfigurationRevisionId;
+      const configuration = revisions.find((revision) => revision.id === configurationRevisionId)?.configuration;
+      setSelected(workspace);
+      setSelectedPaymentConcepts(configuration?.statutory.paymentConceptCatalog ?? []);
+      setSelectedIncomeTaxApplicability(configuration?.statutory.companyTaxRegime.incomeTaxApplicability ?? null);
     } catch (workspaceError) {
-      showError(
-        getPayrollErrorMessage(workspaceError, 'No fue posible cargar el detalle de la corrida.')
-      );
+      showError(getPayrollErrorMessage(workspaceError, 'No fue posible cargar el detalle de la corrida.'));
     } finally {
       setWorkspaceLoading(false);
     }
-  };
+  }, [showError]);
+
+  useEffect(() => {
+    if (loading || error || workspaceLoading) return;
+    const available = activeKind === 'REGULAR' ? regularRuns : aguinaldoRuns;
+    if (available.length === 0) {
+      if (selected?.kind === activeKind) setSelected(null);
+      return;
+    }
+    if (selected?.kind === activeKind && available.some((run) => run.id === selected.id)) return;
+    const latest = [...available].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0];
+    const autoOpenKey = `${latest.kind}-${latest.id}`;
+    if (autoOpenedRunKey.current === autoOpenKey) return;
+    autoOpenedRunKey.current = autoOpenKey;
+    void openWorkspace(latest);
+  }, [activeKind, aguinaldoRuns, error, loading, openWorkspace, regularRuns, selected, workspaceLoading]);
 
   const refreshWorkspace = async (run: HrPayrollRun) => {
     await load();
@@ -169,64 +187,45 @@ export default function PayrollManagement() {
     setSaving(true);
     try {
       const editing = createPanel?.kind === 'rule' ? createPanel.rule : undefined;
-      if (editing)
-        await payrollClient.updateRule(editing.id, payload, createPayrollIdempotencyKey());
+      if (editing) await payrollClient.updateRule(editing.id, payload, createPayrollIdempotencyKey());
       else await payrollClient.createRule(payload, createPayrollIdempotencyKey());
-      showSuccess(editing ? 'Nueva revisión de regla guardada.' : 'Regla creada como borrador.');
+      showSuccess(editing ? 'Nueva revisión de regla guardada.' : 'Regla base creada. Ahora configura y valida sus parámetros legales.');
       setCreatePanel(null);
       await load();
     } catch (mutationError) {
       showError(getPayrollErrorMessage(mutationError, 'No fue posible guardar la regla.'));
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const savePeriod = async (event: React.FormEvent) => {
     event.preventDefault();
     setSaving(true);
     try {
-      await payrollClient.createPeriod(
-        { ...periodForm, reason: periodForm.reason.trim() },
-        createPayrollIdempotencyKey()
-      );
-      showSuccess('Periodo de nómina creado.');
-      setCreatePanel(null);
+      await payrollClient.createPeriod({ ...periodForm, reason: periodForm.reason.trim() }, createPayrollIdempotencyKey());
+      showSuccess('Periodo creado. Ya puedes abrir una corrida de nómina.');
+      setPeriodForm(periodDefaults());
+      setCreatePanel({ kind: 'run', runKind: 'REGULAR' });
       await load();
     } catch (mutationError) {
       showError(getPayrollErrorMessage(mutationError, 'No fue posible crear el periodo.'));
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
-  const saveRun = async (
-    kind: HrPayrollRunKind,
-    payload: HrPayrollRunPayload | HrAguinaldoRunPayload
-  ) => {
+  const saveRun = async (kind: HrPayrollRunKind, payload: HrPayrollRunPayload | HrAguinaldoRunPayload) => {
     setSaving(true);
     try {
-      if (kind === 'AGUINALDO') {
-        await payrollClient.createAguinaldoRun(
-          payload as HrAguinaldoRunPayload,
-          createPayrollIdempotencyKey()
-        );
-      } else {
-        await payrollClient.createRun(
-          payload as HrPayrollRunPayload,
-          createPayrollIdempotencyKey()
-        );
-      }
-      showSuccess(
-        kind === 'AGUINALDO' ? 'Corrida de aguinaldo creada.' : 'Corrida de nómina creada.'
-      );
+      const created = kind === 'AGUINALDO'
+        ? await payrollClient.createAguinaldoRun(payload as HrAguinaldoRunPayload, createPayrollIdempotencyKey())
+        : await payrollClient.createRun(payload as HrPayrollRunPayload, createPayrollIdempotencyKey());
+      showSuccess(kind === 'AGUINALDO' ? 'Aguinaldo creado. El siguiente paso es calcularlo.' : 'Corrida creada. El siguiente paso es calcularla.');
       setCreatePanel(null);
+      setActiveKind(kind);
+      autoOpenedRunKey.current = `${created.kind}-${created.id}`;
       await load();
+      await openWorkspace(created);
     } catch (mutationError) {
       showError(getPayrollErrorMessage(mutationError, 'No fue posible crear la corrida.'));
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const saveComponent = async (payload: HrPayrollComponentPayload) => {
@@ -235,34 +234,22 @@ export default function PayrollManagement() {
     componentOperationKey.current = idempotencyKey;
     setSaving(true);
     try {
-      await payrollClient.addComponent(
-        selected.kind,
-        selected.id,
-        payload,
-        idempotencyKey
-      );
-      showSuccess('Componente de entrada agregado; recalcula antes de revisar.');
+      await payrollClient.addComponent(selected.kind, selected.id, payload, idempotencyKey);
       componentOperationKey.current = null;
       setCreatePanel(null);
+      showSuccess('Concepto agregado y totales recalculados.');
       await refreshWorkspace(selected);
     } catch (mutationError) {
-      showError(getPayrollErrorMessage(mutationError, 'No fue posible agregar el componente.'));
-    } finally {
-      setSaving(false);
-    }
+      showError(getPayrollErrorMessage(mutationError, 'No fue posible agregar el concepto.'));
+    } finally { setSaving(false); }
   };
 
   const saveTransition = async (payload: HrPayrollTransitionPayload) => {
     if (!transition) return;
-    const accepted = await confirm(
-      `Confirma ${ACTION_LABELS[transition.action].toLowerCase()} la corrida ${transition.run.code}. Esta operación quedará auditada.`,
-      {
-        title: 'Confirmación final de nómina',
-        confirmText: ACTION_LABELS[transition.action],
-        variant:
-          transition.action === 'VOID' || transition.action === 'MARK_PAID' ? 'danger' : 'warning',
-      }
-    );
+    const accepted = await confirm(`Confirma: ${ACTION_LABELS[transition.action]} para ${transition.run.code}.`, {
+      title: 'Confirmación final de nómina', confirmText: ACTION_LABELS[transition.action],
+      variant: transition.action === 'VOID' || transition.action === 'MARK_PAID' ? 'danger' : 'warning',
+    });
     if (!accepted) return;
     setSaving(true);
     try {
@@ -270,119 +257,26 @@ export default function PayrollManagement() {
       const key = transitionOperationKey.current ?? createPayrollIdempotencyKey();
       transitionOperationKey.current = key;
       let updated: HrPayrollRun;
-      if (action === 'CALCULATE')
-        updated = await payrollClient.calculateRun(run.kind, run.id, payload, key);
-      else if (action === 'RECALCULATE')
-        updated = await payrollClient.recalculateRun(run.kind, run.id, payload, key);
-      else if (action === 'SUBMIT_REVIEW')
-        updated = await payrollClient.submitRunReview(run.kind, run.id, payload, key);
-      else if (action === 'APPROVE')
-        updated = await payrollClient.approveRun(run.kind, run.id, payload, key);
-      else if (action === 'MARK_PAID')
-        updated = await payrollClient.payRun(run.kind, run.id, payload, key);
+      if (action === 'CALCULATE') updated = await payrollClient.calculateRun(run.kind, run.id, payload, key);
+      else if (action === 'RECALCULATE') updated = await payrollClient.recalculateRun(run.kind, run.id, payload, key);
+      else if (action === 'SUBMIT_REVIEW') updated = await payrollClient.submitRunReview(run.kind, run.id, payload, key);
+      else if (action === 'APPROVE') updated = await payrollClient.approveRun(run.kind, run.id, payload, key);
+      else if (action === 'MARK_PAID') updated = await payrollClient.payRun(run.kind, run.id, payload, key);
       else updated = await payrollClient.voidRun(run.kind, run.id, payload, key);
-      showSuccess('Transición de nómina registrada.');
       transitionOperationKey.current = null;
       setTransition(null);
+      showSuccess(action === 'MARK_PAID' ? 'Pago registrado y colillas publicadas.' : `${ACTION_LABELS[action]} completado.`);
       await refreshWorkspace(updated);
     } catch (mutationError) {
-      showError(getPayrollErrorMessage(mutationError, 'No fue posible completar la transición.'));
-    } finally {
-      setSaving(false);
-    }
+      showError(getPayrollErrorMessage(mutationError, 'No fue posible completar la acción.'));
+    } finally { setSaving(false); }
   };
 
-  const saveRuleAction = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!ruleAction || !ruleConfirmed || !ruleReason.trim()) return;
-    const accepted = await confirm(
-      `${ruleAction.action === 'activate' ? 'Activar' : 'Retirar'} la regla ${ruleAction.rule.name} v${ruleAction.rule.version}.`,
-      { title: 'Confirmar versión', confirmText: 'Confirmar', variant: 'warning' }
-    );
-    if (!accepted) return;
-    setSaving(true);
-    try {
-      const payload: HrPayrollTransitionPayload = {
-        reason: ruleReason.trim(),
-        confirmed: true,
-        expectedRevision: ruleAction.rule.revision,
-      };
-      if (ruleAction.action === 'activate') {
-        await payrollClient.activateRule(
-          ruleAction.rule.id,
-          payload,
-          createPayrollIdempotencyKey()
-        );
-      } else {
-        await payrollClient.retireRule(ruleAction.rule.id, payload, createPayrollIdempotencyKey());
-      }
-      showSuccess('Estado de regla actualizado con trazabilidad.');
-      setRuleAction(null);
-      await load();
-    } catch (mutationError) {
-      showError(getPayrollErrorMessage(mutationError, 'No fue posible actualizar la regla.'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openRuleConfiguration = async (rule: HrPayrollRuleVersion) => {
-    setConfigurationRule(rule);
-    setConfigurationRevisions([]);
-    setConfigurationLoading(true);
-    try {
-      setConfigurationRevisions(await payrollClient.getRuleConfigurations(rule.id));
-    } catch (loadError) {
-      showError(getPayrollErrorMessage(loadError, 'No fue posible cargar el control legal.'));
-    } finally {
-      setConfigurationLoading(false);
-    }
-  };
-
-  const reloadRuleConfiguration = async (ruleId: number) => {
-    const [ruleResult, revisions] = await Promise.all([
-      payrollClient.getRules({ limit: 100 }),
-      payrollClient.getRuleConfigurations(ruleId),
-    ]);
-    setRules(ruleResult.items);
-    setConfigurationRevisions(revisions);
-    setConfigurationRule(ruleResult.items.find((rule) => rule.id === ruleId) ?? null);
-  };
-
-  const uploadRuleConfiguration = async (payload: HrPayrollConfigurationUploadPayload) => {
-    if (!configurationRule) return;
-    setSaving(true);
-    try {
-      await payrollClient.uploadRuleConfiguration(
-        configurationRule.id,
-        payload,
-        createPayrollIdempotencyKey()
-      );
-      showSuccess('Configuración congelada; requiere revisión por una identidad distinta.');
-      await reloadRuleConfiguration(configurationRule.id);
-    } catch (mutationError) {
-      showError(getPayrollErrorMessage(mutationError, 'No fue posible cargar la configuración.'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const reviewRuleConfiguration = async (payload: HrPayrollConfigurationReviewPayload) => {
-    if (!configurationRule) return;
-    setSaving(true);
-    try {
-      await payrollClient.reviewRuleConfiguration(
-        configurationRule.id,
-        payload,
-        createPayrollIdempotencyKey()
-      );
-      showSuccess(payload.decision === 'VALIDATED' ? 'Configuración validada.' : 'Configuración rechazada.');
-      await reloadRuleConfiguration(configurationRule.id);
-    } catch (mutationError) {
-      showError(getPayrollErrorMessage(mutationError, 'No fue posible registrar el dictamen.'));
-    } finally {
-      setSaving(false);
-    }
+  const exportSpecificRun = async (run: HrPayrollRun, format: 'csv' | 'xlsx') => {
+    setDownloading(true);
+    try { await payrollClient.exportRun(run.kind, run.id, format); showSuccess(`Reporte de ${run.code} generado.`); }
+    catch (downloadError) { showError(getPayrollErrorMessage(downloadError, 'No fue posible exportar la corrida.')); }
+    finally { setDownloading(false); }
   };
 
   const exportRun = async (format: 'csv' | 'xlsx') => {
@@ -390,7 +284,7 @@ export default function PayrollManagement() {
     setDownloading(true);
     try {
       await payrollClient.exportRun(selected.kind, selected.id, format);
-      showSuccess('Exportación preparada.');
+      showSuccess(`Reporte de ${selected.code} generado.`);
     } catch (downloadError) {
       showError(getPayrollErrorMessage(downloadError, 'No fue posible exportar la corrida.'));
     } finally {
@@ -401,700 +295,149 @@ export default function PayrollManagement() {
   const downloadReceipt = async (receiptId: number) => {
     if (!selected) return;
     setDownloading(true);
-    try {
-      await payrollClient.downloadRunReceipt(selected.kind, selected.id, receiptId);
-    } catch (downloadError) {
-      showError(getPayrollErrorMessage(downloadError, 'No fue posible descargar el recibo.'));
-    } finally {
-      setDownloading(false);
-    }
+    try { await payrollClient.downloadRunReceipt(selected.kind, selected.id, receiptId); }
+    catch (downloadError) { showError(getPayrollErrorMessage(downloadError, 'No fue posible descargar la colilla.')); }
+    finally { setDownloading(false); }
   };
 
-  const renderRuns = (
-    title: string,
-    icon: React.ReactNode,
-    runs: HrPayrollRun[],
-    kind: HrPayrollRunKind
-  ) => (
-    <section className="hr-payroll-section">
-      <div className="hr-payroll-section-heading">
-        <div>
-          <h2>
-            {icon}
-            {title}
-          </h2>
-          <p>
-            {kind === 'AGUINALDO'
-              ? 'Proceso independiente, versionado y auditable.'
-              : 'Ciclo DRAFT → CALCULATED → REVIEW → APPROVED → PAID.'}
-          </p>
-        </div>
-        <Button
-          size="sm"
-          onClick={() => setCreatePanel({ kind: 'run', runKind: kind })}
-          disabled={!online}
-        >
-          <Plus size={15} /> Nueva
-        </Button>
-      </div>
-      {runs.length === 0 ? (
-        <p className="hr-payroll-empty">Sin corridas.</p>
-      ) : (
-        <div className="hr-payroll-run-list">
-          {runs.map((run) => (
-            <article
-              key={`${run.kind}-${run.id}`}
-              className={selected?.id === run.id && selected.kind === run.kind ? 'selected' : ''}
-            >
-              <button
-                type="button"
-                onClick={() => void openWorkspace(run)}
-                disabled={workspaceLoading}
-              >
-                <div>
-                  <strong>{run.code}</strong>
-                  <span>
-                    {run.kind === 'AGUINALDO'
-                      ? `Aguinaldo ${run.year ?? ''}`
-                      : (run.period?.code ?? `Periodo #${run.periodId ?? '—'}`)}
-                  </span>
-                </div>
-                <div>
-                  <PayrollStatusPill status={run.status} />
-                  <small>{run.blockingAnomalyCount} bloqueos</small>
-                </div>
-              </button>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+  const downloadReceiptBatch = async (receiptIds: number[]) => {
+    if (!selected || receiptIds.length === 0) return;
+    setDownloading(true);
+    try {
+      for (const receiptId of receiptIds) await payrollClient.downloadRunReceipt(selected.kind, selected.id, receiptId);
+      showSuccess(`${receiptIds.length} colilla(s) descargadas.`);
+    } catch (downloadError) {
+      showError(getPayrollErrorMessage(downloadError, 'No fue posible completar la descarga de colillas.'));
+    } finally { setDownloading(false); }
+  };
+
+  const downloadRunReceiptBatch = async (run: HrPayrollRun) => {
+    setDownloading(true);
+    try {
+      const workspace = selected?.id === run.id && selected.kind === run.kind
+        ? selected
+        : await payrollClient.getRunWorkspace(run.kind, run.id);
+      const ids = workspace.receipts.filter((receipt) => receipt.status === 'PUBLISHED').map((receipt) => receipt.id);
+      if (ids.length === 0) {
+        showError('Esta corrida todavía no tiene colillas publicadas.');
+        return;
+      }
+      for (const receiptId of ids) await payrollClient.downloadRunReceipt(run.kind, run.id, receiptId);
+      showSuccess(`${ids.length} colilla(s) de ${run.code} descargadas.`);
+    } catch (downloadError) {
+      showError(getPayrollErrorMessage(downloadError, 'No fue posible descargar las colillas de la corrida.'));
+    } finally { setDownloading(false); }
+  };
+
+  const runs = activeKind === 'REGULAR' ? regularRuns : aguinaldoRuns;
+  const filteredRuns = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    if (!query) return runs;
+    return runs.filter((run) => [
+      run.code,
+      runPeriodLabel(run),
+      run.period?.dateFrom,
+      run.period?.dateTo,
+      run.period?.payDate,
+      run.cutoffDate,
+      run.year != null ? String(run.year) : '',
+    ].some((value) => value?.toLocaleLowerCase().includes(query)));
+  }, [runs, searchQuery]);
+  const pagedRuns = filteredRuns.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
+  useEffect(() => { setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(filteredRuns.length / PAGE_SIZE)))); }, [filteredRuns.length]);
+  const activeRules = rules.filter((rule) => rule.status === 'ACTIVE');
+  const operationReady = activeRules.length > 0 && (activeKind === 'AGUINALDO' || periods.some((period) => period.status !== 'VOID'));
 
   return (
-    <div className="page-wrapper hr-payroll-page">
-      <PageHeader
-        title="Nómina y aguinaldo"
-        subtitle="Reglas versionadas, corridas, doble control, recibos y trazabilidad"
-        icon={Calculator}
-        actions={
-          <div className="hr-payroll-header-actions">
-            <Button
-              variant="secondary"
-              onClick={() => setCreatePanel({ kind: 'period' })}
-              disabled={!online}
-            >
-              <FilePlus2 size={17} /> Periodo
-            </Button>
-            <Button onClick={() => setCreatePanel({ kind: 'rule' })} disabled={!online}>
-              <Scale size={17} /> Regla
-            </Button>
-          </div>
-        }
-      />
+    <div className="page-wrapper inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page">
+      <PageHeader className="inventory-header-new" title="Nómina y aguinaldo" subtitle="Calcula, revisa, aprueba, paga y entrega colillas desde un flujo guiado. Configuración legal: IR, INSS e INATEC." icon={Calculator}
+        actions={<Button variant="secondary" onClick={() => navigate('/rh/nomina/configuracion-legal')}><Scale size={17} /> Configurar IR, INSS e INATEC</Button>} />
       <PayrollOnlineNotice online={online} />
-      <div className="hr-payroll-filterbar">
-        <label>
-          Estado
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="">Todos</option>
-            {['DRAFT', 'CALCULATED', 'REVIEW', 'APPROVED', 'PAID', 'VOID'].map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button variant="ghost" onClick={() => void load()}>
-          <RefreshCw size={16} /> Actualizar
-        </Button>
+
+      <div className="payroll-operation-switcher inventory-filters-row">
+        <div className="payroll-operation-tabs inventory-status-filters" role="tablist" aria-label="Tipo de proceso">
+          <button type="button" role="tab" id="payroll-tab-regular" aria-controls="payroll-panel-regular" aria-selected={activeKind === 'REGULAR'} className={activeKind === 'REGULAR' ? 'active' : ''} onClick={() => { setActiveKind('REGULAR'); setSelected(null); }}><Receipt size={17} /> Nómina ordinaria <small>{regularRuns.length}</small></button>
+          <button type="button" role="tab" id="payroll-tab-aguinaldo" aria-controls="payroll-panel-aguinaldo" aria-selected={activeKind === 'AGUINALDO'} className={activeKind === 'AGUINALDO' ? 'active' : ''} onClick={() => { setActiveKind('AGUINALDO'); setSelected(null); }}><Gift size={17} /> Aguinaldo <small>{aguinaldoRuns.length}</small></button>
+        </div>
+        <Button onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!online || !operationReady}><Plus size={16} /> {activeKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'}</Button>
       </div>
 
-      {loading && <LoadingSpinner text="Cargando nómina…" />}
-      {!loading && error && (
-        <div className="state-placeholder" role="alert">
-          <AlertTriangle size={42} />
-          <p className="state-error">{error}</p>
-          <Button variant="ghost" onClick={() => void load()}>
-            Reintentar
-          </Button>
+      {!operationReady && !loading && (
+        <div className="payroll-operation-alert" role="status">
+          <AlertTriangle size={20} />
+          <span>{activeRules.length === 0 ? 'Para crear corridas necesitas una regla legal activa.' : 'Primero crea el periodo que deseas pagar.'}</span>
+          {activeRules.length === 0
+            ? <Button size="sm" variant="secondary" onClick={() => rules.length ? navigate(`/rh/nomina/configuracion-legal?ruleId=${rules[0].id}`) : setCreatePanel({ kind: 'rule' })}>{rules.length ? 'Configurar regla' : 'Crear regla base'}</Button>
+            : <Button size="sm" variant="secondary" onClick={() => setCreatePanel({ kind: 'period' })}>Crear periodo</Button>}
         </div>
       )}
+
+      {loading && <LoadingSpinner text="Cargando corridas…" />}
+      {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={42} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}>Reintentar</Button></div>}
       {!loading && !error && (
         <>
-          <div className="hr-payroll-columns">
-            {renderRuns('Nómina ordinaria', <Receipt size={20} />, regularRuns, 'REGULAR')}
-            {renderRuns('Aguinaldo', <Gift size={20} />, aguinaldoRuns, 'AGUINALDO')}
-          </div>
-
-          <div className="hr-payroll-columns">
-            <section className="hr-payroll-section">
-              <div className="hr-payroll-section-heading">
-                <div>
-                  <h2>
-                    <Scale size={20} /> Reglas y vigencias
-                  </h2>
-                  <p>Metadatos y parámetros versionados; el cálculo autoritativo permanece en servidor.</p>
-                </div>
+          <section className="payroll-run-register pr-table-card" role="tabpanel" id={`payroll-panel-${activeKind.toLowerCase()}`} aria-labelledby={`payroll-tab-${activeKind.toLowerCase()}`}>
+            <header className="payroll-run-register-header">
+              <div>
+                <h2 id="payroll-run-register-title">{activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}</h2>
+                <p>Consulta el periodo, los totales y el estado. Abre una fila para continuar el proceso.</p>
               </div>
-              <div className="hr-payroll-records">
-                {rules.map((rule) => (
-                  <article key={rule.id}>
-                    <div>
-                      <strong>
-                        {rule.name} · v{rule.version}
-                      </strong>
-                      <span>
-                        {rule.effectiveFrom} – {rule.effectiveTo ?? 'sin fin'} ·{' '}
-                        {rule.sourceReference}
-                      </span>
-                      <small>Revisión {rule.revision}</small>
-                      {rule.configurationSummary && <small>{rule.configurationSummary}</small>}
-                    </div>
-                    <div>
-                      <PayrollStatusPill status={rule.status} />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => void openRuleConfiguration(rule)}
-                      >
-                        Parámetros
-                      </Button>
-                      {rule.status === 'DRAFT' && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setCreatePanel({ kind: 'rule', rule })}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setRuleReason('');
-                              setRuleConfirmed(false);
-                              setRuleAction({ rule, action: 'activate' });
-                            }}
-                            disabled={!online || !rule.activeConfigurationRevisionId}
-                            title={!rule.activeConfigurationRevisionId ? 'Requiere configuración VALIDATED por segundo actor' : undefined}
-                          >
-                            Activar
-                          </Button>
-                        </>
-                      )}
-                      {rule.status === 'ACTIVE' && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => {
-                            setRuleReason('');
-                            setRuleConfirmed(false);
-                            setRuleAction({ rule, action: 'retire' });
-                          }}
-                          disabled={!online}
-                        >
-                          Retirar
-                        </Button>
-                      )}
-                    </div>
-                  </article>
-                ))}
+              <div className="payroll-run-register-tools">
+                <label htmlFor="payroll-run-search">Buscar código o periodo<div className="payroll-run-search"><Search size={15} aria-hidden="true" /><input id="payroll-run-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Ej. 2026-Q1" /></div></label>
+                <label>Estado<HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos los estados</option>{(Object.keys(STATUS_LABELS) as HrPayrollRun['status'][]).map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}</HrReactSelect></label>
+                {activeKind === 'REGULAR' && <Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'period' })}><FilePlus2 size={15} /> Periodos</Button>}
               </div>
-            </section>
-            <section className="hr-payroll-section">
-              <div className="hr-payroll-section-heading">
-                <div>
-                  <h2>Periodos</h2>
-                  <p>Alcance temporal y fecha de pago; sin importes.</p>
-                </div>
-              </div>
-              <div className="hr-payroll-records">
-                {periods.map((period) => (
-                  <article key={period.id}>
-                    <div>
-                      <strong>{period.code}</strong>
-                      <span>
-                        {period.dateFrom} – {period.dateTo} · pago {period.payDate}
-                      </span>
-                      <small>
-                        {period.timezone} · revisión {period.revision}
-                      </small>
-                    </div>
-                    <PayrollStatusPill status={period.status} />
-                  </article>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <section className="hr-payroll-section hr-payroll-workspace" aria-live="polite">
-            {!selected ? (
-              <div className="hr-payroll-empty-workspace">
-                <ShieldCheck size={42} />
-                <h2>Selecciona una corrida</h2>
-                <p>
-                  Consulta snapshot, anomalías, componentes, actores y recibos antes de ejecutar una
-                  transición.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="hr-payroll-workspace-header">
-                  <div>
-                    <span>{selected.kind === 'AGUINALDO' ? 'Aguinaldo' : 'Nómina'}</span>
-                    <h2>{selected.code}</h2>
-                    <div>
-                      <PayrollStatusPill status={selected.status} />
-                      <small>Revisión {selected.revision}</small>
-                    </div>
-                  </div>
-                  <div className="hr-payroll-workspace-actions">
-                    {selected.allowedActions.map((action) => (
-                      <Button
-                        key={action}
-                        size="sm"
-                        variant={
-                          action === 'VOID' || action === 'MARK_PAID' ? 'danger' : 'secondary'
-                        }
-                        onClick={() => {
-                          transitionOperationKey.current = createPayrollIdempotencyKey();
-                          setTransition({ run: selected, action });
-                        }}
-                        disabled={!online}
-                      >
-                        {ACTION_LABELS[action]}
-                      </Button>
-                    ))}
-                    <Button size="sm" variant="ghost" onClick={() => void openWorkspace(selected)}>
-                      <RefreshCw size={15} />
-                    </Button>
-                  </div>
-                </div>
-                {selected.totals && (
-                  <dl className="hr-payroll-totals">
-                    <div>
-                      <dt>Ingresos brutos</dt>
-                      <dd>
-                        {selected.totals.currency} {selected.totals.grossIncome}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Deducciones</dt>
-                      <dd>
-                        {selected.totals.currency} {selected.totals.totalDeductions}
-                      </dd>
-                    </div>
-                    <div className="net">
-                      <dt>Neto</dt>
-                      <dd>
-                        {selected.totals.currency} {selected.totals.netPay}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Personas</dt>
-                      <dd>{selected.totals.employeeCount}</dd>
-                    </div>
-                  </dl>
-                )}
-                <div className="hr-payroll-dual-control">
-                  <ShieldCheck size={19} />
-                  <div>
-                    <strong>Segregación de funciones</strong>
-                    <span>
-                      Calculó: {selected.calculatedBy?.name ?? '—'} · aprobó:{' '}
-                      {selected.approvedBy?.name ?? '—'} · pagó: {selected.paidBy?.name ?? '—'}
-                    </span>
-                    <small>
-                      Los botones reflejan allowedActions del servidor; el backend bloquea actores
-                      incompatibles.
-                    </small>
-                  </div>
-                </div>
-
-                <div className="hr-payroll-workspace-grid">
-                  <section>
-                    <div className="hr-payroll-subheading">
-                      <h3>Anomalías</h3>
-                      <span>{selected.blockingAnomalyCount} bloqueantes</span>
-                    </div>
-                    {selected.anomalies.length === 0 ? (
-                      <p>Sin anomalías.</p>
-                    ) : (
-                      <div className="hr-payroll-records">
-                        {selected.anomalies.map((item) => (
-                          <article key={item.id}>
-                            <div>
-                              <strong>{item.user?.name ?? item.code}</strong>
-                              <span>{item.message}</span>
-                              <small>{item.code}</small>
-                            </div>
-                            <PayrollStatusPill status={item.severity} />
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                  <section>
-                    <div className="hr-payroll-subheading">
-                      <h3>Snapshot de fuentes</h3>
-                      <span>{selected.snapshot.length} personas</span>
-                    </div>
-                    {selected.snapshot.length === 0 ? (
-                      <p>Sin snapshot; calcula la corrida.</p>
-                    ) : (
-                      <div className="hr-payroll-records">
-                        {selected.snapshot.map((line) => (
-                          <article key={line.id}>
-                            <div>
-                              <strong>{line.user?.name ?? `Usuario #${line.userId}`}</strong>
-                              <span>
-                                {line.ordinaryMinutes} min ordinarios ·{' '}
-                                {line.approvedOvertimeMinutes} min extra aprobado
-                              </span>
-                              <small>
-                                Fuente rev. {line.sourceRevision ?? '—'} · {line.capturedAt}
-                              </small>
-                            </div>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                  <section>
-                    <div className="hr-payroll-subheading">
-                      <h3>Componentes</h3>
-                      {selected.status === 'CALCULATED' && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            componentOperationKey.current = createPayrollIdempotencyKey();
-                            setCreatePanel({ kind: 'component' });
-                          }}
-                          disabled={!online}
-                        >
-                          <Plus size={14} /> Entrada
-                        </Button>
-                      )}
-                    </div>
-                    {selected.components.length === 0 ? (
-                      <p>Sin componentes.</p>
-                    ) : (
-                      <div className="hr-payroll-records">
-                        {selected.components.map((item) => (
-                          <article key={item.id}>
-                            <div>
-                              <strong>
-                                {item.name} · {item.code}
-                              </strong>
-                              <span>
-                                {item.user?.name ?? `Usuario #${item.userId}`} · {item.source}
-                              </span>
-                              <small>{item.traceReference ?? 'Sin referencia adicional'}</small>
-                            </div>
-                            <strong>{item.amount}</strong>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                  <section>
-                    <div className="hr-payroll-subheading">
-                      <h3>Recibos y exportación</h3>
-                      <div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => void exportRun('csv')}
-                          disabled={!online || downloading}
-                        >
-                          <Download size={14} /> CSV
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => void exportRun('xlsx')}
-                          disabled={!online || downloading}
-                        >
-                          XLSX
-                        </Button>
-                      </div>
-                    </div>
-                    {selected.receipts.length === 0 ? (
-                      <p>Sin recibos publicados.</p>
-                    ) : (
-                      <div className="hr-payroll-records">
-                        {selected.receipts.map((receipt) => (
-                          <article key={receipt.id}>
-                            <div>
-                              <strong>{receipt.periodLabel}</strong>
-                              <span>
-                                {receipt.currency} {receipt.netPay} neto
-                              </span>
-                              <small>{receipt.status}</small>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => void downloadReceipt(receipt.id)}
-                              disabled={!online || downloading}
-                            >
-                              PDF
-                            </Button>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                </div>
-              </>
-            )}
+            </header>
+            {filteredRuns.length === 0 ? <div className="payroll-operation-empty-list"><strong>No hay corridas que coincidan con los filtros.</strong><span>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</span>{runs.length === 0 && <Button size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}</div>
+              : <div className="payroll-run-table-wrap"><table className="payroll-run-table inventory-table">
+                <thead><tr><th scope="col">Corrida</th><th scope="col">Periodo</th><th scope="col">Estado</th><th scope="col">Empleados</th><th scope="col" className="hr-amount-cell">Ingresos</th><th scope="col" className="hr-amount-cell">Neto a pagar</th><th scope="col">Incidencias</th><th scope="col">Fecha de pago</th><th scope="col">Acciones</th></tr></thead>
+                <tbody>{pagedRuns.map((run) => {
+                  const isSelected = selected?.id === run.id && selected.kind === run.kind;
+                  return <tr key={`${run.kind}-${run.id}`} className={isSelected ? 'selected' : undefined} aria-current={isSelected ? 'true' : undefined}>
+                    <th scope="row"><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></th>
+                    <td>{runPeriodLabel(run)}</td>
+                    <td><PayrollStatusPill status={run.status} /></td>
+                    <td>{run.totals?.employeeCount ?? 0}</td>
+                    <td className="hr-amount-cell">{run.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: run.totals.currency }).format(Number(run.totals.grossIncome)) : '—'}</td>
+                    <td className="hr-amount-cell"><strong>{run.totals ? new Intl.NumberFormat('es-NI', { style: 'currency', currency: run.totals.currency }).format(Number(run.totals.netPay)) : '—'}</strong></td>
+                    <td>{run.blockingAnomalyCount ? <span className="payroll-run-blocker"><AlertTriangle size={14} /> {run.blockingAnomalyCount} por resolver</span> : run.anomalyCount ? `${run.anomalyCount} informativa(s)` : <span className="payroll-run-clear">Sin incidencias</span>}</td>
+                    <td>{formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate)}</td>
+                    <td><div className="payroll-run-actions table-actions">
+                      <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void openWorkspace(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`}><Eye size={16} /></Button>
+                      <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`}><FileSpreadsheet size={16} /></Button>
+                      <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`}><Download size={16} /></Button>
+                    </div></td>
+                  </tr>;
+                })}</tbody>
+              </table></div>}
+            <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(filteredRuns.length / PAGE_SIZE))} totalItems={filteredRuns.length} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin corridas" />
           </section>
+
+          <div className="payroll-operation-detail-area">
+            {workspaceLoading ? <LoadingSpinner text="Abriendo la corrida…" /> : selected ? (
+            <PayrollOperationWorkspace run={selected} online={online} busy={saving || downloading} onAction={(action) => { transitionOperationKey.current = createPayrollIdempotencyKey(); setTransition({ run: selected, action }); }} onRefresh={() => void openWorkspace(selected)} onAddComponent={() => { componentOperationKey.current = createPayrollIdempotencyKey(); setCreatePanel({ kind: 'component' }); }} onExport={(format) => void exportRun(format)} onDownloadReceipt={(id) => void downloadReceipt(id)} onDownloadReceiptBatch={(ids) => void downloadReceiptBatch(ids)} />
+            ) : <div className="payroll-operation-placeholder"><div><Calculator size={44} /><h2>No hay una corrida abierta</h2><p>Crea una corrida o cambia los filtros para administrar sus pagos.</p></div></div>}
+          </div>
         </>
       )}
 
-      <Sidebar
-        isOpen={Boolean(createPanel)}
-        onClose={() => {
-          if (!saving) {
-            if (createPanel?.kind === 'component') componentOperationKey.current = null;
-            setCreatePanel(null);
-          }
-        }}
-        title={
-          createPanel?.kind === 'rule'
-            ? 'Versión de regla'
-            : createPanel?.kind === 'period'
-              ? 'Nuevo periodo'
-              : createPanel?.kind === 'component'
-                ? 'Componente manual'
-                : createPanel?.runKind === 'AGUINALDO'
-                  ? 'Nueva corrida de aguinaldo'
-                  : 'Nueva corrida de nómina'
-        }
-        width="wide"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
-      >
-        <div className="hr-payroll-sidebar">
-          <PayrollOnlineNotice online={online} compact />
-          {createPanel?.kind === 'rule' && (
-            <PayrollRuleForm
-              initial={createPanel.rule}
-              online={online}
-              saving={saving}
-              onSubmit={saveRule}
-              onCancel={() => setCreatePanel(null)}
-            />
-          )}
-          {createPanel?.kind === 'period' && (
-            <form className="hr-payroll-form" onSubmit={(event) => void savePeriod(event)}>
-              <label>
-                Código
-                <input
-                  value={periodForm.code}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({
-                      ...current,
-                      code: event.target.value.toUpperCase(),
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Desde
-                <input
-                  type="date"
-                  value={periodForm.dateFrom}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Hasta
-                <input
-                  type="date"
-                  min={periodForm.dateFrom}
-                  value={periodForm.dateTo}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Fecha de pago
-                <input
-                  type="date"
-                  value={periodForm.payDate}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, payDate: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label className="span-full">
-                Razón
-                <textarea
-                  rows={4}
-                  value={periodForm.reason}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, reason: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <p className="hr-payroll-help span-full">
-                El periodo no recibe totales ni valores legales desde la UI.
-              </p>
-              <div className="hr-payroll-form-actions span-full">
-                <Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={!online || saving || !periodForm.code || !periodForm.reason.trim()}
-                >
-                  {saving ? 'Creando…' : 'Crear periodo'}
-                </Button>
-              </div>
-            </form>
-          )}
-          {createPanel?.kind === 'run' && (
-            <PayrollRunForm
-              kind={createPanel.runKind}
-              periods={periods}
-              rules={rules}
-              online={online}
-              saving={saving}
-              onSubmit={(payload) => saveRun(createPanel.runKind, payload)}
-              onCancel={() => setCreatePanel(null)}
-            />
-          )}
-          {createPanel?.kind === 'component' && selected && (
-            <PayrollComponentForm
-              users={lookups.users ?? []}
-              online={online}
-              saving={saving}
-              onSubmit={saveComponent}
-              onCancel={() => {
-                componentOperationKey.current = null;
-                setCreatePanel(null);
-              }}
-            />
-          )}
-        </div>
-      </Sidebar>
-
-      <Sidebar
-        isOpen={Boolean(transition)}
-        onClose={() => {
-          if (!saving) {
-            transitionOperationKey.current = null;
-            setTransition(null);
-          }
-        }}
-        title={transition ? ACTION_LABELS[transition.action] : 'Transición'}
-        width="wide"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
-      >
-        {transition && (
-          <div className="hr-payroll-sidebar">
-            <PayrollOnlineNotice online={online} compact />
-            <PayrollTransitionForm
-              run={transition.run}
-              action={transition.action}
-              online={online}
-              saving={saving}
-              onSubmit={saveTransition}
-              onCancel={() => {
-                transitionOperationKey.current = null;
-                setTransition(null);
-              }}
-            />
-          </div>
+      <Sidebar isOpen={Boolean(createPanel)} onClose={() => { if (!saving) { if (createPanel?.kind === 'component') componentOperationKey.current = null; setCreatePanel(null); } }} title={createPanel?.kind === 'rule' ? 'Nueva regla base' : createPanel?.kind === 'period' ? 'Nuevo periodo de nómina' : createPanel?.kind === 'component' ? 'Ingreso o deducción' : createPanel?.runKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+        {createPanel?.kind === 'component' && selected && <PayrollComponentForm users={lookups.users ?? []} concepts={selectedPaymentConcepts} incomeTaxApplicability={selectedIncomeTaxApplicability} online={online} saving={saving} onSubmit={saveComponent} onCancel={() => { componentOperationKey.current = null; setCreatePanel(null); }} />}
+        {createPanel?.kind === 'rule' && <PayrollRuleForm initial={createPanel.rule} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={saveRule} onCancel={() => setCreatePanel(null)} />}
+        {createPanel?.kind === 'period' && (
+          <HrModalFormShell ariaLabel="Crear periodo de nómina" tabLabel="1. Periodo" sectionTitle="Define las fechas que se pagarán" icon={<FilePlus2 size={18} />} formClassName="hr-payroll-form" notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(event) => void savePeriod(event)} footer={<><Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>Cancelar</Button><Button type="submit" disabled={!online || saving || !periodForm.code.trim() || !periodForm.reason.trim()}>{saving ? 'Creando…' : 'Crear y continuar'}</Button></>}>
+            <label>Código<input value={periodForm.code} onChange={(event) => setPeriodForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="2026-Q15" required /></label>
+            <label>Desde<input type="date" value={periodForm.dateFrom} onChange={(event) => setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))} required /></label>
+            <label>Hasta<input type="date" min={periodForm.dateFrom} value={periodForm.dateTo} onChange={(event) => setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))} required /></label>
+            <label>Fecha de pago<input type="date" min={periodForm.dateTo} value={periodForm.payDate} onChange={(event) => setPeriodForm((current) => ({ ...current, payDate: event.target.value }))} required /></label>
+            <label className="span-full">Motivo de apertura<textarea rows={4} value={periodForm.reason} onChange={(event) => setPeriodForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Ej. Nómina ordinaria de la segunda quincena" required /></label>
+          </HrModalFormShell>
         )}
+        {createPanel?.kind === 'run' && <PayrollRunForm kind={createPanel.runKind} periods={periods} rules={rules} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(payload) => saveRun(createPanel.runKind, payload)} onCancel={() => setCreatePanel(null)} />}
       </Sidebar>
 
-      <Sidebar
-        isOpen={Boolean(ruleAction)}
-        onClose={() => !saving && setRuleAction(null)}
-        title={ruleAction?.action === 'activate' ? 'Activar regla' : 'Retirar regla'}
-        width="wide"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
-      >
-        <form
-          className="hr-payroll-form hr-payroll-sidebar"
-          onSubmit={(event) => void saveRuleAction(event)}
-        >
-          <PayrollOnlineNotice online={online} compact />
-          <div className="hr-payroll-warning span-full">
-            <AlertTriangle size={19} />
-            <span>La vigencia y exclusividad de versiones activas se valida en servidor.</span>
-          </div>
-          <label className="span-full">
-            Motivo
-            <textarea
-              rows={5}
-              value={ruleReason}
-              onChange={(event) => setRuleReason(event.target.value)}
-              required
-            />
-          </label>
-          <label className="hr-payroll-confirm span-full">
-            <input
-              type="checkbox"
-              checked={ruleConfirmed}
-              onChange={(event) => setRuleConfirmed(event.target.checked)}
-            />
-            <span>Confirmo el cambio de estado de esta versión.</span>
-          </label>
-          <div className="hr-payroll-form-actions span-full">
-            <Button type="button" variant="ghost" onClick={() => setRuleAction(null)}>
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={!online || saving || !ruleConfirmed || !ruleReason.trim()}
-            >
-              Confirmar
-            </Button>
-          </div>
-        </form>
-      </Sidebar>
-
-      <Sidebar
-        isOpen={Boolean(configurationRule)}
-        onClose={() => {
-          if (!saving) {
-            setConfigurationRule(null);
-            setConfigurationRevisions([]);
-          }
-        }}
-        title={configurationRule ? `Control legal · ${configurationRule.name} v${configurationRule.version}` : 'Control legal'}
-        width="wide"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
-      >
-        {configurationRule && (
-          <div className="hr-payroll-sidebar">
-            <PayrollOnlineNotice online={online} compact />
-            <PayrollRuleConfigurationPanel
-              rule={configurationRule}
-              revisions={configurationRevisions}
-              loading={configurationLoading}
-              saving={saving}
-              online={online}
-              onUpload={uploadRuleConfiguration}
-              onReview={reviewRuleConfiguration}
-            />
-          </div>
-        )}
+      <Sidebar isOpen={Boolean(transition)} onClose={() => { if (!saving) { transitionOperationKey.current = null; setTransition(null); } }} title={transition ? ACTION_LABELS[transition.action] : 'Acción de nómina'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+        {transition && <PayrollTransitionForm run={transition.run} action={transition.action} online={online} saving={saving} onSubmit={saveTransition} onCancel={() => { transitionOperationKey.current = null; setTransition(null); }} />}
       </Sidebar>
     </div>
   );

@@ -87,6 +87,20 @@
   --modal-width-md: 650px;
   --modal-width-lg: 850px;
   --modal-width-xl: 950px;
+  /* Shared dialog foundation: flat operational surfaces; accent is reserved for actions/focus. */
+  --dialog-overlay: rgba(15, 23, 42, 0.66);
+  --dialog-accent: #2563eb;
+  --dialog-accent-hover: #1d4ed8;
+  --dialog-accent-soft: var(--color-primary-light);
+  --dialog-title-color: var(--color-text);
+  --dialog-panel-bg: var(--color-surface);
+  --dialog-content-bg: var(--color-surface);
+  --dialog-field-bg: color-mix(in srgb, var(--color-background) 86%, var(--color-surface) 14%);
+  --dialog-panel-border: var(--color-border);
+  --dialog-panel-shadow: var(--shadow-xl);
+  --dialog-header-bg: var(--dialog-panel-bg);
+  --dialog-muted-bg: var(--color-background);
+  --dialog-focus-ring: color-mix(in srgb, var(--dialog-accent) 24%, transparent);
 }
 
 /* Dark Mode Variables */
@@ -94,6 +108,17 @@
   --color-text-tertiary: var(--color-neutral-600);
 
   --color-disabled-bg: var(--color-neutral-700);
+  --dialog-overlay: rgba(2, 6, 23, 0.82);
+  --dialog-accent: #3b82f6;
+  --dialog-accent-hover: #60a5fa;
+  --dialog-accent-soft: var(--color-primary-light);
+  --dialog-panel-bg: var(--color-surface);
+  --dialog-content-bg: var(--color-surface);
+  --dialog-field-bg: var(--color-background);
+  --dialog-panel-border: var(--color-border);
+  --dialog-header-bg: var(--color-surface);
+  --dialog-muted-bg: var(--color-background);
+  --dialog-focus-ring: rgb(59 130 246 / 0.24);
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
@@ -276,14 +301,15 @@ a {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  background: var(--dialog-content-bg);
 }
 
 /* Tabs Navigation */
 .modal-tabs {
   display: flex;
   padding: var(--spacing-md) var(--spacing-xl);
-  background: var(--color-background);
-  border-bottom: 2px solid var(--color-border);
+  background: var(--dialog-muted-bg);
+  border-bottom: 1px solid var(--dialog-panel-border);
   gap: var(--spacing-sm);
   position: sticky;
   top: 0;
@@ -318,8 +344,8 @@ button.modal-tab {
   align-items: center;
   gap: var(--spacing-sm);
   padding: 8px 16px;
-  border: 2px solid var(--color-border);
-  background: var(--color-background);
+  border: 1px solid var(--dialog-panel-border);
+  background: var(--dialog-panel-bg);
   color: var(--color-text-secondary);
   font-weight: 600;
   font-size: var(--font-size-sm);
@@ -331,15 +357,15 @@ button.modal-tab {
 }
 
 .modal-tab:hover {
-  background: var(--color-surface);
-  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--dialog-panel-bg) 88%, var(--dialog-accent) 12%);
+  border-color: var(--dialog-accent);
 }
 
 .modal-tab.active {
-  background: var(--color-primary);
+  background: var(--dialog-accent);
   color: white;
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--dialog-accent);
+  box-shadow: none;
 }
 
 .modal-tab svg {
@@ -363,19 +389,21 @@ button.modal-tab {
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-xl);
-  background: var(--color-surface);
+  background: var(--dialog-content-bg);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
   min-height: 0;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
-.modal-section {
+.modal-section,
+.modal-content-group {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
+  width: 100%;
+  min-width: 0;
 }
 
 .modal-section-header {
@@ -383,7 +411,7 @@ button.modal-tab {
   align-items: center;
   gap: var(--spacing-sm);
   padding-bottom: var(--spacing-sm);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--dialog-panel-border);
   margin-bottom: var(--spacing-sm);
 }
 
@@ -395,7 +423,9 @@ button.modal-tab {
 }
 
 .modal-section-header svg {
-  color: var(--color-primary);
+  color: var(--color-text-secondary);
+  width: 20px;
+  height: 20px;
 }
 
 .modal-form-row {
@@ -425,27 +455,27 @@ button.modal-tab {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--color-neutral-500);
+  color: var(--color-text-secondary);
   letter-spacing: 0.5px;
 }
 
 .modal-standard-input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border: 1px solid var(--dialog-panel-border);
+  border-radius: var(--radius-lg);
   font-size: 14px;
   color: var(--color-text);
-  background: var(--color-background);
+  background: var(--dialog-field-bg);
   transition: all var(--transition-fast);
   box-sizing: border-box;
 }
 
 .modal-standard-input:focus {
   outline: none;
-  border-color: var(--color-primary);
-  background: var(--color-surface);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--dialog-accent);
+  background: var(--dialog-panel-bg);
+  box-shadow: 0 0 0 3px var(--dialog-focus-ring);
 }
 
 .price-input-wrapper {
@@ -494,21 +524,22 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .modal-textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border: 1px solid var(--dialog-panel-border);
+  border-radius: var(--radius-lg);
   font-size: 14px;
   color: var(--color-text);
-  background: var(--color-background);
+  background: var(--dialog-field-bg);
   transition: all var(--transition-fast);
-  resize: none;
+  resize: vertical;
+  min-height: 104px;
   box-sizing: border-box;
 }
 
 .modal-textarea:focus {
   outline: none;
-  border-color: var(--color-primary);
-  background: var(--color-surface);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--dialog-accent);
+  background: var(--dialog-panel-bg);
+  box-shadow: 0 0 0 3px var(--dialog-focus-ring);
 }
 
 /* Chips */
@@ -537,16 +568,29 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .modal-chip.active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: var(--dialog-accent);
+  border-color: var(--dialog-accent);
   color: white;
+}
+
+/* Dialog actions use a quieter steel-blue accent. PaymentModal is standalone. */
+.modal-container .btn-primary,
+.modal-sidebar .btn-primary,
+.sidebar-panel .btn-primary {
+  background-color: var(--dialog-accent);
+}
+
+.modal-container .btn-primary:hover:not(:disabled),
+.modal-sidebar .btn-primary:hover:not(:disabled),
+.sidebar-panel .btn-primary:hover:not(:disabled) {
+  background-color: var(--dialog-accent-hover);
 }
 
 /* Form Footer */
 .modal-footer {
   padding: var(--spacing-lg) var(--spacing-xl);
-  background: var(--color-background);
-  border-top: 2px solid var(--color-border);
+  background: var(--dialog-muted-bg);
+  border-top: 1px solid var(--dialog-panel-border);
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-md);
@@ -610,7 +654,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 /* Standard page wrapper */
 .page-wrapper {
   padding: var(--spacing-lg);
-  max-width: 1400px;
+  max-width: 1700px;
   margin: 0 auto;
 }
 
@@ -662,6 +706,12 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   flex-shrink: 0;
 }
 
+/* Compact selects used as header actions align with adjacent buttons. */
+.page-header-actions .report-view-select {
+  width: 240px;
+  min-width: 220px;
+}
+
 /* Back navigation button (e.g. "Volver a Reportería") */
 .back-link-btn {
   display: inline-flex;
@@ -703,8 +753,8 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  min-width: 180px;
-  flex: 0 1 200px;
+  min-width: 200px;
+  flex: 0 1 220px;
 }
 
 .filter-field.filter-field-wide {
@@ -715,6 +765,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .filter-field.filter-field-narrow {
   flex: 0 1 140px;
   min-width: 120px;
+}
+
+.filter-field.filter-field-category {
+  flex-basis: 250px;
+  min-width: 240px;
 }
 
 .filter-field-label {

@@ -68,13 +68,13 @@ async function main() {
   }));
 
   const errors = results.filter(result => 'error' in result);
-  const zeroCosts = results.filter(result => 'cost' in result && result.cost.batchCost === 0);
-  const zeroCostLines = results.flatMap(result => 'cost' in result
+  const zeroCosts = results.filter(result => result.cost !== undefined && result.cost.batchCost === 0);
+  const zeroCostLines = results.flatMap(result => result.cost !== undefined
     ? result.cost.lines
       .filter(line => line.unitCost === 0)
       .map(line => ({ recipeId: result.id, recipe: result.product, status: result.status, component: line.componentName }))
     : []);
-  const zeroCostProductIds = [...new Set(results.flatMap(result => 'cost' in result
+  const zeroCostProductIds = [...new Set(results.flatMap(result => result.cost !== undefined
     ? result.cost.lines.filter(line => line.unitCost === 0).map(line => line.componentProductId)
     : []))];
   const zeroCostProducts = await prisma.product.findMany({
@@ -89,6 +89,7 @@ async function main() {
     },
   });
   const brownie = results.filter(result => result.product.toLowerCase().includes('brownie'));
+  const watchedOutputs = results.filter(result => [373, 374].includes(recipeProductId(result.id, recipes)));
   const report = JSON.stringify({
     recipeCount: recipes.length,
     errorCount: errors.length,
@@ -98,16 +99,26 @@ async function main() {
     zeroCosts: zeroCosts.map(result => ({ id: result.id, product: result.product, status: result.status })),
     zeroCostLines,
     zeroCostProducts,
+    watchedOutputs: watchedOutputs.map(result => ({
+      id: result.id,
+      product: result.product,
+      status: result.status,
+      ...(result.cost !== undefined ? { cost: result.cost } : { error: result.error }),
+    })),
     brownie: brownie.map(result => ({
       id: result.id,
       product: result.product,
       status: result.status,
-      ...('cost' in result ? { cost: result.cost } : { error: result.error }),
+      ...(result.cost !== undefined ? { cost: result.cost } : { error: result.error }),
       components: result.components,
     })),
   });
   if (process.argv.includes('--emit-as-error')) throw new Error(`AUDIT_RESULT=${report}`);
   console.log(report);
+}
+
+function recipeProductId(recipeId: number, recipes: Array<{ id: number; productId: number }>): number {
+  return recipes.find(recipe => recipe.id === recipeId)?.productId ?? 0;
 }
 
 main()

@@ -51,6 +51,7 @@ export class ReservationController {
                 data: reservations
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -85,6 +86,7 @@ export class ReservationController {
                 data: reservations
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -100,6 +102,7 @@ export class ReservationController {
                 data: reservations
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -110,6 +113,9 @@ export class ReservationController {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = ReservationController.resolveBranchScope(req, requestedBranchId);
             const days = req.query.days ? parseInt(req.query.days as string) : 7;
+            if (!Number.isInteger(days) || days < 1 || days > 365) {
+                return next({ statusCode: 400, message: 'days debe ser un entero entre 1 y 365' });
+            }
 
             const reservations = await ReservationService.getUpcomingReservations(companyId, branchId, days);
             res.json({
@@ -117,6 +123,7 @@ export class ReservationController {
                 data: reservations
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -258,6 +265,7 @@ export class ReservationController {
                 data: tables
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

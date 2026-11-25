@@ -266,7 +266,7 @@ export default function Brands() {
                 <div className="premium-modal-content categories-modal-content">
                     <form onSubmit={handleSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-section animate-slide-in">
+                            <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <Tags size={18} />
                                     <h3>Detalles de la Marca</h3>

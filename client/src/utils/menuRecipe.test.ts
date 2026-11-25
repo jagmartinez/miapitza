@@ -29,6 +29,7 @@ describe('menu recipe helpers', () => {
     expect(validateMenuRecipes([ingredient({ quantity: 0 })])).toContain('mayor a 0');
     expect(validateMenuRecipes([ingredient({ unitConfigured: false })])).toContain('no está configurada');
     expect(validateMenuRecipes([ingredient()])).toBeNull();
+    expect(validateMenuRecipes([], { requireAtLeastOne: true })).toContain('al menos un ingrediente');
   });
 
   it('builds a minimal create/update/delete plan', () => {

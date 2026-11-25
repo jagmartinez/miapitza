@@ -9,6 +9,32 @@ import hrRoutes from './hr.routes';
 
 const v1 = Router();
 
+function readinessDatabaseTimeoutMs(): number {
+    const raw = process.env.READINESS_DB_TIMEOUT_MS;
+    if (raw === undefined || raw.trim() === '') return 2_000;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 50 || value > 10_000) {
+        throw new Error('READINESS_DB_TIMEOUT_MS debe estar entre 50 y 10000');
+    }
+    return value;
+}
+
+async function checkDatabaseReadiness(): Promise<void> {
+    const timeoutMs = readinessDatabaseTimeoutMs();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        await Promise.race([
+            prisma.$queryRaw`SELECT 1`,
+            new Promise<never>((_resolve, reject) => {
+                timer = setTimeout(() => reject(new Error('Database readiness timeout')), timeoutMs);
+                timer.unref?.();
+            })
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 // ── Global rate limiter for v1 ──
 const globalLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -24,22 +50,22 @@ const globalLimiter = rateLimit({
     validate: { keyGeneratorIpFallback: false }
 });
 
-v1.use(globalLimiter);
-v1.use('/hr', hrRoutes);
-
 // ── Extended health endpoint ──
 v1.get('/health', async (_req: Request, res: Response) => {
     const checks: Record<string, { status: string; latencyMs?: number }> = {};
 
     const dbStart = Date.now();
     try {
-        await prisma.$queryRaw`SELECT 1`;
+        await checkDatabaseReadiness();
         checks.database = { status: 'ok', latencyMs: Date.now() - dbStart };
     } catch {
         checks.database = { status: 'error', latencyMs: Date.now() - dbStart };
     }
 
-    checks.websocket = { status: 'ok', latencyMs: 0 };
+    checks.websocket = {
+        status: WebSocketService.isInitialized() ? 'ok' : 'error',
+        latencyMs: 0
+    };
 
     const wsClients = WebSocketService.getClientCount();
     const allOk = Object.values(checks).every(c => c.status === 'ok');
@@ -56,6 +82,11 @@ v1.get('/health', async (_req: Request, res: Response) => {
         }
     });
 });
+
+// Readiness is intentionally outside the public API limiter. A busy caller
+// behind the same proxy must not consume the orchestrator's release probes.
+v1.use(globalLimiter);
+v1.use('/hr', hrRoutes);
 
 // ── API info endpoint ──
 v1.get('/', (_req: Request, res: Response) => {

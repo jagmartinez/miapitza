@@ -101,7 +101,7 @@ describe('HR branch geofence', () => {
     it('denies branch creation to a branch-scoped actor even with the route permission', async () => {
         const create = jest.spyOn(HrGeofenceService, 'createBranch');
         const req = {
-            user: { userId: 7, companyId: 4, role: 'ADMIN', roles: ['ADMIN'], branchId: 10, timezone: 'America/Managua' },
+            user: { userId: 7, companyId: 4, role: 'CAJERO', roles: ['CAJERO'], branchId: 10, timezone: 'America/Managua' },
             body: {},
         } as never;
         const status = jest.fn().mockReturnThis();
@@ -113,6 +113,24 @@ describe('HR branch geofence', () => {
 
         expect(create).not.toHaveBeenCalled();
         expect(status).toHaveBeenCalledWith(403);
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('allows a tenant-wide ADMIN to create a branch in its own company', async () => {
+        jest.spyOn(HrGeofenceService, 'createBranch').mockResolvedValue({ id: 12 } as never);
+        const req = {
+            user: { userId: 7, companyId: 4, role: 'ADMIN', roles: ['ADMIN'], branchId: 10, timezone: 'America/Managua' },
+            body: { name: 'Norte' },
+        } as never;
+        const status = jest.fn().mockReturnThis();
+        const json = jest.fn().mockReturnThis();
+        const res = { status, json } as never;
+        const next = jest.fn();
+
+        await HrController.createBranch(req, res, next);
+
+        expect(status).toHaveBeenCalledWith(201);
+        expect(json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
         expect(next).not.toHaveBeenCalled();
     });
 

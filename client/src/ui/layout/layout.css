@@ -4,12 +4,22 @@
   position: sticky; top: 0; align-self: flex-start; height: 100vh; width: 240px; flex: none;
   display: flex; flex-direction: column; background: var(--ui-surface); border-right: 1px solid var(--ui-border);
 }
-.ui-shell.is-collapsed .ui-shell__rail { width: 64px; }
+.ui-shell.is-collapsed .ui-shell__rail { width: 64px; transition: width var(--ui-motion-fast, 150ms) ease; }
+.ui-navrail:not(.is-expanded) .ui-navrail__text { display: none; }
+@media (min-width: 769px) {
+  /* El riel colapsado se expande sobre el contenido con hover o con foco de teclado, sin mover la página. */
+  .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) { width: 240px; margin-right: -176px; z-index: 30; box-shadow: var(--ui-shadow-overlay, 0 12px 32px rgba(0,0,0,.18)); }
+  .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) .ui-navrail__text { display: inline; }
+  .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) .ui-navrail__item { justify-content: flex-start; padding: 0 var(--ui-space-3); }
+  .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) .ui-navrail__group-label { position: static; width: auto; height: auto; clip: auto; }
+}
 .ui-shell__railfoot { display: flex; flex-direction: column; gap: var(--ui-space-2); align-items: center; padding: var(--ui-space-2); border-top: 1px solid var(--ui-border); }
 .ui-shell__col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ui-shell__topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: var(--ui-space-2); min-height: 56px; padding: 0 var(--ui-space-4); background: var(--ui-surface); border-bottom: 1px solid var(--ui-border); }
 .ui-shell__topbar > .ui-topbar { flex: 1; }
 .ui-shell__main { flex: 1; min-width: 0; padding: var(--ui-space-6); }
+.ui-shell__inner { width: 100%; max-width: 1700px; margin: 0 auto; min-height: 100%; }
+.ui-shell--bare .ui-shell__inner { max-width: none; }
 .ui-shell__menubtn { display: none; }
 
 .ui-navrail { position: relative; display: flex; flex-direction: column; gap: var(--ui-space-2); overflow-y: auto; padding: var(--ui-space-2); flex: 1; }

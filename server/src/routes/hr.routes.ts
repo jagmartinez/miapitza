@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { HrController } from '../controllers/hr.controller';
 import { authMiddleware, requirePermission } from '../middlewares/auth';
 import { allowHrBodyFields } from '../middlewares/hr-dto';
@@ -12,12 +13,36 @@ import hrBenefitsRoutes from './hr-benefits.routes';
 
 const router = Router();
 
+const documentUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 4, parts: 6 },
+    fileFilter: (_req, file, callback) => {
+        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype)) {
+            callback(new Error('El documento debe ser PDF, JPEG o PNG'));
+            return;
+        }
+        callback(null, true);
+    },
+}).fields([{ name: 'document', maxCount: 1 }]);
+
+const memoryDocumentUpload: import('express').RequestHandler = (req, res, next) => {
+    documentUpload(req, res, (error) => {
+        if (!error) { next(); return; }
+        if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+            res.status(413).json({ success: false, message: 'El documento excede 10 MB' });
+            return;
+        }
+        res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Documento inválido' });
+    });
+};
+
 const employeeFields = [
     'userId', 'employeeCode', 'legalName', 'preferredName', 'documentType', 'documentNumber',
     'socialSecurityNumber', 'taxId', 'workEmail', 'workPhone', 'address',
     'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship',
     'hireDate', 'employmentType', 'departmentId', 'jobPositionId', 'costCenterId',
     'supervisorEmployeeId', 'notes', 'branchIds', 'primaryBranchId',
+    'initialCompensation',
 ] as const;
 
 const employeeBodySchema = {
@@ -92,6 +117,16 @@ router.post('/employees',
             employeeCode: { ...employeeBodySchema.employeeCode, required: true },
             legalName: { ...employeeBodySchema.legalName, required: true },
             hireDate: { ...employeeBodySchema.hireDate, required: true },
+            initialCompensation: {
+                type: 'object', required: true,
+                properties: {
+                    compensationType: { type: 'string', required: true, enum: ['SALARY', 'HOURLY'] },
+                    payFrequency: { type: 'string', required: true, enum: ['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'] },
+                    amount: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/, max: 40 },
+                    currency: { type: 'string', required: true, pattern: /^[A-Z]{3}$/, max: 3 },
+                    reason: { type: 'string', required: true, min: 3, max: 500 },
+                },
+            },
         },
     }),
     HrController.createEmployee,
@@ -99,7 +134,7 @@ router.post('/employees',
 
 router.put('/employees/:id',
     requirePermission('hr.employee.manage', ROLES.SUPERADMIN),
-    allowHrBodyFields(employeeFields.filter((field) => field !== 'userId')),
+    allowHrBodyFields(employeeFields.filter((field) => field !== 'userId' && field !== 'initialCompensation')),
     validate({
         params: { id: { type: 'number', required: true, integer: true, min: 1 } },
         body: employeeBodySchema,
@@ -123,6 +158,70 @@ router.patch('/employees/:id/status',
     }),
     HrController.setEmployeeStatus,
 );
+
+const employeeIdParams = { id: { type: 'number' as const, required: true, integer: true, min: 1 } };
+const employeeChildParams = {
+    ...employeeIdParams,
+    contractId: { type: 'number' as const, required: true, integer: true, min: 1 },
+};
+const employeeDocumentParams = {
+    ...employeeIdParams,
+    documentId: { type: 'number' as const, required: true, integer: true, min: 1 },
+};
+
+router.get('/employees/:id/contracts', requirePermission('hr.employee.sensitive.view', ROLES.SUPERADMIN), validate({ params: employeeIdParams }), HrController.employeeContracts);
+router.post('/employees/:id/contracts',
+    requirePermission('hr.employee.manage', ROLES.SUPERADMIN),
+    allowHrBodyFields(['contractNumber', 'employmentType', 'startDate', 'endDate', 'jobPositionId', 'costCenterId', 'notes']),
+    validate({ params: employeeIdParams, body: {
+        contractNumber: { type: 'string', required: true, min: 1, max: 80 },
+        employmentType: { type: 'string', required: true, enum: ['FULL_TIME', 'PART_TIME', 'TEMPORARY', 'CONTRACTOR', 'INTERN'] },
+        startDate: { type: 'date', required: true }, endDate: { type: 'date' },
+        jobPositionId: { type: 'number', integer: true, min: 1 }, costCenterId: { type: 'number', integer: true, min: 1 },
+        notes: { type: 'string', max: 5000 },
+    } }),
+    HrController.createEmployeeContract,
+);
+router.post('/employees/:id/contracts/:contractId/transition',
+    requirePermission('hr.employee.manage', ROLES.SUPERADMIN),
+    allowHrBodyFields(['action', 'signedAt', 'endDate', 'reason']),
+    validate({ params: employeeChildParams, body: {
+        action: { type: 'string', required: true, enum: ['ACTIVATE', 'TERMINATE', 'EXPIRE'] },
+        signedAt: { type: 'string', max: 40 }, endDate: { type: 'date' }, reason: { type: 'string', required: true, min: 3, max: 500 },
+    } }),
+    HrController.transitionEmployeeContract,
+);
+
+router.get('/employees/:id/compensations', requirePermission('hr.employee.sensitive.view', ROLES.SUPERADMIN), validate({ params: employeeIdParams }), HrController.employeeCompensations);
+router.post('/employees/:id/compensations',
+    requirePermission('hr.employee.manage', ROLES.SUPERADMIN),
+    allowHrBodyFields(['contractId', 'compensationType', 'payFrequency', 'amount', 'currency', 'effectiveFrom', 'reason']),
+    validate({ params: employeeIdParams, body: {
+        contractId: { type: 'number', integer: true, min: 1 },
+        compensationType: { type: 'string', required: true, enum: ['SALARY', 'HOURLY'] },
+        payFrequency: { type: 'string', required: true, enum: ['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'] },
+        amount: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
+        currency: { type: 'string', pattern: /^[A-Z]{3}$/ }, effectiveFrom: { type: 'date', required: true },
+        reason: { type: 'string', required: true, min: 3, max: 500 },
+    } }),
+    HrController.appendEmployeeCompensation,
+);
+
+router.get('/employees/:id/documents', requirePermission('hr.employee.sensitive.view', ROLES.SUPERADMIN), validate({ params: employeeIdParams }), HrController.employeeDocuments);
+router.post('/employees/:id/documents',
+    requirePermission('hr.employee.manage', ROLES.SUPERADMIN), memoryDocumentUpload,
+    allowHrBodyFields(['documentType', 'expiresAt']),
+    validate({ params: employeeIdParams, body: { documentType: { type: 'string', required: true, min: 1, max: 100 }, expiresAt: { type: 'date' } } }),
+    HrController.uploadEmployeeDocument,
+);
+router.get('/employees/:id/documents/:documentId/download', requirePermission('hr.employee.sensitive.view', ROLES.SUPERADMIN), validate({ params: employeeDocumentParams }), HrController.downloadEmployeeDocument);
+router.post('/employees/:id/documents/:documentId/revoke',
+    requirePermission('hr.employee.manage', ROLES.SUPERADMIN), allowHrBodyFields(['reason']),
+    validate({ params: employeeDocumentParams, body: { reason: { type: 'string', required: true, min: 3, max: 500 } } }),
+    HrController.revokeEmployeeDocument,
+);
+router.get('/documents/storage/health', requirePermission('hr.employee.manage', ROLES.SUPERADMIN), HrController.employeeDocumentStorageHealth);
+router.post('/documents/retention/run', requirePermission('hr.employee.manage', ROLES.SUPERADMIN), allowHrBodyFields([]), HrController.runEmployeeDocumentRetention);
 
 const catalogFields = ['name', 'code', 'description', 'departmentId'] as const;
 const catalogUpdateFields = [...catalogFields, 'active'] as const;

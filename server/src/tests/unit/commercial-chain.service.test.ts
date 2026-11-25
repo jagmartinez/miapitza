@@ -9,12 +9,19 @@ import { InventoryConsumptionService } from '../../services/inventory-consumptio
 import { PedidosYaService } from '../../services/pedidosya.service';
 import { calculatePromotionDiscount } from '../../services/promotion.service';
 import { ReservationService } from '../../services/reservation.service';
+import { BranchService } from '../../services/branch.service';
 
 afterEach(() => {
     jest.restoreAllMocks();
 });
 
 describe('commercial chain request and pricing invariants', () => {
+    it('rejects empty and invalid branch mutations at the service boundary', async () => {
+        await expect(BranchService.update(2, 1, { name: '   ' }, 9)).rejects.toThrow(/nombre/i);
+        await expect(BranchService.update(2, 1, { status: 'DELETED' as never }, 9)).rejects.toThrow(/estado/i);
+        await expect(BranchService.update(2, 1, {}, 9)).rejects.toThrow(/campos válidos/i);
+    });
+
     it('rejects fractional POS quantities at the HTTP contract', () => {
         const req = { params: { id: '9' }, body: { menuItemId: 4, quantity: 1.5 } } as unknown as Request;
         const status = jest.fn().mockReturnThis();
@@ -33,6 +40,39 @@ describe('commercial chain request and pricing invariants', () => {
     it('rejects fractional POS quantities again at the service boundary', async () => {
         await expect(OrderService.addItem(1, 1, { menuItemId: 2, quantity: 0.5 }))
             .rejects.toThrow(/positive integer/i);
+    });
+
+    it('blocks selling an existing active PREPARED item whose sale BOM is empty', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 8,
+                    branchId: 2,
+                    status: 'OPEN',
+                    invoiceNumber: null,
+                    payments: []
+                }))
+            },
+            menuItem: {
+                findFirst: jest.fn(async () => ({
+                    id: 4,
+                    name: 'Pasta sin receta',
+                    type: 'PREPARED',
+                    active: true,
+                    _count: { recipes: 0 },
+                    modifierGroups: []
+                }))
+            },
+            orderItem: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(OrderService.addItem(8, 1, { menuItemId: 4, quantity: 1 }))
+            .rejects.toThrow(/bloqueado.*BOM/i);
+        expect(tx.orderItem.create).not.toHaveBeenCalled();
     });
 
     it('uses one capped, rounded promotion calculation for percentage discounts', () => {
@@ -70,6 +110,31 @@ describe('commercial chain request and pricing invariants', () => {
 });
 
 describe('kitchen order state invariants', () => {
+    it('does not settle a consumed zero-total order created with a manual discount', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 8,
+                    branchId: 2,
+                    status: 'READY',
+                    financialStatus: 'UNPAID',
+                    total: 0,
+                    discount: 10,
+                    discountCode: null,
+                    tax: 0,
+                    tipAmount: 0,
+                    items: [{ id: 2, subtotal: 10, sentAt: new Date(), menuItem: { recipes: [] } }],
+                    table: null
+                }))
+            }
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        await expect(OrderService.complete(8, 1, 3, 4)).rejects.toThrow(/promoción válida/i);
+    });
+
     it('cannot mark READY while an item has never been sent to kitchen', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
@@ -81,14 +146,131 @@ describe('kitchen order state invariants', () => {
                 })),
                 update: jest.fn()
             },
-            orderItem: { updateMany: jest.fn() }
+            user: { findFirst: jest.fn(async () => ({ id: 4 })) },
+            orderItem: { updateMany: jest.fn() },
+            auditLog: { create: jest.fn() }
         };
         jest.spyOn(prisma, '$transaction')
             .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
-        await expect(OrderService.updateStatus(8, 1, 'READY')).rejects.toThrow(/sin enviar a cocina/i);
+        await expect(OrderService.updateStatus(8, 1, 'READY', 4)).rejects.toThrow(/sin enviar a cocina/i);
         expect(tx.order.update).not.toHaveBeenCalled();
         expect(tx.orderItem.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('reopens after a sent wave finishes while unsent lines remain on the ticket', async () => {
+        const sentAt = new Date('2026-07-16T12:00:00.000Z');
+        const items = [
+            { id: 21, sentAt, status: 'IN_PROGRESS', startedAt: sentAt, menuItem: { id: 1 }, modifiers: [] },
+            { id: 22, sentAt: null, status: 'PENDING', startedAt: null, menuItem: { id: 2 }, modifiers: [] }
+        ];
+        const afterFinish = [
+            { ...items[0], status: 'DONE', finishedAt: new Date() },
+            items[1]
+        ];
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({ id: 8, companyId: 1, status: 'IN_PREPARATION' })),
+                findUnique: jest.fn(async () => ({
+                    id: 8,
+                    companyId: 1,
+                    branchId: 2,
+                    status: 'IN_PREPARATION',
+                    salesChannel: 'RESTAURANT',
+                    table: null,
+                    user: { id: 7, name: 'Chef', color: null },
+                    items: afterFinish
+                })),
+                update: jest.fn(async (args: { data: { status: string } }) => ({
+                    id: 8,
+                    companyId: 1,
+                    branchId: 2,
+                    status: args.data.status,
+                    salesChannel: 'RESTAURANT',
+                    table: null,
+                    user: { id: 7, name: 'Chef', color: null },
+                    items: afterFinish
+                }))
+            },
+            orderItem: {
+                updateMany: jest.fn(async () => ({ count: 1 })),
+                findUnique: jest.fn(async () => afterFinish[0])
+            }
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        const result = await OrderService.finishItem(8, 21, 1);
+
+        expect(result.allDone).toBe(false);
+        expect(result.order.status).toBe('OPEN');
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: { status: 'OPEN' }
+        }));
+    });
+
+    it('rejects delivery while unsent products remain on a READY order', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 8,
+                    companyId: 1,
+                    branchId: 2,
+                    status: 'READY',
+                    financialStatus: 'PAID',
+                    total: 10,
+                    discount: 0,
+                    discountCode: null,
+                    tax: 0,
+                    tipAmount: 0,
+                    closedAt: null,
+                    items: [
+                        { id: 21, sentAt: new Date(), subtotal: 10, menuItem: { recipes: [] } },
+                        { id: 22, sentAt: null, subtotal: 0, menuItem: { recipes: [] } }
+                    ],
+                    table: null
+                })),
+                update: jest.fn()
+            }
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        await expect(OrderService.complete(8, 1, 3, 4)).rejects.toThrow(/sin enviar a cocina/i);
+        expect(tx.order.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects READY through the generic status boundary without a kitchen actor', async () => {
+        await expect(OrderService.updateStatus(8, 1, 'READY')).rejects.toThrow(/flujo dedicado de cocina/i);
+    });
+
+    it('makes a dedicated READY retry idempotent for notification recovery', async () => {
+        const ready = {
+            id: 8,
+            status: 'READY',
+            salesChannel: 'RESTAURANT',
+            items: [{ id: 10, sentAt: new Date(), status: 'DONE' }]
+        };
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ready),
+                findUnique: jest.fn(async () => ready),
+                update: jest.fn()
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 4 })) },
+            auditLog: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        const result = await OrderService.updateStatus(8, 1, 'READY', 4);
+
+        expect(result.status).toBe('READY');
+        expect(tx.order.update).not.toHaveBeenCalled();
+        expect(tx.auditLog.create).not.toHaveBeenCalled();
     });
 
     it('send-to-kitchen stamps only unsent items and derives SENT_TO_KITCHEN', async () => {
@@ -126,6 +308,56 @@ describe('kitchen order state invariants', () => {
         });
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'SENT_TO_KITCHEN' } }));
         expect(result).toEqual(expect.objectContaining({ status: 'SENT_TO_KITCHEN' }));
+    });
+
+    it('self-heals a legacy READY order with an unsent line by reopening its KDS cycle', async () => {
+        const sentAt = new Date();
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 8,
+                    status: 'READY',
+                    kitchenReleasedAt: new Date(),
+                    items: [
+                        { id: 1, sentAt, status: 'DONE' },
+                        { id: 2, sentAt: null, status: 'PENDING' }
+                    ]
+                })),
+                findUnique: jest.fn(async () => ({
+                    id: 8,
+                    status: 'READY',
+                    salesChannel: 'RESTAURANT',
+                    items: [
+                        { id: 1, sentAt, status: 'DONE' },
+                        { id: 2, sentAt, status: 'PENDING' }
+                    ]
+                })),
+                update: jest.fn(async (args: { data: { status: string } }) => ({
+                    id: 8,
+                    status: args.data.status,
+                    salesChannel: 'RESTAURANT',
+                    items: [
+                        { id: 1, sentAt, status: 'DONE' },
+                        { id: 2, sentAt, status: 'PENDING' }
+                    ]
+                }))
+            },
+            orderItem: { updateMany: jest.fn(async () => ({ count: 1 })) }
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        const result = await OrderService.sendToKitchen(8, 1);
+
+        expect(result.status).toBe('SENT_TO_KITCHEN');
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                status: 'SENT_TO_KITCHEN',
+                kitchenReleasedAt: null,
+                kitchenStartedAt: null
+            })
+        }));
     });
 
     it('records all legacy READY lines as waste when item sentAt timestamps are missing', async () => {
@@ -209,7 +441,9 @@ describe('atomic reservation check-in', () => {
                 findFirst: jest.fn(async () => reservation.table),
                 update: jest.fn(async (_args: unknown) => ({ ...reservation.table, status: 'OCCUPIED' }))
             },
-            branch: { findFirst: jest.fn(async () => ({ id: 2 })) }
+            branch: { findFirst: jest.fn(async () => ({ id: 2 })) },
+            user: { findFirst: jest.fn(async () => ({ id: 9 })) },
+            setting: { findUnique: jest.fn(async () => ({ value: '120' })) }
         };
         jest.spyOn(prisma, '$transaction')
             .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);

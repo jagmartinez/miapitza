@@ -114,6 +114,7 @@ async function main() {
         'invoices.issue',
         'invoices.view',
         'invoices.cancel',
+        'invoices.credit',
         'payments.process',
         'payments.reverse',
         'bills.split',

@@ -1,8 +1,8 @@
 # Módulo RH — Base técnica, funcional y operativa
 
 **Repositorio:** `C:\restaurant`
-**Corte de consolidación:** 2026-07-14
-**Estado:** núcleo F1–F6 desplegado en Railway; activación biométrica, legal y operativa sujeta a los gates de este documento.
+**Corte de consolidación:** 2026-07-15
+**Estado:** núcleo F1–F6 existente; la nómina estatutaria V2 tiene candidata técnica en la rama `codex/rh-nomina-estatutaria`, sin despliegue. La activación biométrica, legal y operativa sigue sujeta a los gates de este documento.
 **Plan vivo:** `docs/PLAN_IMPLEMENTACION_MODULO_RH.md`.
 
 ## 1. Propósito y alcance real
@@ -157,6 +157,7 @@ Para DST:
 - La API nunca devuelve plantilla cifrada, nonce, token hash, secreto de kiosco ni foto.
 - `HR_FACE_PROVIDER=disabled` es el default fail-closed.
 - `fake` requiere opt-in y se rechaza en producción.
+- `http` es el adaptador productivo y exige URL HTTPS, token, health check y clave biométrica.
 - Sólo comparación 1:1; no hay identificación masiva 1:N.
 
 ### Resolución del marcaje
@@ -224,7 +225,7 @@ El modo kiosco queda detrás de `HR_ATTENDANCE_KIOSK_ENABLED=false` hasta implem
 
 `PayrollRuleVersion` mantiene vigencia y metadatos. La configuración técnica vive en `PayrollRuleConfigurationRevision`, se hashea y no se devuelve como JSON en listados. Otro actor registra `PayrollRuleConfigurationReview` con `VALIDATED` o `REJECTED`.
 
-El esquema aceptado es `HR_PAYROLL_PARAMETRIC_V1` e incluye:
+El esquema aceptado para cargas y activaciones nuevas es `HR_PAYROLL_PARAMETRIC_V4`; el motor de cálculo sigue versionado como `ART19_V3`. Las configuraciones V3 congeladas se normalizan sólo para lectura y contraflujos históricos. V4 incluye:
 
 - moneda ISO;
 - divisores por frecuencia `WEEKLY/BIWEEKLY/MONTHLY`;
@@ -232,8 +233,15 @@ El esquema aceptado es `HR_PAYROLL_PARAMETRIC_V1` e incluye:
 - conversión de unidades de permiso;
 - FX por moneda con tasa, versión y fuente;
 - método de aguinaldo histórico, lookback, divisor, prorrateo y fuentes elegibles.
+- régimen tributario empresarial efectivo y documentado, con aplicabilidad de IR laboral congelada por régimen;
+- aplicabilidad, fuente y excepción documentada para INSS, INATEC e IR laboral;
+- régimen y tasas INSS laboral/patronal, umbral patronal y base mínima sectorial;
+- tasa INATEC;
+- catálogo único de conceptos con tipo, nombre, INSS, INATEC, tratamiento IR, deducción autorizada y fuente;
+- tabla progresiva IR editable, períodos anuales y ajuste por sobre-retención;
+- métodos separados para salario fijo, cambio salarial, promedio mensual acumulado e incremento ocasional conforme al artículo 19.
 
-No hay tasas legales hardcodeadas. Las revisiones de configuración son append-only y sus metadatos quedan congelados al validarse; una modificación material exige crear una nueva versión `DRAFT`, cargar otra revisión y obtener un nuevo dictamen independiente.
+No hay tasas legales hardcodeadas en el cálculo. La UI propone una plantilla para transcripción, pero el servidor usa exclusivamente la revisión validada y congelada. Las revisiones son append-only; una modificación material exige una nueva versión `DRAFT`, otra carga y un nuevo dictamen independiente. La fórmula vigente está en [RH_IR_ART19_V3_20260715.md](./RH_IR_ART19_V3_20260715.md) y el régimen/catálogo V4 en [RH_REGIMEN_CATALOGO_PAGOS_V4_20260715.md](./RH_REGIMEN_CATALOGO_PAGOS_V4_20260715.md); [RH_NOMINA_ESTATUTARIA_V2_20260715.md](./RH_NOMINA_ESTATUTARIA_V2_20260715.md) se conserva sólo como antecedente histórico.
 
 ### Corrida regular
 
@@ -242,11 +250,13 @@ Estados:
 `DRAFT -> CALCULATED -> REVIEW -> APPROVED -> PAID -> VOID`
 
 - `HOURLY` interpreta compensación como importe por hora.
-- `SALARY` usa el divisor versionado de su frecuencia.
+- `SALARY` conserva el monto contractual cuando la evidencia muestra jornada programada completa, usa el divisor versionado para prorrateos y nunca mezcla horas extra aprobadas dentro de minutos ordinarios.
 - Contrato, compensación, ingreso/baja, asistencia cerrada, extras y permisos se segmentan por vigencia.
 - `PayrollSnapshotLine` y `PayrollAttendanceDependency` congelan fuentes/revisiones.
 - `PayrollCoverageClaim` impide pagar dos veces a la misma persona por un rango superpuesto; `VOID` libera mediante `PayrollCoverageRelease` trazable.
 - Componentes manuales sólo se agregan en `CALCULATED`, para una persona existente en el snapshot y antes de revisión. La UI y el servicio comparten ese estado y reutilizan una misma clave idempotente ante un resultado de red ambiguo.
+- Todo componente manual se selecciona del catálogo congelado; la UI no permite alterar sus banderas INSS/INATEC/IR y el servidor rechaza cualquier discrepancia antes de recalcular obligaciones y totales.
+- `PayrollStatutoryCalculation` conserva la base, histórico, proyección, tramo y ajuste de cada persona por revisión. `PayrollEmployerContribution` separa costo patronal del neto del colaborador.
 - Anomalías `BLOCKING` impiden review/approve/pay.
 
 ### Aguinaldo
@@ -420,6 +430,10 @@ Procedimiento mínimo:
 ```env
 HR_FACE_PROVIDER=disabled
 HR_ALLOW_FAKE_FACE_PROVIDER=false
+HR_FACE_PROVIDER_BASE_URL=
+HR_FACE_PROVIDER_TOKEN=
+HR_FACE_PROVIDER_MODEL=
+HR_FACE_PROVIDER_TIMEOUT_MS=5000
 HR_ATTENDANCE_KIOSK_ENABLED=false
 HR_BIOMETRIC_ENCRYPTION_KEY=
 ```

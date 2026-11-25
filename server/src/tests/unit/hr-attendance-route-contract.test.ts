@@ -8,7 +8,9 @@ describe('HR attendance route security contract', () => {
     it('uses memory-only bounded multipart uploads and accepts the UI field', () => {
         expect(source).toContain('multer.memoryStorage()');
         expect(source).toContain("{ name: 'faceImage', maxCount: 1 }");
+        expect(source).toContain("{ name: 'faceFrames', maxCount: 5 }");
         expect(source).toContain('fileSize: 2 * 1024 * 1024');
+        expect(source).toContain('files: 6');
         expect(source).not.toContain('diskStorage');
     });
 
@@ -16,6 +18,7 @@ describe('HR attendance route security contract', () => {
         for (const pathValue of [
             '/attendance/policy', '/me/attendance/today', '/biometrics/challenges', '/biometrics/me',
             '/biometrics/enroll', '/biometrics/users/:userId/revoke', '/biometrics/maintenance/run',
+            '/biometrics/provider/health',
             '/attendance/punches', '/attendance/events', '/attendance/manual', '/attendance/devices',
         ]) expect(source).toContain(pathValue);
         expect(source).toContain("requirePermission('hr.attendance.manage', ROLES.SUPERADMIN)");

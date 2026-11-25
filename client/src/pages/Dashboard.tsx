@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment, useCallback } from 'react';
+import { useEffect, useState, Fragment, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { reportsAPI, reservationsAPI, productsAPI } from '../services/api';
@@ -240,6 +240,9 @@ export default function Dashboard() {
         activeOrders: 0,
         pendingPurchaseOrders: 0
     });
+    /** True only after at least one successful KPI fetch — avoids painting fake zeros as success. */
+    const [statsHydrated, setStatsHydrated] = useState(false);
+    const statsHydratedRef = useRef(false);
     const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
     const [incomeData, setIncomeData] = useState<IncomeDataPoint[]>([]);
     const [scatterTipsData, setScatterTipsData] = useState<ScatterDataPoint[]>([]);
@@ -354,43 +357,44 @@ export default function Dashboard() {
             if (statsRes.status === 'fulfilled') {
                 const data = (statsRes.value as ApiResponse).data.data as DashboardStats;
                 setStats(data);
-            } else {
-                setStats({ todaySales: 0, activeOrders: 0, pendingPurchaseOrders: 0 });
+                setStatsHydrated(true);
+                statsHydratedRef.current = true;
             }
+            // On KPI failure: keep last good values (or unhydrated state). Never paint fake zeros as success.
 
             if (topProductsRes.status === 'fulfilled') {
                 setTopProducts((topProductsRes.value as ApiResponse).data.data as TopProduct[]);
-            } else setTopProducts([]);
+            } else if (topProductsRes.status === 'rejected') setTopProducts([]);
 
             if (ordersRes.status === 'fulfilled') {
                 setRecentOrders((ordersRes.value as ApiResponse).data.data as RecentOrder[]);
-            } else setRecentOrders([]);
+            } else if (ordersRes.status === 'rejected') setRecentOrders([]);
 
             if (invoicesRes.status === 'fulfilled') {
                 setRecentInvoices((invoicesRes.value as ApiResponse).data.data as RecentInvoice[]);
-            } else setRecentInvoices([]);
+            } else if (invoicesRes.status === 'rejected') setRecentInvoices([]);
 
             if (reservationsRes.status === 'fulfilled') {
                 setTodaysReservations((reservationsRes.value as ApiResponse).data.data as ReservationSummary[]);
-            } else setTodaysReservations([]);
+            } else if (reservationsRes.status === 'rejected') setTodaysReservations([]);
 
             if (incomeRes.status === 'fulfilled') {
                 setIncomeData((incomeRes.value as ApiResponse).data.data as IncomeDataPoint[]);
-            } else setIncomeData([]);
+            } else if (incomeRes.status === 'rejected') setIncomeData([]);
 
             if (heatmapRes.status === 'fulfilled') {
                 setHeatmapData((heatmapRes.value as ApiResponse).data.data as HeatmapPoint[]);
-            } else setHeatmapData([]);
+            } else if (heatmapRes.status === 'rejected') setHeatmapData([]);
 
             if (radarRes.status === 'fulfilled') {
                 setRadarData((radarRes.value as ApiResponse).data.data as RadarDataPoint[]);
-            } else setRadarData([]);
+            } else if (radarRes.status === 'rejected') setRadarData([]);
 
             if (trendsRes.status === 'fulfilled') {
                 const data = (trendsRes.value as ApiResponse).data.data as { tips: ScatterDataPoint[]; spend: ScatterDataPoint[] };
                 setScatterTipsData(data.tips);
                 setScatterSpendData(data.spend);
-            } else {
+            } else if (trendsRes.status === 'rejected') {
                 setScatterTipsData([]);
                 setScatterSpendData([]);
             }
@@ -398,7 +402,7 @@ export default function Dashboard() {
             if (lowStockRes.status === 'fulfilled') {
                 const items = (lowStockRes.value as ApiResponse).data.data as { name: string }[];
                 setStockAlerts(items || []);
-            } else {
+            } else if (lowStockRes.status === 'rejected') {
                 setStockAlerts([]);
             }
 
@@ -411,7 +415,12 @@ export default function Dashboard() {
             ];
             const failedWidgets = widgetResults.filter(({ result }) => result.status === 'rejected').map(({ name }) => name);
             if (failedWidgets.length > 0) {
-                setLoadError(`No se pudieron actualizar: ${failedWidgets.join(', ')}. Los componentes afectados se muestran vacíos.`);
+                const kpiFailed = failedWidgets.includes('indicadores');
+                setLoadError(
+                    kpiFailed && !statsHydratedRef.current
+                        ? `No se pudieron cargar: ${failedWidgets.join(', ')}. Los indicadores no muestran valores hasta reintentar.`
+                        : `No se pudieron actualizar: ${failedWidgets.join(', ')}. Los componentes afectados se muestran vacíos o con el último valor válido.`
+                );
             }
 
         } catch {
@@ -433,6 +442,9 @@ export default function Dashboard() {
     const occupancyRate = (stats as DashboardStats).occupancyRate || 0;
     const averageTicket = (stats as DashboardStats).averageTicket || 0;
     const settledOrdersCount = (stats as DashboardStats).settledOrdersCount || 0;
+    const kpisUnavailable = Boolean(loadError?.includes('indicadores')) && !statsHydrated;
+    const formatKpiMoney = (value: number) => (kpisUnavailable ? '—' : formatCurrency(Number(value)));
+    const formatKpiNumber = (value: number, suffix = '') => (kpisUnavailable ? '—' : `${value.toLocaleString()}${suffix}`);
 
     if (loading) {
         return <LoadingOverlay text="Cargando panel..." />;
@@ -940,7 +952,7 @@ export default function Dashboard() {
                     </div>
                     <div className="stat-body">
                         <h3>Ventas</h3>
-                        <div className="stat-number">{formatCurrency(Number(stats.todaySales))}</div>
+                        <div className="stat-number">{formatKpiMoney(Number(stats.todaySales))}</div>
                     </div>
                 </div>
                 <div className="bento-item stat-card-modern">
@@ -949,7 +961,7 @@ export default function Dashboard() {
                     </div>
                     <div className="stat-body">
                         <h3>Ticket Prom.</h3>
-                        <div className="stat-number">{formatCurrency(averageTicket)}</div>
+                        <div className="stat-number">{formatKpiMoney(averageTicket)}</div>
                     </div>
                 </div>
                 <div className="bento-item stat-card-modern">
@@ -958,8 +970,10 @@ export default function Dashboard() {
                     </div>
                     <div className="stat-body">
                         <h3>Ocupación</h3>
-                        <div className="stat-number">{occupancyRate}%</div>
-                        <div className="occupancy-bar"><div className="occupancy-fill" style={{ width: `${occupancyRate}%` }}></div></div>
+                        <div className="stat-number">{formatKpiNumber(occupancyRate, '%')}</div>
+                        {!kpisUnavailable && (
+                            <div className="occupancy-bar"><div className="occupancy-fill" style={{ width: `${occupancyRate}%` }}></div></div>
+                        )}
                     </div>
                 </div>
                 <div className="bento-item stat-card-modern">
@@ -968,7 +982,7 @@ export default function Dashboard() {
                     </div>
                     <div className="stat-body">
                         <h3>Órdenes cobradas</h3>
-                        <div className="stat-number">{settledOrdersCount.toLocaleString()}</div>
+                        <div className="stat-number">{formatKpiNumber(settledOrdersCount)}</div>
                     </div>
                 </div>
 

@@ -7,7 +7,7 @@ interface SidebarProps {
     title: string;
     children: ReactNode;
     /** Ignorado: el panel ahora es a pantalla completa. */
-    width?: 'normal' | 'large' | 'wide' | 'full';
+    width?: 'normal' | 'medium' | 'large' | 'wide' | 'full';
     /** Ignorado: el modal a pantalla completa no tiene fondo clicable. */
     closeOnBackdrop?: boolean;
     /** Ignorado: Esc siempre pide confirmación si hay cambios y cierra si no. */

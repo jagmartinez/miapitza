@@ -81,8 +81,8 @@ export function Topbar({ breadcrumb, nav, controls, userName, accentColor }: {
         <Link
           to="/profile"
           className="ui-topbar__avatar"
-          aria-label={userName ? `Perfil de ${userName}` : 'Perfil'}
-          title={userName ?? 'Perfil'}
+          aria-label={userName ? `Perfil y Mi RH de ${userName}` : 'Perfil y Mi RH'}
+          title="Perfil y Mi RH"
           style={accentColor ? { background: accentColor } : undefined}
         >
           <UserIcon size={18} aria-hidden="true" />
