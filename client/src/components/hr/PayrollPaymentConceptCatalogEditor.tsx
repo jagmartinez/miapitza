@@ -1,3 +1,4 @@
+import { DataTable } from '@/ui';
 import { useMemo, useState } from 'react';
 import { CheckCircle2, Pencil, Plus, Power, Save, X } from 'lucide-react';
 import Button from '../Button';
@@ -114,22 +115,23 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
       )}
 
       <div className="hr-legal-readonly-table-wrap hr-legal-concept-table-wrap">
-        <table className="hr-legal-concept-table">
-          <thead><tr><th>Concepto</th><th>Tipo</th><th>IR laboral</th><th>INSS</th><th>INATEC</th><th>Estado</th><th>Acciones</th></tr></thead>
-          <tbody>
-            {concepts.map((concept, index) => (
-              <tr key={concept.code} className={!concept.active ? 'is-disabled' : undefined}>
-                <td><strong>{concept.name}</strong><small>{concept.code}</small></td>
-                <td>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</td>
-                <td>{taxLabel(concept)}</td>
-                <td>{concept.type === 'INCOME' && concept.socialSecurityApplicable ? 'Sí' : 'No'}</td>
-                <td>{concept.type === 'INCOME' && concept.trainingContributionApplicable ? 'Sí' : 'No'}</td>
-                <td><span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? <CheckCircle2 size={14} /> : <Power size={14} />}{concept.active ? 'Activo' : 'Inhabilitado'}</span></td>
-                <td><div className="hr-legal-row-actions"><Button type="button" size="sm" variant="ghost" onClick={() => startEdit(index)} disabled={draft !== null}><Pencil size={15} /> Editar</Button><Button type="button" size="sm" variant="ghost" onClick={() => toggleActive(index)} disabled={draft !== null}><Power size={15} /> {concept.active ? 'Inhabilitar' : 'Activar'}</Button></div></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable
+                ariaLabel="Catálogo de conceptos de pago"
+                rows={concepts.map((concept, index) => ({ concept, index }))}
+                rowKey={({ concept }) => concept.code}
+                pagination={{ mode: 'client' }}
+                minWidth="56rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Concepto', render: ({ concept }) => <><strong>{concept.name}</strong><small>{concept.code}</small></> },
+                  { key: 'c1', header: 'Tipo', render: ({ concept }) => <>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</> },
+                  { key: 'c2', header: 'IR laboral', render: ({ concept }) => <>{taxLabel(concept)}</> },
+                  { key: 'c3', header: 'INSS', render: ({ concept }) => <>{concept.type === 'INCOME' && concept.socialSecurityApplicable ? 'Sí' : 'No'}</> },
+                  { key: 'c4', header: 'INATEC', render: ({ concept }) => <>{concept.type === 'INCOME' && concept.trainingContributionApplicable ? 'Sí' : 'No'}</> },
+                  { key: 'c5', header: 'Estado', render: ({ concept }) => <span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? <CheckCircle2 size={14} /> : <Power size={14} />}{concept.active ? 'Activo' : 'Inhabilitado'}</span> },
+                  { key: 'c6', header: 'Acciones', render: ({ concept, index }) => <div className="hr-legal-row-actions"><Button type="button" size="sm" variant="ghost" onClick={() => startEdit(index)} disabled={draft !== null}><Pencil size={15} /> Editar</Button><Button type="button" size="sm" variant="ghost" onClick={() => toggleActive(index)} disabled={draft !== null}><Power size={15} /> {concept.active ? 'Inhabilitar' : 'Activar'}</Button></div> },
+                ]}
+              />
       </div>
     </section>
   );

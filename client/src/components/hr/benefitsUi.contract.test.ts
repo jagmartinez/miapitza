@@ -33,7 +33,7 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('allowedActions.map');
     expect(owner).toContain('createBenefitsIdempotencyKey()');
     expect(owner).toContain('STATUS_OPTIONS[tab].map');
-    expect(owner).toContain('className="hr-admin-table inventory-table"');
+    expect(owner).toContain('<DataTable');
     expect(owner).toContain('className="hr-benefits-admin-register"');
     expect(owner).toContain('placeholder="Código, empleado o detalle"');
     expect(owner).toContain('filteredCards');
@@ -76,9 +76,9 @@ describe('Phase 6 benefits UI contract', () => {
 
   it('presents personal benefits as a full-width paginated register', () => {
     expect(self).toContain('className="my-benefits-register"');
-    expect(self).toContain('inventory-table my-benefits-table');
-    expect(self).toContain('<Pagination');
-    expect(self).toContain('className="hr-amount-cell"');
+    expect(self).toContain('<DataTable');
+    expect(self).toContain("pagination={{ mode: 'client' }}");
+    expect(self).toContain("type: 'money'");
     expect(self).not.toContain('className="hr-benefits-list"');
   });
 

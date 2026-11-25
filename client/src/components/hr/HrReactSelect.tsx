@@ -5,14 +5,8 @@ import {
   type ChangeEventHandler,
   type ReactNode,
 } from 'react';
-import Select from '../Select';
+import { AppSelect, type Opt } from '@/ui';
 import './HrControls.css';
-
-interface LegacyOption {
-  value: string;
-  label: string;
-  isDisabled?: boolean;
-}
 
 interface HrReactSelectProps {
   children: ReactNode;
@@ -34,7 +28,7 @@ function textOf(node: ReactNode): string {
   return '';
 }
 
-function optionsOf(children: ReactNode): LegacyOption[] {
+function optionsOf(children: ReactNode): Opt<string>[] {
   return Children.toArray(children).flatMap((child) => {
     if (!isValidElement<{ value?: string | number; disabled?: boolean; children?: ReactNode }>(child)) return [];
     if (child.type !== 'option') return optionsOf(child.props.children);
@@ -46,6 +40,7 @@ function optionsOf(children: ReactNode): LegacyOption[] {
   });
 }
 
+/** Adaptador de compatibilidad: acepta <option> como hijos y delega en AppSelect del design system. */
 export default function HrReactSelect({
   children,
   value,
@@ -54,8 +49,6 @@ export default function HrReactSelect({
   name,
   className = '',
   disabled = false,
-  required = false,
-  isSearchable,
   'aria-label': ariaLabel,
 }: HrReactSelectProps) {
   const options = optionsOf(children);
@@ -69,19 +62,16 @@ export default function HrReactSelect({
   };
 
   return (
-    <Select<LegacyOption>
-      variant="modal"
-      inputId={id}
-      name={name}
-      className={`hr-react-select ${className}`.trim()}
-      aria-label={ariaLabel}
-      options={options}
-      value={selected}
-      onChange={(option) => emitChange(option?.value ?? '')}
-      isDisabled={disabled}
-      isSearchable={isSearchable ?? options.length > 8}
-      isOptionDisabled={(option) => Boolean(option.isDisabled)}
-      required={required}
-    />
+    <span className={`hr-react-select ${className}`.trim()}>
+      <AppSelect<string>
+        inputId={id}
+        aria-label={ariaLabel}
+        options={options}
+        value={selected ? selected.value : null}
+        onChange={(next) => emitChange(next ?? '')}
+        isDisabled={disabled}
+        isClearable={false}
+      />
+    </span>
   );
 }

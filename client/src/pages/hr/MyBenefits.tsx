@@ -10,11 +10,9 @@ import {
   RefreshCw,
   Route,
 } from 'lucide-react';
+import { DataTable, PageHeader, FullScreenModal } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
-import Pagination from '../../components/Pagination';
-import Sidebar from '../../components/Sidebar';
 import MyHrNav from '../../components/hr/MyHrNav';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
@@ -50,7 +48,6 @@ type Selected =
   | { resource: 'LOAN'; item: HrLoan }
   | { resource: 'DEDUCTION'; item: HrDeduction };
 type SelfTravelAction = 'SUBMIT' | 'START_SETTLEMENT' | 'CANCEL';
-const PAGE_SIZE = 10;
 
 function dateLabel(value?: string | null): string {
   if (!value) return '—';
@@ -83,7 +80,6 @@ export default function MyBenefits() {
     item: HrTravelRequest;
     action: SelfTravelAction;
   } | null>(null);
-  const [tablePage, setTablePage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -226,24 +222,18 @@ export default function MyBenefits() {
   };
 
   const items = tab === 'TRAVEL' ? travel : tab === 'LOAN' ? loans : deductions;
-  const pagedItems = items.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
   const actionableCount = items.filter((entry) => entry.allowedActions.length > 0).length;
   const closedCount = items.filter((entry) =>
     ['SETTLED', 'PAID', 'CLOSED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(entry.status)
   ).length;
   const activePanelId = `my-benefits-panel-${tab.toLowerCase()}`;
 
-  useEffect(() => {
-    setTablePage(1);
-  }, [tab]);
 
   return (
     <div className="page-wrapper hr-benefits-page hr-my-benefits-page my-hr-page">
       <PageHeader
-        className="my-hr-page-header"
         title="Mis viáticos y beneficios"
-        subtitle="Consulta solicitudes, saldos, cuotas y deducciones con su estado oficial"
-        icon={WalletCards}
+        description="Consulta solicitudes, saldos, cuotas y deducciones con su estado oficial"
         actions={
           <>
             {tab !== 'DEDUCTION' && (
@@ -330,25 +320,61 @@ export default function MyBenefits() {
               </div>
               <span className="my-benefits-register-count">{items.length} registro{items.length === 1 ? '' : 's'}</span>
             </header>
-            <div className="my-benefits-table-wrap">
-              <table className="inventory-table my-benefits-table">
-                <thead><tr><th scope="col">Código</th><th scope="col">Detalle</th><th scope="col">Actualizado</th><th scope="col" className="hr-amount-cell">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th><th scope="col">Estado</th><th scope="col" className="my-benefits-actions-col">Acción</th></tr></thead>
-                <tbody>
-                  {items.length === 0 ? <tr><td colSpan={6}><div className="hr-benefits-empty"><WalletCards size={36} /><p>{tab === 'TRAVEL' ? 'Aún no tienes viáticos registrados.' : tab === 'LOAN' ? 'Aún no tienes préstamos registrados.' : 'No tienes deducciones asignadas.'}</p>{tab !== 'DEDUCTION' && <Button size="sm" onClick={() => setPanel(tab)} disabled={!online}><Plus size={15} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button>}</div></td></tr> : pagedItems.map((entry) => {
-                    const item = entry as HrTravelRequest | HrLoan | HrDeduction;
-                    const detail = tab === 'TRAVEL' ? (item as HrTravelRequest).destination : tab === 'LOAN' ? (item as HrLoan).purpose : (item as HrDeduction).name;
-                    const amount = tab === 'TRAVEL'
-                      ? money((item as HrTravelRequest).currency, (item as HrTravelRequest).approvedAmount ?? (item as HrTravelRequest).requestedAmount)
-                      : tab === 'LOAN'
-                        ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
-                        : money((item as HrDeduction).currency, (item as HrDeduction).applicableAmount);
+            <DataTable<HrTravelRequest | HrLoan | HrDeduction>
+              ariaLabel={tab === 'TRAVEL' ? 'Mis viáticos' : tab === 'LOAN' ? 'Mis préstamos' : 'Mis deducciones'}
+              rows={items as Array<HrTravelRequest | HrLoan | HrDeduction>}
+              rowKey={(item) => `${tab}-${item.id}`}
+              pagination={{ mode: 'client' }}
+              defaultPageSize={25}
+              resetKey={tab}
+              minWidth="44rem"
+              rowTone={(item) => (selected?.resource === tab && selected.item.id === item.id ? 'primary' : undefined)}
+              columns={[
+                { key: 'code', header: 'Código', width: '1fr', render: (item) => <strong>{item.code}</strong> },
+                {
+                  key: 'detail',
+                  header: 'Detalle',
+                  width: '2fr',
+                  render: (item) => (tab === 'TRAVEL' ? (item as HrTravelRequest).destination : tab === 'LOAN' ? (item as HrLoan).purpose : (item as HrDeduction).name),
+                },
+                { key: 'updatedAt', header: 'Actualizado', width: '1fr', render: (item) => dateLabel(item.updatedAt) },
+                {
+                  key: 'amount',
+                  header: tab === 'LOAN' ? 'Saldo' : 'Importe',
+                  width: '1fr',
+                  type: 'money',
+                  render: (item) => (
+                    <strong>
+                      {tab === 'TRAVEL'
+                        ? money((item as HrTravelRequest).currency, (item as HrTravelRequest).approvedAmount ?? (item as HrTravelRequest).requestedAmount)
+                        : tab === 'LOAN'
+                          ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
+                          : money((item as HrDeduction).currency, (item as HrDeduction).applicableAmount)}
+                    </strong>
+                  ),
+                },
+                { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (item) => <BenefitsStatusPill status={item.status} /> },
+                {
+                  key: 'actions',
+                  header: 'Acción',
+                  width: '5rem',
+                  type: 'actions',
+                  render: (item) => {
                     const isSelected = selected?.resource === tab && selected.item.id === item.id;
-                    return <tr key={`${tab}-${item.id}`} className={isSelected ? 'is-selected' : undefined}><td><strong>{item.code}</strong></td><td>{detail}</td><td>{dateLabel(item.updatedAt)}</td><td className="hr-amount-cell"><strong>{amount}</strong></td><td><BenefitsStatusPill status={item.status} /></td><td className="my-benefits-actions-col"><Button className="table-action-btn" size="sm" variant={isSelected ? 'secondary' : 'ghost'} onClick={() => void openDetail({ resource: tab, item } as Selected)} aria-label={`Ver detalle de ${item.code}`} title="Ver detalle"><Eye size={16} /></Button></td></tr>;
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(items.length / PAGE_SIZE))} totalItems={items.length} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />
+                    return (
+                      <Button className="table-action-btn" size="sm" variant={isSelected ? 'secondary' : 'ghost'} onClick={() => void openDetail({ resource: tab, item } as Selected)} aria-label={`Ver detalle de ${item.code}`} title="Ver detalle"><Eye size={16} /></Button>
+                    );
+                  },
+                },
+              ]}
+              empty={
+                <div className="hr-benefits-empty">
+                  <WalletCards size={36} />
+                  <p>{tab === 'TRAVEL' ? 'Aún no tienes viáticos registrados.' : tab === 'LOAN' ? 'Aún no tienes préstamos registrados.' : 'No tienes deducciones asignadas.'}</p>
+                  {tab !== 'DEDUCTION' && <Button size="sm" onClick={() => setPanel(tab)} disabled={!online}><Plus size={15} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button>}
+                </div>
+              }
+            />
           </section>
           {(detailLoading || selected) && <section className="hr-benefits-workspace" aria-live="polite">
             {detailLoading ? (
@@ -485,35 +511,21 @@ export default function MyBenefits() {
                       )}
                     </div>
                     <h3>Gastos reportados</h3>
-                    <div className="hr-benefits-table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Fecha</th>
-                            <th>Descripción</th>
-                            <th className="hr-amount-cell">Reclamado</th>
-                            <th className="hr-amount-cell">Reconocido</th>
-                            <th>Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selected.item.expenses ?? []).length === 0 && (
-                            <tr><td colSpan={5} className="hr-benefits-table-empty">Aún no has reportado gastos para este viático.</td></tr>
-                          )}
-                          {(selected.item.expenses ?? []).map((expense) => (
-                            <tr key={expense.id}>
-                              <td>{dateLabel(expense.occurredOn)}</td>
-                              <td>{expense.description}</td>
-                              <td className="hr-amount-cell">{money(expense.currency, expense.claimedAmount)}</td>
-                              <td className="hr-amount-cell">{money(expense.currency, expense.recognizedAmount)}</td>
-                              <td>
-                                <BenefitsStatusPill status={expense.status} />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <DataTable
+                      ariaLabel="Gastos reportados"
+                      rows={selected.item.expenses ?? []}
+                      rowKey={(expense) => expense.id}
+                      pagination={{ mode: 'client' }}
+                      minWidth="40rem"
+                      empty="Aún no has reportado gastos para este viático."
+                      columns={[
+                        { key: 'date', header: 'Fecha', render: (expense) => dateLabel(expense.occurredOn) },
+                        { key: 'description', header: 'Descripción', width: '2fr', render: (expense) => expense.description },
+                        { key: 'claimed', header: 'Reclamado', type: 'money', render: (expense) => money(expense.currency, expense.claimedAmount) },
+                        { key: 'recognized', header: 'Reconocido', type: 'money', render: (expense) => money(expense.currency, expense.recognizedAmount) },
+                        { key: 'status', header: 'Estado', type: 'status', render: (expense) => <BenefitsStatusPill status={expense.status} /> },
+                      ]}
+                    />
                   </>
                 )}
                 {selected.resource === 'LOAN' && (
@@ -523,39 +535,22 @@ export default function MyBenefits() {
                       tu navegador.
                     </div>
                     <h3>Calendario</h3>
-                    <div className="hr-benefits-table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Vence</th>
-                            <th className="hr-amount-cell">Cuota</th>
-                            <th className="hr-amount-cell">Pagado</th>
-                            <th className="hr-amount-cell">Saldo</th>
-                            <th>Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selected.item.schedule ?? []).length === 0 && (
-                            <tr><td colSpan={6} className="hr-benefits-table-empty">El calendario de cuotas todavía no está publicado.</td></tr>
-                          )}
-                          {(selected.item.schedule ?? []).map((installment) => (
-                            <tr key={installment.id}>
-                              <td>{installment.number}</td>
-                              <td>{dateLabel(installment.dueDate)}</td>
-                              <td className="hr-amount-cell">{money(selected.item.currency, installment.scheduledTotal)}</td>
-                              <td className="hr-amount-cell">{money(selected.item.currency, installment.paidAmount)}</td>
-                              <td className="hr-amount-cell">
-                                {money(selected.item.currency, installment.outstandingAmount)}
-                              </td>
-                              <td>
-                                <BenefitsStatusPill status={installment.status} />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <DataTable
+                      ariaLabel="Calendario de cuotas"
+                      rows={selected.item.schedule ?? []}
+                      rowKey={(installment) => installment.id}
+                      pagination={{ mode: 'client' }}
+                      minWidth="44rem"
+                      empty="El calendario de cuotas todavía no está publicado."
+                      columns={[
+                        { key: 'number', header: '#', width: '4rem', render: (installment) => installment.number },
+                        { key: 'due', header: 'Vence', render: (installment) => dateLabel(installment.dueDate) },
+                        { key: 'scheduled', header: 'Cuota', type: 'money', render: (installment) => money(selected.item.currency, installment.scheduledTotal) },
+                        { key: 'paid', header: 'Pagado', type: 'money', render: (installment) => money(selected.item.currency, installment.paidAmount) },
+                        { key: 'outstanding', header: 'Saldo', type: 'money', render: (installment) => money(selected.item.currency, installment.outstandingAmount) },
+                        { key: 'status', header: 'Estado', type: 'status', render: (installment) => <BenefitsStatusPill status={installment.status} /> },
+                      ]}
+                    />
                     <h3>Movimientos</h3>
                     <div className="hr-benefits-ledger">
                       {(selected.item.ledger ?? []).length === 0 && (
@@ -586,7 +581,7 @@ export default function MyBenefits() {
           </section>}
         </div>
       )}
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(panel)}
         onClose={() => {
           if (!saving) {
@@ -601,7 +596,6 @@ export default function MyBenefits() {
               ? 'Solicitar préstamo'
               : 'Registrar gasto'
         }
-        width="large"
       >
         {panel === 'TRAVEL' && (
           <TravelRequestForm
@@ -633,12 +627,11 @@ export default function MyBenefits() {
             }}
           />
         )}
-      </Sidebar>
-      <Sidebar
+      </FullScreenModal>
+      <FullScreenModal
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar acción"
-        width="large"
       >
         {transition && (
           <BenefitsTransitionForm
@@ -652,7 +645,7 @@ export default function MyBenefits() {
             onCancel={() => setTransition(null)}
           />
         )}
-      </Sidebar>
+      </FullScreenModal>
     </div>
   );
 }

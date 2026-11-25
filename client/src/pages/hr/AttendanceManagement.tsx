@@ -11,11 +11,9 @@ import {
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
+import { DataTable, FullScreenModal, PageHeader } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
-import Pagination from '../../components/Pagination';
-import Sidebar from '../../components/Sidebar';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
@@ -88,7 +86,6 @@ type DecisionPanel =
   | null;
 
 type AttendanceTable = 'DAY' | 'INCIDENTS' | 'CORRECTIONS' | 'OVERTIME' | 'PERIODS';
-const PAGE_SIZE = 12;
 
 export default function AttendanceManagement() {
   const online = useWorkforceOnline();
@@ -112,7 +109,6 @@ export default function AttendanceManagement() {
   const [approvedMinutes, setApprovedMinutes] = useState('');
   const [periodForm, setPeriodForm] = useState({ dateFrom: date, dateTo: date, reason: '' });
   const [activeTable, setActiveTable] = useState<AttendanceTable>('DAY');
-  const [tablePage, setTablePage] = useState(1);
 
   const filters = useMemo(
     () => ({
@@ -171,7 +167,6 @@ export default function AttendanceManagement() {
     void load();
   }, [load]);
 
-  useEffect(() => { setTablePage(1); }, [activeTable, branchId, date, userId]);
 
   const createCorrection = async (payload: HrAttendanceCorrectionPayload) => {
     setSaving(true);
@@ -267,21 +262,12 @@ export default function AttendanceManagement() {
     (user) => user.accountType === 'INTERNAL' && Boolean(user.employeeId ?? user.employee?.id)
   );
   const branches = lookups.branches ?? [];
-  const activeTableCount = activeTable === 'DAY' ? summaries.length
-    : activeTable === 'INCIDENTS' ? incidents.length
-      : activeTable === 'CORRECTIONS' ? corrections.length
-        : activeTable === 'OVERTIME' ? overtime.length
-          : periods.length;
-  const pageSlice = <T,>(items: T[]) => items.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
-  useEffect(() => { setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE)))); }, [activeTableCount]);
 
   return (
     <div className="page-wrapper inventory-page hr-workforce-page hr-attendance-management-page hr-admin-catalog-page hr-operation-page">
       <PageHeader
-        className="inventory-header-new hr-operation-header"
         title="Control diario de asistencia"
-        subtitle="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
-        icon={CalendarClock}
+        description="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
         actions={
           <Button
             onClick={() => {
@@ -370,48 +356,84 @@ export default function AttendanceManagement() {
             tabIndex={0}
           >
             {activeTable === 'DAY' && (
-              <table className="hr-admin-table inventory-table" aria-label={`Jornadas del ${dateLabel(date)}`}>
-                <thead><tr><th scope="col">Empleado</th><th scope="col">Sucursal</th><th scope="col">Programado</th><th scope="col">Trabajado</th><th scope="col">Descanso</th><th scope="col">Tardanza</th><th scope="col">Salida antes</th><th scope="col">Extra</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acciones</th></tr></thead>
-                <tbody>
-                  {summaries.length === 0 ? (
-                    <tr><td colSpan={10}><div className="hr-admin-empty"><strong>No hay jornadas para este filtro</strong><span>Cambia la fecha, sucursal o empleado y actualiza la consulta.</span><Button size="sm" variant="ghost" onClick={() => void load()}><RefreshCw size={15} /> Actualizar</Button></div></td></tr>
-                  ) : pageSlice(summaries).map((summary) => (
-                    <tr key={summary.id}>
-                      <td><strong>{summary.user?.name ?? `Usuario #${summary.userId}`}</strong><small>{summary.incidentCount ? `${summary.incidentCount} incidencia(s)` : 'Sin incidencias'}</small></td>
-                      <td>{summary.branch?.name ?? 'Sin sucursal'}</td>
-                      <td>{summary.scheduledMinutes ?? 0} min</td>
-                      <td>{summary.ordinaryMinutes} min</td>
-                      <td>{summary.breakMinutes} min</td>
-                      <td className={summary.lateMinutes > 0 ? 'hr-admin-cell-warning' : ''}>{summary.lateMinutes} min</td>
-                      <td className={summary.earlyDepartureMinutes > 0 ? 'hr-admin-cell-warning' : ''}>{summary.earlyDepartureMinutes} min</td>
-                      <td>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</td>
-                      <td>{summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : 'Sin periodo'}</td>
-                      <td className="hr-admin-actions-col"><div className="hr-admin-row-actions table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`}><Pencil size={16} /></Button><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} title="Registrar horas extra" aria-label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`}><Clock3 size={16} /></Button></div></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable
+                ariaLabel={`Jornadas del ${dateLabel(date)}`}
+                rows={summaries}
+                rowKey={(summary) => summary.id}
+                pagination={{ mode: 'client' }}
+                minWidth="80rem"
+                empty={<div className="hr-admin-empty"><strong>No hay jornadas para este filtro</strong><span>Cambia la fecha, sucursal o empleado y actualiza la consulta.</span><Button size="sm" variant="ghost" onClick={() => void load()}><RefreshCw size={15} /> Actualizar</Button></div>}
+                columns={[
+                  { key: 'c0', header: 'Empleado', render: (summary) => <><strong>{summary.user?.name ?? `Usuario #${summary.userId}`}</strong><small>{summary.incidentCount ? `${summary.incidentCount} incidencia(s)` : 'Sin incidencias'}</small></> },
+                  { key: 'c1', header: 'Sucursal', render: (summary) => <>{summary.branch?.name ?? 'Sin sucursal'}</> },
+                  { key: 'c2', header: 'Programado', render: (summary) => <>{summary.scheduledMinutes ?? 0} min</> },
+                  { key: 'c3', header: 'Trabajado', render: (summary) => <>{summary.ordinaryMinutes} min</> },
+                  { key: 'c4', header: 'Descanso', render: (summary) => <>{summary.breakMinutes} min</> },
+                  { key: 'c5', header: 'Tardanza', render: (summary) => <span className={summary.lateMinutes > 0 ? 'hr-admin-cell-warning' : ''}>{summary.lateMinutes} min</span> },
+                  { key: 'c6', header: 'Salida antes', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? 'hr-admin-cell-warning' : ''}>{summary.earlyDepartureMinutes} min</span> },
+                  { key: 'c7', header: 'Extra', render: (summary) => <>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</> },
+                  { key: 'c8', header: 'Estado', render: (summary) => <>{summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : 'Sin periodo'}</> },
+                  { key: 'c9', header: 'Acciones', width: '6rem', type: 'actions', render: (summary) => <div className="hr-admin-row-actions table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`}><Pencil size={16} /></Button><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} title="Registrar horas extra" aria-label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`}><Clock3 size={16} /></Button></div> },
+                ]}
+              />
             )}
 
             {activeTable === 'INCIDENTS' && (
-              <table className="hr-admin-table inventory-table" aria-label="Incidencias que requieren revisión">
-                <thead><tr><th scope="col">Empleado</th><th scope="col">Fecha</th><th scope="col">Motivo</th><th scope="col">Gravedad</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
-                <tbody>{incidents.length === 0 ? <tr><td colSpan={6}><div className="hr-admin-empty"><strong>No hay incidencias</strong><span>Las jornadas del filtro actual están al día.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div></td></tr> : pageSlice(incidents).map((incident) => <tr key={incident.id}><td><strong>{incident.user?.name ?? `Usuario #${incident.userId}`}</strong></td><td>{dateLabel(incident.date)}</td><td><strong>{incident.message}</strong><small>{incident.reasonCode ?? incident.type}</small></td><td><WorkforceStatusPill status={incident.severity} /></td><td><WorkforceStatusPill status={incident.status} /></td><td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', incident })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${incident.user?.name ?? incident.userId}`}><Pencil size={16} /></Button></div></td></tr>)}</tbody>
-              </table>
+              <DataTable
+                ariaLabel="Incidencias que requieren revisión"
+                rows={incidents}
+                rowKey={(incident) => incident.id}
+                pagination={{ mode: 'client' }}
+                minWidth="48rem"
+                empty={<div className="hr-admin-empty"><strong>No hay incidencias</strong><span>Las jornadas del filtro actual están al día.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div>}
+                columns={[
+                  { key: 'c0', header: 'Empleado', render: (incident) => <strong>{incident.user?.name ?? `Usuario #${incident.userId}`}</strong> },
+                  { key: 'c1', header: 'Fecha', render: (incident) => <>{dateLabel(incident.date)}</> },
+                  { key: 'c2', header: 'Motivo', render: (incident) => <><strong>{incident.message}</strong><small>{incident.reasonCode ?? incident.type}</small></> },
+                  { key: 'c3', header: 'Gravedad', render: (incident) => <><WorkforceStatusPill status={incident.severity} /></> },
+                  { key: 'c4', header: 'Estado', render: (incident) => <><WorkforceStatusPill status={incident.status} /></> },
+                  { key: 'c5', header: 'Acción', width: '6rem', type: 'actions', render: (incident) => <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', incident })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${incident.user?.name ?? incident.userId}`}><Pencil size={16} /></Button></div> },
+                ]}
+              />
             )}
 
             {activeTable === 'CORRECTIONS' && (
-              <table className="hr-admin-table inventory-table" aria-label="Solicitudes de corrección">
-                <thead><tr><th scope="col">Empleado</th><th scope="col">Solicitada</th><th scope="col">Tipo</th><th scope="col">Motivo</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
-                <tbody>{corrections.length === 0 ? <tr><td colSpan={6}><div className="hr-admin-empty"><strong>No hay correcciones</strong><span>Cuando alguien solicite un ajuste aparecerá aquí.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div></td></tr> : pageSlice(corrections).map((item) => <tr key={item.id}><td><strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong></td><td>{displayDateTime(item.createdAt)}</td><td>{item.type}</td><td>{item.reason}</td><td><WorkforceStatusPill status={item.status} /></td><td className="hr-admin-actions-col">{item.status === 'PENDING' ? <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'correction', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar corrección de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button></div> : <span className="hr-admin-muted">Finalizada</span>}</td></tr>)}</tbody>
-              </table>
+              <DataTable
+                ariaLabel="Solicitudes de corrección"
+                rows={corrections}
+                rowKey={(item) => item.id}
+                pagination={{ mode: 'client' }}
+                minWidth="48rem"
+                empty={<div className="hr-admin-empty"><strong>No hay correcciones</strong><span>Cuando alguien solicite un ajuste aparecerá aquí.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div>}
+                columns={[
+                  { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
+                  { key: 'c1', header: 'Solicitada', render: (item) => <>{displayDateTime(item.createdAt)}</> },
+                  { key: 'c2', header: 'Tipo', render: (item) => <>{item.type}</> },
+                  { key: 'c3', header: 'Motivo', render: (item) => <>{item.reason}</> },
+                  { key: 'c4', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
+                  { key: 'c5', header: 'Acción', width: '6rem', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'correction', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar corrección de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button></div> : <span className="hr-admin-muted">Finalizada</span>}</> },
+                ]}
+              />
             )}
 
             {activeTable === 'OVERTIME' && (
-              <table className="hr-admin-table inventory-table" aria-label="Solicitudes de horas extra">
-                <thead><tr><th scope="col">Empleado</th><th scope="col">Fecha</th><th scope="col">Solicitado</th><th scope="col">Aprobado</th><th scope="col">Motivo</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
-                <tbody>{overtime.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><strong>No hay solicitudes de horas extra</strong><span>Puedes registrar una desde la jornada de un empleado.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div></td></tr> : pageSlice(overtime).map((item) => <tr key={item.id}><td><strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong></td><td>{dateLabel(item.date)}</td><td>{item.requestedMinutes} min</td><td>{item.approvedMinutes ?? '—'}</td><td>{item.reason}</td><td><WorkforceStatusPill status={item.status} /></td><td className="hr-admin-actions-col">{item.status === 'PENDING' ? <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar horas extra de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button></div> : <span className="hr-admin-muted">Finalizada</span>}</td></tr>)}</tbody>
-              </table>
+              <DataTable
+                ariaLabel="Solicitudes de horas extra"
+                rows={overtime}
+                rowKey={(item) => item.id}
+                pagination={{ mode: 'client' }}
+                minWidth="56rem"
+                empty={<div className="hr-admin-empty"><strong>No hay solicitudes de horas extra</strong><span>Puedes registrar una desde la jornada de un empleado.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div>}
+                columns={[
+                  { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
+                  { key: 'c1', header: 'Fecha', render: (item) => <>{dateLabel(item.date)}</> },
+                  { key: 'c2', header: 'Solicitado', render: (item) => <>{item.requestedMinutes} min</> },
+                  { key: 'c3', header: 'Aprobado', render: (item) => <>{item.approvedMinutes ?? '—'}</> },
+                  { key: 'c4', header: 'Motivo', render: (item) => <>{item.reason}</> },
+                  { key: 'c5', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
+                  { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar horas extra de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button></div> : <span className="hr-admin-muted">Finalizada</span>}</> },
+                ]}
+              />
             )}
 
             {activeTable === 'PERIODS' && (
@@ -421,20 +443,30 @@ export default function AttendanceManagement() {
                   Los periodos de asistencia son de toda la empresa. Los contadores pendientes respetan el filtro de sucursal/empleado seleccionado arriba.
                 </div>
               )}
-              <table className="hr-admin-table inventory-table" aria-label="Periodos de asistencia">
-                <thead><tr><th scope="col">Periodo</th><th scope="col">Empleados</th><th scope="col">Incidencias</th><th scope="col">Correcciones</th><th scope="col">Horas extra</th><th scope="col">Nómina</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
-                <tbody>{periods.length === 0 ? <tr><td colSpan={8}><div className="hr-admin-empty"><strong>No hay periodos</strong><span>Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina.</span><Button size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button></div></td></tr> : pageSlice(periods).map((period) => {
-                  const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0);
-                  return <tr key={period.id}><td><strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong></td><td>{period.summaryCount ?? 0}</td><td className={(period.unresolvedIncidentCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.unresolvedIncidentCount ?? 0}</td><td className={(period.pendingCorrectionCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingCorrectionCount ?? 0}</td><td className={(period.pendingOvertimeCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingOvertimeCount ?? 0}</td><td>{period.payrollReference ?? 'No vinculada'}</td><td><WorkforceStatusPill status={period.status} /></td><td className="hr-admin-actions-col"><div className="table-actions">{period.status === 'CLOSED' ? <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} title="Reabrir periodo" aria-label={`Reabrir periodo ${period.id}`}><RotateCcw size={16} /></Button> : <Button className="table-action-btn danger" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} title={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} aria-label={`Cerrar periodo ${period.id}`}><LockKeyhole size={16} /></Button>}</div></td></tr>;
-                })}</tbody>
-              </table>
+              <DataTable
+                ariaLabel="Periodos de asistencia"
+                rows={periods}
+                rowKey={(period) => period.id}
+                pagination={{ mode: 'client' }}
+                minWidth="64rem"
+                empty={<div className="hr-admin-empty"><strong>No hay periodos</strong><span>Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina.</span><Button size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button></div>}
+                columns={[
+                  { key: 'c0', header: 'Periodo', render: (period) => <strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong> },
+                  { key: 'c1', header: 'Empleados', render: (period) => <>{period.summaryCount ?? 0}</> },
+                  { key: 'c2', header: 'Incidencias', render: (period) => <span className={(period.unresolvedIncidentCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.unresolvedIncidentCount ?? 0}</span> },
+                  { key: 'c3', header: 'Correcciones', render: (period) => <span className={(period.pendingCorrectionCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingCorrectionCount ?? 0}</span> },
+                  { key: 'c4', header: 'Horas extra', render: (period) => <span className={(period.pendingOvertimeCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingOvertimeCount ?? 0}</span> },
+                  { key: 'c5', header: 'Nómina', render: (period) => <>{period.payrollReference ?? 'No vinculada'}</> },
+                  { key: 'c6', header: 'Estado', render: (period) => <><WorkforceStatusPill status={period.status} /></> },
+                  { key: 'c7', header: 'Acción', width: '6rem', type: 'actions', render: (period) => { const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0); return <div className="table-actions">{period.status === 'CLOSED' ? <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} title="Reabrir periodo" aria-label={`Reabrir periodo ${period.id}`}><RotateCcw size={16} /></Button> : <Button className="table-action-btn danger" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} title={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} aria-label={`Cerrar periodo ${period.id}`}><LockKeyhole size={16} /></Button>}</div>; } },
+                ]}
+              />
               </>
             )}
           </div>
-          <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE))} totalItems={activeTableCount} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />
         </section>
       )}
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(createPanel)}
         onClose={() => !saving && setCreatePanel(null)}
         title={
@@ -444,9 +476,6 @@ export default function AttendanceManagement() {
               ? 'Solicitud de horas extra'
               : 'Nuevo periodo'
         }
-        width="large"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
       >
         {createPanel?.kind !== 'period' && (
           <>
@@ -538,9 +567,9 @@ export default function AttendanceManagement() {
             </label>
           </HrModalFormShell>
         )}
-      </Sidebar>
+      </FullScreenModal>
 
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(decisionPanel)}
         onClose={() => !saving && setDecisionPanel(null)}
         title={
@@ -550,9 +579,6 @@ export default function AttendanceManagement() {
               ? 'Reabrir periodo'
               : 'Registrar decisión'
         }
-        width="large"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
       >
         <HrModalFormShell
           ariaLabel="Sección de decisión de asistencia"
@@ -618,7 +644,7 @@ export default function AttendanceManagement() {
             />
           </label>
         </HrModalFormShell>
-      </Sidebar>
+      </FullScreenModal>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { DataTable, formatMoney } from '@/ui';
 import { useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -370,17 +371,23 @@ export default function PayrollRuleConfigurationPanel({
             <div className="hr-legal-formula"><Calculator size={18} aria-hidden="true" /><span><strong>Fórmula por tramo:</strong> impuesto base + (renta anual − exceso) × tasa. El INSS laboral se descuenta de la renta gravable antes del cálculo.</span></div>
             <div className="hr-payroll-tax-table hr-legal-tax-table">
               <div className="hr-legal-tax-table-heading"><div><strong>Tabla progresiva anual</strong><small>Modifica el límite superior y la tasa; los campos calculados se actualizan automáticamente.</small></div><Button type="button" size="sm" variant="ghost" onClick={addBracket}><Plus size={16} aria-hidden="true" /> Agregar tramo</Button></div>
-              <div className="table-scroll"><table><thead><tr><th>Tramo</th><th>Desde (C$)</th><th>Hasta (C$)</th><th>Impuesto base (C$)</th><th>Tasa</th><th>Sobre exceso de (C$)</th><th><span className="sr-only">Acción</span></th></tr></thead><tbody>
-                {brackets.map((bracket, index) => <tr key={index}>
-                  <td><span className="hr-legal-bracket-number">{index + 1}</span></td>
-                  <td><HrMoneyInput aria-label={`Inicio tramo ${index + 1}, calculado`} value={bracket.lowerBound} onValueChange={() => undefined} readOnly /></td>
-                  <td>{index === brackets.length - 1 ? <span className="hr-legal-open-ended">En adelante</span> : <HrMoneyInput aria-label={`Fin tramo ${index + 1}`} value={bracket.upperBound ?? ''} onValueChange={(value) => updateBracket(index, 'upperBound', value)} required />}</td>
-                  <td><HrMoneyInput aria-label={`Impuesto base tramo ${index + 1}, calculado`} value={bracket.baseTax} onValueChange={() => undefined} readOnly /></td>
-                  <td><span className="hr-legal-input-suffix"><input aria-label={`Tasa tramo ${index + 1} en porcentaje`} type="number" min="0" max="100" step="0.0001" value={decimalRateToPercent(bracket.rate)} onChange={(event) => updateBracket(index, 'rate', percentToDecimalRate(event.target.value))} /><span>%</span></span></td>
-                  <td><HrMoneyInput aria-label={`Exceso tramo ${index + 1}, calculado`} value={bracket.excessOver} onValueChange={() => undefined} readOnly /></td>
-                  <td>{brackets.length > 2 && index > 0 && index < brackets.length - 1 && <Button type="button" size="sm" variant="ghost" aria-label={`Eliminar tramo ${index + 1}`} onClick={() => setBrackets((current) => recalculateBrackets(current.filter((_, position) => position !== index)))}><Trash2 size={15} aria-hidden="true" /></Button>}</td>
-                </tr>)}
-              </tbody></table></div>
+              <div className="table-scroll"><DataTable
+                ariaLabel="Tramos de IR laboral"
+                rows={brackets.map((bracket, index) => ({ bracket, index }))}
+                rowKey={({ index }) => index}
+                pagination={{ mode: 'client' }}
+                minWidth="56rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Tramo', render: ({ index }) => <span className="hr-legal-bracket-number">{index + 1}</span> },
+                  { key: 'c1', header: 'Desde (C$)', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Inicio tramo ${index + 1}, calculado`} value={bracket.lowerBound} onValueChange={() => undefined} readOnly /></> },
+                  { key: 'c2', header: 'Hasta (C$)', render: ({ bracket, index }) => <>{index === brackets.length - 1 ? <span className="hr-legal-open-ended">En adelante</span> : <HrMoneyInput aria-label={`Fin tramo ${index + 1}`} value={bracket.upperBound ?? ''} onValueChange={(value) => updateBracket(index, 'upperBound', value)} required />}</> },
+                  { key: 'c3', header: 'Impuesto base (C$)', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Impuesto base tramo ${index + 1}, calculado`} value={bracket.baseTax} onValueChange={() => undefined} readOnly /></> },
+                  { key: 'c4', header: 'Tasa', render: ({ bracket, index }) => <><span className="hr-legal-input-suffix"><input aria-label={`Tasa tramo ${index + 1} en porcentaje`} type="number" min="0" max="100" step="0.0001" value={decimalRateToPercent(bracket.rate)} onChange={(event) => updateBracket(index, 'rate', percentToDecimalRate(event.target.value))} /><span>%</span></span></> },
+                  { key: 'c5', header: 'Sobre exceso de (C$)', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Exceso tramo ${index + 1}, calculado`} value={bracket.excessOver} onValueChange={() => undefined} readOnly /></> },
+                  { key: 'c6', header: <><span className="sr-only">Acción</span></>, render: ({ index }) => <>{brackets.length > 2 && index > 0 && index < brackets.length - 1 && <Button type="button" size="sm" variant="ghost" aria-label={`Eliminar tramo ${index + 1}`} onClick={() => setBrackets((current) => recalculateBrackets(current.filter((_, position) => position !== index)))}><Trash2 size={15} aria-hidden="true" /></Button>}</> },
+                ]}
+              /></div>
               {!bracketTableIsValid(brackets) && <p className="hr-legal-inline-error" role="alert"><AlertCircle size={16} aria-hidden="true" /> Los tramos deben ser continuos; “desde” y “sobre exceso” deben coincidir, y el impuesto base debe acumular el tramo anterior.</p>}
             </div>
           </section>
@@ -465,7 +472,8 @@ export default function PayrollRuleConfigurationPanel({
 function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrPayrollLegalConfiguration; revision: number }) {
   const { statutory } = configuration;
   const pct = (value: string) => `${(Number(value) * 100).toLocaleString('es-NI', { maximumFractionDigits: 4 })}%`;
-  const money = (value: string) => new Intl.NumberFormat('es-NI', { style: 'currency', currency: configuration.currency, maximumFractionDigits: 2 }).format(Number(value));
+  const symbol = configuration.currency === 'USD' ? 'US$' : configuration.currency === 'NIO' ? 'C$' : configuration.currency;
+  const money = (value: string | null | undefined) => (value == null || value === '' || !Number.isFinite(Number(value)) ? 'N/D' : formatMoney(value, symbol));
   const yesNo = (value: boolean) => value ? 'Sí' : 'No';
   const regimeLabels: Record<string, string> = { GENERAL: 'General', SIMPLIFIED_FIXED_QUOTA: 'Cuota fija / simplificado', SPECIAL: 'Especial', EXEMPT: 'Exento', OTHER: 'Otro' };
   const taxLabels: Record<string, string> = { REGULAR_FIXED: 'IR fijo', REGULAR_VARIABLE: 'IR variable', OCCASIONAL: 'IR ocasional' };
@@ -487,13 +495,43 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
 
     <section aria-labelledby="readonly-ir-title">
       <header><span className="hr-legal-section-icon"><Percent size={20} /></span><div><span className="hr-legal-step-label">Retención</span><h3 id="readonly-ir-title">Tramos anuales de IR laboral</h3><p>La nómina proyecta el ingreso neto gravable anual y aplica el tramo correspondiente.</p></div></header>
-      <div className="hr-legal-readonly-table-wrap"><table className="hr-legal-ir-readonly-table"><thead><tr><th>Tramo</th><th>Desde</th><th>Hasta</th><th>Impuesto base</th><th>Tasa sobre exceso</th></tr></thead><tbody>{statutory.incomeTax.brackets.map((bracket, index) => <tr key={`${bracket.lowerBound}-${index}`}><td>{index + 1}</td><td>{money(bracket.lowerBound)}</td><td>{bracket.upperBound === null ? 'En adelante' : money(bracket.upperBound)}</td><td>{money(bracket.baseTax)}</td><td>{pct(bracket.rate)} sobre {money(bracket.excessOver)}</td></tr>)}</tbody></table></div>
+      <div className="hr-legal-readonly-table-wrap"><DataTable
+                ariaLabel="Tramos de IR vigentes"
+                rows={statutory.incomeTax.brackets.map((bracket, index) => ({ bracket, index }))}
+                rowKey={({ bracket, index }) => `${bracket.lowerBound}-${index}`}
+                pagination={{ mode: 'client' }}
+                minWidth="40rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Tramo', render: ({ index }) => <>{index + 1}</> },
+                  { key: 'c1', header: 'Desde', type: 'money', render: ({ bracket }) => <>{money(bracket.lowerBound)}</> },
+                  { key: 'c2', header: 'Hasta', type: 'money', render: ({ bracket }) => <>{bracket.upperBound === null ? 'En adelante' : money(bracket.upperBound)}</> },
+                  { key: 'c3', header: 'Impuesto base', type: 'money', render: ({ bracket }) => <>{money(bracket.baseTax)}</> },
+                  { key: 'c4', header: 'Tasa sobre exceso', type: 'number', render: ({ bracket }) => <>{pct(bracket.rate)} sobre {money(bracket.excessOver)}</> },
+                ]}
+              /></div>
       <p className="hr-legal-readonly-source">Fuente: {statutory.incomeTax.sourceReference} · Periodos: semanal {statutory.incomeTax.annualPeriods.WEEKLY}, quincenal {statutory.incomeTax.annualPeriods.BIWEEKLY}, catorcenal {statutory.incomeTax.annualPeriods.FORTNIGHTLY}, mensual {statutory.incomeTax.annualPeriods.MONTHLY}.</p>
     </section>
 
     <section aria-labelledby="readonly-concepts-title">
       <header><span className="hr-legal-section-icon"><Users size={20} /></span><div><span className="hr-legal-step-label">Clasificación</span><h3 id="readonly-concepts-title">Qué aplica a cada ingreso y deducción</h3><p>Esta tabla responde si un concepto forma base de IR laboral, INSS o INATEC.</p></div></header>
-      <div className="hr-legal-readonly-table-wrap"><table><thead><tr><th>Concepto</th><th>Tipo</th><th>IR laboral</th><th>INSS</th><th>INATEC</th><th>Estado</th><th>Fuente</th></tr></thead><tbody>{statutory.paymentConceptCatalog.map((concept) => <tr key={concept.code} className={!concept.active ? 'is-disabled' : undefined}><td><strong>{concept.name}</strong><small>{concept.code}</small></td><td>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</td><td>{concept.incomeTaxTreatment ? taxLabels[concept.incomeTaxTreatment] : concept.incomeTaxDeductible ? 'Deducible' : 'No sujeto'}</td><td>{yesNo(concept.socialSecurityApplicable)}</td><td>{yesNo(concept.trainingContributionApplicable)}</td><td><span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? 'Activo' : 'Inhabilitado'}</span></td><td>{concept.sourceReference}</td></tr>)}</tbody></table></div>
+      <div className="hr-legal-readonly-table-wrap"><DataTable
+                ariaLabel="Conceptos legales vigentes"
+                rows={statutory.paymentConceptCatalog}
+                rowKey={(concept) => concept.code}
+                pagination={{ mode: 'client' }}
+                minWidth="56rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Concepto', render: (concept) => <><strong>{concept.name}</strong><small>{concept.code}</small></> },
+                  { key: 'c1', header: 'Tipo', render: (concept) => <>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</> },
+                  { key: 'c2', header: 'IR laboral', render: (concept) => <>{concept.incomeTaxTreatment ? taxLabels[concept.incomeTaxTreatment] : concept.incomeTaxDeductible ? 'Deducible' : 'No sujeto'}</> },
+                  { key: 'c3', header: 'INSS', render: (concept) => <>{yesNo(concept.socialSecurityApplicable)}</> },
+                  { key: 'c4', header: 'INATEC', render: (concept) => <>{yesNo(concept.trainingContributionApplicable)}</> },
+                  { key: 'c5', header: 'Estado', render: (concept) => <span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? 'Activo' : 'Inhabilitado'}</span> },
+                  { key: 'c6', header: 'Fuente', render: (concept) => <>{concept.sourceReference}</> },
+                ]}
+              /></div>
     </section>
 
     <details className="hr-legal-readonly-operational"><summary>Ver parámetros operativos de nómina y aguinaldo</summary><dl><div><dt>Moneda</dt><dd>{configuration.currency}</dd></div><div><dt>Multiplicador de horas extra</dt><dd>{configuration.regular.overtimeMultiplier}×</dd></div><div><dt>Histórico de aguinaldo</dt><dd>{configuration.aguinaldo.lookbackDays} días</dd></div><div><dt>Divisor de aguinaldo</dt><dd>{configuration.aguinaldo.incomeDivisor}</dd></div></dl></details>

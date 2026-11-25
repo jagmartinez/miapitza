@@ -45,7 +45,7 @@ describe('RH operational UI contract', () => {
       expect(source).toContain('filters-toolbar hr-admin-tab-toolbar');
       expect(source).toContain('role="tablist"');
       expect(source).toContain('role="tabpanel"');
-      expect(source).toContain('className="hr-admin-table inventory-table"');
+      expect(source).toContain('<DataTable');
       expect(source).not.toContain('<caption>');
     });
     expect(attendanceReview).not.toContain('attendance-review-table-title');

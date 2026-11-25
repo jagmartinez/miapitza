@@ -14,19 +14,28 @@ import {
     RefreshCw,
     Settings2,
     UserCheck,
-    UsersRound,
     WalletCards,
 } from 'lucide-react';
+import { PageHeader, StatCard, formatNumber } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import type { HrDashboardData } from '../../types/hr';
-import './hr.css';
-import './hr-dashboard.css';
+import styles from './HrDashboard.module.css';
 
-function asNumber(value: number | undefined): string {
-    return new Intl.NumberFormat('es-NI').format(value ?? 0);
+/** Dato faltante o no numérico se muestra N/D; nunca como 0. */
+function asNumber(value: number | null | undefined): string {
+    return typeof value === 'number' && Number.isFinite(value) ? formatNumber(value, 0) : 'N/D';
+}
+
+/** Suma solo valores conocidos; null si alguno falta para no presentar un total parcial como completo. */
+function sumKnown(values: Array<number | null | undefined>): number | null {
+    let total = 0;
+    for (const value of values) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+        total += value;
+    }
+    return total;
 }
 
 export default function HrDashboard() {
@@ -52,24 +61,21 @@ export default function HrDashboard() {
         void loadDashboard();
     }, [loadDashboard]);
 
-    const attentionTotal = useMemo(() => {
-        if (!data) return 0;
-        return Object.values(data.attention).reduce((total, value) => total + value, 0);
-    }, [data]);
+    const attentionTotal = useMemo(() => (data ? sumKnown(Object.values(data.attention)) : null), [data]);
+    const runsInProcess = data ? sumKnown([data.payroll.draftRuns, data.payroll.reviewRuns, data.payroll.approvedRuns]) : null;
 
     return (
-        <div className="page-wrapper hr-dashboard-page">
+        <div className={`page-wrapper ${styles.page}`}>
             <PageHeader
-                title="Centro de trabajo RH"
-                subtitle="Pendientes, personal y nómina en un solo lugar"
-                icon={UsersRound}
-                actions={
-                    <div className="hr-dashboard-header-actions">
+        title="Centro de trabajo RH"
+        description="Pendientes, personal y nómina en un solo lugar"
+        actions={
+                    <div className={styles.headerActions}>
                         <Button variant="ghost" onClick={() => navigate('/rh/personal')}>Gestionar personal</Button>
                         <Button onClick={() => navigate('/rh/nomina')}>Abrir nómina</Button>
                     </div>
                 }
-            />
+      />
 
             {loading && <LoadingSpinner text="Cargando operación de RH…" />}
 
@@ -83,39 +89,39 @@ export default function HrDashboard() {
 
             {!loading && !error && data && (
                 <>
-                    <section className="hr-dashboard-overview" aria-label="Resumen de personal">
-                        <article>
-                            <span>Personal activo</span>
-                            <strong>{asNumber(data.employees.active)}</strong>
-                            <small>de {asNumber(data.employees.total)} expedientes</small>
-                        </article>
-                        <article className={attentionTotal > 0 ? 'needs-attention' : 'is-ready'}>
-                            <span>Requieren atención</span>
-                            <strong>{asNumber(attentionTotal)}</strong>
-                            <small>{attentionTotal > 0 ? 'solicitudes e incidencias pendientes' : 'sin pendientes'}</small>
-                        </article>
-                        <article className={data.payroll.activeRule ? 'is-ready' : 'needs-attention'}>
-                            <span>Configuración de nómina</span>
-                            <strong>{data.payroll.activeRule ? 'Lista' : 'Pendiente'}</strong>
-                            <small>{data.payroll.activeRule ? 'hay una regla legal activa' : 'falta activar IR, INSS e INATEC'}</small>
-                        </article>
-                        <article>
-                            <span>Corridas en proceso</span>
-                            <strong>{asNumber(data.payroll.draftRuns + data.payroll.reviewRuns + data.payroll.approvedRuns)}</strong>
-                            <small>borrador, revisión o listas para pago</small>
-                        </article>
+                    <section className={styles.kpiRow} aria-label="Resumen de personal">
+                        <StatCard
+                            label="Requieren atención"
+                            tone={attentionTotal == null ? 'neutral' : attentionTotal > 0 ? 'warning' : 'success'}
+                            value={asNumber(attentionTotal)}
+                            context={attentionTotal == null ? 'Algún pendiente no está disponible; no se suma un total parcial.' : attentionTotal > 0 ? 'Solicitudes e incidencias pendientes de resolver.' : 'Sin pendientes.'}
+                            action={attentionTotal ? { label: 'Ver pendientes', onClick: () => navigate('/rh/ausencias') } : undefined}
+                        />
+                        <StatCard
+                            label="Configuración de nómina"
+                            tone={data.payroll.activeRule ? 'success' : 'warning'}
+                            value={data.payroll.activeRule ? 'Lista' : 'Pendiente'}
+                            context={data.payroll.activeRule ? 'Hay una regla legal activa (IR, INSS e INATEC).' : 'Falta activar IR, INSS e INATEC para calcular nómina.'}
+                            action={data.payroll.activeRule ? undefined : { label: 'Configurar', onClick: () => navigate('/rh/nomina/configuracion-legal') }}
+                        />
+                        <StatCard
+                            label="Corridas en proceso"
+                            value={asNumber(runsInProcess)}
+                            context={runsInProcess == null ? 'El estado de las corridas no está disponible.' : `Borrador, revisión o listas para pago (${asNumber(data.payroll.approvedRuns)} listas para pago).`}
+                            action={runsInProcess ? { label: 'Abrir nómina', onClick: () => navigate('/rh/nomina') } : undefined}
+                        />
                     </section>
 
-                    <div className="hr-dashboard-workgrid">
-                        <section className="hr-dashboard-card" aria-labelledby="hr-attention-title">
+                    <div className={styles.workgrid}>
+                        <section className={styles.card} aria-labelledby="hr-attention-title">
                             <header>
                                 <div>
-                                    <span className="hr-dashboard-eyebrow">Bandeja de trabajo</span>
+                                    <span className={styles.eyebrow}>Bandeja de trabajo</span>
                                     <h2 id="hr-attention-title">Por atender</h2>
                                 </div>
-                                <span className="hr-dashboard-count">{asNumber(attentionTotal)}</span>
+                                <span className={styles.count}>{asNumber(attentionTotal)}</span>
                             </header>
-                            <div className="hr-dashboard-task-list">
+                            <div className={styles.taskList}>
                                 <button type="button" onClick={() => navigate('/rh/ausencias')}>
                                     <CalendarDays size={20} />
                                     <span><strong>Permisos y vacaciones</strong><small>Revisar solicitudes del equipo</small></span>
@@ -139,39 +145,39 @@ export default function HrDashboard() {
                             </div>
                         </section>
 
-                        <section className="hr-dashboard-card" aria-labelledby="hr-payroll-route-title">
+                        <section className={styles.card} aria-labelledby="hr-payroll-route-title">
                             <header>
                                 <div>
-                                    <span className="hr-dashboard-eyebrow">Proceso guiado</span>
+                                    <span className={styles.eyebrow}>Proceso guiado</span>
                                     <h2 id="hr-payroll-route-title">Ruta de nómina</h2>
                                 </div>
                                 <WalletCards size={24} />
                             </header>
-                            <ol className="hr-dashboard-payroll-route">
-                                <li className={data.payroll.activeRule ? 'complete' : 'current'}>
+                            <ol className={styles.route}>
+                                <li className={data.payroll.activeRule ? styles.complete : styles.current}>
                                     <button type="button" onClick={() => navigate('/rh/nomina/configuracion-legal')}>
-                                        <span className="step-number">1</span>
+                                        <span className={styles.stepNumber}>1</span>
                                         <span><strong>Reglas legales</strong><small>{data.payroll.activeRule ? 'Configuración activa' : 'Configura régimen, IR, INSS e INATEC'}</small></span>
                                         {data.payroll.activeRule ? <CheckCircle2 size={19} /> : <ArrowRight size={17} />}
                                     </button>
                                 </li>
-                                <li className={data.payroll.draftRuns > 0 ? 'current' : ''}>
+                                <li className={data.payroll.draftRuns > 0 ? styles.current : undefined}>
                                     <button type="button" onClick={() => navigate('/rh/nomina')}>
-                                        <span className="step-number">2</span>
+                                        <span className={styles.stepNumber}>2</span>
                                         <span><strong>Preparar y calcular</strong><small>{asNumber(data.payroll.draftRuns)} corridas en borrador</small></span>
                                         <ArrowRight size={17} />
                                     </button>
                                 </li>
-                                <li className={data.payroll.reviewRuns > 0 ? 'current' : ''}>
+                                <li className={data.payroll.reviewRuns > 0 ? styles.current : undefined}>
                                     <button type="button" onClick={() => navigate('/rh/nomina')}>
-                                        <span className="step-number">3</span>
+                                        <span className={styles.stepNumber}>3</span>
                                         <span><strong>Revisar y aprobar</strong><small>{asNumber(data.payroll.reviewRuns)} esperando revisión</small></span>
                                         <ArrowRight size={17} />
                                     </button>
                                 </li>
-                                <li className={data.payroll.approvedRuns > 0 ? 'current' : ''}>
+                                <li className={data.payroll.approvedRuns > 0 ? styles.current : undefined}>
                                     <button type="button" onClick={() => navigate('/rh/nomina')}>
-                                        <span className="step-number">4</span>
+                                        <span className={styles.stepNumber}>4</span>
                                         <span><strong>Pagar y publicar colillas</strong><small>{asNumber(data.payroll.approvedRuns)} listas para pago</small></span>
                                         <ArrowRight size={17} />
                                     </button>
@@ -180,15 +186,15 @@ export default function HrDashboard() {
                         </section>
                     </div>
 
-                    <section className="hr-dashboard-card hr-dashboard-setup" aria-labelledby="hr-setup-title">
+                    <section className={`${styles.card} ${styles.setup}`} aria-labelledby="hr-setup-title">
                         <header>
                             <div>
-                                <span className="hr-dashboard-eyebrow">Preparación del módulo</span>
+                                <span className={styles.eyebrow}>Preparación del módulo</span>
                                 <h2 id="hr-setup-title">Configuración base</h2>
                             </div>
                             <Settings2 size={22} />
                         </header>
-                        <div className="hr-dashboard-setup-grid">
+                        <div className={styles.setupGrid}>
                             <button type="button" onClick={() => navigate('/rh/personal')}>
                                 <UserCheck size={21} /><span><strong>Personal</strong><small>{asNumber(data.employees.internalAccounts)} cuentas vinculadas</small></span>
                             </button>

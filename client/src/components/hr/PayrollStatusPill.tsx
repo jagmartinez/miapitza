@@ -1,3 +1,6 @@
+import { Badge } from '@/ui';
+import { payrollTone } from './statusTone';
+
 const LABELS: Record<string, string> = {
   DRAFT: 'Borrador',
   ACTIVE: 'Activa',
@@ -15,17 +18,6 @@ const LABELS: Record<string, string> = {
   BLOCKING: 'Bloqueante',
 };
 
-const OK = new Set(['ACTIVE', 'APPROVED', 'PAID', 'PUBLISHED']);
-const WARNING = new Set(['DRAFT', 'OPEN', 'CALCULATED', 'REVIEW', 'WARNING']);
-const DANGER = new Set(['VOID', 'BLOCKING']);
-
 export default function PayrollStatusPill({ status }: { status: string }) {
-  const className = OK.has(status)
-    ? 'ok'
-    : DANGER.has(status)
-      ? 'danger'
-      : WARNING.has(status)
-        ? 'warning'
-        : 'neutral';
-  return <span className={`hr-payroll-status ${className}`}>{LABELS[status] ?? status}</span>;
+  return <Badge tone={payrollTone(status)} dot>{LABELS[status] ?? status}</Badge>;
 }

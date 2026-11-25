@@ -14,9 +14,9 @@ import {
     ShieldCheck,
     Trash2,
 } from 'lucide-react';
+import { PageHeader } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import MyHrNav from '../../components/hr/MyHrNav';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -206,7 +206,11 @@ export default function Biometrics() {
 
     return (
         <div className="page-wrapper hr-biometrics-page my-hr-page">
-            <PageHeader className="my-hr-page-header" title="Mi biometría" subtitle="Controla tu consentimiento y completa el enrolamiento de forma segura" icon={Fingerprint} actions={<MyHrNav />} />
+            <PageHeader
+        title="Mi biometría"
+        description="Controla tu consentimiento y completa el enrolamiento de forma segura"
+        actions={<MyHrNav />}
+      />
             {!online && <OnlineOnlyNotice online={false} />}
 
             {loading && <LoadingSpinner text="Cargando estado biométrico…" />}

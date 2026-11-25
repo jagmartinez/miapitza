@@ -38,7 +38,7 @@ describe('RH and Catering UI design-system contract', () => {
 
   it('uses the project React Select adapter instead of native selects in RH', () => {
     expect(hrSource).not.toMatch(/<\/?select\b/);
-    expect(selectAdapter).toContain("import Select from '../Select'");
+    expect(selectAdapter).toContain('AppSelect');
     expect(hrSource).toContain('<HrReactSelect');
     expect(sharedStyles).toContain(":not(.react-select__input)");
   });
@@ -49,11 +49,11 @@ describe('RH and Catering UI design-system contract', () => {
   });
 
   it('uses compact premium shells for employee and shift editors', () => {
-    expect(employees).toContain('width="large"');
-    expect(schedules).toContain('width="large"');
-    expect(shiftForm).toContain('premium-modal-content hr-shift-modal-content');
-    expect(shiftForm).toContain('className="modal-tabs"');
-    expect(shiftForm).toContain('className="modal-footer"');
+    expect(employees).toContain('<FullScreenModal');
+    expect(schedules).toContain('<FullScreenModal');
+    expect(shiftForm).toContain('hr-shift-modal-content');
+    expect(shiftForm).toContain('<Tabs');
+    expect(shiftForm).toContain('className="hr-modal-form-footer"');
   });
 
   it('styles attendance controls without leaking into React Select internals', () => {
@@ -79,8 +79,9 @@ describe('RH and Catering UI design-system contract', () => {
   });
 
   it('uses one accessible typography and spacing contract for RH modal forms', () => {
-    expect(modalShell).toContain('aria-controls={panelId}');
-    expect(modalShell).toContain('role="tabpanel"');
+    expect(modalShell).toContain('<FormSection');
+    expect(modalShell).toContain('<FormGrid>');
+    expect(modalShell).toContain('aria-label={ariaLabel}');
     expect(modalStyles).toContain('font-family: inherit');
     expect(modalStyles).toContain('font-size: 14px');
     expect(modalStyles).toContain('min-height: 42px');

@@ -1,3 +1,6 @@
+import { Badge } from '@/ui';
+import { benefitsTone } from './statusTone';
+
 const LABELS: Record<string, string> = {
   DRAFT: 'Borrador',
   SUBMITTED: 'Enviada',
@@ -22,13 +25,5 @@ const LABELS: Record<string, string> = {
 };
 
 export default function BenefitsStatusPill({ status }: { status: string }) {
-  const tone =
-    status === 'ACTIVE' || status === 'APPROVED' || status === 'SETTLED' || status === 'PAID'
-      ? 'success'
-      : status === 'REJECTED' || status === 'CANCELLED' || status === 'REVERSED'
-        ? 'danger'
-        : status === 'DRAFT' || status === 'CLOSED' || status === 'COMPLETED'
-          ? 'neutral'
-          : 'warning';
-  return <span className={`hr-benefits-status ${tone}`}>{LABELS[status] ?? status}</span>;
+  return <Badge tone={benefitsTone(status)} dot>{LABELS[status] ?? status}</Badge>;
 }

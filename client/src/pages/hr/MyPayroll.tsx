@@ -2,9 +2,9 @@ import HrReactSelect from '../../components/hr/HrReactSelect';
 import { formatHrMoney } from '../../utils/hrFormat';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Download, FileText, Gift, RefreshCw, WalletCards } from 'lucide-react';
+import { PageHeader } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import MyHrNav from '../../components/hr/MyHrNav';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollReceiptBreakdown from '../../components/hr/PayrollReceiptBreakdown';
@@ -102,10 +102,8 @@ export default function MyPayroll() {
   return (
     <div className="page-wrapper hr-payroll-page hr-my-payroll-page my-hr-page">
       <PageHeader
-        className="my-hr-page-header"
         title="Mis recibos"
-        subtitle="Consulta y descarga el desglose exacto publicado por nómina"
-        icon={WalletCards}
+        description="Consulta y descarga el desglose exacto publicado por nómina"
         actions={<MyHrNav />}
       />
 

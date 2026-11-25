@@ -10,13 +10,12 @@ import {
   MapPin,
   FileText,
   RefreshCw,
-  UserRound,
   WalletCards,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { PageHeader } from '@/ui';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import MyHrNav from '../../components/hr/MyHrNav';
 import { benefitsClient } from '../../components/hr/benefitsClient';
 import { payrollClient } from '../../components/hr/payrollClient';
@@ -142,7 +141,7 @@ export default function MyHrLanding() {
 
   return (
     <div className="page-wrapper hr-my-landing-page">
-      <PageHeader title="Mi portal RH" subtitle="Tu jornada, solicitudes y pagos en un solo lugar" icon={UserRound} />
+      <PageHeader title="Mi portal RH" description="Tu jornada, solicitudes y pagos en un solo lugar" />
       <MyHrNav />
 
       <section className="hr-my-welcome" aria-labelledby="my-hr-welcome-title">

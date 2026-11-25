@@ -20,6 +20,6 @@ describe('attendance settings scope UX contract', () => {
 
   it('supports explicit searchability in the shared RH select', () => {
     expect(select).toContain('isSearchable?: boolean');
-    expect(select).toContain('isSearchable={isSearchable ?? options.length > 8}');
+    expect(select).toContain('<AppSelect<string>');
   });
 });

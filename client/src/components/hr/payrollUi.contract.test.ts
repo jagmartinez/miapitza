@@ -80,7 +80,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(configuration).toContain('Configuración vigente en modo consulta');
     expect(configuration).toContain('Tramos anuales de IR laboral');
     expect(configuration).toContain('Qué aplica a cada ingreso y deducción');
-    expect(configuration).toContain('statutory.paymentConceptCatalog.map');
+    expect(configuration).toContain('rows={statutory.paymentConceptCatalog}');
     expect(legalCss).toContain('@media (max-width: 760px)');
   });
 
