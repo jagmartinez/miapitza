@@ -77,7 +77,7 @@ describe('employee self-service UX contract', () => {
     expect(schedule).toContain('Ir a marcaje');
     expect(schedule).toContain('Reintentar');
     expect(payroll).toContain('Ver recibos del año actual');
-    expect(payroll).toContain('Reintentar');
+    expect(payroll).toContain('LoadErrorState');
     expect(benefits).toContain("tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'");
     expect(benefits).toContain('Reintentar');
     expect(workforce).toContain('En espera');

@@ -96,6 +96,6 @@ describe('RH operational UI contract', () => {
     expect(myBenefits).toContain('role="tabpanel"');
     expect(myPayroll).toContain('<AppSelect');
     expect(myPayroll).toContain('formatHrMoney(receipt.currency, receipt.netPay)');
-    expect(myPayroll).toContain('my-hr-summary-grid');
+    expect(myPayroll).toContain('<DataTable');
   });
 });

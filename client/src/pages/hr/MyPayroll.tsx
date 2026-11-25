@@ -1,7 +1,7 @@
 import { formatHrMoney } from '../../utils/hrFormat';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Download, FileText, Gift, RefreshCw, WalletCards } from 'lucide-react';
-import { PageHeader, AppSelect, Button } from '@/ui';
+import { Download, FileText, Gift, RefreshCw } from 'lucide-react';
+import { AppSelect, Button, DataTable, EmptyState, Field, Input, LoadErrorState, PageHeader, type Column } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
@@ -16,6 +16,7 @@ import type {
   HrPayrollRunKind,
 } from '../../types/hr-payroll';
 import './payroll.css';
+import styles from './MyPayroll.module.css';
 import './self-service.css';
 
 const currentYear = new Date().getFullYear();
@@ -94,11 +95,32 @@ export default function MyPayroll() {
     }
   };
 
-  const regularReceiptCount = receipts.filter((receipt) => receipt.runKind === 'REGULAR').length;
-  const bonusReceiptCount = receipts.filter((receipt) => receipt.runKind === 'AGUINALDO').length;
+  const columns: Column<HrPayrollReceiptSummary>[] = [
+    {
+      key: 'runCode',
+      header: 'Recibo',
+      width: '1.2fr',
+      render: (receipt) => (
+        <span className={styles.kind}>
+          {receipt.runKind === 'AGUINALDO' ? <Gift size={16} aria-hidden="true" /> : <FileText size={16} aria-hidden="true" />}
+          <strong>{receipt.runCode}</strong>
+        </span>
+      ),
+    },
+    { key: 'periodLabel', header: 'Periodo', width: '1.4fr' },
+    { key: 'payDate', header: 'Pago', width: '1fr', render: (receipt) => formatDate(receipt.payDate) },
+    {
+      key: 'netPay',
+      header: 'Neto',
+      width: '1fr',
+      type: 'number',
+      render: (receipt) => formatHrMoney(receipt.currency, receipt.netPay),
+    },
+    { key: 'status', header: 'Estado', width: '0.9fr', render: (receipt) => <PayrollStatusPill status={receipt.status} /> },
+  ];
 
   return (
-    <div className="page-wrapper hr-payroll-page hr-my-payroll-page my-hr-page">
+    <div className={`page-wrapper hr-payroll-page hr-my-payroll-page my-hr-page ${styles.page}`}>
       <PageHeader
         title="Mis recibos"
         description="Consulta y descarga el desglose exacto publicado por nómina"
@@ -107,18 +129,10 @@ export default function MyPayroll() {
 
       {!online && <PayrollOnlineNotice online={false} />}
 
-      {!loading && !error && (
-        <section className="my-hr-summary-grid" aria-label="Resumen de recibos publicados">
-          <article><WalletCards size={19} aria-hidden="true" /><span>Recibos visibles</span><strong>{receipts.length}</strong><small>Según el tipo y año seleccionados</small></article>
-          <article><FileText size={19} aria-hidden="true" /><span>Nómina ordinaria</span><strong>{regularReceiptCount}</strong><small>Colillas regulares publicadas</small></article>
-          <article><Gift size={19} aria-hidden="true" /><span>Aguinaldo</span><strong>{bonusReceiptCount}</strong><small>Recibos de aguinaldo publicados</small></article>
-        </section>
-      )}
-
-      <div className="hr-payroll-filterbar my-hr-toolbar" aria-label="Filtros de recibos">
-        <label>
-          Tipo
+      <div className={styles.filters} role="group" aria-label="Filtros de recibos">
+        <Field label="Tipo" htmlFor="my-payroll-kind">
           <AppSelect<string>
+            inputId="my-payroll-kind"
             options={[
               { value: '', label: 'Todos' },
               { value: 'REGULAR', label: 'Nómina ordinaria' },
@@ -128,97 +142,53 @@ export default function MyPayroll() {
             onChange={(next) => setKind((next ?? '') as '' | HrPayrollRunKind)}
             isClearable={false}
           />
-        </label>
-        <label>
-          Año
-          <input
+        </Field>
+        <Field label="Año" htmlFor="my-payroll-year">
+          <Input
+            id="my-payroll-year"
             type="number"
             min="2000"
             max="2200"
             value={year}
             onChange={(event) => setYear(event.target.value)}
           />
-        </label>
-        <Button variant="ghost" onClick={() => void load()} disabled={loading}>
-          <RefreshCw size={16} aria-hidden="true" /> Actualizar
+        </Field>
+        <Button variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading}>
+          Actualizar
         </Button>
       </div>
 
-      {loading && <LoadingSpinner text="Cargando tus recibos…" />}
+      {!loading && error ? (
+        <LoadErrorState message={error} onRetry={() => void load()} />
+      ) : (
+        <div className={styles.layout}>
+          <DataTable<HrPayrollReceiptSummary>
+            ariaLabel="Recibos publicados"
+            columns={columns}
+            rows={receipts}
+            rowKey={(receipt) => receipt.id}
+            loading={loading}
+            defaultPageSize={25}
+            onRowClick={(receipt) => {
+              if (!detailLoading) void openReceipt(receipt);
+            }}
+            rowTone={(receipt) => (selected?.id === receipt.id ? 'primary' : undefined)}
+            empty={
+              <EmptyState
+                icon={FileText}
+                title="No hay recibos publicados para los filtros seleccionados."
+                action={
+                  kind || year !== String(currentYear) ? (
+                    <Button size="sm" variant="ghost" onClick={() => { setKind(''); setYear(String(currentYear)); }}>
+                      Ver recibos del año actual
+                    </Button>
+                  ) : undefined
+                }
+              />
+            }
+          />
 
-      {!loading && error && (
-        <div className="state-placeholder" role="alert">
-          <AlertTriangle size={42} aria-hidden="true" />
-          <p className="state-error">{error}</p>
-          <Button variant="ghost" onClick={() => void load()}>
-            Reintentar
-          </Button>
-        </div>
-      )}
-
-      {!loading && !error && (
-        <div className="hr-my-payroll-layout">
-          <section className="hr-payroll-section" aria-labelledby="my-receipts-heading">
-            <div className="hr-payroll-section-heading">
-              <div>
-                <h2 id="my-receipts-heading">
-                  <FileText size={20} aria-hidden="true" /> Recibos publicados
-                </h2>
-                <p>
-                  El servidor limita esta lista a tu usuario y conserva recibos anulados por
-                  trazabilidad.
-                </p>
-              </div>
-              <span className="hr-payroll-count">{receipts.length}</span>
-            </div>
-
-            {receipts.length === 0 ? (
-              <div className="hr-payroll-empty">
-                <FileText size={34} aria-hidden="true" />
-                <p>No hay recibos publicados para los filtros seleccionados.</p>
-                {(kind || year !== String(currentYear)) && (
-                  <Button size="sm" variant="ghost" onClick={() => { setKind(''); setYear(String(currentYear)); }}>
-                    Ver recibos del año actual
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="hr-my-receipt-list">
-                {receipts.map((receipt) => (
-                  <button
-                    key={receipt.id}
-                    type="button"
-                    className={selected?.id === receipt.id ? 'selected' : ''}
-                    onClick={() => void openReceipt(receipt)}
-                    disabled={detailLoading}
-                    aria-current={selected?.id === receipt.id ? 'true' : undefined}
-                  >
-                    <span className="hr-receipt-kind-icon" aria-hidden="true">
-                      {receipt.runKind === 'AGUINALDO' ? (
-                        <Gift size={19} />
-                      ) : (
-                        <FileText size={19} />
-                      )}
-                    </span>
-                    <span>
-                      <strong>{receipt.runCode}</strong>
-                      <small>
-                        {receipt.periodLabel} · pago {formatDate(receipt.payDate)}
-                      </small>
-                    </span>
-                    <span className="hr-my-receipt-amount">
-                      <strong>
-                        {formatHrMoney(receipt.currency, receipt.netPay)}
-                      </strong>
-                      <PayrollStatusPill status={receipt.status} />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="hr-payroll-section hr-my-receipt-workspace" aria-live="polite">
+          <section className={styles.workspace} aria-live="polite" aria-label="Desglose del recibo">
             {detailLoading ? (
               <LoadingSpinner text="Abriendo desglose…" />
             ) : selected ? (
@@ -229,14 +199,11 @@ export default function MyPayroll() {
                 onDownload={() => void downloadReceipt()}
               />
             ) : (
-              <div className="hr-payroll-empty-workspace">
-                <Download size={40} aria-hidden="true" />
-                <h2>Selecciona un recibo</h2>
-                <p>
-                  Verás importes, componentes y trazabilidad exactamente como fueron publicados por
-                  el servidor.
-                </p>
-              </div>
+              <EmptyState
+                icon={Download}
+                title="Selecciona un recibo"
+                description="Verás importes, componentes y trazabilidad exactamente como fueron publicados por el servidor."
+              />
             )}
           </section>
         </div>
