@@ -18,25 +18,16 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, formatPercent } from '@/ui';
+import { DataTable, FullScreenModal, formatMoney, formatPercent } from '@/ui';
 import Button from '../Button';
-import { formatHrMoney } from '../../utils/hrFormat';
 import type {
   HrPayrollAction,
   HrPayrollComponent,
   HrPayrollRunDetail,
-  HrPayrollRunStatus,
 } from '../../types/hr-payroll';
 import PayrollReconciliationPanel from './PayrollReconciliationPanel';
 import PayrollStatusPill from './PayrollStatusPill';
 
-const FLOW: Array<{ status: HrPayrollRunStatus; label: string; help: string }> = [
-  { status: 'DRAFT', label: 'Preparar', help: 'Periodo y colaboradores' },
-  { status: 'CALCULATED', label: 'Calcular', help: 'Ingresos y deducciones' },
-  { status: 'REVIEW', label: 'Revisar', help: 'Incidencias y control' },
-  { status: 'APPROVED', label: 'Aprobar', help: 'Cierre de importes' },
-  { status: 'PAID', label: 'Pagar y publicar', help: 'Colillas disponibles' },
-];
 
 const ACTION_LABELS: Record<HrPayrollAction, string> = {
   CALCULATE: 'Calcular nómina',
@@ -88,14 +79,20 @@ function componentsTotal(components: HrPayrollComponent[], type: 'INCOME' | 'DED
   return total;
 }
 
+function moneyOrND(currency: string, value: string | number | null | undefined): string {
+  if (value == null || value === '' || !Number.isFinite(Number(value))) return 'N/D';
+  const symbol = currency === 'NIO' ? 'C$' : currency === 'USD' ? 'US$' : currency;
+  return formatMoney(value, symbol);
+}
+
 function formatRunTotal(currency: string, value?: string | null) {
   if (value == null || value === '') return 'Pendiente de cálculo';
-  return formatHrMoney(currency, value);
+  return moneyOrND(currency, value);
 }
 
 function formatEmployeeMoney(currency: string, value: number | null) {
   if (value === null) return 'Pendiente de cálculo';
-  return formatHrMoney(currency, value);
+  return moneyOrND(currency, value);
 }
 
 function authoritativeMoney(receiptValue: string | undefined | null, fallback: number | null) {
@@ -131,7 +128,6 @@ export default function PayrollOperationWorkspace({
   const [onlyIncidents, setOnlyIncidents] = useState(false);
   const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
   const currency = run.totals?.currency ?? 'NIO';
-  const currentStep = run.status === 'VOID' ? -1 : FLOW.findIndex((step) => step.status === run.status);
   const primaryAction = run.allowedActions.find((action) => action !== 'VOID');
 
   const rows = useMemo(() => run.snapshot.map((snapshot) => {
@@ -173,6 +169,7 @@ export default function PayrollOperationWorkspace({
     const matchesQuery = row.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
     return matchesQuery && (!onlyIncidents || row.anomalies.length > 0);
   });
+  const totalsKnown = filteredRows.every((row) => [row.gross, row.inss, row.incomeTax, row.deductions, row.net].every((v) => v !== null));
   const receiptIds = run.receipts.filter((receipt) => receipt.status === 'PUBLISHED').map((receipt) => receipt.id);
 
   type PayrollRow = (typeof rows)[number];
@@ -190,13 +187,13 @@ export default function PayrollOperationWorkspace({
       </header>
       <section>
         <div className="payroll-operation-detail-heading"><CircleDollarSign size={18} aria-hidden="true" /><div><h4>Ingresos</h4><small>{row.components.filter((item) => item.type === 'INCOME').length} concepto(s)</small></div></div>
-        {row.components.filter((item) => item.type === 'INCOME').map((item) => <Line key={item.id} label={item.name} note={item.source} amount={formatHrMoney(currency, item.amount)} />)}
+        {row.components.filter((item) => item.type === 'INCOME').map((item) => <Line key={item.id} label={item.name} note={item.source} amount={moneyOrND(currency, item.amount)} />)}
         {!row.components.some((item) => item.type === 'INCOME') && <p className="payroll-operation-detail-empty">Sin ingresos calculados.</p>}
         <footer><span>Total ingresos</span><strong>{formatEmployeeMoney(currency, row.gross)}</strong></footer>
       </section>
       <section>
         <div className="payroll-operation-detail-heading"><Minus size={18} aria-hidden="true" /><div><h4>Deducciones</h4><small>{row.components.filter((item) => item.type === 'DEDUCTION').length} concepto(s)</small></div></div>
-        {row.components.filter((item) => item.type === 'DEDUCTION').map((item) => <Line key={item.id} label={item.name} note={item.code} amount={formatHrMoney(currency, item.amount)} />)}
+        {row.components.filter((item) => item.type === 'DEDUCTION').map((item) => <Line key={item.id} label={item.name} note={item.code} amount={moneyOrND(currency, item.amount)} />)}
         {!row.components.some((item) => item.type === 'DEDUCTION') && <p className="payroll-operation-detail-empty">Sin deducciones.</p>}
         <footer><span>Total deducciones</span><strong>{formatEmployeeMoney(currency, row.deductions)}</strong></footer>
       </section>
@@ -207,9 +204,9 @@ export default function PayrollOperationWorkspace({
       </section>
       <section className="payroll-operation-payslip">
         <div className="payroll-operation-detail-heading"><Receipt size={18} aria-hidden="true" /><div><h4>Colilla de pago</h4><small>{row.receipt ? 'Documento publicado' : 'Pendiente de publicación'}</small></div></div>
-        {row.receipt ? <><strong className="payroll-operation-payslip-net">Neto pagado: {formatHrMoney(row.receipt.currency, row.receipt.netPay)}</strong><p>Disponible para el colaborador en Mi RH.</p><Button size="sm" variant="secondary" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy}><Download size={14} /> Descargar colilla PDF</Button></> : <p>Se genera automáticamente cuando se registra el pago de la corrida.</p>}
+        {row.receipt ? <><strong className="payroll-operation-payslip-net">Neto pagado: {moneyOrND(row.receipt.currency, row.receipt.netPay)}</strong><p>Disponible para el colaborador en Mi RH.</p><Button size="sm" variant="secondary" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy}><Download size={14} /> Descargar colilla PDF</Button></> : <p>Se genera automáticamente cuando se registra el pago de la corrida.</p>}
       </section>
-      {row.statutory && <details className="payroll-operation-statutory"><summary>Traza de INSS e IR</summary><div><Line label="Base INSS" note={`Configuración #${row.statutory.configurationRevisionId}`} amount={formatHrMoney(currency, row.statutory.inssBase)} /><Line label="INSS laboral" note={`Método ${row.statutory.methodVersion}`} amount={formatHrMoney(currency, row.statutory.employeeInss)} /><Line label="Proyección anual IR" note={`${row.statutory.elapsedFiscalMonths}/12 meses fiscales`} amount={formatHrMoney(currency, row.statutory.annualProjection)} /><Line label="IR retenido" note={row.statutory.incomeTaxMethod} amount={formatHrMoney(currency, row.statutory.currentIncomeTaxWithheld)} /><p>Tramo efectivo: {row.statutory.bracketSnapshot?.effective ? `${row.statutory.bracketSnapshot.effective.lowerBound} a ${row.statutory.bracketSnapshot.effective.upperBound ?? 'en adelante'} · tasa ${formatPercent(Number(row.statutory.bracketSnapshot.effective.rate) * 100)}` : 'sin retención aplicable'}.</p><small>Histórico {row.statutory.historyFingerprint} · cálculo {formatDateTime(row.statutory.createdAt)}</small><span className="sr-only">Compensación fija {row.statutory.fixedCompensationAmount}</span></div></details>}
+      {row.statutory && <details className="payroll-operation-statutory"><summary>Traza de INSS e IR</summary><div><Line label="Base INSS" note={`Configuración #${row.statutory.configurationRevisionId}`} amount={moneyOrND(currency, row.statutory.inssBase)} /><Line label="INSS laboral" note={`Método ${row.statutory.methodVersion}`} amount={moneyOrND(currency, row.statutory.employeeInss)} /><Line label="Proyección anual IR" note={`${row.statutory.elapsedFiscalMonths}/12 meses fiscales`} amount={moneyOrND(currency, row.statutory.annualProjection)} /><Line label="IR retenido" note={row.statutory.incomeTaxMethod} amount={moneyOrND(currency, row.statutory.currentIncomeTaxWithheld)} /><p>Tramo efectivo: {row.statutory.bracketSnapshot?.effective ? `${row.statutory.bracketSnapshot.effective.lowerBound} a ${row.statutory.bracketSnapshot.effective.upperBound ?? 'en adelante'} · tasa ${formatPercent(Number(row.statutory.bracketSnapshot.effective.rate) * 100)}` : 'sin retención aplicable'}.</p><small>Histórico {row.statutory.historyFingerprint} · cálculo {formatDateTime(row.statutory.createdAt)}</small><span className="sr-only">Compensación fija {row.statutory.fixedCompensationAmount}</span></div></details>}
     </div>
   );
 
@@ -233,19 +230,10 @@ export default function PayrollOperationWorkspace({
         </Button>
       </header>
 
-      {run.status === 'VOID' ? (
+      {run.status === 'VOID' && (
         <div className="payroll-operation-alert danger" role="alert">
           <AlertTriangle size={20} /> Esta corrida fue anulada. Se conserva únicamente para consulta y auditoría.
         </div>
-      ) : (
-        <ol className="payroll-operation-stepper" aria-label="Etapas de la corrida">
-          {FLOW.map((step, index) => (
-            <li key={step.status} className={index < currentStep ? 'complete' : index === currentStep ? 'current' : ''} aria-current={index === currentStep ? 'step' : undefined}>
-              <span>{index < currentStep ? <Check size={15} /> : index + 1}</span>
-              <div><strong>{step.label}</strong><small>{step.help}</small></div>
-            </li>
-          ))}
-        </ol>
       )}
 
       <div className="payroll-operation-next-action">
@@ -333,11 +321,11 @@ export default function PayrollOperationWorkspace({
             empty="No hay colaboradores que coincidan con los filtros."
             columns={[
               { key: 'name', header: 'Colaborador', width: '1.6fr', render: (row) => <><strong>{row.name}</strong><small>{row.branch ?? `ID ${row.userId}`}</small></> },
-              { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', render: (row) => formatEmployeeMoney(currency, row.gross) },
-              { key: 'inss', header: 'INSS laboral', width: '1fr', type: 'money', render: (row) => formatEmployeeMoney(currency, row.inss) },
-              { key: 'ir', header: 'IR laboral', width: '1fr', type: 'money', render: (row) => formatEmployeeMoney(currency, row.incomeTax) },
-              { key: 'deductions', header: 'Deducciones', width: '1fr', type: 'money', render: (row) => formatEmployeeMoney(currency, row.deductions) },
-              { key: 'net', header: 'Neto', width: '1fr', type: 'money', render: (row) => <strong>{formatEmployeeMoney(currency, row.net)}</strong> },
+              { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.gross, render: (row) => formatEmployeeMoney(currency, row.gross) },
+              { key: 'inss', header: 'INSS laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.inss, render: (row) => formatEmployeeMoney(currency, row.inss) },
+              { key: 'ir', header: 'IR laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.incomeTax, render: (row) => formatEmployeeMoney(currency, row.incomeTax) },
+              { key: 'deductions', header: 'Deducciones', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.deductions, render: (row) => formatEmployeeMoney(currency, row.deductions) },
+              { key: 'net', header: 'Neto', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.net, render: (row) => <strong>{formatEmployeeMoney(currency, row.net)}</strong> },
               { key: 'incidents', header: 'Incidencias', width: '1fr', render: (row) => (row.anomalies.length ? <span className="payroll-operation-incident">{row.anomalies.length}</span> : <span className="payroll-operation-ok"><Check size={14} /> Sin incidencias</span>) },
               {
                 key: 'actions',

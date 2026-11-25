@@ -49,6 +49,17 @@ describe('payrollKpis', () => {
     expect(k.blocking).toEqual({ count: 2, runs: [open] });
   });
 
+  it('un borrador con totales en cero (como lo entrega el servidor) no es la corrida más reciente', () => {
+    const zeros = { currency: 'NIO', grossIncome: '0', totalDeductions: '0', employerContributions: '0', netPay: '0', employeeCount: 0 };
+    const draft = run(3, '2026-11-15', '0', { status: 'DRAFT', totals: zeros });
+    const k = payrollKpis([draft, run(2, '2026-10-30', '900'), run(1, '2026-10-15', '800')]);
+    expect(k.latest?.id).toBe(2);
+    expect(k.netDelta).toEqual({ amount: 100, percent: 12.5, currency: 'NIO' });
+    const only = payrollKpis([draft]);
+    expect(only.latest).toBeNull();
+    expect(only.companyCost).toBeNull();
+  });
+
   it('sin corridas con totales no hay tarjetas de monto', () => {
     const k = payrollKpis([run(1, '2026-10-15', '800', { totals: null, status: 'DRAFT' })]);
     expect(k.latest).toBeNull();

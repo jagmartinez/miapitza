@@ -13,7 +13,7 @@ import PayrollOperationWorkspace from '../../components/hr/payroll-operation-wor
 import PayrollRuleForm from '../../components/hr/PayrollRuleForm';
 import PayrollRunForm from '../../components/hr/PayrollRunForm';
 import PayrollRunStepper from '../../components/hr/PayrollRunStepper';
-import { payrollKpis } from '../../components/hr/payrollKpis';
+import { isRunCalculated, payrollKpis } from '../../components/hr/payrollKpis';
 import PayrollStatusPill from '../../components/hr/PayrollStatusPill';
 import PayrollTransitionForm from '../../components/hr/PayrollTransitionForm';
 import usePayrollOnline from '../../components/hr/usePayrollOnline';
@@ -128,13 +128,12 @@ export default function PayrollManagement() {
     setLoading(true);
     setError(null);
     try {
-      const filters = { status: status || undefined };
       const [organization, ruleResult, periodResult, runResult, aguinaldoResult] = await Promise.all([
         hrClient.getOrganization(),
         collectAllPages((page) => payrollClient.getRules({ page, limit: 100 })),
         collectAllPages((page) => payrollClient.getPeriods({ page, limit: 100 })),
-        collectAllPages((page) => payrollClient.getRuns('REGULAR', { ...filters, page, limit: 100 })),
-        collectAllPages((page) => payrollClient.getRuns('AGUINALDO', { ...filters, page, limit: 100 })),
+        collectAllPages((page) => payrollClient.getRuns('REGULAR', { page, limit: 100 })),
+        collectAllPages((page) => payrollClient.getRuns('AGUINALDO', { page, limit: 100 })),
       ]);
       setLookups(organization);
       setRules(ruleResult);
@@ -147,7 +146,7 @@ export default function PayrollManagement() {
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, []);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -340,8 +339,9 @@ export default function PayrollManagement() {
   const kpis = payrollKpis(runs);
   const filteredRuns = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
-    if (!query) return runs;
-    return runs.filter((run) => [
+    const byStatus = status ? runs.filter((run) => run.status === status) : runs;
+    if (!query) return byStatus;
+    return byStatus.filter((run) => [
       run.code,
       runPeriodLabel(run),
       run.period?.dateFrom,
@@ -350,7 +350,7 @@ export default function PayrollManagement() {
       run.cutoffDate,
       run.year != null ? String(run.year) : '',
     ].some((value) => value?.toLocaleLowerCase().includes(query)));
-  }, [runs, searchQuery]);
+  }, [runs, searchQuery, status]);
   const activeRules = rules.filter((rule) => rule.status === 'ACTIVE');
   const operationReady = activeRules.length > 0 && (activeKind === 'AGUINALDO' || periods.some((period) => period.status !== 'VOID'));
 
@@ -443,9 +443,9 @@ export default function PayrollManagement() {
                 { key: 'code', header: 'Corrida', width: '1.4fr', render: (run) => <><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></> },
                 { key: 'period', header: 'Periodo', width: '1fr', render: (run) => runPeriodLabel(run) },
                 { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (run) => <PayrollStatusPill status={run.status} /> },
-                { key: 'employees', header: 'Empleados', width: '0.8fr', type: 'number', render: (run) => (run.totals ? formatNumber(run.totals.employeeCount, 0) : 'N/D') },
-                { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', render: (run) => (run.totals ? runMoney(run.totals.currency, run.totals.grossIncome) : 'N/D') },
-                { key: 'net', header: 'Neto a pagar', width: '1fr', type: 'money', render: (run) => <strong>{run.totals ? runMoney(run.totals.currency, run.totals.netPay) : 'N/D'}</strong> },
+                { key: 'employees', header: 'Empleados', width: '0.8fr', type: 'number', render: (run) => (isRunCalculated(run) && run.totals ? formatNumber(run.totals.employeeCount, 0) : 'N/D') },
+                { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', render: (run) => (isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.grossIncome) : 'N/D') },
+                { key: 'net', header: 'Neto a pagar', width: '1fr', type: 'money', render: (run) => <strong>{isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.netPay) : 'N/D'}</strong> },
                 { key: 'anomalies', header: 'Incidencias', width: '1.1fr', render: (run) => (run.blockingAnomalyCount ? <span className="payroll-run-blocker"><AlertTriangle size={14} /> {run.blockingAnomalyCount} por resolver</span> : run.anomalyCount ? `${run.anomalyCount} informativa(s)` : <span className="payroll-run-clear">Sin incidencias</span>) },
                 { key: 'payDate', header: 'Pago', width: '1fr', render: (run) => formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) },
                 {

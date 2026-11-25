@@ -1,4 +1,4 @@
-import { DataTable } from '@/ui';
+import { DataTable, formatMoney } from '@/ui';
 import { useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -472,7 +472,8 @@ export default function PayrollRuleConfigurationPanel({
 function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrPayrollLegalConfiguration; revision: number }) {
   const { statutory } = configuration;
   const pct = (value: string) => `${(Number(value) * 100).toLocaleString('es-NI', { maximumFractionDigits: 4 })}%`;
-  const money = (value: string) => new Intl.NumberFormat('es-NI', { style: 'currency', currency: configuration.currency, maximumFractionDigits: 2 }).format(Number(value));
+  const symbol = configuration.currency === 'USD' ? 'US$' : configuration.currency === 'NIO' ? 'C$' : configuration.currency;
+  const money = (value: string | null | undefined) => (value == null || value === '' || !Number.isFinite(Number(value)) ? 'N/D' : formatMoney(value, symbol));
   const yesNo = (value: boolean) => value ? 'Sí' : 'No';
   const regimeLabels: Record<string, string> = { GENERAL: 'General', SIMPLIFIED_FIXED_QUOTA: 'Cuota fija / simplificado', SPECIAL: 'Especial', EXEMPT: 'Exento', OTHER: 'Otro' };
   const taxLabels: Record<string, string> = { REGULAR_FIXED: 'IR fijo', REGULAR_VARIABLE: 'IR variable', OCCASIONAL: 'IR ocasional' };

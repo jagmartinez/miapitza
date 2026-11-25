@@ -13,13 +13,20 @@ export interface PayrollKpis {
   blocking: { count: number; runs: HrPayrollRun[] };
 }
 
+const CALCULATED_STATUSES = new Set(['CALCULATED', 'REVIEW', 'APPROVED', 'PAID']);
+
+/** El servidor siempre entrega totales (en cero para borradores); solo cuentan corridas ya calculadas. */
+export function isRunCalculated(run: HrPayrollRun): boolean {
+  return Boolean(run.totals) && (CALCULATED_STATUSES.has(run.status) || Boolean(run.calculatedAt));
+}
+
 function runDate(run: HrPayrollRun): string {
   return run.period?.payDate ?? run.cutoffDate ?? run.createdAt;
 }
 
 export function payrollKpis(runs: HrPayrollRun[]): PayrollKpis {
   const withTotals = runs
-    .filter((run) => run.status !== 'VOID' && run.totals)
+    .filter((run) => run.status !== 'VOID' && isRunCalculated(run))
     .sort((a, b) => runDate(b).localeCompare(runDate(a)) || b.id - a.id);
   const latest = withTotals[0] ?? null;
   const previous = withTotals[1] ?? null;
