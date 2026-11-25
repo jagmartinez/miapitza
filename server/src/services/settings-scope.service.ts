@@ -181,14 +181,14 @@ export class SettingsScopeService {
             const rows = await loadRows(tx, companyId, branchId);
             if (expectedVersion !== undefined && expectedVersion !== rows.version) throw new SettingConflictError();
 
-            if (branchId === null && (normalized.has('kds_warning_minutes') || normalized.has('kds_urgent_minutes'))) {
+            if ((normalized.has('kds_warning_minutes') || normalized.has('kds_urgent_minutes'))) {
                 const effective = (key: string) => {
                     const def = DEF_BY_KEY.get(key)!;
-                    return Number(normalized.get(key)?.value ?? rows.company.get(key) ?? def.default);
+                    return Number(normalized.get(key)?.value ?? (branchId ? rows.overrides.get(key) : undefined) ?? rows.company.get(key) ?? def.default);
                 };
                 if (effective('kds_warning_minutes') >= effective('kds_urgent_minutes')) {
                     throw new SettingValidationError({
-                        kds_warning_minutes: 'El aviso debe ser menor que el tiempo urgente'
+                        [normalized.has('kds_warning_minutes') ? 'kds_warning_minutes' : 'kds_urgent_minutes']: 'El aviso debe ser menor que el tiempo urgente'
                     });
                 }
             }

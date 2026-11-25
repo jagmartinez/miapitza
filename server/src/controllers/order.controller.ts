@@ -429,7 +429,14 @@ export class OrderController {
     static async getKitchenConfig(req: Request, res: Response, next: NextFunction) {
         try {
             const requested = req.query.branchId ? Number(req.query.branchId) : undefined;
-            const branchId = resolveBranchScope(req.user!, requested);
+            let branchId: number | null | undefined;
+            try {
+                branchId = resolveBranchScope(req.user!, requested);
+            } catch (e) {
+                // Read-only config: a user without an active branch still gets the company values.
+                if (!(e instanceof BranchScopeError)) throw e;
+                branchId = null;
+            }
             const data = await SettingsScopeService.getKdsTiming(req.user!.companyId, branchId ?? null);
             res.json({ success: true, data: { ...data, clockStartsAt: 'KITCHEN_RECEIVED_AT' } });
         } catch (error) {

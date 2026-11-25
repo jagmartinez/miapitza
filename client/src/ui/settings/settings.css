@@ -4,7 +4,7 @@
 }
 .ui-settings-row.is-dirty { box-shadow: inset 3px 0 0 var(--ui-warning); padding-left: var(--ui-space-3); }
 .ui-settings-row__label { display: block; font-size: var(--ui-text-md); font-weight: 600; color: var(--ui-text); }
-.ui-settings-row__desc { margin: 2px 0 0; font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
+.ui-settings-row__desc { margin: var(--ui-space-1) 0 0; font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
 .ui-settings-row__source { margin: var(--ui-space-1) 0 0; font-size: var(--ui-text-xs); color: var(--ui-text-muted); }
 .ui-settings-row__reset {
   border: 0; background: none; padding: 0; font: inherit; color: var(--ui-primary); cursor: pointer; text-decoration: underline;

@@ -167,6 +167,16 @@ describe('SettingsScopeService.update review fixes', () => {
         expect(tx.setting.upsert).toHaveBeenCalledTimes(2);
     });
 
+    it('rejects a branch kds save that breaks warning < urgent', async () => {
+        const tx = mockTx({ company: { kds_urgent_minutes: '30' } });
+        await expect(SettingsScopeService.update(1, 3, 9, { kds_warning_minutes: 40 })).rejects.toMatchObject({
+            errors: { kds_warning_minutes: expect.any(String) }
+        });
+        await expect(SettingsScopeService.update(1, 3, 9, { kds_warning_minutes: 20, kds_urgent_minutes: 20 })).rejects.toBeInstanceOf(SettingValidationError);
+        await expect(SettingsScopeService.update(1, 3, 9, { kds_warning_minutes: 10 })).resolves.toBeDefined();
+        expect(tx.branchSettingOverride.upsert).toHaveBeenCalledTimes(1);
+    });
+
     it('reads ruc from Company.ruc', async () => {
         mockReads({ company: { ruc: 'OLD' }, ruc: 'J0310000000001' });
         const out = await SettingsScopeService.resolve(1, null);

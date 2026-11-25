@@ -21,6 +21,15 @@ export function validateSettingValue(def: SettingDef, raw: string): string | nul
     return null;
 }
 
+function sameValue(def: SettingDef, a: string, b: string): boolean {
+    if (def.type === 'number' || def.type === 'integer') {
+        const na = Number(a.trim());
+        const nb = Number(b.trim());
+        if (a.trim() !== '' && b.trim() !== '' && Number.isFinite(na) && Number.isFinite(nb)) return na === nb;
+    }
+    return a === b;
+}
+
 export function useSettingsDraft(defs: SettingDef[], resolved: Record<string, ResolvedSetting>) {
     const [edits, setEdits] = useState<Record<string, string>>({});
 
@@ -44,7 +53,7 @@ export function useSettingsDraft(defs: SettingDef[], resolved: Record<string, Re
     }, [defs, edits, original]);
 
     const dirtyKeys = useMemo(
-        () => defs.filter((d) => draft[d.key] !== original(d.key)).map((d) => d.key),
+        () => defs.filter((d) => !sameValue(d, draft[d.key], original(d.key))).map((d) => d.key),
         [defs, draft, original]
     );
 

@@ -25,6 +25,16 @@ describe('useSettingsDraft', () => {
         expect(result.current.dirtyKeys).toEqual([]);
     });
 
+    it('compara números por valor: 15.00 y 15 son lo mismo', () => {
+        const r = { 'goal.avgTicket': res('goal.avgTicket', '15.00', 'company'), 'goal.laborCostMaxPct': res('goal.laborCostMaxPct', '30', 'company') };
+        const { result } = renderHook(() => useSettingsDraft(defs, r));
+        act(() => result.current.set('goal.avgTicket', '15'));
+        expect(result.current.dirtyKeys).toEqual([]);
+        expect(result.current.changes()).toEqual({});
+        act(() => result.current.set('goal.avgTicket', '16'));
+        expect(result.current.dirtyKeys).toEqual(['goal.avgTicket']);
+    });
+
     it('número inválido reporta el error', () => {
         const { result } = renderHook(() => useSettingsDraft(defs, resolved));
         act(() => result.current.set('goal.avgTicket', 'abc'));
