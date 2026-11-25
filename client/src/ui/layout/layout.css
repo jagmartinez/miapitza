@@ -65,6 +65,10 @@
   .ui-shell__rail { display: none; }
   .ui-shell__menubtn { display: inline-flex; }
   .ui-shell__main { padding: var(--ui-space-4); }
-  .ui-topbar__search { flex: 1; }
+  .ui-topbar { gap: var(--ui-space-2); min-width: 0; }
+  .ui-topbar__search { flex: 1 1 0; min-width: 0; }
   .ui-topbar__crumb { display: none; }
+  .ui-topbar__controls { gap: var(--ui-space-1); flex: none; }
+  /* El idioma se cambia desde Perfil › Preferencias en pantallas angostas. */
+  .ui-topbar__controls .language-selector-wrapper { display: none; }
 }

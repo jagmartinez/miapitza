@@ -47,7 +47,7 @@
 .ui-switch--on .ui-switch__thumb { transform: translateX(16px); }
 
 .ui-segmented {
-  display: inline-flex; padding: 2px; gap: 2px; background: var(--ui-surface-2);
+  display: inline-flex; flex-wrap: wrap; max-width: 100%; padding: 2px; gap: 2px; background: var(--ui-surface-2);
   border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md);
 }
 .ui-segmented__btn {

@@ -43,7 +43,7 @@ const ROWS: Row[] = Array.from({ length: 60 }, (_, i) => ({
     status: STATUSES[i % STATUSES.length],
     qty: (i * 7) % 40,
     price: 12.5 + i * 3.25,
-    margin: 0.2 + (i % 10) / 40,
+    margin: 20 + (i % 10) * 2.5,
     date: `2026-11-${String((i % 28) + 1).padStart(2, '0')}`,
 }));
 
@@ -103,7 +103,7 @@ export default function UiPlayground() {
             <Block title="Indicadores">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--ui-space-4)' }}>
                     <StatCard label="Ventas del día" value={formatMoney(12345.6)} context="+8% frente a ayer" tone="success" action={{ label: 'Ver detalle', to: '/dashboard' }} />
-                    <StatCard label="Margen" value={formatPercent(0.325)} context="Meta 30%" tone="primary" />
+                    <StatCard label="Margen" value={formatPercent(32.5)} context="Meta 30.00 %" tone="primary" />
                     <StatCard label="Insumos bajo mínimo" value="7" context="3 críticos para hoy" tone="warning" action={{ label: 'Revisar', onClick: () => setDrawer(true) }} />
                     <StatCard label="Cuentas vencidas" value={formatMoney(980)} context="2 proveedores" tone="danger" />
                 </div>
