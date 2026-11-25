@@ -23,14 +23,14 @@ const layoutCss = read('../../ui/layout/layout.css');
 describe('reconstrucción RH: criterios de aceptación integrados', () => {
   it('administra asistencia, permisos y prestaciones desde tablas con acciones por fila', () => {
     [attendance, leave, benefits, payroll].forEach((source) => {
-      expect(source).toContain('inventory-header-new');
-      expect(source).toContain('inventory-table');
-      expect(source).toContain('<Pagination');
+      expect(source).toContain('<PageHeader');
+      expect(source).toContain('<DataTable');
+      expect(source).toContain("pagination={{ mode: 'client' }}");
       expect(source).toContain('table-action-btn');
     });
     [attendance, leave, benefits].forEach((source) => {
-      expect(source).toContain('hr-admin-table');
-      expect(source).toContain('<table');
+      expect(source).toContain('hr-admin-empty');
+      expect(source).toContain('columns={[');
       expect(source).toMatch(/Acci[oó]n(?:es)?/);
     });
     expect(attendance).toContain("setActiveTable('DAY')");
@@ -42,8 +42,8 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
   });
 
   it('presenta nómina como registro operativo, autoabre una corrida y entrega reportes y colillas', () => {
-    expect(payroll).toContain('payroll-run-table');
-    expect(payroll).toContain('<th scope="col">Acciones</th>');
+    expect(payroll).toContain('<DataTable<HrPayrollRun>');
+    expect(payroll).toContain("header: 'Acciones'");
     expect(payroll).toContain('Buscar código o periodo');
     expect(payroll).toContain('filteredRuns');
     expect(payroll).toContain('autoOpenedRunKey');
@@ -74,7 +74,7 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
       expect(source).toContain('collectAllPages');
       expect(source).toContain('aria-controls=');
       expect(source).toContain('role="tabpanel"');
-      expect(source).toContain('scope="col"');
+      expect(source).toContain('columns={[');
     });
     expect(attendanceReview).toContain('<DataTable');
     expect(attendanceReview).not.toContain('hr-attendance-events');

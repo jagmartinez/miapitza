@@ -1,0 +1,54 @@
+.stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin: 0 0 var(--spacing-lg);
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.index {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-border);
+  color: var(--color-text);
+  font-size: 11px;
+}
+
+.done {
+  color: var(--color-text);
+}
+
+.done .index,
+.current .index {
+  background: var(--color-primary);
+  color: var(--color-on-primary, #fff);
+}
+
+.current {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.voided {
+  border-color: var(--color-danger, #c0392b);
+  color: var(--color-danger, #c0392b);
+}

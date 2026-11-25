@@ -153,3 +153,12 @@
   gap: var(--spacing-sm);
   margin-left: auto;
 }
+
+/* Tarjetas KPI de RH: se reparten el ancho y bajan de línea sin aplastarse. */
+.hr-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  min-width: 0;
+}
