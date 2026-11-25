@@ -46,3 +46,18 @@ describe('AppSelect', () => {
     expect(screen.getByRole('combobox', { name: 'Num' })).toHaveAttribute('aria-invalid', 'true');
   });
 });
+
+describe('AppSelect dentro de Field', () => {
+  it('anuncia el error y no muestra la descripción en el valor', async () => {
+    const { Field } = await import('./Field');
+    render(
+      <Field label="Cat" htmlFor="c" error="Req">
+        <AppSelect inputId="c" options={[{ value: 1, label: 'Uno', description: 'desc' }]} value={1} onChange={() => {}} />
+      </Field>,
+    );
+    const cb = screen.getByRole('combobox');
+    expect(cb.getAttribute('aria-invalid')).toBe('true');
+    expect(cb.getAttribute('aria-errormessage')).toBe('c-error');
+    expect(screen.queryByText('desc')).toBeNull();
+  });
+});

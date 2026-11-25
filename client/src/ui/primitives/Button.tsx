@@ -24,7 +24,7 @@ export function Button({
   const cls = `ui-button ui-button--${variant} ui-button--${size} ${className}`.trim();
   return (
     <button {...rest} type={type} className={cls} disabled={disabled || loading} aria-busy={loading ? 'true' : undefined}>
-      {loading ? <Spinner size={14} label="Procesando" /> : Icon ? <Icon size={16} aria-hidden="true" /> : null}
+      {loading ? <span aria-hidden="true" className="ui-button__spinner"><Spinner size={14} label="Procesando" /></span> : Icon ? <Icon size={16} aria-hidden="true" /> : null}
       {children}
     </button>
   );

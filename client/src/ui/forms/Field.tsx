@@ -13,7 +13,7 @@ type Props = {
 export function Field({ label, htmlFor, hint, error, required, children }: Props) {
   const errorId = `${htmlFor}-error`;
   const hintId = `${htmlFor}-hint`;
-  const describedBy = [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(' ') || undefined;
+  const describedBy = [error ? errorId : null, hint && !error ? hintId : null].filter(Boolean).join(' ') || undefined;
 
   const content = Children.map(children, (child) => {
     // Solo se inyectan atributos ARIA en componentes (los elementos DOM nativos no se tocan).

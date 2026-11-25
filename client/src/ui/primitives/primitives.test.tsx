@@ -9,7 +9,7 @@ import { toneFor } from './statusTone';
 describe('primitivas', () => {
   it('Button loading deshabilita y expone aria-busy', () => {
     render(<Button loading>Guardar</Button>);
-    const b = screen.getByRole('button', { name: /guardar/i });
+    const b = screen.getByRole('button', { name: 'Guardar' });
     expect(b).toBeDisabled();
     expect(b).toHaveAttribute('aria-busy', 'true');
   });

@@ -14,6 +14,8 @@ type Common = {
   isDisabled?: boolean;
   size?: 'sm' | 'md';
   invalid?: boolean;
+  'aria-invalid'?: boolean | 'true' | 'false';
+  'aria-describedby'?: string;
   noOptionsText?: string;
 };
 
@@ -40,12 +42,12 @@ function flatten<V>(options: Opt<V>[] | GroupBase<Opt<V>>[]): Opt<V>[] {
   return out;
 }
 
-function formatOption<V>(o: Opt<V>) {
-  if (!o.description) return o.label;
+function formatOption<V>(o: Opt<V>, meta: { context: 'menu' | 'value' }) {
+  if (!o.description || meta.context !== 'menu') return o.label;
   return (
     <div>
       <div>{o.label}</div>
-      <div style={{ fontSize: 12, color: 'var(--ui-text-muted)' }}>{o.description}</div>
+      <div className="app-select__description">{o.description}</div>
     </div>
   );
 }
@@ -56,9 +58,11 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
     placeholder,
     isDisabled,
     size = 'md',
-    invalid = false,
     noOptionsText = 'Sin resultados',
   } = props;
+  const invalid = props.invalid === true || props['aria-invalid'] === true || props['aria-invalid'] === 'true';
+  // Field inyecta aria-describedby con el id del mensaje de error primero; react-select ocupa el suyo, así que se enlaza con aria-errormessage.
+  const errorId = invalid ? props['aria-describedby']?.split(' ')[0] : undefined;
   const kind = props.kind ?? 'single';
   const isClearable = props.isClearable ?? kind === 'single';
 
@@ -106,6 +110,7 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
     inputId,
     'aria-label': props['aria-label'],
     'aria-invalid': invalid || undefined,
+    'aria-errormessage': errorId,
     placeholder,
     isDisabled,
     isClearable,

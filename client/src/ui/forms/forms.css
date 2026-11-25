@@ -67,3 +67,4 @@
 .ui-form-section__title { margin: 0; font-size: 15px; font-weight: 700; color: var(--ui-text); }
 .ui-form-section__desc { margin: 2px 0 0; font-size: 13px; color: var(--ui-text-muted); }
 .ui-form-grid { display: grid; gap: var(--ui-space-4); }
+.app-select__description { font-size: 12px; color: var(--ui-text-muted); }
