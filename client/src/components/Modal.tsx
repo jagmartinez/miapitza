@@ -12,7 +12,9 @@ interface ModalProps {
     children: ReactNode;
     size?: 'sm' | 'md' | 'lg';
     variant?: 'center' | 'sidebar';
+    /** Solo aplica al tamaño compacto; md/lg/sidebar lo ignoran. */
     closeOnBackdrop?: boolean;
+    /** Solo aplica al tamaño compacto; md/lg/sidebar lo ignoran. */
     closeOnEscape?: boolean;
     description?: ReactNode;
     footer?: ReactNode;

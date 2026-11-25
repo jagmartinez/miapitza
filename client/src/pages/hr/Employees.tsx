@@ -357,7 +357,7 @@ export default function Employees() {
                     rows={employees}
                     rowKey={(employee) => employee.id}
                     columns={columns}
-                    pageSize={Math.max(1, employees.length)}
+                    pagination={{ page, pageSize: 25, total: totalItems, onPageChange: setPage }}
                     resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
                 />
             )}
@@ -391,7 +391,7 @@ export default function Employees() {
                 </div>
             )}
 
-            {!loading && !error && totalPages > 1 && (
+            {!loading && !error && viewMode === 'cards' && totalPages > 1 && (
                 <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={25} onPageChange={setPage} />
             )}
 

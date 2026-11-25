@@ -17,6 +17,8 @@ interface CatalogTableProps<T> {
     rows: T[];
     rowKey: (row: T) => string | number;
     pageSize?: number;
+    /** Etiqueta accesible de la tabla. */
+    ariaLabel?: string;
     /** Ignorado: DataTable usa `rowTone`; ninguna pantalla lo usa hoy. */
     rowClassName?: (row: T) => string | undefined;
     /** Optional dependency: when it changes, pagination resets to page 1. */
@@ -33,6 +35,7 @@ export default function CatalogTable<T>({
     rows,
     rowKey,
     pageSize = 10,
+    ariaLabel = 'Tabla de catálogo',
     resetKey,
     pagination,
 }: CatalogTableProps<T>) {
@@ -57,7 +60,7 @@ export default function CatalogTable<T>({
             columns={uiColumns}
             rows={rows}
             rowKey={rowKey}
-            ariaLabel="Tabla de catálogo"
+            ariaLabel={ariaLabel}
             defaultPageSize={pageSize}
             pageSizeOptions={pagination ? [pagination.pageSize] : sizes}
             resetKey={resetToken}
