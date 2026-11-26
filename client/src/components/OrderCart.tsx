@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { Plus, Minus, Trash2, Tag } from 'lucide-react';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { promotionsAPI } from '../services/api';
@@ -38,6 +38,10 @@ interface OrderCartProps {
     /** Branch of the order: only promotions valid there (and inside their happy hour) are listed. */
     promotionBranchId?: number | null;
     formatMoney: (amount: unknown) => string;
+    /** Oculta el encabezado propio cuando el contenedor ya muestra el título de la orden. */
+    hideHeader?: boolean;
+    /** Acciones al pie del ticket, debajo del total (p. ej. Enviar a cocina / Cobrar). */
+    footerActions?: ReactNode;
 }
 
 export default function OrderCart({
@@ -54,6 +58,8 @@ export default function OrderCart({
     onApplyPromotion,
     promotionBranchId,
     formatMoney,
+    hideHeader = false,
+    footerActions,
 }: OrderCartProps) {
     const { confirm } = useConfirmDialog();
 
@@ -70,10 +76,12 @@ export default function OrderCart({
 
     return (
         <div className="order-cart">
-            <div className="cart-header">
-                <h3>Orden Actual</h3>
-                <span className="item-count">{cart.length} items</span>
-            </div>
+            {!hideHeader && (
+                <div className="cart-header">
+                    <h3>Orden Actual</h3>
+                    <span className="item-count">{cart.length} items</span>
+                </div>
+            )}
 
             <div
                 className="cart-items-list"
@@ -198,6 +206,7 @@ export default function OrderCart({
                         <span>{formatMoney(total)}</span>
                     </div>
                 </div>
+                {footerActions}
             </div>
         </div>
     );

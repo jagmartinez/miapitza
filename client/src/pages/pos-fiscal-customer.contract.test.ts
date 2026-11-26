@@ -16,10 +16,11 @@ describe('POS fiscal customer contract', () => {
   });
 
   it('opens a semantic dialog with an isolated draft and explicit save/cancel actions', () => {
-    expect(pos).toContain('type="button"\n                        className="header-action-btn secondary"');
+    // Tolerante a la indentación y a CRLF: el botón vive ahora en la cabecera del ticket.
+    expect(pos).toMatch(/type="button"\s+className="header-action-btn secondary"\s+onClick=\{openFiscalCustomerModal\}/);
     expect(pos).toContain('onClick={openFiscalCustomerModal}');
     expect(pos).toContain('aria-haspopup="dialog"');
-    expect(pos).toContain('setFiscalCustomerDraft({\n            customerName,\n            ...fiscalCustomer,');
+    expect(pos).toMatch(/setFiscalCustomerDraft\(\{\s+customerName,\s+\.\.\.fiscalCustomer,/);
     expect(pos).toContain('onClick={closeFiscalCustomerModal}');
     expect(pos).toContain('Cancelar');
     expect(pos).toContain("'Guardar'");

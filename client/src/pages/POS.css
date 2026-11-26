@@ -1126,3 +1126,200 @@
     outline: 3px solid var(--ui-primary);
     outline-offset: 2px;
 }
+
+/* ===== Estructura del mockup POS: productos (búsqueda, categorías, grilla) + ticket lateral ===== */
+.pos-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ui-space-2) var(--ui-space-3);
+    flex-shrink: 0;
+}
+
+.pos-toolbar .search-bar-new {
+    flex: 1 1 16rem;
+    max-width: none;
+    min-height: 44px;
+    box-sizing: border-box;
+    border-radius: var(--ui-radius-md);
+}
+
+.pos-toolbar .search-bar-new input { font-size: var(--ui-text-md); }
+
+.pos-categories {
+    display: flex;
+    gap: var(--ui-space-2);
+    overflow-x: auto;
+    padding-bottom: 2px;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+}
+
+.pos-category-chip {
+    flex-shrink: 0;
+    min-height: 40px;
+    padding: 0 var(--ui-space-4);
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    background: var(--ui-surface);
+    color: var(--ui-text);
+    font: inherit;
+    font-size: var(--ui-text-md);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.pos-category-chip:hover { border-color: var(--ui-primary); }
+
+.pos-category-chip.active {
+    border-color: var(--ui-primary);
+    background: var(--ui-primary-soft);
+    color: var(--ui-primary);
+}
+
+.pos-category-chip:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+
+.pos-ticket-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-3);
+    padding: var(--ui-space-4);
+    border-bottom: 1px solid var(--ui-border);
+    flex-shrink: 0;
+}
+
+.pos-ticket-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-space-2);
+}
+
+.pos-ticket-title h2 { margin: 0; font-size: var(--ui-text-lg); font-weight: 600; color: var(--ui-text); }
+
+.pos-ticket-head .pos-order-type { margin: 0; }
+.pos-ticket-head .pos-order-type .ui-segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+
+.pos-ticket-targets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--ui-space-2);
+    min-width: 0;
+}
+
+.pos-ticket-targets > * { min-width: 0; }
+
+.pos-ticket-targets .header-action-btn,
+.pos-ticket-targets .select-table-btn,
+.pos-ticket-targets .table-badge-new {
+    min-height: 40px;
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: flex-start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--ui-text-sm);
+}
+
+.pos-active-order-summary {
+    flex-shrink: 0;
+    margin: var(--ui-space-3) var(--ui-space-4) 0;
+    padding: var(--ui-space-3);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
+}
+
+.pos-active-order-row { display: flex; justify-content: space-between; gap: var(--ui-space-3); align-items: center; }
+.pos-active-order-info { min-width: 0; }
+.pos-active-order-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); }
+.pos-active-order-waiter { padding: 2px 8px; border-radius: 999px; font-size: var(--ui-text-xs); font-weight: 700; }
+.pos-active-order-meta { font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
+.pos-active-order-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); margin-top: var(--ui-space-2); }
+.pos-active-order-actions:empty { display: none; }
+.pos-active-order-total { font-variant-numeric: tabular-nums; }
+
+.pos-ticket-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: var(--ui-space-2);
+    margin-top: var(--ui-space-3);
+}
+
+.pos-ticket-actions .ui-button { min-height: 52px; justify-content: center; }
+
+.cart-total-label { font-size: 0.9rem; color: var(--ui-text-muted); }
+.cart-total-value { font-size: 1.2rem; font-weight: 700; margin-left: 0.5rem; }
+.pos-mobile-back { width: 100%; justify-content: center; }
+
+@media (min-width: 901px) {
+    .pos-layout .pos-main-new {
+        display: flex;
+        gap: 0;
+        padding: 0;
+    }
+
+    .pos-layout .product-area {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--ui-space-3);
+        padding: var(--ui-space-4) var(--ui-space-5);
+        background: transparent;
+        border-radius: 0;
+        overflow: hidden;
+    }
+
+    /* Solo la grilla se desplaza: búsqueda y categorías quedan siempre a la vista. */
+    .pos-layout .products-grid-new {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        align-content: start;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: var(--ui-space-3);
+        padding: 2px;
+    }
+
+    .pos-layout .cart-area {
+        flex: 0 0 380px;
+        width: 380px;
+        border-left: 1px solid var(--ui-border);
+        background: var(--ui-surface);
+    }
+
+    .pos-layout .order-cart { border: 0; border-radius: 0; }
+    .pos-layout .cart-footer { background: var(--ui-surface); border-top: 1px solid var(--ui-border); }
+}
+
+@media (max-width: 900px) {
+    .pos-layout .pos-main-new { grid-template-rows: minmax(0, 1fr); }
+    .pos-layout .product-area { display: flex; flex-direction: column; gap: var(--ui-space-2); background: transparent; }
+    .pos-layout .cart-area.mobile-visible { padding: 0; overflow-y: auto; }
+    .pos-layout .cart-area.mobile-visible .mobile-cart-header { margin: 0; padding: var(--ui-space-3) var(--ui-space-4) 0; }
+    .pos-layout .cart-area.mobile-visible .order-cart { flex: 0 0 auto; height: auto; overflow: visible; }
+    .pos-layout .cart-area.mobile-visible .cart-items-list { max-height: none; overflow: visible; }
+}
+
+/* Tarjeta de producto del mockup: superficie, nombre y precio alineados a la izquierda. */
+.pos-layout .products-grid-new { grid-auto-rows: minmax(112px, auto); }
+.pos-layout .product-card-new { min-height: 112px; border-radius: var(--ui-radius-lg); }
+.pos-layout .product-card-new:not(.has-image) { background: var(--ui-surface); }
+.pos-layout .product-card-new:not(.has-image) .product-info-overlay {
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: var(--ui-space-2);
+    text-align: left;
+}
+.pos-layout .product-card-new:not(.has-image) .product-name-new { font-size: var(--ui-text-md); font-weight: 500; }
+.pos-layout .product-card-new:not(.has-image) .product-price-new {
+    color: var(--ui-text);
+    font-size: var(--ui-text-md);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-shadow: none;
+}
+.pos-layout .product-card-new:hover { border-color: var(--ui-primary); }

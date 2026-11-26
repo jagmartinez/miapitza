@@ -23,7 +23,8 @@ import TableSelectionModal from '../components/TableSelectionModal';
 import OrderCart from '../components/OrderCart';
 import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
-import { AppSelect, Button, Field, FullScreenModal, SegmentedControl } from '@/ui';
+import { AppSelect, Button, Field, FullScreenModal, IconButton, Input, SegmentedControl } from '@/ui';
+import ThemeToggle from '../components/ThemeToggle';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
@@ -133,12 +134,16 @@ interface ShiftStatus {
 
 interface POSProps {
     initialTableId?: number;
+    /** TAKEOUT abre el POS sin mesa ("Orden para llevar" desde Mesas). */
+    initialOrderType?: 'DINE_IN' | 'TAKEOUT';
+    /** Sucursal del plano: necesaria para una orden sin mesa cuando el usuario no tiene sucursal fija. */
+    branchId?: number;
     embedded?: boolean;
     onExit?: () => void;
     onOperationalChange?: () => void | Promise<void>;
 }
 
-export default function POS({ initialTableId, embedded = false, onExit, onOperationalChange }: POSProps = {}) {
+export default function POS({ initialTableId, initialOrderType, branchId: branchIdProp, embedded = false, onExit, onOperationalChange }: POSProps = {}) {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { symbol: currencySymbol, formatMoney } = useCurrency();
@@ -159,7 +164,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     // DELIVERY is created from the delivery flow, not from the POS.
-    const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEOUT'>('DINE_IN');
+    const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEOUT'>(initialOrderType ?? 'DINE_IN');
+    // Sucursal cuando no hay mesa (orden para llevar): la del plano o la del usuario.
+    const defaultBranchId = branchIdProp ?? user?.branchId ?? undefined;
     const [cart, setCart] = useState<CartItem[]>([]);
     const [showMobileCart, setShowMobileCart] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -209,8 +216,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     // Scope the local menu cache by company + branch so different tenants/branches
     // don't read each other's cached menu from a shared localStorage key.
     const menuCacheKey = useMemo(
-        () => `pos_menu_cache_v2_${user?.companyId ?? 'anon'}_${selectedTable?.branchId ?? user?.branchId ?? 'none'}`,
-        [selectedTable?.branchId, user?.companyId, user?.branchId]
+        () => `pos_menu_cache_v2_${user?.companyId ?? 'anon'}_${selectedTable?.branchId ?? defaultBranchId ?? 'none'}`,
+        [selectedTable?.branchId, user?.companyId, defaultBranchId]
     );
 
     // Keep the latest selected table in a ref so the websocket subscription effect
@@ -255,7 +262,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         const requestId = ++loadDataRequestRef.current;
         setLoadError(null);
         try {
-            const effectiveBranchId = selectedTable?.branchId ?? user?.branchId;
+            const effectiveBranchId = selectedTable?.branchId ?? defaultBranchId;
             const cached = localStorage.getItem(menuCacheKey);
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
@@ -306,7 +313,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         } finally {
             if (requestId === loadDataRequestRef.current) setLoading(false);
         }
-    }, [menuCacheKey, selectedTable?.branchId, showError, user?.branchId]);
+    }, [menuCacheKey, selectedTable?.branchId, showError, defaultBranchId]);
 
     // Lightweight refresh for websocket events: only tables (and the active order's
     // server snapshot when the event targets it). Menu/settings/catalogs stay as loaded.
@@ -358,7 +365,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     // Mirrors the backend payment guard so the cashier is warned BEFORE trying to
     // charge instead of only seeing the abort error at checkout.
     const checkBranchWarehouse = useCallback(async () => {
-        const branchId = selectedTable?.branchId ?? user?.branchId;
+        const branchId = selectedTable?.branchId ?? defaultBranchId;
         if (!branchId) {
             // Sin sucursal asignada (p. ej. SUPERADMIN global): no bloqueamos aquí;
             // el guard del backend sigue protegiendo el descargue de inventario.
@@ -379,7 +386,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             setHasWarehouse(true);
             setBranchWarehouses([]);
         }
-    }, [selectedTable?.branchId, user?.branchId]);
+    }, [selectedTable?.branchId, defaultBranchId]);
 
     useEffect(() => {
         checkBranchWarehouse();
@@ -387,7 +394,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
     // Stock availability of the branch sale warehouse: one batched request,
     // refreshed periodically. Failures only hide the badges.
-    const availabilityBranchId = selectedTable?.branchId ?? user?.branchId;
+    const availabilityBranchId = selectedTable?.branchId ?? defaultBranchId;
     const loadStockAvailability = useCallback(async () => {
         if (!availabilityBranchId) {
             setStockAvailability(new Map());
@@ -410,10 +417,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     // Show table modal on first load only in the standalone POS. The map-owned
     // workspace receives a table explicitly and must never ask again.
     useEffect(() => {
-        if (!initialTableId && !loading && !selectedTable && tables.length > 0) {
+        if (!initialTableId && initialOrderType !== 'TAKEOUT' && !loading && !selectedTable && tables.length > 0) {
             setShowTableModal(true);
         }
-    }, [initialTableId, loading, selectedTable, tables]);
+    }, [initialOrderType, initialTableId, loading, selectedTable, tables]);
 
     useEffect(() => {
         initializeWebSocket();
@@ -482,7 +489,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             }
             if (e.ctrlKey && e.key === 'k') {
                 e.preventDefault();
-                if (canSendToKitchen && cart.length > 0 && selectedTable) handleSendToKitchenRef.current();
+                if (canSendToKitchen && cart.length > 0 && (selectedTable || orderType === 'TAKEOUT')) handleSendToKitchenRef.current();
             }
             if (e.key === 'Escape' && cart.length > 0) {
                 void (async () => {
@@ -495,7 +502,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
         window.addEventListener('keydown', handleKeyPress);
         return () => window.removeEventListener('keydown', handleKeyPress);
-    }, [activeTableOrder?.customerName, canSendToKitchen, cart, clearDraftCart, confirm, currentOrderId, selectedTable]);
+    }, [activeTableOrder?.customerName, canSendToKitchen, cart, clearDraftCart, confirm, currentOrderId, orderType, selectedTable]);
 
     useEffect(() => {
         checkShiftStatus();
@@ -680,7 +687,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
     const buildOrderPayload = useCallback(() => ({
         tableId: selectedTable?.id,
-        branchId: selectedTable?.branchId,
+        branchId: selectedTable?.branchId ?? defaultBranchId,
         orderType,
         customerName: customerName || undefined,
         customerTaxId: fiscalCustomer.taxId || undefined,
@@ -695,7 +702,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             notes: item.notes || '',
             modifierIds: item.modifiers.map(mod => mod.id)
         }))
-    }), [selectedTable, orderType, customerName, fiscalCustomer, cart]);
+    }), [selectedTable, defaultBranchId, orderType, customerName, fiscalCustomer, cart]);
 
     const syncOrderContext = useCallback(async (orderId: number) => {
         if (!offlineManager.getStatus()) {
@@ -816,8 +823,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             return;
         }
 
-        if (!selectedTable) {
-            warning('Por favor selecciona una mesa');
+        // Una orden para llevar no necesita mesa (el backend acepta tableId opcional).
+        if (!selectedTable && orderType !== 'TAKEOUT' && !currentOrderId) {
+            warning('Selecciona una mesa o cambia a Para llevar');
             return;
         }
 
@@ -1215,7 +1223,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         });
     }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, warehouseAction, warning]);
     // Branch of the order being priced: the POS only offers/applies promotions valid there.
-    const promotionBranchId = activeTableOrder?.branchId ?? selectedTable?.branchId ?? user?.branchId ?? null;
+    const promotionBranchId = activeTableOrder?.branchId ?? selectedTable?.branchId ?? defaultBranchId ?? null;
     const handleApplyPromotion = async (code: string) => {
         try {
             // Preview against the open order's lines plus the unsent cart so
@@ -1300,89 +1308,43 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const displayTotal = cart.length > 0 ? total : activeOrderTotal;
     const branchHasNoWarehouse = hasWarehouse === false;
     const canProcessPayment = canPay && canIssueInvoice && (cart.length > 0 || Boolean(currentOrderId));
+    const hasOrderTarget = Boolean(selectedTable) || orderType === 'TAKEOUT' || Boolean(currentOrderId);
+    const canSubmitToKitchen = canSendToKitchen && cart.length > 0 && hasOrderTarget && !sendingToKitchen;
+    const orderTypeLocked = Boolean(currentOrderId || activeTableOrder);
+    const visibleCategories = categories.filter(c => isCategoryVisibleInMenu(c) && c.name !== 'Catering');
+    const ticketTitle = currentOrderId ? `Orden #${currentOrderId}` : 'Nueva orden';
+    const changeOrderType = (next: 'DINE_IN' | 'TAKEOUT') => {
+        setOrderType(next);
+        // "Mesa" sin mesa elegida abre el selector (solo fuera del espacio de una mesa del plano).
+        if (next === 'DINE_IN' && !selectedTable) setShowTableModal(true);
+    };
+
+    const ticketActions = (
+        <div className="pos-ticket-actions">
+            <Button
+                size="lg"
+                icon={Send}
+                onClick={handleSendToKitchen}
+                disabled={!canSubmitToKitchen}
+                title={canSendToKitchen ? 'Enviar a Cocina (Ctrl+K)' : 'Tu rol no puede enviar a cocina'}
+            >
+                {sendingToKitchen ? 'Enviando...' : 'Enviar a cocina'}
+            </Button>
+            <Button
+                size="lg"
+                variant="primary"
+                icon={CreditCard}
+                onClick={handlePayment}
+                disabled={!canProcessPayment || processingPayment}
+                title={!canPay || !canIssueInvoice ? 'Tu rol necesita permisos de cobro y facturación' : 'Pagar (Ctrl+P)'}
+            >
+                {processingPayment ? 'Preparando...' : `Cobrar ${formatMoney(displayTotal)}`}
+            </Button>
+        </div>
+    );
 
     return (
-        <div className={`pos-container-new ${embedded ? 'pos-embedded' : ''}`}>
-            {/* Header */}
-            <div className="pos-header-new">
-                <div className="header-left">
-                    {embedded && (
-                        <button
-                            type="button"
-                            className="pos-back-to-map"
-                            onClick={() => {
-                                void onOperationalChange?.();
-                                onExit?.();
-                            }}
-                        >
-                            <ChevronLeft size={18} /> Plano
-                        </button>
-                    )}
-                    {selectedTable ? (
-                        <div className="table-badge-new">
-                            <Grid3x3 size={18} />
-                            <span>Mesa {selectedTable.number}</span>
-                            {!embedded && (
-                                <button onClick={() => setShowTableModal(true)} className="change-table-btn">
-                                    Cambiar
-                                </button>
-                            )}
-                        </div>
-                    ) : (
-                        <button onClick={() => setShowTableModal(true)} className="select-table-btn">
-                            <Grid3x3 size={18} />
-                            Seleccionar Mesa
-                        </button>
-                    )}
-                </div>
-
-                <div className="header-center">
-                    <div className="search-bar-new">
-                        <Search size={18} />
-                        <input
-                            ref={searchInputRef}
-                            type="text"
-                            placeholder="Buscar producto... (Ctrl+F)"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                        {searchQuery && (
-                            <button onClick={() => setSearchQuery('')} className="clear-search-btn">
-                                <X size={16} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                <div className="header-right">
-                    <button
-                        className="header-action-btn primary"
-                        onClick={handlePayment}
-                        disabled={!canProcessPayment || processingPayment}
-                        title={!canPay || !canIssueInvoice ? 'Tu rol necesita permisos de cobro y facturación' : 'Pagar (Ctrl+P)'}
-                    >
-                        <CreditCard size={18} />
-                        <span>{processingPayment ? 'Preparando...' : 'Pagar'}</span>
-                    </button>
-                    <button
-                        className="header-action-btn secondary"
-                        onClick={handleSendToKitchen}
-                        disabled={!canSendToKitchen || cart.length === 0 || !selectedTable || sendingToKitchen}
-                        title={canSendToKitchen ? 'Enviar a Cocina (Ctrl+K)' : 'Tu rol no puede enviar a cocina'}
-                    >
-                        <Send size={18} />
-                        <span>{sendingToKitchen ? 'Enviando...' : 'Cocina'}</span>
-                    </button>
-                    <button
-                        className="header-action-btn secondary"
-                        onClick={handlePrint}
-                        title="Imprimir"
-                    >
-                        <Printer size={18} />
-                    </button>
-                </div>
-            </div>
-
+        <div className={`pos-container-new pos-layout ${embedded ? 'pos-embedded' : ''}`}>
             {/* El cobro es financiero y no descarga inventario. La advertencia se
                 limita al flujo operativo de entrega, que sí exige una bodega. */}
             {branchHasNoWarehouse && (
@@ -1409,27 +1371,64 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             {/* Main Content */}
             <div className="pos-main-new">
-                {/* Category Sidebar */}
-                <div className="category-sidebar">
-                    <button
-                        className={`category-item ${selectedCategory === null ? 'active' : ''}`}
-                        onClick={() => setSelectedCategory(null)}
-                    >
-                        <span>Todos</span>
-                    </button>
-                    {categories.filter(c => isCategoryVisibleInMenu(c) && c.name !== 'Catering').map(cat => (
-                        <button
-                            key={cat.id}
-                            className={`category-item ${selectedCategory === cat.id ? 'active' : ''}`}
-                            onClick={() => setSelectedCategory(cat.id)}
-                        >
-                            <span>{cat.name}</span>
-                        </button>
-                    ))}
-                </div>
+                {/* Productos: búsqueda, categorías y grilla */}
+                <section className="product-area" aria-label="Productos">
+                    <div className="pos-toolbar">
+                        {embedded && (
+                            <button
+                                type="button"
+                                className="pos-back-to-map"
+                                onClick={() => {
+                                    void onOperationalChange?.();
+                                    onExit?.();
+                                }}
+                            >
+                                <ChevronLeft size={18} /> Mesas
+                            </button>
+                        )}
+                        <label className="search-bar-new">
+                            <Search size={18} aria-hidden="true" />
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                aria-label="Buscar producto"
+                                placeholder="Buscar producto (Ctrl+F)"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                            {searchQuery && (
+                                <button type="button" onClick={() => setSearchQuery('')} className="clear-search-btn" aria-label="Limpiar búsqueda">
+                                    <X size={16} />
+                                </button>
+                            )}
+                        </label>
+                        <ThemeToggle />
+                    </div>
 
-                {/* Product Grid */}
-                <div className="product-area">
+                    <div className="pos-categories" role="tablist" aria-label="Categorías">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={selectedCategory === null}
+                            className={`pos-category-chip ${selectedCategory === null ? 'active' : ''}`}
+                            onClick={() => setSelectedCategory(null)}
+                        >
+                            Todos
+                        </button>
+                        {visibleCategories.map(cat => (
+                            <button
+                                key={cat.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={selectedCategory === cat.id}
+                                className={`pos-category-chip ${selectedCategory === cat.id ? 'active' : ''}`}
+                                onClick={() => setSelectedCategory(cat.id)}
+                            >
+                                {cat.name}
+                            </button>
+                        ))}
+                    </div>
+
                     {brands.filter(b => b.active).length > 0 && (
                         <div className="pos-brand-switcher">
                             <button
@@ -1476,120 +1475,122 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                             </div>
                         )}
                     </div>
-                </div>
+                </section>
 
-                {/* Order Cart */}
-                <div className={`cart-area ${showMobileCart ? 'mobile-visible' : ''}`}>
+                {/* Orden actual: tipo, destino, cliente, líneas, totales y acciones */}
+                <aside className={`cart-area ${showMobileCart ? 'mobile-visible' : ''}`} aria-label="Orden actual">
                     {showMobileCart && (
                         <div className="mobile-cart-header">
-                            <div className="mobile-cart-search">
-                                <Search size={16} />
-                                <input
-                                    type="search"
-                                    placeholder="Buscar producto..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
+                            <Button
+                                icon={ChevronLeft}
+                                onClick={() => setShowMobileCart(false)}
+                                className="pos-mobile-back"
+                            >
+                                Volver al Menú
+                            </Button>
+                        </div>
+                    )}
+                    <div className="pos-ticket-head">
+                        <div className="pos-ticket-title">
+                            <h2>{ticketTitle}</h2>
+                            <IconButton icon={Printer} label="Imprimir" onClick={handlePrint} />
+                        </div>
+                        {!orderTypeLocked && (
+                            <div className="pos-order-type">
+                                <SegmentedControl
+                                    ariaLabel="Tipo de orden"
+                                    value={orderType}
+                                    onChange={changeOrderType}
+                                    options={[
+                                        { value: 'DINE_IN', label: 'Mesa' },
+                                        { value: 'TAKEOUT', label: 'Para llevar' },
+                                    ]}
                                 />
                             </div>
+                        )}
+                        <div className="pos-ticket-targets">
+                            {orderType === 'TAKEOUT' && !orderTypeLocked ? (
+                                <Input
+                                    aria-label="Nombre para llamar"
+                                    placeholder="Nombre para llamar"
+                                    value={customerName}
+                                    maxLength={191}
+                                    onChange={(e) => setCustomerName(e.target.value)}
+                                />
+                            ) : selectedTable ? (
+                                <div className="table-badge-new">
+                                    <Grid3x3 size={16} />
+                                    <span>Mesa {selectedTable.number}{orderType === 'TAKEOUT' ? ' · para llevar' : ''}</span>
+                                    {!embedded && (
+                                        <button type="button" onClick={() => setShowTableModal(true)} className="change-table-btn">
+                                            Cambiar
+                                        </button>
+                                    )}
+                                </div>
+                            ) : orderTypeLocked ? (
+                                <div className="table-badge-new">
+                                    <span>Para llevar{customerName ? ` · ${customerName}` : ''}</span>
+                                </div>
+                            ) : (
+                                <button type="button" onClick={() => setShowTableModal(true)} className="select-table-btn">
+                                    <Grid3x3 size={16} />
+                                    Seleccionar mesa
+                                </button>
+                            )}
                             <button
-                                onClick={() => setShowMobileCart(false)}
+                                type="button"
                                 className="header-action-btn secondary"
-                                style={{
-                                    width: '100%',
-                                    justifyContent: 'center',
-                                    border: '1px solid var(--ui-primary)',
-                                    color: 'var(--ui-primary)',
-                                    padding: '12px',
-                                    gap: '8px'
-                                }}
+                                onClick={openFiscalCustomerModal}
+                                aria-haspopup="dialog"
+                                aria-expanded={showFiscalCustomer}
+                                title="Datos fiscales del cliente"
                             >
-                                <ChevronLeft size={20} />
-                                Volver al Menú
+                                {fiscalCustomer.taxId ? `${fiscalCustomer.taxIdType || 'ID'} ${fiscalCustomer.taxId}` : 'Consumidor final'}
                             </button>
                         </div>
-                    )}
-                    {selectedTable && !currentOrderId && !activeTableOrder && (
-                        <div className="pos-order-type">
-                            <SegmentedControl
-                                ariaLabel="Tipo de orden"
-                                value={orderType}
-                                onChange={setOrderType}
-                                options={[
-                                    { value: 'DINE_IN', label: 'Comer aquí' },
-                                    { value: 'TAKEOUT', label: 'Para llevar' },
-                                ]}
-                            />
-                        </div>
-                    )}
-                    {selectedTable && activeTableOrder && (
+                    </div>
+                    {activeTableOrder && (
                         <div className="pos-active-order-summary" style={{
-                            marginBottom: '1rem',
-                            padding: '0.85rem 1rem',
-                            borderRadius: '12px',
-                            background: 'var(--ui-surface)',
-                            border: `1px solid ${waiterAccentColor}55`,
+                            borderColor: `${waiterAccentColor}55`,
                             boxShadow: `inset 4px 0 0 ${waiterAccentColor}`
                         }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
-                                <div style={{ minWidth: 0 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                        <div style={{ fontWeight: 700 }}>Orden activa #{activeTableOrder.id}</div>
-                                        <span style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '0.35rem',
-                                            padding: '0.2rem 0.55rem',
-                                            borderRadius: '999px',
-                                            fontSize: '0.75rem',
-                                            fontWeight: 700,
+                            <div className="pos-active-order-row">
+                                <div className="pos-active-order-info">
+                                    <div className="pos-active-order-line">
+                                        <strong>Orden activa #{activeTableOrder.id}</strong>
+                                        <span className="pos-active-order-waiter" style={{
                                             background: `${waiterAccentColor}18`,
                                             color: waiterAccentColor
                                         }}>
                                             {activeTableOrder.user?.name || 'Sin mesero'}
                                         </span>
                                     </div>
-                                    <div style={{ fontSize: '0.9rem', color: 'var(--ui-text-muted)' }}>
+                                    <div className="pos-active-order-meta">
                                         Estado: {getOrderStatusLabel(activeTableOrder.status)} · {activeTableOrder.items?.length || 0} items
                                     </div>
-                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
+                                    <div className="pos-active-order-actions">
                                         {canCancelActive && activeTableOrder.financialStatus === 'UNPAID' && !activeTableOrder.payments?.length && activeTableOrder.status !== 'CANCELLED' && (
-                                            <button
-                                                className="header-action-btn secondary"
-                                                onClick={handleCancelActiveOrder}
-                                                style={{ borderColor: 'var(--ui-danger)', color: 'var(--ui-danger)' }}
-                                            >
+                                            <Button size="sm" variant="danger" onClick={handleCancelActiveOrder}>
                                                 Cancelar
-                                            </button>
+                                            </Button>
                                         )}
                                         {canVoidLines && !orderLineVoidBlocker(activeTableOrder) && voidableOrderLines(activeTableOrder).length > 0 && (
-                                            <button
-                                                type="button"
-                                                className="header-action-btn secondary"
+                                            <Button
+                                                size="sm"
                                                 onClick={() => setShowLineVoid(true)}
                                                 title="Anular una línea ya enviada a cocina y registrar su merma"
                                             >
                                                 Anular línea
-                                            </button>
+                                            </Button>
                                         )}
                                     </div>
                                 </div>
-                                <div style={{ fontWeight: 700 }}>
+                                <strong className="pos-active-order-total">
                                     {formatMoney(activeOrderTotal)}
-                                </div>
+                                </strong>
                             </div>
                         </div>
                     )}
-                    <button
-                        type="button"
-                        className="header-action-btn secondary"
-                        onClick={openFiscalCustomerModal}
-                        aria-haspopup="dialog"
-                        aria-expanded={showFiscalCustomer}
-                        style={{ width: '100%', justifyContent: 'center', marginBottom: '0.75rem' }}
-                    >
-                        Datos fiscales del cliente
-                        {fiscalCustomer.taxId ? ` · ${fiscalCustomer.taxIdType || 'ID'} ${fiscalCustomer.taxId}` : ' · Consumidor final'}
-                    </button>
                     <OrderCart
                         cart={cart}
                         discount={discount}
@@ -1608,30 +1609,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         onApplyPromotion={handleApplyPromotion}
                         promotionBranchId={promotionBranchId}
                         formatMoney={formatMoney}
+                        hideHeader
+                        footerActions={ticketActions}
                     />
-                    {showMobileCart && showMobileActions && (
-                        <div className="pos-mobile-actions in-cart-panel">
-                            <button
-                                type="button"
-                                className="pos-mobile-action-btn secondary"
-                                onClick={handleSendToKitchen}
-                                disabled={!canSendToKitchen || cart.length === 0 || !selectedTable || sendingToKitchen}
-                            >
-                                <Send size={20} />
-                                <span>{sendingToKitchen ? 'Enviando...' : 'Enviar'}</span>
-                            </button>
-                            <button
-                                type="button"
-                                className="pos-mobile-action-btn primary"
-                                onClick={handlePayment}
-                                disabled={!canProcessPayment || processingPayment}
-                            >
-                                <CreditCard size={20} />
-                                <span>{processingPayment ? 'Preparando...' : 'Cobrar'}</span>
-                            </button>
-                        </div>
-                    )}
-                </div>
+                </aside>
             </div>
 
             {showMobileActions && !showMobileCart && (
@@ -1640,7 +1621,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         type="button"
                         className="pos-mobile-action-btn secondary"
                         onClick={handleSendToKitchen}
-                        disabled={!canSendToKitchen || cart.length === 0 || !selectedTable || sendingToKitchen}
+                        disabled={!canSubmitToKitchen}
                     >
                         <Send size={20} />
                         <span>{sendingToKitchen ? 'Enviando...' : 'Enviar'}</span>
@@ -1660,10 +1641,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             {/* Mobile Cart Summary Bar */}
             <div className="mobile-cart-summary">
                 <div className="cart-total-preview">
-                    <span style={{ fontSize: '0.9rem', color: 'var(--ui-text-muted)' }}>Total:</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{formatMoney(displayTotal)}</span>
+                    <span className="cart-total-label">Total:</span>
+                    <span className="cart-total-value">{formatMoney(displayTotal)}</span>
                 </div>
-                <button className="mobile-cart-btn" onClick={() => setShowMobileCart(true)}>
+                <button type="button" className="mobile-cart-btn" onClick={() => setShowMobileCart(true)}>
                     <span>Ver Orden ({cart.reduce((acc, item) => acc + item.quantity, 0) || activeTableOrder?.items?.length || 0})</span>
                 </button>
             </div>
