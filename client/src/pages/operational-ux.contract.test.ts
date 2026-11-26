@@ -77,8 +77,9 @@ describe('operational UX contracts', () => {
         expect(source).not.toContain('width="wide"');
         expect(source).toContain('<FullScreenModal');
         expect(source).toContain('aria-label="Verificar inventario"');
-        expect(source).toContain('className="modal-form-new"');
-        expect(source).toContain('<Button variant="primary" type="submit" disabled={savingEvent}>');
+        // El pie fijo de FullScreenModal envía el formulario del evento (sin premium-modal-content).
+        expect(source).not.toContain('premium-modal-content');
+        expect(source).toContain('form="catering-event-form" loading={savingEvent}');
         expect(styles).not.toContain('--catering-control-height: 46px');
         expect(styles).toContain('.catering-event-section');
         expect(styles).toContain('minmax(180px, .7fr) minmax(260px, 1.3fr)');
