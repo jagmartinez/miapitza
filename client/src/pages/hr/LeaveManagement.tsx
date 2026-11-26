@@ -13,7 +13,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { DataTable, FullScreenModal, PageHeader, StatCard, AppSelect, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import LeaveCalendarGrid from '../../components/hr/LeaveCalendarGrid';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -399,7 +399,7 @@ export default function LeaveManagement() {
         </Button>
       </section>
 
-      {loading && <LoadingSpinner text="Cargando permisos y vacaciones…" />}
+      {loading && <HrLoading text="Cargando permisos y vacaciones…" />}
       {!loading && error && (
         <div className="state-placeholder" role="alert">
           <AlertTriangle size={42} />

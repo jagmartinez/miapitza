@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarCheck, ChevronLeft, ChevronRight, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, LoadErrorState, PageHeader } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import ScheduleStatusPill from '../../components/hr/ScheduleStatusPill';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
@@ -118,7 +118,7 @@ export default function MySchedule() {
 
             {pendingAcknowledgements.length > 0 && <p className="hr-schedule-help">Confirma cada versión publicada después de revisar tus turnos. El acuse registra recepción, no modifica el horario.</p>}
 
-            {loading && <LoadingSpinner text="Cargando horarios del equipo…" />}
+            {loading && <HrLoading text="Cargando horarios del equipo…" />}
             {!loading && error && <LoadErrorState message={error} onRetry={() => void loadWeek()} />}
             {!loading && !error && !hasShifts && (
                 <EmptyState

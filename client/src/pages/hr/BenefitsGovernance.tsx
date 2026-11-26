@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import { benefitsGovernanceClient } from '../../components/hr/benefitsGovernanceClient';
 import { getBenefitsErrorMessage } from '../../components/hr/benefitsClient';
 import { hrClient } from '../../components/hr/hrClient';
@@ -398,7 +398,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
       ),
     }));
 
-  if (loading) return <LoadingSpinner />;
+  if (loading) return <HrLoading />;
   const activePolicy = policies.find((row) => row.status === 'ACTIVE');
   const draftSettlements = settlements.filter((row) => row.status === 'DRAFT').length;
   return (

@@ -14,7 +14,7 @@ import {
     WalletCards,
 } from 'lucide-react';
 import { DataTable, FullScreenModal, PageHeader, Pagination, StatCard, type Column, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import ViewToggle from '../../components/ViewToggle';
 import EmployeeForm from '../../components/hr/EmployeeForm';
 import HrFilterSelect from '../../components/hr/HrFilterSelect';
@@ -359,7 +359,7 @@ export default function Employees() {
                 </div>
             </div>
 
-            {loading && <LoadingSpinner text="Cargando personal…" />}
+            {loading && <HrLoading text="Cargando personal…" />}
 
             {!loading && error && (
                 <div className="state-placeholder" role="alert">

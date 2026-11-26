@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataTable, FullScreenModal, PageHeader, StatCard, Button } from '@/ui';
 import type { SingleValue } from '../../components/hr/HrOptionSelect';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, Plus, RefreshCw, XCircle } from 'lucide-react';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import HrFilterSelect from '../../components/hr/HrFilterSelect';
 import Select from '../../components/hr/HrOptionSelect';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
@@ -210,7 +210,7 @@ export default function AttendanceReview() {
                 <HrFilterSelect label="Resultado" options={DECISION_OPTIONS} value={decision} onChange={setDecision} />
             </div>
 
-            {loading && <LoadingSpinner text="Cargando eventos…" />}
+            {loading && <HrLoading text="Cargando eventos…" />}
             {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></div>}
             {!loading && !error && (
                 <DataTable<HrAttendanceEvent>

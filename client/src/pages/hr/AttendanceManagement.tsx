@@ -11,7 +11,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { DataTable, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
@@ -336,7 +336,7 @@ export default function AttendanceManagement() {
         ))}
       </div>}
 
-      {loading && <LoadingSpinner text="Cargando control diario…" />}
+      {loading && <HrLoading text="Cargando control diario…" />}
       {!loading && error && (
         <div className="state-placeholder" role="alert">
           <AlertTriangle size={42} />

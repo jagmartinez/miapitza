@@ -18,7 +18,7 @@ import {
     UserRound,
 } from 'lucide-react';
 import { Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import HrStatusPill from '../../components/hr/HrStatusPill';
 import EmployeeRecordPanel from '../../components/hr/EmployeeRecordPanel';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
@@ -214,7 +214,7 @@ export default function EmployeeDetail() {
                 facts={employee ? facts : undefined}
             />
 
-            {loading && <LoadingSpinner text="Cargando expediente…" />}
+            {loading && <HrLoading text="Cargando expediente…" />}
 
             {!loading && error && (
                 <HrSection className="hr-pd-state-card">

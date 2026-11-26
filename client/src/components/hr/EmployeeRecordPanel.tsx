@@ -3,7 +3,7 @@ import HrMoneyInput from './HrMoneyInput';
 import { formatHrMoney } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useState } from 'react';
 import { Download, FileLock2, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
-import LoadingSpinner from '../LoadingSpinner';
+import HrLoading from './HrLoading';
 import { getHrErrorMessage, hrClient } from './hrClient';
 import type { HrCompensationRecord, HrEmployeeDocument, HrEmploymentContract, HrPayFrequency } from '../../types/hr';
 
@@ -78,7 +78,7 @@ export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: 
         }
     };
 
-    if (loading) return <LoadingSpinner text="Cargando historial…" />;
+    if (loading) return <HrLoading text="Cargando historial…" />;
 
     return (
         <div className="hr-record-panel">

@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { DataTable, FullScreenModal, PageHeader, StatCard, AppSelect, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
 import BenefitsTransitionForm from '../../components/hr/BenefitsTransitionForm';
@@ -564,7 +564,7 @@ export default function BenefitsManagement() {
           <RefreshCw size={16} /> Actualizar
         </Button>
       </div>
-      {loading && <LoadingSpinner text="Cargando beneficios financieros…" />}
+      {loading && <HrLoading text="Cargando beneficios financieros…" />}
       {!loading && error && (
         <div className="state-placeholder" role="alert">
           <AlertTriangle size={42} />
@@ -642,7 +642,7 @@ export default function BenefitsManagement() {
               aria-live="polite"
             >
               {detailLoading ? (
-                <LoadingSpinner text="Abriendo detalle…" />
+                <HrLoading text="Abriendo detalle…" />
               ) : selected ? (
                 <>
                   <div className="hr-benefits-workspace-head">

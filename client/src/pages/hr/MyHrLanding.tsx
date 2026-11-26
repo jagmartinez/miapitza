@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, formatNumber, PageHeader, StatCard } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import { benefitsClient } from '../../components/hr/benefitsClient';
 import { payrollClient } from '../../components/hr/payrollClient';
@@ -165,7 +165,7 @@ export default function MyHrLanding() {
       </section>
 
       {loading ? (
-        <LoadingSpinner text="Preparando tu resumen RH…" />
+        <HrLoading text="Preparando tu resumen RH…" />
       ) : (
         <>
           {summary.unavailableSections > 0 && (
