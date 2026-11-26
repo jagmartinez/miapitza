@@ -30,3 +30,11 @@
 .formActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--ui-space-2); margin-top: var(--ui-space-3); }
 
 .noRecipeBar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); margin-bottom: var(--ui-space-4); }
+
+/* Panel lateral de costeo del plato (mockup Menú). */
+.costPanel { display: flex; flex-direction: column; gap: var(--ui-space-3); padding: var(--ui-space-4); background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); }
+.costPanel h3 { margin: 0; font-size: 14px; font-weight: 700; }
+.costRow { display: flex; justify-content: space-between; align-items: center; gap: var(--ui-space-3); font-size: 13px; }
+.costRow > span { color: var(--ui-text-muted); }
+.costRow > strong { display: inline-flex; align-items: center; gap: var(--ui-space-2); font-variant-numeric: tabular-nums; text-align: right; }
+.costNote { margin: 0; font-size: 12px; color: var(--ui-text-muted); }

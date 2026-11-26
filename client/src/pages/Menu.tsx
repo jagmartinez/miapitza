@@ -36,6 +36,7 @@ const INVENTORY_EFFECT_OPTIONS: Opt<ModifierInventoryEffect>[] = [
 ];
 import MenuItemCard from '../components/MenuItemCard';
 import { useCurrency } from '../hooks/useCurrency';
+import { useGoals } from '../hooks/useGoals';
 import ImageViewer from '../components/ImageViewer';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
@@ -156,6 +157,7 @@ function fallbackProductUnit(product?: Pick<Product, 'unit'> & Partial<Pick<Prod
 export default function Menu() {
   const { user } = useAuth();
   const { formatMoney, symbol } = useCurrency();
+  const goals = useGoals(null);
   const { confirm } = useConfirmDialog();
   const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
   /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN | CHEF. */
@@ -1334,6 +1336,48 @@ export default function Menu() {
         onClose={() => { setIsSidebarOpen(false); setActiveTab('info'); }}
         title={editingItem ? 'Editar Plato' : 'Nuevo Plato'}
         subtitle={editingItem?.name}
+        aside={(() => {
+          const price = parseFloat(formData.price) || 0;
+          const unconfigured = recipe.filter((ing) => !ing.unitConfigured).length;
+          const totalCost = recipe.reduce((sum, ing) => sum + calculateIngredientLineCost(ing), 0);
+          const hasCost = recipe.length > 0 && unconfigured < recipe.length;
+          const profit = price - totalCost;
+          const margin = price > 0 ? (profit / price) * 100 : 0;
+          const foodCost = price > 0 ? (totalCost / price) * 100 : 0;
+          const known = hasCost && price > 0;
+          return (
+            <section className={s.costPanel} aria-label="Costeo del plato">
+              <h3>Costeo</h3>
+              <div className={s.costRow}><span>Precio de venta</span><strong>{price > 0 ? formatMoney(price) : 'N/D'}</strong></div>
+              <div className={s.costRow}><span>Costo de materia prima</span><strong>{hasCost ? formatMoney(totalCost) : 'N/D'}</strong></div>
+              <div className={s.costRow}><span>Utilidad por plato</span><strong>{known ? formatMoney(profit) : 'N/D'}</strong></div>
+              <div className={s.costRow}>
+                <span>Costo de alimentos</span>
+                <strong>
+                  {known ? formatPercent(foodCost, 1) : 'N/D'}
+                  {known && goals.foodCostPct > 0 && (
+                    <Badge tone={foodCost <= goals.foodCostPct ? 'success' : 'danger'}>meta ≤ {formatPercent(goals.foodCostPct, 0)}</Badge>
+                  )}
+                </strong>
+              </div>
+              <div className={s.costRow}>
+                <span>Margen</span>
+                <strong>
+                  {known ? formatPercent(margin, 1) : 'N/D'}
+                  {known && goals.grossMarginPct > 0 && (
+                    <Badge tone={margin >= goals.grossMarginPct ? 'success' : 'warning'}>meta ≥ {formatPercent(goals.grossMarginPct, 0)}</Badge>
+                  )}
+                </strong>
+              </div>
+              <p className={s.costNote}>
+                {hasCost
+                  ? `Suma de ${recipe.length - unconfigured} ingredientes.${unconfigured > 0 ? ` Excluye ${unconfigured} con unidad no configurada.` : ''}`
+                  : 'Agrega ingredientes con unidad configurada en la pestaña Costos para calcular el costo.'}
+                {goals.foodCostPct > 0 || goals.grossMarginPct > 0 ? ' Metas desde Configuración.' : ''}
+              </p>
+            </section>
+          );
+        })()}
         tabs={[
           { id: 'info', label: 'Información' },
           { id: 'recipe', label: 'Costos' },
@@ -1441,36 +1485,8 @@ export default function Menu() {
           )}
 
           {activeTab === 'recipe' && (() => {
-            const price = parseFloat(formData.price) || 0;
-            const unconfigured = recipe.filter((ing) => !ing.unitConfigured).length;
-            const totalCost = recipe.reduce((sum, ing) => sum + calculateIngredientLineCost(ing), 0);
-            const hasCost = recipe.length > 0 && unconfigured < recipe.length;
-            const profit = price - totalCost;
-            const margin = price > 0 ? (profit / price) * 100 : 0;
-            const exclusion = unconfigured > 0 ? ` Excluye ${unconfigured} ingrediente(s) con unidad no configurada.` : '';
             return (
               <FormSection title="Análisis de costos y receta">
-                <div className={s.stats}>
-                  <StatCard
-                    label="Costo de materia prima"
-                    value={hasCost ? formatMoney(totalCost) : 'N/D'}
-                    context={hasCost ? `Suma de ${recipe.length - unconfigured} ingredientes.${exclusion}` : 'Agrega ingredientes con unidad configurada para calcular el costo.'}
-                    tone={unconfigured > 0 ? 'warning' : 'primary'}
-                  />
-                  <StatCard
-                    label="Margen"
-                    value={hasCost && price > 0 ? formatPercent(margin, 0) : 'N/D'}
-                    context={hasCost && price > 0 ? `Sobre el precio de ${formatMoney(price)}.` : 'Requiere costo y precio.'}
-                    tone={!hasCost || price <= 0 ? 'neutral' : margin >= 70 ? 'success' : margin >= 40 ? 'warning' : 'danger'}
-                  />
-                  <StatCard
-                    label="Utilidad por plato"
-                    value={hasCost && price > 0 ? formatMoney(profit) : 'N/D'}
-                    context="Precio menos costo de materia prima."
-                    tone="neutral"
-                  />
-                </div>
-
                 <Field label="Incorporar ingrediente" htmlFor="menu-ingredient-product">
                   <div className={s.addRow} role="group" aria-label="Incorporar ingrediente">
                     <div className={s.addProduct}>
