@@ -340,7 +340,7 @@ export default function Profile() {
     }
 
     return (
-        <PageContent maxWidth={1100}>
+        <PageContent maxWidth={1440}>
             <div className="profile-page">
                 <PageHeader title="Mi perfil" description="Tu identidad, seguridad y preferencias en un solo lugar." />
                 <header className="profile-overview" aria-labelledby="profile-overview-title">
@@ -398,11 +398,15 @@ export default function Profile() {
 
                 <div className="profile-panel" id="profile-active-panel" role="tabpanel" aria-label={PROFILE_TABS.find(t => t.id === activeTab)?.label}>
                     {activeTab === 'resumen' && (
-                        <div className="profile-stack">
-                            {performanceBlock}
-                            {activityBlock}
-                            {hrBlock}
-                            {dataBlock}
+                        <div className="profile-summary">
+                            <div className="profile-stack">
+                                {performanceBlock}
+                                {activityBlock}
+                                {dataBlock}
+                            </div>
+                            <aside className="profile-stack profile-summary__side" aria-label="Mi RH">
+                                {hrBlock}
+                            </aside>
                         </div>
                     )}
                     {activeTab === 'seguridad' && (
