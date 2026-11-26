@@ -1039,7 +1039,7 @@ export default function Tables() {
                 onClick={() => void handleViewOrders(table)}
             >
                 <span className="tables-tile__top">
-                    <strong className="tables-tile__id">{table.number}</strong>
+                    <strong className="tables-tile__id" title={String(table.number)}>{table.number}</strong>
                     <span className="tables-tile__seats">{formatNumber(table.capacity, 0)} pax</span>
                 </span>
                 <span className="tables-tile__state"><span aria-hidden="true" />{state.label}</span>

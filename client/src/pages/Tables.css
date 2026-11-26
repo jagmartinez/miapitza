@@ -238,8 +238,8 @@ body:has(.table-pos-workspace) {
     box-shadow: 0 0 0 3px var(--ui-primary-soft);
 }
 
-.tables-tile__top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 var(--ui-space-2); }
-.tables-tile__id { min-width: 0; font-size: var(--ui-text-lg); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.tables-tile__top { display: flex; flex-wrap: nowrap; align-items: baseline; justify-content: space-between; gap: 0 var(--ui-space-2); }
+.tables-tile__id { min-width: 0; font-size: var(--ui-text-lg); font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tables-tile__seats { flex: none; font-size: var(--ui-text-xs); color: var(--ui-text-muted); }
 
 .tables-tile__state {
