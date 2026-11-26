@@ -1,3 +1,12 @@
+/* Paleta del panel legal (se pierde al quitar .hr-legal-settings-page del contenedor de página). */
+.hr-legal-panel,
+.hr-legal-concepts {
+  --legal-accent: var(--ui-primary);
+  --legal-accent-soft: color-mix(in srgb, var(--legal-accent) 10%, var(--ui-surface));
+  --legal-success: var(--ui-success);
+  --legal-success-soft: color-mix(in srgb, var(--legal-success) 10%, var(--ui-surface));
+}
+
 .hr-legal-row-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap; gap: 8px; padding-inline: 2px; }
 
 .hr-legal-company-profile { display: grid; gap: var(--ui-space-3); padding: var(--ui-space-4); border: 1px solid color-mix(in srgb, var(--legal-accent) 28%, var(--ui-border)); border-radius: var(--ui-radius-md); background: var(--legal-accent-soft); }
@@ -409,3 +418,8 @@
   padding: var(--ui-space-3) 0 0;
   border-top: 1px solid var(--ui-border);
 }
+
+/* Estado de revisión armado en tiempo de ejecución (`hr-legal-revision--${status}`): se conserva. */
+.hr-legal-revision--validated { border-left: 4px solid var(--legal-success) !important; }
+.hr-legal-revision--uploaded { border-left: 4px solid var(--legal-accent) !important; }
+.hr-legal-revision--rejected { border-left: 4px solid var(--ui-danger) !important; }

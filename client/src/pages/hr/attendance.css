@@ -475,3 +475,21 @@
     .hr-camera-guide__heading span { font-size: 0.75rem; }
     .hr-attendance-blocking .ui-button { width: 100%; }
 }
+
+/* Clases armadas en tiempo de ejecución (`hr-punch-action-banner--${action}`, `phase-${phase}`): se conservan. */
+.hr-punch-action-banner--check_out { border-color: color-mix(in srgb, var(--ui-primary) 35%, transparent); background: color-mix(in srgb, var(--ui-primary) 8%, transparent); color: var(--ui-primary); }
+
+.hr-camera-guide.phase-front_countdown,
+.hr-camera-guide.phase-turn_countdown {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    background: rgba(3, 7, 18, .58);
+    backdrop-filter: blur(2px);
+}
+
+.hr-camera-guide.phase-turn_countdown { background: rgba(2, 132, 199, .68); }
+.hr-camera-guide.phase-complete { background: linear-gradient(180deg, rgba(6, 78, 59, .08) 30%, rgba(6, 78, 59, .9) 100%); }
+
+.hr-camera-guide.phase-front_countdown .hr-camera-guide__heading,
+.hr-camera-guide.phase-turn_countdown .hr-camera-guide__heading { flex-direction: column; }

@@ -1,33 +1,11 @@
-.payroll-operation-workspace {
-  border: 1px solid var(--payroll-border);
-  border-radius: 14px;
-  background: var(--ui-surface);
+/* Paleta del detalle de pago (el detalle se abre en un modal, fuera del contenedor de página). */
+.payroll-operation-employee-detail {
+  --payroll-accent: var(--ui-primary);
+  --payroll-border: var(--ui-border);
+  --payroll-soft: color-mix(in srgb, var(--payroll-accent) 12%, var(--ui-surface));
 }
-
-.payroll-operation-workspace h2,
-.payroll-operation-workspace h3,
-.payroll-operation-workspace h4,
-.payroll-operation-workspace p { margin: 0; }
 
 .payroll-operation-line small { color: var(--ui-text-muted); }
-
-.payroll-run-search {
-  display: flex;
-  align-items: center;
-  gap: .45rem;
-  min-height: 40px;
-  padding: 0 .7rem;
-  border: 1px solid var(--payroll-border);
-  border-radius: var(--ui-radius-sm);
-  background: var(--ui-surface-2);
-  color: var(--ui-text-muted);
-}
-
-.payroll-run-search:focus-within {
-  border-color: var(--ui-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-primary) 18%, transparent);
-}
-.payroll-operation-workspace { min-width: 0; overflow: hidden; }
 
 .payroll-operation-eyebrow {
   color: var(--payroll-accent);
