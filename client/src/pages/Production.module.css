@@ -55,3 +55,15 @@
   min-width: 0;
   overflow-x: auto;
 }
+
+/* Detalle de receta (maestro-detalle del mockup). */
+.recipeDetail { display: flex; flex-direction: column; gap: var(--ui-space-4); min-width: 0; }
+.recipeHead { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--ui-space-3); }
+.recipeTitle { margin: 0; font-size: 18px; font-weight: 700; color: var(--ui-text); }
+.recipeMeta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: var(--ui-space-2); margin: 0; }
+.facts > div { padding: var(--ui-space-3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface-2); min-width: 0; }
+.facts dt { font-size: 12px; color: var(--ui-text-muted); }
+.facts dd { margin: 2px 0 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.recipeSection { display: flex; flex-direction: column; gap: var(--ui-space-2); min-width: 0; }
+.recipeSectionTitle { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--ui-space-2); margin: 0; font-size: 14px; font-weight: 700; }
