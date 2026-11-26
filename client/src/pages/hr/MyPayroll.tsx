@@ -1,7 +1,7 @@
 import { formatHrMoney } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FileText, Gift, RefreshCw } from 'lucide-react';
-import { AppSelect, Button, DataTable, EmptyState, Field, Input, LoadErrorState, PageHeader, type Column } from '@/ui';
+import { AppSelect, Button, DataTable, EmptyState, Input, LoadErrorState, PageContent, PageHeader, TableToolbar, type Column } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
@@ -17,7 +17,6 @@ import type {
 } from '../../types/hr-payroll';
 import './payroll.css';
 import styles from './MyPayroll.module.css';
-import './self-service.css';
 
 const currentYear = new Date().getFullYear();
 
@@ -120,43 +119,15 @@ export default function MyPayroll() {
   ];
 
   return (
-    <div className={`page-wrapper hr-payroll-page hr-my-payroll-page my-hr-page ${styles.page}`}>
+    <PageContent>
       <PageHeader
+        breadcrumb={['Mi RH']}
         title="Mis recibos"
         description="Consulta y descarga el desglose exacto publicado por nómina"
         actions={<MyHrNav />}
       />
 
       {!online && <PayrollOnlineNotice online={false} />}
-
-      <div className={styles.filters} role="group" aria-label="Filtros de recibos">
-        <Field label="Tipo" htmlFor="my-payroll-kind">
-          <AppSelect<string>
-            inputId="my-payroll-kind"
-            options={[
-              { value: '', label: 'Todos' },
-              { value: 'REGULAR', label: 'Nómina ordinaria' },
-              { value: 'AGUINALDO', label: 'Aguinaldo' },
-            ]}
-            value={kind}
-            onChange={(next) => setKind((next ?? '') as '' | HrPayrollRunKind)}
-            isClearable={false}
-          />
-        </Field>
-        <Field label="Año" htmlFor="my-payroll-year">
-          <Input
-            id="my-payroll-year"
-            type="number"
-            min="2000"
-            max="2200"
-            value={year}
-            onChange={(event) => setYear(event.target.value)}
-          />
-        </Field>
-        <Button variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading}>
-          Actualizar
-        </Button>
-      </div>
 
       {!loading && error ? (
         <LoadErrorState message={error} onRetry={() => void load()} />
@@ -174,6 +145,31 @@ export default function MyPayroll() {
               if (!detailLoading) void openReceipt(receipt);
             }}
             rowTone={(receipt) => (selected?.id === receipt.id ? 'primary' : undefined)}
+            toolbar={(
+              <TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading}>Actualizar</Button>}>
+                <AppSelect<string>
+                  aria-label="Tipo de recibo"
+                  options={[
+                    { value: '', label: 'Todos los tipos' },
+                    { value: 'REGULAR', label: 'Nómina ordinaria' },
+                    { value: 'AGUINALDO', label: 'Aguinaldo' },
+                  ]}
+                  value={kind}
+                  onChange={(next) => setKind((next ?? '') as '' | HrPayrollRunKind)}
+                  isClearable={false}
+                />
+                <Input
+                  id="my-payroll-year"
+                  aria-label="Año"
+                  prefix="Año"
+                  type="number"
+                  min="2000"
+                  max="2200"
+                  value={year}
+                  onChange={(event) => setYear(event.target.value)}
+                />
+              </TableToolbar>
+            )}
             empty={
               <EmptyState
                 icon={FileText}
@@ -205,6 +201,6 @@ export default function MyPayroll() {
           ) : null}
         </div>
       )}
-    </div>
+    </PageContent>
   );
 }

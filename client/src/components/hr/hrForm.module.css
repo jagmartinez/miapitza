@@ -434,3 +434,21 @@
   color: var(--ui-warning);
   font-weight: 600;
 }
+
+/* Bloque plegable plano (auditoría, detalles técnicos). */
+.disclosure {
+  min-width: 0;
+  padding: var(--ui-space-3) 0;
+  border-top: 1px solid var(--ui-border);
+}
+
+.disclosure > summary {
+  cursor: pointer;
+  color: var(--ui-text);
+  font-size: var(--ui-text-sm);
+  font-weight: 600;
+}
+
+.disclosure[open] > summary {
+  margin-bottom: var(--ui-space-3);
+}

@@ -18,12 +18,12 @@ const punchWizard = read('../../components/hr/AttendancePunchWizard.tsx');
 const geolocationCapture = read('../../components/hr/GeolocationCapture.tsx');
 
 // Pantallas ya migradas a PageContent de @/ui (sin contenedores hr-operation-page / my-hr-page).
-const migratedPages = [attendanceReview, timeClock, attendanceManagement, leaveManagement, benefitsManagement, myBenefits];
+const migratedPages = [attendanceReview, timeClock, attendanceManagement, leaveManagement, benefitsManagement, myBenefits, myPayroll];
 
 const adminOperationalPages: string[] = [];
 
 const selfServicePages = [
-  myPayroll,
+
   myWorkforce,
 ];
 

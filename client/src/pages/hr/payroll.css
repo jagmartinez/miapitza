@@ -1,10 +1,3 @@
-.hr-payroll-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-space-4);
-}
-
-.hr-payroll-header-actions,
 .hr-payroll-subheading > div {
   display: flex;
   align-items: center;
@@ -42,32 +35,6 @@
   color: var(--ui-text-muted);
   font-size: var(--ui-text-md);
   font-weight: 600;
-}
-
-.hr-payroll-form input,
-.hr-payroll-form select,
-.hr-payroll-form textarea {
-  width: 100%;
-  min-height: 42px;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-sm);
-  outline: none;
-  background: var(--ui-surface-2);
-  color: var(--ui-text);
-  font: inherit;
-}
-
-.hr-payroll-form textarea {
-  min-height: 96px;
-  resize: vertical;
-}
-
-.hr-payroll-form input:focus-visible,
-.hr-payroll-form select:focus-visible,
-.hr-payroll-form textarea:focus-visible {
-  border-color: var(--ui-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-warning) 16%, transparent);
 }
 
 .hr-payroll-subheading,
@@ -187,18 +154,6 @@
 
 .hr-payroll-form .span-full {
   grid-column: 1 / -1;
-}
-
-.hr-payroll-confirm {
-  display: grid !important;
-  grid-template-columns: auto 1fr;
-  align-items: flex-start;
-}
-
-.hr-payroll-confirm input {
-  width: 1.1rem;
-  min-height: 1.1rem;
-  margin-top: 0.15rem;
 }
 
 .hr-receipt-detail > header > div {
@@ -401,147 +356,10 @@
   gap: var(--ui-space-3);
 }
 
-.hr-payroll-legal-empty {
-  display: grid;
-  justify-items: start;
-  gap: var(--ui-space-1);
-  padding: var(--ui-space-4);
-  border: 1px dashed var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface-2);
-  color: var(--ui-text-muted);
-}
-
-.hr-payroll-legal-empty strong {
-  color: var(--ui-text);
-}
-
-.hr-payroll-legal-empty .ui-button {
-  margin-top: var(--ui-space-2);
-}
-
-.hr-legal-rule-toolbar {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(300px, 1.25fr);
-  align-items: end;
-  gap: var(--ui-space-4);
-  padding: var(--ui-space-4);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-surface);
-}
-
-.hr-legal-rule-toolbar > label {
-  display: grid;
-  gap: var(--ui-space-1);
-  color: var(--ui-text-muted);
-  font-size: var(--ui-text-md);
-  font-weight: 700;
-}
-
-.hr-legal-rule-meta {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--ui-space-2);
-  min-width: 0;
-  color: var(--ui-text-muted);
-}
-
-.hr-legal-rule-meta small {
-  flex-basis: 100%;
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-
-.hr-legal-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--ui-space-3);
-}
-
-.hr-legal-summary-grid article {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  padding: var(--ui-space-4);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-surface);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text) 14%, transparent);
-}
-
-.hr-legal-summary-grid span {
-  color: var(--ui-text-muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-}
-
-.hr-legal-summary-grid strong {
-  color: var(--ui-text);
-  font-size: var(--ui-text-lg);
-  font-variant-numeric: tabular-nums;
-}
-
-.hr-legal-summary-grid small {
-  color: var(--ui-text-muted);
-}
-
-.hr-legal-configuration-workspace {
-  overflow: hidden;
-  padding: var(--ui-space-6);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-surface);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text) 14%, transparent);
-}
-
-.hr-legal-workspace-heading {
-  margin-bottom: var(--ui-space-6);
-  padding-bottom: var(--ui-space-4);
-  border-bottom: 1px solid var(--ui-border);
-}
-
-.hr-legal-workspace-heading > div {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--ui-space-3);
-}
-
-.hr-legal-workspace-heading svg {
-  flex: 0 0 auto;
-  color: var(--ui-primary);
-}
-
-.hr-legal-workspace-heading h2,
-.hr-legal-workspace-heading p {
-  margin: 0;
-}
-
-.hr-legal-workspace-heading p {
-  margin-top: 4px;
-  color: var(--ui-text-muted);
-}
-
-.hr-legal-empty-state {
-  min-height: 320px;
-  align-content: center;
-  justify-items: center;
-  text-align: center;
-}
-
-.hr-legal-empty-state > svg {
-  color: var(--ui-primary);
-}
-
 .hr-payroll-tax-table { display: grid; gap: 0.5rem; }
 .hr-payroll-tax-table table { width: 100%; border-collapse: collapse; min-width: 760px; }
 .hr-payroll-tax-table th,
 .hr-payroll-tax-table td { padding: 0.45rem; border: 1px solid var(--ui-border); text-align: left; }
-.hr-payroll-tax-table input { width: 100%; min-width: 110px; }
 
 .hr-payroll-config-history > article {
   display: grid;
@@ -565,35 +383,11 @@
   flex-wrap: wrap;
 }
 
-@media (max-width: 1024px) {
-
-  .hr-legal-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 760px) {
   .hr-payroll-form,
 .hr-receipt-columns,
 .hr-receipt-totals {
     grid-template-columns: 1fr;
-  }
-
-  .hr-legal-rule-toolbar,
-  .hr-legal-summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .hr-legal-rule-meta {
-    justify-content: flex-start;
-  }
-
-  .hr-legal-rule-meta small {
-    text-align: left;
-  }
-
-  .hr-legal-configuration-workspace {
-    padding: var(--ui-space-3);
   }
 
   .hr-receipt-detail > header {
@@ -604,23 +398,7 @@
     width: 100%;
   }
 
-  .hr-my-receipt-list button {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-  }
-
-  .hr-my-receipt-amount {
-    grid-column: 1 / -1;
-    align-items: flex-start !important;
-    padding-left: calc(2.25rem + var(--spacing-md));
-    text-align: left;
-  }
-
-  .hr-payroll-filterbar { padding: var(--spacing-md); }
-
-  .hr-receipt-detail,
-  .hr-my-receipt-workspace { min-width: 0; }
+  .hr-receipt-detail { min-width: 0; }
 
   .hr-receipt-trace-list > div {
     grid-template-columns: 1fr;
@@ -640,7 +418,6 @@
 .hr-payroll-reconciliation p { margin: 0.25rem 0 0; color: var(--ui-text-muted); }
 .hr-payroll-reconciliation form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
 .hr-payroll-reconciliation form label { display: grid; gap: 0.3rem; color: var(--ui-text-muted); font-size: 0.85rem; font-weight: 700; }
-.hr-payroll-reconciliation form input { padding: 0.65rem; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface); color: var(--ui-text); }
 .hr-payroll-reconciliation-alert,
 .hr-payroll-reconciliation-report { display: grid; gap: 0.5rem; padding: 0.85rem; border: 1px solid; border-radius: var(--ui-radius-sm); }
 .hr-payroll-reconciliation-report > strong { display: flex; align-items: center; gap: 0.4rem; }

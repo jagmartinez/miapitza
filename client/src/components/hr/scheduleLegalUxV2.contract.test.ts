@@ -29,27 +29,24 @@ describe('RH UX/UI V2 schedule and legal configuration contract', () => {
     expect(legalSettings).not.toContain('\n      <PayrollOnlineNotice online={online} />');
   });
 
-  it('separates and enlarges legal version identity and table headings', () => {
-    expect(legalSettings).toContain('hr-legal-version-number');
-    expect(legalSettings).toContain('hr-legal-version-name');
-    expect(legalStyles).toContain('.hr-legal-version-list thead th');
-    expect(legalStyles).toContain('font-size: 21px');
-    expect(legalStyles).toContain('font-size: 13px');
+  // Layout migrado: la identidad de la versión usa las celdas apiladas compartidas (título + subtítulo) de la DataTable.
+  it('separates legal version identity in the versions table', () => {
+    expect(legalSettings).toContain('Versión {rule.version}');
+    expect(legalSettings).toContain('<span className={form.cellTitle}>{rule.name}</span>');
   });
 
   it('right-aligns editable and read-only legal numeric values', () => {
     expect(legalPanel).toContain('ariaLabel="Tramos de IR vigentes"');
     expect(legalPanel).toContain("type: 'money'");
-    expect(legalStyles).toContain(".hr-legal-settings-page input[type='number']");
+    expect(legalPanel).toContain('className="ui-input--number"');
     expect(legalStyles).toContain('font-variant-numeric: tabular-nums');
   });
 
   it('organizes legal settings as a control center with one selected-version workspace', () => {
-    expect(legalSettings).toContain('hr-legal-command-center');
-    expect(legalSettings).toContain('hr-legal-selected-shell');
-    expect(legalSettings).toContain('hr-legal-selected-aside');
-    expect(legalSettings).toContain('hr-legal-selected-main');
-    expect(legalStyles).toContain('grid-template-columns: minmax(320px, 370px) minmax(0, 1fr)');
+    // Layout migrado: centro de control y espacio de la versión abierta con paneles de un solo nivel (form.panel / form.split).
+    expect(legalSettings).toContain('aria-label="Centro de control legal de nómina"');
+    expect(legalSettings).toContain('aria-label="Espacio de trabajo de la versión abierta"');
+    expect(legalSettings).toContain('className={form.split}');
     expect(legalStyles).toContain('.hr-legal-readonly-operational dl');
   });
 });

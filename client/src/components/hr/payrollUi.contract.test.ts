@@ -121,12 +121,11 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
 
   it('presents legal versions with readable dates, explicit icons and a selected-rule toolbar', () => {
     expect(legalSettings).toContain('formatLegalDate');
-    expect(legalSettings).toContain('hr-legal-rule-toolbar');
-    expect(legalSettings).toContain('hr-legal-table-action');
+    // Layout migrado: la versión abierta vive en un panel lateral de @/ui (sin .hr-legal-rule-toolbar ni botones con clase propia).
+    expect(legalSettings).toContain('aria-label="Versión legal seleccionada"');
     expect(legalSettings).toContain('<Eye size={15}');
     expect(legalSettings).toContain('<Copy size={15}');
-    expect(legalCss).toContain('.hr-legal-rule-toolbar');
-    expect(legalCss).toContain('.hr-legal-table-action.ui-button');
+    expect(legalSettings).not.toContain('hr-legal-table-action');
   });
 
   it('uses self-only endpoints for employee receipts and exposes published breakdowns', () => {
@@ -188,11 +187,9 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(mine).toContain('aria-live="polite"');
     expect(mine).toContain('rowTone=');
     expect(mine).toContain('LoadErrorState');
-    expect(css).toContain(':focus-visible');
     expect(css).toContain('@media (max-width: 760px)');
     expect(mine).toContain('styles.layout');
     expect(operationCss).toContain('@media (max-width: 760px)');
-    expect(operationCss).toContain(':focus-visible');
     expect(operationCss).toContain('background: var(--ui-surface)');
     expect(operationCss).not.toContain('var(--surface, #fff)');
   });
