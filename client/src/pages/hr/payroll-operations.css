@@ -302,56 +302,6 @@
   color: var(--ui-text-muted);
   font-size: .72rem;
 }
-
-.payroll-operation-search-control {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  min-height: 42px;
-  overflow: hidden;
-  border: 1px solid var(--payroll-border);
-  border-radius: var(--ui-radius-sm);
-  background: var(--ui-surface-2);
-  color: var(--ui-text-muted);
-  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
-}
-
-.payroll-operation-search-control > svg { margin-left: .75rem; }
-.payroll-operation-search-control:focus-within {
-  border-color: var(--payroll-accent);
-  background: var(--ui-surface);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--payroll-accent) 16%, transparent);
-}
-
-.payroll-operation-search-control input[type='search'] {
-  width: 100%;
-  min-width: 0;
-  height: 40px;
-  padding: 0 .65rem;
-  border: 0 !important;
-  border-radius: 0;
-  outline: 0;
-  background: transparent !important;
-  color: var(--ui-text);
-  font: inherit;
-  box-shadow: none !important;
-}
-
-.payroll-operation-search-control input[type='search']::-webkit-search-cancel-button { display: none; }
-.payroll-operation-search-control button {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  margin-right: 3px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ui-text-muted);
-  cursor: pointer;
-}
-.payroll-operation-search-control button:hover { background: var(--ui-surface-2); color: var(--ui-text); }
 .payroll-operation-check { display: flex; min-height: 42px; align-items: center; gap: .5rem; padding: 0 .75rem; border: 1px solid var(--payroll-border); border-radius: var(--ui-radius-sm); background: var(--ui-surface-2); font-size: .84rem; font-weight: 700; }
 .payroll-operation-table th:not(:first-child), .payroll-operation-table td:not(:first-child) { text-align: right; }
 .payroll-operation-table tbody th { display: grid; gap: .1rem; }

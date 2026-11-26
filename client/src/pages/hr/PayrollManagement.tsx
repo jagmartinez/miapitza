@@ -383,7 +383,7 @@ export default function PayrollManagement() {
   }, [aguinaldoRuns, regularRuns]);
 
   return (
-    <div className="page-wrapper inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page">
+    <div className="page-wrapper inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page nm-page">
       {runParam ? (
         <div className="nm-detail-view" id="payroll-run-detail">
           <nav className="nm-detail-bar" aria-label="Navegación de corrida">

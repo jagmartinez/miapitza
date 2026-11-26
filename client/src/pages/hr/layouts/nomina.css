@@ -249,20 +249,6 @@
   color: var(--hr-ws-text-2);
   font-size: .78rem;
 }
-
-/* Pago por colaborador */
-.nm-page .nm-employee-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: .75rem 1rem;
-  padding: .85rem 1.1rem;
-  border-bottom: 1px solid var(--hr-ws-border);
-}
-
-.nm-page .nm-employee-search { display: flex; flex: 1 1 280px; flex-direction: column; gap: .3rem; min-width: 0; max-width: 460px; }
-.nm-page .nm-employee-search > label { color: var(--hr-ws-text-2); font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
-.nm-page .nm-check { display: inline-flex; align-items: center; gap: .45rem; min-height: 40px; font-size: .84rem; font-weight: 600; cursor: pointer; }
 .nm-page .nm-employee-count { margin-left: auto; padding-bottom: .65rem; color: var(--hr-ws-text-2); font-size: .76rem; }
 .nm-page .nm-employee-table { min-width: 900px; margin: 0; border: 0; }
 .nm-page .nm-employee-table :is(td, thead th):not(:first-child) { text-align: right; }
