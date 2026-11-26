@@ -25,6 +25,7 @@ import type {
   HrPayrollRuleConfigurationRevision,
   HrPayrollRuleVersion,
 } from '../../types/hr-payroll';
+import form from './hrForm.module.css';
 
 interface Props {
   rule: HrPayrollRuleVersion;
@@ -510,8 +511,8 @@ export default function PayrollRuleConfigurationPanel({
               <label>Evidencia verificada<Input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} placeholder="URL, expediente o documento interno" required /></label>
               <label className="span-full">Motivo de esta revisión<Textarea rows={3} value={uploadReason} onChange={(event) => setUploadReason(event.target.value)} maxLength={900} required /></label>
             </div>
-            <Checkbox className="hr-payroll-confirm" checked={regimeRuleConfirmed} onChange={(event) => setRegimeRuleConfirmed(event.target.checked)} label={<><span>Confirmo que el perfil fiscal empresarial mostrado y la clasificación de cada concepto son correctos.</span></>} />
-            <Checkbox className="hr-payroll-confirm" checked={sourceConfirmed} onChange={(event) => setSourceConfirmed(event.target.checked)} label={<><span>Confirmo que tasas, topes, bases y tramos fueron transcritos de fuentes autorizadas y vigentes.</span></>} />
+            <Checkbox checked={regimeRuleConfirmed} onChange={(event) => setRegimeRuleConfirmed(event.target.checked)} label={<><span>Confirmo que el perfil fiscal empresarial mostrado y la clasificación de cada concepto son correctos.</span></>} />
+            <Checkbox checked={sourceConfirmed} onChange={(event) => setSourceConfirmed(event.target.checked)} label={<><span>Confirmo que tasas, topes, bases y tramos fueron transcritos de fuentes autorizadas y vigentes.</span></>} />
             {validationIssues.length > 0 && <div className="hr-legal-validation-summary" role="alert"><AlertCircle size={20} aria-hidden="true" /><div><strong>Antes de enviar, revisa:</strong><ul>{validationIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div></div>}
             <div className="hr-legal-submit-bar"><div><strong>{uploadReady ? 'Configuración lista para revisión' : `${validationIssues.length} ${validationIssues.length === 1 ? 'pendiente' : 'pendientes'}`}</strong><span>Después de guardar, otra persona debe validar y luego activar.</span></div><Button variant="primary" type="submit" disabled={!online || saving || !uploadReady}>{saving ? 'Guardando…' : 'Guardar y enviar a validación'}</Button></div>
           </section>
@@ -536,7 +537,7 @@ export default function PayrollRuleConfigurationPanel({
               <dl><div><dt>Cargó</dt><dd>{actorName(revision.uploadedBy)}</dd></div><div><dt>Fuente</dt><dd>{revision.sourceReference}</dd></div><div><dt>Motivo</dt><dd>{revision.uploadReason}</dd></div>{revision.reviewer && <div><dt>Revisó</dt><dd>{actorName(revision.reviewer)} · {revision.reviewReason}</dd></div>}</dl>
               <details className="hr-legal-audit-details"><summary>Ver evidencia y huella técnica</summary><div><span><strong>Evidencia:</strong> {revision.evidenceReference}</span><code title={revision.configurationHash}>SHA-256 · {revision.configurationHash}</code><small>La huella permite comprobar que los parámetros no cambiaron después de la carga.</small></div></details>
             </div>
-            {revision.status === 'UPLOADED' && rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId && <div className="hr-payroll-config-review hr-legal-review-box"><div><strong>Dictamen independiente</strong><p>Debe realizarlo una persona distinta de quien cargó la revisión.</p></div><label>Justificación del dictamen<Textarea rows={3} value={reviewReason} onChange={(event) => setReviewReasonById((current) => ({ ...current, [revision.id]: event.target.value }))} maxLength={900} /></label><Checkbox className="hr-payroll-confirm" checked={reviewConfirmed} onChange={(event) => setReviewConfirmedById((current) => ({ ...current, [revision.id]: event.target.checked }))} label={<><span>Revisé tasas, tramos, conceptos, fuentes, evidencia y vigencia.</span></>} /><div><Button type="button" size="sm" variant="danger" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'REJECTED')}>Rechazar</Button><Button variant="primary" type="button" size="sm" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'VALIDATED')}><FileCheck2 size={15} aria-hidden="true" /> Validar configuración</Button></div></div>}
+            {revision.status === 'UPLOADED' && rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId && <div className="hr-payroll-config-review hr-legal-review-box"><div><strong>Dictamen independiente</strong><p>Debe realizarlo una persona distinta de quien cargó la revisión.</p></div><label>Justificación del dictamen<Textarea rows={3} value={reviewReason} onChange={(event) => setReviewReasonById((current) => ({ ...current, [revision.id]: event.target.value }))} maxLength={900} /></label><Checkbox checked={reviewConfirmed} onChange={(event) => setReviewConfirmedById((current) => ({ ...current, [revision.id]: event.target.checked }))} label={<><span>Revisé tasas, tramos, conceptos, fuentes, evidencia y vigencia.</span></>} /><div><Button type="button" size="sm" variant="danger" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'REJECTED')}>Rechazar</Button><Button variant="primary" type="button" size="sm" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'VALIDATED')}><FileCheck2 size={15} aria-hidden="true" /> Validar configuración</Button></div></div>}
           </article>;
         })}
       </section>
@@ -598,7 +599,7 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
                 minWidth="56rem"
                 empty={'Sin registros'}
                 columns={[
-                  { key: 'c0', header: 'Concepto', render: (concept) => <><strong>{concept.name}</strong><small>{concept.code}</small></> },
+                  { key: 'c0', header: 'Concepto', render: (concept) => <span className={form.cellStack}><span className={form.cellTitle}>{concept.name}</span><span className={form.cellSub}>{concept.code}</span></span> },
                   { key: 'c1', header: 'Tipo', render: (concept) => <>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</> },
                   { key: 'c2', header: 'IR laboral', render: (concept) => <>{concept.incomeTaxTreatment ? taxLabels[concept.incomeTaxTreatment] : concept.incomeTaxDeductible ? 'Deducible' : 'No sujeto'}</> },
                   { key: 'c3', header: 'INSS', render: (concept) => <>{yesNo(concept.socialSecurityApplicable)}</> },

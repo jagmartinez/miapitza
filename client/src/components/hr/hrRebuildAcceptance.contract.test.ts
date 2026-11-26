@@ -26,10 +26,12 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
       expect(source).toContain('<PageHeader');
       expect(source).toContain('<DataTable');
       expect(source).toContain("pagination={{ mode: 'client' }}");
-      expect(source).toContain('table-action-btn');
+      expect(source).toMatch(/icon=\{|table-action-btn/);
     });
+    // Acciones por fila con Button/IconButton de @/ui (antes .table-action-btn).
+    [attendance, leave, payroll].forEach((source) => expect(source).not.toContain('table-action-btn'));
     [attendance, leave, benefits].forEach((source) => {
-      expect(source).toContain('hr-admin-empty');
+      expect(source).toContain('<EmptyState');
       expect(source).toContain('columns={[');
       expect(source).toMatch(/Acci[oó]n(?:es)?/);
     });
@@ -74,8 +76,8 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
   it('no oculta registros por el límite de una página del servidor y conserva semántica accesible', () => {
     [attendance, leave, payroll].forEach((source) => {
       expect(source).toContain('collectAllPages');
-      // <HrTabs> renders aria-controls for each tab, so either form keeps tabs wired to their panels.
-      expect(source).toMatch(/aria-controls=|<HrTabs/);
+      // Pestañas propias con aria-controls o Tabs de @/ui con panel role="tabpanel" etiquetado.
+      expect(source).toMatch(/aria-controls=|<HrTabs|<Tabs/);
       expect(source).toContain('role="tabpanel"');
       expect(source).toContain('columns={[');
     });

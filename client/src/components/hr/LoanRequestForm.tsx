@@ -138,11 +138,11 @@ export default function LoanRequestForm({
           required
         />
       </label>
-      <Checkbox className="hr-benefits-check span-full" checked={form.payrollDeductionRequested}
+      <Checkbox className="span-full" checked={form.payrollDeductionRequested}
           onChange={(event) =>
             setForm((current) => ({ ...current, payrollDeductionRequested: event.target.checked }))
           } label={<><span>Solicitar descuento por nómina, sujeto a elegibilidad, límites y aprobación.</span></>} />
-      <Checkbox className="hr-benefits-confirm span-full" checked={confirmed}
+      <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           <ShieldCheck size={17} aria-hidden="true" /> Confirmo que los datos son correctos y
           entiendo que no representan aprobación.

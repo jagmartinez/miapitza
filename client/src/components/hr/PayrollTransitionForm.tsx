@@ -202,7 +202,7 @@ export default function PayrollTransitionForm({
           </label>
         </>
       )}
-      <Checkbox className="hr-payroll-confirm span-full" checked={confirmed}
+      <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           Confirmo explícitamente la acción <strong>{LABELS[action]}</strong> sobre {run.code} y que
           revisé anomalías, snapshot y componentes.

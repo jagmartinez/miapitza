@@ -429,3 +429,8 @@
   background: var(--ui-success-soft);
   color: var(--ui-success);
 }
+
+.cellWarning {
+  color: var(--ui-warning);
+  font-weight: 600;
+}

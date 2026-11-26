@@ -1,3 +1,4 @@
+import { EmptyState } from '@/ui';
 import type { HrLeaveCalendarEntry } from '../../types/hr-workforce';
 import './LeaveCalendarGrid.css';
 
@@ -78,7 +79,7 @@ export default function LeaveCalendarGrid({ entries, dateFrom, dateTo, onOpenReq
   }
 
   if (days.length === 0) {
-    return <div className="hr-admin-empty"><strong>Rango de fechas inválido</strong><span>Revisa las fechas Desde y Hasta.</span></div>;
+    return <EmptyState title="Rango de fechas inválido" description="Revisa las fechas Desde y Hasta." />;
   }
 
   return (
@@ -130,7 +131,7 @@ export default function LeaveCalendarGrid({ entries, dateFrom, dateTo, onOpenReq
             {rows.length === 0 ? (
               <div role="row" className="leave-calendar-row">
                 <div role="cell" className="leave-calendar-empty" style={{ gridColumn: '1 / -1' }}>
-                  <div className="hr-admin-empty"><strong>No hay ausencias aprobadas</strong><span>Amplía el rango de fechas o revisa las solicitudes pendientes.</span></div>
+                  <EmptyState title="No hay ausencias aprobadas" description="Amplía el rango de fechas o revisa las solicitudes pendientes." />
                 </div>
               </div>
             ) : rows.map(([userId, row]) => (

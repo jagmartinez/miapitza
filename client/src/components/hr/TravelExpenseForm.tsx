@@ -155,7 +155,7 @@ export default function TravelExpenseForm({
           required
         />
       </label>
-      <Checkbox className="hr-benefits-confirm span-full" checked={confirmed}
+      <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>Confirmo que el gasto y su referencia coinciden con el soporte.</span></>} />
     </HrModalFormShell>
   );

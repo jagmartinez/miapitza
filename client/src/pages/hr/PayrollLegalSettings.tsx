@@ -41,6 +41,7 @@ import './payroll-legal.css';
 import './admin-tables.css';
 import '../Inventory.css';
 import './layouts/nomina.css';
+import form from '../../components/hr/hrForm.module.css';
 
 function formatLegalDate(value?: string | null) {
   if (!value) return 'Sin fecha fin';
@@ -301,7 +302,7 @@ export default function PayrollLegalSettings() {
               { key: 'version', header: 'Versión', render: (rule) => <div className="nm-legal-version-cell"><span className="hr-legal-version-number"><small>Versión</small><strong>{rule.version}</strong></span><strong className="hr-legal-version-name">{rule.name}</strong></div> },
               { key: 'validity', header: 'Vigencia', render: (rule) => <div className="nm-date-range"><CalendarDays size={16} aria-hidden="true" /><div><strong>{formatLegalDate(rule.effectiveFrom)}</strong><small>Hasta {formatLegalDate(rule.effectiveTo).toLocaleLowerCase()}</small></div></div> },
               { key: 'status', header: 'Estado', render: (rule) => <PayrollStatusPill status={rule.status} /> },
-              { key: 'configuration', header: 'Configuración', render: (rule) => <><strong>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}</strong><small>{rule.configurationSummary || 'Sin revisión validada'}</small></> },
+              { key: 'configuration', header: 'Configuración', render: (rule) => <span className={form.cellStack}><span className={form.cellTitle}>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}</span><span className={form.cellSub}>{rule.configurationSummary || 'Sin revisión validada'}</span></span> },
               {
                 key: 'actions',
                 header: 'Acciones',
@@ -330,7 +331,7 @@ export default function PayrollLegalSettings() {
                   >
                     <div className="nm-legal-activation-form">
                       <label className="nm-field">Motivo de activación<Input value={activationReason} onChange={(event) => setActivationReason(event.target.value)} maxLength={900} /></label>
-                      <Checkbox className="hr-payroll-confirm" checked={activationConfirmed} onChange={(event) => setActivationConfirmed(event.target.checked)} label={<><span>Confirmo la vigencia y que esta versión debe quedar disponible para calcular nómina.</span></>} />
+                      <Checkbox checked={activationConfirmed} onChange={(event) => setActivationConfirmed(event.target.checked)} label={<><span>Confirmo la vigencia y que esta versión debe quedar disponible para calcular nómina.</span></>} />
                       <Button variant="primary" onClick={() => void activateRule()} disabled={!online || saving || !activationConfirmed || activationReason.trim().length < 3}><LockKeyhole size={16} aria-hidden="true" /> {saving ? 'Activando…' : 'Activar versión legal'}</Button>
                     </div>
                   </HrSection>

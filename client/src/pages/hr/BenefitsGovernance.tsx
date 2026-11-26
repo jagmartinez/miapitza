@@ -1,7 +1,7 @@
-import { AppSelect, Button, Checkbox, DataTable, DateInput, FullScreenModal, Input, PageHeader, StatCard, Textarea } from '@/ui';
+import { AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, FullScreenModal, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea, toneFor } from '@/ui';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  BadgeDollarSign,
+  Search,
   Copy,
   Eye,
   FileDown,
@@ -29,6 +29,7 @@ import type {
   TravelPolicyCategory,
 } from '../../types/hr-benefits-governance';
 import './benefits-governance.css';
+import form from '../../components/hr/hrForm.module.css';
 
 type Tab = 'SETTLEMENTS' | 'POLICIES';
 const today = new Date().toISOString().slice(0, 10);
@@ -402,20 +403,17 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
   const activePolicy = policies.find((row) => row.status === 'ACTIVE');
   const draftSettlements = settlements.filter((row) => row.status === 'DRAFT').length;
   return (
-    <div className={`benefits-governance-page${embedded ? ' is-embedded' : ''}`}>
+    <div className={`benefits-governance-page ${form.stack}`}>
       {!embedded && (
         <PageHeader
-        title="Liquidaciones y políticas"
-        description="Administra cierres laborales, viáticos y préstamos con versiones, soportes y trazabilidad."
-        actions={
-            <Button variant="secondary" onClick={() => void load()}>
-              <RefreshCw size={16} /> Actualizar
-            </Button>
-          }
-      />
+          breadcrumb={['Recursos humanos', 'Prestaciones']}
+          title="Liquidaciones y políticas"
+          description="Administra cierres laborales, viáticos y préstamos con versiones, soportes y trazabilidad."
+          actions={<Button icon={RefreshCw} onClick={() => void load()}>Actualizar</Button>}
+        />
       )}
       {!embedded && (!activePolicy || draftSettlements > 0) && (
-        <section className="hr-kpi-row" aria-label="Indicadores de liquidaciones y políticas">
+        <section className={form.kpis} aria-label="Indicadores de liquidaciones y políticas">
           {!activePolicy && (
             <StatCard tone="danger" label="Política activa" value="—" context="Sin versión publicada de viáticos y préstamos." action={{ label: 'Ver políticas', onClick: () => setTab('POLICIES') }} />
           )}
@@ -424,26 +422,18 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
           )}
         </section>
       )}
-      <nav className="governance-tabs" aria-label="Secciones" role="tablist">
-        <button
-          role="tab"
-          aria-selected={tab === 'SETTLEMENTS'}
-          className={tab === 'SETTLEMENTS' ? 'active' : ''}
-          onClick={() => setTab('SETTLEMENTS')}
-        >
-          <BadgeDollarSign size={17} /> Liquidaciones finales
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === 'POLICIES'}
-          className={tab === 'POLICIES' ? 'active' : ''}
-          onClick={() => setTab('POLICIES')}
-        >
-          <ShieldCheck size={17} /> Políticas de viáticos y préstamos
-        </button>
-      </nav>
+      <SegmentedControl<'SETTLEMENTS' | 'POLICIES'>
+        ariaLabel="Secciones"
+        options={[
+          { value: 'SETTLEMENTS', label: 'Liquidaciones finales' },
+          { value: 'POLICIES', label: 'Políticas de viáticos y préstamos' },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
 
       <section
+        className={form.stack}
         role="tabpanel"
         aria-label={
           tab === 'SETTLEMENTS' ? 'Liquidaciones finales' : 'Políticas de viáticos y préstamos'
@@ -451,44 +441,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
       >
         {tab === 'SETTLEMENTS' ? (
           <>
-            <div className="governance-toolbar">
-              <div>
-                <h2>Liquidaciones de empleados</h2>
-                <p>Cada fila conserva cálculo, aprobaciones, pago y constancia PDF.</p>
-              </div>
-              <div className="governance-toolbar-actions">
-                <Input
-                  aria-label="Buscar liquidación"
-                  placeholder="Buscar código o empleado"
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                    setPage(1);
-                  }}
-                />
-                <label>
-                  <span>Estado</span>
-                  <AppSelect<string>
-                    options={[
-                      { value: '', label: 'Todos' },
-                      ...Object.entries(statusLabel)
-                        .filter(([value]) => !['ACTIVE', 'RETIRED'].includes(value))
-                        .map(([value, label]) => ({ value: String(value), label: label })),
-                    ]}
-                    aria-label="Filtrar liquidaciones por estado"
-                    value={settlementStatus}
-                    onChange={(next) => {
-                      setSettlementStatus(next ?? '');
-                      setPage(1);
-                    }}
-                    isClearable={false}
-                  />
-                </label>
-                <Button variant="primary" onClick={() => setShowSettlement(true)}>
-                  <Plus size={17} /> Nueva liquidación
-                </Button>
-              </div>
-            </div>
             <FullScreenModal
         isOpen={showSettlement}
         onClose={() => setShowSettlement(false)}
@@ -653,12 +605,12 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   <div className="preview-panel">
                     <h3>2. Resultado verificable</h3>
                     {preview.blockers.map((item) => (
-                      <p className="governance-blocker" key={item}>
+                      <p className={form.alertDanger} key={item}>
                         Bloqueo: {item}
                       </p>
                     ))}
                     {preview.warnings.map((item) => (
-                      <p className="governance-warning" key={item}>
+                      <p className={form.alertWarning} key={item}>
                         {item}
                       </p>
                     ))}
@@ -732,58 +684,56 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 )}
               </section>
             </FullScreenModal>
-            <div className="governance-table-wrap pr-table-card">
+            <p className={form.help}>Cada liquidación conserva cálculo, aprobaciones, pago y constancia PDF.</p>
+            <div>
               <DataTable
                 ariaLabel="Liquidaciones"
-                rows={settlements}
+                toolbar={(
+                  <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setShowSettlement(true)}>Nueva liquidación</Button>}>
+                    <Input
+                      type="search"
+                      aria-label="Buscar liquidación"
+                      placeholder="Buscar código o empleado"
+                      prefix={<Search size={14} aria-hidden="true" />}
+                      value={search}
+                      onChange={(event) => {
+                        setSearch(event.target.value);
+                        setPage(1);
+                      }}
+                    />
+                    <AppSelect<string>
+                      options={[
+                        { value: '', label: 'Todos los estados' },
+                        ...Object.entries(statusLabel)
+                          .filter(([value]) => !['ACTIVE', 'RETIRED'].includes(value))
+                          .map(([value, label]) => ({ value: String(value), label: label })),
+                      ]}
+                      aria-label="Filtrar liquidaciones por estado"
+                      value={settlementStatus}
+                      onChange={(next) => {
+                        setSettlementStatus(next ?? '');
+                        setPage(1);
+                      }}
+                      isClearable={false}
+                    />
+                  </TableToolbar>
+                )}
+                                rows={settlements}
                 rowKey={(row) => row.id}
                 pagination={{ mode: 'server', page: pagination.page, pageSize: pagination.pageSize, total: pagination.total, onChange: (nextPage) => setPage(nextPage) }}
                 pageSizeOptions={[pagination.pageSize]}
                 minWidth="48rem"
-                empty={<div className="hr-admin-empty">
-                          <strong>No hay liquidaciones en este filtro</strong>
-                          <span>Crea una liquidación o cambia la búsqueda.</span>
-                        </div>}
+                empty={<EmptyState title="No hay liquidaciones en este filtro" description="Crea una liquidación o cambia la búsqueda." />}
                 columns={[
                   { key: 'c0', header: 'Código', render: (row) => <>{row.code}</> },
-                  { key: 'c1', header: 'Empleado', render: (row) => (<>{row.employee.legalName}
-                          <small>{row.employee.employeeCode}</small></>) },
+                  { key: 'c1', header: 'Empleado', render: (row) => (<span className={form.cellStack}><span className={form.cellTitle}>{row.employee.legalName}</span><span className={form.cellSub}>{row.employee.employeeCode}</span></span>) },
                   { key: 'c2', header: 'Salida', render: (row) => <>{row.terminationDate.slice(0, 10)}</> },
-                  { key: 'c3', header: 'Estado', render: (row) => (<span className={`governance-status ${row.status.toLowerCase()}`}>
-                            {statusLabel[row.status]}
-                          </span>) },
+                  { key: 'c3', header: 'Estado', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status]}</Badge>) },
                   { key: 'c4', header: 'Neto', render: (row) => <>{row.currency} {row.netPay}</> },
-                  { key: 'c5', header: 'Acciones', render: (row) => (<div className="table-actions">
-                            <Button
-                              className="table-action-btn"
-                              size="sm"
-                              variant="ghost"
-                              title={`Ver y gestionar ${row.code}`}
-                              aria-label={`Ver y gestionar ${row.code}`}
-                              onClick={() =>
-                                void benefitsGovernanceClient
-                                  .settlement(row.id)
-                                  .then(setSelectedSettlement)
-                                  .catch((error) =>
-                                    toast.error(
-                                      getBenefitsErrorMessage(error, 'No se pudo abrir el detalle.')
-                                    )
-                                  )
-                              }
-                            >
-                              <Eye size={16} />
-                            </Button>
+                  { key: 'c5', header: 'Acciones', render: (row) => (<div className={form.rowActions}>
+                            <Button size="sm" variant="ghost" title={`Ver y gestionar ${row.code}`} aria-label={`Ver y gestionar ${row.code}`} onClick={() => void benefitsGovernanceClient .settlement(row.id) .then(setSelectedSettlement) .catch((error) => toast.error( getBenefitsErrorMessage(error, 'No se pudo abrir el detalle.') ) ) } icon={Eye} />
                             {row.status === 'DRAFT' && (
-                              <Button
-                                className="table-action-btn"
-                                size="sm"
-                                variant="ghost"
-                                title={`Editar ${row.code}`}
-                                aria-label={`Editar ${row.code}`}
-                                onClick={() => openSettlementEditor(row)}
-                              >
-                                <Pencil size={16} />
-                              </Button>
+                              <Button size="sm" variant="ghost" title={`Editar ${row.code}`} aria-label={`Editar ${row.code}`} onClick={() => openSettlementEditor(row)} icon={Pencil} />
                             )}
                           </div>) },
                 ]}
@@ -792,35 +742,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
           </>
         ) : (
           <>
-            <div className="governance-toolbar">
-              <div>
-                <h2>Políticas versionadas</h2>
-                <p>Las corridas congelan la versión vigente. Una persona crea y otra activa.</p>
-              </div>
-              <div className="governance-toolbar-actions">
-                <label>
-                  <span>Estado</span>
-                  <AppSelect<string>
-                    options={[
-                      { value: '', label: 'Todos' },
-                      { value: 'DRAFT', label: 'Borrador' },
-                      { value: 'ACTIVE', label: 'Activa' },
-                      { value: 'RETIRED', label: 'Retirada' },
-                    ]}
-                    aria-label="Filtrar políticas por estado"
-                    value={policyStatus}
-                    onChange={(next) => {
-                      setPolicyStatus(next ?? '');
-                      setPolicyPage(1);
-                    }}
-                    isClearable={false}
-                  />
-                </label>
-                <Button variant="primary" onClick={() => openPolicyEditor()}>
-                  <Plus size={17} /> Nueva versión
-                </Button>
-              </div>
-            </div>
             <FullScreenModal
         isOpen={showPolicy}
         onClose={() => {
@@ -1010,28 +931,11 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                               }
                               label={<span className="sr-only">Exigir soporte</span>}
                             />) },
-                  { key: 'c6', header: 'Acción', render: ({ index }) => (<Button
-                              className="table-action-btn danger"
-                              variant="ghost"
-                              size="sm"
-                              aria-label={`Eliminar categoría ${index + 1}`}
-                              title="Eliminar categoría"
-                              disabled={policy.travelCategories.length === 1}
-                              onClick={() =>
-                                setPolicy((value) => ({
-                                  ...value,
-                                  travelCategories: value.travelCategories.filter(
-                                    (_, itemIndex) => itemIndex !== index
-                                  ),
-                                }))
-                              }
-                            >
-                              <Trash2 size={15} />
-                            </Button>) },
+                  { key: 'c6', header: 'Acción', render: ({ index }) => (<Button variant="ghost" size="sm" aria-label={`Eliminar categoría ${index + 1}`} title="Eliminar categoría" disabled={policy.travelCategories.length === 1} onClick={() => setPolicy((value) => ({ ...value, travelCategories: value.travelCategories.filter( (_, itemIndex) => itemIndex !== index ), })) } icon={Trash2} />) },
                 ]}
               />
                 </div>
-                <div className="row-actions">
+                <div className={form.actionsEnd}>
                   <Button
                     variant="secondary"
                     onClick={() =>
@@ -1060,68 +964,49 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 </div>
               </section>
             </FullScreenModal>
-            <div className="governance-table-wrap pr-table-card">
+            <p className={form.help}>Las corridas congelan la versión vigente. Una persona crea y otra activa.</p>
+            <div>
               <DataTable
                 ariaLabel="Políticas de beneficios"
-                rows={policies}
+                toolbar={(
+                  <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => openPolicyEditor()}>Nueva versión</Button>}>
+                    <AppSelect<string>
+                      options={[
+                        { value: '', label: 'Todos los estados' },
+                        { value: 'DRAFT', label: 'Borrador' },
+                        { value: 'ACTIVE', label: 'Activa' },
+                        { value: 'RETIRED', label: 'Retirada' },
+                      ]}
+                      aria-label="Filtrar políticas por estado"
+                      value={policyStatus}
+                      onChange={(next) => {
+                        setPolicyStatus(next ?? '');
+                        setPolicyPage(1);
+                      }}
+                      isClearable={false}
+                    />
+                  </TableToolbar>
+                )}
+                                rows={policies}
                 rowKey={(row) => row.id}
                 pagination={{ mode: 'server', page: policyPagination.page, pageSize: policyPagination.pageSize, total: policyPagination.total, onChange: (nextPage) => setPolicyPage(nextPage) }}
                 pageSizeOptions={[policyPagination.pageSize]}
                 minWidth="48rem"
-                empty={<div className="hr-admin-empty">
-                          <strong>No hay políticas en este filtro</strong>
-                          <span>Crea una versión o cambia el estado seleccionado.</span>
-                        </div>}
+                empty={<EmptyState title="No hay políticas en este filtro" description="Crea una versión o cambia el estado seleccionado." />}
                 columns={[
-                  { key: 'c0', header: 'Versión', render: (row) => (<>v{row.version}
-                          <small>{row.sourceReference}</small></>) },
+                  { key: 'c0', header: 'Versión', render: (row) => (<span className={form.cellStack}><span className={form.cellTitle}>v{row.version}</span><span className={form.cellSub}>{row.sourceReference}</span></span>) },
                   { key: 'c1', header: 'Vigencia', render: (row) => (<>{row.effectiveFrom.slice(0, 10)}
                           {row.effectiveTo ? ` — ${row.effectiveTo.slice(0, 10)}` : ''}</>) },
-                  { key: 'c2', header: 'Estado', render: (row) => (<span className={`governance-status ${row.status.toLowerCase()}`}>
-                            {statusLabel[row.status] ?? row.status}
-                          </span>) },
+                  { key: 'c2', header: 'Estado', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status] ?? row.status}</Badge>) },
                   { key: 'c3', header: 'Viáticos', render: (row) => <>{row.travelCategories.length} categorías · {row.travelMaxDays} días</> },
                   { key: 'c4', header: 'Préstamos', render: (row) => <>Tope {row.currency} {row.loanMaxAmount} · {row.loanMaxInstallments} cuotas</> },
-                  { key: 'c5', header: 'Acción', render: (row) => (<div className="table-actions">
+                  { key: 'c5', header: 'Acción', render: (row) => (<div className={form.rowActions}>
                             {row.status === 'DRAFT' && (
-                              <Button
-                                className="table-action-btn"
-                                size="sm"
-                                variant="ghost"
-                                title={`Editar versión ${row.version}`}
-                                aria-label={`Editar versión ${row.version}`}
-                                disabled={busy}
-                                onClick={() => openPolicyEditor(row)}
-                              >
-                                <Pencil size={16} />
-                              </Button>
+                              <Button size="sm" variant="ghost" title={`Editar versión ${row.version}`} aria-label={`Editar versión ${row.version}`} disabled={busy} onClick={() => openPolicyEditor(row)} icon={Pencil} />
                             )}
-                            <Button
-                              className="table-action-btn"
-                              size="sm"
-                              variant="ghost"
-                              title={`Clonar versión ${row.version}`}
-                              aria-label={`Clonar versión ${row.version}`}
-                              disabled={busy}
-                              onClick={() => openPolicyEditor(row, true)}
-                            >
-                              <Copy size={16} />
-                            </Button>
+                            <Button size="sm" variant="ghost" title={`Clonar versión ${row.version}`} aria-label={`Clonar versión ${row.version}`} disabled={busy} onClick={() => openPolicyEditor(row, true)} icon={Copy} />
                             {row.status === 'DRAFT' && (
-                              <Button
-                                className="table-action-btn"
-                                size="sm"
-                                variant="ghost"
-                                title={`Activar versión ${row.version}`}
-                                aria-label={`Activar versión ${row.version}`}
-                                disabled={busy}
-                                onClick={() => {
-                                  setPolicyToActivate(row);
-                                  setPolicyActivationConfirmed(false);
-                                }}
-                              >
-                                <ShieldCheck size={16} />
-                              </Button>
+                              <Button size="sm" variant="ghost" title={`Activar versión ${row.version}`} aria-label={`Activar versión ${row.version}`} disabled={busy} onClick={() => { setPolicyToActivate(row); setPolicyActivationConfirmed(false); }} icon={ShieldCheck} />
                             )}
                           </div>) },
                 ]}
@@ -1143,7 +1028,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             className="governance-form governance-sidebar-form"
             aria-label="Editar liquidación borrador"
           >
-            <p className="governance-help">
+            <p className={form.help}>
               Los cambios se guardan con control de revisión. Una persona distinta deberá revisar y
               aprobar.
             </p>
@@ -1286,32 +1171,11 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                           value={line.amount}
                           onChange={(event) => updateDraftLine(index, 'amount', event.target.value)}
                         /></>) },
-                  { key: 'c5', header: 'Acción', render: ({ index }) => (<Button
-                          className="table-action-btn danger"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Eliminar concepto ${index + 1}`}
-                          title="Eliminar concepto"
-                          disabled={draftSettlement.lines.length === 1}
-                          onClick={() =>
-                            setDraftSettlement((value) =>
-                              value
-                                ? {
-                                    ...value,
-                                    lines: value.lines.filter(
-                                      (_, lineIndex) => lineIndex !== index
-                                    ),
-                                  }
-                                : value
-                            )
-                          }
-                        >
-                          <Trash2 size={15} />
-                        </Button>) },
+                  { key: 'c5', header: 'Acción', render: ({ index }) => (<Button variant="ghost" size="sm" aria-label={`Eliminar concepto ${index + 1}`} title="Eliminar concepto" disabled={draftSettlement.lines.length === 1} onClick={() => setDraftSettlement((value) => value ? { ...value, lines: value.lines.filter( (_, lineIndex) => lineIndex !== index ), } : value ) } icon={Trash2} />) },
                 ]}
               />
             </div>
-            <div className="row-actions">
+            <div className={form.actionsEnd}>
               <Button
                 variant="secondary"
                 onClick={() =>
@@ -1353,7 +1217,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 onChange={(event) => setDraftAdjustmentReason(event.target.value)}
               />
             </label>
-            <div className="row-actions">
+            <div className={form.actionsEnd}>
               <Button
                 variant="ghost"
                 onClick={() => {
@@ -1399,9 +1263,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   {selectedSettlement.terminationDate.slice(0, 10)}
                 </span>
               </div>
-              <span className={`governance-status ${selectedSettlement.status.toLowerCase()}`}>
-                {statusLabel[selectedSettlement.status]}
-              </span>
+              <Badge tone={toneFor(selectedSettlement.status)} dot>{statusLabel[selectedSettlement.status]}</Badge>
             </div>
             <p>
               <strong>Causal:</strong> {selectedSettlement.cause}
@@ -1456,7 +1318,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 )}
                 <Checkbox className="governance-check" checked={actionConfirmed}
                     onChange={(event) => setActionConfirmed(event.target.checked)} label={<>Confirmo esta decisión y su efecto en el expediente</>} />
-                <div className="row-actions">
+                <div className={form.actionsEnd}>
                   <Button
                     variant="ghost"
                     onClick={() => {
@@ -1482,7 +1344,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 </div>
               </div>
             ) : (
-              <div className="row-actions">
+              <div className={form.actionsEnd}>
                 {selectedSettlement.allowedActions.map((action) => (
                   <Button
                     size="sm"
@@ -1534,7 +1396,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             <p>Por segregación de funciones, quien creó esta versión no puede activarla.</p>
             <Checkbox className="governance-check" checked={policyActivationConfirmed}
                 onChange={(event) => setPolicyActivationConfirmed(event.target.checked)} label={<>Confirmo que revisé vigencia, topes, categorías y fuente</>} />
-            <div className="row-actions">
+            <div className={form.actionsEnd}>
               <Button variant="ghost" onClick={() => setPolicyToActivate(null)}>
                 Cancelar
               </Button>

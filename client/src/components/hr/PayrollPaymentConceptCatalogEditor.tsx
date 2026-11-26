@@ -2,6 +2,7 @@ import { AppSelect, Button, Checkbox, DataTable, Input } from '@/ui';
 import { useMemo, useState } from 'react';
 import { CheckCircle2, Pencil, Plus, Power, Save, X } from 'lucide-react';
 import type { HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
+import form from './hrForm.module.css';
 
 interface Props {
   concepts: HrPayrollPaymentConceptDefinition[];
@@ -149,7 +150,7 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
                 minWidth="56rem"
                 empty={'Sin registros'}
                 columns={[
-                  { key: 'c0', header: 'Concepto', render: ({ concept }) => <><strong>{concept.name}</strong><small>{concept.code}</small></> },
+                  { key: 'c0', header: 'Concepto', render: ({ concept }) => <span className={form.cellStack}><span className={form.cellTitle}>{concept.name}</span><span className={form.cellSub}>{concept.code}</span></span> },
                   { key: 'c1', header: 'Tipo', render: ({ concept }) => <>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</> },
                   { key: 'c2', header: 'IR laboral', render: ({ concept }) => <>{taxLabel(concept)}</> },
                   { key: 'c3', header: 'INSS', render: ({ concept }) => <>{concept.type === 'INCOME' && concept.socialSecurityApplicable ? 'Sí' : 'No'}</> },

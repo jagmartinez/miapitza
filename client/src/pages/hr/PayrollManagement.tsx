@@ -40,6 +40,7 @@ import './payroll-operations.css';
 import './admin-tables.css';
 import '../Inventory.css';
 import './layouts/nomina.css';
+import form from '../../components/hr/hrForm.module.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
 
@@ -511,7 +512,7 @@ export default function PayrollManagement() {
               onRowClick={openRun}
               empty={<div className="payroll-operation-empty-list"><strong>No hay corridas que coincidan con los filtros.</strong><span>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</span>{runs.length === 0 && <Button variant="primary" size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}</div>}
               columns={[
-                { key: 'code', header: 'Corrida', width: '1.4fr', render: (run) => <><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></> },
+                { key: 'code', header: 'Corrida', width: '1.4fr', render: (run) => <span className={form.cellStack}><span className={form.cellTitle}>{run.code}</span><span className={form.cellSub}>Creada {formatDate(run.createdAt)}</span></span> },
                 { key: 'period', header: 'Periodo', width: '1fr', render: (run) => runPeriodLabel(run) },
                 { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (run) => <PayrollStatusPill status={run.status} /> },
                 { key: 'employees', header: 'Empleados', width: '0.8fr', type: 'number', render: (run) => (isRunCalculated(run) && run.totals ? formatNumber(run.totals.employeeCount, 0) : 'N/D') },
@@ -528,9 +529,9 @@ export default function PayrollManagement() {
                     const isSelected = selected?.id === run.id && selected.kind === run.kind;
                     return (
                       <div className="payroll-run-actions table-actions">
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openRun(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`}><Eye size={16} /></Button>
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`}><FileSpreadsheet size={16} /></Button>
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`}><Download size={16} /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => openRun(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`} icon={Eye} />
+                        <Button size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`} icon={FileSpreadsheet} />
+                        <Button size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`} icon={Download} />
                       </div>
                     );
                   },

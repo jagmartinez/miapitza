@@ -193,7 +193,7 @@ export default function DeductionForm({
           required
         />
       </label>
-      <Checkbox className="hr-benefits-confirm span-full" checked={confirmed}
+      <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           Confirmo la persona, vigencia, prioridad, límite y motivo. Se creará como borrador.
         </span></>} />

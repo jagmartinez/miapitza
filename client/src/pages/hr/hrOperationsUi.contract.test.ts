@@ -18,16 +18,11 @@ const punchWizard = read('../../components/hr/AttendancePunchWizard.tsx');
 const geolocationCapture = read('../../components/hr/GeolocationCapture.tsx');
 
 // Pantallas ya migradas a PageContent de @/ui (sin contenedores hr-operation-page / my-hr-page).
-const migratedPages = [attendanceReview, timeClock];
+const migratedPages = [attendanceReview, timeClock, attendanceManagement, leaveManagement, benefitsManagement, myBenefits];
 
-const adminOperationalPages = [
-  attendanceManagement,
-  leaveManagement,
-  benefitsManagement,
-];
+const adminOperationalPages: string[] = [];
 
 const selfServicePages = [
-  myBenefits,
   myPayroll,
   myWorkforce,
 ];
@@ -46,10 +41,10 @@ describe('RH operational UI contract', () => {
 
   it('keeps admin queues table-first with external control tabs and explicit counterflows', () => {
     [attendanceManagement, leaveManagement].forEach((source) => {
-      expect(source).toContain('hr-operation-toolbar');
+      // Layout migrado: Tabs + TableToolbar de @/ui encima de la tabla.
+      expect(source).toContain('<TableToolbar');
       expect(source).not.toContain('hr-operation-kpis');
-      expect(source).toContain('filters-toolbar hr-admin-tab-toolbar');
-      expect(source).toContain('role="tablist"');
+      expect(source).toContain('<Tabs');
       expect(source).toContain('role="tabpanel"');
       expect(source).toContain('<DataTable');
       expect(source).not.toContain('<caption>');

@@ -30,12 +30,12 @@ describe('employee self-service UX contract', () => {
 
   it('uses Profile cards as the launcher and adds a compact mobile punch shortcut', () => {
     // Layout migrado: las pantallas de Mi RH usan PageContent de @/ui en lugar del contenedor my-hr-page.
-    [schedule, timeClock, biometrics].forEach((source) => {
+    [schedule, timeClock, biometrics, benefits].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
       expect(source).toContain('<PageContent');
       expect(source).not.toContain("import './admin-tables.css'");
     });
-    [workforce, payroll, benefits].forEach((source) => {
+    [workforce, payroll].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
       expect(source).toContain('my-hr-page');
       expect(source).toContain("import './self-service.css'");
@@ -107,7 +107,7 @@ describe('employee self-service UX contract', () => {
     expect(payroll).toContain('Ver recibos del año actual');
     expect(payroll).toContain('LoadErrorState');
     expect(benefits).toContain("tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'");
-    expect(benefits).toContain('Reintentar');
+    expect(benefits).toContain('LoadErrorState');
     expect(workforce).toContain('En espera');
     expect(workforce).toContain('Aprobadas');
     expect(workforce).toContain('Rechazadas o canceladas');

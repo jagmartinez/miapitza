@@ -1,79 +1,10 @@
-.benefits-governance-page {
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.benefits-governance-page.is-embedded {
-  padding: 0;
-}
-.governance-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 6px;
-  background: var(--ui-surface-2);
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-}
-.governance-tabs button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 16px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ui-text-muted);
-  font-weight: 700;
-  cursor: pointer;
-}
-.governance-tabs button.active {
-  background: var(--ui-primary);
-  color: var(--ui-primary-fg);
-}
-.governance-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 18px;
-}
-.governance-toolbar h2,
+
+
 .governance-form h3 {
   margin: 0;
 }
-.governance-toolbar p {
-  margin: 5px 0 0;
-  color: var(--ui-text-muted);
-}
-.governance-toolbar-actions {
-  display: flex;
-  align-items: end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.governance-toolbar-actions > label {
-  display: grid;
-  gap: 4px;
-  min-width: 180px;
-  color: var(--ui-text-muted);
-  font-size: 0.78rem;
-  font-weight: 650;
-}
-.governance-toolbar-actions > input {
-  min-width: min(280px, 100%);
-  min-height: 40px;
-  padding: 9px 11px;
-  color: var(--ui-text);
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: 6px;
-}
-.governance-form,
-.governance-table-wrap {
-  padding: 18px;
-  background: var(--ui-surface-2);
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
+.governance-form {
+  padding: 0;
 }
 .governance-grid {
   display: grid;
@@ -81,23 +12,13 @@
   gap: 14px;
   margin: 15px 0;
 }
-.governance-form label {
+.governance-form label:not(.ui-check) {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  color: var(--ui-text-muted);
-  font-size: 0.84rem;
-  font-weight: 650;
-}
-.governance-form input,
-.governance-form select,
-.governance-form textarea {
-  min-height: 40px;
-  padding: 9px 11px;
+  gap: var(--ui-space-1);
   color: var(--ui-text);
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
 }
 .governance-sidebar-form {
   padding: 0;
@@ -109,28 +30,11 @@
   margin-bottom: 14px;
   overflow-x: auto;
 }
-.governance-form-table table {
-  min-width: 920px;
-}
-.governance-form-table input:not([type='checkbox']) {
-  min-width: 130px;
-}
-.governance-help {
-  margin: 0 0 12px;
-  color: var(--ui-text-muted);
-}
-.governance-form textarea {
-  min-height: 74px;
-  resize: vertical;
-}
 .governance-form .governance-check {
   display: flex;
   flex-direction: row;
   align-items: center;
   margin: 10px 0;
-}
-.governance-check input {
-  min-height: auto;
 }
 .span-2 {
   grid-column: span 2;
@@ -142,80 +46,6 @@
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--ui-border);
-}
-.governance-blocker,
-.governance-warning {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 6px;
-}
-.governance-blocker {
-  background: var(--ui-danger-soft);
-  color: var(--ui-danger);
-}
-.governance-warning {
-  background: var(--ui-warning-soft);
-  color: var(--ui-warning);
-}
-.governance-table-wrap {
-  overflow: auto;
-  padding: 0;
-}
-.governance-table-wrap > table {
-  min-width: 860px;
-}
-.governance-table-wrap table,
-.governance-form table,
-.preview-panel table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.governance-table-wrap th,
-.governance-table-wrap td,
-.governance-form th,
-.governance-form td,
-.preview-panel th,
-.preview-panel td {
-  padding: 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--ui-border);
-  vertical-align: top;
-}
-.governance-table-wrap th,
-.governance-form th,
-.preview-panel th {
-  color: var(--ui-text-muted);
-  font-size: 0.76rem;
-  text-transform: uppercase;
-}
-.governance-table-wrap small {
-  display: block;
-  margin-top: 4px;
-  color: var(--ui-text-muted);
-}
-.governance-status {
-  display: inline-flex;
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: var(--ui-surface-2);
-  font-size: 0.76rem;
-  font-weight: 750;
-}
-.governance-status.active,
-.governance-status.approved,
-.governance-status.paid {
-  background: var(--ui-success-soft);
-  color: var(--ui-success);
-}
-.governance-status.rejected,
-.governance-status.void {
-  background: var(--ui-danger-soft);
-  color: var(--ui-danger);
-}
-.row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 .governance-detail {
   display: flex;
@@ -238,17 +68,6 @@
 .governance-detail small {
   color: var(--ui-text-muted);
 }
-.governance-detail table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.governance-detail th,
-.governance-detail td {
-  padding: 10px;
-  border-bottom: 1px solid var(--ui-border);
-  text-align: left;
-  vertical-align: top;
-}
 .governance-total {
   display: flex;
   justify-content: space-between;
@@ -261,58 +80,19 @@
 .governance-action-form {
   display: grid;
   gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--ui-border);
-  border-radius: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
 }
 .governance-action-form label,
 .governance-detail .governance-check {
   display: grid;
   gap: 6px;
 }
-.governance-action-form input,
-.governance-action-form textarea {
-  min-height: 40px;
-  padding: 9px 11px;
-  color: var(--ui-text);
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: 6px;
-}
-.governance-tabs button:focus-visible,
-.governance-toolbar-actions input:focus-visible,
-.governance-form input:focus-visible,
-.governance-form textarea:focus-visible {
-  outline: 2px solid var(--ui-primary);
-  outline-offset: 2px;
-}
 @media (max-width: 800px) {
-  .benefits-governance-page {
-    padding: 14px;
-  }
   .governance-grid {
     grid-template-columns: 1fr;
   }
   .span-2 {
     grid-column: auto;
-  }
-  .governance-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .governance-toolbar-actions {
-    width: 100%;
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .governance-toolbar-actions > input,
-  .governance-toolbar-actions > label {
-    width: 100%;
-  }
-  .governance-tabs {
-    overflow: auto;
-  }
-  .governance-tabs button {
-    white-space: nowrap;
   }
 }

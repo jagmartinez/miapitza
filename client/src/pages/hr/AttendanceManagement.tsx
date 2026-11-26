@@ -10,7 +10,10 @@ import {
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
-import { AppSelect, Button, DataTable, DateInput, FullScreenModal, Input, PageHeader, Textarea } from '@/ui';
+import {
+  AppSelect, Button, DataTable, DateInput, EmptyState, FullScreenModal, Input, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs,
+  Textarea,
+} from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -37,11 +40,7 @@ import type {
   HrOvertimeRequest,
   HrOvertimeRequestPayload,
 } from '../../types/hr-workforce';
-import './workforce.css';
-import './attendance.css';
-import './admin-tables.css';
-import './hr-admin-operations.css';
-import '../Inventory.css';
+import form from '../../components/hr/hrForm.module.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
   departments: [],
@@ -262,99 +261,70 @@ export default function AttendanceManagement() {
   const branches = lookups.branches ?? [];
 
   return (
-    <div className="page-wrapper inventory-page hr-workforce-page hr-attendance-management-page hr-admin-catalog-page hr-operation-page">
+    <PageContent>
       <PageHeader
+        breadcrumb={['Recursos humanos', 'Jornadas']}
         title="Control diario de asistencia"
         description="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
         actions={
-          <Button variant="primary"
+          <Button
+            variant="primary"
+            icon={Plus}
             onClick={() => {
               setPeriodForm({ dateFrom: date, dateTo: date, reason: '' });
               setCreatePanel({ kind: 'period' });
             }}
             disabled={!online}
           >
-            <Plus size={17} /> Crear periodo
+            Crear periodo
           </Button>
         }
       />
       <OnlineOnlyNotice online={online} />
 
-      <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros del resumen diario">
-        <label>
-          Fecha
-          <DateInput value={date} onChange={(event) => setDate(event.target.value)} />
-        </label>
-        <label>
-          Sucursal
-          <AppSelect<string>
-            options={[
-              { value: '', label: 'Todas' },
-              ...branches.map((branch) => ({ value: String(branch.id), label: branch.name })),
-            ]}
-            value={branchId}
-            onChange={(next) => setBranchId(next ?? '')}
-            isClearable={false}
-          />
-        </label>
-        <label>
-          Empleado
-          <AppSelect<string>
-            options={[
-              { value: '', label: 'Todos' },
-              ...users.map((user) => ({ value: String(user.id), label: user.name })),
-            ]}
-            value={userId}
-            onChange={(next) => setUserId(next ?? '')}
-            isClearable={false}
-          />
-        </label>
-        <Button variant="ghost" onClick={() => void load()}>
-          <RefreshCw size={16} /> Actualizar
-        </Button>
-      </section>
+      {!loading && !error && (
+        <Tabs
+          ariaLabel="Bandejas de asistencia"
+          active={activeTable}
+          onChange={(id) => setActiveTable(id as AttendanceTable)}
+          tabs={([
+            ['DAY', 'Jornadas', summaries.length],
+            ['INCIDENTS', 'Incidencias', incidents.filter((item) => item.status === 'OPEN').length],
+            ['CORRECTIONS', 'Correcciones', corrections.filter((item) => item.status === 'PENDING').length],
+            ['OVERTIME', 'Horas extra', overtime.filter((item) => item.status === 'PENDING').length],
+            ['PERIODS', 'Periodos', periods.length],
+          ] as Array<[AttendanceTable, string, number]>).map(([id, label, badge]) => ({ id, label, badge }))}
+        />
+      )}
 
-      {!loading && !error && <div className="filters-toolbar hr-admin-tab-toolbar" role="tablist" aria-label="Bandejas de asistencia">
-        {([
-          ['DAY', 'Jornadas', summaries.length],
-          ['INCIDENTS', 'Incidencias', incidents.filter((item) => item.status === 'OPEN').length],
-          ['CORRECTIONS', 'Correcciones', corrections.filter((item) => item.status === 'PENDING').length],
-          ['OVERTIME', 'Horas extra', overtime.filter((item) => item.status === 'PENDING').length],
-          ['PERIODS', 'Periodos', periods.length],
-        ] as Array<[AttendanceTable, string, number]>).map(([value, label, count]) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            id={`attendance-tab-${value.toLowerCase()}`}
-            aria-controls={`attendance-panel-${value.toLowerCase()}`}
-            aria-selected={activeTable === value}
-            onClick={() => setActiveTable(value)}
-          >
-            {label} <span>{count}</span>
-          </button>
-        ))}
-      </div>}
+      <TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Actualizar</Button>}>
+        <DateInput aria-label="Fecha" title="Fecha" value={date} onChange={(event) => setDate(event.target.value)} />
+        <AppSelect<string>
+          aria-label="Sucursal"
+          options={[
+            { value: '', label: 'Todas las sucursales' },
+            ...branches.map((branch) => ({ value: String(branch.id), label: branch.name })),
+          ]}
+          value={branchId}
+          onChange={(next) => setBranchId(next ?? '')}
+          isClearable={false}
+        />
+        <AppSelect<string>
+          aria-label="Empleado"
+          options={[
+            { value: '', label: 'Todos los empleados' },
+            ...users.map((user) => ({ value: String(user.id), label: user.name })),
+          ]}
+          value={userId}
+          onChange={(next) => setUserId(next ?? '')}
+          isClearable={false}
+        />
+      </TableToolbar>
 
       {loading && <HrLoading text="Cargando control diario…" />}
-      {!loading && error && (
-        <div className="state-placeholder" role="alert">
-          <AlertTriangle size={42} />
-          <p className="state-error">{error}</p>
-          <Button variant="ghost" onClick={() => void load()}>
-            Reintentar
-          </Button>
-        </div>
-      )}
+      {!loading && error && <LoadErrorState message={error} onRetry={() => void load()} />}
       {!loading && !error && (
-        <section className="pr-table-card" aria-label="Administración diaria de asistencia">
-          <div
-            className="hr-admin-table-wrap"
-            role="tabpanel"
-            id={`attendance-panel-${activeTable.toLowerCase()}`}
-            aria-labelledby={`attendance-tab-${activeTable.toLowerCase()}`}
-            tabIndex={0}
-          >
+        <div className={form.stack} role="tabpanel" id={`attendance-panel-${activeTable.toLowerCase()}`} aria-label="Administración diaria de asistencia">
             {activeTable === 'DAY' && (
               <DataTable
                 ariaLabel={`Jornadas del ${dateLabel(date)}`}
@@ -362,18 +332,18 @@ export default function AttendanceManagement() {
                 rowKey={(summary) => summary.id}
                 pagination={{ mode: 'client' }}
                 minWidth="80rem"
-                empty={<div className="hr-admin-empty"><strong>No hay jornadas para este filtro</strong><span>Cambia la fecha, sucursal o empleado y actualiza la consulta.</span><Button size="sm" variant="ghost" onClick={() => void load()}><RefreshCw size={15} /> Actualizar</Button></div>}
+                empty={<EmptyState title="No hay jornadas para este filtro" description="Cambia la fecha, sucursal o empleado y actualiza la consulta." action={<Button size="sm" variant="ghost" onClick={() => void load()}><RefreshCw size={15} /> Actualizar</Button>} />}
                 columns={[
-                  { key: 'c0', header: 'Empleado', render: (summary) => <><strong>{summary.user?.name ?? `Usuario #${summary.userId}`}</strong><small>{summary.incidentCount ? `${summary.incidentCount} incidencia(s)` : 'Sin incidencias'}</small></> },
+                  { key: 'c0', header: 'Empleado', render: (summary) => <span className={form.cellStack}><span className={form.cellTitle}>{summary.user?.name ?? `Usuario #${summary.userId}`}</span><span className={form.cellSub}>{summary.incidentCount ? `${summary.incidentCount} incidencia(s)` : 'Sin incidencias'}</span></span> },
                   { key: 'c1', header: 'Sucursal', render: (summary) => <>{summary.branch?.name ?? 'Sin sucursal'}</> },
                   { key: 'c2', header: 'Programado', render: (summary) => <>{summary.scheduledMinutes ?? 0} min</> },
                   { key: 'c3', header: 'Trabajado', render: (summary) => <>{summary.ordinaryMinutes} min</> },
                   { key: 'c4', header: 'Descanso', render: (summary) => <>{summary.breakMinutes} min</> },
-                  { key: 'c5', header: 'Tardanza', render: (summary) => <span className={summary.lateMinutes > 0 ? 'hr-admin-cell-warning' : ''}>{summary.lateMinutes} min</span> },
-                  { key: 'c6', header: 'Salida antes', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? 'hr-admin-cell-warning' : ''}>{summary.earlyDepartureMinutes} min</span> },
+                  { key: 'c5', header: 'Tardanza', render: (summary) => <span className={summary.lateMinutes > 0 ? form.cellWarning : undefined}>{summary.lateMinutes} min</span> },
+                  { key: 'c6', header: 'Salida antes', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? form.cellWarning : undefined}>{summary.earlyDepartureMinutes} min</span> },
                   { key: 'c7', header: 'Extra', render: (summary) => <>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</> },
                   { key: 'c8', header: 'Estado', render: (summary) => <>{summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : 'Sin periodo'}</> },
-                  { key: 'c9', header: 'Acciones', width: '6rem', type: 'actions', render: (summary) => <div className="hr-admin-row-actions table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`}><Pencil size={16} /></Button><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} title="Registrar horas extra" aria-label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`}><Clock3 size={16} /></Button></div> },
+                  { key: 'c9', header: 'Acciones', width: '6rem', type: 'actions', render: (summary) => <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`} icon={Pencil} /><Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} title="Registrar horas extra" aria-label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`} icon={Clock3} /></div> },
                 ]}
               />
             )}
@@ -385,14 +355,14 @@ export default function AttendanceManagement() {
                 rowKey={(incident) => incident.id}
                 pagination={{ mode: 'client' }}
                 minWidth="48rem"
-                empty={<div className="hr-admin-empty"><strong>No hay incidencias</strong><span>Las jornadas del filtro actual están al día.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div>}
+                empty={<EmptyState title="No hay incidencias" description="Las jornadas del filtro actual están al día." action={<Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (incident) => <strong>{incident.user?.name ?? `Usuario #${incident.userId}`}</strong> },
                   { key: 'c1', header: 'Fecha', render: (incident) => <>{dateLabel(incident.date)}</> },
-                  { key: 'c2', header: 'Motivo', render: (incident) => <><strong>{incident.message}</strong><small>{incident.reasonCode ?? incident.type}</small></> },
+                  { key: 'c2', header: 'Motivo', render: (incident) => <span className={form.cellStack}><span className={form.cellTitle}>{incident.message}</span><span className={form.cellSub}>{incident.reasonCode ?? incident.type}</span></span> },
                   { key: 'c3', header: 'Gravedad', render: (incident) => <><WorkforceStatusPill status={incident.severity} /></> },
                   { key: 'c4', header: 'Estado', render: (incident) => <><WorkforceStatusPill status={incident.status} /></> },
-                  { key: 'c5', header: 'Acción', width: '6rem', type: 'actions', render: (incident) => <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', incident })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${incident.user?.name ?? incident.userId}`}><Pencil size={16} /></Button></div> },
+                  { key: 'c5', header: 'Acción', width: '6rem', type: 'actions', render: (incident) => <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', incident })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${incident.user?.name ?? incident.userId}`} icon={Pencil} /></div> },
                 ]}
               />
             )}
@@ -404,14 +374,14 @@ export default function AttendanceManagement() {
                 rowKey={(item) => item.id}
                 pagination={{ mode: 'client' }}
                 minWidth="48rem"
-                empty={<div className="hr-admin-empty"><strong>No hay correcciones</strong><span>Cuando alguien solicite un ajuste aparecerá aquí.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div>}
+                empty={<EmptyState title="No hay correcciones" description="Cuando alguien solicite un ajuste aparecerá aquí." action={<Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
                   { key: 'c1', header: 'Solicitada', render: (item) => <>{displayDateTime(item.createdAt)}</> },
                   { key: 'c2', header: 'Tipo', render: (item) => <>{item.type}</> },
                   { key: 'c3', header: 'Motivo', render: (item) => <>{item.reason}</> },
                   { key: 'c4', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
-                  { key: 'c5', header: 'Acción', width: '6rem', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'correction', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar corrección de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button></div> : <span className="hr-admin-muted">Finalizada</span>}</> },
+                  { key: 'c5', header: 'Acción', width: '6rem', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => openDecision({ kind: 'correction', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar corrección de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
                 ]}
               />
             )}
@@ -423,7 +393,7 @@ export default function AttendanceManagement() {
                 rowKey={(item) => item.id}
                 pagination={{ mode: 'client' }}
                 minWidth="56rem"
-                empty={<div className="hr-admin-empty"><strong>No hay solicitudes de horas extra</strong><span>Puedes registrar una desde la jornada de un empleado.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button></div>}
+                empty={<EmptyState title="No hay solicitudes de horas extra" description="Puedes registrar una desde la jornada de un empleado." action={<Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
                   { key: 'c1', header: 'Fecha', render: (item) => <>{dateLabel(item.date)}</> },
@@ -431,7 +401,7 @@ export default function AttendanceManagement() {
                   { key: 'c3', header: 'Aprobado', render: (item) => <>{item.approvedMinutes ?? '—'}</> },
                   { key: 'c4', header: 'Motivo', render: (item) => <>{item.reason}</> },
                   { key: 'c5', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
-                  { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar horas extra de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button></div> : <span className="hr-admin-muted">Finalizada</span>}</> },
+                  { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar horas extra de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
                 ]}
               />
             )}
@@ -439,7 +409,7 @@ export default function AttendanceManagement() {
             {activeTable === 'PERIODS' && (
               <>
               {(branchId || userId) && (
-                <div className="hr-attendance-alert info" role="status">
+                <div className={form.alertInfo} role="status">
                   Los periodos de asistencia son de toda la empresa. Los contadores pendientes respetan el filtro de sucursal/empleado seleccionado arriba.
                 </div>
               )}
@@ -449,26 +419,26 @@ export default function AttendanceManagement() {
                 rowKey={(period) => period.id}
                 pagination={{ mode: 'client' }}
                 minWidth="64rem"
-                empty={<div className="hr-admin-empty"><strong>No hay periodos</strong><span>Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina.</span><Button variant="primary" size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button></div>}
+                empty={<EmptyState title="No hay periodos" description="Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina." action={<Button variant="primary" size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Periodo', render: (period) => <strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong> },
                   { key: 'c1', header: 'Empleados', render: (period) => <>{period.summaryCount ?? 0}</> },
-                  { key: 'c2', header: 'Incidencias', render: (period) => <span className={(period.unresolvedIncidentCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.unresolvedIncidentCount ?? 0}</span> },
-                  { key: 'c3', header: 'Correcciones', render: (period) => <span className={(period.pendingCorrectionCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingCorrectionCount ?? 0}</span> },
-                  { key: 'c4', header: 'Horas extra', render: (period) => <span className={(period.pendingOvertimeCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingOvertimeCount ?? 0}</span> },
+                  { key: 'c2', header: 'Incidencias', render: (period) => <span className={(period.unresolvedIncidentCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.unresolvedIncidentCount ?? 0}</span> },
+                  { key: 'c3', header: 'Correcciones', render: (period) => <span className={(period.pendingCorrectionCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingCorrectionCount ?? 0}</span> },
+                  { key: 'c4', header: 'Horas extra', render: (period) => <span className={(period.pendingOvertimeCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingOvertimeCount ?? 0}</span> },
                   { key: 'c5', header: 'Nómina', render: (period) => <>{period.payrollReference ?? 'No vinculada'}</> },
                   { key: 'c6', header: 'Estado', render: (period) => <><WorkforceStatusPill status={period.status} /></> },
-                  { key: 'c7', header: 'Acción', width: '6rem', type: 'actions', render: (period) => { const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0); return <div className="table-actions">{period.status === 'CLOSED' ? <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} title="Reabrir periodo" aria-label={`Reabrir periodo ${period.id}`}><RotateCcw size={16} /></Button> : <Button className="table-action-btn danger" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} title={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} aria-label={`Cerrar periodo ${period.id}`}><LockKeyhole size={16} /></Button>}</div>; } },
+                  { key: 'c7', header: 'Acción', width: '6rem', type: 'actions', render: (period) => { const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0); return <div className={form.rowActions}>{period.status === 'CLOSED' ? <Button size="sm" variant="ghost" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} title="Reabrir periodo" aria-label={`Reabrir periodo ${period.id}`} icon={RotateCcw} /> : <Button size="sm" variant="ghost" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} title={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} aria-label={`Cerrar periodo ${period.id}`} icon={LockKeyhole} />}</div>; } },
                 ]}
               />
               </>
             )}
-          </div>
-        </section>
+        </div>
       )}
       <FullScreenModal
         isOpen={Boolean(createPanel)}
         onClose={() => !saving && setCreatePanel(null)}
+        breadcrumb={['Recursos humanos', 'Jornadas']}
         title={
           createPanel?.kind === 'correction'
             ? 'Corrección compensatoria'
@@ -596,7 +566,7 @@ export default function AttendanceManagement() {
           }
         >
           {decisionPanel?.kind === 'close' || decisionPanel?.kind === 'reopen' ? (
-            <div className="hr-sensitive-warning span-full" role="alert">
+            <div className={`${form.alertWarning} span-full`} role="alert">
               <AlertTriangle size={20} />
               <span>
                 {decisionPanel.kind === 'close'
@@ -647,6 +617,6 @@ export default function AttendanceManagement() {
           </label>
         </HrModalFormShell>
       </FullScreenModal>
-    </div>
+    </PageContent>
   );
 }

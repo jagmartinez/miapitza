@@ -194,7 +194,7 @@ export default function BenefitsTransitionForm({
           required
         />
       </label>
-      <Checkbox className="hr-benefits-confirm span-full" checked={confirmed}
+      <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           <ShieldCheck size={17} aria-hidden="true" /> Confirmo <strong>{LABELS[action]}</strong>{' '}
           sobre {code} y revisé el detalle financiero.

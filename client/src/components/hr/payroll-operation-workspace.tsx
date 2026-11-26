@@ -27,6 +27,7 @@ import type {
 } from '../../types/hr-payroll';
 import PayrollReconciliationPanel from './PayrollReconciliationPanel';
 import PayrollStatusPill from './PayrollStatusPill';
+import form from './hrForm.module.css';
 
 
 const ACTION_LABELS: Record<HrPayrollAction, string> = {
@@ -304,7 +305,7 @@ export default function PayrollOperationWorkspace({
           rowTone={(row) => (row.anomalies.some((item) => item.blocking) ? 'danger' : undefined)}
           empty="No hay colaboradores que coincidan con los filtros."
           columns={[
-            { key: 'name', header: 'Colaborador', width: '1.6fr', render: (row) => <><strong>{row.name}</strong><small>{row.branch ?? `ID ${row.userId}`}</small></> },
+            { key: 'name', header: 'Colaborador', width: '1.6fr', render: (row) => <span className={form.cellStack}><span className={form.cellTitle}>{row.name}</span><span className={form.cellSub}>{row.branch ?? `ID ${row.userId}`}</span></span> },
             { key: 'salary', header: 'Salario', width: '1fr', type: 'money', hideBelow: 'lg', total: totalsKnown, accessor: (row) => row.salary, render: (row) => formatEmployeeMoney(currency, row.salary) },
             {
               key: 'overtime', header: 'Horas extra', width: '1fr', type: 'money', hideBelow: 'lg', total: totalsKnown, accessor: (row) => row.overtimePay,
