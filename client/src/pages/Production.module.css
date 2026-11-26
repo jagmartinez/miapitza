@@ -42,3 +42,16 @@
 .panelHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--ui-space-2); margin-bottom: var(--ui-space-3); }
 .panelHead h3 { margin: 0; font-size: var(--ui-text-md); }
 .panelHead span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+
+.toolbarStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-2);
+  min-width: 0;
+}
+
+.segmentWrap {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+}
