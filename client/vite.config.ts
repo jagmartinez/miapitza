@@ -11,15 +11,15 @@ export default defineConfig({
         // Bind on both IPv4 and IPv6 (Windows sometimes resolves localhost to 127.0.0.1
         // instead of ::1, which would otherwise refuse the connection).
         host: '127.0.0.1',
-        port: 5173,
+        port: Number(process.env.VITE_DEV_PORT ?? 5173),
         strictPort: true,
         // Put HMR on its own dedicated port so it can never collide with the /api
         // proxy upgrade path. 24678 is Vite's default.
         hmr: {
             protocol: 'ws',
             host: '127.0.0.1',
-            port: 24678,
-            clientPort: 24678,
+            port: Number(process.env.VITE_HMR_PORT ?? 24678),
+            clientPort: Number(process.env.VITE_HMR_PORT ?? 24678),
         },
         // Cursor/VSCode on Windows uses "atomic save" (write-temp-then-rename),
         // which chokidar's native fs events sometimes miss. Polling guarantees
