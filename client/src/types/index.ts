@@ -290,6 +290,7 @@ export interface Order {
   financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   /** RESTAURANT, PEDIDOSYA, ... (channel orders have their own cancel flow). */
   salesChannel?: string;
+  orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
   customerName?: string;
   customerTaxId?: string;
   customerTaxIdType?: string;
