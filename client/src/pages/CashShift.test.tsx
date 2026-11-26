@@ -70,7 +70,7 @@ function setup({ open = true, movements = makeMovements(30) } = {}) {
         },
     });
     mocks.getSummary.mockResolvedValue({
-        data: { data: { summary: { expectedAmount: 5000, totalIn: 4000, totalOut: 0, totalSalesCash: 3500, grossSalesCash: 3500, cashRefunds: 0 } } },
+        data: { data: { summary: { expectedAmount: 5000, totalIn: 4000, totalOut: 0, totalSalesCash: 3500, grossSalesCash: 3500, cashRefunds: 0, salesByMethod: { cash: 3500, card: 1200.5, transfer: 300, paymentCount: 9 } } } },
     });
     mocks.getDetails.mockResolvedValue({ data: { data: { counts: { bills: [], coins: [] } } } });
     return render(
@@ -88,10 +88,14 @@ describe('CashShift (migrado al design system)', () => {
         mocks.roles = ['CAJERO'];
     });
 
-    it('usa PageHeader, tarjetas con contexto y DataTable paginada de 25 filas', async () => {
+    it('usa PageHeader, arqueo en la página y DataTable paginada de 25 filas', async () => {
         setup();
-        expect(await screen.findByRole('heading', { level: 1, name: 'Turno #7' })).toHaveClass('ui-pageheader__title');
-        expect(screen.getByRole('region', { name: 'Ventas netas efectivo' })).toHaveClass('ui-statcard');
+        expect(await screen.findByRole('heading', { level: 1, name: 'Arqueo y cierre de turno' })).toHaveClass('ui-pageheader__title');
+        expect(screen.getByText('Caja / Turno #7')).toBeInTheDocument();
+        // El conteo por denominación vive en la página (no en un modal) y no hay tarjetas KPI triviales.
+        expect(screen.getByRole('table', { name: 'Denominaciones' })).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(document.querySelector('.ui-statcard')).toBeNull();
         const table = screen.getByRole('table', { name: 'Movimientos del turno' });
         // 1 encabezado + 25 filas
         expect(within(table).getAllByRole('row')).toHaveLength(26);
@@ -99,6 +103,15 @@ describe('CashShift (migrado al design system)', () => {
         // montos alineados a la derecha con formato 1,234.50
         const firstAmount = within(table).getAllByRole('row')[1].querySelector('.ui-cell--numeric');
         expect(firstAmount?.textContent).toMatch(/\+\s?C\$\s1,234\.50/);
+    });
+
+    it('muestra las ventas del turno por medio de pago desde salesByMethod', async () => {
+        setup({ movements: makeMovements(2) });
+        const sales = await screen.findByRole('region', { name: 'Ventas del turno por medio de pago' });
+        expect(sales).toHaveTextContent('C$ 5,000.50');
+        expect(sales).toHaveTextContent('Tarjeta');
+        expect(sales).toHaveTextContent('C$ 1,200.50');
+        expect(sales).toHaveTextContent('Transferencia');
     });
 
     it('filtra por tipo y busca sin salir de la tabla', async () => {
@@ -132,14 +145,13 @@ describe('CashShift (migrado al design system)', () => {
             data: { data: { difference: -350, tolerance: 50, requiresNote: false, exceedsTolerance: true, expectedAmount: 5000 } },
         });
         setup();
-        await userEvent.click(await screen.findByRole('button', { name: /Cerrar turno/i }));
-        const dlg = await screen.findByRole('dialog', { name: 'Cierre de Turno' });
         // sin validar, el cierre está deshabilitado
-        expect(within(dlg).getByRole('button', { name: 'Cerrar turno' })).toBeDisabled();
+        expect(await screen.findByRole('button', { name: 'Cerrar turno' })).toBeDisabled();
+        const dlg = screen.getByRole('region', { name: /Conciliación de efectivo/ });
         await userEvent.click(within(dlg).getByRole('button', { name: 'Validar arqueo' }));
         expect(await within(dlg).findByText(/excede la tolerancia oficial de C\$ 50\.00/)).toBeInTheDocument();
-        expect(within(dlg).getByText(/supervisor/i)).toBeInTheDocument();
-        expect(within(dlg).getByRole('button', { name: 'Cerrar turno' })).toBeDisabled();
+        expect(within(dlg).getAllByText(/supervisor/i).length).toBeGreaterThan(0);
+        expect(screen.getByRole('button', { name: 'Cerrar turno' })).toBeDisabled();
         expect(mocks.closeShift).not.toHaveBeenCalled();
     });
 
@@ -150,10 +162,9 @@ describe('CashShift (migrado al design system)', () => {
         });
         mocks.closeShift.mockResolvedValue({});
         setup();
-        await userEvent.click(await screen.findByRole('button', { name: /Cerrar turno/i }));
-        const dlg = await screen.findByRole('dialog', { name: 'Cierre de Turno' });
+        const dlg = await screen.findByRole('region', { name: /Conciliación de efectivo/ });
         await userEvent.click(within(dlg).getByRole('button', { name: 'Validar arqueo' }));
-        const force = await within(dlg).findByRole('button', { name: 'Forzar cierre' });
+        const force = await screen.findByRole('button', { name: 'Forzar cierre' });
         expect(force).toBeDisabled();
         await userEvent.type(within(dlg).getByLabelText('Observaciones'), 'Faltante autorizado');
         expect(force).toBeEnabled();
@@ -165,8 +176,7 @@ describe('CashShift (migrado al design system)', () => {
     it('conteo por denominación suma billetes y monedas en el payload de validación', async () => {
         mocks.previewClose.mockResolvedValue({ data: { data: { difference: 0, tolerance: 50, expectedAmount: 5000 } } });
         setup();
-        await userEvent.click(await screen.findByRole('button', { name: /Cerrar turno/i }));
-        const dlg = await screen.findByRole('dialog', { name: 'Cierre de Turno' });
+        const dlg = await screen.findByRole('form', { name: 'Arqueo de caja' });
         await userEvent.type(within(dlg).getByLabelText('Cantidad de billetes de C$ 1000'), '2');
         await userEvent.type(within(dlg).getByLabelText('Cantidad de monedas de C$ 0.5'), '3');
         await userEvent.click(within(dlg).getByRole('button', { name: 'Validar arqueo' }));

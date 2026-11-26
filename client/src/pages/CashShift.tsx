@@ -7,7 +7,7 @@ import { cashShiftsAPI, cashArqueoAPI, suppliersAPI } from '../services/api';
 import { buildCashShiftReportHtml, getMovementAuditLabel, getMovementCategoryLabel, getMovementPaymentOrigin } from './cashShiftReport';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, Input,
-    PageContent, PageHeader, SegmentedControl, StatCard, StatusBadge, TableToolbar, Textarea,
+    PageContent, PageHeader, SegmentedControl, StatusBadge, TableToolbar, Textarea,
     formatMoney as formatMoneyUi, formatNumber,
     type Column, type Opt,
 } from '@/ui';
@@ -35,6 +35,7 @@ interface ShiftSummaryState {
     cashRefunds?: number;
     otherIncome?: number;
     otherOutflows?: number;
+    salesByMethod?: { cash: number; card: number; transfer: number; paymentCount: number };
     [key: string]: unknown;
 }
 
@@ -135,8 +136,7 @@ export default function CashShiftPage() {
         supplyType: ''
     });
 
-    // Close Shift Sidebar
-    const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+    // Arqueo (conteo por denominación en la página)
     const [arqueoTab, setArqueoTab] = useState<'NIO' | 'USD'>('NIO');
     const [billsCount, setBillsCount] = useState<Record<number, number>>({});
     const [coinsCount, setCoinsCount] = useState<Record<number, number>>({});
@@ -185,7 +185,6 @@ export default function CashShiftPage() {
     // Blind cashiers never receive the numeric difference: classify by status.
     const closeStatusLabel = closePreview?.status === 'SOBRANTE' ? 'Sobrante'
         : closePreview?.status === 'FALTANTE' ? 'Faltante' : 'Cuadrado';
-    const closeDiffPositive = isBlindCashier ? closePreview?.status !== 'FALTANTE' : effectiveDifference >= 0;
     const closeTolerance = Number(closePreview?.tolerance ?? 1);
 
     const buildClosePayload = () => ({
@@ -232,11 +231,10 @@ export default function CashShiftPage() {
         void loadData();
     }, [loadData]);
 
+    // Cualquier cambio en el conteo invalida la validación previa del arqueo.
     useEffect(() => {
-        if (!isCloseModalOpen) {
-            setClosePreview(null);
-        }
-    }, [isCloseModalOpen]);
+        setClosePreview(null);
+    }, [totalCounted]);
 
     // Filtered and paginated movements
     const filteredMovements = useMemo(() => {
@@ -352,8 +350,13 @@ export default function CashShiftPage() {
         closingShiftRef.current = true;
         setClosingShift(true);
         try {
-            const preview = closePreview || (await cashArqueoAPI.previewClose(Number(id), buildClosePayload())).data.data;
-            setClosePreview(preview);
+            // Enter en un campo del conteo envía el formulario: sin validación previa solo se valida, nunca se cierra.
+            if (!closePreview) {
+                const validated = (await cashArqueoAPI.previewClose(Number(id), buildClosePayload())).data.data;
+                setClosePreview(validated);
+                return;
+            }
+            const preview = closePreview;
 
             if (preview.requiresNote && !closeNotes.trim()) {
                 showWarning('Debes agregar una observación cuando exista una diferencia dentro de tolerancia.');
@@ -374,7 +377,6 @@ export default function CashShiftPage() {
                 ...buildClosePayload(),
                 forceClose: preview.exceedsTolerance && canForceClose
             });
-            setIsCloseModalOpen(false);
             loadData();
             success('Turno cerrado correctamente');
         } catch (error: unknown) {
@@ -504,7 +506,7 @@ export default function CashShiftPage() {
         ? summary.otherOutflows
         : hasBreakdown && summary?.totalOut != null ? Number(summary.totalOut) - refunds : summary?.totalOut;
     const movementCount = shift.movements?.length || 0;
-    const closedExpected = money(summary?.expectedAmount);
+    const registerName = shift.register?.name || `Caja #${shift.cashRegisterId || shift.id}`;
     const arqueoBills = arqueoDetails?.counts?.bills ?? [];
     const arqueoCoins = arqueoDetails?.counts?.coins ?? [];
     const billsTotal = Object.entries(billsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0);
@@ -516,59 +518,113 @@ export default function CashShiftPage() {
         (!!closePreview.requiresNote && !closeNotes.trim()) ||
         (!!closePreview.exceedsTolerance && (!canForceClose || !closeNotes.trim()));
 
+    // Ventas del turno por medio de pago (GET /cash-shifts/:id/summary → salesByMethod).
+    const salesByMethod = summary?.salesByMethod;
+    const paymentRows = salesByMethod
+        ? [
+            { label: 'Efectivo', value: Number(salesByMethod.cash) },
+            { label: 'Tarjeta', value: Number(salesByMethod.card) },
+            { label: 'Transferencia', value: Number(salesByMethod.transfer) },
+        ].filter((row) => Number.isFinite(row.value))
+        : [];
+    const salesTotal = paymentRows.reduce((sum, row) => sum + row.value, 0);
+
+    // Resultado del arqueo: validado (abierto) o registrado (cerrado).
+    const diffStatus: 'CUADRADO' | 'SOBRANTE' | 'FALTANTE' | null = isOpen
+        ? (closePreview
+            ? closePreview.status ?? (Math.abs(effectiveDifference) < 0.005 ? 'CUADRADO' : effectiveDifference > 0 ? 'SOBRANTE' : 'FALTANTE')
+            : null)
+        : shift.difference == null
+            ? null
+            : Math.abs(Number(shift.difference)) < 0.005 ? 'CUADRADO' : Number(shift.difference) > 0 ? 'SOBRANTE' : 'FALTANTE';
+    const diffTone = diffStatus === 'CUADRADO' ? 'success' : diffStatus === 'FALTANTE' ? 'danger' : 'warning';
+    const diffTitle = diffStatus === 'CUADRADO' ? 'Caja cuadrada' : diffStatus === 'FALTANTE' ? 'Faltante' : 'Sobrante';
+    const diffAmount = isOpen
+        ? (isBlindCashier ? null : effectiveDifference)
+        : (shift.difference == null ? null : Number(shift.difference));
+    const diffHint = !isOpen
+        ? (shift.notes ? `Observación: ${shift.notes}` : 'Turno cerrado.')
+        : diffStatus === 'CUADRADO'
+            ? 'Puedes cerrar el turno.'
+            : closePreview?.exceedsTolerance
+                ? (canForceClose
+                    ? 'Excede la tolerancia: puedes forzar el cierre como administrador si agregas una observación.'
+                    : 'Excede la tolerancia: requiere visto bueno del supervisor para cerrar.')
+                : 'Dentro de tolerancia: registra una observación para cerrar.';
+
     const renderDenominations = (
         kind: string,
-        label: string,
         denominations: number[],
         counts: Record<number, number>,
         setCounts: (next: Record<number, number>) => void,
         prefix: string,
         format: (value: number) => string,
         quantityLabel: (den: number) => string
-    ) => (
-        <div className={styles.denomList} role="group" aria-label={label}>
-            {denominations.map(den => (
-                <div key={`${kind}-${den}`} className={styles.denomRow}>
-                    <span className={styles.denomValue}>{prefix} {den}</span>
-                    <Input
-                        type="number"
-                        min={0}
-                        inputMode="numeric"
-                        aria-label={quantityLabel(den)}
-                        value={counts[den] || ''}
-                        onChange={(e) => setCounts({ ...counts, [den]: parseInt(e.target.value) || 0 })}
-                        placeholder="0"
-                    />
-                    <span className={`${styles.denomSubtotal} ${counts[den] > 0 ? styles.hasValue : ''}`}>
-                        {format(den * (counts[den] || 0))}
-                    </span>
-                </div>
-            ))}
+    ) => denominations.map(den => (
+        <div key={`${kind}-${den}`} role="row" className={styles.denomRow}>
+            <span role="cell" className={styles.denomValue}>{prefix} {formatNumber(den, den % 1 === 0 ? 0 : 2)}</span>
+            <span role="cell" className={styles.denomInput}>
+                <Input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    aria-label={quantityLabel(den)}
+                    value={counts[den] || ''}
+                    onChange={(e) => setCounts({ ...counts, [den]: parseInt(e.target.value) || 0 })}
+                    placeholder="0"
+                    disabled={!isOpen}
+                />
+            </span>
+            <span role="cell" className={`${styles.denomSubtotal} ${counts[den] > 0 ? styles.hasValue : ''}`}>
+                {format(den * (counts[den] || 0))}
+            </span>
+        </div>
+    ));
+
+    const recordedRows = (rows: DenomCountRow[], kind: string) => rows.map((row) => (
+        <div key={`${kind}-${row.denomination}`} role="row" className={styles.denomRow}>
+            <span role="cell" className={styles.denomValue}>{symbol} {formatNumber(row.denomination, row.denomination % 1 === 0 ? 0 : 2)}</span>
+            <span role="cell" className={styles.denomCount}>{formatNumber(row.count, 0)}</span>
+            <span role="cell" className={`${styles.denomSubtotal} ${styles.hasValue}`}>{formatMoney(row.denomination * row.count)}</span>
+        </div>
+    ));
+
+    const countHeader = (
+        <div role="row" className={`${styles.denomRow} ${styles.denomHead}`}>
+            <span role="columnheader">Denominación</span>
+            <span role="columnheader" className={styles.alignEnd}>Cantidad</span>
+            <span role="columnheader" className={styles.alignEnd}>Subtotal</span>
         </div>
     );
 
     return (
         <PageContent>
             <PageHeader
-                title={`Turno #${shift.id}`}
+                breadcrumb={['Caja', `Turno #${shift.id}`]}
+                title={isOpen ? 'Arqueo y cierre de turno' : `Turno #${shift.id}`}
                 description={
                     <span className={styles.headerMeta}>
                         <StatusBadge status={isOpen ? 'OPEN' : 'COMPLETED'} label={isOpen ? 'Abierto' : 'Cerrado'} />
-                        <span>{shift.register?.name || `Caja #${shift.cashRegisterId || shift.id}`}</span>
-                        <span>{shift.user?.name}</span>
+                        <span>{registerName}</span>
+                        <span>Cajero: {shift.user?.name || 'N/D'}</span>
+                        <span>Apertura {new Date(shift.startDate).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{formatDuration(shift.startDate, shift.endDate || undefined)} {isOpen ? 'abierto' : 'de turno'}</span>
                     </span>
                 }
                 actions={
                     <>
                         <Button icon={ArrowLeft} onClick={() => navigate('/cash-registers')}>Volver a cajas</Button>
-                        {isOpen ? (
+                        {isOpen && (
                             <>
                                 <Button icon={Plus} onClick={() => openMovementSidebar('IN')}>Ingreso</Button>
                                 <Button icon={Minus} onClick={() => openMovementSidebar('OUT')}>Retiro</Button>
-                                <Button variant="primary" icon={Lock} onClick={() => setIsCloseModalOpen(true)}>Cerrar turno</Button>
                             </>
-                        ) : (
-                            <Button icon={Printer} onClick={handlePrintReport}>Imprimir reporte</Button>
+                        )}
+                        <Button icon={Printer} onClick={handlePrintReport}>{isOpen ? 'Imprimir corte' : 'Imprimir reporte'}</Button>
+                        {isOpen && (
+                            <Button type="submit" form="cash-close-form" variant="primary" icon={Lock} disabled={closeSubmitDisabled} loading={closingShift}>
+                                {closeSubmitLabel}
+                            </Button>
                         )}
                     </>
                 }
@@ -582,127 +638,222 @@ export default function CashShiftPage() {
                 </p>
             )}
 
-            <div className={styles.kpis}>
-                <StatCard
-                    label="Saldo inicial"
-                    value={formatMoney(Number(shift.startAmount))}
-                    context={`Apertura ${new Date(shift.startDate).toLocaleString()}`}
-                />
-                <StatCard
-                    label="Ventas netas efectivo"
-                    tone="success"
-                    value={money(summary?.totalSalesCash)}
-                    context={hasBreakdown ? `Bruto ${formatMoney(grossSales)} menos reembolsos ${formatMoney(refunds)}` : 'Neto de reembolsos en efectivo'}
-                />
-                <StatCard
-                    label="Otros ingresos de caja"
-                    tone="primary"
-                    value={money(otherIn)}
-                    context={hasBreakdown || typeof summary?.otherIncome === 'number' ? 'Entradas manuales o no asociadas a ventas; no incluyen cobros POS ni Catering' : 'Incluye ventas en efectivo'}
-                />
-                <StatCard
-                    label="Gastos y retiros"
-                    tone="danger"
-                    value={money(otherOut)}
-                    context={hasBreakdown || typeof summary?.otherOutflows === 'number' ? 'Únicamente las demás salidas; los reembolsos ya descuentan de ventas netas' : 'Incluye reembolsos en efectivo'}
-                />
-                {!isBlindCashier && (
-                    <StatCard
-                        label="Esperado en caja"
-                        value={money(summary?.expectedAmount)}
-                        context={`Saldo inicial más ingresos menos egresos de ${movementCount} movimientos`}
-                        action={isOpen ? { label: 'Arquear y cerrar', onClick: () => setIsCloseModalOpen(true) } : undefined}
-                    />
-                )}
-            </div>
+            <form id="cash-close-form" onSubmit={handleCloseShift} className={styles.arqueo} aria-label="Arqueo de caja">
+                <section className={styles.card} aria-labelledby="cash-count-title">
+                    <div className={styles.cardHead}>
+                        <h2 id="cash-count-title" className={styles.cardTitle}>Conteo de efectivo</h2>
+                        {isOpen ? (
+                            <SegmentedControl<'NIO' | 'USD'>
+                                ariaLabel="Moneda del conteo"
+                                size="sm"
+                                value={arqueoTab}
+                                onChange={setArqueoTab}
+                                options={[{ value: 'NIO', label: 'Córdobas' }, { value: 'USD', label: 'Dólares' }]}
+                            />
+                        ) : (
+                            <span className={styles.muted}>Conteo registrado al cierre</span>
+                        )}
+                    </div>
 
-            <div className={styles.layout}>
-                <div className={styles.main}>
-                    <DataTable
-                        ariaLabel="Movimientos del turno"
-                        columns={movementColumns}
-                        rows={filteredMovements}
-                        rowKey={m => m.id}
-                        resetKey={`${filterType}|${searchQuery}`}
-                        empty={searchQuery || filterType !== 'all'
-                            ? 'No hay movimientos que coincidan con los filtros'
-                            : 'No hay movimientos registrados'}
-                        toolbar={
-                            <TableToolbar>
-                                <SegmentedControl<'all' | 'IN' | 'OUT'>
-                                    ariaLabel="Tipo de movimiento"
-                                    value={filterType}
-                                    onChange={setFilterType}
-                                    options={[
-                                        { value: 'all', label: `Todos (${movementCount})` },
-                                        { value: 'IN', label: `Ingresos (${inCount})` },
-                                        { value: 'OUT', label: `Egresos (${outCount})` }
-                                    ]}
-                                />
-                                <Input
-                                    type="search"
-                                    aria-label="Buscar movimientos"
-                                    placeholder="Buscar..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                            </TableToolbar>
-                        }
-                    />
-                </div>
+                    {isOpen && arqueoTab === 'NIO' && (
+                        <div role="table" aria-label="Denominaciones" className={styles.denomTable}>
+                            {countHeader}
+                            <div role="row" className={styles.denomGroup}><span role="cell">Billetes · {formatMoney(billsTotal)}</span></div>
+                            {renderDenominations('bill', BILL_DENOMINATIONS, billsCount, setBillsCount, symbol, formatMoney, (den) => `Cantidad de billetes de ${symbol} ${den}`)}
+                            <div role="row" className={styles.denomGroup}><span role="cell">Monedas · {formatMoney(coinsTotal)}</span></div>
+                            {renderDenominations('coin', COIN_DENOMINATIONS, coinsCount, setCoinsCount, symbol, formatMoney, (den) => `Cantidad de monedas de ${symbol} ${den}`)}
+                            <div role="row" className={`${styles.denomRow} ${styles.denomTotal}`}>
+                                <span role="cell" className={styles.denomTotalLabel}>Total contado</span>
+                                <span role="cell" className={styles.denomSubtotal}>{formatMoney(totalCounted)}</span>
+                            </div>
+                        </div>
+                    )}
 
-                <aside className={styles.side}>
-                    <section className={styles.panel} aria-labelledby="shift-info-title">
-                        <h2 id="shift-info-title" className={styles.panelTitle}>Información del turno</h2>
+                    {isOpen && arqueoTab === 'USD' && (
+                        <>
+                            <div className={styles.exchange}>
+                                <Field label="1 USD equivale a (NIO)" htmlFor="arqueo-exchange-rate">
+                                    <Input
+                                        id="arqueo-exchange-rate"
+                                        type="number"
+                                        inputMode="decimal"
+                                        value={exchangeRate}
+                                        onChange={(e) => setExchangeRate(parseFloat(e.target.value) || DEFAULT_EXCHANGE_RATE)}
+                                        step="0.01"
+                                        min="1"
+                                    />
+                                </Field>
+                            </div>
+                            <div role="table" aria-label="Denominaciones USD" className={styles.denomTable}>
+                                {countHeader}
+                                <div role="row" className={styles.denomGroup}><span role="cell">Billetes USD · $ {formatCurrency(totalUSD)}</span></div>
+                                {renderDenominations('usd', USD_BILL_DENOMINATIONS, usdBillsCount, setUsdBillsCount, '$', (v) => `$ ${formatCurrency(v)}`, (den) => `Cantidad de billetes USD de ${den}`)}
+                                <div role="row" className={`${styles.denomRow} ${styles.denomTotal}`}>
+                                    <span role="cell" className={styles.denomTotalLabel}>Equivalente en {symbol}</span>
+                                    <span role="cell" className={styles.denomSubtotal}>{formatMoney(totalUSDinCordobas)}</span>
+                                </div>
+                                <div role="row" className={`${styles.denomRow} ${styles.denomTotal}`}>
+                                    <span role="cell" className={styles.denomTotalLabel}>Total contado (córdobas + dólares)</span>
+                                    <span role="cell" className={styles.denomSubtotal}>{formatMoney(totalCounted)}</span>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {!isOpen && (arqueoBills.length > 0 || arqueoCoins.length > 0 ? (
+                        <div role="table" aria-label="Denominaciones" className={styles.denomTable}>
+                            {countHeader}
+                            {arqueoBills.length > 0 && <div role="row" className={styles.denomGroup}><span role="cell">Billetes</span></div>}
+                            {recordedRows(arqueoBills, 'view-bill')}
+                            {arqueoCoins.length > 0 && <div role="row" className={styles.denomGroup}><span role="cell">Monedas</span></div>}
+                            {recordedRows(arqueoCoins, 'view-coin')}
+                            <div role="row" className={`${styles.denomRow} ${styles.denomTotal}`}>
+                                <span role="cell" className={styles.denomTotalLabel}>Total contado</span>
+                                <span role="cell" className={styles.denomSubtotal}>{money(shift.endAmount)}</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className={styles.cardEmpty}>El cierre no registró conteo por denominación. Contado: {money(shift.endAmount)}.</p>
+                    ))}
+                </section>
+
+                <div className={styles.sideCol}>
+                    <section className={`${styles.card} ${styles.cardPad}`} aria-labelledby="cash-recon-title">
+                        <h2 id="cash-recon-title" className={styles.cardTitle}>Conciliación de efectivo ({symbol})</h2>
                         <dl className={styles.dl}>
-                            <div><dt>Caja</dt><dd>{shift.register?.name || `Caja #${shift.cashRegisterId || shift.id}`}</dd></div>
-                            <div><dt>Cajero</dt><dd>{shift.user?.name || 'N/D'}</dd></div>
-                            <div><dt>Inicio</dt><dd>{new Date(shift.startDate).toLocaleString()}</dd></div>
-                            {shift.endDate && <div><dt>Cierre</dt><dd>{new Date(shift.endDate).toLocaleString()}</dd></div>}
-                            <div><dt>Duración</dt><dd>{formatDuration(shift.startDate, shift.endDate || undefined)}</dd></div>
+                            <div><dt>Fondo inicial</dt><dd>{formatMoney(Number(shift.startAmount))}</dd></div>
+                            <div>
+                                <dt title={hasBreakdown ? `Bruto ${formatMoney(grossSales)} menos reembolsos ${formatMoney(refunds)}` : 'Neto de reembolsos en efectivo'}>+ Ventas netas efectivo</dt>
+                                <dd>{money(summary?.totalSalesCash)}</dd>
+                            </div>
+                            <div><dt title="Entradas manuales o no asociadas a ventas; no incluyen cobros POS ni Catering">+ Otros ingresos</dt><dd>{money(otherIn)}</dd></div>
+                            <div><dt title="Gastos y retiros; los reembolsos ya descuentan de ventas netas">− Gastos y retiros</dt><dd>{money(otherOut)}</dd></div>
                         </dl>
+                        <dl className={`${styles.dl} ${styles.dlStrong}`}>
+                            <div>
+                                <dt>Esperado en caja</dt>
+                                <dd>{isOpen && isBlindCashier ? 'Oculto (arqueo ciego)' : money(isOpen ? (closePreview?.expectedAmount ?? summary?.expectedAmount) : summary?.expectedAmount)}</dd>
+                            </div>
+                            <div><dt>Contado</dt><dd>{isOpen ? formatMoney(totalCounted) : money(shift.endAmount)}</dd></div>
+                        </dl>
+
+                        {diffStatus ? (
+                            <div className={styles.diffBox} data-tone={diffTone} role="status">
+                                <span className={styles.diffText}>
+                                    <strong>{isOpen && isBlindCashier ? closeStatusLabel : diffTitle}</strong>
+                                    <span>{diffHint}</span>
+                                </span>
+                                {diffAmount !== null && (
+                                    <strong className={styles.diffAmount}>{diffAmount > 0 ? '+' : ''}{formatMoney(diffAmount)}</strong>
+                                )}
+                            </div>
+                        ) : isOpen ? (
+                            <p className={styles.message}>Cuenta el efectivo y valida el arqueo para revisar la diferencia y habilitar el cierre.</p>
+                        ) : null}
+
+                        {isOpen && (
+                            <>
+                                <div className={styles.messages}>
+                                    {closePreview?.requiresNote && (
+                                        <p className={styles.message} role="alert">
+                                            Debes registrar una observación para cerrar con diferencia dentro de tolerancia.
+                                        </p>
+                                    )}
+                                    {closePreview?.exceedsTolerance && !canForceClose && (
+                                        <p className={styles.message} role="alert">
+                                            La diferencia excede la tolerancia oficial de {formatMoney(closeTolerance)}. Un supervisor (administrador) debe autorizar el cierre.
+                                        </p>
+                                    )}
+                                    {closePreview?.exceedsTolerance && canForceClose && (
+                                        <p className={styles.message} role="alert">
+                                            Puedes forzar el cierre como administrador si agregas una observación.
+                                        </p>
+                                    )}
+                                </div>
+                                <Field label="Observaciones" htmlFor="arqueo-notes">
+                                    <Textarea
+                                        id="arqueo-notes"
+                                        rows={2}
+                                        value={closeNotes}
+                                        onChange={(e) => setCloseNotes(e.target.value)}
+                                        placeholder="Notas del cierre..."
+                                    />
+                                </Field>
+                                <div className={styles.closeActions}>
+                                    <Button onClick={handlePreviewClose} loading={previewLoading}>
+                                        {previewLoading ? 'Validando...' : 'Validar arqueo'}
+                                    </Button>
+                                </div>
+                            </>
+                        )}
                     </section>
 
-                    {!isOpen && (arqueoBills.length > 0 || arqueoCoins.length > 0) && (
-                        <section className={styles.panel} aria-labelledby="shift-arqueo-title">
-                            <h2 id="shift-arqueo-title" className={styles.panelTitle}>Arqueo detallado</h2>
-                            <dl className={styles.dl}>
-                                {arqueoBills.map(b => (
-                                    <div key={`view-bill-${b.denomination}`}>
-                                        <dt>{symbol} {b.denomination} × {b.count}</dt>
-                                        <dd>{formatMoney(b.denomination * b.count)}</dd>
-                                    </div>
-                                ))}
-                                {arqueoCoins.map(c => (
-                                    <div key={`view-coin-${c.denomination}`}>
-                                        <dt>{symbol} {formatNumber(c.denomination)} × {c.count}</dt>
-                                        <dd>{formatMoney(c.denomination * c.count)}</dd>
-                                    </div>
-                                ))}
-                            </dl>
-                        </section>
-                    )}
+                    <section className={`${styles.card} ${styles.cardPad}`} aria-labelledby="cash-sales-title">
+                        <div className={styles.cardHeadInline}>
+                            <h2 id="cash-sales-title" className={styles.cardTitle}>Ventas del turno por medio de pago</h2>
+                            <strong className={styles.num}>{salesByMethod ? formatMoney(salesTotal) : 'N/D'}</strong>
+                        </div>
+                        {salesByMethod ? (
+                            <>
+                                <ul className={styles.payList}>
+                                    {paymentRows.map((row) => (
+                                        <li key={row.label} className={styles.payRow}>
+                                            <span className={styles.muted}>{row.label}</span>
+                                            <span className={styles.payBar} aria-hidden="true">
+                                                <span style={{ width: `${salesTotal > 0 ? Math.max(0, (row.value / salesTotal) * 100) : 0}%` }} />
+                                            </span>
+                                            <span className={styles.num}>{formatMoney(row.value)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <p className={styles.footnote}>
+                                    {formatNumber(Number(salesByMethod.paymentCount) || 0, 0)} órdenes cobradas. Tarjeta y transferencia se concilian contra el voucher del banco, no entran al arqueo.
+                                </p>
+                            </>
+                        ) : (
+                            <p className={styles.message}>No disponible: el resumen del turno no incluyó el desglose por medio de pago.</p>
+                        )}
+                    </section>
+                </div>
+            </form>
 
-                    {!isOpen && (
-                        <section className={styles.panel} aria-labelledby="shift-result-title">
-                            <h2 id="shift-result-title" className={styles.panelTitle}>Resultado del cierre</h2>
-                            <dl className={styles.dl}>
-                                <div><dt>Esperado</dt><dd>{closedExpected}</dd></div>
-                                <div><dt>Real</dt><dd>{money(shift.endAmount)}</dd></div>
-                                <div>
-                                    <dt>Diferencia</dt>
-                                    <dd className={shift.difference == null ? undefined : Number(shift.difference) >= 0 ? styles.amountIn : styles.amountOut}>
-                                        {money(shift.difference)}
-                                    </dd>
-                                </div>
-                            </dl>
-                            {shift.notes && (
-                                <p className={styles.notes}><strong>Notas:</strong> {shift.notes}</p>
-                            )}
-                        </section>
-                    )}
-                </aside>
-            </div>
+            <section className={styles.movements} aria-labelledby="cash-moves-title">
+                <div className={styles.cardHeadInline}>
+                    <h2 id="cash-moves-title" className={styles.cardTitle}>Movimientos del turno</h2>
+                    <span className={styles.muted}>Ventas, ingresos y egresos registrados en la caja</span>
+                </div>
+                <DataTable
+                    ariaLabel="Movimientos del turno"
+                    columns={movementColumns}
+                    rows={filteredMovements}
+                    rowKey={m => m.id}
+                    resetKey={`${filterType}|${searchQuery}`}
+                    empty={searchQuery || filterType !== 'all'
+                        ? 'No hay movimientos que coincidan con los filtros'
+                        : 'No hay movimientos registrados'}
+                    toolbar={
+                        <TableToolbar>
+                            <SegmentedControl<'all' | 'IN' | 'OUT'>
+                                ariaLabel="Tipo de movimiento"
+                                value={filterType}
+                                onChange={setFilterType}
+                                options={[
+                                    { value: 'all', label: `Todos (${movementCount})` },
+                                    { value: 'IN', label: `Ingresos (${inCount})` },
+                                    { value: 'OUT', label: `Egresos (${outCount})` }
+                                ]}
+                            />
+                            <Input
+                                type="search"
+                                aria-label="Buscar movimientos"
+                                placeholder="Buscar..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </TableToolbar>
+                    }
+                />
+            </section>
 
             {/* Registrar ingreso / retiro */}
             <FullScreenModal
@@ -796,123 +947,6 @@ export default function CashShiftPage() {
                                 />
                             </Field>
                         </FormGrid>
-                    </FormSection>
-                </form>
-            </FullScreenModal>
-
-            {/* Arqueo de caja (cierre de turno) */}
-            <FullScreenModal
-                isOpen={isCloseModalOpen}
-                onClose={() => setIsCloseModalOpen(false)}
-                title="Cierre de Turno"
-                subtitle={`Turno #${shift.id} · ${shift.register?.name || `Caja #${shift.cashRegisterId || shift.id}`}`}
-                tabs={[{ id: 'NIO', label: 'Córdobas' }, { id: 'USD', label: 'Dólares' }]}
-                activeTab={arqueoTab}
-                onTabChange={(id) => setArqueoTab(id as 'NIO' | 'USD')}
-                dirty={totalCounted > 0 || !!closeNotes.trim()}
-                dirtyMessage="El arqueo no se ha guardado. Si cierras ahora se perderá el conteo."
-                aside={
-                    <div className={styles.asideStack}>
-                        <section className={styles.panel} aria-labelledby="arqueo-summary-title">
-                            <h2 id="arqueo-summary-title" className={styles.panelTitle}>Conciliación</h2>
-                            <dl className={styles.dl}>
-                                <div>
-                                    <dt>Esperado</dt>
-                                    <dd>{isBlindCashier ? 'Oculto' : money(closePreview?.expectedAmount ?? summary?.expectedAmount)}</dd>
-                                </div>
-                                <div><dt>Contado</dt><dd>{formatMoney(totalCounted)}</dd></div>
-                                <div>
-                                    <dt>Diferencia</dt>
-                                    <dd className={closePreview ? (closeDiffPositive ? styles.amountIn : styles.amountOut) : undefined}>
-                                        {!closePreview
-                                            ? 'Pendiente validar'
-                                            : isBlindCashier
-                                                ? closeStatusLabel
-                                                : `${effectiveDifference >= 0 ? '+' : ''}${formatMoney(effectiveDifference)}`}
-                                    </dd>
-                                </div>
-                            </dl>
-                        </section>
-                        <div className={styles.messages}>
-                            {!closePreview && (
-                                <p className={styles.message}>Valida el arqueo para revisar diferencia y habilitar el cierre.</p>
-                            )}
-                            {closePreview?.requiresNote && (
-                                <p className={styles.message} role="alert">
-                                    Debes registrar una observación para cerrar con diferencia dentro de tolerancia.
-                                </p>
-                            )}
-                            {closePreview?.exceedsTolerance && !canForceClose && (
-                                <p className={styles.message} role="alert">
-                                    La diferencia excede la tolerancia oficial de {formatMoney(closeTolerance)}. Un supervisor (administrador) debe autorizar el cierre.
-                                </p>
-                            )}
-                            {closePreview?.exceedsTolerance && canForceClose && (
-                                <p className={styles.message} role="alert">
-                                    Puedes forzar el cierre como administrador si agregas una observación.
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                }
-                footer={({ requestClose }) => (
-                    <>
-                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button onClick={handlePreviewClose} loading={previewLoading}>
-                            {previewLoading ? 'Validando...' : 'Validar arqueo'}
-                        </Button>
-                        <Button type="submit" form="cash-close-form" variant="primary" icon={Lock} disabled={closeSubmitDisabled}>
-                            {closeSubmitLabel}
-                        </Button>
-                    </>
-                )}
-            >
-                <form id="cash-close-form" onSubmit={handleCloseShift} className={styles.form}>
-                    {arqueoTab === 'NIO' ? (
-                        <>
-                            <FormSection title={`Billetes · ${formatMoney(billsTotal)}`}>
-                                {renderDenominations('bill', 'Billetes', BILL_DENOMINATIONS, billsCount, setBillsCount, symbol, formatMoney, (den) => `Cantidad de billetes de ${symbol} ${den}`)}
-                            </FormSection>
-                            <FormSection title={`Monedas · ${formatMoney(coinsTotal)}`}>
-                                {renderDenominations('coin', 'Monedas', COIN_DENOMINATIONS, coinsCount, setCoinsCount, symbol, formatMoney, (den) => `Cantidad de monedas de ${symbol} ${den}`)}
-                            </FormSection>
-                        </>
-                    ) : (
-                        <>
-                            <FormSection title="Tipo de cambio">
-                                <Field label="1 USD equivale a (NIO)" htmlFor="arqueo-exchange-rate">
-                                    <Input
-                                        id="arqueo-exchange-rate"
-                                        type="number"
-                                        inputMode="decimal"
-                                        value={exchangeRate}
-                                        onChange={(e) => setExchangeRate(parseFloat(e.target.value) || DEFAULT_EXCHANGE_RATE)}
-                                        step="0.01"
-                                        min="1"
-                                    />
-                                </Field>
-                            </FormSection>
-                            <FormSection title={`Billetes USD · $ ${formatCurrency(totalUSD)}`}>
-                                {renderDenominations('usd', 'Billetes USD', USD_BILL_DENOMINATIONS, usdBillsCount, setUsdBillsCount, '$', (v) => `$ ${formatCurrency(v)}`, (den) => `Cantidad de billetes USD de ${den}`)}
-                                {totalUSD > 0 && (
-                                    <dl className={styles.dl}>
-                                        <div><dt>Total USD</dt><dd>$ {formatCurrency(totalUSD)}</dd></div>
-                                        <div><dt>Equivalente en {symbol}</dt><dd>{formatMoney(totalUSDinCordobas)}</dd></div>
-                                    </dl>
-                                )}
-                            </FormSection>
-                        </>
-                    )}
-                    <FormSection title="Observaciones del cierre">
-                        <Field label="Observaciones" htmlFor="arqueo-notes">
-                            <Textarea
-                                id="arqueo-notes"
-                                rows={2}
-                                value={closeNotes}
-                                onChange={(e) => setCloseNotes(e.target.value)}
-                                placeholder="Notas del cierre..."
-                            />
-                        </Field>
                     </FormSection>
                 </form>
             </FullScreenModal>
