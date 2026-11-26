@@ -60,14 +60,20 @@
 /* Filters Row - Modern Pills with Stats */
 .catering-filters {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-2xl);
 }
 
+.catering-filters .filter-buttons {
+    flex-wrap: wrap;
+}
+
 .filter-buttons {
     display: flex;
+    min-width: 0;
     gap: var(--spacing-sm);
     background: var(--ui-surface);
     padding: var(--spacing-xs);
@@ -125,13 +131,20 @@
     gap: var(--spacing-lg);
 }
 
+.catering-filters .filter-right-section {
+    flex: 1 1 240px;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
 .catering-search {
-    width: 280px;
-    flex-shrink: 0;
+    width: 100%;
+    max-width: 320px;
+    flex-shrink: 1;
     padding: var(--spacing-sm) var(--spacing-md) !important;
     margin: 0 !important;
     box-sizing: border-box;
-    max-width: 100%;
+    min-width: 0;
 }
 
 /* Search Input - Simple inline input */

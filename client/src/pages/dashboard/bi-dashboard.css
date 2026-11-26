@@ -14,7 +14,7 @@
 .bi-kpi__context { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--ui-space-2); min-width: 0; }
 .bi-kpi__lines { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 
-.bi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: var(--ui-space-4); min-width: 0; align-items: start; }
+.bi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: var(--ui-space-4); min-width: 0; align-items: stretch; }
 .bi-grid > * { min-width: 0; }
 
 .bi-section { display: flex; flex-direction: column; gap: var(--ui-space-3); min-width: 0; padding: var(--ui-space-4); background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); }

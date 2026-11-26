@@ -14,20 +14,21 @@
 
 /* Puente de utilidad */
 .ui-waterfall { display: grid; grid-template-columns: repeat(var(--steps, 9), minmax(0, 1fr)); gap: var(--ui-space-2); align-items: end; min-width: 0; }
-.ui-waterfall__col { display: flex; flex-direction: column; gap: var(--ui-space-1); min-width: 0; text-align: center; }
+.ui-waterfall__col { display: grid; grid-template-rows: 2.6em auto minmax(2.6em, auto); gap: var(--ui-space-1); min-width: 0; text-align: center; }
 .ui-waterfall__plot { position: relative; height: 180px; background: var(--ui-surface-2); border-radius: var(--ui-radius-sm); }
 .ui-waterfall__bar { position: absolute; left: 12%; right: 12%; bottom: calc(var(--b) * 1%); height: calc(var(--h) * 1%); min-height: 2px; border-radius: 3px; background: var(--ui-primary); }
 .ui-waterfall__bar--negative { background: var(--ui-danger); }
 .ui-waterfall__bar--positive { background: var(--ui-success); }
 .ui-waterfall__bar--partial { background: repeating-linear-gradient(45deg, var(--ui-danger) 0 4px, var(--ui-warning-soft) 4px 8px); }
 .ui-waterfall__bar--unavailable { display: none; }
-.ui-waterfall__amount { font-size: var(--ui-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ui-text); white-space: nowrap; }
+.ui-waterfall__amount { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; font-size: var(--ui-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ui-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-waterfall__note { font-size: 10px; font-weight: 500; color: var(--ui-text-muted); }
 .ui-waterfall__label { font-size: var(--ui-text-xs); color: var(--ui-text-muted); hyphens: auto; }
 /* El puente se adapta al ancho de su tarjeta, no al de la ventana: con poco espacio pasa a barras horizontales. */
 .ui-chart--waterfall { container-type: inline-size; }
 @container (max-width: 760px) {
   .ui-waterfall { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-3); }
-  .ui-waterfall__col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "label plot" "amount plot"; align-items: center; text-align: left; column-gap: var(--ui-space-3); }
+  .ui-waterfall__col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "label plot" "amount plot"; grid-template-rows: auto; align-items: center; text-align: left; column-gap: var(--ui-space-3); }
   .ui-waterfall__label { grid-area: label; }
   .ui-waterfall__amount { grid-area: amount; }
   .ui-waterfall__plot { grid-area: plot; height: 16px; }

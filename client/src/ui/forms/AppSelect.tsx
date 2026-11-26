@@ -17,6 +17,9 @@ type Common = {
   'aria-invalid'?: boolean | 'true' | 'false';
   'aria-describedby'?: string;
   noOptionsText?: string;
+  /** false para listas cortas (p. ej. filas por página): sin cursor de búsqueda. */
+  isSearchable?: boolean;
+  menuPlacement?: 'auto' | 'top' | 'bottom';
 };
 
 export type AppSelectProps<V> = Common &
@@ -132,6 +135,8 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
     noOptionsMessage: () => noOptionsText,
     loadingMessage: () => 'Cargando…',
     formatOptionLabel: formatOption<V>,
+    ...(props.isSearchable === false ? { isSearchable: false } : {}),
+    menuPlacement: props.menuPlacement ?? ('auto' as const),
   };
 
   if (props.kind === 'multi') {
