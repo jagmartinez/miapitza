@@ -7,10 +7,13 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
-import { Plus, Ruler, Edit2, Power, PowerOff, Weight, Beaker, Hash, Package as PackageIcon } from 'lucide-react';
+import { Plus, Ruler, Edit2, Power, PowerOff, Weight, Beaker, Hash, Search, Package as PackageIcon } from 'lucide-react';
 import type { UnitOfMeasure } from '../types';
-import './UnitsOfMeasure.css';
-import { Button, FullScreenModal, PageHeader } from '@/ui';
+import styles from './catalog.module.css';
+import {
+    AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, type Column,
+} from '@/ui';
 
 type MeasurementTypeOption = UnitOfMeasure['measurementType'];
 type FilterOption = 'all' | 'active' | 'inactive';
@@ -261,276 +264,205 @@ export default function UnitsOfMeasurePage() {
         return `1 ${abbr} equivale a ${factor.toLocaleString()} ${currentTypeMeta.baseLabel}`;
     }, [formData.systemFactor, formData.abbreviation, currentTypeMeta]);
 
-    if (loading) {
-        return <div className="units-loading">Cargando unidades de medida...</div>;
-    }
+    const columns: Column<UnitOfMeasure>[] = [
+        {
+            key: 'name',
+            header: 'Unidad',
+            render: (unit) => {
+                const TypeIcon = MEASUREMENT_TYPE_META[unit.measurementType].icon;
+                return (
+                    <span className={styles.cellTitle}>
+                        <TypeIcon size={16} aria-hidden="true" />
+                        {unit.name}
+                    </span>
+                );
+            }
+        },
+        { key: 'abbreviation', header: 'Abreviatura', width: '8rem' },
+        { key: 'type', header: 'Tipo', accessor: (unit) => MEASUREMENT_TYPE_META[unit.measurementType].title },
+        {
+            key: 'factor',
+            header: 'Equivalencia',
+            render: (unit) => `1 ${unit.abbreviation} = ${Number(unit.systemFactor).toLocaleString('es-NI')} ${MEASUREMENT_TYPE_META[unit.measurementType].baseLabel}`
+        },
+        {
+            key: 'status',
+            header: 'Estado',
+            width: '8rem',
+            render: (unit) => <Badge tone={unit.active ? 'success' : 'neutral'} dot>{unit.active ? 'Activa' : 'Inactiva'}</Badge>
+        },
+        ...(canMutate ? [{
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (unit: UnitOfMeasure) => (
+                <div className={styles.rowActions}>
+                    <IconButton size="sm" icon={Edit2} label={`Editar ${unit.name}`} onClick={() => openModal(unit)} />
+                    <IconButton
+                        size="sm"
+                        icon={unit.active ? PowerOff : Power}
+                        label={`${unit.active ? 'Inhabilitar' : 'Habilitar'} ${unit.name}`}
+                        onClick={() => handleToggleActive(unit)}
+                    />
+                </div>
+            )
+        }] : [])
+    ] as Column<UnitOfMeasure>[];
 
     return (
-        <div className="units-page">
+        <PageContent>
             <PageHeader
-                title="Unidades de Medida"
+                title="Unidades de medida"
                 description={`${units.filter((u) => u.active).length} activas · ${units.length} en catálogo`}
                 actions={(
                     <>
-                        <Button variant="secondary" onClick={() => navigate('/inventory')}>
-                            Ir a Inventario
-                        </Button>
+                        <Button onClick={() => navigate('/inventory')}>Ir a Inventario</Button>
                         {canMutate && (
-                            <Button variant="primary" onClick={() => openModal()}>
-                                <Plus size={20} />
-                                Nueva Unidad
+                            <Button variant="primary" icon={Plus} onClick={() => openModal()}>
+                                Nueva unidad
                             </Button>
                         )}
                     </>
                 )}
             />
 
-            <div className="units-filters-row">
-                <div className="units-status-filters">
-                    {FILTER_OPTIONS.map((opt) => (
-                        <button
-                            key={opt.value}
-                            type="button"
-                            className={`units-status-btn ${statusFilter === opt.value ? 'active' : ''}`}
-                            onClick={() => setStatusFilter(opt.value)}
-                        >
-                            {opt.label}
-                        </button>
-                    ))}
-                </div>
-                <input
-                    type="text"
-                    className="search-input units-search"
-                    placeholder="Buscar por nombre o abreviatura..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
-            </div>
-
-            {units.length === 0 && (
-                <div className="units-empty-page">
-                    <Ruler size={48} />
-                    <p>No hay unidades de medida en el catálogo.</p>
-                    <p className="units-empty-hint">
-                        Crea las unidades que usará tu empresa (gramos, libras, paquetes personalizados, etc.)
-                        antes de configurar productos.
-                    </p>
-                    {canMutate && (
-                        <Button variant="primary" onClick={() => openModal()}>Crear primera unidad</Button>
-                    )}
-                </div>
-            )}
-
-            <div className="units-grid">
-                {filteredUnits.map((unit) => {
-                    const meta = MEASUREMENT_TYPE_META[unit.measurementType];
-                    const TypeIcon = meta.icon;
-                    const accentClass =
-                        unit.measurementType === 'MASS' ? 'entity-accent-info' :
-                            unit.measurementType === 'VOLUME' ? 'entity-accent-success' :
-                                unit.measurementType === 'UNIT' ? 'entity-accent-warning' :
-                                    'entity-accent-danger';
-                    return (
-                        <div
-                            key={unit.id}
-                            className={`entity-card entity-card-accent ${accentClass} ${unit.active ? '' : 'unit-card-inactive'}`}
-                        >
-                            <div className={`entity-card-badge ${unit.active ? 'badge-success' : 'badge-neutral'}`}>
-                                {unit.active ? 'Activa' : 'Inactiva'}
-                            </div>
-                            <div className="entity-card-body">
-                                <div className="unit-card-head">
-                                    <div className="unit-card-icon-box"><TypeIcon size={20} /></div>
-                                    <div className="unit-card-headings">
-                                        <h3 className="entity-card-title">{unit.name}</h3>
-                                        <p className="entity-card-subtitle">{meta.title} · {meta.description}</p>
-                                    </div>
-                                </div>
-                                <div className="entity-card-meta">
-                                    <span className="entity-card-tag">{unit.abbreviation}</span>
-                                    <span className="entity-card-meta-item">
-                                        <Ruler size={14} />
-                                        1 {unit.abbreviation} = {Number(unit.systemFactor).toLocaleString()} {meta.baseLabel}
-                                    </span>
-                                </div>
-                            </div>
-                            {canMutate && (
-                                <div className="entity-card-actions">
-                                    <button type="button" className="action-btn-new edit" onClick={() => openModal(unit)} title="Editar">
-                                        <Edit2 size={20} />
-                                        <span>Editar</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={`action-btn-new ${unit.active ? 'delete' : 'adjust'}`}
-                                        onClick={() => handleToggleActive(unit)}
-                                        title={unit.active ? 'Inhabilitar' : 'Habilitar'}
-                                    >
-                                        {unit.active ? <PowerOff size={20} /> : <Power size={20} />}
-                                        <span>{unit.active ? 'Inhabilitar' : 'Habilitar'}</span>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-
-            {units.length > 0 && filteredUnits.length === 0 && (
-                <div className="units-empty-page">
-                    <p>No hay unidades con este filtro.</p>
-                </div>
-            )}
+            <DataTable<UnitOfMeasure>
+                ariaLabel="Unidades de medida"
+                rows={filteredUnits}
+                rowKey={(u) => u.id}
+                columns={columns}
+                loading={loading}
+                resetKey={`${searchQuery}|${statusFilter}`}
+                onRowClick={canMutate ? (u) => openModal(u) : undefined}
+                empty={units.length === 0 ? (
+                    <EmptyState
+                        icon={Ruler}
+                        title="No hay unidades de medida en el catálogo"
+                        description="Crea las unidades que usará tu empresa (gramos, libras, paquetes personalizados, etc.) antes de configurar productos."
+                        action={canMutate ? <Button variant="primary" onClick={() => openModal()}>Crear primera unidad</Button> : undefined}
+                    />
+                ) : 'No hay unidades con este filtro.'}
+                toolbar={(
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            aria-label="Buscar unidad"
+                            placeholder="Buscar por nombre o abreviatura"
+                            prefix={<Search size={14} aria-hidden="true" />}
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        <SegmentedControl ariaLabel="Estado" options={FILTER_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+                    </TableToolbar>
+                )}
+            />
 
             <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={closeModal}
                 title={editingUnit ? 'Editar unidad' : 'Nueva unidad de medida'}
-            >
-                <form onSubmit={handleSubmit} className="modal-form-new premium-modal-content">
-                    <div className="modal-tab-content">
-                        <div className="unit-form-step">
-                            <div className="unit-form-step-header">
-                                <span className="unit-form-step-num">1</span>
-                                <div>
-                                    <h4>¿Qué tipo de medida es?</h4>
-                                    <p>Elige cómo se mide esta unidad. Esto define cómo se hacen las conversiones.</p>
-                                </div>
-                            </div>
-                            <div className="unit-type-cards">
-                                {MEASUREMENT_TYPES.map((type) => {
-                                    const Icon = type.icon;
-                                    const active = formData.measurementType === type.value;
-                                    return (
-                                        <button
-                                            type="button"
-                                            key={type.value}
-                                            className={`unit-type-card ${active ? 'active' : ''}`}
-                                            onClick={() => handleTypeChange(type.value)}
-                                        >
-                                            <div className="unit-type-card-icon"><Icon size={22} /></div>
-                                            <div className="unit-type-card-body">
-                                                <div className="unit-type-card-title">{type.title}</div>
-                                                <div className="unit-type-card-desc">{type.description}</div>
-                                                <div className="unit-type-card-examples">
-                                                    <strong>Ej.</strong> {type.examples}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <div className="unit-form-step">
-                            <div className="unit-form-step-header">
-                                <span className="unit-form-step-num">2</span>
-                                <div>
-                                    <h4>Identifica la unidad</h4>
-                                    <p>El nombre y la abreviatura se mostrarán al elegirla en productos y operaciones.</p>
-                                </div>
-                            </div>
-                            <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="unit-name">Nombre</label>
-                                    <input
-                                        id="unit-name"
-                                        type="text"
-                                        className="modal-standard-input"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                                        placeholder={
-                                            formData.measurementType === 'MASS' ? 'Ej. Libra' :
-                                                formData.measurementType === 'VOLUME' ? 'Ej. Litro' :
-                                                    formData.measurementType === 'UNIT' ? 'Ej. Docena' :
-                                                        'Ej. Paquete Mozzarella 3.5g'
-                                        }
-                                        required
-                                    />
-                                </div>
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="unit-abbreviation">Abreviatura</label>
-                                    <input
-                                        id="unit-abbreviation"
-                                        type="text"
-                                        className="modal-standard-input"
-                                        value={formData.abbreviation}
-                                        onChange={(e) => setFormData((prev) => ({ ...prev, abbreviation: e.target.value }))}
-                                        placeholder={
-                                            formData.measurementType === 'MASS' ? 'lb' :
-                                                formData.measurementType === 'VOLUME' ? 'l' :
-                                                    formData.measurementType === 'UNIT' ? 'doc' :
-                                                        'pkg_moz_3_5g'
-                                        }
-                                        required
-                                    />
-                                    <small className="modal-input-hint">Única en tu empresa. Es como un código corto.</small>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="unit-form-step">
-                            <div className="unit-form-step-header">
-                                <span className="unit-form-step-num">3</span>
-                                <div>
-                                    <h4>Define la equivalencia</h4>
-                                    <p>{currentTypeMeta.factorHint}</p>
-                                </div>
-                            </div>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="unit-factor">{currentTypeMeta.factorLabel}</label>
-                                <div className="unit-factor-row">
-                                    <span className="unit-factor-prefix">1 {formData.abbreviation || 'unidad'} =</span>
-                                    <input
-                                        id="unit-factor"
-                                        type="number"
-                                        min="0.000001"
-                                        step="0.000001"
-                                        className="modal-standard-input"
-                                        value={formData.systemFactor}
-                                        onChange={(e) => setFormData((prev) => ({ ...prev, systemFactor: e.target.value }))}
-                                        placeholder={currentTypeMeta.factorPlaceholder}
-                                        disabled={!currentTypeMeta.factorEditable}
-                                        required={currentTypeMeta.factorEditable}
-                                    />
-                                    <span className="unit-factor-suffix">{currentTypeMeta.baseLabel}</span>
-                                </div>
-                                {factorPreview && (
-                                    <div className="unit-factor-preview">
-                                        Vista previa: {factorPreview}
-                                    </div>
-                                )}
-                                {!currentTypeMeta.factorEditable && (
-                                    <small className="modal-input-hint">
-                                        Para paquetes el peso real se configura por producto desde
-                                        <strong> Inventario → Conversiones</strong>.
-                                    </small>
-                                )}
-                            </div>
-                        </div>
-
-                        {editingUnit && (
-                            <label className="units-default-checkbox">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.active}
-                                    onChange={(e) => setFormData((prev) => ({ ...prev, active: e.target.checked }))}
-                                />
-                                Unidad activa (disponible en productos y operaciones)
-                            </label>
-                        )}
-                    </div>
-                    <div className="modal-footer">
-                        <Button type="button" variant="ghost" onClick={closeModal}>Cancelar</Button>
-                        <Button type="submit" variant="primary" disabled={saving}>
-                            {saving ? 'Guardando...' : editingUnit ? 'Guardar cambios' : 'Crear unidad'}
+                breadcrumb={['Inventario', 'Unidades de medida']}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button type="submit" form="unit-form" variant="primary" loading={saving}>
+                            {editingUnit ? 'Guardar cambios' : 'Crear unidad'}
                         </Button>
-                    </div>
+                    </>
+                )}
+            >
+                <form id="unit-form" onSubmit={handleSubmit} className={styles.stack}>
+                    <FormSection step={1} title="¿Qué tipo de medida es?" description="Define cómo se hacen las conversiones.">
+                        <FormGrid>
+                            <Field label="Tipo de medida" htmlFor="unit-type" required>
+                                <AppSelect<MeasurementTypeOption>
+                                    inputId="unit-type"
+                                    isClearable={false}
+                                    isSearchable={false}
+                                    options={MEASUREMENT_TYPES.map((t) => ({
+                                        value: t.value,
+                                        label: t.title,
+                                        description: `${t.description} Ej.: ${t.examples}`
+                                    }))}
+                                    value={formData.measurementType}
+                                    onChange={(v) => v && handleTypeChange(v)}
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+
+                    <FormSection step={2} title="Identifica la unidad" description="El nombre y la abreviatura se mostrarán al elegirla en productos y operaciones.">
+                        <FormGrid>
+                            <Field label="Nombre" htmlFor="unit-name" required>
+                                <Input
+                                    id="unit-name"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                                    placeholder={
+                                        formData.measurementType === 'MASS' ? 'Ej. Libra' :
+                                            formData.measurementType === 'VOLUME' ? 'Ej. Litro' :
+                                                formData.measurementType === 'UNIT' ? 'Ej. Docena' :
+                                                    'Ej. Paquete Mozzarella 3.5g'
+                                    }
+                                    required
+                                />
+                            </Field>
+                            <Field label="Abreviatura" htmlFor="unit-abbreviation" hint="Única en tu empresa. Es como un código corto." required>
+                                <Input
+                                    id="unit-abbreviation"
+                                    value={formData.abbreviation}
+                                    onChange={(e) => setFormData((prev) => ({ ...prev, abbreviation: e.target.value }))}
+                                    placeholder={
+                                        formData.measurementType === 'MASS' ? 'lb' :
+                                            formData.measurementType === 'VOLUME' ? 'l' :
+                                                formData.measurementType === 'UNIT' ? 'doc' :
+                                                    'pkg_moz_3_5g'
+                                    }
+                                    required
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+
+                    <FormSection step={3} title="Define la equivalencia" description={currentTypeMeta.factorHint}>
+                        <FormGrid>
+                            <Field
+                                label={currentTypeMeta.factorLabel}
+                                htmlFor="unit-factor"
+                                required={currentTypeMeta.factorEditable}
+                                hint={!currentTypeMeta.factorEditable
+                                    ? 'Para paquetes el peso real se configura por producto desde Inventario → Conversiones.'
+                                    : factorPreview ? `Vista previa: ${factorPreview}` : undefined}
+                            >
+                                <Input
+                                    id="unit-factor"
+                                    type="number"
+                                    min="0.000001"
+                                    step="0.000001"
+                                    className="ui-input--number"
+                                    prefix={`1 ${formData.abbreviation || 'unidad'} =`}
+                                    suffix={currentTypeMeta.baseLabel}
+                                    value={formData.systemFactor}
+                                    onChange={(e) => setFormData((prev) => ({ ...prev, systemFactor: e.target.value }))}
+                                    placeholder={currentTypeMeta.factorPlaceholder}
+                                    disabled={!currentTypeMeta.factorEditable}
+                                    required={currentTypeMeta.factorEditable}
+                                />
+                            </Field>
+                        </FormGrid>
+                        {editingUnit && (
+                            <Switch
+                                id="unit-active"
+                                checked={formData.active}
+                                onChange={(active) => setFormData((prev) => ({ ...prev, active }))}
+                                label="Unidad activa (disponible en productos y operaciones)"
+                            />
+                        )}
+                    </FormSection>
                 </form>
             </FullScreenModal>
 
             <ToastContainer toasts={toasts} onRemove={removeToast} />
-        </div>
+        </PageContent>
     );
 }
-

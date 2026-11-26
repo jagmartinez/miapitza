@@ -71,10 +71,11 @@ describe('team schedule planning UX', () => {
         expect(shiftForm).not.toContain('hr-schedule-alert info');
         expect(teamPage).not.toContain('hr-schedule-alert info');
         expect(styles).not.toContain('.hr-schedule-alert.info');
-        expect(schedulePage).toContain('hr-schedule-alert danger');
-        expect(schedulePage).toContain('hr-schedule-alert warning');
-        expect(teamPage).toContain('hr-schedule-alert warning');
-        expect(shiftForm).toContain('hr-schedule-form-conflicts');
+        // Avisos migrados a los estilos compartidos de RH (hrForm.module.css).
+        expect(schedulePage).toContain('form.alertDanger');
+        expect(schedulePage).toContain('form.alertWarning');
+        expect(teamPage).toContain('form.alertWarning');
+        expect(shiftForm).toContain('aria-label="Conflictos del turno"');
         expect(shiftForm).toContain('hr-shift-overnight-note');
     });
 

@@ -16,7 +16,7 @@ const governance = readFileSync(
   'utf8'
 );
 const governanceClient = readFileSync(new URL('./benefitsGovernanceClient.ts', import.meta.url), 'utf8');
-const benefitsStyles = readFileSync(new URL('../../pages/hr/benefits.css', import.meta.url), 'utf8');
+// Layout migrado: benefits.css se eliminó; la tabla, filtros y detalle usan @/ui.
 
 describe('Phase 6 benefits UI contract', () => {
   it('exposes all Owner workspaces and server-authored detail', () => {
@@ -33,7 +33,7 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('createBenefitsIdempotencyKey()');
     expect(owner).toContain('STATUS_OPTIONS[tab].map');
     expect(owner).toContain('<DataTable');
-    expect(owner).toContain('className="hr-benefits-admin-register"');
+    expect(owner).toContain('role="tabpanel"');
     expect(owner).toContain('placeholder="Código, empleado o detalle"');
     expect(owner).toContain('filteredCards');
     expect(owner).toContain('Ver y gestionar');
@@ -42,11 +42,10 @@ describe('Phase 6 benefits UI contract', () => {
   });
 
   it('uses accessible label-free filters and right-aligned financial values', () => {
-    expect(owner).toContain('<span className="sr-only">Buscar</span>');
     expect(owner).toContain('aria-label="Buscar por código, empleado o detalle"');
-    expect(owner).toContain('<span className="sr-only">Estado</span>');
     expect(owner).toContain('aria-label="Filtrar por estado"');
-    expect(benefitsStyles).toContain('minmax(480px, 1.25fr)');
+    expect(owner).toContain('<TableToolbar');
+    expect(owner).toContain('<FullScreenModal');
   });
 
   it('keeps policies and settlement drafts administrable without native prompts', () => {
@@ -93,8 +92,11 @@ describe('Phase 6 benefits UI contract', () => {
     [transition, travel, loan, deduction, expense].forEach((source) => {
       expect(source).toContain('HrModalFormShell');
     });
-    expect(governance).toContain('premium-modal-content governance-form governance-sidebar-form');
-    expect(governance).toContain('premium-modal-content governance-detail');
+    // Los paneles de gobierno viven en FullScreenModal sin el envoltorio heredado premium-modal-content.
+    expect(governance).toContain('<FullScreenModal');
+    expect(governance).toContain('className="governance-form governance-sidebar-form"');
+    expect(governance).toContain('className="governance-detail"');
+    expect(governance).not.toContain('premium-modal-content');
   });
 
   it('keeps one idempotency key across ambiguous expense retries', () => {

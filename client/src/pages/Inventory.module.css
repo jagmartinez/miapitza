@@ -1,131 +1,68 @@
-/* ===== Auto PO suggestions (dark-mode safe) ===== */
-
-.poSuggestionToolbar {
+/* ===== Lista y modales (rediseño) ===== */
+.loadError {
     display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
     justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
+    gap: var(--ui-space-3);
+    padding: var(--ui-space-3) var(--ui-space-4);
+    border: 1px solid var(--ui-warning);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-warning-soft);
+    color: var(--ui-text);
+    font-size: 13px;
 }
 
-.poSuggestionCount {
-    font-size: 0.9rem;
-    color: var(--ui-text-muted);
-}
-
-.poSuggestionToolbarActions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.poSuggestionList {
+.loadError > div {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    max-height: 420px;
-    overflow-y: auto;
-    padding-right: 4px;
+    gap: var(--ui-space-1);
 }
 
-.poSuggestionEmpty {
-    padding: 1.25rem;
-    text-align: center;
-    color: var(--ui-text-muted);
-    background: var(--ui-surface);
-    border: 1px dashed var(--ui-border);
-    border-radius: 12px;
-    font-size: 0.9rem;
+.loadError ul {
+    margin: 0;
+    padding-left: var(--ui-space-4);
 }
 
-.poSuggestionCard {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 12px;
-    align-items: center;
-    padding: 12px 14px;
-    border-radius: 12px;
-    border: 1px solid var(--ui-border);
-    background: var(--ui-surface);
-    cursor: pointer;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.poSuggestionCard:hover {
-    border-color: var(--ui-primary);
-}
-
-.poSuggestionCard.isSelected {
-    border-color: var(--ui-primary);
-    box-shadow: 0 0 0 1px var(--ui-primary);
-    background: color-mix(in srgb, var(--ui-primary) 8%, transparent);
-}
-
-:global(.dark) .poSuggestionCard.isSelected {
-    background: color-mix(in srgb, var(--ui-primary) 12%, transparent);
-}
-
-.poSuggestionCard.isUrgent {
-    border-left: 3px solid var(--ui-danger);
-}
-
-.poSuggestionCheckbox {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--ui-primary);
-    cursor: pointer;
-}
-
-.poSuggestionBody {
+.toolbarStack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-2);
     min-width: 0;
 }
 
-.poSuggestionHeader {
+.segmentWrap {
     display: flex;
+    min-width: 0;
+    overflow-x: auto;
+}
+
+.hiddenFile {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.fileZone {
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.poSuggestionName {
-    font-weight: 700;
-    font-size: 0.95rem;
+    gap: var(--ui-space-2);
+    width: 100%;
+    padding: var(--ui-space-6) var(--ui-space-4);
+    border: 1px dashed var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    background: var(--ui-surface);
     color: var(--ui-text);
+    font: inherit;
+    cursor: pointer;
+    text-align: center;
 }
 
-.poSuggestionTags {
-    margin-top: 6px;
-}
-
-.poSuggestionMetrics {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 14px;
-    margin-top: 8px;
-    font-size: 0.82rem;
-    color: var(--ui-text-muted);
-}
-
-.poSuggestionMetrics strong {
-    color: var(--ui-text);
-    font-weight: 600;
-}
-
-.poSuggestionCost {
-    text-align: right;
-    flex-shrink: 0;
-}
-
-.poSuggestionCostValue {
-    display: block;
-    font-weight: 700;
-    font-size: 1rem;
-    color: var(--ui-text);
-}
-
-.poSuggestionCostLabel {
-    font-size: 0.78rem;
-    color: var(--ui-text-muted);
+.fileZone:hover,
+.fileZoneReady {
+    border-color: var(--ui-primary);
+    background: var(--ui-primary-soft);
 }

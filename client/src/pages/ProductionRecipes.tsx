@@ -10,17 +10,16 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
-import {
-    FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Info, Layers,
-    Eye, Package, Box, DollarSign, Activity, FileText, Scale, Factory
-} from 'lucide-react';
+import { FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Eye, X } from 'lucide-react';
+
+/** Columnas de la lista cuando el detalle ocupa el panel derecho (maestro-detalle). */
+const MASTER_KEYS = ['product', 'version', 'status', 'unitCost'];
 import type { ProductionRecipe, Product, UnitOfMeasure, RecipeCost } from '../types';
 import {
     COST_VARIATION_ALERT_PCT, costVariation, ingredientWeights, previousVersion, usedIn,
     type CostVariation,
 } from './recipeInsights';
 import s from './Production.module.css';
-import './Inventory.css';
 import './ProductionRecipes.css';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -602,30 +601,42 @@ export default function ProductionRecipes() {
 
         if (detailLoading) return <Skeleton height={240} />;
 
+        const componentRows = viewingRecipe.components.map((component, index) => {
+            const costLine = viewingRecipe.cost?.lines.find((line) => line.componentProductId === component.componentProductId);
+            return {
+                key: component.id ?? `${component.componentProductId}-${index}`,
+                name: component.componentProduct?.name || `Producto #${component.componentProductId}`,
+                sku: component.componentProduct?.sku,
+                quantity: Number(component.quantity),
+                unit: component.unit || costLine?.unit || component.componentProduct?.unit || '',
+                unitCost: costLine ? Number(costLine.unitCost) : null,
+                totalCost: costLine ? Number(costLine.totalCost) : null,
+                weight: weights.get(component.componentProductId),
+            };
+        });
+        type ComponentRow = (typeof componentRows)[number];
+
         return (
-            <div className="inventory-detail pr-recipe-detail" data-testid="production-recipe-detail">
-                <div className="inventory-detail-hero">
-                    <div className="inventory-detail-hero-main">
-                        <div className="inventory-detail-icon" aria-hidden="true"><FlaskConical size={28} /></div>
-                        <div className="inventory-detail-identity">
-                            <span className="inventory-detail-eyebrow">Ficha de producción</span>
-                            <h3>{outputName}</h3>
-                            <div className="inventory-detail-meta">
-                                {outputSku && <span className="inventory-detail-badge sku">SKU {outputSku}</span>}
-                                <div className="inventory-detail-status-row">
-                                    <span className={`inventory-detail-badge ${viewingRecipe.status === 'ACTIVE' ? 'active' : viewingRecipe.status === 'DRAFT' ? 'warning' : 'inactive'}`}>{statusLabel}</span>
-                                    <span className="inventory-detail-badge ok">Versión {viewingRecipe.version}</span>
-                                </div>
-                            </div>
+            <div className={s.recipeDetail} data-testid="production-recipe-detail">
+                <header className={s.recipeHead}>
+                    <div className={s.cellStack}>
+                        <h2 className={s.recipeTitle}>{outputName}</h2>
+                        <div className={s.recipeMeta}>
+                            <Badge tone={STATUS_TONE_BY_RECIPE[viewingRecipe.status].tone} dot>{statusLabel} · v{viewingRecipe.version}</Badge>
+                            {outputSku && <span className={s.cellSub}>SKU {outputSku}</span>}
+                            {viewingRecipe.name && <span className={s.cellSub}>{viewingRecipe.name}</span>}
                         </div>
                     </div>
-                    <div className="inventory-detail-stock-summary pr-recipe-yield-summary">
-                        <span>Rendimiento del lote</span>
-                        <strong>{formatNumber(viewingRecipe.yieldQuantity, 2)}<small>{yieldUnit}</small></strong>
-                        <div className="inventory-detail-stock-track" aria-hidden="true"><span style={{ width: '100%' }} /></div>
-                        <small>{viewingRecipe.components.length} componentes definidos</small>
+                    <div className={s.rowActions}>
+                        {canManage && <Button size="sm" icon={Copy} onClick={() => void handleCreateVersion(viewingRecipe)}>Nueva versión</Button>}
+                        {canManage && viewingRecipe.status === 'DRAFT' && (
+                            <Button size="sm" variant="primary" icon={Pencil} onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}>
+                                Editar receta
+                            </Button>
+                        )}
+                        <IconButton icon={X} size="sm" label="Cerrar detalle" onClick={() => setViewingRecipe(null)} />
                     </div>
-                </div>
+                </header>
 
                 {variation && Math.abs(variation.deltaPct) >= 0.005 && (
                     <div className={`${s.variation} ${variation.deltaPct >= COST_VARIATION_ALERT_PCT ? s.variationUp : ''}`} role="status">
@@ -639,54 +650,59 @@ export default function ProductionRecipes() {
                     </div>
                 )}
 
-                <section className="inventory-detail-section">
-                    <div className="modal-section-header"><Box size={18} /><h3>Perfil de la receta</h3></div>
-                    <div className="inventory-detail-profile-grid">
-                        <div className="inventory-detail-profile-item"><Package size={18} /><div><span>Producto de salida</span><strong>{outputName}</strong></div></div>
-                        <div className="inventory-detail-profile-item"><Layers size={18} /><div><span>Tipo de producto</span><strong>{outputType ? TYPE_LABELS[outputType] : 'Sin clasificar'}</strong></div></div>
-                        <div className="inventory-detail-profile-item"><Scale size={18} /><div><span>Rendimiento</span><strong>{formatNumber(viewingRecipe.yieldQuantity, 2)} {yieldUnit}</strong></div></div>
-                        <div className="inventory-detail-profile-item"><Info size={18} /><div><span>Nombre de receta</span><strong>{viewingRecipe.name || 'Sin nombre adicional'}</strong></div></div>
-                    </div>
+                <dl className={s.facts}>
+                    <div><dt>Rendimiento del lote</dt><dd>{formatNumber(viewingRecipe.yieldQuantity, 2)} {yieldUnit}</dd></div>
+                    <div><dt>Costo del lote</dt><dd>{viewingRecipe.cost ? formatMoney(viewingRecipe.cost.batchCost) : 'N/D'}</dd></div>
+                    <div><dt>Costo unitario</dt><dd>{unitCost === null ? 'N/D' : formatMoney(unitCost)}</dd></div>
+                    <div><dt>Tipo de producto</dt><dd>{outputType ? TYPE_LABELS[outputType] : 'Sin clasificar'}</dd></div>
+                </dl>
+                {viewingRecipe.costError && <p className={s.cellSub} role="alert">{viewingRecipe.costError}</p>}
+
+                <section aria-label="Componentes de la preparación" className={s.recipeSection}>
+                    <h3 className={s.recipeSectionTitle}>
+                        Componentes de la preparación
+                        <span className={s.cellSub}>Costos al promedio ponderado vigente</span>
+                    </h3>
+                    <DataTable<ComponentRow>
+                        ariaLabel="Componentes de la receta"
+                        rows={componentRows}
+                        rowKey={(row) => row.key}
+                        minWidth="36rem"
+                        footerLabel="Costo total del lote"
+                        empty="La receta no tiene componentes."
+                        columns={[
+                            {
+                                key: 'name',
+                                header: 'Insumo',
+                                width: '2fr',
+                                render: (row) => (
+                                    <div className={s.cellStack}>
+                                        <span className={s.cellTitle}>{row.name}</span>
+                                        {row.sku && <span className={s.cellSub}>{row.sku}</span>}
+                                    </div>
+                                ),
+                            },
+                            { key: 'quantity', header: 'Cantidad', type: 'qty', width: '1fr', accessor: (row) => row.quantity },
+                            { key: 'unit', header: 'Unidad', width: '0.7fr' },
+                            {
+                                key: 'unitCost', header: `Costo unit. (${symbol})`, type: 'money', width: '1fr',
+                                render: (row) => (row.unitCost === null ? 'N/D' : formatNumber(row.unitCost, row.unitCost !== 0 && Math.abs(row.unitCost) < 1 ? 4 : 2)),
+                            },
+                            {
+                                key: 'totalCost', header: `Costo (${symbol})`, type: 'money', width: '1fr', total: true,
+                                accessor: (row) => row.totalCost ?? 0,
+                                render: (row) => (row.totalCost === null ? 'N/D' : formatNumber(row.totalCost)),
+                            },
+                            {
+                                key: 'weight', header: 'Peso en costo', type: 'percent', width: '1fr',
+                                render: (row) => (row.weight === undefined ? 'N/D' : formatPercent(row.weight)),
+                            },
+                        ]}
+                    />
                 </section>
 
-                <section className="inventory-detail-section">
-                    <div className="modal-section-header"><DollarSign size={18} /><h3>Costos de producción</h3></div>
-                    <div className="inventory-detail-finance">
-                        <div className="inventory-detail-effective-cost">
-                            <div><span>Costo total del lote</span><strong>{viewingRecipe.cost ? formatMoney(viewingRecipe.cost.batchCost) : 'No disponible'}</strong></div>
-                            <span className="inventory-detail-cost-source">Costo calculado</span>
-                        </div>
-                        <dl className="inventory-detail-finance-breakdown">
-                            <div><dt>Costo unitario</dt><dd>{unitCost === null ? 'No disponible' : formatMoney(unitCost)}</dd></div>
-                            <div><dt>Base calculada</dt><dd>{viewingRecipe.cost ? `${formatNumber(viewingRecipe.cost.yieldBaseQuantity, 2)} ${viewingRecipe.cost.yieldBaseUnit}` : 'No disponible'}</dd></div>
-                            <div><dt>Componentes</dt><dd>{formatNumber(viewingRecipe.components.length, 0)}</dd></div>
-                        </dl>
-                        <p className="inventory-detail-finance-note">{viewingRecipe.costError || 'El costo se calcula con las cantidades y el costo efectivo vigente de cada componente.'}</p>
-                    </div>
-                </section>
-
-                <section className="inventory-detail-section">
-                    <div className="modal-section-header"><Layers size={18} /><h3>Componentes de la preparación</h3></div>
-                    <div className="pr-detail-component-list">
-                        {viewingRecipe.components.map((component, index) => {
-                            const costLine = viewingRecipe.cost?.lines.find((line) => line.componentProductId === component.componentProductId);
-                            const unit = component.unit || costLine?.unit || component.componentProduct?.unit || '';
-                            const weight = weights.get(component.componentProductId);
-                            return (
-                                <article key={component.id ?? component.componentProductId} className="pr-detail-component">
-                                    <span className="pr-detail-component-index">{index + 1}</span>
-                                    <div className="pr-detail-component-identity"><strong>{component.componentProduct?.name || `Producto #${component.componentProductId}`}</strong><span>{component.componentProduct?.sku ? `SKU ${component.componentProduct.sku}` : 'Sin SKU registrado'}</span></div>
-                                    <div className="pr-detail-component-quantity"><span>Cantidad</span><strong>{formatNumber(component.quantity, 2)} {unit}</strong></div>
-                                    <div className="pr-detail-component-cost"><span>Costo</span><strong>{costLine ? formatMoney(Number(costLine.totalCost)) : 'N/D'}</strong></div>
-                                    <div className="pr-detail-component-cost"><span>% del costo</span><strong>{weight === undefined ? 'N/D' : formatPercent(weight)}</strong></div>
-                                </article>
-                            );
-                        })}
-                    </div>
-                </section>
-
-                <section className="inventory-detail-section">
-                    <div className="modal-section-header"><Factory size={18} /><h3>Se usa en</h3></div>
+                <section aria-label="Se usa en" className={s.recipeSection}>
+                    <h3 className={s.recipeSectionTitle}>Se usa en</h3>
                     {parents.length > 0 ? (
                         <ul className={s.usedIn}>
                             {parents.map((parent) => (
@@ -699,28 +715,18 @@ export default function ProductionRecipes() {
                             ))}
                         </ul>
                     ) : (
-                        <p className="inventory-detail-observation">Ninguna receta vigente usa este producto como componente.</p>
+                        <p className={s.cellSub}>Ninguna receta vigente usa este producto como componente.</p>
                     )}
                 </section>
 
-                <section className="inventory-detail-section inventory-detail-operational-note">
-                    <Activity size={18} aria-hidden="true" />
-                    <div><strong>Trazabilidad de producción</strong><p>Creada por {viewingRecipe.createdBy?.name || 'usuario no disponible'} el {new Date(viewingRecipe.createdAt).toLocaleString('es-NI')}. Última actualización: {new Date(viewingRecipe.updatedAt).toLocaleString('es-NI')}.</p></div>
+                <section aria-label="Indicaciones y observaciones" className={s.recipeSection}>
+                    <h3 className={s.recipeSectionTitle}>Indicaciones y observaciones</h3>
+                    <p className={s.cellSub}>{viewingRecipe.notes || 'Esta receta no tiene indicaciones adicionales.'}</p>
+                    <p className={s.cellSub}>
+                        Creada por {viewingRecipe.createdBy?.name || 'usuario no disponible'} el {new Date(viewingRecipe.createdAt).toLocaleString('es-NI')}.
+                        {' '}Última actualización: {new Date(viewingRecipe.updatedAt).toLocaleString('es-NI')}.
+                    </p>
                 </section>
-
-                <section className="inventory-detail-section">
-                    <div className="modal-section-header"><FileText size={18} /><h3>Indicaciones y observaciones</h3></div>
-                    <p className="inventory-detail-observation">{viewingRecipe.notes || 'Esta receta no tiene indicaciones adicionales.'}</p>
-                </section>
-
-                <div className="inventory-detail-footer">
-                    <Button variant="ghost" onClick={() => setViewingRecipe(null)}>Cerrar detalle</Button>
-                    {canManage && viewingRecipe.status === 'DRAFT' && (
-                        <Button variant="primary" icon={Pencil} onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}>
-                            Editar receta
-                        </Button>
-                    )}
-                </div>
             </div>
         );
     })();
@@ -778,11 +784,12 @@ export default function ProductionRecipes() {
                 <div className={s.master}>
                     <DataTable<ProductionRecipe>
                         ariaLabel="Recetas de producción"
-                        columns={columns}
+                        columns={detail ? columns.filter((c) => MASTER_KEYS.includes(c.key)) : columns}
                         rows={filteredRecipes}
                         rowKey={(recipe) => recipe.id}
                         resetKey={`${statusFilter}-${focus}-${searchQuery}`}
-                        minWidth="64rem"
+                        minWidth={detail ? '0' : '64rem'}
+                        rowTone={(recipe) => (recipe.id === viewingRecipe?.id ? 'primary' : undefined)}
                         onRowClick={(recipe) => void handleView(recipe)}
                         empty={
                             <EmptyState
@@ -795,7 +802,7 @@ export default function ProductionRecipes() {
                     />
                 </div>
                 {detail && (
-                    <aside className={s.detail} aria-label="Detalle de la Receta">
+                    <aside className={s.detail} aria-label="Detalle de la receta">
                         {detail}
                     </aside>
                 )}

@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { AlertTriangle, BadgeMinus } from 'lucide-react';
@@ -92,7 +92,7 @@ export default function DeductionForm({
       </label>
       <label>
         Nombre
-        <input
+        <Input
           value={form.name}
           onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           maxLength={120}
@@ -149,7 +149,7 @@ export default function DeductionForm({
       </label>
       <label>
         Prioridad
-        <input
+        <Input
           type="number"
           min="1"
           max="9999"
@@ -163,8 +163,8 @@ export default function DeductionForm({
       </label>
       <label>
         Vigente desde
-        <input
-          type="date"
+        <DateInput
+         
           value={form.effectiveFrom}
           onChange={(event) =>
             setForm((current) => ({ ...current, effectiveFrom: event.target.value }))
@@ -174,8 +174,8 @@ export default function DeductionForm({
       </label>
       <label>
         Vigente hasta
-        <input
-          type="date"
+        <DateInput
+         
           min={form.effectiveFrom}
           value={form.effectiveTo ?? ''}
           onChange={(event) =>
@@ -185,7 +185,7 @@ export default function DeductionForm({
       </label>
       <label className="span-full">
         Justificación
-        <textarea
+        <Textarea
           rows={4}
           value={form.reason}
           onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
@@ -193,16 +193,10 @@ export default function DeductionForm({
           required
         />
       </label>
-      <label className="hr-benefits-confirm span-full">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-        />
-        <span>
+      <Checkbox className="span-full" checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           Confirmo la persona, vigencia, prioridad, límite y motivo. Se creará como borrador.
-        </span>
-      </label>
+        </span></>} />
     </HrModalFormShell>
   );
 }

@@ -1,4 +1,4 @@
-import { Button } from '@/ui';
+import { Button, DateInput, Input, Textarea } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { Scale } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
@@ -83,7 +83,7 @@ export default function PayrollRuleForm({
     >
       <label>
         Nombre de la versión
-        <input
+        <Input
           value={name}
           onChange={(event) => setName(event.target.value)}
           maxLength={120}
@@ -92,8 +92,8 @@ export default function PayrollRuleForm({
       </label>
       <label>
         Vigente desde
-        <input
-          type="date"
+        <DateInput
+         
           value={effectiveFrom}
           onChange={(event) => setEffectiveFrom(event.target.value)}
           required
@@ -101,8 +101,8 @@ export default function PayrollRuleForm({
       </label>
       <label>
         Vigente hasta
-        <input
-          type="date"
+        <DateInput
+         
           min={effectiveFrom || undefined}
           value={effectiveTo}
           onChange={(event) => setEffectiveTo(event.target.value)}
@@ -110,7 +110,7 @@ export default function PayrollRuleForm({
       </label>
       <label>
         Referencia normativa o interna
-        <input
+        <Input
           value={sourceReference}
           onChange={(event) => setSourceReference(event.target.value)}
           minLength={3}
@@ -125,7 +125,7 @@ export default function PayrollRuleForm({
       )}
       <label className="span-full">
         Descripción de alcance
-        <textarea
+        <Textarea
           rows={4}
           value={description}
           onChange={(event) => setDescription(event.target.value)}

@@ -10,9 +10,9 @@ import {
   FileText,
   RefreshCw,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Button, formatNumber, PageHeader, StatCard } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { useNavigate } from 'react-router-dom';
+import { Button, formatNumber, FormSection, PageContent, PageHeader, StatCard } from '@/ui';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import { benefitsClient } from '../../components/hr/benefitsClient';
 import { payrollClient } from '../../components/hr/payrollClient';
@@ -26,7 +26,7 @@ import type { HrPayrollReceiptSummary } from '../../types/hr-payroll';
 import type { HrScheduleShift } from '../../types/hr-schedule';
 import type { HrMyWorkforce } from '../../types/hr-workforce';
 import { formatHrMoney, formatHrNumber } from '../../utils/hrDisplay';
-import './hr.css';
+import form from '../../components/hr/hrForm.module.css';
 import styles from './SelfService.module.css';
 
 interface PortalSummary {
@@ -146,39 +146,29 @@ export default function MyHrLanding() {
   ];
 
   return (
-    <div className="page-wrapper hr-my-landing-page">
-      <PageHeader title="Mi portal RH" description="Tu jornada, solicitudes y pagos en un solo lugar" />
+    <PageContent>
+      <PageHeader
+        title="Mi portal RH"
+        description={`Hola, ${user?.name ?? 'colaborador'} · ${user?.employee?.employeeCode || user?.employee?.employeeNumber
+          ? `Código ${user.employee.employeeCode ?? user.employee.employeeNumber} · `
+          : ''}${user?.branch?.name ?? 'Sucursal no asignada'}`}
+        actions={<Button variant="ghost" icon={ChevronRight} onClick={() => navigate('/profile')}>Ver perfil de cuenta</Button>}
+      />
       <MyHrNav />
 
-      <section className="hr-my-welcome" aria-labelledby="my-hr-welcome-title">
-        <div>
-          <span>EXPEDIENTE PERSONAL</span>
-          <h2 id="my-hr-welcome-title">Hola, {user?.name ?? 'colaborador'}</h2>
-          <p>
-            {user?.employee?.employeeCode || user?.employee?.employeeNumber
-              ? `Código ${user.employee.employeeCode ?? user.employee.employeeNumber} · `
-              : ''}
-            {user?.branch?.name ?? 'Sucursal no asignada'}
-          </p>
-        </div>
-        <Link to="/profile">Ver perfil de cuenta <ChevronRight size={17} aria-hidden="true" /></Link>
-      </section>
-
       {loading ? (
-        <LoadingSpinner text="Preparando tu resumen RH…" />
+        <HrLoading text="Preparando tu resumen RH…" />
       ) : (
         <>
           {summary.unavailableSections > 0 && (
-            <div className="hr-inline-alert warning hr-my-summary-warning" role="status">
-              <AlertTriangle size={18} aria-hidden="true" />
+            <div className={`${form.alertWarning} ${form.actions}`} role="status">
+              <AlertTriangle size={16} aria-hidden="true" />
               <span>
                 {summary.unavailableSections === 5
                   ? 'No pudimos cargar el resumen. Tus secciones siguen disponibles desde los accesos de abajo.'
                   : 'Parte del resumen no está disponible. Puedes abrir cada sección para reintentarla.'}
               </span>
-              <Button size="sm" variant="ghost" onClick={() => void load()}>
-                <RefreshCw size={15} aria-hidden="true" /> Reintentar
-              </Button>
+              <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar</Button>
             </div>
           )}
 
@@ -212,26 +202,19 @@ export default function MyHrLanding() {
         </>
       )}
 
-      <section className="hr-landing-panel">
-        <div className="hr-panel-header">
-          <div>
-            <h2>¿Qué necesitas hacer?</h2>
-            <p>Selecciona una opción para consultar información o iniciar una solicitud.</p>
-          </div>
-        </div>
-        <div className="hr-self-action-grid">
-          {actions.map((action) => {
-            const Icon = action.icon;
-            return (
-              <button key={action.to} type="button" className="hr-self-action" onClick={() => navigate(action.to)}>
-                <Icon size={24} aria-hidden="true" />
-                <span><strong>{action.title}</strong><small>{action.text}</small></span>
-                <ChevronRight size={18} className="hr-self-action-chevron" aria-hidden="true" />
-              </button>
-            );
-          })}
-        </div>
-      </section>
-    </div>
+      <FormSection title="¿Qué necesitas hacer?" description="Selecciona una opción para consultar información o iniciar una solicitud.">
+        <ul className={form.list}>
+          {actions.map((action) => (
+            <li key={action.to}>
+              <span className={form.cellStack}>
+                <span className={form.cellTitle}>{action.title}</span>
+                <span className={form.cellSub}>{action.text}</span>
+              </span>
+              <Button size="sm" variant="ghost" icon={action.icon} onClick={() => navigate(action.to)}>Abrir</Button>
+            </li>
+          ))}
+        </ul>
+      </FormSection>
+    </PageContent>
   );
 }

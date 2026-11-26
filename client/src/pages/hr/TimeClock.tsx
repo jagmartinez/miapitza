@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, Clock3, Fingerprint, MapPin, RefreshCw } from 'lucide-react';
-import { Button, LoadErrorState, PageHeader, StatCard } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { CheckCircle2, Clock3, Fingerprint, MapPin, RefreshCw } from 'lucide-react';
+import { Button, EmptyState, FormSection, LoadErrorState, PageContent, PageHeader, StatCard } from '@/ui';
+import form from '../../components/hr/hrForm.module.css';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -12,7 +13,6 @@ import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr
 import { useAppToast } from '../../context/ToastContext';
 import type { HrAttendancePolicy, HrAttendancePunchResult, HrBiometricProfile, HrTodayAttendance } from '../../types/hr-attendance';
 import './attendance.css';
-import './self-service.css';
 import styles from './SelfService.module.css';
 
 export default function TimeClock() {
@@ -62,15 +62,19 @@ export default function TimeClock() {
     const nextAction = today?.availableActions[0];
     const effectiveMaxAccuracyM = today?.locationRequirements?.maxAccuracyM ?? policy?.maxLocationAccuracyM;
 
+    const timeFormat = (value: string, options: Intl.DateTimeFormatOptions) =>
+        new Intl.DateTimeFormat('es-NI', { ...options, timeZone: today?.timezone }).format(new Date(value));
+
     return (
-        <div className="page-wrapper hr-time-clock-page my-hr-page">
+        <PageContent>
             <PageHeader
-        title="Marcaje"
-        description="Registra tu jornada con la hora y las validaciones oficiales del servidor"
-        actions={<MyHrNav />}
-      />
+                breadcrumb={['Mi RH']}
+                title="Marcaje"
+                description="Registra tu jornada con la hora y las validaciones oficiales del servidor"
+                actions={<MyHrNav />}
+            />
             {!online && <OnlineOnlyNotice online={false} />}
-            {loading && <LoadingSpinner text="Preparando marcaje…" />}
+            {loading && <HrLoading text="Preparando marcaje…" />}
             {!loading && error && <LoadErrorState message={error} onRetry={() => void load()} />}
 
             {!loading && !error && policy && today && (
@@ -96,29 +100,41 @@ export default function TimeClock() {
                         />
                     </section>
 
-                    <div className="hr-time-clock-workspace">
-                    <section className="hr-today-summary" aria-labelledby="hr-today-title">
-                        <div className="hr-panel-heading"><span className="hr-attendance-icon"><Clock3 size={22} aria-hidden="true" /></span><div><span className="hr-section-kicker">JORNADA DE HOY</span><h2 id="hr-today-title">Tu registro de asistencia</h2><p>Hora oficial del servidor: <time dateTime={today.serverTime}>{new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium', timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.serverTime))}</time></p></div></div>
-                        <p className="hr-attendance-server-time">Hora oficial del servidor: <time dateTime={today.serverTime}>{new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium', timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.serverTime))}</time></p>
-                        <div className="hr-policy-chips">
-                            <span><MapPin size={15} /> Precisión máxima ±{effectiveMaxAccuracyM} m</span>
-                            <span><Fingerprint size={15} /> {policy.requireBiometric ? 'Verificación facial requerida' : 'Biometría no requerida'}</span>
+                    <div className={form.split}>
+                        <div className={`hr-time-clock-action-panel ${form.panel}`} aria-live="polite" aria-label="Acción de marcaje">
+                            {!online ? (
+                                <EmptyState icon={Clock3} title="Marcaje no disponible sin conexión" description="La hora, la secuencia y la evidencia deben validarse en línea. No se guardará ningún intento en este dispositivo." action={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar conexión</Button>} />
+                            ) : biometricBlocked ? (
+                                <EmptyState icon={Fingerprint} title="Enrolamiento requerido" description="La política exige un perfil biométrico activo. El reconocimiento se ejecuta únicamente en el servidor y puede requerir revisión humana." action={<Button variant="primary" onClick={() => navigate('/rh/biometria')}>Gestionar biometría</Button>} />
+                            ) : <AttendancePunchWizard policy={policy} today={today} onCompleted={completed} onRequestCorrection={() => navigate('/rh/mi-portal/gestion')} onViewSchedule={() => navigate('/rh/mi-portal/horario')} />}
                         </div>
-                        {today.scheduledShift ? <div className="hr-shift-summary"><CalendarClock size={18} aria-hidden="true" /><div><span>Turno programado</span><strong>{new Intl.DateTimeFormat('es-NI', { timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.scheduledShift.startAt))}–{new Intl.DateTimeFormat('es-NI', { timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.scheduledShift.endAt))}</strong><small>{today.scheduledShift.branch?.name ?? `Sucursal #${today.scheduledShift.branchId}`}</small></div></div> : <div className="hr-shift-summary muted"><CalendarClock size={18} aria-hidden="true" /><div><span>Turno programado</span><strong>Sin turno publicado</strong><small>El servidor validará la política aplicable al intentar marcar.</small></div></div>}
-                        <div className="hr-punch-history-head"><div><h3>Marcajes de hoy</h3><p>Secuencia registrada y validada por el servidor.</p></div><span>{today.punches.length} evento{today.punches.length === 1 ? '' : 's'}</span></div>
-                        {today.punches.length > 0 ? <ol className="hr-today-punches">{today.punches.map((punch) => <li key={punch.id}><CheckCircle2 size={16} aria-hidden="true" /><span>{ATTENDANCE_ACTION_LABELS[punch.action]}</span><time dateTime={punch.occurredAt}>{new Intl.DateTimeFormat('es-NI', { timeStyle: 'short', timeZone: today.timezone }).format(new Date(punch.occurredAt))}</time></li>)}</ol> : <p className="hr-attendance-empty">Todavía no hay marcajes registrados hoy.</p>}
-                    </section>
 
-                    <div className="hr-time-clock-action-panel" aria-live="polite" aria-label="Acción de marcaje">
-                    {!online ? (
-                        <section className="hr-biometric-required" role="alert"><Clock3 size={36} aria-hidden="true" /><h2>Marcaje no disponible sin conexión</h2><p>La hora, la secuencia y la evidencia deben validarse en línea. No se guardará ningún intento en este dispositivo.</p><Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} /> Reintentar conexión</Button></section>
-                    ) : biometricBlocked ? (
-                        <section className="hr-biometric-required" role="alert"><Fingerprint size={36} aria-hidden="true" /><h2>Enrolamiento requerido</h2><p>La política exige un perfil biométrico activo. El reconocimiento se ejecuta únicamente en el servidor y puede requerir revisión humana.</p><Button variant="primary" onClick={() => navigate('/rh/biometria')}>Gestionar biometría</Button></section>
-                    ) : <AttendancePunchWizard policy={policy} today={today} onCompleted={completed} onRequestCorrection={() => navigate('/rh/mi-portal/gestion')} onViewSchedule={() => navigate('/rh/mi-portal/horario')} />}
-                    </div>
+                        <section className={form.panel} aria-labelledby="hr-today-title">
+                            <FormSection title="Tu registro de asistencia" description={`Hora oficial del servidor: ${timeFormat(today.serverTime, { dateStyle: 'medium', timeStyle: 'short' })}`}>
+                                <span id="hr-today-title" className="sr-only">Jornada de hoy</span>
+                                <dl className={form.facts}>
+                                    <div><dt>Turno programado</dt><dd>{today.scheduledShift ? `${timeFormat(today.scheduledShift.startAt, { timeStyle: 'short' })}–${timeFormat(today.scheduledShift.endAt, { timeStyle: 'short' })}` : 'Sin turno publicado'}</dd></div>
+                                    <div><dt>Sucursal del turno</dt><dd>{today.scheduledShift ? (today.scheduledShift.branch?.name ?? `Sucursal #${today.scheduledShift.branchId}`) : 'El servidor validará la política aplicable al intentar marcar.'}</dd></div>
+                                    <div><dt>Precisión máxima</dt><dd><MapPin size={14} aria-hidden="true" /> ±{effectiveMaxAccuracyM} m</dd></div>
+                                    <div><dt>Verificación facial</dt><dd>{policy.requireBiometric ? 'Requerida' : 'No requerida'}</dd></div>
+                                </dl>
+                            </FormSection>
+                            <FormSection title="Marcajes de hoy" description={`Secuencia registrada y validada por el servidor · ${today.punches.length} evento${today.punches.length === 1 ? '' : 's'}`}>
+                                {today.punches.length > 0 ? (
+                                    <ol className={form.list}>
+                                        {today.punches.map((punch) => (
+                                            <li key={punch.id}>
+                                                <span className={form.actions}><CheckCircle2 size={16} aria-hidden="true" />{ATTENDANCE_ACTION_LABELS[punch.action]}</span>
+                                                <time dateTime={punch.occurredAt}>{timeFormat(punch.occurredAt, { timeStyle: 'short' })}</time>
+                                            </li>
+                                        ))}
+                                    </ol>
+                                ) : <p className={form.help}>Todavía no hay marcajes registrados hoy.</p>}
+                            </FormSection>
+                        </section>
                     </div>
                 </>
             )}
-        </div>
+        </PageContent>
     );
 }

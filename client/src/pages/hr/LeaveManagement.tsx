@@ -2,7 +2,6 @@ import { formatHrNumber } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
-  CalendarDays,
   ListChecks,
   Eye,
   Pencil,
@@ -12,8 +11,11 @@ import {
   RefreshCw,
   SlidersHorizontal,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, StatCard, AppSelect, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import {
+  AppSelect, Button, Checkbox, DataTable, DateInput, EmptyState, FullScreenModal, Input, LoadErrorState, PageContent, PageHeader, SegmentedControl,
+  StatCard, TableToolbar, Tabs, Textarea,
+} from '@/ui';
+import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import LeaveCalendarGrid from '../../components/hr/LeaveCalendarGrid';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -40,10 +42,7 @@ import type {
   HrVacationBalance,
   HrVacationLedgerEntry,
 } from '../../types/hr-workforce';
-import './workforce.css';
-import './admin-tables.css';
-import './hr-admin-operations.css';
-import '../Inventory.css';
+import form from '../../components/hr/hrForm.module.css';
 
 const LOW_BALANCE_DAYS = 2;
 
@@ -301,27 +300,22 @@ export default function LeaveManagement() {
   ).size;
 
   return (
-    <div className="page-wrapper inventory-page hr-workforce-page hr-leave-management-page hr-admin-catalog-page hr-operation-page">
+    <PageContent>
       <PageHeader
+        breadcrumb={['Recursos humanos', 'Ausencias']}
         title="Permisos y vacaciones"
         description="Aprueba solicitudes, consulta ausencias del equipo y controla los días disponibles"
         actions={
-          <div className="hr-header-actions">
-            <Button variant="secondary" onClick={() => openType()} disabled={!online}>
-              <SlidersHorizontal size={17} /> Tipo
-            </Button>
-            <Button variant="secondary" onClick={() => setPanel('adjustment')} disabled={!online}>
-              <SlidersHorizontal size={17} /> Ajustar
-            </Button>
-            <Button variant="primary" onClick={() => setPanel('request')} disabled={!online}>
-              <Plus size={17} /> Solicitud
-            </Button>
-          </div>
+          <>
+            <Button icon={SlidersHorizontal} onClick={() => openType()} disabled={!online}>Tipo</Button>
+            <Button icon={SlidersHorizontal} onClick={() => setPanel('adjustment')} disabled={!online}>Ajustar</Button>
+            <Button variant="primary" icon={Plus} onClick={() => setPanel('request')} disabled={!online}>Solicitud</Button>
+          </>
         }
       />
       <OnlineOnlyNotice online={online} />
       {!loading && !error && (pendingCount > 0 || lowBalanceCount > 0) && (
-        <section className="hr-kpi-row" aria-label="Indicadores de permisos y vacaciones">
+        <section className={form.kpis} aria-label="Indicadores de permisos y vacaciones">
           {pendingCount > 0 && (
             <StatCard
               tone="warning"
@@ -342,75 +336,56 @@ export default function LeaveManagement() {
           )}
         </section>
       )}
-      <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros de permisos y vacaciones">
-        {!loading && !error && <div className="filters-toolbar hr-admin-tab-toolbar" role="tablist" aria-label="Bandejas de permisos y vacaciones">
-          {([
+
+      {!loading && !error && (
+        <Tabs
+          ariaLabel="Bandejas de permisos y vacaciones"
+          active={activeTable}
+          onChange={(id) => setActiveTable(id as LeaveTable)}
+          tabs={([
             ['REQUESTS', 'Solicitudes', requests.filter((item) => item.status === 'PENDING').length],
             ['CALENDAR', 'Calendario', calendar.length],
             ['BALANCES', 'Saldos', balances.length],
             ['TYPES', 'Tipos de ausencia', leaveTypes.length],
             ['HISTORY', 'Movimientos', ledger.length],
-          ] as Array<[LeaveTable, string, number]>).map(([value, label, count]) => (
-            <button key={value} type="button" role="tab" id={`leave-tab-${value.toLowerCase()}`} aria-controls={`leave-panel-${value.toLowerCase()}`} aria-selected={activeTable === value} onClick={() => setActiveTable(value)}>{label} <span>{count}</span></button>
-          ))}
-        </div>}
-        {!loading && !error && activeTable === 'CALENDAR' && (
-          <div className="leave-calendar-view-toggle" role="group" aria-label="Vista del calendario">
-            <button type="button" className={calendarView === 'grid' ? 'active' : ''} aria-pressed={calendarView === 'grid'} onClick={() => setCalendarView('grid')} title="Ver como calendario">
-              <CalendarDays size={16} /> Calendario
-            </button>
-            <button type="button" className={calendarView === 'list' ? 'active' : ''} aria-pressed={calendarView === 'list'} onClick={() => setCalendarView('list')} title="Ver como lista">
-              <ListChecks size={16} /> Lista
-            </button>
-          </div>
-        )}
-        <label>
-          Desde
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-          />
-        </label>
-        <label>
-          Hasta
-          <input
-            type="date"
-            min={dateFrom}
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-          />
-        </label>
-        <label>
-          Empleado
-          <AppSelect<string>
-            options={[
-              { value: '', label: 'Todos' },
-              ...users.map((user) => ({ value: String(user.id), label: user.name })),
-            ]}
-            value={userId}
-            onChange={(next) => setUserId(next ?? '')}
-            aria-label="Filtrar por empleado"
-            isClearable={false}
-          />
-        </label>
-        <Button variant="ghost" onClick={() => void load()}>
-          <RefreshCw size={16} /> Actualizar
-        </Button>
-      </section>
-
-      {loading && <LoadingSpinner text="Cargando permisos y vacaciones…" />}
-      {!loading && error && (
-        <div className="state-placeholder" role="alert">
-          <AlertTriangle size={42} />
-          <p className="state-error">{error}</p>
-          <Button variant="ghost" onClick={() => void load()}>
-            Reintentar
-          </Button>
-        </div>
+          ] as Array<[LeaveTable, string, number]>).map(([id, label, badge]) => ({ id, label, badge }))}
+        />
       )}
+
+      <TableToolbar
+        actions={(
+          <>
+            {!loading && !error && activeTable === 'CALENDAR' && (
+              <SegmentedControl<'grid' | 'list'>
+                ariaLabel="Vista del calendario"
+                size="sm"
+                options={[{ value: 'grid', label: 'Calendario' }, { value: 'list', label: 'Lista' }]}
+                value={calendarView}
+                onChange={setCalendarView}
+              />
+            )}
+            <Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Actualizar</Button>
+          </>
+        )}
+      >
+        <DateInput aria-label="Desde" title="Desde" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+        <DateInput aria-label="Hasta" title="Hasta" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+        <AppSelect<string>
+          options={[
+            { value: '', label: 'Todos los empleados' },
+            ...users.map((user) => ({ value: String(user.id), label: user.name })),
+          ]}
+          value={userId}
+          onChange={(next) => setUserId(next ?? '')}
+          aria-label="Filtrar por empleado"
+          isClearable={false}
+        />
+      </TableToolbar>
+
+      {loading && <HrLoading text="Cargando permisos y vacaciones…" />}
+      {!loading && error && <LoadErrorState message={error} onRetry={() => void load()} />}
       {!loading && !error && showCalendarGrid && (
-        <section className="pr-table-card" id={`leave-panel-${activeTable.toLowerCase()}`} role="tabpanel" aria-labelledby={`leave-tab-${activeTable.toLowerCase()}`}>
+        <section className={form.frame} id={`leave-panel-${activeTable.toLowerCase()}`} role="tabpanel" aria-label="Calendario de ausencias">
           <LeaveCalendarGrid
             entries={calendar}
             dateFrom={dateFrom}
@@ -420,8 +395,7 @@ export default function LeaveManagement() {
         </section>
       )}
       {!loading && !error && !showCalendarGrid && (
-        <section className="pr-table-card" aria-label="Administración de permisos y vacaciones">
-          <div className="hr-admin-table-wrap" role="tabpanel" id={`leave-panel-${activeTable.toLowerCase()}`} aria-labelledby={`leave-tab-${activeTable.toLowerCase()}`} tabIndex={0}>
+        <div className={form.stack} role="tabpanel" id={`leave-panel-${activeTable.toLowerCase()}`} aria-label="Administración de permisos y vacaciones">
             {activeTable === 'REQUESTS' && (
               <DataTable
                 ariaLabel="Solicitudes de permisos y vacaciones"
@@ -430,15 +404,15 @@ export default function LeaveManagement() {
                 pagination={{ mode: 'client' }}
                 minWidth="56rem"
                 rowTone={(item) => (focusedRequestId === item.id ? 'primary' : undefined)}
-                empty={<div className="hr-admin-empty"><strong>No hay solicitudes en este periodo</strong><span>Puedes registrar una solicitud en nombre de un empleado.</span><Button variant="primary" size="sm" onClick={() => setPanel('request')} disabled={!online} aria-label="Crear ausencia"><Plus size={15} /> Nueva solicitud</Button></div>}
+                empty={<EmptyState title="No hay solicitudes en este periodo" description="Puedes registrar una solicitud en nombre de un empleado." action={<Button variant="primary" size="sm" onClick={() => setPanel('request')} disabled={!online} aria-label="Crear ausencia"><Plus size={15} /> Nueva solicitud</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
                   { key: 'c1', header: 'Tipo', render: (item) => <>{item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}</> },
-                  { key: 'c2', header: 'Fechas', render: (item) => <>{dateLabel(item.startDate)}<small>{item.endDate !== item.startDate ? `hasta ${dateLabel(item.endDate)}` : 'Un día'}</small></> },
-                  { key: 'c3', header: 'Duración', render: (item) => <>{fractionLabel(item.fraction)}{item.requestedAmount != null && <small>{formatHrNumber(item.requestedAmount)} {item.balanceUnit ?? ''}</small>}</> },
+                  { key: 'c2', header: 'Fechas', render: (item) => <span className={form.cellStack}><span>{dateLabel(item.startDate)}</span><span className={form.cellSub}>{item.endDate !== item.startDate ? `hasta ${dateLabel(item.endDate)}` : 'Un día'}</span></span> },
+                  { key: 'c3', header: 'Duración', render: (item) => <span className={form.cellStack}><span>{fractionLabel(item.fraction)}</span>{item.requestedAmount != null && <span className={form.cellSub}>{formatHrNumber(item.requestedAmount)} {item.balanceUnit ?? ''}</span>}</span> },
                   { key: 'c4', header: 'Motivo', render: (item) => <>{item.reason}</> },
                   { key: 'c5', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
-                  { key: 'c6', header: 'Acciones', width: '6rem', type: 'actions', render: (item) => <div className="hr-admin-row-actions table-actions">{item.status === 'DRAFT' && <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void submitDraft(item)} disabled={!online || saving} title="Enviar solicitud" aria-label={`Enviar solicitud de ${item.user?.name ?? item.userId}`}><Send size={16} /></Button>}{item.status === 'PENDING' && <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openRequestAction(item, 'decide')} disabled={!online} title="Revisar solicitud" aria-label={`Revisar solicitud de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button>}{(item.status === 'DRAFT' || item.status === 'PENDING') && <Button className="table-action-btn danger" size="sm" variant="ghost" onClick={() => openRequestAction(item, 'cancel')} disabled={!online} title="Cancelar solicitud" aria-label={`Cancelar solicitud de ${item.user?.name ?? item.userId}`}><XCircle size={16} /></Button>}{!['DRAFT', 'PENDING'].includes(item.status) && <span className="hr-admin-muted">Finalizada</span>}</div> },
+                  { key: 'c6', header: 'Acciones', width: '6rem', type: 'actions', render: (item) => <div className={form.rowActions}>{item.status === 'DRAFT' && <Button size="sm" variant="ghost" onClick={() => void submitDraft(item)} disabled={!online || saving} title="Enviar solicitud" aria-label={`Enviar solicitud de ${item.user?.name ?? item.userId}`} icon={Send} />}{item.status === 'PENDING' && <Button size="sm" variant="ghost" onClick={() => openRequestAction(item, 'decide')} disabled={!online} title="Revisar solicitud" aria-label={`Revisar solicitud de ${item.user?.name ?? item.userId}`} icon={Eye} />}{(item.status === 'DRAFT' || item.status === 'PENDING') && <Button size="sm" variant="ghost" onClick={() => openRequestAction(item, 'cancel')} disabled={!online} title="Cancelar solicitud" aria-label={`Cancelar solicitud de ${item.user?.name ?? item.userId}`} icon={XCircle} />}{!['DRAFT', 'PENDING'].includes(item.status) && <span className={form.cellSub}>Finalizada</span>}</div> },
                 ]}
               />
             )}
@@ -450,7 +424,7 @@ export default function LeaveManagement() {
                 rowKey={(entry) => entry.id}
                 pagination={{ mode: 'client' }}
                 minWidth="56rem"
-                empty={<div className="hr-admin-empty"><strong>No hay ausencias aprobadas</strong><span>Amplía el rango de fechas o revisa las solicitudes pendientes.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('REQUESTS')}>Ver solicitudes</Button></div>}
+                empty={<EmptyState title="No hay ausencias aprobadas" description="Amplía el rango de fechas o revisa las solicitudes pendientes." action={<Button size="sm" variant="ghost" onClick={() => setActiveTable('REQUESTS')}>Ver solicitudes</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Fecha', render: (entry) => <strong>{dateLabel(entry.date)}</strong> },
                   { key: 'c1', header: 'Empleado', render: (entry) => <>{entry.user?.name ?? `Usuario #${entry.userId}`}</> },
@@ -458,7 +432,7 @@ export default function LeaveManagement() {
                   { key: 'c3', header: 'Duración', render: (entry) => <>{fractionLabel(entry.fraction)}</> },
                   { key: 'c4', header: 'Sucursal', render: (entry) => <>{entry.branch?.name ?? 'Sin sucursal'}</> },
                   { key: 'c5', header: 'Estado', render: (entry) => <><WorkforceStatusPill status={entry.status} /></> },
-                  { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (entry) => <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => { setFocusedRequestId(entry.leaveRequestId); setActiveTable('REQUESTS'); }} title="Ver solicitud" aria-label={`Ver solicitud de ${entry.user?.name ?? entry.userId}`}><Eye size={16} /></Button></div> },
+                  { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (entry) => <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => { setFocusedRequestId(entry.leaveRequestId); setActiveTable('REQUESTS'); }} title="Ver solicitud" aria-label={`Ver solicitud de ${entry.user?.name ?? entry.userId}`} icon={Eye} /></div> },
                 ]}
               />
             )}
@@ -470,7 +444,7 @@ export default function LeaveManagement() {
                 rowKey={(balance) => balance.id}
                 pagination={{ mode: 'client' }}
                 minWidth="72rem"
-                empty={<div className="hr-admin-empty"><strong>No hay saldos configurados</strong><span>Registra un ajuste inicial para comenzar el control.</span><Button variant="primary" size="sm" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button></div>}
+                empty={<EmptyState title="No hay saldos configurados" description="Registra un ajuste inicial para comenzar el control." action={<Button variant="primary" size="sm" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (balance) => <strong>{balance.user?.name ?? `Usuario #${balance.userId}`}</strong> },
                   { key: 'c1', header: 'Tipo', render: (balance) => <>{balance.leaveType?.name ?? 'Vacaciones'}</> },
@@ -480,7 +454,7 @@ export default function LeaveManagement() {
                   { key: 'c5', header: 'Pendiente', render: (balance) => <>{formatHrNumber(balance.pending)} {balance.unit}</> },
                   { key: 'c6', header: 'Disponible', render: (balance) => <strong>{formatHrNumber(balance.available)} {balance.unit}</strong> },
                   { key: 'c7', header: 'Actualizado', render: (balance) => <>{dateLabel(balance.asOf)}</> },
-                  { key: 'c8', header: 'Acción', width: '6rem', type: 'actions', render: (balance) => <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => { setAdjustment((current) => ({ ...current, userId: String(balance.userId), balanceId: String(balance.id), unit: balance.unit })); setPanel('adjustment'); }} disabled={!online} title="Ajustar saldo" aria-label={`Ajustar saldo de ${balance.user?.name ?? balance.userId}`}><SlidersHorizontal size={16} /></Button></div> },
+                  { key: 'c8', header: 'Acción', width: '6rem', type: 'actions', render: (balance) => <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => { setAdjustment((current) => ({ ...current, userId: String(balance.userId), balanceId: String(balance.id), unit: balance.unit })); setPanel('adjustment'); }} disabled={!online} title="Ajustar saldo" aria-label={`Ajustar saldo de ${balance.user?.name ?? balance.userId}`} icon={SlidersHorizontal} /></div> },
                 ]}
               />
             )}
@@ -492,16 +466,16 @@ export default function LeaveManagement() {
                 rowKey={(type) => type.id}
                 pagination={{ mode: 'client' }}
                 minWidth="64rem"
-                empty={<div className="hr-admin-empty"><strong>No hay tipos de ausencia</strong><span>Crea vacaciones, permisos, subsidios u otras políticas.</span><Button variant="primary" size="sm" onClick={() => openType()} disabled={!online}><Plus size={15} /> Crear tipo</Button></div>}
+                empty={<EmptyState title="No hay tipos de ausencia" description="Crea vacaciones, permisos, subsidios u otras políticas." action={<Button variant="primary" size="sm" onClick={() => openType()} disabled={!online}><Plus size={15} /> Crear tipo</Button>} />}
                 columns={[
-                  { key: 'c0', header: 'Nombre', render: (type) => <><strong>{type.name}</strong><small>{type.description || 'Sin descripción'}</small></> },
+                  { key: 'c0', header: 'Nombre', render: (type) => <span className={form.cellStack}><span className={form.cellTitle}>{type.name}</span><span className={form.cellSub}>{type.description || 'Sin descripción'}</span></span> },
                   { key: 'c1', header: 'Código', render: (type) => <code>{type.code}</code> },
                   { key: 'c2', header: 'Pago', render: (type) => <>{type.paid ? 'Remunerado' : 'No remunerado'}</> },
                   { key: 'c3', header: 'Control de saldo', render: (type) => <>{type.balanceTracked ? 'Sí, descuenta saldo' : 'No'}</> },
                   { key: 'c4', header: 'Unidad', render: (type) => <>{type.unit}</> },
                   { key: 'c5', header: 'Adjunto', render: (type) => <>{type.requiresAttachment ? 'Obligatorio' : 'Opcional'}</> },
                   { key: 'c6', header: 'Estado', render: (type) => <><WorkforceStatusPill status={type.active ? 'ACTIVE' : 'INACTIVE'} /></> },
-                  { key: 'c7', header: 'Acción', width: '6rem', type: 'actions', render: (type) => <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openType(type)} disabled={!online} title="Editar tipo" aria-label={`Editar ${type.name}`}><Pencil size={16} /></Button></div> },
+                  { key: 'c7', header: 'Acción', width: '6rem', type: 'actions', render: (type) => <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => openType(type)} disabled={!online} title="Editar tipo" aria-label={`Editar ${type.name}`} icon={Pencil} /></div> },
                 ]}
               />
             )}
@@ -513,7 +487,7 @@ export default function LeaveManagement() {
                 rowKey={(entry) => entry.id}
                 pagination={{ mode: 'client' }}
                 minWidth="64rem"
-                empty={<div className="hr-admin-empty"><strong>No hay movimientos</strong><span>Los devengos, usos y ajustes aparecerán aquí.</span><Button size="sm" variant="ghost" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button></div>}
+                empty={<EmptyState title="No hay movimientos" description="Los devengos, usos y ajustes aparecerán aquí." action={<Button size="sm" variant="ghost" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Fecha', render: (entry) => <>{dateLabel(entry.effectiveDate)}</> },
                   { key: 'c1', header: 'Empleado', render: (entry) => <>{users.find((user) => user.id === entry.userId)?.name ?? `Usuario #${entry.userId}`}</> },
@@ -522,16 +496,16 @@ export default function LeaveManagement() {
                   { key: 'c4', header: 'Motivo', render: (entry) => <>{entry.reason}</> },
                   { key: 'c5', header: 'Referencia', render: (entry) => <>{entry.reference ?? `Movimiento #${entry.id}`}</> },
                   { key: 'c6', header: 'Saldo resultante', render: (entry) => <>{entry.resultingBalance != null ? `${formatHrNumber(entry.resultingBalance)} ${entry.unit}` : '—'}</> },
-                  { key: 'c7', header: 'Acción', width: '6rem', type: 'actions', render: (entry) => <div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => { setAdjustment((current) => ({ ...current, userId: String(entry.userId), balanceId: String(entry.balanceId), unit: entry.unit })); setPanel('adjustment'); }} disabled={!online} title="Ajustar saldo" aria-label={`Ajustar saldo del movimiento ${entry.id}`}><SlidersHorizontal size={16} /></Button></div> },
+                  { key: 'c7', header: 'Acción', width: '6rem', type: 'actions', render: (entry) => <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => { setAdjustment((current) => ({ ...current, userId: String(entry.userId), balanceId: String(entry.balanceId), unit: entry.unit })); setPanel('adjustment'); }} disabled={!online} title="Ajustar saldo" aria-label={`Ajustar saldo del movimiento ${entry.id}`} icon={SlidersHorizontal} /></div> },
                 ]}
               />
             )}
-          </div>
-        </section>
+        </div>
       )}
       <FullScreenModal
         isOpen={Boolean(panel)}
         onClose={() => !saving && setPanel(null)}
+        breadcrumb={['Recursos humanos', 'Ausencias']}
         title={
           panel === 'request'
             ? 'Nueva solicitud'
@@ -573,7 +547,7 @@ export default function LeaveManagement() {
           >
             <label>
               Código
-              <input
+              <Input
                 value={typeForm.code}
                 onChange={(event) =>
                   setTypeForm((current) => ({
@@ -586,7 +560,7 @@ export default function LeaveManagement() {
             </label>
             <label>
               Nombre
-              <input
+              <Input
                 value={typeForm.name}
                 onChange={(event) =>
                   setTypeForm((current) => ({ ...current, name: event.target.value }))
@@ -614,7 +588,7 @@ export default function LeaveManagement() {
             </label>
             <label className="span-full">
               Descripción
-              <textarea
+              <Textarea
                 rows={3}
                 value={typeForm.description}
                 onChange={(event) =>
@@ -622,53 +596,29 @@ export default function LeaveManagement() {
                 }
               />
             </label>
-            <div className="hr-checkbox-grid span-full">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={typeForm.paid}
+            <div className={`${form.checkGrid} span-full`}>
+              <Checkbox checked={typeForm.paid}
                   onChange={(event) =>
                     setTypeForm((current) => ({ ...current, paid: event.target.checked }))
-                  }
-                />{' '}
-                Remunerada
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={typeForm.balanceTracked}
+                  } label={<>Remunerada</>} />
+              <Checkbox checked={typeForm.balanceTracked}
                   onChange={(event) =>
                     setTypeForm((current) => ({
                       ...current,
                       balanceTracked: event.target.checked,
                     }))
-                  }
-                />{' '}
-                Controla saldo
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={typeForm.requiresAttachment}
+                  } label={<>Controla saldo</>} />
+              <Checkbox checked={typeForm.requiresAttachment}
                   onChange={(event) =>
                     setTypeForm((current) => ({
                       ...current,
                       requiresAttachment: event.target.checked,
                     }))
-                  }
-                />{' '}
-                Requiere soporte
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={typeForm.active}
+                  } label={<>Requiere soporte</>} />
+              <Checkbox checked={typeForm.active}
                   onChange={(event) =>
                     setTypeForm((current) => ({ ...current, active: event.target.checked }))
-                  }
-                />{' '}
-                Activo
-              </label>
+                  } label={<>Activo</>} />
             </div>
           </HrModalFormShell>
         )}
@@ -745,8 +695,8 @@ export default function LeaveManagement() {
             </label>
             <label>
               Fecha efectiva
-              <input
-                type="date"
+              <DateInput
+               
                 value={adjustment.effectiveDate}
                 onChange={(event) =>
                   setAdjustment((current) => ({ ...current, effectiveDate: event.target.value }))
@@ -756,7 +706,7 @@ export default function LeaveManagement() {
             </label>
             <label>
               Cantidad con signo
-              <input
+              <Input
                 type="number"
                 step="0.01"
                 value={adjustment.amount}
@@ -786,7 +736,7 @@ export default function LeaveManagement() {
             </label>
             <label>
               Referencia
-              <input
+              <Input
                 value={adjustment.reference}
                 onChange={(event) =>
                   setAdjustment((current) => ({ ...current, reference: event.target.value }))
@@ -795,7 +745,7 @@ export default function LeaveManagement() {
             </label>
             <label className="span-full">
               Razón obligatoria
-              <textarea
+              <Textarea
                 rows={4}
                 maxLength={700}
                 value={adjustment.reason}
@@ -805,7 +755,7 @@ export default function LeaveManagement() {
                 required
               />
             </label>
-            <div className="hr-sensitive-warning span-full">
+            <div className={`${form.alertWarning} span-full`}>
               <AlertTriangle size={18} />
               <span>
                 El ajuste crea un movimiento de ledger; no edita ni recalcula el saldo en el
@@ -852,7 +802,7 @@ export default function LeaveManagement() {
           )}
           <label className="span-full">
             Razón obligatoria
-            <textarea
+            <Textarea
               rows={5}
               maxLength={700}
               value={actionReason}
@@ -866,6 +816,6 @@ export default function LeaveManagement() {
           </p>
         </HrModalFormShell>
       </FullScreenModal>
-    </div>
+    </PageContent>
   );
 }

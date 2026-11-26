@@ -13,12 +13,17 @@ function barClass(step: BridgeStep, laborQ?: string): string {
   return 'ui-waterfall__bar';
 }
 
-/** Un monto que no se pudo calcular se muestra como N/D, nunca como 0. */
+/** Un monto que no se pudo calcular se muestra como N/D, nunca como 0. La aclaración va aparte para no ensanchar la columna. */
+function amountParts(step: BridgeStep, laborQ?: string): { value: string; note?: string } {
+  if (step.key === 'operating' && (laborQ === 'partial' || laborQ === 'unavailable')) return { value: formatMoney(step.amount), note: 'sin personal' };
+  if (step.quality === 'unavailable') return { value: 'N/D' };
+  const value = formatMoney(step.kind === 'negative' ? -step.amount : step.amount);
+  return step.quality === 'partial' ? { value, note: 'parcial' } : { value };
+}
+
 function amountLabel(step: BridgeStep, laborQ?: string): string {
-  if (step.key === 'operating' && (laborQ === 'partial' || laborQ === 'unavailable')) return `${formatMoney(step.amount)} (sin personal)`;
-  if (step.quality === 'unavailable') return 'N/D';
-  const text = formatMoney(step.kind === 'negative' ? -step.amount : step.amount);
-  return step.quality === 'partial' ? `${text} (parcial)` : text;
+  const { value, note } = amountParts(step, laborQ);
+  return note ? `${value} (${note})` : value;
 }
 
 /** Puente de la venta bruta a la utilidad operativa. */
@@ -32,7 +37,10 @@ export function WaterfallChart({ steps }: { steps: BridgeStep[] }) {
       <div className="ui-waterfall" role="img" aria-label={label} style={{ '--steps': steps.length } as CSSProperties}>
         {steps.map((s, i) => (
           <div key={s.key} className="ui-waterfall__col">
-            <span className="ui-waterfall__amount">{amountLabel(s, laborQ)}</span>
+            <span className="ui-waterfall__amount">
+              {amountParts(s, laborQ).value}
+              {amountParts(s, laborQ).note ? <small className="ui-waterfall__note">{amountParts(s, laborQ).note}</small> : null}
+            </span>
             <div className="ui-waterfall__plot">
               <div
                 className={barClass(s, laborQ)}

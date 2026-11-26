@@ -1249,84 +1249,43 @@ export default function Catering() {
             <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
-                title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo Evento de Catering'}
-            >
-                <div className="premium-modal-content catering-modal-content catering-event-modal-content">
-                    <div className="modal-tabs" role="tablist" aria-label="Secciones del evento de catering">
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'info'}
-                            className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('info')}
-                        >
-                            <FileText size={18} />
-                            <span>Datos</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'logistics'}
-                            className={`modal-tab ${activeTab === 'logistics' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('logistics')}
-                        >
-                            <MapPin size={18} />
-                            <span>Logística</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'services'}
-                            className={`modal-tab ${activeTab === 'services' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('services')}
-                        >
-                            <ConciergeBell size={18} />
-                            <span>Servicios</span>
-                            {formData.services.length > 0 && <b>{formData.services.length}</b>}
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'menu'}
-                            className={`modal-tab ${activeTab === 'menu' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('menu')}
-                        >
-                            <Users size={18} />
-                            <span>Menú</span>
-                            {formData.menuItems.length > 0 && <b>{formData.menuItems.length}</b>}
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'clauses'}
-                            className={`modal-tab ${activeTab === 'clauses' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('clauses')}
-                        >
-                            <FileText size={18} />
-                            <span>Contrato</span>
-                        </button>
-                        {selectedEvent && (
-                            <button
-                                type="button"
-                                role="tab"
-                                aria-selected={activeTab === 'financial'}
-                                className={`modal-tab ${activeTab === 'financial' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('financial')}
-                            >
-                                <DollarSign size={18} />
-                                <span>Finanzas</span>
-                            </button>
+                title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo evento de catering'}
+                breadcrumb={['Catering', 'Eventos']}
+                tabs={[
+                    { id: 'info', label: 'Datos' },
+                    { id: 'logistics', label: 'Logística' },
+                    { id: 'services', label: 'Servicios', badge: formData.services.length > 0 ? formData.services.length : undefined },
+                    { id: 'menu', label: 'Menú', badge: formData.menuItems.length > 0 ? formData.menuItems.length : undefined },
+                    { id: 'clauses', label: 'Contrato' },
+                    ...(selectedEvent ? [{ id: 'financial', label: 'Finanzas' }] : []),
+                ]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as typeof activeTab)}
+                footerStart={(
+                    <span className="catering-total-label">
+                        Total estimado: <strong className="catering-total-value">{formatMoney(calculateTabTotals())}</strong>
+                    </span>
+                )}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        {canManageCatering && (
+                            <Button variant="primary" type="submit" form="catering-event-form" loading={savingEvent}>
+                                {selectedEvent ? 'Guardar cambios' : 'Crear evento'}
+                            </Button>
                         )}
-                    </div>
-
+                    </>
+                )}
+            >
                     <form
-                        className="modal-form-new"
+                        id="catering-event-form"
+                        className="catering-modal-content catering-event-form"
                         onSubmit={(event) => {
                             event.preventDefault();
                             void handleSave();
                         }}
                     >
-                    <div className="modal-tab-content">
+                    <div className="catering-tab-content">
                         {activeTab === 'info' && (
                             <div className="catering-tab-panel catering-info-layout">
                                 <section className="modal-content-group catering-event-section catering-customer-section">
@@ -1977,22 +1936,7 @@ export default function Catering() {
                         )}
                     </div>
 
-                    <div className="modal-footer catering-modal-footer">
-                        <div className="catering-modal-total">
-                            <div className="tab-total-preview">
-                                <span className="catering-total-label">Total estimado:</span>
-                                <span className="catering-total-value">{formatMoney(calculateTabTotals())}</span>
-                            </div>
-                        </div>
-                        <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
-                        {canManageCatering && (
-                            <Button variant="primary" type="submit" disabled={savingEvent}>
-                                {savingEvent ? 'Guardando...' : selectedEvent ? 'Guardar Cambios' : 'Crear Evento'}
-                            </Button>
-                        )}
-                    </div>
                     </form>
-                </div>
             </FullScreenModal>
         </div >
     );

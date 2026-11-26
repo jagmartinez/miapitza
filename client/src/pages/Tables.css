@@ -6,26 +6,16 @@
     margin: 0 auto;
 }
 
-.tables-page--map {
-    /* The operational map is the one intentional full-bleed workspace. The
-       route shell centres regular views at 1700px, so break this canvas back
-       out to the viewport without changing that global contract. */
-    width: 100dvw !important;
-    max-width: none !important;
-    margin-inline: calc(50% - 50dvw) !important;
-    height: 100%;
-    min-height: 0;
+.tables-page--map,
+.tables-page--ops {
     box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    padding: 0;
-    overflow: hidden;
+    min-width: 0;
 }
 
+/* El plano editable ocupa el ancho del área de contenido (el riel de navegación queda visible). */
 .tables-page--map .table-map-shell {
     flex: 1;
-    border-inline: 0;
-    border-radius: 0;
+    min-height: 32rem;
 }
 
 .tables-page--list {
@@ -103,4 +93,185 @@ body:has(.table-pos-workspace) {
     --ui-z-modal: 1600;
     --ui-z-select-menu: 1700;
     --ui-z-toast: 1800;
+}
+
+/* ===== Mesas (mockup): encabezado, indicadores, mosaico de mesas y panel "Detalle de mesa" ===== */
+.tables-ops {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-4);
+    min-width: 0;
+}
+
+.tables-ops__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--ui-space-3);
+    min-width: 0;
+}
+
+.tables-ops__title {
+    display: flex;
+    flex: 1 1 13rem;
+    flex-direction: column;
+    gap: var(--ui-space-1);
+    min-width: 0;
+}
+
+.tables-ops__title h1 {
+    margin: 0;
+    font-size: var(--ui-text-2xl);
+    font-weight: 600;
+    letter-spacing: -.01em;
+    color: var(--ui-text);
+}
+
+.tables-ops__title p {
+    margin: 0;
+    font-size: var(--ui-text-md);
+    color: var(--ui-text-muted);
+}
+
+.tables-ops .salon-cards { margin-bottom: 0; }
+
+.tables-ops__body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--ui-space-4);
+    min-width: 0;
+}
+
+.tables-ops__floor {
+    display: flex;
+    flex: 999 1 35rem;
+    flex-direction: column;
+    gap: var(--ui-space-3);
+    min-width: 0;
+}
+
+.tables-ops__detail {
+    display: flex;
+    flex: 1 1 20rem;
+    max-width: 100%;
+    min-width: 0;
+    scroll-margin-top: var(--ui-space-4);
+}
+
+.tables-ops__detail > aside { flex: 1; }
+
+@media (min-width: 1024px) {
+    .tables-ops__detail {
+        position: sticky;
+        top: var(--ui-space-4);
+        max-height: calc(100dvh - 6rem);
+    }
+
+    .tables-ops__detail > aside { overflow-y: auto; }
+}
+
+.tables-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ui-space-2) var(--ui-space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--ui-text-xs);
+    color: var(--ui-text-muted);
+}
+
+.tables-legend li { display: inline-flex; align-items: center; gap: 6px; }
+
+.tables-legend li > span {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--tile-tone, var(--ui-primary));
+}
+
+.tables-meta-warning {
+    margin: 0;
+    font-size: var(--ui-text-sm);
+    color: var(--ui-warning);
+}
+
+.tables-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
+    gap: var(--ui-space-3);
+}
+
+[data-state='AVAILABLE'] { --tile-tone: var(--ui-success); }
+[data-state='OCCUPIED'] { --tile-tone: var(--ui-primary); }
+[data-state='PENDING_PAYMENT'] { --tile-tone: var(--ui-warning); }
+[data-state='RESERVED'] { --tile-tone: var(--ui-text-muted); }
+[data-state='OUT_OF_SERVICE'] { --tile-tone: var(--ui-danger); }
+
+.tables-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    min-height: 116px;
+    padding: var(--ui-space-3);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    background: var(--ui-surface);
+    color: var(--ui-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.tables-tile:hover { border-color: var(--ui-primary); }
+.tables-tile:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+.tables-tile[data-state='OCCUPIED'] { background: var(--ui-primary-soft); }
+.tables-tile[data-state='PENDING_PAYMENT'] { background: var(--ui-warning-soft); }
+.tables-tile[data-state='RESERVED'] { border-style: dashed; border-color: var(--ui-text-muted); background: var(--ui-surface-2); }
+.tables-tile[data-state='OUT_OF_SERVICE'] { background: var(--ui-surface-2); opacity: .55; }
+
+.tables-tile[aria-pressed='true'] {
+    border: 2px solid var(--ui-primary);
+    padding: calc(var(--ui-space-3) - 1px);
+    box-shadow: 0 0 0 3px var(--ui-primary-soft);
+}
+
+.tables-tile__top { display: flex; flex-wrap: nowrap; align-items: baseline; justify-content: space-between; gap: 0 var(--ui-space-2); }
+.tables-tile__id { min-width: 0; font-size: var(--ui-text-lg); font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tables-tile__seats { flex: none; font-size: var(--ui-text-xs); color: var(--ui-text-muted); }
+
+.tables-tile__state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--ui-text-xs);
+    font-weight: 600;
+    color: var(--tile-tone);
+}
+
+.tables-tile__state > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.tables-tile__group { display: inline-flex; align-items: center; gap: 4px; font-size: var(--ui-text-xs); color: var(--ui-text-muted); }
+.tables-tile__spacer { flex: 1; }
+
+.tables-tile__foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--ui-space-2);
+    font-size: var(--ui-text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--ui-text-muted);
+}
+
+.tables-tile__foot .is-slow { color: var(--ui-warning); font-weight: 600; }
+.tables-tile__amount { margin-left: auto; font-weight: 600; color: var(--ui-text); white-space: nowrap; }
+.tables-tile__foot > :first-child { white-space: nowrap; }
+
+@media (max-width: 640px) {
+    .tables-ops__header > * { flex: 1 1 100%; }
+    .tables-ops__header .ui-segmented { overflow-x: auto; }
+    .tables-ops__header .table-map-utility-controls { flex: 0 1 auto; }
 }

@@ -14,7 +14,7 @@ const profile = read('../../pages/Profile.tsx');
 const navigation = read('./MyHrNav.tsx');
 const punchWizard = read('./AttendancePunchWizard.tsx');
 const layout = read('../Layout.tsx') + read('../../navigation/navConfig.ts') + read('../../ui/layout/Topbar.tsx');
-const selfServiceCss = read('../../pages/hr/self-service.css');
+// Layout migrado: self-service.css se eliminó (pestañas y tablas de @/ui).
 const navigationCss = read('./MyHrNav.module.css');
 const dataTable = read('../../ui/data/DataTable.tsx');
 const dataTableCss = read('../../ui/data/data.css');
@@ -25,14 +25,13 @@ describe('employee self-service UX contract', () => {
     expect(payroll).toContain('stackOnMobile');
     expect(dataTable).toContain('data-label={labelOf(c)}');
     expect(dataTableCss).toContain('content: attr(data-label)');
-    expect(selfServiceCss).toContain('scroll-snap-type: x proximity');
   });
 
   it('uses Profile cards as the launcher and adds a compact mobile punch shortcut', () => {
+    // Layout migrado: las pantallas de Mi RH usan PageContent de @/ui en lugar del contenedor my-hr-page.
     [schedule, workforce, payroll, benefits, timeClock, biometrics].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
-      expect(source).toContain('my-hr-page');
-      expect(source).toContain("import './self-service.css'");
+      expect(source).toContain('<PageContent');
       expect(source).not.toContain("import './admin-tables.css'");
     });
     expect(profile).not.toContain('<MyHrNav />');
@@ -42,7 +41,6 @@ describe('employee self-service UX contract', () => {
     expect(navigation).toContain('Mis accesos de RH');
     expect(navigation).not.toContain("const ITEMS");
     expect(navigation).toContain('aria-label="Navegación de Mi RH"');
-    expect(selfServiceCss).toContain('.my-hr-summary-grid');
     expect(navigationCss).toContain('.punch');
     expect(navigationCss).toContain('@media (max-width: 768px)');
   });
@@ -102,7 +100,7 @@ describe('employee self-service UX contract', () => {
     expect(payroll).toContain('Ver recibos del año actual');
     expect(payroll).toContain('LoadErrorState');
     expect(benefits).toContain("tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'");
-    expect(benefits).toContain('Reintentar');
+    expect(benefits).toContain('LoadErrorState');
     expect(workforce).toContain('En espera');
     expect(workforce).toContain('Aprobadas');
     expect(workforce).toContain('Rechazadas o canceladas');

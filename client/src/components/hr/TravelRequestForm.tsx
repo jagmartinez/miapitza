@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { MapPin, ShieldCheck } from 'lucide-react';
@@ -108,7 +108,7 @@ export default function TravelRequestForm({
         <span className="hr-benefits-input-icon">
           <MapPin size={16} aria-hidden="true" />
         </span>
-        <input
+        <Input
           value={form.destination}
           onChange={(event) =>
             setForm((current) => ({ ...current, destination: event.target.value }))
@@ -119,8 +119,8 @@ export default function TravelRequestForm({
       </label>
       <label>
         Salida
-        <input
-          type="date"
+        <DateInput
+         
           value={form.departureDate}
           onChange={(event) =>
             setForm((current) => ({ ...current, departureDate: event.target.value }))
@@ -130,8 +130,8 @@ export default function TravelRequestForm({
       </label>
       <label>
         Regreso
-        <input
-          type="date"
+        <DateInput
+         
           min={form.departureDate}
           value={form.returnDate}
           onChange={(event) =>
@@ -165,7 +165,7 @@ export default function TravelRequestForm({
       </label>
       <label className="span-full">
         Motivo del viaje
-        <textarea
+        <Textarea
           rows={4}
           value={form.purpose}
           onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value }))}
@@ -173,17 +173,11 @@ export default function TravelRequestForm({
           required
         />
       </label>
-      <label className="hr-benefits-confirm span-full">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-        />
-        <span>
+      <Checkbox className="span-full" checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           <ShieldCheck size={17} aria-hidden="true" /> Confirmo fechas, destino, propósito y monto
           solicitado.
-        </span>
-      </label>
+        </span></>} />
     </HrModalFormShell>
   );
 }

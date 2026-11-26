@@ -20,6 +20,7 @@ import {
 } from './attendanceRules';
 import CameraCapture from './CameraCapture';
 import GeolocationCapture from './GeolocationCapture';
+import form from './hrForm.module.css';
 
 interface AttendancePunchWizardProps {
     policy: HrAttendancePolicy;
@@ -201,7 +202,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
         return (
             <section className="hr-punch-actions" aria-labelledby="hr-punch-action-title">
                 <div className="hr-panel-heading"><ShieldCheck size={22} aria-hidden="true" /><div><span className="hr-section-kicker">PASO 1 DE 3</span><h2 id="hr-punch-action-title">Confirma qué vas a marcar</h2><p>El servidor habilita únicamente las acciones válidas para tu jornada.</p></div></div>
-                {error && <div className="hr-attendance-alert danger" role="alert">{error}</div>}
+                {error && <div className={form.alertDanger} role="alert">{error}</div>}
                 {today.availableActions.length > 0 && (
                     <div className="hr-punch-action-grid">
                         {today.availableActions.map((availableAction) => {
@@ -285,7 +286,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                 />
             )}
             {policy.requireGeolocation && <GeolocationCapture maxAccuracyM={today.locationRequirements?.maxAccuracyM ?? policy.maxLocationAccuracyM} onCapture={handleLocationCapture} disabled={submitting} />}
-            {error && <div className="hr-attendance-alert danger" role="alert">{error}</div>}
+            {error && <div className={form.alertDanger} role="alert">{error}</div>}
             <div className="hr-confirmation-summary" role="status" aria-live="polite">
                 <span className={biometricReady ? 'complete' : ''}><Fingerprint size={17} aria-hidden="true" /> Rostro {policy.requireBiometric ? (biometricReady ? 'listo' : 'pendiente') : 'no requerido'}</span>
                 <span className={locationReady ? 'complete' : ''}><MapPin size={17} aria-hidden="true" /> Ubicación {policy.requireGeolocation ? (locationReady ? 'lista' : 'pendiente') : 'no requerida'}</span>

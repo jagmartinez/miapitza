@@ -1,6 +1,7 @@
-import { useEffect, useState, type CSSProperties } from 'react';
-import { Briefcase, Building2, Clock3, Edit2, Palette, Power, RotateCcw } from 'lucide-react';
-import { Button } from '@/ui';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Clock3, Edit2, Palette, Power, RotateCcw } from 'lucide-react';
+import { Badge, Button, DataTable, EmptyState, Field, IconButton, Input, Textarea, type Column } from '@/ui';
+import styles from './hrForm.module.css';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrShiftTemplate } from '../../types/hr-schedule';
 import { shiftCrossesMidnight } from './scheduleDates';
@@ -9,6 +10,8 @@ interface ShiftTemplateCatalogProps {
     templates: HrShiftTemplate[];
     canManage: boolean;
     disabled?: boolean;
+    loading?: boolean;
+    toolbar?: ReactNode;
     onCreate: () => void;
     onEdit: (template: HrShiftTemplate) => void;
     onToggleActive: (template: HrShiftTemplate) => void;
@@ -61,68 +64,79 @@ export function ShiftTemplateCatalog({
     templates,
     canManage,
     disabled = false,
+    loading = false,
+    toolbar,
     onCreate,
     onEdit,
     onToggleActive,
 }: ShiftTemplateCatalogProps) {
-    if (templates.length === 0) {
-        return (
-            <div className="hr-template-empty" role="status">
-                <Palette size={32} aria-hidden="true" />
-                <strong>No hay jornadas configuradas.</strong>
-                <span>Crea una jornada reutilizable para comenzar a asignar horarios.</span>
-                {canManage && <Button variant="primary" size="sm" onClick={onCreate} disabled={disabled}>Crear la primera jornada</Button>}
-            </div>
-        );
-    }
+    const columns: Column<HrShiftTemplate>[] = [
+        {
+            key: 'name',
+            header: 'Jornada',
+            accessor: (template) => template.name,
+            sortable: true,
+            render: (template) => (
+                <span className={styles.nameCell}>
+                    <span className={styles.swatch} style={{ background: templateColor(template.color) }} aria-hidden="true" />
+                    {template.name}
+                </span>
+            ),
+        },
+        {
+            key: 'hours',
+            header: 'Horario',
+            render: (template) => `${template.startTime.slice(0, 5)}–${template.endTime.slice(0, 5)}${template.crossesMidnight ? ' (+1 día)' : ''}`,
+        },
+        { key: 'break', header: 'Descanso', type: 'number', render: (template) => ((template.breakMinutes ?? 0) > 0 ? `${template.breakMinutes} min` : '—') },
+        {
+            key: 'scope',
+            header: 'Sucursal',
+            render: (template) => (template.branchId === null ? 'Todas las sucursales' : template.branch?.name ?? `Sucursal #${template.branchId}`),
+        },
+        { key: 'position', header: 'Puesto', hideBelow: 'md', render: (template) => template.jobPosition?.name ?? '—' },
+        {
+            key: 'status',
+            header: 'Estado',
+            render: (template) => <Badge tone={template.active === false ? 'neutral' : 'success'} dot>{template.active === false ? 'Inactiva' : 'Activa'}</Badge>,
+        },
+        ...(canManage ? [{
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions' as const,
+            render: (template: HrShiftTemplate) => (
+                <div className={styles.rowActions}>
+                    <IconButton icon={Edit2} size="sm" label={`Editar jornada ${template.name}`} onClick={() => onEdit(template)} disabled={disabled} />
+                    <IconButton
+                        icon={template.active === false ? RotateCcw : Power}
+                        size="sm"
+                        label={`${template.active === false ? 'Reactivar' : 'Desactivar'} jornada ${template.name}`}
+                        onClick={() => onToggleActive(template)}
+                        disabled={disabled}
+                    />
+                </div>
+            ),
+        }] : []),
+    ];
 
     return (
-        <section className="hr-template-list" aria-label={`${templates.length} jornadas configuradas`}>
-            {templates.map((template) => {
-                const color = templateColor(template.color);
-                const scopeName = template.branchId === null
-                    ? 'Todas las sucursales'
-                    : template.branch?.name ?? `Sucursal #${template.branchId}`;
-                return (
-                    <article
-                        key={template.id}
-                        className={`hr-template-card ${template.active === false ? 'is-inactive' : ''}`}
-                        style={{ '--template-color': color } as CSSProperties}
-                    >
-                        <div className="hr-template-card-heading">
-                            <span className="hr-template-swatch" aria-hidden="true" />
-                            <div>
-                                <strong>{template.name}</strong>
-                                <small>{template.active === false ? 'Inactiva' : 'Activa'}</small>
-                            </div>
-                        </div>
-                        <div className="hr-template-card-detail">
-                            <Clock3 size={14} aria-hidden="true" />
-                            <span>{template.startTime.slice(0, 5)}–{template.endTime.slice(0, 5)}{template.crossesMidnight ? ' (+1 día)' : ''}</span>
-                        </div>
-                        <div className="hr-template-card-detail"><Building2 size={14} aria-hidden="true" /><span>{scopeName}</span></div>
-                        {template.jobPosition?.name && <div className="hr-template-card-detail"><Briefcase size={14} aria-hidden="true" /><span>{template.jobPosition.name}</span></div>}
-                        {(template.breakMinutes ?? 0) > 0 && <small className="hr-template-break">Descanso: {template.breakMinutes} min</small>}
-                        {canManage && (
-                            <div className="hr-template-card-actions">
-                                <button type="button" onClick={() => onEdit(template)} disabled={disabled} aria-label={`Editar jornada ${template.name}`}>
-                                    <Edit2 size={15} aria-hidden="true" /> Editar
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => onToggleActive(template)}
-                                    disabled={disabled}
-                                    aria-label={`${template.active === false ? 'Reactivar' : 'Desactivar'} jornada ${template.name}`}
-                                >
-                                    {template.active === false ? <RotateCcw size={15} aria-hidden="true" /> : <Power size={15} aria-hidden="true" />}
-                                    {template.active === false ? 'Reactivar' : 'Desactivar'}
-                                </button>
-                            </div>
-                        )}
-                    </article>
-                );
-            })}
-        </section>
+        <DataTable<HrShiftTemplate>
+            ariaLabel={`${templates.length} jornadas configuradas`}
+            rows={templates}
+            rowKey={(template) => template.id}
+            columns={columns}
+            loading={loading}
+            toolbar={toolbar}
+            onRowClick={canManage && !disabled ? onEdit : undefined}
+            empty={(
+                <EmptyState
+                    icon={Palette}
+                    title="No hay jornadas configuradas."
+                    description="Crea una jornada reutilizable para comenzar a asignar horarios."
+                    action={canManage ? <Button variant="primary" size="sm" onClick={onCreate} disabled={disabled}>Crear la primera jornada</Button> : undefined}
+                />
+            )}
+        />
     );
 }
 
@@ -194,37 +208,33 @@ export function ShiftTemplateForm({
             sectionTitle={template ? 'Editar jornada configurada' : 'Nueva jornada configurada'}
             icon={<Clock3 size={18} aria-hidden="true" />}
             onSubmit={submit}
-            formClassName="hr-template-form"
-            notice={visibleError ? <div className="hr-template-alert danger" role="alert">{visibleError}</div> : undefined}
+            notice={visibleError ? <div className={styles.alertDanger} role="alert">{visibleError}</div> : undefined}
             footer={(
                 <>
                     <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
-                    <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando…' : template ? 'Guardar cambios' : 'Crear jornada'}</Button>
+                    <Button variant="primary" type="submit" loading={saving}>{template ? 'Guardar cambios' : 'Crear jornada'}</Button>
                 </>
             )}
         >
-            <div className="modal-input-group hr-modal-form-grid-full">
-                <label htmlFor="hr-template-name">Nombre</label>
-                <input id="hr-template-name" className="modal-standard-input" value={form.name} maxLength={100} onChange={(event) => update('name', event.target.value)} required />
+            <div className="span-full">
+                <Field label="Nombre" htmlFor="hr-template-name" required>
+                    <Input id="hr-template-name" value={form.name} maxLength={100} onChange={(event) => update('name', event.target.value)} required />
+                </Field>
             </div>
-            <div className="modal-input-group">
-                <label htmlFor="hr-template-start">Entrada</label>
-                <input id="hr-template-start" className="modal-standard-input" type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} required />
-            </div>
-            <div className="modal-input-group">
-                <label htmlFor="hr-template-end">Salida</label>
-                <input id="hr-template-end" className="modal-standard-input" type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
-            </div>
-            {overnight && <p className="hr-template-overnight hr-modal-form-grid-full"><Clock3 size={17} aria-hidden="true" /> La salida ocurre al día siguiente.</p>}
-            <div className="modal-input-group hr-modal-form-grid-full">
-                <label htmlFor="hr-template-break">Descanso (minutos)</label>
-                <input id="hr-template-break" className="modal-standard-input" type="number" min="0" max="2880" step="1" value={form.breakMinutes} onChange={(event) => update('breakMinutes', event.target.value)} />
-            </div>
-            <fieldset className="hr-template-colors hr-modal-form-grid-full">
+            <Field label="Entrada" htmlFor="hr-template-start" required>
+                <Input id="hr-template-start" type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} required />
+            </Field>
+            <Field label="Salida" htmlFor="hr-template-end" required hint={overnight ? 'La salida ocurre al día siguiente.' : undefined}>
+                <Input id="hr-template-end" type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
+            </Field>
+            <Field label="Descanso (minutos)" htmlFor="hr-template-break">
+                <Input id="hr-template-break" type="number" min="0" max="2880" step="1" value={form.breakMinutes} onChange={(event) => update('breakMinutes', event.target.value)} />
+            </Field>
+            <fieldset className={`${styles.fieldset} span-full`}>
                 <legend>Color</legend>
-                <div>
+                <div className={styles.checkRow} role="radiogroup" aria-label="Color de la jornada">
                     {COLOR_OPTIONS.map((color) => (
-                        <label key={color.value} title={color.label}>
+                        <label key={color.value} title={color.label} className={styles.colorOption}>
                             <input
                                 type="radio"
                                 name="template-color"
@@ -232,25 +242,21 @@ export function ShiftTemplateForm({
                                 checked={form.color === color.value}
                                 onChange={() => update('color', color.value)}
                             />
-                            <span style={{ '--template-color': color.value } as CSSProperties} aria-hidden="true" />
+                            <span className={styles.swatch} style={{ background: color.value }} aria-hidden="true" />
                             <span className="sr-only">{color.label}</span>
                         </label>
                     ))}
-                    <label className="hr-template-custom-color">
+                    <label className={styles.colorOption}>
                         <span>Personalizado</span>
-                        <input aria-label="Color personalizado" type="color" value={form.color} onChange={(event) => update('color', event.target.value.toUpperCase())} />
+                        <input aria-label="Color personalizado" type="color" className={styles.colorInput} value={form.color} onChange={(event) => update('color', event.target.value.toUpperCase())} />
                     </label>
                 </div>
             </fieldset>
-            <div className="modal-input-group hr-modal-form-grid-full">
-                <label htmlFor="hr-template-notes">Notas</label>
-                <textarea id="hr-template-notes" className="modal-textarea" rows={3} maxLength={5000} value={form.notes} onChange={(event) => update('notes', event.target.value)} />
+            <div className="span-full">
+                <Field label="Notas" htmlFor="hr-template-notes" hint={template ? 'Los cambios aplican a asignaciones nuevas; los turnos guardados conservan sus datos históricos.' : undefined}>
+                    <Textarea id="hr-template-notes" rows={3} maxLength={5000} value={form.notes} onChange={(event) => update('notes', event.target.value)} />
+                </Field>
             </div>
-            {template && (
-                <p className="hr-template-context hr-modal-form-grid-full">
-                    Los cambios aplican a asignaciones nuevas; los turnos guardados conservan sus datos históricos.
-                </p>
-            )}
         </HrModalFormShell>
     );
 }

@@ -125,3 +125,11 @@
   .profile-hr-grid { grid-template-columns: minmax(0, 1fr); }
   .profile-overview { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Resumen en dos columnas como el mockup: actividad y datos a la izquierda, Mi RH a la derecha. */
+.profile-summary { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-5); align-items: start; }
+@media (min-width: 1100px) {
+  .profile-summary { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+  .profile-summary__side .profile-hr-grid { grid-template-columns: minmax(0, 1fr); }
+  .profile-summary__side .profile-hr-identity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarCheck, ChevronLeft, ChevronRight, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Button, EmptyState, LoadErrorState, PageHeader } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { Badge, Button, EmptyState, IconButton, LoadErrorState, PageContent, PageHeader, TableToolbar } from '@/ui';
+import form from '../../components/hr/hrForm.module.css';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import ScheduleStatusPill from '../../components/hr/ScheduleStatusPill';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
@@ -11,7 +12,6 @@ import { getScheduleErrorMessage, scheduleClient } from '../../components/hr/sch
 import { useAppToast } from '../../context/ToastContext';
 import type { HrHoliday, HrWeeklySchedule } from '../../types/hr-schedule';
 import './schedule.css';
-import './self-service.css';
 
 const weekFormatter = new Intl.DateTimeFormat('es-NI', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
@@ -80,45 +80,47 @@ export default function MySchedule() {
     };
 
     return (
-        <div className="page-wrapper hr-my-schedule-page my-hr-page">
+        <PageContent>
             <PageHeader
-        title="Horarios del equipo"
-        description="Consulta los turnos publicados de tu sucursal y confirma los que te corresponden"
-        actions={<MyHrNav />}
-      />
-
-            <section className="hr-week-navigation my-hr-toolbar" aria-label="Navegación semanal">
-                <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={acknowledgingId !== null} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
-                <div><span>Semana</span><strong>{weekLabel(weekStart)}</strong></div>
-                <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || acknowledgingId !== null}>Hoy</Button>
-                <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={acknowledgingId !== null} aria-label="Semana siguiente">Siguiente <ChevronRight size={18} aria-hidden="true" /></Button>
-            </section>
+                breadcrumb={['Mi RH']}
+                title="Horarios del equipo"
+                description="Consulta los turnos publicados de tu sucursal y confirma los que te corresponden"
+                actions={<MyHrNav />}
+            />
 
             {fromCache && (
-                <div className="hr-schedule-alert warning" role="alert">
+                <div className={form.alertWarning} role="alert">
                     Estás consultando una copia guardada sin conexión. La confirmación de recepción se habilitará al recuperar conexión.
                 </div>
             )}
 
-            
-            {!loading && !error && published.length > 0 && (
-                <div className="hr-my-schedule-statuses" aria-label="Versiones publicadas">
-                    {published.map((schedule) => (
-                        <div key={schedule.id}>
-                            <div><ScheduleStatusPill status={schedule.status} /><span>Versión {schedule.version}</span></div>
-                            {!schedule.viewerHasShift
-                                ? <span className="hr-schedule-personal-state">Sin turno personal esta semana</span>
-                                : schedule.acknowledgedAt
-                                ? <span className="hr-acknowledged"><CheckCheck size={17} aria-hidden="true" /> Recibido</span>
-                                : <Button variant="primary" size="sm" onClick={() => void acknowledge(schedule)} disabled={acknowledgingId !== null || fromCache}>{acknowledgingId === schedule.id ? 'Confirmando…' : 'Confirmar recepción'}</Button>}
-                        </div>
-                    ))}
+            <TableToolbar>
+                <div className={form.weekNav} role="group" aria-label="Navegación semanal">
+                    <IconButton icon={ChevronLeft} label="Semana anterior" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={acknowledgingId !== null} />
+                    <strong>{weekLabel(weekStart)}</strong>
+                    <IconButton icon={ChevronRight} label="Semana siguiente" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={acknowledgingId !== null} />
+                    <Button size="sm" variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || acknowledgingId !== null}>Hoy</Button>
                 </div>
+            </TableToolbar>
+
+            {!loading && !error && published.length > 0 && (
+                <ul className={form.list} aria-label="Versiones publicadas">
+                    {published.map((schedule) => (
+                        <li key={schedule.id}>
+                            <span className={form.actions}><ScheduleStatusPill status={schedule.status} /><span>Versión {schedule.version}</span></span>
+                            {!schedule.viewerHasShift
+                                ? <span className={form.cellSub}>Sin turno personal esta semana</span>
+                                : schedule.acknowledgedAt
+                                ? <Badge tone="success"><CheckCheck size={14} aria-hidden="true" /> Recibido</Badge>
+                                : <Button variant="primary" size="sm" loading={acknowledgingId === schedule.id} onClick={() => void acknowledge(schedule)} disabled={acknowledgingId !== null || fromCache}>Confirmar recepción</Button>}
+                        </li>
+                    ))}
+                </ul>
             )}
 
-            {pendingAcknowledgements.length > 0 && <p className="hr-schedule-help">Confirma cada versión publicada después de revisar tus turnos. El acuse registra recepción, no modifica el horario.</p>}
+            {pendingAcknowledgements.length > 0 && <p className={form.help}>Confirma cada versión publicada después de revisar tus turnos. El acuse registra recepción, no modifica el horario.</p>}
 
-            {loading && <LoadingSpinner text="Cargando horarios del equipo…" />}
+            {loading && <HrLoading text="Cargando horarios del equipo…" />}
             {!loading && error && <LoadErrorState message={error} onRetry={() => void loadWeek()} />}
             {!loading && !error && !hasShifts && (
                 <EmptyState
@@ -132,7 +134,11 @@ export default function MySchedule() {
                     }
                 />
             )}
-            {!loading && !error && hasShifts && <ScheduleWeekView weekStart={weekStart} schedules={published} holidays={holidays} readOnly />}
-        </div>
+            {!loading && !error && hasShifts && (
+                <section className={form.frame} aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
+                    <ScheduleWeekView weekStart={weekStart} schedules={published} holidays={holidays} readOnly />
+                </section>
+            )}
+        </PageContent>
     );
 }

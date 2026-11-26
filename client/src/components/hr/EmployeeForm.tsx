@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SingleValue } from './HrOptionSelect';
-import {
-    Building2,
-    Briefcase,
-    FileText,
-    UserRound,
-    WalletCards,
-} from 'lucide-react';
-import { Tabs, Button } from '@/ui';
+import { Button, Checkbox, DateInput, Field, FormGrid, FormSection, FullScreenModal, Input, Textarea } from '@/ui';
 import Select from './HrOptionSelect';
 import HrMoneyInput from './HrMoneyInput';
+import styles from './hrForm.module.css';
 import type {
     HrEmployee,
     HrEmployeePayload,
@@ -23,6 +17,7 @@ type FormTab = 'data' | 'relationship' | 'compensation' | 'user' | 'assignment';
 type Option = { value: string; label: string };
 
 interface EmployeeFormProps {
+    isOpen: boolean;
     employee: HrEmployee | null;
     lookups: HrOrganizationCatalogs;
     users: HrUserSummary[];
@@ -148,6 +143,7 @@ function nullable(value: string): string | null {
 }
 
 export default function EmployeeForm({
+    isOpen,
     employee,
     lookups,
     users,
@@ -273,197 +269,166 @@ export default function EmployeeForm({
         });
     };
 
+    const frequencyOptions: Option[] = [
+        { value: 'WEEKLY', label: 'Semanal · 52 períodos/año' },
+        { value: 'BIWEEKLY', label: 'Quincenal · 24 períodos/año' },
+        { value: 'FORTNIGHTLY', label: 'Catorcenal · 26 períodos/año' },
+        { value: 'MONTHLY', label: 'Mensual · 12 períodos/año' },
+    ];
+    const tabs = [
+        { id: 'data', label: 'Datos' },
+        { id: 'relationship', label: 'Relación laboral' },
+        ...(!employee ? [{ id: 'compensation', label: 'Compensación' }] : []),
+        { id: 'user', label: 'Usuario' },
+        { id: 'assignment', label: 'Asignación' },
+    ];
+
     return (
-        <div className="hr-employee-modal-content">
-            <Tabs
-                ariaLabel="Secciones del expediente"
-                active={activeTab}
-                onChange={(id) => setActiveTab(id as FormTab)}
-                tabs={[
-                    { id: 'data', label: 'Datos' },
-                    { id: 'relationship', label: 'Relación laboral' },
-                    ...(!employee ? [{ id: 'compensation', label: 'Compensación' }] : []),
-                    { id: 'user', label: 'Usuario' },
-                    { id: 'assignment', label: 'Asignación' },
-                ]}
-            />
+        <FullScreenModal
+            isOpen={isOpen}
+            onClose={onCancel}
+            title={employee ? `Editar: ${employee.legalName}` : 'Nuevo empleado'}
+            breadcrumb={['Recursos humanos', 'Personal']}
+            tabs={tabs}
+            activeTab={activeTab}
+            onTabChange={(id) => setActiveTab(id as FormTab)}
+            footer={({ requestClose }) => (
+                <>
+                    <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
+                    <Button variant="primary" type="submit" form="hr-employee-form" loading={saving}>{employee ? 'Guardar cambios' : 'Crear empleado'}</Button>
+                </>
+            )}
+        >
+            <form id="hr-employee-form" className={styles.form} onSubmit={submit} aria-label="Expediente del empleado">
+                {validationError && <div className={styles.alertDanger} role="alert">{validationError}</div>}
 
-            <form className="hr-modal-form" onSubmit={submit}>
-                <div className="modal-tab-content">
-                    {validationError && (
-                        <div className="hr-inline-alert danger" role="alert">{validationError}</div>
-                    )}
+                {activeTab === 'data' && (
+                    <div id="hr-employee-panel-data" role="tabpanel" aria-label="Datos" className={styles.form}>
+                        <FormSection title="Identificación y contacto">
+                            <FormGrid>
+                                <Field label="Código de empleado" htmlFor="hr-employee-code" required>
+                                    <Input id="hr-employee-code" value={form.employeeCode} onChange={(event) => update('employeeCode', event.target.value)} required />
+                                </Field>
+                                <Field label="Identificación" htmlFor="hr-employee-document">
+                                    <Input id="hr-employee-document" value={form.documentNumber} onChange={(event) => update('documentNumber', event.target.value)} />
+                                </Field>
+                                <Field label="Nombre legal" htmlFor="hr-employee-name" required>
+                                    <Input id="hr-employee-name" value={form.legalName} onChange={(event) => update('legalName', event.target.value)} required />
+                                </Field>
+                                <Field label="Nombre preferido" htmlFor="hr-employee-preferred-name">
+                                    <Input id="hr-employee-preferred-name" value={form.preferredName} onChange={(event) => update('preferredName', event.target.value)} />
+                                </Field>
+                                <Field label="Tipo de identificación" htmlFor="hr-employee-document-type">
+                                    <Input id="hr-employee-document-type" value={form.documentType} onChange={(event) => update('documentType', event.target.value)} placeholder="Cédula, residencia, pasaporte" />
+                                </Field>
+                                <Field label="RUC / identificación tributaria" htmlFor="hr-employee-tax-id">
+                                    <Input id="hr-employee-tax-id" value={form.taxId} onChange={(event) => update('taxId', event.target.value)} />
+                                </Field>
+                                <Field label="Número de asegurado INSS" htmlFor="hr-employee-inss" hint="Obligatorio para calcular una corrida cuya regla INSS esté marcada como aplicable.">
+                                    <Input id="hr-employee-inss" value={form.socialSecurityNumber} onChange={(event) => update('socialSecurityNumber', event.target.value)} />
+                                </Field>
+                                <Field label="Correo laboral" htmlFor="hr-employee-email">
+                                    <Input id="hr-employee-email" type="email" value={form.workEmail} onChange={(event) => update('workEmail', event.target.value)} />
+                                </Field>
+                                <Field label="Teléfono laboral" htmlFor="hr-employee-phone">
+                                    <Input id="hr-employee-phone" value={form.workPhone} onChange={(event) => update('workPhone', event.target.value)} />
+                                </Field>
+                            </FormGrid>
+                            <Field label="Dirección" htmlFor="hr-employee-address">
+                                <Textarea id="hr-employee-address" rows={3} value={form.address} onChange={(event) => update('address', event.target.value)} />
+                            </Field>
+                        </FormSection>
+                        <FormSection title="Contacto de emergencia">
+                            <FormGrid>
+                                <Field label="Nombre" htmlFor="hr-employee-emergency-name">
+                                    <Input id="hr-employee-emergency-name" value={form.emergencyContactName} onChange={(event) => update('emergencyContactName', event.target.value)} />
+                                </Field>
+                                <Field label="Teléfono" htmlFor="hr-employee-emergency-phone">
+                                    <Input id="hr-employee-emergency-phone" value={form.emergencyContactPhone} onChange={(event) => update('emergencyContactPhone', event.target.value)} />
+                                </Field>
+                                <Field label="Parentesco o relación" htmlFor="hr-employee-emergency-relation">
+                                    <Input id="hr-employee-emergency-relation" value={form.emergencyContactRelationship} onChange={(event) => update('emergencyContactRelationship', event.target.value)} />
+                                </Field>
+                            </FormGrid>
+                            <Field label="Notas internas" htmlFor="hr-employee-notes">
+                                <Textarea id="hr-employee-notes" rows={3} value={form.notes} onChange={(event) => update('notes', event.target.value)} />
+                            </Field>
+                        </FormSection>
+                    </div>
+                )}
 
-                    {activeTab === 'data' && (
-                        <section
-                            id="hr-employee-panel-data"
-                            role="tabpanel"
-                            aria-label="Datos"
-                            className="modal-content-group"
-                        >
-                            <div className="modal-section-header">
-                                <UserRound size={18} aria-hidden="true" />
-                                <h3>Identificación y contacto</h3>
-                            </div>
-                            <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-code">Código de empleado</label>
-                                    <input id="hr-employee-code" className="modal-standard-input" value={form.employeeCode} onChange={(event) => update('employeeCode', event.target.value)} required />
-                                </div>
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-document">Identificación</label>
-                                    <input id="hr-employee-document" className="modal-standard-input" value={form.documentNumber} onChange={(event) => update('documentNumber', event.target.value)} />
-                                </div>
-                            </div>
-                            <div className="modal-input-group">
-                                <label htmlFor="hr-employee-name">Nombre legal</label>
-                                <input id="hr-employee-name" className="modal-standard-input" value={form.legalName} onChange={(event) => update('legalName', event.target.value)} required />
-                            </div>
-                            <div className="modal-input-group">
-                                <label htmlFor="hr-employee-preferred-name">Nombre preferido</label>
-                                <input id="hr-employee-preferred-name" className="modal-standard-input" value={form.preferredName} onChange={(event) => update('preferredName', event.target.value)} />
-                            </div>
-                            <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-document-type">Tipo de identificación</label>
-                                    <input id="hr-employee-document-type" className="modal-standard-input" value={form.documentType} onChange={(event) => update('documentType', event.target.value)} placeholder="Cédula, residencia, pasaporte" />
-                                </div>
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-tax-id">RUC / identificación tributaria</label>
-                                    <input id="hr-employee-tax-id" className="modal-standard-input" value={form.taxId} onChange={(event) => update('taxId', event.target.value)} />
-                                </div>
-                            </div>
-                            <div className="modal-input-group">
-                                <label htmlFor="hr-employee-inss">Número de asegurado INSS</label>
-                                <input id="hr-employee-inss" className="modal-standard-input" value={form.socialSecurityNumber} onChange={(event) => update('socialSecurityNumber', event.target.value)} />
-                                <small>Obligatorio para calcular una corrida cuya regla INSS esté marcada como aplicable.</small>
-                            </div>
-                            <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-email">Correo laboral</label>
-                                    <input id="hr-employee-email" type="email" className="modal-standard-input" value={form.workEmail} onChange={(event) => update('workEmail', event.target.value)} />
-                                </div>
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-phone">Teléfono laboral</label>
-                                    <input id="hr-employee-phone" className="modal-standard-input" value={form.workPhone} onChange={(event) => update('workPhone', event.target.value)} />
-                                </div>
-                            </div>
-                            <div className="modal-input-group">
-                                <label htmlFor="hr-employee-address">Dirección</label>
-                                <textarea id="hr-employee-address" className="modal-textarea" rows={3} value={form.address} onChange={(event) => update('address', event.target.value)} />
-                            </div>
-                            <div className="modal-section-header"><UserRound size={18} aria-hidden="true" /><h3>Contacto de emergencia</h3></div>
-                            <div className="modal-form-row">
-                                <div className="modal-input-group"><label htmlFor="hr-employee-emergency-name">Nombre</label><input id="hr-employee-emergency-name" className="modal-standard-input" value={form.emergencyContactName} onChange={(event) => update('emergencyContactName', event.target.value)} /></div>
-                                <div className="modal-input-group"><label htmlFor="hr-employee-emergency-phone">Teléfono</label><input id="hr-employee-emergency-phone" className="modal-standard-input" value={form.emergencyContactPhone} onChange={(event) => update('emergencyContactPhone', event.target.value)} /></div>
-                            </div>
-                            <div className="modal-input-group"><label htmlFor="hr-employee-emergency-relation">Parentesco o relación</label><input id="hr-employee-emergency-relation" className="modal-standard-input" value={form.emergencyContactRelationship} onChange={(event) => update('emergencyContactRelationship', event.target.value)} /></div>
-                            <div className="modal-input-group">
-                                <label htmlFor="hr-employee-notes">Notas internas</label>
-                                <textarea id="hr-employee-notes" className="modal-textarea" rows={3} value={form.notes} onChange={(event) => update('notes', event.target.value)} />
-                            </div>
-                        </section>
-                    )}
-
-                    {activeTab === 'relationship' && (
-                        <section
-                            id="hr-employee-panel-relationship"
-                            role="tabpanel"
-                            aria-label="Relación laboral"
-                            className="modal-content-group"
-                        >
-                            <div className="modal-section-header">
-                                <Briefcase size={18} aria-hidden="true" />
-                                <h3>Relación laboral</h3>
-                            </div>
-                            <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-hire-date">Fecha de ingreso</label>
-                                    <input id="hr-employee-hire-date" type="date" className="modal-standard-input" value={form.hireDate} onChange={(event) => update('hireDate', event.target.value)} required />
-                                </div>
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-type">Tipo de empleo</label>
+                {activeTab === 'relationship' && (
+                    <div id="hr-employee-panel-relationship" role="tabpanel" aria-label="Relación laboral">
+                        <FormSection title="Relación laboral">
+                            <FormGrid>
+                                <Field label="Fecha de ingreso" htmlFor="hr-employee-hire-date" required>
+                                    <DateInput id="hr-employee-hire-date" value={form.hireDate} onChange={(event) => update('hireDate', event.target.value)} required />
+                                </Field>
+                                <Field label="Tipo de empleo" htmlFor="hr-employee-type">
                                     <Select<Option>
                                         inputId="hr-employee-type"
-                                        variant="modal"
                                         options={(lookups.enums?.employmentTypes ?? []).map((value) => ({ value, label: value.replace(/_/g, ' ') }))}
                                         value={form.employmentType ? { value: form.employmentType, label: form.employmentType.replace(/_/g, ' ') } : null}
                                         onChange={(option: SingleValue<Option>) => update('employmentType', option?.value ?? '')}
                                         placeholder="Seleccionar"
                                         isClearable
                                     />
-                                </div>
-                            </div>
-                            <div className="modal-input-group">
-                                <span id="hr-employee-rest-days-label">Día(s) de descanso semanal</span>
-                                <div className="hr-branch-picker" role="group" aria-labelledby="hr-employee-rest-days-label">
+                                </Field>
+                                <Select<Option>
+                                    label="Departamento"
+                                    options={lookups.departments.map((item) => ({ value: String(item.id), label: item.name }))}
+                                    value={asOption(lookups.departments.find((item) => String(item.id) === form.departmentId))}
+                                    onChange={(option: SingleValue<Option>) => setForm((current) => ({ ...current, departmentId: option?.value ?? '', jobPositionId: '' }))}
+                                    isClearable
+                                />
+                                <Select<Option>
+                                    label="Puesto"
+                                    options={positionOptions}
+                                    value={positionOptions.find((option) => option.value === form.jobPositionId) ?? null}
+                                    onChange={(option: SingleValue<Option>) => update('jobPositionId', option?.value ?? '')}
+                                    isClearable
+                                />
+                                <Select<Option>
+                                    label="Centro de costo"
+                                    options={lookups.costCenters.map((item) => ({ value: String(item.id), label: item.name }))}
+                                    value={asOption(lookups.costCenters.find((item) => String(item.id) === form.costCenterId))}
+                                    onChange={(option: SingleValue<Option>) => update('costCenterId', option?.value ?? '')}
+                                    isClearable
+                                />
+                            </FormGrid>
+                            <fieldset className={styles.fieldset}>
+                                <legend id="hr-employee-rest-days-label">Día(s) de descanso semanal</legend>
+                                <div className={styles.checkRow} role="group" aria-labelledby="hr-employee-rest-days-label">
                                     {REST_DAY_OPTIONS.map((day) => {
                                         const checked = form.weeklyRestDays.includes(day.value);
                                         const blocked = !checked && form.weeklyRestDays.length >= MAX_WEEKLY_REST_DAYS;
                                         return (
-                                            <label key={day.value} className={`hr-branch-option ${checked ? 'selected' : ''}`}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={checked}
-                                                    disabled={blocked}
-                                                    onChange={() => update('weeklyRestDays', checked
-                                                        ? form.weeklyRestDays.filter((value) => value !== day.value)
-                                                        : [...form.weeklyRestDays, day.value])}
-                                                />
-                                                <span>{day.label}</span>
-                                            </label>
+                                            <Checkbox
+                                                key={day.value}
+                                                label={day.label}
+                                                checked={checked}
+                                                disabled={blocked}
+                                                onChange={() => update('weeklyRestDays', checked
+                                                    ? form.weeklyRestDays.filter((value) => value !== day.value)
+                                                    : [...form.weeklyRestDays, day.value])}
+                                            />
                                         );
                                     })}
                                 </div>
-                                <p className="hr-form-help">
+                                <p className={styles.help}>
                                     Séptimo día (Art. 64 CT). Las horas trabajadas en el descanso se pagan con el recargo configurado en la regla de nómina (doble por defecto). Máximo dos días.
                                     {form.weeklyRestDays.length === 0 ? ' Sin selección se aplica el domingo y la nómina lo marca para revisión.' : ''}
                                 </p>
-                            </div>
-                            <Select<Option>
-                                variant="modal"
-                                label="Departamento"
-                                options={lookups.departments.map((item) => ({ value: String(item.id), label: item.name }))}
-                                value={asOption(lookups.departments.find((item) => String(item.id) === form.departmentId))}
-                                onChange={(option: SingleValue<Option>) => setForm((current) => ({ ...current, departmentId: option?.value ?? '', jobPositionId: '' }))}
-                                isClearable
-                            />
-                            <Select<Option>
-                                variant="modal"
-                                label="Puesto"
-                                options={positionOptions}
-                                value={positionOptions.find((option) => option.value === form.jobPositionId) ?? null}
-                                onChange={(option: SingleValue<Option>) => update('jobPositionId', option?.value ?? '')}
-                                isClearable
-                            />
-                            <Select<Option>
-                                variant="modal"
-                                label="Centro de costo"
-                                options={lookups.costCenters.map((item) => ({ value: String(item.id), label: item.name }))}
-                                value={asOption(lookups.costCenters.find((item) => String(item.id) === form.costCenterId))}
-                                onChange={(option: SingleValue<Option>) => update('costCenterId', option?.value ?? '')}
-                                isClearable
-                            />
-                        </section>
-                    )}
+                            </fieldset>
+                        </FormSection>
+                    </div>
+                )}
 
-                    {activeTab === 'compensation' && !employee && (
-                        <section
-                            id="hr-employee-panel-compensation"
-                            role="tabpanel"
-                            aria-label="Compensación"
-                            className="modal-content-group"
-                        >
-                            <div className="modal-section-header">
-                                <WalletCards size={18} aria-hidden="true" />
-                                <h3>Compensación inicial</h3>
-                            </div>
-                            <div className="hr-inline-alert info">
-                                Se registrará junto con el expediente en una sola operación. Los cambios posteriores crearán una nueva versión en el historial salarial.
-                            </div>
-                            <div className="modal-form-row">
+                {activeTab === 'compensation' && !employee && (
+                    <div id="hr-employee-panel-compensation" role="tabpanel" aria-label="Compensación">
+                        <FormSection title="Compensación inicial" description="Se registrará junto con el expediente en una sola operación. Los cambios posteriores crearán una nueva versión en el historial salarial.">
+                            <FormGrid>
                                 <Select<Option>
-                                    variant="modal"
                                     label="Tipo de compensación"
                                     options={[
                                         { value: 'SALARY', label: 'Salario por período' },
@@ -471,129 +436,78 @@ export default function EmployeeForm({
                                     ]}
                                     value={{ value: form.compensationType, label: form.compensationType === 'SALARY' ? 'Salario por período' : 'Tarifa por hora' }}
                                     onChange={(option: SingleValue<Option>) => update('compensationType', (option?.value ?? 'SALARY') as FormState['compensationType'])}
-                                    isSearchable={false}
                                 />
                                 <Select<Option>
-                                    variant="modal"
                                     label="Frecuencia de pago"
-                                    options={[
-                                        { value: 'WEEKLY', label: 'Semanal · 52 períodos/año' },
-                                        { value: 'BIWEEKLY', label: 'Quincenal · 24 períodos/año' },
-                                        { value: 'FORTNIGHTLY', label: 'Catorcenal · 26 períodos/año' },
-                                        { value: 'MONTHLY', label: 'Mensual · 12 períodos/año' },
-                                    ]}
-                                    value={[
-                                        { value: 'WEEKLY', label: 'Semanal · 52 períodos/año' },
-                                        { value: 'BIWEEKLY', label: 'Quincenal · 24 períodos/año' },
-                                        { value: 'FORTNIGHTLY', label: 'Catorcenal · 26 períodos/año' },
-                                        { value: 'MONTHLY', label: 'Mensual · 12 períodos/año' },
-                                    ].find((option) => option.value === form.payFrequency)}
+                                    options={frequencyOptions}
+                                    value={frequencyOptions.find((option) => option.value === form.payFrequency)}
                                     onChange={(option: SingleValue<Option>) => update('payFrequency', (option?.value ?? 'MONTHLY') as HrPayFrequency)}
-                                    isSearchable={false}
                                 />
-                            </div>
-                            <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                    <label htmlFor="hr-employee-compensation-amount">{form.compensationType === 'HOURLY' ? 'Tarifa por hora' : 'Monto por período'}</label>
-                                    <HrMoneyInput id="hr-employee-compensation-amount" value={form.compensationAmount} onValueChange={(value) => update('compensationAmount', value)} required aria-describedby="hr-employee-compensation-help" />
-                                    <small id="hr-employee-compensation-help">Se muestra con separadores y se envía como decimal canónico.</small>
-                                </div>
+                                <Field label={form.compensationType === 'HOURLY' ? 'Tarifa por hora' : 'Monto por período'} htmlFor="hr-employee-compensation-amount" hint="Se muestra con separadores y se envía como decimal canónico." required>
+                                    <HrMoneyInput id="hr-employee-compensation-amount" value={form.compensationAmount} onValueChange={(value) => update('compensationAmount', value)} required />
+                                </Field>
                                 <Select<Option>
-                                    variant="modal"
                                     label="Moneda"
                                     options={[{ value: 'NIO', label: 'NIO · Córdoba' }, { value: 'USD', label: 'USD · Dólar' }]}
                                     value={form.compensationCurrency === 'USD' ? { value: 'USD', label: 'USD · Dólar' } : { value: 'NIO', label: 'NIO · Córdoba' }}
                                     onChange={(option: SingleValue<Option>) => update('compensationCurrency', option?.value ?? 'NIO')}
-                                    isSearchable={false}
                                 />
-                            </div>
-                            <div className="modal-input-group">
-                                <label htmlFor="hr-employee-compensation-reason">Motivo y respaldo</label>
-                                <textarea id="hr-employee-compensation-reason" className="modal-textarea" rows={3} maxLength={500} value={form.compensationReason} onChange={(event) => update('compensationReason', event.target.value)} required />
-                            </div>
-                        </section>
-                    )}
+                            </FormGrid>
+                            <Field label="Motivo y respaldo" htmlFor="hr-employee-compensation-reason" required>
+                                <Textarea id="hr-employee-compensation-reason" rows={3} maxLength={500} value={form.compensationReason} onChange={(event) => update('compensationReason', event.target.value)} required />
+                            </Field>
+                        </FormSection>
+                    </div>
+                )}
 
-                    {activeTab === 'user' && (
-                        <section
-                            id="hr-employee-panel-user"
-                            role="tabpanel"
-                            aria-label="Usuario"
-                            className="modal-content-group"
-                        >
-                            <div className="modal-section-header">
-                                <FileText size={18} aria-hidden="true" />
-                                <h3>Usuario vinculado</h3>
-                            </div>
-                            <div className="hr-inline-alert info">
-                                Al crear el expediente, el usuario se convierte en interno de forma atómica. Un usuario ya vinculado a otro empleado no aparece como opción.
-                            </div>
+                {activeTab === 'user' && (
+                    <div id="hr-employee-panel-user" role="tabpanel" aria-label="Usuario">
+                        <FormSection title="Usuario vinculado" description="Al crear el expediente, el usuario se convierte en interno de forma atómica. Un usuario ya vinculado a otro empleado no aparece como opción.">
                             <Select<Option>
-                                variant="modal"
                                 label="Usuario del sistema"
                                 options={availableUsers.map((user) => ({ value: String(user.id), label: `${user.name} · @${user.username}` }))}
                                 value={selectedUser ? { value: String(selectedUser.id), label: `${selectedUser.name} · @${selectedUser.username}` } : null}
                                 onChange={(option: SingleValue<Option>) => update('userId', option?.value ?? '')}
                                 isDisabled={Boolean(employee)}
                                 placeholder="Seleccionar usuario externo"
-                                isSearchable
                             />
                             {selectedUser && (
-                                <dl className="hr-summary-list">
+                                <dl className={styles.facts}>
                                     <div><dt>Cuenta</dt><dd>@{selectedUser.username}</dd></div>
                                     <div><dt>Tipo actual</dt><dd>{selectedUser.accountType ?? 'EXTERNAL'}</dd></div>
                                     <div><dt>Estado</dt><dd>{selectedUser.status ?? '—'}</dd></div>
                                 </dl>
                             )}
-                        </section>
-                    )}
+                        </FormSection>
+                    </div>
+                )}
 
-                    {activeTab === 'assignment' && (
-                        <section
-                            id="hr-employee-panel-assignment"
-                            role="tabpanel"
-                            aria-label="Asignación"
-                            className="modal-content-group"
-                        >
-                            <div className="modal-section-header">
-                                <Building2 size={18} aria-hidden="true" />
-                                <h3>Adscripción laboral</h3>
-                            </div>
-                            <p className="hr-form-help">La adscripción laboral es independiente de las sucursales operativas permitidas al usuario.</p>
-                            <div className="hr-branch-picker" role="group" aria-label="Sucursales laborales">
+                {activeTab === 'assignment' && (
+                    <div id="hr-employee-panel-assignment" role="tabpanel" aria-label="Asignación">
+                        <FormSection title="Adscripción laboral" description="La adscripción laboral es independiente de las sucursales operativas permitidas al usuario.">
+                            <div className={styles.checkGrid} role="group" aria-label="Sucursales laborales">
                                 {assignableBranches.map((branch) => {
                                     const id = String(branch.id);
-                                    const checked = form.branchIds.includes(id);
                                     return (
-                                        <label key={branch.id} className={`hr-branch-option ${checked ? 'selected' : ''}`}>
-                                            <input type="checkbox" checked={checked} onChange={() => toggleBranch(id)} />
-                                            <span>{branch.name}</span>
-                                        </label>
+                                        <Checkbox key={branch.id} label={branch.name} checked={form.branchIds.includes(id)} onChange={() => toggleBranch(id)} />
                                     );
                                 })}
                             </div>
                             {form.branchIds.length > 0 && (
                                 <Select<Option>
-                                    variant="modal"
                                     label="Sucursal principal"
                                     options={assignableBranches.filter((branch) => form.branchIds.includes(String(branch.id))).map((branch) => ({ value: String(branch.id), label: branch.name }))}
                                     value={asOption(assignableBranches.find((branch) => String(branch.id) === form.primaryBranchId))}
                                     onChange={(option: SingleValue<Option>) => update('primaryBranchId', option?.value ?? '')}
-                                    isSearchable={false}
                                 />
                             )}
                             {(lookups.branches ?? []).length === 0 && (
-                                <div className="hr-inline-alert warning">No hay sucursales disponibles en el catálogo.</div>
+                                <div className={styles.alertWarning} role="status">No hay sucursales disponibles en el catálogo.</div>
                             )}
-                        </section>
-                    )}
-                </div>
-
-                <div className="hr-modal-form-footer">
-                    <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
-                    <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando…' : employee ? 'Guardar cambios' : 'Crear empleado'}</Button>
-                </div>
+                        </FormSection>
+                    </div>
+                )}
             </form>
-        </div>
+        </FullScreenModal>
     );
 }

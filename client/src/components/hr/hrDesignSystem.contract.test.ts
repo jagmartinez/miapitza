@@ -14,14 +14,16 @@ function readTsx(directory: URL): string {
 const hrSource = `${readTsx(componentDirectory)}\n${readTsx(pageDirectory)}`;
 const moneyInput = readFileSync(new URL('./HrMoneyInput.tsx', import.meta.url), 'utf8');
 const moneyInputFormat = readFileSync(new URL('./hrMoneyInputFormat.ts', import.meta.url), 'utf8');
-const sharedStyles = readFileSync(new URL('../../pages/hr/hr-ui.css', import.meta.url), 'utf8');
+// Layout migrado: hr-ui.css se eliminó; el ancho lo da PageContent de @/ui y los montos HrControls.css.
+const pageContent = readFileSync(new URL('../../ui/layout/PageContent.tsx', import.meta.url), 'utf8');
+const sharedStyles = readFileSync(new URL('./HrControls.css', import.meta.url), 'utf8');
 const catering = readFileSync(new URL('../../pages/Catering.tsx', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../../navigation/navConfig.ts', import.meta.url), 'utf8');
 const schedules = readFileSync(new URL('../../pages/hr/Schedules.tsx', import.meta.url), 'utf8');
 const employees = readFileSync(new URL('../../pages/hr/Employees.tsx', import.meta.url), 'utf8');
 const shiftForm = readFileSync(new URL('./ScheduleShiftForm.tsx', import.meta.url), 'utf8');
 const attendanceSettings = readFileSync(new URL('../../pages/hr/AttendanceSettings.tsx', import.meta.url), 'utf8');
-const attendanceStyles = readFileSync(new URL('../../pages/hr/attendance-settings.css', import.meta.url), 'utf8');
+const settingsSection = readFileSync(new URL('./HrSettingsSection.tsx', import.meta.url), 'utf8');
 const payroll = readFileSync(new URL('../../pages/hr/PayrollManagement.tsx', import.meta.url), 'utf8');
 const payrollLegal = readFileSync(new URL('../../pages/hr/PayrollLegalSettings.tsx', import.meta.url), 'utf8');
 const attendanceReview = readFileSync(new URL('../../pages/hr/AttendanceReview.tsx', import.meta.url), 'utf8');
@@ -30,9 +32,9 @@ const modalStyles = readFileSync(new URL('./HrControls.css', import.meta.url), '
 
 describe('RH and Catering UI design-system contract', () => {
   it('keeps RH views inside the shared 1700px content boundary', () => {
-    expect(sharedStyles).toContain(".page-wrapper[class*='hr-']");
-    expect(sharedStyles).toContain('max-width: 1700px');
-    expect(sharedStyles).toContain('margin-inline: auto');
+    expect(pageContent).toContain('maxWidth = 1700');
+    expect(hrSource).toContain('<PageContent');
+    expect(hrSource).not.toContain('page-wrapper');
   });
 
   it('uses the project React Select adapter instead of native selects in RH', () => {
@@ -55,7 +57,9 @@ describe('RH and Catering UI design-system contract', () => {
   });
 
   it('styles attendance controls without leaking into React Select internals', () => {
-    expect(attendanceStyles).toContain("label > :is(input, textarea)");
+    // Layout migrado: filas de configuración con controles de @/ui (sin estilos sobre inputs nativos).
+    expect(settingsSection).toContain('export function HrSettingRow');
+    expect(attendanceSettings).toContain('<HrSettingRow');
     expect(attendanceSettings).toContain('¿Qué es el proveedor biométrico?');
     expect(attendanceSettings).toContain('Verificar conexión');
   });

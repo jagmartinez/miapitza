@@ -39,7 +39,7 @@ describe('Biometrics guided UX contract', () => {
     });
 
     it('uses the Mi RH shell and blocks sensitive mutations while offline', () => {
-        expect(source).toContain('my-hr-page');
+        expect(source).toContain('<PageContent');
         expect(source).toContain('!online && <OnlineOnlyNotice online={false} />');
         expect(source).toContain('disabled={!online || saving || !faceEvidence || !consent}');
         expect(source).toContain('Conéctate para revocar el consentimiento biométrico');

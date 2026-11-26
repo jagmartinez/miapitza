@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
 import HrModalFormShell from './HrModalFormShell';
 import PayrollOnlineNotice from './PayrollOnlineNotice';
 import { useState } from 'react';
@@ -130,7 +130,7 @@ export default function PayrollTransitionForm({
       </div>
       <label className="span-full">
         Motivo obligatorio
-        <textarea
+        <Textarea
           rows={5}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
@@ -142,11 +142,11 @@ export default function PayrollTransitionForm({
         <>
           <label>
             Referencia de pago
-            <input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} maxLength={160} required />
+            <Input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} maxLength={160} required />
           </label>
           <label>
             Fecha fiscal congelada
-            <input type="date" value={paymentDate} readOnly required />
+            <DateInput value={paymentDate} readOnly required />
           </label>
           <label>
             Método
@@ -164,11 +164,11 @@ export default function PayrollTransitionForm({
           </label>
           <label>
             Lote bancario o contable
-            <input value={batchReference} onChange={(event) => setBatchReference(event.target.value)} maxLength={160} />
+            <Input value={batchReference} onChange={(event) => setBatchReference(event.target.value)} maxLength={160} />
           </label>
           <label className="span-full">
             Referencia de evidencia de pago
-            <input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} required />
+            <Input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} required />
           </label>
         </>
       )}
@@ -176,11 +176,11 @@ export default function PayrollTransitionForm({
         <>
           <label>
             Referencia de reversión externa
-            <input value={reversalReference} onChange={(event) => setReversalReference(event.target.value)} maxLength={160} required />
+            <Input value={reversalReference} onChange={(event) => setReversalReference(event.target.value)} maxLength={160} required />
           </label>
           <label>
             Fecha de reversión
-            <input type="date" value={reversalDate} onChange={(event) => setReversalDate(event.target.value)} required />
+            <DateInput value={reversalDate} onChange={(event) => setReversalDate(event.target.value)} required />
           </label>
           <label>
             Método de reversión
@@ -198,21 +198,15 @@ export default function PayrollTransitionForm({
           </label>
           <label className="span-full">
             Evidencia de reversión
-            <input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} required />
+            <Input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} required />
           </label>
         </>
       )}
-      <label className="hr-payroll-confirm span-full">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-        />
-        <span>
+      <Checkbox className="span-full" checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           Confirmo explícitamente la acción <strong>{LABELS[action]}</strong> sobre {run.code} y que
           revisé anomalías, snapshot y componentes.
-        </span>
-      </label>
+        </span></>} />
     </HrModalFormShell>
   );
 }

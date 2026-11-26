@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, DateInput, Input, Textarea } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { Calculator, Gift } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
@@ -108,7 +108,7 @@ export default function PayrollRunForm({
         <>
           <label>
             Año
-            <input
+            <Input
               type="number"
               min="2000"
               max="2200"
@@ -119,8 +119,8 @@ export default function PayrollRunForm({
           </label>
           <label>
             Fecha de corte
-            <input
-              type="date"
+            <DateInput
+             
               value={cutoffDate}
               onChange={(event) => setCutoffDate(event.target.value)}
               required
@@ -147,7 +147,7 @@ export default function PayrollRunForm({
       </label>
       <label className="span-full">
         Razón de apertura
-        <textarea
+        <Textarea
           rows={4}
           value={reason}
           onChange={(event) => setReason(event.target.value)}

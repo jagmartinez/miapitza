@@ -1,6 +1,8 @@
-import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FullScreenModal, Button } from '@/ui';
+import {
+    AppSelect, Badge, Button, EmptyState, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, TableToolbar, type Tone,
+} from '@/ui';
 import {
     CalendarDays,
     Clock3,
@@ -12,11 +14,10 @@ import {
     Send,
     AlertTriangle,
 } from 'lucide-react';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import HrFilterSelect from '../../components/hr/HrFilterSelect';
+import HrLoading from '../../components/hr/HrLoading';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
-import { HrHero, HrPage, HrSection, HrToolbar, type HrFact, HrTablePanel, HrPanelState } from '../../components/hr/layout/HrWorkspace';
+import form from '../../components/hr/hrForm.module.css';
 import {
     addDaysDateOnly,
     existingShiftApiInput,
@@ -44,7 +45,6 @@ import type {
 } from '../../types/hr-schedule';
 import { getUserRoleNames, hasPermission } from '../../utils/authz';
 import './schedule.css';
-import './layouts/horarios.css';
 
 type Option = { value: string; label: string };
 type MutationKind = 'save' | 'delete' | 'publish' | 'copy' | 'cancel';
@@ -57,13 +57,13 @@ function weekLabel(weekStart: string): string {
     return `${weekFormatter.format(new Date(`${weekStart}T00:00:00Z`))} – ${weekFormatter.format(new Date(`${end}T00:00:00Z`))}`;
 }
 
-function scheduleStatusMeta(status: HrWeeklySchedule['status'] | undefined): { label: string; hint: string; tone: NonNullable<HrFact['tone']> } {
+function scheduleStatusMeta(status: HrWeeklySchedule['status'] | undefined): { label: string; hint: string; tone: Tone } {
     switch (status) {
-        case 'DRAFT': return { label: 'Borrador', hint: 'Pendiente de publicar', tone: 'accent' };
+        case 'DRAFT': return { label: 'Borrador', hint: 'Pendiente de publicar', tone: 'primary' };
         case 'PUBLISHED': return { label: 'Publicado', hint: 'Visible para el personal', tone: 'success' };
         case 'CANCELLED': return { label: 'Cancelado', hint: 'Solo histórico', tone: 'danger' };
         case 'SUPERSEDED': return { label: 'Sustituido', hint: 'Versión histórica', tone: 'warning' };
-        default: return { label: 'Sin horario', hint: 'Aún no hay borrador', tone: 'default' };
+        default: return { label: 'Sin horario', hint: 'Aún no hay borrador', tone: 'neutral' };
     }
 }
 
@@ -80,7 +80,6 @@ function filteredSchedules(schedules: HrWeeklySchedule[], branchId: string, user
 }
 
 // lucide 0.294 icons carry propTypes that do not match the kit's icon prop type.
-const HERO_ICON = CalendarDays as unknown as NonNullable<ComponentProps<typeof HrHero>['icon']>;
 
 export default function Schedules() {
     const navigate = useNavigate();
@@ -468,141 +467,112 @@ export default function Schedules() {
         }
     };
 
-    const branchOptions: Option[] = [{ value: '', label: 'Todas las sucursales' }, ...(lookups.branches ?? []).map((branch) => ({ value: String(branch.id), label: branch.name }))];
-    const userOptions: Option[] = [{ value: '', label: 'Todos los usuarios' }, ...(lookups.users ?? []).map((user) => ({ value: String(user.id), label: `${user.name} · @${user.username}` }))];
-    const positionOptions: Option[] = [{ value: '', label: 'Todos los puestos' }, ...lookups.positions.map((position) => ({ value: String(position.id), label: position.name }))];
+    const branchOptions: Option[] = (lookups.branches ?? []).map((branch) => ({ value: String(branch.id), label: branch.name }));
+    const userOptions: Option[] = (lookups.users ?? []).map((user) => ({ value: String(user.id), label: `${user.name} · @${user.username}` }));
+    const positionOptions: Option[] = lookups.positions.map((position) => ({ value: String(position.id), label: position.name }));
 
     const statusMeta = scheduleStatusMeta(primarySchedule?.status);
-    const visibleShiftCount = visibleSchedules.reduce((total, schedule) => total + schedule.shifts.length, 0);
     const ready = !loading && !error;
-    const heroFacts: HrFact[] = [
-        { label: 'Estado de la semana', value: ready ? statusMeta.label : '—', hint: fromCache ? 'Copia sin conexión' : statusMeta.hint, tone: ready ? statusMeta.tone : 'default' },
-        { label: 'Turnos visibles', value: ready ? visibleShiftCount : '—', hint: hasActiveFilters ? 'Con filtros aplicados' : 'Semana completa' },
-        { label: 'Trabajadores', value: ready ? visibleWorkers.length : '—', hint: 'Activos y autorizados' },
-        { label: 'Conflictos', value: conflicts.length, hint: conflicts.length > 0 ? 'Revisar antes de publicar' : 'Sin pendientes', tone: conflicts.length > 0 ? 'danger' : 'success' },
-        { label: 'Feriados', value: ready ? holidays.length : '—', hint: 'En esta semana', tone: ready && holidays.length > 0 ? 'warning' : 'default' },
-    ];
-    const hasNotices = Boolean(
-        lookupsError ||
-        fromCache ||
-        loadWarnings.length > 0 ||
-        (hasActiveFilters && primarySchedule) ||
-        (ready && (primarySchedule?.status === 'CANCELLED' || primarySchedule?.status === 'SUPERSEDED' || historicalSchedules.length > 1))
-    );
+    const filtersLocked = mutationBusy || anyEditorOpen;
+    const statusTone: Tone = ready ? statusMeta.tone : 'neutral';
 
     return (
-        <HrPage className="hr-schedules-page hr-hz-page hr-hz-schedules">
-            <HrHero
-                eyebrow="Recursos humanos"
-                icon={HERO_ICON}
+        <PageContent>
+            <PageHeader
+                breadcrumb={['Recursos humanos', 'Horarios']}
                 title="Horarios semanales"
-                subtitle="Planificación por usuario, puesto y sucursal"
-                badges={(
-                    <>
-                        <span className={`hr-hz-badge is-${ready ? statusMeta.tone : 'default'}`}>{ready ? statusMeta.label : 'Cargando…'}</span>
-                        {fromCache && <span className="hr-hz-badge is-warning">Sin conexión</span>}
-                        {hasActiveFilters && <span className="hr-hz-badge is-accent">Filtros activos</span>}
-                    </>
+                description={(
+                    <span className={form.actions}>
+                        <Badge tone={statusTone} dot>{ready ? statusMeta.label : 'Cargando…'}</Badge>
+                        {fromCache && <Badge tone="warning">Sin conexión</Badge>}
+                        <span>{ready ? (fromCache ? 'Copia sin conexión' : statusMeta.hint) : 'Planificación por usuario, puesto y sucursal'}</span>
+                        {ready && holidays.length > 0 && <span>· {holidays.length} {holidays.length === 1 ? 'feriado' : 'feriados'} en la semana (pago doble)</span>}
+                    </span>
                 )}
                 actions={(
-                    <Button variant="ghost" onClick={configureTemplatesFromShift} disabled={mutationBusy || anyEditorOpen}>
-                        <Clock3 size={17} aria-hidden="true" /> Jornadas configuradas
-                    </Button>
+                    <>
+                        <Button variant="ghost" icon={Clock3} onClick={configureTemplatesFromShift} disabled={mutationBusy || anyEditorOpen}>Jornadas configuradas</Button>
+                        {ready && canManageSchedule && primarySchedule && (
+                            <Button icon={ClipboardCopy} disabled={mutationBusy || hasActiveFilters || fromCache} loading={mutationKind === 'copy'} onClick={() => void copyToNextWeek()}>Copiar semana</Button>
+                        )}
+                        {ready && canPublishSchedule && primarySchedule && ['DRAFT', 'PUBLISHED'].includes(primarySchedule.status) && (
+                            <Button variant="ghost" icon={Ban} disabled={mutationBusy || hasActiveFilters || fromCache} loading={mutationKind === 'cancel'} onClick={() => void cancelWeek()}>Cancelar semana</Button>
+                        )}
+                        {ready && canPublishSchedule && primarySchedule?.status === 'DRAFT' && (
+                            <Button variant="primary" icon={Send} disabled={mutationBusy || hasActiveFilters || fromCache} loading={mutationKind === 'publish'} onClick={() => void publish()}>Publicar semana</Button>
+                        )}
+                    </>
                 )}
-                facts={heroFacts}
             />
 
-            <HrToolbar className="filters-toolbar hr-schedule-filters hr-hz-filters" ariaLabel="Filtros y acciones de la semana">
-                <div className="hr-ws-field hr-hz-weeknav" role="group" aria-label="Navegación semanal">
-                    <span className="hr-hz-weeknav-caption">Semana{weekStart === currentWeek ? ' en curso' : ''}</span>
-                    <div className="hr-hz-weeknav-control">
-                        <button type="button" className="hr-hz-weeknav-step" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana anterior" title="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /></button>
-                        <strong className="hr-hz-weeknav-range">{weekLabel(weekStart)}</strong>
-                        <button type="button" className="hr-hz-weeknav-step" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={mutationBusy || anyEditorOpen} aria-label="Semana siguiente" title="Semana siguiente"><ChevronRight size={18} aria-hidden="true" /></button>
-                        <button type="button" className="hr-hz-weeknav-today" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || mutationBusy || anyEditorOpen}>Hoy</button>
-                    </div>
+            {lookupsError && (
+                <div className={`${form.alertDanger} ${form.actions}`} role="alert">
+                    <AlertTriangle size={16} aria-hidden="true" /><span>{lookupsError}</span>
+                    <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void loadLookups()}>Reintentar catálogos</Button>
                 </div>
-                <HrFilterSelect label="Sucursal" options={branchOptions} value={branchId} onChange={setBranchId} disabled={mutationBusy || anyEditorOpen} />
-                <HrFilterSelect label="Usuario" options={userOptions} value={userId} onChange={setUserId} disabled={mutationBusy || anyEditorOpen} />
-                <HrFilterSelect label="Puesto" options={positionOptions} value={jobPositionId} onChange={setJobPositionId} disabled={mutationBusy || anyEditorOpen} />
-                <div className="filter-actions hr-ws-toolbar-actions">
-                    <Button variant="ghost" disabled={mutationBusy || anyEditorOpen} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
-                    {!loading && !error && canManageSchedule && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
-                    {!loading && !error && canPublishSchedule && primarySchedule?.status === 'DRAFT' && <Button variant="primary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
-                    {!loading && !error && canPublishSchedule && primarySchedule && ['DRAFT', 'PUBLISHED'].includes(primarySchedule.status) && (
-                        <Button variant="ghost" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void cancelWeek()}>
-                            <Ban size={17} aria-hidden="true" /> {mutationKind === 'cancel' ? 'Cancelando…' : 'Cancelar semana'}
-                        </Button>
-                    )}
+            )}
+            {fromCache && (
+                <div className={form.alertWarning} role="alert">
+                    Mostrando una copia guardada sin conexión. La edición, publicación, cancelación y copia permanecerán bloqueadas hasta recuperar conexión.
                 </div>
-            </HrToolbar>
-
-            {hasNotices && (
-                <div className="hr-hz-notices">
-                    {lookupsError && (
-                        <div className="hr-schedule-alert danger" role="alert">
-                            <AlertTriangle size={18} aria-hidden="true" /><span>{lookupsError}</span>
-                            <Button size="sm" variant="ghost" onClick={() => void loadLookups()}><RefreshCw size={15} /> Reintentar catálogos</Button>
-                        </div>
-                    )}
-
-                    {fromCache && (
-                        <div className="hr-schedule-alert warning" role="alert">
-                            Mostrando una copia guardada sin conexión. La edición, publicación, cancelación y copia permanecerán bloqueadas hasta recuperar conexión.
-                        </div>
-                    )}
-                    {!loading && !error && primarySchedule?.status === 'CANCELLED' && (
-                        <div className="hr-schedule-alert danger" role="status">
-                            Esta versión está cancelada y sus turnos se conservan solo como histórico; puede crear un nuevo borrador para reemplazarla.
-                        </div>
-                    )}
-
-                    {!loading && !error && primarySchedule?.status === 'SUPERSEDED' && (
-                        <p className="hr-schedule-context-note" role="status">
-                            Mostrando una versión histórica sustituida por una publicación posterior; sus turnos ya no aplican a marcaje.
-                        </p>
-                    )}
-                    {!loading && !error && historicalSchedules.length > 1 && (
-                        <p className="hr-schedule-context-note" role="status">
-                            Esta semana conserva {historicalSchedules.length} versiones canceladas o sustituidas en el historial de auditoría.
-                        </p>
-                    )}
-
-                    {loadWarnings.length > 0 && (
-                        <div className="hr-schedule-alert warning" role="alert">
-                            <span>{loadWarnings.join(' ')}</span>
-                            <Button size="sm" variant="ghost" disabled={mutationBusy} onClick={() => void loadWeek()}><RefreshCw size={15} aria-hidden="true" /> Reintentar auxiliares</Button>
-                        </div>
-                    )}
-
-                    {hasActiveFilters && primarySchedule && (
-                        <p className="hr-schedule-context-note" role="status">
-                            Limpia los filtros para revisar el horario completo antes de publicarlo o copiarlo.
-                        </p>
-                    )}
+            )}
+            {ready && primarySchedule?.status === 'CANCELLED' && (
+                <div className={form.alertDanger} role="status">
+                    Esta versión está cancelada y sus turnos se conservan solo como histórico; puede crear un nuevo borrador para reemplazarla.
                 </div>
+            )}
+            {ready && primarySchedule?.status === 'SUPERSEDED' && (
+                <p className={form.help} role="status">
+                    Mostrando una versión histórica sustituida por una publicación posterior; sus turnos ya no aplican a marcaje.
+                </p>
+            )}
+            {ready && historicalSchedules.length > 1 && (
+                <p className={form.help} role="status">
+                    Esta semana conserva {historicalSchedules.length} versiones canceladas o sustituidas en el historial de auditoría.
+                </p>
+            )}
+            {loadWarnings.length > 0 && (
+                <div className={`${form.alertWarning} ${form.actions}`} role="alert">
+                    <span>{loadWarnings.join(' ')}</span>
+                    <Button size="sm" variant="ghost" icon={RefreshCw} disabled={mutationBusy} onClick={() => void loadWeek()}>Reintentar auxiliares</Button>
+                </div>
+            )}
+            {hasActiveFilters && primarySchedule && (
+                <p className={form.help} role="status">
+                    Limpia los filtros para revisar el horario completo antes de publicarlo o copiarlo.
+                </p>
             )}
 
             {conflicts.length > 0 && (
-                <HrSection
-                    className="hr-hz-conflicts"
-                    role="alert"
-                    aria-labelledby="hr-schedule-conflicts-title"
-                    eyebrow="Bloquean la publicación"
-                    title={<span id="hr-schedule-conflicts-title"><AlertTriangle size={19} aria-hidden="true" /> Conflictos por resolver</span>}
-                    count={conflicts.length}
-                >
-                    <ul>{conflicts.map((conflict, index) => <li key={`${conflict.code}-${conflict.shiftId ?? index}`}><strong>{conflict.code}</strong><span>{conflict.message}</span></li>)}</ul>
-                </HrSection>
+                <section className={form.alertDanger} role="alert" aria-labelledby="hr-schedule-conflicts-title">
+                    <strong id="hr-schedule-conflicts-title">Conflictos por resolver ({conflicts.length}) · bloquean la publicación</strong>
+                    <ul className={form.issueList}>
+                        {conflicts.map((conflict, index) => <li key={`${conflict.code}-${conflict.shiftId ?? index}`}><strong>{conflict.code}</strong> {conflict.message}</li>)}
+                    </ul>
+                </section>
             )}
 
-            <HrTablePanel className="hr-hz-planner" aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
-                {loading && <HrPanelState><LoadingSpinner text="Cargando horarios…" /></HrPanelState>}
-                {!loading && error && (
-                    <HrPanelState role="alert"><CalendarDays size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></HrPanelState>
-                )}
+            <TableToolbar
+                actions={hasActiveFilters ? (
+                    <Button variant="ghost" disabled={filtersLocked} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
+                ) : undefined}
+            >
+                <div className={form.weekNav} role="group" aria-label="Navegación semanal">
+                    <IconButton icon={ChevronLeft} label="Semana anterior" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={filtersLocked} />
+                    <strong>{weekLabel(weekStart)}</strong>
+                    <IconButton icon={ChevronRight} label="Semana siguiente" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={filtersLocked} />
+                    <Button size="sm" variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || filtersLocked}>Hoy</Button>
+                </div>
+                <AppSelect<string> aria-label="Sucursal" placeholder="Todas las sucursales" isClearable options={branchOptions} value={branchId || null} onChange={(value) => setBranchId(value ?? '')} isDisabled={filtersLocked} />
+                <AppSelect<string> aria-label="Usuario" placeholder="Todos los usuarios" isClearable options={userOptions} value={userId || null} onChange={(value) => setUserId(value ?? '')} isDisabled={filtersLocked} />
+                <AppSelect<string> aria-label="Puesto" placeholder="Todos los puestos" isClearable options={positionOptions} value={jobPositionId || null} onChange={(value) => setJobPositionId(value ?? '')} isDisabled={filtersLocked} />
+            </TableToolbar>
+
+            <section className={form.frame} aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
+                {loading && <HrLoading text="Cargando horarios…" />}
+                {!loading && error && <LoadErrorState message={error} onRetry={() => void loadWeek()} />}
                 {!loading && !error && visibleWorkers.length === 0 && !hasShifts && (
-                    <HrPanelState><CalendarDays size={44} aria-hidden="true" /><p>No hay trabajadores activos autorizados para esta semana y filtros.</p></HrPanelState>
+                    <EmptyState icon={CalendarDays} title="No hay trabajadores activos autorizados para esta semana y filtros." />
                 )}
                 {!loading && !error && (visibleWorkers.length > 0 || hasShifts) && (
                     <ScheduleWeekView
@@ -616,11 +586,12 @@ export default function Schedules() {
                         onDelete={(shift, schedule) => void deleteShift(shift, schedule)}
                     />
                 )}
-            </HrTablePanel>
+            </section>
 
             <FullScreenModal
                 isOpen={editorOpen}
                 onClose={closeEditor}
+                breadcrumb={['Recursos humanos', 'Horarios']}
                 title={editingShift ? 'Editar turno' : newShiftDefaults ? 'Asignar jornada' : 'Nuevo turno'}
             >
                 <ScheduleShiftForm
@@ -640,6 +611,6 @@ export default function Schedules() {
                     onSubmit={saveShift}
                 />
             </FullScreenModal>
-        </HrPage>
+        </PageContent>
     );
 }

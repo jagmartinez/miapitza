@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SingleValue } from './HrOptionSelect';
-import { Clock3, UserRound } from 'lucide-react';
-import { Tabs, Button } from '@/ui';
+import { Clock3 } from 'lucide-react';
+import { Button, DateInput, Field, FormGrid, FormSection, Input, Tabs, Textarea } from '@/ui';
+import styles from './hrForm.module.css';
 import Select from './HrOptionSelect';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrScheduleShift, HrScheduleShiftInput, HrShiftTemplate } from '../../types/hr-schedule';
@@ -180,7 +181,7 @@ export default function ScheduleShiftForm({
     };
 
     return (
-        <div className="hr-shift-modal-content">
+        <div className={`hr-shift-modal-content ${styles.form}`}>
             {!contextualCreate && <Tabs
                 ariaLabel="Secciones del turno"
                 active={activeTab}
@@ -190,24 +191,22 @@ export default function ScheduleShiftForm({
                     { id: 'schedule', label: 'Jornada' },
                 ]}
             />}
-            <form className="hr-modal-form hr-shift-form" onSubmit={submit}>
-              <div className="modal-tab-content">
-                {error && <div className="hr-schedule-alert danger" role="alert">{error}</div>}
+            <form className="hr-modal-form" onSubmit={submit} aria-label="Turno">
+              <div className={styles.form}>
+                {error && <div className={styles.alertDanger} role="alert">{error}</div>}
                 {conflicts.length > 0 && (
-                    <div className="hr-schedule-form-conflicts" role="alert" aria-label="Conflictos del turno">
+                    <div className={styles.alertDanger} role="alert" aria-label="Conflictos del turno">
                         <strong>Conflictos por resolver</strong>
-                        <ul>
+                        <ul className={styles.issueList}>
                             {conflicts.map((conflict, index) => (
                                 <li key={`${conflict.code}-${index}`}><strong>{conflict.code}</strong> {conflict.message}</li>
                             ))}
                         </ul>
                     </div>
                 )}
-                {!contextualCreate && activeTab === 'assignment' && <section className="modal-content-group" role="tabpanel">
-                <div className="modal-section-header"><UserRound size={18} aria-hidden="true" /><h3>Persona y lugar de trabajo</h3></div>
+                {!contextualCreate && activeTab === 'assignment' && <section role="tabpanel" aria-label="Asignación"><FormSection title="Persona y lugar de trabajo"><FormGrid>
                 {activeTemplates.length > 0 && (
                     <Select<Option>
-                        variant="modal"
                         label="Plantilla de turno (opcional)"
                         options={activeTemplates.map((template) => ({ value: String(template.id), label: template.name }))}
                         value={activeTemplates.find((template) => String(template.id) === form.templateId)
@@ -218,7 +217,6 @@ export default function ScheduleShiftForm({
                     />
                 )}
                 <Select<Option>
-                    variant="modal"
                     label="Usuario"
                     options={users.filter((user) =>
                         user.status !== 'INACTIVE' &&
@@ -231,9 +229,7 @@ export default function ScheduleShiftForm({
                     onChange={(option: SingleValue<Option>) => update('userId', option?.value ?? '')}
                     isSearchable
                 />
-                <div className="modal-form-row">
                     <Select<Option>
-                        variant="modal"
                         label="Sucursal"
                         options={branches.filter((branch) => branch.status !== 'INACTIVE').map((branch) => ({ value: String(branch.id), label: branch.name }))}
                         value={optionFor(branches, form.branchId)}
@@ -241,19 +237,18 @@ export default function ScheduleShiftForm({
                         isSearchable
                     />
                     <Select<Option>
-                        variant="modal"
                         label="Puesto"
                         options={positions.filter((position) => position.active !== false).map((position) => ({ value: String(position.id), label: position.name }))}
                         value={optionFor(positions, form.jobPositionId)}
                         onChange={(option: SingleValue<Option>) => update('jobPositionId', option?.value ?? '')}
                         isSearchable
                     />
-                </div>
+                </FormGrid></FormSection>
                 </section>}
-                {activeTab === 'schedule' && <section className="modal-content-group" role={contextualCreate ? undefined : 'tabpanel'}>
+                {activeTab === 'schedule' && <section role={contextualCreate ? undefined : 'tabpanel'} aria-label="Jornada">
                 {contextualCreate ? (
                     templateLoadError ? (
-                        <div className="hr-schedule-alert danger" role="alert">
+                        <div className={`${styles.alertDanger} ${styles.actions}`} role="alert">
                             <span>{templateLoadError}</span>
                             {onRetryTemplates && (
                                 <Button type="button" size="sm" variant="ghost" onClick={onRetryTemplates}>
@@ -263,7 +258,6 @@ export default function ScheduleShiftForm({
                         </div>
                     ) : compatibleTemplates.length > 0 ? (
                         <Select<Option>
-                            variant="modal"
                             label="Jornada configurada"
                             options={compatibleTemplates.map((template) => ({
                                 value: String(template.id),
@@ -279,8 +273,8 @@ export default function ScheduleShiftForm({
                             placeholder="Selecciona una jornada"
                         />
                     ) : (
-                        <div className="hr-shift-template-empty" role="status">
-                            <Clock3 size={25} aria-hidden="true" />
+                        <div className={`${styles.alertInfo} ${styles.actions}`} role="status">
+                            <Clock3 size={16} aria-hidden="true" />
                             <span>No hay jornadas activas compatibles con la sucursal y el puesto de este trabajador.</span>
                             {onConfigureTemplates && (
                                 <Button type="button" size="sm" variant="secondary" onClick={onConfigureTemplates}>
@@ -289,32 +283,26 @@ export default function ScheduleShiftForm({
                             )}
                         </div>
                     )
-                ) : <>
-                    <div className="modal-section-header"><Clock3 size={18} aria-hidden="true" /><h3>Jornada</h3></div>
-                    <div className="modal-input-group">
-                        <label htmlFor="hr-shift-date">Fecha</label>
-                        <input id="hr-shift-date" className="modal-standard-input" type="date" min={weekStart} max={addDaysDateOnly(weekStart, 6)} value={form.date} onChange={(event) => update('date', event.target.value)} required />
-                    </div>
-                    <div className="modal-form-row">
-                        <div className="modal-input-group">
-                            <label htmlFor="hr-shift-start">Inicio</label>
-                            <input id="hr-shift-start" className="modal-standard-input" type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} required />
-                        </div>
-                        <div className="modal-input-group">
-                            <label htmlFor="hr-shift-end">Fin</label>
-                            <input id="hr-shift-end" className="modal-standard-input" type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
-                        </div>
-                    </div>
-                    {overnight && <p className="hr-shift-overnight-note"><Clock3 size={17} aria-hidden="true" /> El fin ocurre al día siguiente; el turno cruza medianoche.</p>}
-                    <div className="modal-input-group">
-                        <label htmlFor="hr-shift-break">Descanso no laborado (minutos)</label>
-                        <input id="hr-shift-break" className="modal-standard-input" type="number" min="0" max="720" step="1" value={form.breakMinutes} onChange={(event) => update('breakMinutes', event.target.value)} />
-                    </div>
-                    <div className="modal-input-group">
-                        <label htmlFor="hr-shift-notes">Notas</label>
-                        <textarea id="hr-shift-notes" className="modal-textarea" rows={3} maxLength={500} value={form.notes} onChange={(event) => update('notes', event.target.value)} />
-                    </div>
-                </>}
+                ) : <FormSection title="Jornada">
+                    <FormGrid>
+                        <Field label="Fecha" htmlFor="hr-shift-date" required>
+                            <DateInput id="hr-shift-date" min={weekStart} max={addDaysDateOnly(weekStart, 6)} value={form.date} onChange={(event) => update('date', event.target.value)} required />
+                        </Field>
+                        <Field label="Inicio" htmlFor="hr-shift-start" required>
+                            <Input id="hr-shift-start" type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} required />
+                        </Field>
+                        <Field label="Fin" htmlFor="hr-shift-end" required>
+                            <Input id="hr-shift-end" type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
+                        </Field>
+                        <Field label="Descanso no laborado (minutos)" htmlFor="hr-shift-break">
+                            <Input id="hr-shift-break" type="number" min="0" max="720" step="1" value={form.breakMinutes} onChange={(event) => update('breakMinutes', event.target.value)} />
+                        </Field>
+                    </FormGrid>
+                    {overnight && <p className={`hr-shift-overnight-note ${styles.alertInfo}`}>El fin ocurre al día siguiente; el turno cruza medianoche.</p>}
+                    <Field label="Notas" htmlFor="hr-shift-notes">
+                        <Textarea id="hr-shift-notes" rows={3} maxLength={500} value={form.notes} onChange={(event) => update('notes', event.target.value)} />
+                    </Field>
+                </FormSection>}
                 </section>}
               </div>
               <div className="hr-modal-form-footer">
@@ -324,7 +312,7 @@ export default function ScheduleShiftForm({
                         event.preventDefault();
                         setActiveTab('schedule');
                     }}>Continuar</Button>
-                    : <Button variant="primary" type="submit" disabled={saving || (contextualCreate && !form.templateId)}>{saving ? 'Guardando…' : shift ? 'Guardar turno' : contextualCreate ? 'Asignar jornada' : 'Agregar turno'}</Button>}
+                    : <Button variant="primary" type="submit" loading={saving} disabled={contextualCreate && !form.templateId}>{shift ? 'Guardar turno' : contextualCreate ? 'Asignar jornada' : 'Agregar turno'}</Button>}
               </div>
             </form>
         </div>

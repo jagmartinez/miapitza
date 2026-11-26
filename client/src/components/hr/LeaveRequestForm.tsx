@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, DateInput, Input, Textarea } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
@@ -125,8 +125,8 @@ export default function LeaveRequestForm({
       </label>
       <label>
         Desde
-        <input
-          type="date"
+        <DateInput
+         
           value={startDate}
           onChange={(event) => {
             setStartDate(event.target.value);
@@ -137,8 +137,8 @@ export default function LeaveRequestForm({
       </label>
       <label>
         Hasta
-        <input
-          type="date"
+        <DateInput
+         
           min={startDate || undefined}
           value={endDate}
           onChange={(event) => setEndDate(event.target.value)}
@@ -162,7 +162,7 @@ export default function LeaveRequestForm({
         <>
           <label>
             Hora inicial del permiso
-            <input
+            <Input
               type="time"
               value={startTime}
               onChange={(event) => setStartTime(event.target.value)}
@@ -171,7 +171,7 @@ export default function LeaveRequestForm({
           </label>
           <label>
             Hora final del permiso
-            <input
+            <Input
               type="time"
               value={endTime}
               onChange={(event) => setEndTime(event.target.value)}
@@ -185,7 +185,7 @@ export default function LeaveRequestForm({
       )}
       <label className="span-full">
         Motivo
-        <textarea
+        <Textarea
           rows={4}
           maxLength={700}
           value={reason}

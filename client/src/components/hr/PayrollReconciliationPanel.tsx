@@ -1,4 +1,4 @@
-import { Button } from '@/ui';
+import { Button, Input } from '@/ui';
 import { useState } from 'react';
 import { CheckCircle2, Scale, ShieldAlert, XCircle } from 'lucide-react';
 import { getPayrollErrorMessage, payrollClient } from './payrollClient';
@@ -32,13 +32,13 @@ export default function PayrollReconciliationPanel({ run }: { run: HrPayrollRun 
           .catch(reason => setError(getPayrollErrorMessage(reason, 'No fue posible conciliar la corrida.')))
           .finally(() => setSaving(false));
       }}>
-        <label>Bruto externo<input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedGrossIncome} onChange={event => set('expectedGrossIncome', event.target.value)} required /></label>
-        <label>Deducciones externas<input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedTotalDeductions} onChange={event => set('expectedTotalDeductions', event.target.value)} required /></label>
-        <label>Aportes patronales externos<input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedEmployerContributions} onChange={event => set('expectedEmployerContributions', event.target.value)} required /></label>
-        <label>Neto externo<input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedNetPay} onChange={event => set('expectedNetPay', event.target.value)} required /></label>
-        <label>Personas externas<input type="number" min={0} step={1} value={form.expectedEmployeeCount} onChange={event => set('expectedEmployeeCount', Number(event.target.value))} required /></label>
-        <label>Fuente del control<input value={form.controlSource} minLength={3} maxLength={160} onChange={event => set('controlSource', event.target.value)} placeholder="Hoja o sistema independiente" required /></label>
-        <label>Referencia de evidencia<input value={form.evidenceReference} minLength={3} maxLength={500} onChange={event => set('evidenceReference', event.target.value)} placeholder="Ruta/folio/hash del soporte" required /></label>
+        <label>Bruto externo<Input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedGrossIncome} onChange={event => set('expectedGrossIncome', event.target.value)} required /></label>
+        <label>Deducciones externas<Input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedTotalDeductions} onChange={event => set('expectedTotalDeductions', event.target.value)} required /></label>
+        <label>Aportes patronales externos<Input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedEmployerContributions} onChange={event => set('expectedEmployerContributions', event.target.value)} required /></label>
+        <label>Neto externo<Input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedNetPay} onChange={event => set('expectedNetPay', event.target.value)} required /></label>
+        <label>Personas externas<Input type="number" min={0} step={1} value={form.expectedEmployeeCount} onChange={event => set('expectedEmployeeCount', Number(event.target.value))} required /></label>
+        <label>Fuente del control<Input value={form.controlSource} minLength={3} maxLength={160} onChange={event => set('controlSource', event.target.value)} placeholder="Hoja o sistema independiente" required /></label>
+        <label>Referencia de evidencia<Input value={form.evidenceReference} minLength={3} maxLength={500} onChange={event => set('evidenceReference', event.target.value)} placeholder="Ruta/folio/hash del soporte" required /></label>
         <Button variant="primary" type="submit" disabled={saving || ['DRAFT', 'VOID'].includes(run.status)}>{saving ? 'Conciliando…' : 'Ejecutar conciliación'}</Button>
       </form>
       {error && <div className="hr-payroll-reconciliation-alert danger" role="alert"><ShieldAlert size={18} />{error}</div>}

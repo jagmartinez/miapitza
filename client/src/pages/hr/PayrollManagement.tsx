@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
-import { DataTable, EmptyState, FullScreenModal, PageHeader, StatCard, formatMoney, formatNumber, formatPercent, AppSelect, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Plus, Scale, Search } from 'lucide-react';
+import {
+  AppSelect, Badge, Button, DataTable, DateInput, EmptyState, formatMoney, formatNumber, formatPercent, FullScreenModal, Input, LoadErrorState, PageContent,
+  PageHeader, StatCard, TableToolbar, Tabs, Textarea,
+} from '@/ui';
+import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import PayrollComponentForm from '../../components/hr/PayrollComponentForm';
@@ -37,9 +40,7 @@ import type {
 } from '../../types/hr-payroll';
 import './payroll.css';
 import './payroll-operations.css';
-import './admin-tables.css';
-import '../Inventory.css';
-import './layouts/nomina.css';
+import form from '../../components/hr/hrForm.module.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
 
@@ -383,40 +384,53 @@ export default function PayrollManagement() {
   }, [aguinaldoRuns, regularRuns]);
 
   return (
-    <div className="page-wrapper inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page">
+    <PageContent>
       {runParam ? (
-        <div className="nm-detail-view" id="payroll-run-detail">
-          <nav className="nm-detail-bar" aria-label="Navegación de corrida">
-            <Button variant="ghost" onClick={closeRun}><ArrowLeft size={16} /> Volver a corridas</Button>
-            <span className="nm-detail-crumb">{(targetRun?.kind ?? selected?.kind) === 'AGUINALDO' ? 'Aguinaldo' : 'Nómina ordinaria'}{targetRun ? ` · ${targetRun.code}` : ''}</span>
-          </nav>
+        <div id="payroll-run-detail" className={form.stack}>
           <PayrollOnlineNotice online={online} />
-          {loading || workspaceLoading || (targetRun && !selected) ? <LoadingSpinner text="Abriendo la corrida…" /> : selected ? (
-            <>
-              <PayrollRunStepper status={selected.status} />
-              <PayrollOperationWorkspace run={selected} previous={previousRun ? { code: previousRun.code, netPay: previousRun.totals?.netPay } : null} online={online} busy={saving || downloading} onAction={(action) => { transitionOperationKey.current = createPayrollIdempotencyKey(); setTransition({ run: selected, action }); }} onRefresh={() => void openWorkspace(selected)} onAddComponent={() => { componentOperationKey.current = createPayrollIdempotencyKey(); setCreatePanel({ kind: 'component' }); }} onExport={(format) => void exportRun(format)} onDownloadReceipt={(id) => void downloadReceipt(id)} onDownloadReceiptBatch={(ids) => void downloadReceiptBatch(ids)} />
-            </>
+          {loading || workspaceLoading || (targetRun && !selected) ? <HrLoading text="Abriendo la corrida…" /> : selected ? (
+            <PayrollOperationWorkspace
+              run={selected}
+              previous={previousRun ? { code: previousRun.code, netPay: previousRun.totals?.netPay } : null}
+              online={online}
+              busy={saving || downloading}
+              onBack={closeRun}
+              stepper={<PayrollRunStepper status={selected.status} />}
+              onAction={(action) => { transitionOperationKey.current = createPayrollIdempotencyKey(); setTransition({ run: selected, action }); }}
+              onRefresh={() => void openWorkspace(selected)}
+              onAddComponent={() => { componentOperationKey.current = createPayrollIdempotencyKey(); setCreatePanel({ kind: 'component' }); }}
+              onExport={(format) => void exportRun(format)}
+              onDownloadReceipt={(id) => void downloadReceipt(id)}
+              onDownloadReceiptBatch={(ids) => void downloadReceiptBatch(ids)}
+            />
           ) : (
             <EmptyState
               icon={Calculator}
               title="No encontramos esta corrida"
               description="Puede haber sido filtrada o ya no existe. Vuelve al registro para elegir otra."
-              action={<Button size="sm" variant="secondary" onClick={closeRun}>Volver a corridas</Button>}
+              action={<Button size="sm" variant="secondary" icon={ArrowLeft} onClick={closeRun}>Volver a corridas</Button>}
             />
           )}
         </div>
       ) : (<>
       <PageHeader
+        breadcrumb={['Recursos humanos', 'Nómina']}
         title="Nómina y aguinaldo"
         description="Calcula, revisa, aprueba, paga y entrega colillas desde un flujo guiado. Configuración legal: IR, INSS e INATEC."
-        actions={<Button variant="secondary" onClick={() => navigate('/rh/nomina/configuracion-legal')}><Scale size={17} /> Configurar IR, INSS e INATEC</Button>}
+        actions={(
+          <>
+            <Button icon={Scale} onClick={() => navigate('/rh/nomina/configuracion-legal')}>Configurar IR, INSS e INATEC</Button>
+            <Button variant="primary" icon={Plus} onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!online || !operationReady}>{activeKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'}</Button>
+          </>
+        )}
       />
       <PayrollOnlineNotice online={online} />
 
       {!loading && !error && (kpis.latest || kpis.blocking.count > 0) && (
-        <section className="hr-kpi-row" aria-label="Indicadores de nómina">
+        <section className={form.kpis} aria-label="Indicadores de nómina">
           {kpis.latest?.totals && (
             <StatCard
+              tone="primary"
               label="Neto a pagar"
               value={runMoney(kpis.latest.totals.currency, kpis.latest.totals.netPay)}
               context={kpis.netDelta
@@ -454,17 +468,23 @@ export default function PayrollManagement() {
         </section>
       )}
 
-      <div className="payroll-operation-switcher inventory-filters-row">
-        <div className="payroll-operation-tabs inventory-status-filters" role="tablist" aria-label="Tipo de proceso">
-          <button type="button" role="tab" id="payroll-tab-regular" aria-controls="payroll-panel-regular" aria-selected={activeKind === 'REGULAR'} className={activeKind === 'REGULAR' ? 'active' : ''} onClick={() => { setActiveKind('REGULAR'); setSelected(null); }}><Receipt size={17} /> Nómina ordinaria <small>{regularRuns.length}</small></button>
-          <button type="button" role="tab" id="payroll-tab-aguinaldo" aria-controls="payroll-panel-aguinaldo" aria-selected={activeKind === 'AGUINALDO'} className={activeKind === 'AGUINALDO' ? 'active' : ''} onClick={() => { setActiveKind('AGUINALDO'); setSelected(null); }}><Gift size={17} /> Aguinaldo <small>{aguinaldoRuns.length}</small></button>
-        </div>
-        <Button variant="primary" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!online || !operationReady}><Plus size={16} /> {activeKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'}</Button>
-      </div>
+      <Tabs
+        ariaLabel="Tipo de proceso"
+        active={activeKind}
+        onChange={(id) => {
+          if (id === 'AGUINALDO') setActiveKind('AGUINALDO');
+          else setActiveKind('REGULAR');
+          setSelected(null);
+        }}
+        tabs={[
+          { id: 'REGULAR', label: 'Nómina ordinaria', badge: regularRuns.length },
+          { id: 'AGUINALDO', label: 'Aguinaldo', badge: aguinaldoRuns.length },
+        ]}
+      />
 
       {!operationReady && !loading && (
-        <div className="nm-alert is-warning" role="status">
-          <AlertTriangle size={20} aria-hidden="true" />
+        <div className={`${form.alertWarning} ${form.actions}`} role="status">
+          <AlertTriangle size={16} aria-hidden="true" />
           <span>{activeRules.length === 0 ? 'Para crear corridas necesitas una regla legal activa.' : 'Primero crea el periodo que deseas pagar.'}</span>
           {activeRules.length === 0
             ? <Button size="sm" variant="secondary" onClick={() => rules.length ? navigate(`/rh/nomina/configuracion-legal?ruleId=${rules[0].id}`) : setCreatePanel({ kind: 'rule' })}>{rules.length ? 'Configurar regla' : 'Crear regla base'}</Button>
@@ -472,74 +492,67 @@ export default function PayrollManagement() {
         </div>
       )}
 
-      {loading && <LoadingSpinner text="Cargando corridas…" />}
-      {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={42} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}>Reintentar</Button></div>}
-      {!loading && !error && (
-        <>
-          <section className="payroll-run-register pr-table-card" role="tabpanel" id={`payroll-panel-${activeKind.toLowerCase()}`} aria-labelledby={`payroll-tab-${activeKind.toLowerCase()}`}>
-            <header className="payroll-run-register-header">
-              <div>
-                <h2 id="payroll-run-register-title">{activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}</h2>
-                <p>Consulta el periodo, los totales y el estado. Abre una fila para continuar el proceso.</p>
-              </div>
-              <div className="payroll-run-register-tools">
-                <label htmlFor="payroll-run-search">Buscar código o periodo<div className="payroll-run-search"><Search size={15} aria-hidden="true" /><input id="payroll-run-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Ej. 2026-Q1" /></div></label>
-                <label>Estado<AppSelect<string>
-                               options={[
-                                 { value: '', label: 'Todos los estados' },
-                                 ...(
-                                   Object.keys(STATUS_LABELS) as HrPayrollRun['status'][]
-                                 ).map((value) => ({
-                                   value: String(value),
-                                   label: STATUS_LABELS[value],
-                                 })),
-                               ]}
-                               value={status}
-                               onChange={(next) => setStatus(next ?? '')}
-                               isClearable={false}
-                             /></label>
-                {activeKind === 'REGULAR' && <Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'period' })}><FilePlus2 size={15} /> Periodos</Button>}
-              </div>
-            </header>
-            <DataTable<HrPayrollRun>
-              ariaLabel={activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}
-              rows={filteredRuns}
-              rowKey={(run) => `${run.kind}-${run.id}`}
-              pagination={{ mode: 'client' }}
-              resetKey={`${activeKind}|${searchQuery}|${status}`}
-              minWidth="64rem"
-              onRowClick={openRun}
-              empty={<div className="payroll-operation-empty-list"><strong>No hay corridas que coincidan con los filtros.</strong><span>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</span>{runs.length === 0 && <Button variant="primary" size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}</div>}
-              columns={[
-                { key: 'code', header: 'Corrida', width: '1.4fr', render: (run) => <><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></> },
-                { key: 'period', header: 'Periodo', width: '1fr', render: (run) => runPeriodLabel(run) },
-                { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (run) => <PayrollStatusPill status={run.status} /> },
-                { key: 'employees', header: 'Empleados', width: '0.8fr', type: 'number', render: (run) => (isRunCalculated(run) && run.totals ? formatNumber(run.totals.employeeCount, 0) : 'N/D') },
-                { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', render: (run) => (isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.grossIncome) : 'N/D') },
-                { key: 'net', header: 'Neto a pagar', width: '1fr', type: 'money', render: (run) => <strong>{isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.netPay) : 'N/D'}</strong> },
-                { key: 'anomalies', header: 'Incidencias', width: '1.1fr', render: (run) => (run.blockingAnomalyCount ? <span className="payroll-run-blocker"><AlertTriangle size={14} /> {run.blockingAnomalyCount} por resolver</span> : run.anomalyCount ? `${run.anomalyCount} informativa(s)` : <span className="payroll-run-clear">Sin incidencias</span>) },
-                { key: 'payDate', header: 'Pago', width: '1fr', render: (run) => formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) },
-                {
-                  key: 'actions',
-                  header: 'Acciones',
-                  width: '8rem',
-                  type: 'actions',
-                  render: (run) => {
-                    const isSelected = selected?.id === run.id && selected.kind === run.kind;
-                    return (
-                      <div className="payroll-run-actions table-actions">
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openRun(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`}><Eye size={16} /></Button>
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`}><FileSpreadsheet size={16} /></Button>
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`}><Download size={16} /></Button>
-                      </div>
-                    );
-                  },
+      {!loading && error ? <LoadErrorState message={error} onRetry={() => void load()} /> : (
+        <div role="tabpanel" id={`payroll-panel-${activeKind.toLowerCase()}`} aria-label={activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}>
+          <DataTable<HrPayrollRun>
+            ariaLabel={activeKind === 'REGULAR' ? 'Corridas de nómina' : 'Corridas de aguinaldo'}
+            rows={filteredRuns}
+            rowKey={(run) => `${run.kind}-${run.id}`}
+            loading={loading}
+            pagination={{ mode: 'client' }}
+            resetKey={`${activeKind}|${searchQuery}|${status}`}
+            minWidth="64rem"
+            onRowClick={openRun}
+            toolbar={(
+              <TableToolbar actions={activeKind === 'REGULAR' ? <Button variant="ghost" icon={FilePlus2} onClick={() => setCreatePanel({ kind: 'period' })}>Periodos</Button> : undefined}>
+                <Input id="payroll-run-search" type="search" aria-label="Buscar código o periodo" prefix={<Search size={14} aria-hidden="true" />} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Buscar código o periodo (ej. 2026-Q1)" />
+                <AppSelect<string>
+                  aria-label="Estado"
+                  options={[
+                    { value: '', label: 'Todos los estados' },
+                    ...(Object.keys(STATUS_LABELS) as HrPayrollRun['status'][]).map((value) => ({ value: String(value), label: STATUS_LABELS[value] })),
+                  ]}
+                  value={status}
+                  onChange={(next) => setStatus(next ?? '')}
+                  isClearable={false}
+                />
+              </TableToolbar>
+            )}
+            empty={(
+              <EmptyState
+                title="No hay corridas que coincidan con los filtros."
+                description={runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}
+                action={runs.length === 0 ? <Button variant="primary" size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button> : undefined}
+              />
+            )}
+            columns={[
+              { key: 'code', header: 'Corrida', width: '1.4fr', render: (run) => <span className={form.cellStack}><span className={form.cellTitle}>{run.code}</span><span className={form.cellSub}>Creada {formatDate(run.createdAt)}</span></span> },
+              { key: 'period', header: 'Periodo', width: '1fr', render: (run) => runPeriodLabel(run) },
+              { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (run) => <PayrollStatusPill status={run.status} /> },
+              { key: 'employees', header: 'Empleados', width: '0.8fr', type: 'number', render: (run) => (isRunCalculated(run) && run.totals ? formatNumber(run.totals.employeeCount, 0) : 'N/D') },
+              { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', render: (run) => (isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.grossIncome) : 'N/D') },
+              { key: 'net', header: 'Neto a pagar', width: '1fr', type: 'money', render: (run) => <span className={form.cellTitle}>{isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.netPay) : 'N/D'}</span> },
+              { key: 'anomalies', header: 'Incidencias', width: '1.1fr', render: (run) => (run.blockingAnomalyCount ? <Badge tone="danger">{run.blockingAnomalyCount} por resolver</Badge> : run.anomalyCount ? `${run.anomalyCount} informativa(s)` : <span className={form.cellSub}>Sin incidencias</span>) },
+              { key: 'payDate', header: 'Pago', width: '1fr', render: (run) => formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) },
+              {
+                key: 'actions',
+                header: 'Acciones',
+                width: '8rem',
+                type: 'actions',
+                render: (run) => {
+                  const isSelected = selected?.id === run.id && selected.kind === run.kind;
+                  return (
+                    <div className={form.rowActions}>
+                      <Button size="sm" variant="ghost" onClick={() => openRun(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`} icon={Eye} />
+                      <Button size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`} icon={FileSpreadsheet} />
+                      <Button size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`} icon={Download} />
+                    </div>
+                  );
                 },
-              ]}
-            />
-          </section>
-
-        </>
+              },
+            ]}
+          />
+        </div>
       )}
       </>)}
 
@@ -552,11 +565,11 @@ export default function PayrollManagement() {
         {createPanel?.kind === 'rule' && <PayrollRuleForm initial={createPanel.rule} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={saveRule} onCancel={() => setCreatePanel(null)} />}
         {createPanel?.kind === 'period' && (
           <HrModalFormShell ariaLabel="Crear periodo de nómina" tabLabel="1. Periodo" sectionTitle="Define las fechas que se pagarán" icon={<FilePlus2 size={18} />} formClassName="hr-payroll-form" notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(event) => void savePeriod(event)} footer={<><Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>Cancelar</Button><Button variant="primary" type="submit" disabled={!online || saving || !periodForm.code.trim() || !periodForm.reason.trim()}>{saving ? 'Creando…' : 'Crear y continuar'}</Button></>}>
-            <label>Código<input value={periodForm.code} onChange={(event) => setPeriodForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="2026-Q15" required /></label>
-            <label>Desde<input type="date" value={periodForm.dateFrom} onChange={(event) => setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))} required /></label>
-            <label>Hasta<input type="date" min={periodForm.dateFrom} value={periodForm.dateTo} onChange={(event) => setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))} required /></label>
-            <label>Fecha de pago<input type="date" min={periodForm.dateTo} value={periodForm.payDate} onChange={(event) => setPeriodForm((current) => ({ ...current, payDate: event.target.value }))} required /></label>
-            <label className="span-full">Motivo de apertura<textarea rows={4} value={periodForm.reason} onChange={(event) => setPeriodForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Ej. Nómina ordinaria de la segunda quincena" required /></label>
+            <label>Código<Input value={periodForm.code} onChange={(event) => setPeriodForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="2026-Q15" required /></label>
+            <label>Desde<DateInput value={periodForm.dateFrom} onChange={(event) => setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))} required /></label>
+            <label>Hasta<DateInput min={periodForm.dateFrom} value={periodForm.dateTo} onChange={(event) => setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))} required /></label>
+            <label>Fecha de pago<DateInput min={periodForm.dateTo} value={periodForm.payDate} onChange={(event) => setPeriodForm((current) => ({ ...current, payDate: event.target.value }))} required /></label>
+            <label className="span-full">Motivo de apertura<Textarea rows={4} value={periodForm.reason} onChange={(event) => setPeriodForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Ej. Nómina ordinaria de la segunda quincena" required /></label>
           </HrModalFormShell>
         )}
         {createPanel?.kind === 'run' && <PayrollRunForm kind={createPanel.runKind} periods={periods} rules={rules} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(payload) => saveRun(createPanel.runKind, payload)} onCancel={() => setCreatePanel(null)} />}
@@ -569,6 +582,6 @@ export default function PayrollManagement() {
       >
         {transition && <PayrollTransitionForm run={transition.run} action={transition.action} online={online} saving={saving} onSubmit={saveTransition} onCancel={() => { transitionOperationKey.current = null; setTransition(null); }} />}
       </FullScreenModal>
-    </div>
+    </PageContent>
   );
 }

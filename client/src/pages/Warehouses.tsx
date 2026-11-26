@@ -1,20 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { warehousesAPI, inventoryMovementsAPI, branchesAPI, productsAPI, unitsAPI } from '../services/api';
-import ViewToggle from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import { newIdempotencyKey } from '../utils/idempotency';
-import {
-    Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Package, MapPin,
-    Eye, Trash2, Edit2, Search, Info
-} from 'lucide-react';
+import { Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Eye, Trash2, Edit2, Search, History } from 'lucide-react';
 import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse } from '../types';
-import './Inventory.css';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, LoadErrorState, PageHeader, type Column, formatNumber } from '@/ui';
+import styles from './catalog.module.css';
+import {
+    AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
+} from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
 function axiosMessage(err: unknown, fallback: string): string {
@@ -41,6 +39,20 @@ interface StockItem {
     };
 }
 
+type TypeFilter = 'ALL' | 'CENTRAL' | 'BRANCH';
+const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
+    { value: 'ALL', label: 'Todas' },
+    { value: 'CENTRAL', label: 'Central' },
+    { value: 'BRANCH', label: 'Sucursales' }
+];
+
+interface TransferRow {
+    id: string;
+    first?: InventoryMovement;
+    source?: InventoryMovement;
+    destination?: InventoryMovement;
+}
+
 export default function Warehouses() {
     const { user } = useAuth();
     const { confirm } = useConfirmDialog();
@@ -57,8 +69,8 @@ export default function Warehouses() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [warehouseTypeFilter, setWarehouseTypeFilter] = useState<'ALL' | 'CENTRAL' | 'BRANCH'>('ALL');
-    const { viewMode, setViewMode } = useViewMode('warehouses');
+    const [warehouseTypeFilter, setWarehouseTypeFilter] = useState<TypeFilter>('ALL');
+    const [warehouseSearch, setWarehouseSearch] = useState('');
 
     // Sidebar states
     const [showForm, setShowForm] = useState(false);
@@ -242,372 +254,332 @@ export default function Warehouses() {
     };
 
     const filteredWarehouses = warehouses.filter((warehouse) => {
-        if (warehouseTypeFilter === 'ALL') return true;
-        return warehouse.type === warehouseTypeFilter;
+        if (warehouseTypeFilter !== 'ALL' && warehouse.type !== warehouseTypeFilter) return false;
+        const q = warehouseSearch.trim().toLowerCase();
+        return !q || warehouse.name.toLowerCase().includes(q) || (warehouse.code ?? '').toLowerCase().includes(q)
+            || (warehouse.branch?.name ?? '').toLowerCase().includes(q);
     });
 
-    const groupedTransferHistory = transferHistory.reduce<Record<string, InventoryMovement[]>>((acc, movement) => {
-        const key = movement.transferGroupId || `legacy-${movement.id}`;
-        acc[key] = [...(acc[key] || []), movement];
-        return acc;
-    }, {});
-    const showLegacyTransferHistory = false;
+    const transferRows: TransferRow[] = Object.entries(
+        transferHistory.reduce<Record<string, InventoryMovement[]>>((acc, movement) => {
+            const key = movement.transferGroupId || `legacy-${movement.id}`;
+            acc[key] = [...(acc[key] || []), movement];
+            return acc;
+        }, {})
+    ).map(([id, movements]) => {
+        const ordered = [...movements].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        // Both legs of a transfer are stored as TRANSFER movements
+        // distinguished by their reason ("Transfer out" / "Transfer in").
+        const source = ordered.find((m) => (m.reason || '').toLowerCase().startsWith('transfer out')) || ordered[0];
+        const destination = ordered.find((m) => (m.reason || '').toLowerCase().startsWith('transfer in')) || ordered[1];
+        return { id, first: ordered[0], source, destination };
+    });
 
     const filteredStock = stock.filter(s =>
         s.product.name.toLowerCase().includes(stockSearch.toLowerCase()) ||
         s.product.sku?.toLowerCase().includes(stockSearch.toLowerCase())
     );
 
-    if (loading) return <div className="inventory-loading">Cargando bodegas...</div>;
+    const warehouseOption = (w: Warehouse) => ({
+        value: w.id.toString(),
+        label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})`
+    });
+
+    const columns: Column<Warehouse>[] = [
+        {
+            key: 'name',
+            header: 'Bodega',
+            render: (w) => (
+                <div className={styles.cellStack}>
+                    <span className={styles.cellTitle}>{w.name}</span>
+                    {w.code && <span className={styles.muted}>{w.code}</span>}
+                </div>
+            )
+        },
+        { key: 'location', header: 'Ubicación', accessor: (w) => w.type === 'CENTRAL' ? 'Bodega central' : (w.branch?.name || 'Sin sucursal') },
+        {
+            key: 'type',
+            header: 'Tipo',
+            render: (w) => <Badge tone={w.type === 'CENTRAL' ? 'primary' : 'neutral'}>{w.type === 'CENTRAL' ? 'Central' : 'Sucursal'}</Badge>
+        },
+        { key: 'products', header: 'Productos', type: 'number', decimals: 0, accessor: (w) => w._count?.stocks || 0 },
+        { key: 'movements', header: 'Movimientos', type: 'number', decimals: 0, accessor: (w) => w._count?.movements || 0 },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (w) => (
+                <div className={styles.rowActions}>
+                    <IconButton size="sm" icon={Eye} label={`Ver stock de ${w.name}`} onClick={() => viewStock(w)} />
+                    {canMutateWarehouse && <IconButton size="sm" icon={Edit2} label={`Editar ${w.name}`} onClick={() => openEdit(w)} />}
+                    {canDeleteWarehouse && <IconButton size="sm" icon={Trash2} label={`Eliminar ${w.name}`} onClick={() => handleDelete(w.id)} />}
+                </div>
+            )
+        }
+    ] as Column<Warehouse>[];
+
+    const stockColumns: Column<StockItem>[] = [
+        {
+            key: 'product',
+            header: 'Producto',
+            render: (s) => (
+                <div className={styles.cellStack}>
+                    <span className={styles.cellTitle}>{s.product.name}</span>
+                    {s.product.sku && <span className={styles.muted}>{s.product.sku}</span>}
+                </div>
+            )
+        },
+        { key: 'quantity', header: 'Existencia', type: 'qty', decimals: 2, accessor: (s) => s.quantity },
+        { key: 'unit', header: 'Unidad', width: '7rem', accessor: (s) => s.product.baseUnit?.abbreviation || s.product.unit },
+        { key: 'min', header: 'Mín. agregado', type: 'qty', decimals: 2, accessor: (s) => Number(s.product.minStock) },
+    ];
+
+    const historyColumns: Column<TransferRow>[] = [
+        { key: 'date', header: 'Fecha', width: '11rem', accessor: (r) => new Date(r.first?.createdAt || Date.now()).toLocaleString('es-NI') },
+        { key: 'product', header: 'Producto', render: (r) => <span className={styles.cellTitle}>{r.first?.product?.name}</span> },
+        {
+            key: 'route',
+            header: 'Ruta',
+            accessor: (r) => `${r.source?.warehouse?.name || 'Origen desconocido'} → ${r.destination?.warehouse?.name || 'Destino desconocido'}`
+        },
+        { key: 'quantity', header: 'Cantidad', type: 'qty', decimals: 2, accessor: (r) => r.first?.quantity || 0 },
+        { key: 'user', header: 'Responsable', accessor: (r) => r.first?.user?.name ?? '—' },
+        { key: 'reference', header: 'Referencia', accessor: (r) => r.first?.reference || '—' },
+    ];
 
     return (
-        <div className="inventory-page">
+        <PageContent>
             <ToastContainer toasts={toasts} onRemove={removeToast} />
             {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />}
 
             <PageHeader
-                title="Gestión de Bodegas"
-                actions={
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button variant="secondary" onClick={viewTransferHistory}>
-                            <ArrowRightLeft size={18} /> Historial Traslados
-                        </Button>
+                title="Bodegas"
+                description="Bodegas por sucursal, existencias y traslados."
+                actions={(
+                    <>
+                        <Button icon={History} onClick={viewTransferHistory}>Historial de traslados</Button>
                         {canTransferStock && (
-                            <Button variant="secondary" onClick={() => setShowTransfer(true)}>
-                                <ArrowRightLeft size={18} /> Nuevo Traslado
-                            </Button>
+                            <Button icon={ArrowRightLeft} onClick={() => setShowTransfer(true)}>Nuevo traslado</Button>
                         )}
                         {canMutateWarehouse && (
-                            <Button variant="primary" onClick={openCreate}>
-                                <Plus size={18} /> Nueva Bodega
-                            </Button>
+                            <Button variant="primary" icon={Plus} onClick={openCreate}>Nueva bodega</Button>
                         )}
-                    </div>
-                }
+                    </>
+                )}
             />
 
-            <div className="inventory-filters-row" style={{ marginBottom: '1rem' }}>
-                <div className="inventory-status-filters">
-                    {[
-                        { value: 'ALL', label: 'Todas' },
-                        { value: 'CENTRAL', label: 'Central' },
-                        { value: 'BRANCH', label: 'Sucursales' }
-                    ].map((option) => (
-                        <button
-                            key={option.value}
-                            className={`inventory-status-btn ${warehouseTypeFilter === option.value ? 'active' : ''}`}
-                            onClick={() => setWarehouseTypeFilter(option.value as 'ALL' | 'CENTRAL' | 'BRANCH')}
-                        >
-                            {option.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Table view */}
-            {viewMode === 'table' && filteredWarehouses.length > 0 && (
-                <DataTable<Warehouse>
-                    ariaLabel="Listado de bodegas"
-                    rows={filteredWarehouses}
-                    rowKey={(w) => w.id}
-                    resetKey={warehouseTypeFilter}
-                    columns={[
-                        {
-                            key: 'name',
-                            header: 'Bodega',
-                            render: (w) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">{w.name}</span>
-                                    {w.code && <span className="cell-sub">{w.code}</span>}
-                                </div>
-                            )
-                        },
-                        { key: 'location', header: 'Ubicación', render: (w) => w.type === 'CENTRAL' ? 'Bodega central' : (w.branch?.name || 'Sin sucursal') },
-                        { key: 'products', header: 'Productos', type: 'number', decimals: 0, render: (w) => w._count?.stocks || 0 },
-                        { key: 'movements', header: 'Movimientos', type: 'number', decimals: 0, render: (w) => w._count?.movements || 0 },
-                        {
-                            key: 'actions',
-                            header: 'Acciones',
-                            type: 'actions',
-                            render: (w) => (
-                                <div className="catalog-table-actions">
-                                    <button className="catalog-action-btn" onClick={() => viewStock(w)} title="Ver Stock">
-                                        <Eye size={16} />
-                                    </button>
-                                    {canMutateWarehouse && (
-                                        <button className="catalog-action-btn" onClick={() => openEdit(w)} title="Editar">
-                                            <Edit2 size={16} />
-                                        </button>
-                                    )}
-                                    {canDeleteWarehouse && (
-                                        <button className="catalog-action-btn danger" onClick={() => handleDelete(w.id)} title="Eliminar">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            )
-                        }
-                    ] as Column<Warehouse>[]}
-                />
-            )}
-
-            {/* Warehouses Grid */}
-            {viewMode === 'cards' && (
-            <div className="inventory-grid-new">
-                {filteredWarehouses.map(wh => (
-                    <div key={wh.id} className="inventory-card-new">
-                        <div className="inventory-card-body-new">
-                            <div className="product-name-new">{wh.name}</div>
-                                <div className="product-details-new">
-                                    <div className="detail-item">
-                                        <MapPin size={14} />
-                                        <span>{wh.type === 'CENTRAL' ? 'Bodega central' : (wh.branch?.name || 'Sin sucursal')}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                        <span className="sku-tag">{wh.code}</span>
-                                    </div>
-                                <div className="detail-item">
-                                    <Package size={14} />
-                                    <span>{wh._count?.stocks || 0} productos</span>
-                                </div>
-                                <div className="detail-item">
-                                    <ArrowRightLeft size={14} />
-                                    <span>{wh._count?.movements || 0} movimientos</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="inventory-card-actions-new">
-                            <button className="action-btn-new" onClick={() => viewStock(wh)} title="Ver Stock">
-                                <Eye size={20} /><span>Stock</span>
-                            </button>
-                            {canMutateWarehouse && (
-                                <button className="action-btn-new edit" onClick={() => openEdit(wh)} title="Editar">
-                                    <Edit2 size={20} /><span>Editar</span>
-                                </button>
-                            )}
-                            {canDeleteWarehouse && (
-                                <button className="action-btn-new delete" onClick={() => handleDelete(wh.id)} title="Eliminar">
-                                    <Trash2 size={20} />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-            )}
-
-            {filteredWarehouses.length === 0 && (
-                <div className="no-products-message">
-                    <WarehouseIcon size={48} />
-                    <p>No hay bodegas registradas</p>
-                    {canMutateWarehouse && (
-                        <Button variant="primary" onClick={openCreate}>Crear primera bodega</Button>
-                    )}
-                </div>
-            )}
+            <DataTable<Warehouse>
+                ariaLabel="Listado de bodegas"
+                rows={filteredWarehouses}
+                rowKey={(w) => w.id}
+                columns={columns}
+                loading={loading}
+                resetKey={`${warehouseTypeFilter}|${warehouseSearch}`}
+                onRowClick={(w) => { void viewStock(w); }}
+                empty={warehouses.length === 0 ? (
+                    <EmptyState
+                        icon={WarehouseIcon}
+                        title="No hay bodegas registradas"
+                        action={canMutateWarehouse ? <Button variant="primary" onClick={openCreate}>Crear primera bodega</Button> : undefined}
+                    />
+                ) : 'Sin resultados. Ajusta o limpia los filtros.'}
+                toolbar={(
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            aria-label="Buscar bodega"
+                            placeholder="Buscar por nombre, código o sucursal"
+                            prefix={<Search size={14} aria-hidden="true" />}
+                            value={warehouseSearch}
+                            onChange={(e) => setWarehouseSearch(e.target.value)}
+                        />
+                        <SegmentedControl
+                            ariaLabel="Tipo de bodega"
+                            options={TYPE_FILTERS}
+                            value={warehouseTypeFilter}
+                            onChange={setWarehouseTypeFilter}
+                        />
+                    </TableToolbar>
+                )}
+            />
 
             {/* Create/Edit Warehouse */}
-            <FullScreenModal isOpen={showForm} onClose={() => setShowForm(false)} title={editingWarehouse ? 'Editar Bodega' : 'Nueva Bodega'}>
-                <div className="premium-modal-content">
-                    <form onSubmit={handleCreateUpdate} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <div className="modal-content-group">
-                                <div className="modal-section-header">
-                                    <WarehouseIcon size={18} />
-                                    <h3>Información de la bodega</h3>
-                                </div>
-                                <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="warehouse-name">Nombre</label>
-                                <input id="warehouse-name" type="text" className="modal-standard-input" value={formData.name}
+            <FullScreenModal
+                isOpen={showForm}
+                onClose={() => setShowForm(false)}
+                title={editingWarehouse ? 'Editar bodega' : 'Nueva bodega'}
+                breadcrumb={['Inventario', 'Bodegas']}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="warehouse-form" loading={saving}>
+                            {editingWarehouse ? 'Guardar cambios' : 'Crear bodega'}
+                        </Button>
+                    </>
+                )}
+            >
+                <form id="warehouse-form" onSubmit={handleCreateUpdate} className={styles.stack}>
+                    <FormSection step={1} title="Información de la bodega" description="El código identifica la bodega en movimientos y reportes.">
+                        <FormGrid>
+                            <Field label="Nombre" htmlFor="warehouse-name" required>
+                                <Input id="warehouse-name" value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Bodega Central" required autoFocus />
-                                </div>
-                                <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="warehouse-code">Código</label>
-                                    <input id="warehouse-code" type="text" className="modal-standard-input" value={formData.code}
-                                        onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })} placeholder="Ej: CENTRAL-MAIN" required />
-                                </div>
-                                <div className="modal-input-group">
-                                    <Field label="Tipo" htmlFor="sel-410" required>
-<AppSelect isClearable={false} inputId="sel-410" options={[
-                                            { value: 'BRANCH', label: 'Sucursal' },
-                                            { value: 'CENTRAL', label: 'Central' }
-                                        ]} value={formData.type ?? null} onChange={(__v) => { const opt = ([
-                                            { value: 'BRANCH', label: 'Sucursal' },
-                                            { value: 'CENTRAL', label: 'Central' }
-                                        ]).find((o) => o.value === __v) ?? null; return opt && setFormData({ ...formData, type: opt.value as typeof formData.type, branchId: opt.value === 'CENTRAL' ? '' : formData.branchId }); }} placeholder="Seleccionar tipo" />
-</Field>
-                                </div>
-                                </div>
-                                {formData.type === 'BRANCH' && (
-                                    <div className="modal-input-group">
-                                    <Field label="Sucursal" htmlFor="sel-422" required>
-<AppSelect isClearable={false} inputId="sel-422" options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))} value={(formData.branchId ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name } : null)?.value ?? null} onChange={(__v) => { const opt = (branches.map((b) => ({ value: b.id.toString(), label: b.name }))).find((o) => o.value === __v) ?? null; return opt && setFormData({ ...formData, branchId: opt.value }); }} placeholder="Seleccionar sucursal" />
-</Field>
-                                    </div>
-                                )}
-                                <p className="warehouse-form-hint"><Info size={14} /> El código identifica la bodega en movimientos y reportes.</p>
-                            </div>
-                        </div>
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
-                            <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando...' : editingWarehouse ? 'Guardar' : 'Crear'}</Button>
-                        </div>
-                    </form>
-                </div>
+                            </Field>
+                            <Field label="Código" htmlFor="warehouse-code" required>
+                                <Input id="warehouse-code" value={formData.code}
+                                    onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })} placeholder="Ej: CENTRAL-MAIN" required />
+                            </Field>
+                            <Field label="Tipo" htmlFor="warehouse-type" required>
+                                <AppSelect<'CENTRAL' | 'BRANCH'>
+                                    isClearable={false}
+                                    isSearchable={false}
+                                    inputId="warehouse-type"
+                                    options={[
+                                        { value: 'BRANCH', label: 'Sucursal' },
+                                        { value: 'CENTRAL', label: 'Central' }
+                                    ]}
+                                    value={formData.type}
+                                    onChange={(v) => v && setFormData({ ...formData, type: v, branchId: v === 'CENTRAL' ? '' : formData.branchId })}
+                                />
+                            </Field>
+                            {formData.type === 'BRANCH' && (
+                                <Field label="Sucursal" htmlFor="warehouse-branch" required>
+                                    <AppSelect
+                                        isClearable={false}
+                                        inputId="warehouse-branch"
+                                        options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                                        value={formData.branchId || null}
+                                        onChange={(v) => v && setFormData({ ...formData, branchId: v })}
+                                        placeholder="Seleccionar sucursal"
+                                    />
+                                </Field>
+                            )}
+                        </FormGrid>
+                    </FormSection>
+                </form>
             </FullScreenModal>
 
             {/* Stock View */}
-            <FullScreenModal isOpen={showStock} onClose={() => setShowStock(false)} title={`Stock - ${selectedWarehouse?.name || ''}`}>
-                <div className="premium-modal-content">
-                    <div className="modal-tab-content">
-                        <div className="modal-input-group">
-                            <div className="search-input-wrapper">
-                                <Search size={16} className="search-icon" />
-                                <input type="text" className="modal-standard-input" style={{ paddingLeft: '34px' }} placeholder="Buscar producto..."
-                                    value={stockSearch} onChange={e => setStockSearch(e.target.value)} />
-                            </div>
-                        </div>
-                        <div className="stock-items-list">
-                            {filteredStock.map(s => {
-                                return (
-                                    <div key={s.id} className="stock-item-row">
-                                        <div>
-                                            <div className="stock-item-name">{s.product.name}</div>
-                                            {s.product.sku && <div className="stock-item-sku">{s.product.sku}</div>}
-                                        </div>
-                                        <div className="stock-item-qty">
-                                            <div className="stock-item-value">
-                                                {formatNumber(s.quantity)} {s.product.baseUnit?.abbreviation || s.product.unit}
-                                            </div>
-                                            <div className="stock-item-min">Mín. agregado: {Number(s.product.minStock)}</div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                            {filteredStock.length === 0 && (
-                                <p className="stock-empty-message">Sin productos en esta bodega</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
+            <FullScreenModal
+                isOpen={showStock}
+                onClose={() => setShowStock(false)}
+                title={`Existencias · ${selectedWarehouse?.name || ''}`}
+                breadcrumb={['Inventario', 'Bodegas']}
+                subtitle={`${stock.length} productos con existencia registrada`}
+            >
+                <DataTable<StockItem>
+                    ariaLabel="Existencias de la bodega"
+                    rows={filteredStock}
+                    rowKey={(s) => s.id}
+                    columns={stockColumns}
+                    resetKey={stockSearch}
+                    empty="Sin productos en esta bodega"
+                    toolbar={(
+                        <TableToolbar>
+                            <Input
+                                type="search"
+                                aria-label="Buscar producto"
+                                placeholder="Buscar por producto o SKU"
+                                prefix={<Search size={14} aria-hidden="true" />}
+                                value={stockSearch}
+                                onChange={e => setStockSearch(e.target.value)}
+                            />
+                        </TableToolbar>
+                    )}
+                />
             </FullScreenModal>
 
             {/* Transfer Modal */}
-            <FullScreenModal isOpen={showTransfer} onClose={() => setShowTransfer(false)} title="Nuevo Traslado entre Bodegas">
-                <div className="premium-modal-content">
-                    <form onSubmit={handleTransfer} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <div className="modal-content-group">
-                                <div className="modal-section-header">
-                                    <ArrowRightLeft size={18} />
-                                    <h3>Ruta del traslado</h3>
-                                </div>
-                                <div className="modal-form-row">
-                                <div className="modal-input-group">
-                                <Field label="Bodega Origen" htmlFor="sel-488" required>
-<AppSelect isClearable={false} inputId="sel-488" options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))} value={(transferData.fromWarehouseId ? { value: transferData.fromWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.fromWarehouseId)?.name } : null)?.value ?? null} onChange={(__v) => { const opt = (warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))).find((o) => o.value === __v) ?? null; return opt && setTransferData({ ...transferData, fromWarehouseId: opt.value }); }} placeholder="Seleccionar..." />
-</Field>
-                                </div>
-                                <div className="modal-input-group">
-                                <Field label="Bodega Destino" htmlFor="sel-494" required>
-<AppSelect isClearable={false} inputId="sel-494" options={warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))} value={(transferData.toWarehouseId ? { value: transferData.toWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.toWarehouseId)?.name } : null)?.value ?? null} onChange={(__v) => { const opt = (warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))).find((o) => o.value === __v) ?? null; return opt && setTransferData({ ...transferData, toWarehouseId: opt.value }); }} placeholder="Seleccionar..." />
-</Field>
-                                </div>
-                                </div>
-                            </div>
-                            <div className="modal-content-group">
-                                <div className="modal-section-header">
-                                    <Package size={18} />
-                                    <h3>Producto y cantidad</h3>
-                                </div>
-                                <div className="modal-input-group">
-                                <Field label="Producto" htmlFor="sel-507" required>
-<AppSelect isClearable={false} inputId="sel-507" options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))} value={(transferData.productId ? { value: transferData.productId, label: products.find((p) => p.id.toString() === transferData.productId)?.name } : null)?.value ?? null} onChange={(__v) => { const opt = (products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))).find((o) => o.value === __v) ?? null; return opt && handleTransferProductChange(opt.value); }} placeholder="Seleccionar producto..." />
-</Field>
-                                </div>
-                                <div className="modal-form-row">
-                                <div className="modal-input-group" style={{ flex: 2 }}>
-                                    <label className="modal-input-label" htmlFor="transfer-quantity">Cantidad</label>
-                                    <input id="transfer-quantity" type="number" step="0.001" className="modal-standard-input" value={transferData.quantity}
-                                        onChange={e => setTransferData({ ...transferData, quantity: e.target.value })} required min="0.001" />
-                                </div>
-                                {transferUnits.length > 0 && (
-                                    <div className="modal-input-group" style={{ flex: 1 }}>
-                                        <Field label="Unidad" htmlFor="sel-520">
-<AppSelect isClearable={false} inputId="sel-520" options={transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))} value={(transferData.unit ? {
-                                                value: transferData.unit,
-                                                label: transferUnits.find(u => u.abbreviation === transferData.unit)
-                                                    ? `${transferUnits.find(u => u.abbreviation === transferData.unit)!.name} (${transferData.unit})`
-                                                    : transferData.unit
-                                            } : null)?.value ?? null} onChange={(__v) => { const opt = (transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))).find((o) => o.value === __v) ?? null; return opt && setTransferData({ ...transferData, unit: opt.value }); }} placeholder="Unidad..." />
-</Field>
-                                    </div>
-                                )}
-                                </div>
-                                <div className="modal-input-group">
-                                <label className="modal-input-label" htmlFor="transfer-reference">Referencia (opcional)</label>
-                                <input id="transfer-reference" type="text" className="modal-standard-input" value={transferData.reference}
+            <FullScreenModal
+                isOpen={showTransfer}
+                onClose={() => setShowTransfer(false)}
+                title="Nuevo traslado entre bodegas"
+                breadcrumb={['Inventario', 'Bodegas']}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="transfer-form" loading={saving}>Realizar traslado</Button>
+                    </>
+                )}
+            >
+                <form id="transfer-form" onSubmit={handleTransfer} className={styles.stack}>
+                    <FormSection step={1} title="Ruta del traslado" description="Bodega que entrega y bodega que recibe.">
+                        <FormGrid>
+                            <Field label="Bodega origen" htmlFor="transfer-from" required>
+                                <AppSelect
+                                    isClearable={false}
+                                    inputId="transfer-from"
+                                    options={warehouses.map(warehouseOption)}
+                                    value={transferData.fromWarehouseId || null}
+                                    onChange={(v) => v && setTransferData({ ...transferData, fromWarehouseId: v })}
+                                    placeholder="Seleccionar..."
+                                />
+                            </Field>
+                            <Field label="Bodega destino" htmlFor="transfer-to" required>
+                                <AppSelect
+                                    isClearable={false}
+                                    inputId="transfer-to"
+                                    options={warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(warehouseOption)}
+                                    value={transferData.toWarehouseId || null}
+                                    onChange={(v) => v && setTransferData({ ...transferData, toWarehouseId: v })}
+                                    placeholder="Seleccionar..."
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+                    <FormSection step={2} title="Producto y cantidad" description="La cantidad se descuenta del origen en la unidad elegida.">
+                        <FormGrid>
+                            <Field label="Producto" htmlFor="transfer-product" required>
+                                <AppSelect
+                                    isClearable={false}
+                                    inputId="transfer-product"
+                                    options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
+                                    value={transferData.productId || null}
+                                    onChange={(v) => { if (v) void handleTransferProductChange(v); }}
+                                    placeholder="Seleccionar producto..."
+                                />
+                            </Field>
+                            <Field label="Cantidad" htmlFor="transfer-quantity" required>
+                                <Input id="transfer-quantity" type="number" step="0.001" min="0.001" className="ui-input--number"
+                                    value={transferData.quantity}
+                                    onChange={e => setTransferData({ ...transferData, quantity: e.target.value })} required />
+                            </Field>
+                            {transferUnits.length > 0 && (
+                                <Field label="Unidad" htmlFor="transfer-unit">
+                                    <AppSelect
+                                        isClearable={false}
+                                        inputId="transfer-unit"
+                                        options={transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))}
+                                        value={transferData.unit || null}
+                                        onChange={(v) => v && setTransferData({ ...transferData, unit: v })}
+                                        placeholder="Unidad..."
+                                    />
+                                </Field>
+                            )}
+                            <Field label="Referencia (opcional)" htmlFor="transfer-reference">
+                                <Input id="transfer-reference" value={transferData.reference}
                                     onChange={e => setTransferData({ ...transferData, reference: e.target.value })} placeholder="Ej: TRF-001" />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setShowTransfer(false)}>Cancelar</Button>
-                            <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Realizar Traslado'}</Button>
-                        </div>
-                    </form>
-                </div>
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+                </form>
             </FullScreenModal>
 
             {/* Transfer History */}
-            <FullScreenModal isOpen={showHistory} onClose={() => setShowHistory(false)} title="Historial de Traslados">
-                <div className="premium-modal-content">
-                    <div className="modal-tab-content">
-                        <div className="stock-items-list">
-                            {Object.entries(groupedTransferHistory).map(([groupId, movements]) => {
-                                const ordered = [...movements].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-                                // Both legs of a transfer are stored as TRANSFER movements
-                                // distinguished by their reason ("Transfer out" / "Transfer in").
-                                const source = ordered.find((m) => (m.reason || '').toLowerCase().startsWith('transfer out')) || ordered[0];
-                                const destination = ordered.find((m) => (m.reason || '').toLowerCase().startsWith('transfer in')) || ordered[1];
-
-                                return (
-                                    <div key={groupId} className="stock-item-row">
-                                        <div style={{ flex: 1 }}>
-                                            <div className="stock-item-name">{ordered[0]?.product?.name}</div>
-                                            <div className="stock-item-sku">
-                                                {source?.warehouse?.name || 'Origen desconocido'} &rarr; {destination?.warehouse?.name || 'Destino desconocido'}
-                                                {' '}&middot; Cant: {formatNumber(ordered[0]?.quantity || 0)}
-                                                {' '}&middot; Por: {ordered[0]?.user?.name}
-                                                {ordered[0]?.reference && <> &middot; Ref: {ordered[0].reference}</>}
-                                            </div>
-                                        </div>
-                                        <div className="stock-item-sku">{new Date(ordered[0]?.createdAt || Date.now()).toLocaleString('es-ES')}</div>
-                                    </div>
-                                );
-                            })}
-                            {showLegacyTransferHistory && transferHistory.map((m) => (
-                                <div key={m.id} className="stock-item-row">
-                                    <div style={{ flex: 1 }}>
-                                        <div className="stock-item-name">{m.product?.name}</div>
-                                        <div className="stock-item-sku">
-                                            {m.warehouse?.name} &middot; {m.type === 'TRANSFER' ? 'OUT' : 'IN'}: {formatNumber(m.quantity)}
-                                            {' '}&middot; Por: {m.user?.name}
-                                            {m.reference && <> &middot; Ref: {m.reference}</>}
-                                        </div>
-                                    </div>
-                                    <div className="stock-item-sku">{new Date(m.createdAt).toLocaleString('es-ES')}</div>
-                                </div>
-                            ))}
-                            {transferHistory.length === 0 && (
-                                <p className="stock-empty-message">No hay traslados registrados</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
+            <FullScreenModal
+                isOpen={showHistory}
+                onClose={() => setShowHistory(false)}
+                title="Historial de traslados"
+                breadcrumb={['Inventario', 'Bodegas']}
+            >
+                <DataTable<TransferRow>
+                    ariaLabel="Historial de traslados"
+                    rows={transferRows}
+                    rowKey={(r) => r.id}
+                    columns={historyColumns}
+                    empty="No hay traslados registrados"
+                />
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }

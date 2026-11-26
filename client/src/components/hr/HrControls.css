@@ -43,39 +43,31 @@
   grid-column: 1 / -1;
 }
 
-.hr-modal-form .ui-form-grid
-  label:not(.hr-payroll-confirm):not(.hr-benefits-confirm):not(.hr-benefits-check):not(.hr-inline-choice) {
+/* Etiquetas implícitas (<label>Texto<Input/></label>) con el mismo aspecto que Field. */
+.hr-modal-form .ui-form-grid label:not(.ui-field__label):not(.ui-check):not([class*='colorOption']) {
   display: flex;
   flex-direction: column;
   gap: var(--ui-space-1);
-  color: var(--ui-text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--ui-text);
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.hr-modal-form .ui-form-grid textarea {
-  min-height: 104px;
-  resize: vertical;
-}
-
-.hr-modal-form .ui-form-grid :is(input, textarea)::placeholder {
-  color: var(--ui-text-muted);
-}
-
-.hr-modal-form .ui-form-grid .hr-inline-choice {
-  text-transform: none;
-}
+/* Pie de acciones fijo al fondo del único scroll del modal (mismo lugar que el pie de FullScreenModal). */
 
 .hr-modal-form-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--ui-space-5));
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--ui-space-2);
   min-height: 42px;
-  padding-top: var(--ui-space-3);
+  margin: 0 calc(-1 * var(--ui-space-5)) calc(-1 * var(--ui-space-5));
+  padding: var(--ui-space-3) var(--ui-space-5);
   border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface);
 }
 
 .hr-modal-form-footer .ui-button {
@@ -89,43 +81,23 @@
   }
 }
 
-/* Barra de filtros sin caja: se acomoda en varias líneas sin aplastar los controles. */
-.hr-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--ui-space-3);
-  min-width: 0;
-  margin-bottom: var(--ui-space-4);
+/* Texto de ayuda de los formularios de RH. */
+.hr-form-help {
+  margin: 0;
+  color: var(--ui-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
-.hr-filters > * {
-  min-width: 0;
+/* El formulario ocupa todo el alto del cuerpo del modal para que el pie quede siempre abajo. */
+.ui-fsm__body:has(> .ui-fsm__main > .hr-modal-form) {
+  align-content: stretch;
 }
 
-.hr-filter-select {
-  flex: 1 1 12rem;
-  min-width: 11rem;
-  max-width: 100%;
+.ui-fsm__main > .hr-modal-form {
+  min-height: 100%;
 }
 
-.hr-filters .hr-filter-search {
-  flex: 2 1 16rem;
-  min-width: 12rem;
-}
-
-.hr-filters .hr-filters-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ui-space-2);
-  margin-left: auto;
-}
-
-/* Tarjetas KPI de RH: se reparten el ancho y bajan de línea sin aplastarse. */
-.hr-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: var(--ui-space-3);
-  margin-bottom: var(--ui-space-4);
-  min-width: 0;
+.hr-modal-form > .hr-modal-form-footer {
+  margin-top: auto;
 }

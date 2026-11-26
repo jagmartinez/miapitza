@@ -7,17 +7,18 @@ import {
     Edit2,
     Eye,
     Plus,
-    RefreshCw,
     Search,
     UserMinus,
     UsersRound,
     WalletCards,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, Pagination, StatCard, type Column, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import {
+    AppSelect, Button, DataTable, EmptyState, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader,
+    Pagination, StatCard, TableToolbar, type Column,
+} from '@/ui';
+import HrLoading from '../../components/hr/HrLoading';
 import ViewToggle from '../../components/ViewToggle';
 import EmployeeForm from '../../components/hr/EmployeeForm';
-import HrFilterSelect from '../../components/hr/HrFilterSelect';
 import HrStatusPill from '../../components/hr/HrStatusPill';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import { useConfirmDialog } from '../../context/ConfirmContext';
@@ -34,6 +35,7 @@ import type {
 } from '../../types/hr';
 import { useDebounce } from '../../utils/useDebounce';
 import { formatHrMoney } from '../../utils/hrDisplay';
+import styles from '../../components/hr/hrForm.module.css';
 import './hr.css';
 
 type Option = { value: string; label: string };
@@ -249,9 +251,9 @@ export default function Employees() {
             key: 'employee',
             header: 'Empleado',
             render: (employee) => (
-                <div className="catalog-cell-stack">
-                    <span className="cell-title">{employee.legalName}</span>
-                    <span className="cell-sub">{employee.employeeCode}</span>
+                <div className={styles.cellStack}>
+                    <span className={styles.cellTitle}>{employee.legalName}</span>
+                    <span className={styles.cellSub}>{employee.employeeCode}</span>
                 </div>
             ),
         },
@@ -259,16 +261,16 @@ export default function Employees() {
             key: 'user',
             header: 'Usuario',
             render: (employee) => employee.user
-                ? <div className="catalog-cell-stack"><span className="cell-title">@{employee.user.username}</span><span className="cell-sub">Interno</span></div>
+                ? <div className={styles.cellStack}><span className={styles.cellTitle}>@{employee.user.username}</span><span className={styles.cellSub}>Interno</span></div>
                 : '—',
         },
         {
             key: 'identification',
             header: 'Identificación',
             render: (employee) => (
-                <div className="catalog-cell-stack">
-                    <span className="cell-title">{identificationText(employee)}</span>
-                    <span className="cell-sub">{employee.documentNumber === undefined ? 'Dato protegido' : employee.documentType || 'Tipo no definido'}</span>
+                <div className={styles.cellStack}>
+                    <span className={styles.cellTitle}>{identificationText(employee)}</span>
+                    <span className={styles.cellSub}>{employee.documentNumber === undefined ? 'Dato protegido' : employee.documentType || 'Tipo no definido'}</span>
                 </div>
             ),
         },
@@ -279,12 +281,12 @@ export default function Employees() {
             type: 'money',
             render: (employee) => {
                 const compensation = currentCompensation(employee);
-                if (employee.compensation === undefined) return <span className="cell-sub">Acceso restringido</span>;
-                if (!compensation) return <span className="cell-sub">Sin compensación vigente</span>;
+                if (employee.compensation === undefined) return <span className={styles.cellSub}>Acceso restringido</span>;
+                if (!compensation) return <span className={styles.cellSub}>Sin compensación vigente</span>;
                 return (
-                    <div className="catalog-cell-stack hr-employee-compensation-cell">
-                        <span className="cell-title hr-money">{formatHrMoney(compensation.currency, compensation.amount)}</span>
-                        <span className="cell-sub">{compensation.compensationType === 'SALARY' ? 'Salario' : 'Por hora'} · {payFrequencyText(compensation.payFrequency)}</span>
+                    <div className={styles.cellStack}>
+                        <span className={`${styles.cellTitle} hr-money`}>{formatHrMoney(compensation.currency, compensation.amount)}</span>
+                        <span className={styles.cellSub}>{compensation.compensationType === 'SALARY' ? 'Salario' : 'Por hora'} · {payFrequencyText(compensation.payFrequency)}</span>
                     </div>
                 );
             },
@@ -297,88 +299,36 @@ export default function Employees() {
             header: 'Acciones',
             type: 'actions',
             render: (employee) => (
-                <div className="catalog-table-actions">
-                    <button className="catalog-action-btn" type="button" onClick={() => navigate(`/rh/personal/${employee.id}`)} title="Ver expediente" aria-label={`Ver expediente de ${employee.legalName}`}><Eye size={16} /></button>
-                    <button className="catalog-action-btn" type="button" onClick={() => void openEdit(employee)} title="Editar" aria-label={`Editar ${employee.legalName}`}><Edit2 size={16} /></button>
+                <div className={styles.rowActions} onClick={(event) => event.stopPropagation()}>
+                    <IconButton icon={Eye} size="sm" label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)} />
+                    <IconButton icon={Edit2} size="sm" label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)} />
                     {employee.status === 'ACTIVE' && (
-                        <button className="catalog-action-btn danger" type="button" onClick={() => void deactivate(employee)} title="Desactivar" aria-label={`Desactivar ${employee.legalName}`}><UserMinus size={16} /></button>
+                        <IconButton icon={UserMinus} size="sm" label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)} />
                     )}
                 </div>
             ),
         },
     ];
 
+    const hasFilters = Boolean(search || status !== 'ALL' || departmentId || jobPositionId || costCenterId || branchId);
+    const emptyState = (
+        <EmptyState
+            icon={UsersRound}
+            title="No hay empleados que coincidan con los filtros"
+            action={hasFilters ? <Button onClick={clearFilters}>Limpiar filtros</Button> : undefined}
+        />
+    );
+
     return (
-        <div className="page-wrapper hr-employees-page">
+        <PageContent>
             <PageHeader
-        title="Gestión de Personal"
-        description="Expedientes, identificación autorizada y compensación vigente"
-        actions={
-                    <>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button variant="primary" onClick={openCreate}><Plus size={18} /> Nuevo empleado</Button>
-                    </>
-                }
-      />
-
-            <div className="hr-filters" role="search" aria-label="Filtros de personal">
-                <div className="filter-field hr-filter-search">
-                    <label className="filter-field-label" htmlFor="hr-employee-search"><Search size={12} /> Buscar</label>
-                    <div className="search-box">
-                        <Search size={16} aria-hidden="true" />
-                        <input id="hr-employee-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre, código o usuario" />
-                    </div>
-                </div>
-                <HrFilterSelect label="Estado" options={STATUS_OPTIONS} value={status} onChange={(value) => setStatus(value as HrEmploymentStatus | 'ALL')} />
-                <HrFilterSelect
-                    label="Departamento"
-                    options={[{ value: '', label: 'Todos' }, ...lookups.departments.map((item) => ({ value: String(item.id), label: item.name }))]}
-                    value={departmentId}
-                    onChange={(value) => { setDepartmentId(value); setJobPositionId(''); }}
-                />
-                <HrFilterSelect
-                    label="Puesto"
-                    options={[{ value: '', label: 'Todos' }, ...filteredPositions.map((item) => ({ value: String(item.id), label: item.name }))]}
-                    value={jobPositionId}
-                    onChange={setJobPositionId}
-                />
-                <HrFilterSelect
-                    label="Centro de costo"
-                    options={[{ value: '', label: 'Todos' }, ...lookups.costCenters.map((item) => ({ value: String(item.id), label: item.name }))]}
-                    value={costCenterId}
-                    onChange={setCostCenterId}
-                />
-                <HrFilterSelect
-                    label="Sucursal"
-                    options={[{ value: '', label: 'Todas' }, ...(lookups.branches ?? []).map((item) => ({ value: String(item.id), label: item.name }))]}
-                    value={branchId}
-                    onChange={setBranchId}
-                />
-                <div className="hr-filters-actions">
-                    <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>
-                </div>
-            </div>
-
-            {loading && <LoadingSpinner text="Cargando personal…" />}
-
-            {!loading && error && (
-                <div className="state-placeholder" role="alert">
-                    <UsersRound size={42} aria-hidden="true" />
-                    <p className="state-error">{error}</p>
-                    <Button variant="ghost" onClick={() => void loadEmployees()}><RefreshCw size={16} /> Reintentar</Button>
-                </div>
-            )}
-
-            {!loading && !error && employees.length === 0 && (
-                <div className="state-placeholder">
-                    <UsersRound size={48} aria-hidden="true" />
-                    <p>No hay empleados que coincidan con los filtros.</p>
-                    <Button variant="ghost" onClick={clearFilters}>Limpiar filtros</Button>
-                </div>
-            )}
+                title="Gestión de Personal"
+                description="Expedientes, identificación autorizada y compensación vigente"
+                actions={<Button variant="primary" icon={Plus} onClick={openCreate}>Nuevo empleado</Button>}
+            />
 
             {!loading && !error && (pageStats.withoutCompensation > 0 || pageStats.withoutUser > 0) && (
-                <section className="hr-kpi-row" aria-label="Brechas del expediente en esta página">
+                <section className={styles.kpis} aria-label="Brechas del expediente en esta página">
                     {pageStats.withoutCompensation > 0 && (
                         <StatCard tone="danger" label="Sin compensación vigente" value={String(pageStats.withoutCompensation)} context="En esta página · requieren versión salarial." />
                     )}
@@ -388,21 +338,76 @@ export default function Employees() {
                 </section>
             )}
 
-            {!loading && !error && employees.length > 0 && viewMode === 'table' && (
+            <TableToolbar
+                actions={(
+                    <>
+                        {hasFilters && <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>}
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                    </>
+                )}
+            >
+                <div className={styles.search} role="search">
+                    <Input
+                        id="hr-employee-search"
+                        type="search"
+                        aria-label="Buscar empleado"
+                        placeholder="Nombre, código o usuario"
+                        prefix={<Search size={14} aria-hidden="true" />}
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                    />
+                </div>
+                <div className={styles.filter}>
+                    <AppSelect<string> aria-label="Estado" options={STATUS_OPTIONS} value={status} isClearable={false}
+                        onChange={(value) => setStatus((value ?? 'ALL') as HrEmploymentStatus | 'ALL')} />
+                </div>
+                <div className={styles.filter}>
+                    <AppSelect<string> aria-label="Departamento" placeholder="Departamento" isClearable
+                        options={lookups.departments.map((item) => ({ value: String(item.id), label: item.name }))}
+                        value={departmentId || null}
+                        onChange={(value) => { setDepartmentId(value ?? ''); setJobPositionId(''); }} />
+                </div>
+                <div className={styles.filter}>
+                    <AppSelect<string> aria-label="Puesto" placeholder="Puesto" isClearable
+                        options={filteredPositions.map((item) => ({ value: String(item.id), label: item.name }))}
+                        value={jobPositionId || null}
+                        onChange={(value) => setJobPositionId(value ?? '')} />
+                </div>
+                <div className={styles.filter}>
+                    <AppSelect<string> aria-label="Centro de costo" placeholder="Centro de costo" isClearable
+                        options={lookups.costCenters.map((item) => ({ value: String(item.id), label: item.name }))}
+                        value={costCenterId || null}
+                        onChange={(value) => setCostCenterId(value ?? '')} />
+                </div>
+                <div className={styles.filter}>
+                    <AppSelect<string> aria-label="Sucursal" placeholder="Sucursal" isClearable
+                        options={(lookups.branches ?? []).map((item) => ({ value: String(item.id), label: item.name }))}
+                        value={branchId || null}
+                        onChange={(value) => setBranchId(value ?? '')} />
+                </div>
+            </TableToolbar>
+
+            {error ? (
+                <LoadErrorState message={error} onRetry={() => void loadEmployees()} />
+            ) : viewMode === 'table' ? (
                 <DataTable<HrEmployee>
                     rows={employees}
                     rowKey={(employee) => employee.id}
                     columns={columns}
                     ariaLabel="Personal"
+                    loading={loading}
+                    empty={emptyState}
                     onRowClick={setPreview}
                     pagination={{ mode: 'server', page, pageSize: 25, total: totalItems, onChange: (nextPage) => setPage(nextPage) }}
                     pageSizeOptions={[25]}
                     minWidth="72rem"
                     resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
                 />
-            )}
-
-            {!loading && !error && employees.length > 0 && viewMode === 'cards' && (
+            ) : loading ? (
+                <HrLoading text="Cargando personal…" />
+            ) : employees.length === 0 ? (
+                emptyState
+            ) : (
                 <div className="entity-grid hr-employee-grid">
                     {employees.map((employee) => (
                         <article key={employee.id} className={`entity-card entity-card-accent hr-employee-card ${employee.status === 'ACTIVE' ? 'entity-accent-success' : 'entity-accent-warning'}`}>
@@ -414,7 +419,7 @@ export default function Employees() {
                                         <span className="entity-card-tag">{employee.employeeCode}</span>
                                     </div>
                                 </div>
-                                <div className="hr-card-status"><HrStatusPill status={employee.status} /></div>
+                                <div><HrStatusPill status={employee.status} /></div>
                                 <div className="entity-card-meta">
                                     <span className="entity-card-meta-item"><Briefcase size={15} /> {employee.jobPosition?.name ?? 'Sin puesto'}</span>
                                     <span className="entity-card-meta-item"><Building2 size={15} /> {primaryBranch(employee)?.name ?? 'Sin sucursal'}</span>
@@ -433,10 +438,10 @@ export default function Employees() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="entity-card-actions">
-                                <button className="entity-card-action view" type="button" aria-label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)}><Eye size={18} /><span>Ver</span></button>
-                                <button className="entity-card-action edit" type="button" aria-label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)}><Edit2 size={18} /><span>Editar</span></button>
-                                {employee.status === 'ACTIVE' && <button className="entity-card-action delete" type="button" aria-label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)}><UserMinus size={18} /><span>Desactivar</span></button>}
+                            <div className={styles.cardActions}>
+                                <Button size="sm" variant="ghost" icon={Eye} aria-label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)}>Ver</Button>
+                                <Button size="sm" variant="ghost" icon={Edit2} aria-label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)}>Editar</Button>
+                                {employee.status === 'ACTIVE' && <Button size="sm" variant="ghost" icon={UserMinus} aria-label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)}>Desactivar</Button>}
                             </div>
                         </article>
                     ))}
@@ -451,48 +456,42 @@ export default function Employees() {
                 isOpen={Boolean(preview)}
                 onClose={() => setPreview(null)}
                 title={preview?.legalName ?? 'Expediente'}
+                breadcrumb={['Recursos humanos', 'Personal']}
+                status={preview ? <HrStatusPill status={preview.status} /> : undefined}
+                subtitle={preview ? `${preview.jobPosition?.name ?? 'Sin puesto'} · ${preview.department?.name ?? 'Sin departamento'}` : undefined}
+                footer={preview ? (
+                    <>
+                        <Button variant="secondary" icon={Edit2} onClick={() => { const target = preview; setPreview(null); void openEdit(target); }}>Editar</Button>
+                        <Button variant="primary" icon={Eye} onClick={() => navigate(`/rh/personal/${preview.id}`)}>Abrir expediente completo</Button>
+                    </>
+                ) : undefined}
             >
                 {preview && (() => {
                     const compensation = currentCompensation(preview);
                     return (
-                        <div className="hr-pe-preview">
-                            <div className="hr-pe-preview-head">
-                                <HrStatusPill status={preview.status} />
-                                <span>{preview.jobPosition?.name ?? 'Sin puesto'} · {preview.department?.name ?? 'Sin departamento'}</span>
-                            </div>
-                            <dl className="hr-pe-preview-grid">
-                                <div><dt>Código</dt><dd>{preview.employeeCode}</dd></div>
-                                <div><dt>Ingreso</dt><dd>{displayDate(preview.hireDate)}</dd></div>
-                                <div><dt>Identificación</dt><dd>{identificationText(preview)}</dd></div>
-                                <div><dt>Sucursal principal</dt><dd>{primaryBranch(preview)?.name ?? 'Sin asignar'}</dd></div>
-                                <div><dt>Usuario</dt><dd>{preview.user ? `@${preview.user.username}` : 'Sin usuario vinculado'}</dd></div>
-                                <div><dt>Compensación vigente</dt><dd>{preview.compensation === undefined ? 'Acceso restringido' : compensation ? formatHrMoney(compensation.currency, compensation.amount) : 'Sin compensación vigente'}</dd></div>
-                                <div><dt>Correo laboral</dt><dd>{preview.workEmail || '—'}</dd></div>
-                                <div><dt>Teléfono</dt><dd>{preview.phone || '—'}</dd></div>
-                            </dl>
-                            <div className="hr-pe-preview-actions">
-                                <Button variant="primary" onClick={() => navigate(`/rh/personal/${preview.id}`)}><Eye size={16} /> Abrir expediente completo</Button>
-                                <Button variant="secondary" onClick={() => { const target = preview; setPreview(null); void openEdit(target); }}><Edit2 size={16} /> Editar</Button>
-                            </div>
-                        </div>
+                        <dl className={styles.facts}>
+                            <div><dt>Código</dt><dd>{preview.employeeCode}</dd></div>
+                            <div><dt>Ingreso</dt><dd>{displayDate(preview.hireDate)}</dd></div>
+                            <div><dt>Identificación</dt><dd>{identificationText(preview)}</dd></div>
+                            <div><dt>Sucursal principal</dt><dd>{primaryBranch(preview)?.name ?? 'Sin asignar'}</dd></div>
+                            <div><dt>Usuario</dt><dd>{preview.user ? `@${preview.user.username}` : 'Sin usuario vinculado'}</dd></div>
+                            <div><dt>Compensación vigente</dt><dd>{preview.compensation === undefined ? 'Acceso restringido' : compensation ? formatHrMoney(compensation.currency, compensation.amount) : 'Sin compensación vigente'}</dd></div>
+                            <div><dt>Correo laboral</dt><dd>{preview.workEmail || '—'}</dd></div>
+                            <div><dt>Teléfono</dt><dd>{preview.phone || '—'}</dd></div>
+                        </dl>
                     );
                 })()}
             </FullScreenModal>
 
-            <FullScreenModal
-        isOpen={editorOpen}
-        onClose={closeEditor}
-        title={editingEmployee ? `Editar: ${editingEmployee.legalName}` : 'Nuevo empleado'}
-      >
-                <EmployeeForm
-                    employee={editingEmployee}
-                    lookups={lookups}
-                    users={users}
-                    saving={saving}
-                    onCancel={closeEditor}
-                    onSubmit={saveEmployee}
-                />
-            </FullScreenModal>
-        </div>
+            <EmployeeForm
+                isOpen={editorOpen}
+                employee={editingEmployee}
+                lookups={lookups}
+                users={users}
+                saving={saving}
+                onCancel={closeEditor}
+                onSubmit={saveEmployee}
+            />
+        </PageContent>
     );
 }

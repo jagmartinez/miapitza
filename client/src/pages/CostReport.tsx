@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, settingsAPI } from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import {
-    DollarSign, TrendingUp, ShoppingCart, BarChart3,
-    Search, RefreshCw, Calendar, AlertTriangle
-} from 'lucide-react';
+import { Search } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
-import './CostReport.css';
-import { AppSelect, Button, DataTable, EmptyState, Field, PageHeader, formatNumber, type Column } from '@/ui';
+import catalog from './catalog.module.css';
+import {
+    AppSelect, Button, DataTable, DateInput, EmptyState, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar,
+    formatNumber, type Column, type Tone,
+} from '@/ui';
 
 interface CategoryOption {
     id: number;
@@ -112,136 +112,54 @@ export default function CostReport() {
         void loadReport();
     }, [loadReport]);
 
-    const marginClass = summary
-        ? summary.grossMargin >= 50 ? 'kpi-success' : summary.grossMargin >= 30 ? 'kpi-warning' : 'kpi-danger'
-        : '';
+    const marginTone: Tone = summary
+        ? summary.grossMargin >= 50 ? 'success' : summary.grossMargin >= 30 ? 'warning' : 'danger'
+        : 'neutral';
 
     return (
-        <div className="page-wrapper cost-report-page">
+        <PageContent>
             <PageHeader
-                title="Reporte de Costos"
+                title="Reporte de costos"
                 description="Análisis de costos de compra, COGS estimado y margen bruto por período."
-                actions={(
-                    <>
-                    <Button variant="primary" onClick={loadReport} disabled={loading}>
-                        {loading ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                        {loading ? 'Cargando...' : 'Actualizar'}
-                    </Button>
-                    </>
-                )}
             />
 
-            {filterWarning && (
-                <div className="state-placeholder" role="status" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
-                    <AlertTriangle size={18} />
-                    <p className="state-error" style={{ margin: 0 }}>{filterWarning}</p>
-                </div>
-            )}
+            {filterWarning && <p className={catalog.alert} role="status">{filterWarning}</p>}
             {summary && summary.excludedLegacyPurchaseLines > 0 && (
-                <div className="state-placeholder" role="status" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
-                    <AlertTriangle size={18} />
-                    <p className="state-error" style={{ margin: 0 }}>
-                        {summary.excludedLegacyPurchaseLines} línea(s) histórica(s) por {formatCurrency(summary.excludedLegacyPurchaseAmount, settings)}
-                        {' '}no tienen cantidad/costo en UOM base. El total monetario sí las incluye, pero se excluyen del desglose por producto para no reinterpretar unidades.
-                    </p>
-                </div>
+                <p className={catalog.alert} role="status">
+                    {summary.excludedLegacyPurchaseLines} línea(s) histórica(s) por {formatCurrency(summary.excludedLegacyPurchaseAmount, settings)}
+                    {' '}no tienen cantidad/costo en UOM base. El total monetario sí las incluye, pero se excluyen del desglose por producto para no reinterpretar unidades.
+                </p>
             )}
-            {error && (
-                <div className="state-placeholder" role="alert" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
-                    <AlertTriangle size={18} />
-                    <p className="state-error" style={{ margin: 0 }}>{error}</p>
-                    <Button onClick={loadReport} disabled={loading}>
-                        <RefreshCw size={14} /> Reintentar
-                    </Button>
-                </div>
-            )}
+            {error && <LoadErrorState message={error} onRetry={() => { void loadReport(); }} />}
 
-            {/* Filters Toolbar */}
-            <div className="filters-toolbar">
-                <div className="filter-field filter-field-wide">
-                    <label className="filter-field-label">
-                        <Calendar size={12} /> Rango de Fechas
-                    </label>
-                    <div className="filter-field-date-range">
-                        <input
-                            type="date"
-                            className="filter-input"
-                            value={filters.dateFrom}
-                            onChange={e => setFilters({ ...filters, dateFrom: e.target.value })}
-                        />
-                        <span className="filter-range-sep">→</span>
-                        <input
-                            type="date"
-                            className="filter-input"
-                            value={filters.dateTo}
-                            onChange={e => setFilters({ ...filters, dateTo: e.target.value })}
-                        />
-                    </div>
-                </div>
-
-                <div className="filter-field">
-                    <Field label="Sucursal" htmlFor="sel-151">
-<AppSelect inputId="sel-151" options={[{ value: '', label: 'Todas las Sucursales' }, ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))]} value={filters.branchId ?? null} onChange={(__v) => { const opt = ([{ value: '', label: 'Todas las Sucursales' }, ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))]).find((o) => o.value === __v) ?? null; return opt && setFilters({ ...filters, branchId: opt.value }); }} />
-</Field>
-                </div>
-
-                <div className="filter-field">
-                    <Field label="Categoría" htmlFor="sel-161">
-<AppSelect inputId="sel-161" options={[{ value: '', label: 'Todas las Categorías' }, ...categories.map((c) => ({ value: c.id.toString(), label: c.name }))]} value={filters.categoryId ?? null} onChange={(__v) => { const opt = ([{ value: '', label: 'Todas las Categorías' }, ...categories.map((c) => ({ value: c.id.toString(), label: c.name }))]).find((o) => o.value === __v) ?? null; return opt && setFilters({ ...filters, categoryId: opt.value }); }} />
-</Field>
-                </div>
-
-                <div className="filter-field">
-                    <Field label="Proveedor" htmlFor="sel-171">
-<AppSelect inputId="sel-171" options={[{ value: '', label: 'Todos los Proveedores' }, ...suppliers.map((s) => ({ value: s.id.toString(), label: s.name }))]} value={filters.supplierId ?? null} onChange={(__v) => { const opt = ([{ value: '', label: 'Todos los Proveedores' }, ...suppliers.map((s) => ({ value: s.id.toString(), label: s.name }))]).find((o) => o.value === __v) ?? null; return opt && setFilters({ ...filters, supplierId: opt.value }); }} />
-</Field>
-                </div>
-
-                <div className="filter-spacer" />
-
-                <div className="filter-actions">
-                    <Button variant="primary" onClick={loadReport} disabled={loading}>
-                        <Search size={16} /> Aplicar Filtros
-                    </Button>
-                </div>
-            </div>
-
-            {/* KPI Cards */}
             {summary && (
-                <div className="kpi-grid">
-                    <div className="kpi-card kpi-neutral">
-                        <div className="kpi-label">
-                            <ShoppingCart size={14} /> Costo Total Compras
-                        </div>
-                        <div className="kpi-value">{formatCurrency(summary.totalPurchaseCost, settings)}</div>
-                        <div className="kpi-detail">{summary.purchaseOrderCount} órdenes de compra</div>
-                    </div>
-                    <div className="kpi-card kpi-warning">
-                        <div className="kpi-label">
-                            <DollarSign size={14} /> COGS Estimado
-                        </div>
-                        <div className="kpi-value">{formatCurrency(summary.estimatedCOGS, settings)}</div>
-                        <div className="kpi-detail">Ledger ORD-* (receta × costo solo si no hay movimientos)</div>
-                    </div>
-                    <div className="kpi-card kpi-success">
-                        <div className="kpi-label">
-                            <TrendingUp size={14} /> Ingresos
-                        </div>
-                        <div className="kpi-value">{formatCurrency(summary.totalRevenue, settings)}</div>
-                    </div>
-                    <div className={`kpi-card ${marginClass}`}>
-                        <div className="kpi-label">
-                            <BarChart3 size={14} /> Margen Bruto
-                        </div>
-                        <div className="kpi-value">
-                            {formatNumber(summary.grossMargin, 1)}%
-                        </div>
-                        <div className="kpi-detail">(Ingresos − COGS) / Ingresos</div>
-                    </div>
+                <div className={catalog.kpiGrid}>
+                    <StatCard
+                        label="Costo total de compras"
+                        value={formatCurrency(summary.totalPurchaseCost, settings)}
+                        context={`${formatNumber(summary.purchaseOrderCount, 0)} órdenes de compra en el período`}
+                    />
+                    <StatCard
+                        label="COGS estimado"
+                        tone="warning"
+                        value={formatCurrency(summary.estimatedCOGS, settings)}
+                        context="Ledger ORD-* (receta × costo solo si no hay movimientos)"
+                    />
+                    <StatCard
+                        label="Ingresos"
+                        tone="success"
+                        value={formatCurrency(summary.totalRevenue, settings)}
+                        context="Ventas registradas en el período"
+                    />
+                    <StatCard
+                        label="Margen bruto"
+                        tone={marginTone}
+                        value={`${formatNumber(summary.grossMargin, 1)} %`}
+                        context="(Ingresos − COGS) / Ingresos"
+                    />
                 </div>
             )}
 
-            {/* Product Cost Table */}
             <DataTable
                 ariaLabel="Detalle de costos por producto"
                 rows={products}
@@ -250,22 +168,54 @@ export default function CostReport() {
                 defaultPageSize={PAGE_SIZE}
                 pageSizeOptions={[10, 20, 50, 100]}
                 resetKey={`${filters.dateFrom}|${filters.dateTo}|${filters.branchId}|${filters.categoryId}|${filters.supplierId}`}
-                footerLabel={`${products.length} productos`}
+                footerLabel={`Total de la página · ${products.length} productos`}
                 empty={<EmptyState title="Sin datos para los filtros seleccionados" />}
+                toolbar={(
+                    <TableToolbar actions={(
+                        <Button variant="primary" icon={Search} onClick={loadReport} loading={loading}>Aplicar filtros</Button>
+                    )}>
+                        <DateInput aria-label="Desde" value={filters.dateFrom} onChange={e => setFilters({ ...filters, dateFrom: e.target.value })} />
+                        <DateInput aria-label="Hasta" value={filters.dateTo} onChange={e => setFilters({ ...filters, dateTo: e.target.value })} />
+                        <AppSelect
+                            aria-label="Sucursal"
+                            options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                            value={filters.branchId || null}
+                            onChange={(v) => setFilters({ ...filters, branchId: v || '' })}
+                            placeholder="Todas las sucursales"
+                            isClearable
+                        />
+                        <AppSelect
+                            aria-label="Categoría"
+                            options={categories.map((c) => ({ value: c.id.toString(), label: c.name }))}
+                            value={filters.categoryId || null}
+                            onChange={(v) => setFilters({ ...filters, categoryId: v || '' })}
+                            placeholder="Todas las categorías"
+                            isClearable
+                        />
+                        <AppSelect
+                            aria-label="Proveedor"
+                            options={suppliers.map((s) => ({ value: s.id.toString(), label: s.name }))}
+                            value={filters.supplierId || null}
+                            onChange={(v) => setFilters({ ...filters, supplierId: v || '' })}
+                            placeholder="Todos los proveedores"
+                            isClearable
+                        />
+                    </TableToolbar>
+                )}
                 columns={[
                     { key: 'product', header: 'Producto', render: (p) => (
-                        <div>
-                            <div className="product-cell-name">{p.productName}</div>
-                            {p.sku && <div className="product-cell-sku">{p.sku}</div>}
+                        <div className={catalog.cellStack}>
+                            <span className={catalog.cellTitle}>{p.productName}</span>
+                            {p.sku && <span className={catalog.muted}>{p.sku}</span>}
                         </div>
                     ) },
-                    { key: 'category', header: 'Categoría', render: (p) => p.categoryName || '-' },
-                    { key: 'qty', header: 'Cant. Comprada', type: 'qty', render: (p) => `${formatNumber(p.totalQuantity)} ${p.unit}` },
-                    { key: 'totalCost', header: 'Costo Total', type: 'money', render: (p) => formatCurrency(p.totalCost, settings) },
-                    { key: 'avg', header: 'Costo Unit. Prom.', type: 'money', render: (p) => formatCurrency(p.avgUnitCost, settings) },
-                    { key: 'current', header: 'Costo Actual', type: 'money', render: (p) => formatCurrency(p.currentAvgCost, settings) },
+                    { key: 'category', header: 'Categoría', render: (p) => p.categoryName || '—' },
+                    { key: 'qty', header: 'Cant. comprada', type: 'qty', render: (p) => `${formatNumber(p.totalQuantity)} ${p.unit}` },
+                    { key: 'totalCost', header: 'Costo total', type: 'money', total: true, accessor: (p) => p.totalCost },
+                    { key: 'avg', header: 'Costo unit. prom.', type: 'money', render: (p) => formatCurrency(p.avgUnitCost, settings) },
+                    { key: 'current', header: 'Costo actual', type: 'money', render: (p) => formatCurrency(p.currentAvgCost, settings) },
                 ] as Column<(typeof products)[number]>[]}
             />
-        </div>
+        </PageContent>
     );
 }

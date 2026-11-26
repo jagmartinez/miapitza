@@ -1,4 +1,4 @@
-import { Button } from '@/ui';
+import { Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
 import { useState } from 'react';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import HrMoneyInput from './HrMoneyInput';
@@ -131,8 +131,8 @@ export default function BenefitsTransitionForm({
     >
       <label>
         Fecha efectiva
-        <input
-          type="date"
+        <DateInput
+         
           value={effectiveDate}
           onChange={(event) => setEffectiveDate(event.target.value)}
           required
@@ -153,7 +153,7 @@ export default function BenefitsTransitionForm({
         <>
           <label>
             Número de cuotas propuesto
-            <input
+            <Input
               type="number"
               min="1"
               max="120"
@@ -164,8 +164,8 @@ export default function BenefitsTransitionForm({
           </label>
           <label>
             Primera cuota propuesta
-            <input
-              type="date"
+            <DateInput
+             
               value={firstDueDate}
               onChange={(event) => setFirstDueDate(event.target.value)}
               required
@@ -176,7 +176,7 @@ export default function BenefitsTransitionForm({
       {asksReference && (
         <label className="span-full">
           Referencia de operación
-          <input
+          <Input
             value={operationReference}
             onChange={(event) => setOperationReference(event.target.value)}
             maxLength={160}
@@ -186,7 +186,7 @@ export default function BenefitsTransitionForm({
       )}
       <label className="span-full">
         Motivo obligatorio
-        <textarea
+        <Textarea
           rows={5}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
@@ -194,17 +194,11 @@ export default function BenefitsTransitionForm({
           required
         />
       </label>
-      <label className="hr-benefits-confirm span-full">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-        />
-        <span>
+      <Checkbox className="span-full" checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           <ShieldCheck size={17} aria-hidden="true" /> Confirmo <strong>{LABELS[action]}</strong>{' '}
           sobre {code} y revisé el detalle financiero.
-        </span>
-      </label>
+        </span></>} />
     </HrModalFormShell>
   );
 }

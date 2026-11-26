@@ -13,6 +13,8 @@
 .ui-cell { padding: var(--ui-space-2) var(--ui-space-3); text-align: left; min-width: 0; overflow-wrap: anywhere; }
 th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); text-transform: uppercase; letter-spacing: .02em; }
 .ui-cell--numeric { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Encabezados: parten por palabras dentro de su columna, nunca invaden la vecina. */
+th.ui-cell, th.ui-cell--numeric { white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: auto; line-height: 1.25; }
 .ui-cell--actions { display: flex; justify-content: flex-end; gap: var(--ui-space-1); }
 .ui-row--clickable { cursor: pointer; }
 .ui-row--clickable:hover { background: var(--ui-surface-2); }
@@ -24,6 +26,10 @@ th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); tex
 .ui-table__empty td { display: block; }
 
 .ui-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); justify-content: space-between; font-size: 13px; color: var(--ui-text-muted); }
+.ui-pagination__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); margin-left: auto; }
+.ui-pagination__size { display: inline-flex; align-items: center; gap: var(--ui-space-2); white-space: nowrap; }
+.ui-pagination__size .app-select-anchor { display: block; width: 92px; }
+.ui-pagination__size .app-select__dropdown-indicator { padding: 4px; }
 .ui-pagination__pages { display: flex; align-items: center; gap: var(--ui-space-1); }
 .ui-pagination__page {
   min-width: 32px; height: 32px; padding: 0 var(--ui-space-2); font: inherit; cursor: pointer;
@@ -38,8 +44,15 @@ th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); tex
 .ui-empty__title { margin: 0; font-weight: 600; color: var(--ui-text); }
 .ui-empty__desc { margin: 0; color: var(--ui-text-muted); font-size: 14px; }
 
-.ui-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-3); }
-.ui-toolbar__filters, .ui-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); min-width: 0; max-width: 100%; }
+/* Filtros en columnas iguales: al partir línea ningún filtro se estira a todo el ancho; las acciones quedan arriba a la derecha. */
+.ui-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ui-space-3); }
+.ui-toolbar__filters { flex: 1 1 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); align-items: center; gap: var(--ui-space-2); min-width: 0; }
+.ui-toolbar__filters > * { min-width: 0; max-width: none; }
+.ui-toolbar__actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); min-width: 0; max-width: 100%; }
+@media (max-width: 640px) {
+  .ui-toolbar { flex-wrap: wrap; }
+  .ui-toolbar__filters { flex-basis: 100%; }
+}
 
 .ui-loaderror { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--ui-space-2) var(--ui-space-3); padding: var(--ui-space-5) var(--ui-space-3); color: var(--ui-danger); }
 .ui-loaderror__msg { margin: 0; min-width: 0; font-size: var(--ui-text-md); color: var(--ui-text); overflow-wrap: anywhere; }

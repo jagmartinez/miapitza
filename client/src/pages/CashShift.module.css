@@ -10,26 +10,56 @@
 }
 .notice span { flex: 1 1 16rem; min-width: 0; }
 
-.kpis {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-    gap: var(--ui-space-4); margin-bottom: var(--ui-space-5);
-}
 
-.layout {
-    display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
-    gap: var(--ui-space-5); align-items: start;
+.arqueo {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--ui-space-4); align-items: start; margin-bottom: var(--ui-space-4);
 }
-.main, .side { min-width: 0; }
-.side { display: flex; flex-direction: column; gap: var(--ui-space-4); }
+.sideCol { display: flex; flex-direction: column; gap: var(--ui-space-4); min-width: 0; }
 @media (max-width: 1023px) {
-    .layout { grid-template-columns: minmax(0, 1fr); }
+    .arqueo { grid-template-columns: minmax(0, 1fr); }
 }
 
-.panel {
-    min-width: 0; padding: var(--ui-space-4);
+.card {
+    min-width: 0; display: flex; flex-direction: column; overflow: hidden;
     border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); background: var(--ui-surface);
 }
-.panelTitle { margin: 0 0 var(--ui-space-3); font-size: var(--ui-text-md); font-weight: 700; color: var(--ui-text); }
+.cardPad { padding: var(--ui-space-4); gap: var(--ui-space-3); }
+.cardHead {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-2) var(--ui-space-3);
+    padding: var(--ui-space-3) var(--ui-space-4); border-bottom: 1px solid var(--ui-border);
+}
+.cardHeadInline { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--ui-space-2) var(--ui-space-3); min-width: 0; }
+.cardTitle { margin: 0; font-size: var(--ui-text-md); font-weight: 600; color: var(--ui-text); }
+.cardEmpty { margin: 0; padding: var(--ui-space-5) var(--ui-space-4); color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.muted { color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.num { font-variant-numeric: tabular-nums; }
+.exchange { padding: var(--ui-space-3) var(--ui-space-4) 0; max-width: 20rem; }
+
+.dlStrong { padding-top: var(--ui-space-2); border-top: 1px solid var(--ui-border); }
+.dlStrong > div { font-weight: 600; }
+.dlStrong dt { color: var(--ui-text); }
+
+.diffBox {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-2) var(--ui-space-3);
+    padding: var(--ui-space-3); border-radius: var(--ui-radius-md);
+    background: var(--ui-warning-soft); color: var(--ui-warning);
+}
+.diffBox[data-tone='success'] { background: var(--ui-success-soft); color: var(--ui-success); }
+.diffBox[data-tone='danger'] { background: var(--ui-danger-soft); color: var(--ui-danger); }
+.diffText { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 12rem; font-size: var(--ui-text-xs); }
+.diffText strong { font-size: var(--ui-text-sm); }
+.diffAmount { font-size: var(--ui-text-lg); font-variant-numeric: tabular-nums; }
+.closeActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--ui-space-2); }
+
+.payList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ui-space-3); }
+.payRow { display: grid; grid-template-columns: minmax(5.5rem, 7rem) minmax(0, 1fr) minmax(6rem, 8rem); align-items: center; gap: var(--ui-space-3); font-size: var(--ui-text-md); }
+.payRow > :last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.payBar { height: 8px; border-radius: 4px; background: var(--ui-surface-2); overflow: hidden; }
+.payBar > span { display: block; height: 100%; border-radius: 4px; background: var(--ui-primary); }
+.footnote { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+
+.movements { display: flex; flex-direction: column; gap: var(--ui-space-3); min-width: 0; }
 
 .dl { margin: 0; display: flex; flex-direction: column; gap: var(--ui-space-2); }
 .dl > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--ui-space-1) var(--ui-space-3); min-width: 0; font-size: var(--ui-text-md); }
@@ -45,16 +75,33 @@
 .supplierRow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ui-space-3); min-width: 0; }
 .supplierSelect { flex: 1 1 16rem; min-width: 0; }
 
-.denomList { display: flex; flex-direction: column; gap: var(--ui-space-2); min-width: 0; }
+.denomTable { display: flex; flex-direction: column; min-width: 0; font-size: var(--ui-text-md); }
 .denomRow {
-    display: grid; grid-template-columns: minmax(4rem, 1fr) minmax(5rem, 7rem) minmax(6rem, 1.2fr);
+    display: grid; grid-template-columns: minmax(4rem, 1fr) minmax(5rem, 1fr) minmax(6rem, 1.2fr);
     align-items: center; gap: var(--ui-space-3); min-width: 0;
+    min-height: 44px; padding: var(--ui-space-1) var(--ui-space-4);
+    border-top: 1px solid var(--ui-border);
+}
+.denomHead {
+    min-height: 0; padding-block: var(--ui-space-2); border-top: 0;
+    background: var(--ui-surface-2); color: var(--ui-text-muted);
+    font-size: var(--ui-text-xs); font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+}
+.alignEnd { text-align: right; }
+.denomGroup {
+    padding: var(--ui-space-2) var(--ui-space-4); border-top: 1px solid var(--ui-border);
+    color: var(--ui-text-muted); font-size: var(--ui-text-xs); font-weight: 600;
 }
 .denomValue { font-variant-numeric: tabular-nums; color: var(--ui-text); }
+.denomInput { min-width: 0; }
+.denomInput input { text-align: right; font-variant-numeric: tabular-nums; }
+.denomCount { text-align: right; font-variant-numeric: tabular-nums; }
 .denomSubtotal { text-align: right; font-variant-numeric: tabular-nums; color: var(--ui-text-muted); overflow-wrap: anywhere; }
 .hasValue { color: var(--ui-text); font-weight: 600; }
+.denomTotal { background: var(--ui-surface-2); font-weight: 600; min-height: 48px; }
+.denomTotal .denomSubtotal { color: var(--ui-text); }
+.denomTotalLabel { grid-column: 1 / 3; }
 
-.asideStack { display: flex; flex-direction: column; gap: var(--ui-space-3); min-width: 0; }
 .messages { display: flex; flex-direction: column; gap: var(--ui-space-2); }
 .message { margin: 0; font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
 .message[role='alert'] { color: var(--ui-danger); }
@@ -71,4 +118,9 @@
     .denomRow > :nth-child(1) { grid-area: value; }
     .denomRow > :nth-child(2) { grid-area: input; min-width: 0; }
     .denomRow > :nth-child(3) { grid-area: subtotal; }
+    .denomHead { display: none; }
+    .denomTotal { grid-template-areas: none; grid-template-columns: minmax(0, 1fr) auto; }
+    .denomTotal > :nth-child(1), .denomTotal > :nth-child(2) { grid-area: auto; grid-column: auto; }
+    .payRow { grid-template-columns: minmax(5rem, 6rem) minmax(0, 1fr); }
+    .payRow > :last-child { grid-column: 1 / -1; }
 }

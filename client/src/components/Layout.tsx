@@ -22,7 +22,8 @@ export default function Layout() {
     const { t } = useLanguage();
     const navigate = useNavigate();
     const location = useLocation();
-    const isTableWorkspace = location.pathname === '/tables' || location.pathname === '/kds';
+    // /tables usa el shell normal (riel + barra superior) como el mockup de Mesas; solo el KDS es de pantalla completa.
+    const isTableWorkspace = location.pathname === '/kds';
     // Por defecto el riel va contraído (64 px, solo iconos).
     const [collapsed, setCollapsed] = useState(() => {
         try { return localStorage.getItem(COLLAPSED_KEY) !== 'false'; } catch { return true; }

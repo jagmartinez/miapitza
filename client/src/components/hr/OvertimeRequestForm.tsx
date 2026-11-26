@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, DateInput, Input, Textarea } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { Clock3 } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
@@ -83,8 +83,8 @@ export default function OvertimeRequestForm({
       )}
       <label>
         Fecha
-        <input
-          type="date"
+        <DateInput
+         
           value={date}
           onChange={(event) => setDate(event.target.value)}
           required
@@ -92,7 +92,7 @@ export default function OvertimeRequestForm({
       </label>
       <label>
         Minutos solicitados
-        <input
+        <Input
           type="number"
           min="1"
           step="1"
@@ -103,7 +103,7 @@ export default function OvertimeRequestForm({
       </label>
       <label className="span-full">
         Razón
-        <textarea
+        <Textarea
           rows={4}
           maxLength={700}
           value={reason}

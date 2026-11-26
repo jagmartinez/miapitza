@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { IconButton } from '../primitives/IconButton';
-import { SegmentedControl } from '../forms/SegmentedControl';
+import { AppSelect } from '../forms/AppSelect';
 import './data.css';
 
 type Props = {
@@ -33,14 +33,20 @@ export function Pagination({ page, pageSize, total, pageSizeOptions = [10, 25, 5
   return (
     <nav className="ui-pagination" aria-label={label}>
       <span className="ui-pagination__info" aria-live="polite">{infoText ?? text}</span>
+      <div className="ui-pagination__controls">
       {hidePageSize ? null : (
-        <SegmentedControl
-          size="sm"
-          ariaLabel="Filas por página"
-          options={pageSizeOptions.map((n) => ({ value: String(n), label: String(n) }))}
-          value={String(pageSize)}
-          onChange={(v) => onChange(1, Number(v))}
-        />
+        <div className="ui-pagination__size">
+          <span aria-hidden="true">Filas</span>
+          <AppSelect<number>
+            size="sm"
+            aria-label="Filas por página"
+            isClearable={false}
+            isSearchable={false}
+            options={pageSizeOptions.map((n) => ({ value: n, label: String(n) }))}
+            value={pageSize}
+            onChange={(v) => v != null && onChange(1, v)}
+          />
+        </div>
       )}
       <div className="ui-pagination__pages">
         <IconButton size="sm" icon={ChevronLeft} label="Página anterior" disabled={page <= 1} onClick={() => onChange(page - 1, pageSize)} />
@@ -61,6 +67,7 @@ export function Pagination({ page, pageSize, total, pageSizeOptions = [10, 25, 5
           ),
         )}
         <IconButton size="sm" icon={ChevronRight} label="Página siguiente" disabled={page >= pages} onClick={() => onChange(page + 1, pageSize)} />
+      </div>
       </div>
     </nav>
   );

@@ -44,8 +44,9 @@ describe('frontend recovery and session safety', () => {
         expect(usersSource).toContain('loadData(lastRequestedCompanyId.current, true)');
         expect(usersSource).toContain('loadRequestGuard.current.begin()');
         expect(usersSource).toContain('loadRequestGuard.current.isCurrent(requestId)');
-        expect(usersSource).toContain("{!loadError && viewMode === 'table'");
-        expect(usersSource).toContain("{!loadError && viewMode === 'cards'");
+        // Users ya no tiene vista de tarjetas: con error de carga se muestra LoadErrorState en lugar de la tabla.
+        expect(usersSource).toMatch(/\{loadError \? \(\s*<LoadErrorState/);
+        expect(usersSource).toContain('disabled={Boolean(loadError)}');
         expect(reservationsSource).toContain("{!loadError && viewMode === 'calendar'");
         expect(reservationsSource).toContain("{!loadError && viewMode === 'table'");
     });

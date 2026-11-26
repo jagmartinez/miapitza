@@ -7,9 +7,29 @@ import { useToast } from '../hooks/useToast';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { kardexUrlFilters } from '../utils/kardexLink';
-import { FileText, Download, Calendar, Filter, ArrowLeft } from 'lucide-react';
-import './Kardex.css';
-import { AppSelect, Button, Field, DataTable, PageHeader, formatNumber, type Column } from '@/ui';
+import { FileText, Download, Filter, ArrowLeft } from 'lucide-react';
+import catalog from './catalog.module.css';
+import {
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, PageContent, PageHeader, StatCard, TableToolbar,
+    formatNumber, type Column, type Tone,
+} from '@/ui';
+
+const MOVEMENT_LABEL: Record<string, string> = {
+    IN: 'Entrada',
+    OUT: 'Salida',
+    ADJUSTMENT: 'Ajuste',
+    TRANSFER: 'Traslado',
+    COUNT: 'Conteo',
+    WASTE: 'Merma',
+    PRODUCTION: 'Producción',
+};
+const MOVEMENT_TONE: Record<string, Tone> = {
+    IN: 'success',
+    OUT: 'warning',
+    ADJUSTMENT: 'primary',
+    TRANSFER: 'neutral',
+    WASTE: 'danger',
+};
 import { getApiErrorMessage } from '../utils/apiError';
 
 interface WarehouseRow {
@@ -204,7 +224,7 @@ export default function Kardex() {
             && movement.originalUnit !== unitLabel
             && movement.originalQuantity != null;
         return showOriginal ? (
-            <span className="kardex-original-unit" style={{ display: 'block', fontSize: '11px', color: 'var(--ui-text-muted)' }}>
+            <span className={catalog.muted} style={{ display: 'block' }}>
                 ({movement.originalQuantity} {movement.originalUnit})
             </span>
         ) : null;
@@ -242,176 +262,128 @@ export default function Kardex() {
     };
 
     return (
-        <div className="kardex-page">
-            {/* Back Button */}
-            <button className="kardex-back-button" onClick={() => navigate('/inventory')}>
-                <ArrowLeft size={18} />
-                Volver a Inventario
-            </button>
-
-            {/* Header */}
+        <PageContent>
             <PageHeader
-                title={`Kardex de Inventario${kardexData ? `: ${kardexData.product.name}` : ''}`}
-                description="Reporte detallado de movimientos"
+                title={`Kardex de inventario${kardexData ? `: ${kardexData.product.name}` : ''}`}
+                description="Entradas, salidas y saldo valorizado por producto."
+                actions={(
+                    <>
+                        <Button icon={ArrowLeft} variant="ghost" onClick={() => navigate('/inventory')}>Volver a Inventario</Button>
+                        <Button icon={Download} onClick={handleExport} disabled={!kardexData}>Excel</Button>
+                    </>
+                )}
             />
 
-            {/* Filters */}
-            <div className="kardex-filters">
-                <div className="filter-row">
-                    <Field label="Producto" htmlFor="sel-266">
-<AppSelect inputId="sel-266" options={products.map((p) => ({
-                            value: p.id,
-                            label: `${p.name}${p.sku ? ` (${p.sku})` : ''}`,
-                        }))} value={(selectedProduct
-                                ? {
-                                    value: selectedProduct,
-                                    label: products.find((p) => p.id === selectedProduct)?.name || `Producto #${selectedProduct}`,
-                                }
-                                : null)?.value ?? null} onChange={(__v) => { const option = (products.map((p) => ({
-                            value: p.id,
-                            label: `${p.name}${p.sku ? ` (${p.sku})` : ''}`,
-                        }))).find((o) => o.value === __v) ?? null; return setSelectedProduct(option?.value ?? null); }} placeholder="Selecciona un producto..." isClearable />
-</Field>
-
-                    <Field label="Almacén" htmlFor="sel-285">
-<AppSelect inputId="sel-285" options={[
-                            { value: null, label: 'Todos los almacenes' },
-                            ...warehouses.map(w => ({ value: w.id, label: w.name }))
-                        ]} value={(selectedWarehouse ? { value: selectedWarehouse, label: warehouses.find(w => w.id === selectedWarehouse)?.name || '' } : { value: null, label: 'Todos los almacenes' })?.value ?? null} onChange={(__v) => { const option = ([
-                            { value: null, label: 'Todos los almacenes' },
-                            ...warehouses.map(w => ({ value: w.id, label: w.name }))
-                        ]).find((o) => o.value === __v) ?? null; return setSelectedWarehouse(option?.value ?? null); }} />
-</Field>
-
-                    <div className="date-filter">
-                        <label><Calendar size={16} /> Desde</label>
-                        <input
-                            type="date"
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                        />
-                    </div>
-
-                    <div className="date-filter">
-                        <label><Calendar size={16} /> Hasta</label>
-                        <input
-                            type="date"
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                        />
-                    </div>
-
-                    <Field label="Tipo" htmlFor="sel-313">
-<AppSelect inputId="sel-313" options={[
-                            { value: '', label: 'Todos' },
-                            { value: 'IN', label: 'Entrada' },
-                            { value: 'OUT', label: 'Salida' },
-                            { value: 'ADJUSTMENT', label: 'Ajuste' },
-                            { value: 'TRANSFER', label: 'Transferencia' }
-                        ]} value={movementType ?? null} onChange={(__v) => { const option = ([
-                            { value: '', label: 'Todos' },
-                            { value: 'IN', label: 'Entrada' },
-                            { value: 'OUT', label: 'Salida' },
-                            { value: 'ADJUSTMENT', label: 'Ajuste' },
-                            { value: 'TRANSFER', label: 'Transferencia' }
-                        ]).find((o) => o.value === __v) ?? null; return setMovementType(option?.value || ''); }} />
-</Field>
-
-                    <Button variant="primary" onClick={loadKardex} disabled={!selectedProduct || loading}>
-                        <Filter size={18} />
-                        {loading ? 'Cargando...' : 'Aplicar'}
-                    </Button>
-
-                    <Button onClick={handleExport} variant="secondary" disabled={!kardexData}>
-                        <Download size={18} />
-                        Excel
-                    </Button>
-                </div>
-            </div>
-
-            {/* Balance Cards Row */}
             {kardexData && (
-                <div className="kardex-product-info">
-                    <div className="balance-cards-row">
-                        <div className="balance-card opening">
-                            <span className="balance-label">Saldo Inicial</span>
-                            <span className="balance-qty">{formatNumber(num(kardexData.openingBalance.quantity), 3)} {unitLabel}</span>
-                            <span className="balance-cost">{formatCurrency(kardexData.openingBalance.cost, settings)}</span>
-                        </div>
-
-                        <div className="balance-card total-in">
-                            <span className="balance-label">Total Entradas</span>
-                            <span className="balance-value in">{formatNumber(num(kardexData.totals.totalIn), 3)} {unitLabel}</span>
-                        </div>
-
-                        <div className="balance-card total-out">
-                            <span className="balance-label">Total Salidas</span>
-                            <span className="balance-value out">{formatNumber(num(kardexData.totals.totalOut), 3)} {unitLabel}</span>
-                        </div>
-
-                        <div className="balance-card closing">
-                            <span className="balance-label">Saldo Final</span>
-                            <span className="balance-qty">{formatNumber(num(kardexData.closingBalance.quantity), 3)} {unitLabel}</span>
-                            <span className="balance-cost">{formatCurrency(kardexData.closingBalance.cost, settings)}</span>
-                        </div>
-                    </div>
+                <div className={catalog.kpiGrid}>
+                    <StatCard
+                        label="Saldo inicial"
+                        value={`${formatNumber(num(kardexData.openingBalance.quantity), 3)} ${unitLabel}`}
+                        context={`Valorizado en ${formatCurrency(kardexData.openingBalance.cost, settings)}`}
+                    />
+                    <StatCard
+                        label="Total entradas"
+                        tone="success"
+                        value={`${formatNumber(num(kardexData.totals.totalIn), 3)} ${unitLabel}`}
+                        context="Compras, producción, ajustes y traslados recibidos en el período"
+                    />
+                    <StatCard
+                        label="Total salidas"
+                        tone="warning"
+                        value={`${formatNumber(num(kardexData.totals.totalOut), 3)} ${unitLabel}`}
+                        context="Ventas, consumo, mermas y traslados enviados en el período"
+                    />
+                    <StatCard
+                        label="Saldo final"
+                        value={`${formatNumber(num(kardexData.closingBalance.quantity), 3)} ${unitLabel}`}
+                        context={`Valorizado en ${formatCurrency(kardexData.closingBalance.cost, settings)}`}
+                    />
                 </div>
             )}
 
-            {/* Movements Table */}
-            {kardexData && kardexData.movements.length > 0 ? (
-                <div className="data-table-wrapper kardex-table-container">
-                    <div className="data-table-header">
-                        <span>Movimientos</span>
-                        <span className="data-table-count">{movements.length} registros</span>
-                    </div>
-                    <DataTable
-                        ariaLabel="Movimientos de kardex"
-                        rows={movements}
-                        rowKey={(movement) => movement.id}
-                        defaultPageSize={PAGE_SIZE}
-                        pageSizeOptions={[10, 20, 50, 100]}
-                        resetKey={kardexData}
-                        columns={[
-                            { key: 'date', header: 'Fecha', type: 'date' },
-                            { key: 'type', header: 'Tipo', render: (movement) => (
-                                <span className={`movement-type ${movement.type.toLowerCase()}`}>{movement.type}</span>
-                            ) },
-                            { key: 'reference', header: 'Referencia' },
-                            { key: 'in', header: 'Entrada', type: 'qty', render: (movement) => (
-                                <span className={movement.in ? 'movement-in' : ''}>
-                                    {movement.in ? `${formatNumber(num(movement.in), 3)} ${unitLabel}` : '-'}
-                                    {movement.in ? originalHint(movement) : null}
-                                </span>
-                            ) },
-                            { key: 'out', header: 'Salida', type: 'qty', render: (movement) => (
-                                <span className={movement.out ? 'movement-out' : ''}>
-                                    {movement.out ? `${formatNumber(num(movement.out), 3)} ${unitLabel}` : '-'}
-                                    {movement.out ? originalHint(movement) : null}
-                                </span>
-                            ) },
-                            { key: 'balance', header: 'Saldo', type: 'qty', render: (movement) => <strong>{formatNumber(num(movement.balance), 3)} {unitLabel}</strong> },
-                            { key: 'unitCost', header: 'Costo Unit.', type: 'money', render: (movement) => formatCurrency(movement.unitCost, settings) },
-                            { key: 'totalCost', header: 'Costo Total', type: 'money', render: (movement) => formatCurrency(movement.totalCost, settings) },
-                            { key: 'warehouse', header: 'Almacén' },
-                            { key: 'branch', header: 'Sucursal' },
-                            { key: 'user', header: 'Usuario' },
-                        ] as Column<(typeof movements)[number]>[]}
+            <DataTable
+                ariaLabel="Movimientos de kardex"
+                rows={movements}
+                rowKey={(movement) => movement.id}
+                loading={loading}
+                defaultPageSize={PAGE_SIZE}
+                pageSizeOptions={[10, 20, 50, 100]}
+                resetKey={kardexData}
+                empty={(
+                    <EmptyState
+                        icon={FileText}
+                        title={kardexData ? 'No hay movimientos en el período seleccionado' : 'Selecciona un producto'}
+                        description={kardexData ? undefined : 'Elige un producto y aplica los filtros para ver entradas, salidas y saldo.'}
                     />
-                </div>
-            ) : kardexData && kardexData.movements.length === 0 ? (
-                <div className="no-movements">
-                    <FileText size={48} />
-                    <p>No hay movimientos en el período seleccionado</p>
-                </div>
-            ) : !selectedProduct ? (
-                <div className="no-movements">
-                    <FileText size={48} />
-                    <p>Selecciona un producto (ej. DEMO-CYCLE Masa pizza) para ver entradas, salidas y saldo</p>
-                </div>
-            ) : null}
+                )}
+                toolbar={(
+                    <TableToolbar actions={(
+                        <Button variant="primary" icon={Filter} onClick={loadKardex} disabled={!selectedProduct} loading={loading}>
+                            Aplicar
+                        </Button>
+                    )}>
+                        <AppSelect<number>
+                            aria-label="Producto"
+                            options={products.map((p) => ({ value: p.id, label: `${p.name}${p.sku ? ` (${p.sku})` : ''}` }))}
+                            value={selectedProduct}
+                            onChange={(v) => setSelectedProduct(v ?? null)}
+                            placeholder="Selecciona un producto..."
+                            isClearable
+                        />
+                        <AppSelect<number>
+                            aria-label="Almacén"
+                            options={warehouses.map(w => ({ value: w.id, label: w.name }))}
+                            value={selectedWarehouse}
+                            onChange={(v) => setSelectedWarehouse(v ?? null)}
+                            placeholder="Todos los almacenes"
+                            isClearable
+                        />
+                        <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                        <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                        <AppSelect<string>
+                            aria-label="Tipo de movimiento"
+                            isClearable={false}
+                            isSearchable={false}
+                            options={[
+                                { value: '', label: 'Todos los tipos' },
+                                { value: 'IN', label: 'Entrada' },
+                                { value: 'OUT', label: 'Salida' },
+                                { value: 'ADJUSTMENT', label: 'Ajuste' },
+                                { value: 'TRANSFER', label: 'Transferencia' }
+                            ]}
+                            value={movementType}
+                            onChange={(v) => setMovementType(v || '')}
+                        />
+                    </TableToolbar>
+                )}
+                columns={[
+                    { key: 'date', header: 'Fecha', type: 'date' },
+                    { key: 'type', header: 'Tipo', render: (movement) => (
+                        <Badge tone={MOVEMENT_TONE[movement.type] ?? 'neutral'}>{MOVEMENT_LABEL[movement.type] ?? movement.type}</Badge>
+                    ) },
+                    { key: 'reference', header: 'Referencia' },
+                    { key: 'in', header: 'Entrada', type: 'qty', render: (movement) => (
+                        <span>
+                            {movement.in ? `${formatNumber(num(movement.in), 3)} ${unitLabel}` : '—'}
+                            {movement.in ? originalHint(movement) : null}
+                        </span>
+                    ) },
+                    { key: 'out', header: 'Salida', type: 'qty', render: (movement) => (
+                        <span>
+                            {movement.out ? `${formatNumber(num(movement.out), 3)} ${unitLabel}` : '—'}
+                            {movement.out ? originalHint(movement) : null}
+                        </span>
+                    ) },
+                    { key: 'balance', header: 'Saldo', type: 'qty', render: (movement) => <strong>{formatNumber(num(movement.balance), 3)} {unitLabel}</strong> },
+                    { key: 'unitCost', header: 'Costo unit.', type: 'money', render: (movement) => formatCurrency(movement.unitCost, settings) },
+                    { key: 'totalCost', header: 'Costo total', type: 'money', render: (movement) => formatCurrency(movement.totalCost, settings) },
+                    { key: 'warehouse', header: 'Almacén', hideBelow: 'lg' },
+                    { key: 'branch', header: 'Sucursal', hideBelow: 'lg' },
+                    { key: 'user', header: 'Responsable' },
+                ] as Column<(typeof movements)[number]>[]}
+            />
 
             <ToastContainer toasts={toasts} onRemove={removeToast} />
-        </div>
+        </PageContent>
     );
 }

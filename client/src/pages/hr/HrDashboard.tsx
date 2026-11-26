@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-    AlertTriangle,
     ArrowRight,
     BadgeDollarSign,
     Building2,
@@ -11,13 +10,12 @@ import {
     Clock3,
     Landmark,
     MapPin,
-    RefreshCw,
     Settings2,
     UserCheck,
     WalletCards,
 } from 'lucide-react';
-import { PageHeader, StatCard, formatNumber, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { Button, formatNumber, LoadErrorState, PageContent, PageHeader, StatCard } from '@/ui';
+import HrLoading from '../../components/hr/HrLoading';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import type { HrDashboardData } from '../../types/hr';
 import styles from './HrDashboard.module.css';
@@ -64,8 +62,9 @@ export default function HrDashboard() {
     const runsInProcess = data ? sumKnown([data.payroll.draftRuns, data.payroll.reviewRuns, data.payroll.approvedRuns]) : null;
 
     return (
-        <div className={`page-wrapper ${styles.page}`}>
+        <PageContent>
             <PageHeader
+        breadcrumb={['Recursos humanos']}
         title="Centro de trabajo RH"
         description="Pendientes, personal y nómina en un solo lugar"
         actions={
@@ -76,15 +75,9 @@ export default function HrDashboard() {
                 }
       />
 
-            {loading && <LoadingSpinner text="Cargando operación de RH…" />}
+            {loading && <HrLoading text="Cargando operación de RH…" />}
 
-            {!loading && error && (
-                <div className="state-placeholder" role="alert">
-                    <AlertTriangle size={42} aria-hidden="true" />
-                    <p className="state-error">{error}</p>
-                    <Button variant="ghost" onClick={() => void loadDashboard()}><RefreshCw size={16} /> Reintentar</Button>
-                </div>
-            )}
+            {!loading && error && <LoadErrorState message={error} onRetry={() => void loadDashboard()} />}
 
             {!loading && !error && data && (
                 <>
@@ -128,26 +121,26 @@ export default function HrDashboard() {
                                 <span className={styles.count}>{asNumber(attentionTotal)}</span>
                             </header>
                             <div className={styles.taskList}>
-                                <button type="button" onClick={() => navigate('/rh/ausencias')}>
+                                <Link to="/rh/ausencias">
                                     <CalendarDays size={20} />
                                     <span><strong>Permisos y vacaciones</strong><small>Revisar solicitudes del equipo</small></span>
                                     <b>{asNumber(data.attention.leaveRequests)}</b><ArrowRight size={17} />
-                                </button>
-                                <button type="button" onClick={() => navigate('/rh/jornadas')}>
+                                </Link>
+                                <Link to="/rh/jornadas">
                                     <Clock3 size={20} />
                                     <span><strong>Horas extra</strong><small>Validar tiempo solicitado</small></span>
                                     <b>{asNumber(data.attention.overtimeRequests)}</b><ArrowRight size={17} />
-                                </button>
-                                <button type="button" onClick={() => navigate('/rh/asistencia')}>
+                                </Link>
+                                <Link to="/rh/asistencia">
                                     <ClipboardCheck size={20} />
                                     <span><strong>Asistencia y correcciones</strong><small>Resolver marcajes e incidencias abiertas</small></span>
                                     <b>{asNumber(data.attention.attendanceCorrections + data.attention.attendanceIncidents)}</b><ArrowRight size={17} />
-                                </button>
-                                <button type="button" onClick={() => navigate('/rh/prestaciones')}>
+                                </Link>
+                                <Link to="/rh/prestaciones">
                                     <BadgeDollarSign size={20} />
                                     <span><strong>Préstamos</strong><small>Evaluar nuevas solicitudes</small></span>
                                     <b>{asNumber(data.attention.loanRequests)}</b><ArrowRight size={17} />
-                                </button>
+                                </Link>
                             </div>
                         </section>
 
@@ -161,32 +154,32 @@ export default function HrDashboard() {
                             </header>
                             <ol className={styles.route}>
                                 <li className={data.payroll.activeRule ? styles.complete : styles.current}>
-                                    <button type="button" onClick={() => navigate('/rh/nomina/configuracion-legal')}>
+                                    <Link to="/rh/nomina/configuracion-legal">
                                         <span className={styles.stepNumber}>1</span>
                                         <span><strong>Reglas legales</strong><small>{data.payroll.activeRule ? 'Configuración activa' : 'Configura régimen, IR, INSS e INATEC'}</small></span>
                                         {data.payroll.activeRule ? <CheckCircle2 size={19} /> : <ArrowRight size={17} />}
-                                    </button>
+                                    </Link>
                                 </li>
                                 <li className={data.payroll.draftRuns > 0 ? styles.current : undefined}>
-                                    <button type="button" onClick={() => navigate('/rh/nomina')}>
+                                    <Link to="/rh/nomina">
                                         <span className={styles.stepNumber}>2</span>
                                         <span><strong>Preparar y calcular</strong><small>{asNumber(data.payroll.draftRuns)} corridas en borrador</small></span>
                                         <ArrowRight size={17} />
-                                    </button>
+                                    </Link>
                                 </li>
                                 <li className={data.payroll.reviewRuns > 0 ? styles.current : undefined}>
-                                    <button type="button" onClick={() => navigate('/rh/nomina')}>
+                                    <Link to="/rh/nomina">
                                         <span className={styles.stepNumber}>3</span>
                                         <span><strong>Revisar y aprobar</strong><small>{asNumber(data.payroll.reviewRuns)} esperando revisión</small></span>
                                         <ArrowRight size={17} />
-                                    </button>
+                                    </Link>
                                 </li>
                                 <li className={data.payroll.approvedRuns > 0 ? styles.current : undefined}>
-                                    <button type="button" onClick={() => navigate('/rh/nomina')}>
+                                    <Link to="/rh/nomina">
                                         <span className={styles.stepNumber}>4</span>
                                         <span><strong>Pagar y publicar colillas</strong><small>{asNumber(data.payroll.approvedRuns)} listas para pago</small></span>
                                         <ArrowRight size={17} />
-                                    </button>
+                                    </Link>
                                 </li>
                             </ol>
                         </section>
@@ -201,22 +194,22 @@ export default function HrDashboard() {
                             <Settings2 size={22} />
                         </header>
                         <div className={styles.setupGrid}>
-                            <button type="button" onClick={() => navigate('/rh/personal')}>
+                            <Link to="/rh/personal">
                                 <UserCheck size={21} /><span><strong>Personal</strong><small>{asNumber(data.employees.internalAccounts)} cuentas vinculadas</small></span>
-                            </button>
-                            <button type="button" onClick={() => navigate('/rh/personal')}>
+                            </Link>
+                            <Link to="/rh/personal">
                                 <Building2 size={21} /><span><strong>Organización</strong><small>{asNumber(data.catalogs.departments)} departamentos · {asNumber(data.catalogs.jobPositions)} puestos</small></span>
-                            </button>
-                            <button type="button" onClick={() => navigate('/rh/asistencia/configuracion')}>
+                            </Link>
+                            <Link to="/rh/asistencia/configuracion">
                                 <MapPin size={21} /><span><strong>Asistencia</strong><small>{asNumber(data.branches.attendanceEnabled)} de {asNumber(data.branches.total)} sucursales habilitadas</small></span>
-                            </button>
-                            <button type="button" onClick={() => navigate('/rh/nomina/configuracion-legal')}>
+                            </Link>
+                            <Link to="/rh/nomina/configuracion-legal">
                                 <Landmark size={21} /><span><strong>Obligaciones laborales</strong><small>{data.payroll.activeRule ? 'IR, INSS e INATEC activos' : 'Requiere configuración'}</small></span>
-                            </button>
+                            </Link>
                         </div>
                     </section>
                 </>
             )}
-        </div>
+        </PageContent>
     );
 }

@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 const attendanceReview = read('./AttendanceReview.tsx');
-const consoleCss = read('../../components/hr/layout/hr-console.css');
 const attendanceManagement = read('./AttendanceManagement.tsx');
 const leaveManagement = read('./LeaveManagement.tsx');
 const benefitsManagement = read('./BenefitsManagement.tsx');
@@ -12,42 +11,30 @@ const timeClock = read('./TimeClock.tsx');
 const myBenefits = read('./MyBenefits.tsx');
 const myPayroll = read('./MyPayroll.tsx');
 const myWorkforce = read('./MyWorkforce.tsx');
-const adminCss = read('./admin-tables.css');
 const attendanceCss = read('./attendance.css');
 const punchWizard = read('../../components/hr/AttendancePunchWizard.tsx');
 const geolocationCapture = read('../../components/hr/GeolocationCapture.tsx');
 
-const adminOperationalPages = [
-  attendanceReview,
-  attendanceManagement,
-  leaveManagement,
-  benefitsManagement,
-];
+// Pantallas ya migradas a PageContent de @/ui (sin contenedores hr-operation-page / my-hr-page).
+const migratedPages = [attendanceReview, timeClock, attendanceManagement, leaveManagement, benefitsManagement, myBenefits, myPayroll, myWorkforce];
 
-const selfServicePages = [
-  timeClock,
-  myBenefits,
-  myPayroll,
-  myWorkforce,
-];
 
 describe('RH operational UI contract', () => {
   it('uses the shared Inventory-inspired operational composition without global selectors', () => {
-    adminOperationalPages.forEach((source) => expect(source).toContain('hr-operation-page'));
-    selfServicePages.forEach((source) => expect(source).toContain('my-hr-page'));
-    expect(adminCss).toContain('.hr-operation-page .hr-operation-toolbar');
-    // Filter bars get their (box-less) look from the canonical RH layout.
-    expect(consoleCss).toContain('.page-wrapper.hr-ws-page.hr-console .hr-ws-toolbar.hr-ws-toolbar');
-    expect(adminCss).toContain("[role='tabpanel']:focus-visible");
-    expect(adminCss).not.toMatch(/(^|\n)\s*(body|:root)\s*\{/);
+    migratedPages.forEach((source) => {
+      expect(source).toContain('<PageContent');
+      expect(source).not.toContain('hr-operation-page');
+      expect(source).not.toContain('my-hr-page');
+    });
+    // Layout migrado: filtros sin caja con TableToolbar de @/ui (sin hr-console.css ni admin-tables.css).
   });
 
   it('keeps admin queues table-first with external control tabs and explicit counterflows', () => {
     [attendanceManagement, leaveManagement].forEach((source) => {
-      expect(source).toContain('hr-operation-toolbar');
+      // Layout migrado: Tabs + TableToolbar de @/ui encima de la tabla.
+      expect(source).toContain('<TableToolbar');
       expect(source).not.toContain('hr-operation-kpis');
-      expect(source).toContain('filters-toolbar hr-admin-tab-toolbar');
-      expect(source).toContain('role="tablist"');
+      expect(source).toContain('<Tabs');
       expect(source).toContain('role="tabpanel"');
       expect(source).toContain('<DataTable');
       expect(source).not.toContain('<caption>');
@@ -67,7 +54,8 @@ describe('RH operational UI contract', () => {
     expect(myWorkforce).toContain(
       "type WorkforceWorkspace = 'ATTENDANCE' | 'REQUESTS' | 'BALANCES'"
     );
-    expect(myWorkforce).toContain('aria-controls="my-workforce-panel-attendance"');
+    // Pestañas de @/ui; el panel conserva su id y role="tabpanel".
+    expect(myWorkforce).toContain('id="my-workforce-panel-attendance"');
     expect(myWorkforce).toContain('role="tabpanel"');
     expect(myWorkforce).toContain("item.status === 'CANCELLED'");
     expect(myWorkforce).toContain('openCancel');
@@ -89,10 +77,9 @@ describe('RH operational UI contract', () => {
     expect(attendanceReview).toContain('Reintentar catálogos');
     expect(attendanceManagement).toContain('Minutos a aprobar');
     expect(attendanceManagement).toContain('Los periodos de asistencia son de toda la empresa');
-    expect(attendanceCss).toContain('.hr-time-clock-workspace');
-    expect(attendanceCss).toContain('@media (max-width: 1080px)');
-    expect(attendanceCss).toContain('.hr-time-clock-action-panel { order: -1; }');
-    expect(attendanceCss).toContain('.hr-time-clock-page > .hr-time-clock-workspace { order: 1; }');
+    // Layout migrado: acción de marcaje y resumen en form.split (se apilan en pantallas angostas).
+    expect(timeClock).toContain('className={form.split}');
+    expect(timeClock).toContain('hr-time-clock-action-panel');
   });
 
   it('prevents a guaranteed GPS rejection and keeps internal snapshots out of the result UI', () => {

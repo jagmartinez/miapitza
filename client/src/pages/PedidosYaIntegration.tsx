@@ -6,13 +6,12 @@ import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, Input, PageHeader } from '@/ui';
-
 import {
-    Settings, Zap, Link2, RefreshCw, CheckCircle, XCircle,
-    Package, AlertTriangle, Clock, ArrowRightLeft, Search, Plus, Trash2
-} from 'lucide-react';
-import './PedidosYaIntegration.css';
+    AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    PageContent, PageHeader, Switch, TableToolbar, Tabs, toneFor,
+} from '@/ui';
+import { Zap, RefreshCw, Search, Plus, Trash2 } from 'lucide-react';
+import styles from './catalog.module.css';
 
 interface PYConfig {
     id?: number;
@@ -198,195 +197,132 @@ export default function PedidosYaIntegration() {
         }
     };
 
-    if (loading) return <div className="categories-loading">Cargando integración PedidosYa...</div>;
-
     const webhookUrl = `${API_BASE_URL}/pedidosya/webhook/${user?.companyId || '{companyId}'}`;
 
+    const pageTabs = ([
+        { id: 'config' as ActiveTab, label: 'Configuración' },
+        { id: 'mappings' as ActiveTab, label: 'Mapeo de productos' },
+        { id: 'orders' as ActiveTab, label: 'Órdenes sincronizadas' },
+        { id: 'logs' as ActiveTab, label: 'Webhook logs' },
+    ]).filter((tab) => tab.id === 'config' || isSuperAdmin);
+
     return (
-        <div className="pedidosya-page">
+        <PageContent>
             <PageHeader
                 title="PedidosYa"
                 description={
-                    <>
-                        {config.active
-                            ? <span className="status-active"><CheckCircle size={14} /> Integración activa</span>
-                            : <span className="status-inactive"><XCircle size={14} /> Integración inactiva</span>
-                        }
-                        {config.lastSyncAt && <span className="last-sync"> · Última sync: {new Date(config.lastSyncAt).toLocaleString('es-NI')}</span>}
-                    </>
+                    <span className={styles.inline}>
+                        <Badge tone={config.active ? 'success' : 'neutral'} dot>
+                            {config.active ? 'Integración activa' : 'Integración inactiva'}
+                        </Badge>
+                        {config.lastSyncAt && <span>Última sync: {new Date(config.lastSyncAt).toLocaleString('es-NI')}</span>}
+                    </span>
                 }
             />
 
-            <div className="pedidosya-tabs">
-                {([
-                    { id: 'config' as ActiveTab, label: 'Configuración', icon: <Settings size={18} /> },
-                    { id: 'mappings' as ActiveTab, label: 'Mapeo de Productos', icon: <Package size={18} /> },
-                    { id: 'orders' as ActiveTab, label: 'Órdenes Sincronizadas', icon: <ArrowRightLeft size={18} /> },
-                    { id: 'logs' as ActiveTab, label: 'Webhook Logs', icon: <Clock size={18} /> },
-                ].filter((tab) => tab.id === 'config' || isSuperAdmin)).map(tab => (
-                    <button
-                        key={tab.id}
-                        className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                        onClick={() => setActiveTab(tab.id)}
-                    >
-                        {tab.icon}
-                        <span>{tab.label}</span>
-                    </button>
-                ))}
-            </div>
+            <Tabs ariaLabel="Secciones de PedidosYa" tabs={pageTabs} active={activeTab} onChange={(id) => setActiveTab(id as ActiveTab)} />
 
-            <div className="pedidosya-content">
-                {/* ── CONFIG TAB ── */}
-                {activeTab === 'config' && (
-                    <div className="config-section">
-                        <div className="config-card">
-                            <div className="config-card-header">
-                                <Link2 size={20} />
-                                <h3>Credenciales OAuth2</h3>
+            {loading ? (
+                <p className={styles.muted} role="status">Cargando integración PedidosYa…</p>
+            ) : (
+                <>
+                    {/* ── CONFIG TAB ── */}
+                    {activeTab === 'config' && (
+                        <div className={styles.stack}>
+                            <FormSection step={1} title="Credenciales OAuth2" description="Datos que entrega PedidosYa para la API.">
+                                <FormGrid>
+                                    <Field label="Client ID" htmlFor="pedidosya-client-id">
+                                        <Input
+                                            id="pedidosya-client-id"
+                                            value={config.clientId || ''}
+                                            onChange={e => setConfig({ ...config, clientId: e.target.value })}
+                                            placeholder="Tu Client ID de PedidosYa"
+                                        />
+                                    </Field>
+                                    <Field label="Client Secret" htmlFor="pedidosya-client-secret">
+                                        <Input
+                                            id="pedidosya-client-secret"
+                                            type="password"
+                                            autoComplete="new-password"
+                                            value={config.clientSecret || ''}
+                                            onChange={e => setConfig({ ...config, clientSecret: e.target.value })}
+                                            placeholder={config.clientSecretSet ? 'Configurado; escribe para reemplazar' : '••••••••'}
+                                        />
+                                    </Field>
+                                    <Field label="Restaurant ID" htmlFor="pedidosya-restaurant-id">
+                                        <Input
+                                            id="pedidosya-restaurant-id"
+                                            value={config.restaurantId || ''}
+                                            onChange={e => setConfig({ ...config, restaurantId: e.target.value })}
+                                            placeholder="ID del restaurante en PedidosYa"
+                                        />
+                                    </Field>
+                                    <Field label="Ambiente" htmlFor="pedidosya-environment">
+                                        <AppSelect
+                                            inputId="pedidosya-environment"
+                                            value={config.environment}
+                                            isClearable={false}
+                                            isSearchable={false}
+                                            onChange={(option) =>
+                                                option && setConfig({ ...config, environment: option })}
+                                            options={[
+                                                { value: 'sandbox', label: 'Sandbox (Pruebas)' },
+                                                { value: 'production', label: 'Producción' }
+                                            ]}
+                                        />
+                                    </Field>
+                                </FormGrid>
+                            </FormSection>
+
+                            <FormSection step={2} title="Comportamiento">
+                                <div className={styles.cellStack}>
+                                    <Switch checked={config.active} onChange={(active) => setConfig({ ...config, active })} label="Integración activa" />
+                                    <p className={styles.muted}>Habilita la recepción de pedidos desde PedidosYa.</p>
+                                </div>
+                                <div className={styles.cellStack}>
+                                    <Switch checked={config.autoAcceptOrders} onChange={(autoAcceptOrders) => setConfig({ ...config, autoAcceptOrders })} label="Aceptar pedidos automáticamente" />
+                                    <p className={styles.muted}>Si está desactivado, los pedidos requieren aceptación manual.</p>
+                                </div>
+                                <div className={styles.cellStack}>
+                                    <Switch checked={config.autoSyncStatus} onChange={(autoSyncStatus) => setConfig({ ...config, autoSyncStatus })} label="Sincronizar estado automáticamente" />
+                                    <p className={styles.muted}>Envía actualizaciones de estado a PedidosYa cuando cambia la orden internamente.</p>
+                                </div>
+                            </FormSection>
+
+                            <FormSection step={3} title="Webhook" description="Configura esta URL y el secret en el portal de PedidosYa.">
+                                <FormGrid>
+                                    <Field label="Webhook Secret" htmlFor="pedidosya-webhook-secret">
+                                        <Input
+                                            id="pedidosya-webhook-secret"
+                                            value={config.webhookSecret || ''}
+                                            onChange={e => setConfig({ ...config, webhookSecret: e.target.value })}
+                                            placeholder={config.webhookSecretSet ? 'Configurado; escribe para reemplazar' : 'Secret para validar firmas HMAC'}
+                                        />
+                                    </Field>
+                                    <Field label="URL del webhook" htmlFor="pedidosya-webhook-url">
+                                        <Input id="pedidosya-webhook-url" value={webhookUrl} readOnly />
+                                    </Field>
+                                </FormGrid>
+                            </FormSection>
+
+                            <div className={styles.inline}>
+                                <Button variant="primary" onClick={handleSaveConfig} loading={saving}>
+                                    Guardar configuración
+                                </Button>
+                                {isSuperAdmin && <Button icon={Zap} onClick={handleTestConnection}>Probar conexión</Button>}
+                                {isSuperAdmin && <Button icon={RefreshCw} onClick={handleSyncMenu}>Sincronizar menú</Button>}
                             </div>
-                            <div className="form-row">
-                                <Field label="Client ID" htmlFor="pedidosya-input-1">
-                                    <Input
-                                    id="pedidosya-input-1"
-                                        value={config.clientId || ''}
-                                        onChange={e => setConfig({ ...config, clientId: e.target.value })}
-                                        placeholder="Tu Client ID de PedidosYa"
-                                    />
-                                </Field>
-                                <Field label="Client Secret" htmlFor="pedidosya-input-2">
-                                    <Input
-                                    id="pedidosya-input-2"
-                                        type="password"
-                                        value={config.clientSecret || ''}
-                                        onChange={e => setConfig({ ...config, clientSecret: e.target.value })}
-                                        placeholder={config.clientSecretSet ? 'Configurado; escribe para reemplazar' : '••••••••'}
-                                    />
-                                </Field>
-                            </div>
-                            <div className="form-row">
-                                <Field label="Restaurant ID" htmlFor="pedidosya-input-3">
-                                    <Input
-                                    id="pedidosya-input-3"
-                                        value={config.restaurantId || ''}
-                                        onChange={e => setConfig({ ...config, restaurantId: e.target.value })}
-                                        placeholder="ID del restaurante en PedidosYa"
-                                    />
-                                </Field>
-                                <Field label="Ambiente" htmlFor="pedidosya-select-1">
-                                    <AppSelect
-                                        inputId="pedidosya-select-1"
-                                        value={config.environment}
-                                        isClearable={false}
-                                        onChange={(option) =>
-                                            option && setConfig({ ...config, environment: option })}
-                                        options={[
-                                            { value: 'sandbox', label: 'Sandbox (Pruebas)' },
-                                            { value: 'production', label: 'Producción' }
-                                        ]}
-                                    />
-                                </Field>
-                            </div>
+
+                            {connectionStatus.tested && (
+                                <div role="status">
+                                    <Badge tone={connectionStatus.success ? 'success' : 'danger'}>{connectionStatus.message}</Badge>
+                                </div>
+                            )}
                         </div>
+                    )}
 
-                        <div className="config-card">
-                            <div className="config-card-header">
-                                <Settings size={20} />
-                                <h3>Comportamiento</h3>
-                            </div>
-                            <div className="toggle-row">
-                                <label className="toggle-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={config.active}
-                                        onChange={e => setConfig({ ...config, active: e.target.checked })}
-                                    />
-                                    <span>Integración Activa</span>
-                                </label>
-                                <p className="toggle-description">Habilita la recepción de pedidos desde PedidosYa</p>
-                            </div>
-                            <div className="toggle-row">
-                                <label className="toggle-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={config.autoAcceptOrders}
-                                        onChange={e => setConfig({ ...config, autoAcceptOrders: e.target.checked })}
-                                    />
-                                    <span>Aceptar Pedidos Automáticamente</span>
-                                </label>
-                                <p className="toggle-description">Si está desactivado, los pedidos requieren aceptación manual</p>
-                            </div>
-                            <div className="toggle-row">
-                                <label className="toggle-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={config.autoSyncStatus}
-                                        onChange={e => setConfig({ ...config, autoSyncStatus: e.target.checked })}
-                                    />
-                                    <span>Sincronizar Estado Automáticamente</span>
-                                </label>
-                                <p className="toggle-description">Envía actualizaciones de estado a PedidosYa cuando cambia la orden internamente</p>
-                            </div>
-                        </div>
-
-                        <div className="config-card">
-                            <div className="config-card-header">
-                                <AlertTriangle size={20} />
-                                <h3>Webhook</h3>
-                            </div>
-                            <Field label="Webhook Secret" htmlFor="pedidosya-input-4">
-                                <Input
-                                id="pedidosya-input-4"
-                                    value={config.webhookSecret || ''}
-                                    onChange={e => setConfig({ ...config, webhookSecret: e.target.value })}
-                                    placeholder={config.webhookSecretSet ? 'Configurado; escribe para reemplazar' : 'Secret para validar firmas HMAC'}
-                                />
-                            </Field>
-                            <div className="webhook-url-display">
-                                <label className="input-label">URL del Webhook (configura en PedidosYa)</label>
-                                <code>{webhookUrl}</code>
-                            </div>
-                        </div>
-
-                        <div className="config-actions">
-                            <Button variant="primary" onClick={handleSaveConfig} disabled={saving}>
-                                {saving ? 'Guardando...' : 'Guardar Configuración'}
-                            </Button>
-                            {isSuperAdmin && <Button variant="secondary" onClick={handleTestConnection}>
-                                <Zap size={16} /> Probar Conexión
-                            </Button>}
-                            {isSuperAdmin && <Button variant="secondary" onClick={handleSyncMenu}>
-                                <RefreshCw size={16} /> Sincronizar Menú
-                            </Button>}
-                        </div>
-
-                        {connectionStatus.tested && (
-                            <div className={`connection-result ${connectionStatus.success ? 'success' : 'error'}`}>
-                                {connectionStatus.success ? <CheckCircle size={18} /> : <XCircle size={18} />}
-                                <span>{connectionStatus.message}</span>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* ── MAPPINGS TAB ── */}
-                {activeTab === 'mappings' && (
-                    <div className="mappings-section">
-                        <div className="mappings-header">
-                            <div className="search-container">
-                                <Search size={18} className="search-icon" />
-                                <input
-                                    type="text"
-                                    className="search-input"
-                                    placeholder="Buscar mapeo..."
-                                    value={mappingSearch}
-                                    onChange={e => setMappingSearch(e.target.value)}
-                                />
-                            </div>
-                            <Button variant="primary" onClick={() => setMappingSidebarOpen(true)}>
-                                <Plus size={18} /> Nuevo Mapeo
-                            </Button>
-                        </div>
-
+                    {/* ── MAPPINGS TAB ── */}
+                    {activeTab === 'mappings' && (
                         <DataTable<ProductMapping>
                             ariaLabel="Mapeo de productos PedidosYa"
                             rows={mappings.filter((m) => !mappingSearch ||
@@ -396,137 +332,128 @@ export default function PedidosYaIntegration() {
                             minWidth="720px"
                             resetKey={mappingSearch}
                             empty={mappings.length === 0 ? 'No hay mapeos configurados. Los mapeos se crean automáticamente al recibir pedidos o puedes crearlos manualmente.' : 'Ningún mapeo coincide con la búsqueda.'}
+                            toolbar={(
+                                <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setMappingSidebarOpen(true)}>Nuevo mapeo</Button>}>
+                                    <Input
+                                        type="search"
+                                        aria-label="Buscar mapeo"
+                                        placeholder="Buscar mapeo"
+                                        prefix={<Search size={14} aria-hidden="true" />}
+                                        value={mappingSearch}
+                                        onChange={e => setMappingSearch(e.target.value)}
+                                    />
+                                </TableToolbar>
+                            )}
                             columns={[
-                                { key: 'externalId', header: 'ID Externo', render: (m) => <code>{m.externalId}</code> },
+                                { key: 'externalId', header: 'ID externo', render: (m) => <code>{m.externalId}</code> },
                                 { key: 'externalName', header: 'Nombre PedidosYa' },
-                                { key: 'menuItem', header: 'Producto Interno', render: (m) => m.menuItem
-                                    ? <span className="mapped">{m.menuItem.name}</span>
-                                    : <span className="unmapped">Sin mapear</span> },
+                                { key: 'menuItem', header: 'Producto interno', render: (m) => m.menuItem
+                                    ? m.menuItem.name
+                                    : <Badge tone="warning">Sin mapear</Badge> },
                                 { key: 'isActive', header: 'Estado', render: (m) => (
-                                    <span className={`badge ${m.isActive ? 'badge-active' : 'badge-inactive'}`}>{m.isActive ? 'Activo' : 'Inactivo'}</span>
+                                    <Badge tone={m.isActive ? 'success' : 'neutral'} dot>{m.isActive ? 'Activo' : 'Inactivo'}</Badge>
                                 ) },
                                 { key: 'actions', header: 'Acciones', type: 'actions', render: (m) => (
-                                    <button className="action-btn-new delete" aria-label="Eliminar mapeo" onClick={() => handleDeleteMapping(m.id)}>
-                                        <Trash2 size={16} />
-                                    </button>
+                                    <IconButton size="sm" icon={Trash2} label="Eliminar mapeo" onClick={() => handleDeleteMapping(m.id)} />
                                 ) },
                             ]}
                         />
-                    </div>
-                )}
+                    )}
 
-                {/* ── ORDERS TAB ── */}
-                {activeTab === 'orders' && (
-                    <div className="orders-section">
-                        <div className="section-header-row">
-                            <h3>Últimas Órdenes Sincronizadas</h3>
-                            <Button variant="ghost" onClick={loadOrderSyncs}><RefreshCw size={16} /> Actualizar</Button>
-                        </div>
+                    {/* ── ORDERS TAB ── */}
+                    {activeTab === 'orders' && (
                         <DataTable<OrderSync>
                             ariaLabel="Órdenes sincronizadas con PedidosYa"
                             rows={orderSyncs}
                             rowKey={(s) => s.id}
                             minWidth="860px"
                             empty="No hay órdenes sincronizadas todavía."
+                            toolbar={<TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={loadOrderSyncs}>Actualizar</Button>} />}
                             columns={[
-                                { key: 'externalId', header: 'ID Externo', render: (s) => <code>{s.externalId}</code> },
-                                { key: 'order', header: 'Orden Interna', render: (s) => `#${s.order.id}` },
-                                { key: 'externalStatus', header: 'Estado Externo', render: (s) => <span className="badge">{s.externalStatus || '-'}</span> },
-                                { key: 'internalStatus', header: 'Estado Interno', render: (s) => <span className="badge">{s.internalStatus || '-'}</span> },
+                                { key: 'externalId', header: 'ID externo', render: (s) => <code>{s.externalId}</code> },
+                                { key: 'order', header: 'Orden interna', render: (s) => `#${s.order.id}` },
+                                { key: 'externalStatus', header: 'Estado externo', render: (s) => <Badge>{s.externalStatus || '—'}</Badge> },
+                                { key: 'internalStatus', header: 'Estado interno', render: (s) => <Badge>{s.internalStatus || '—'}</Badge> },
                                 { key: 'syncDirection', header: 'Dirección', render: (s) => s.syncDirection === 'INBOUND' ? '← Entrante' : '→ Saliente' },
                                 { key: 'total', header: 'Total', type: 'money', accessor: (s) => Number(s.order.total) },
-                                { key: 'lastSyncAt', header: 'Última Sync', render: (s) => new Date(s.lastSyncAt).toLocaleString('es-NI') },
+                                { key: 'lastSyncAt', header: 'Última sync', render: (s) => new Date(s.lastSyncAt).toLocaleString('es-NI') },
                             ]}
                         />
-                    </div>
-                )}
+                    )}
 
-                {/* ── LOGS TAB ── */}
-                {activeTab === 'logs' && (
-                    <div className="logs-section">
-                        <div className="section-header-row">
-                            <h3>Webhook Logs</h3>
-                            <Button variant="ghost" onClick={loadWebhookLogs}><RefreshCw size={16} /> Actualizar</Button>
-                        </div>
+                    {/* ── LOGS TAB ── */}
+                    {activeTab === 'logs' && (
                         <DataTable<WebhookLog>
                             ariaLabel="Logs de webhook de PedidosYa"
                             rows={webhookLogs}
                             rowKey={(l) => l.id}
                             minWidth="760px"
                             empty="No hay logs de webhook. Los eventos aparecerán cuando PedidosYa envíe notificaciones."
+                            toolbar={<TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={loadWebhookLogs}>Actualizar</Button>} />}
                             columns={[
                                 { key: 'eventType', header: 'Evento', render: (l) => <code>{l.eventType}</code> },
-                                { key: 'externalId', header: 'ID Externo', render: (l) => l.externalId || '-' },
-                                { key: 'status', header: 'Estado', render: (l) => <span className={`badge badge-${l.status.toLowerCase()}`}>{l.status}</span> },
-                                { key: 'errorMessage', header: 'Error', render: (l) => <span className="error-cell">{l.errorMessage || '-'}</span> },
+                                { key: 'externalId', header: 'ID externo', render: (l) => l.externalId || '—' },
+                                { key: 'status', header: 'Estado', render: (l) => <Badge tone={toneFor(l.status)}>{l.status}</Badge> },
+                                { key: 'errorMessage', header: 'Error', render: (l) => l.errorMessage || '—' },
                                 { key: 'createdAt', header: 'Fecha', render: (l) => new Date(l.createdAt).toLocaleString('es-NI') },
                             ]}
                         />
-                    </div>
-                )}
-            </div>
+                    )}
+                </>
+            )}
 
-            {/* ── MAPPING SIDEBAR ── */}
+            {/* ── MAPPING MODAL ── */}
             <FullScreenModal
                 isOpen={mappingSidebarOpen}
                 onClose={() => setMappingSidebarOpen(false)}
-                title="Nuevo Mapeo de Producto"
+                title="Nuevo mapeo de producto"
+                breadcrumb={['Integraciones', 'PedidosYa']}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="pedidosya-mapping-form">Guardar mapeo</Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content">
-                    <form onSubmit={e => { e.preventDefault(); handleSaveMapping(); }} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <div className="modal-section">
-                                <div className="modal-section-header">
-                                    <Package size={18} />
-                                    <h3>Producto Externo</h3>
-                                </div>
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="pedidosya-external-id">ID en PedidosYa</label>
-                                    <input
-                                        id="pedidosya-external-id"
-                                        type="text"
-                                        className="modal-standard-input"
-                                        value={mappingForm.externalId}
-                                        onChange={e => setMappingForm({ ...mappingForm, externalId: e.target.value })}
-                                        placeholder="Ej: PY-12345"
-                                        required
-                                    />
-                                </div>
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="pedidosya-external-name">Nombre en PedidosYa</label>
-                                    <input
-                                        id="pedidosya-external-name"
-                                        type="text"
-                                        className="modal-standard-input"
-                                        value={mappingForm.externalName}
-                                        onChange={e => setMappingForm({ ...mappingForm, externalName: e.target.value })}
-                                        placeholder="Nombre del producto en la plataforma"
-                                        required
-                                    />
-                                </div>
-                                <Field label="Producto Interno (Menú)" htmlFor="pedidosya-menu-item">
-                                    <AppSelect
-                                        inputId="pedidosya-menu-item"
-                                        value={mappingForm.menuItemId || null}
-                                        onChange={(option) =>
-                                            setMappingForm({ ...mappingForm, menuItemId: option || '' })}
-                                        options={menuItems.map((mi) => ({
-                                            value: mi.id.toString(),
-                                            label: `${mi.name} (${formatMoney(Number(mi.price))})`
-                                        }))}
-                                        placeholder="-- Sin mapear --"
-                                        isClearable
-                                    />
-                                </Field>
-                            </div>
-                        </div>
-                        <div className="modal-footer">
-                            <Button variant="ghost" type="button" onClick={() => setMappingSidebarOpen(false)}>Cancelar</Button>
-                            <Button variant="primary" type="submit">Guardar Mapeo</Button>
-                        </div>
-                    </form>
-                </div>
+                <form id="pedidosya-mapping-form" onSubmit={e => { e.preventDefault(); handleSaveMapping(); }} className={styles.stack}>
+                    <FormSection step={1} title="Producto externo" description="Cómo aparece el producto en PedidosYa y a qué plato del menú corresponde.">
+                        <FormGrid>
+                            <Field label="ID en PedidosYa" htmlFor="pedidosya-external-id" required>
+                                <Input
+                                    id="pedidosya-external-id"
+                                    value={mappingForm.externalId}
+                                    onChange={e => setMappingForm({ ...mappingForm, externalId: e.target.value })}
+                                    placeholder="Ej: PY-12345"
+                                    required
+                                />
+                            </Field>
+                            <Field label="Nombre en PedidosYa" htmlFor="pedidosya-external-name" required>
+                                <Input
+                                    id="pedidosya-external-name"
+                                    value={mappingForm.externalName}
+                                    onChange={e => setMappingForm({ ...mappingForm, externalName: e.target.value })}
+                                    placeholder="Nombre del producto en la plataforma"
+                                    required
+                                />
+                            </Field>
+                            <Field label="Producto interno (menú)" htmlFor="pedidosya-menu-item">
+                                <AppSelect
+                                    inputId="pedidosya-menu-item"
+                                    value={mappingForm.menuItemId || null}
+                                    onChange={(option) =>
+                                        setMappingForm({ ...mappingForm, menuItemId: option || '' })}
+                                    options={menuItems.map((mi) => ({
+                                        value: mi.id.toString(),
+                                        label: `${mi.name} (${formatMoney(Number(mi.price))})`
+                                    }))}
+                                    placeholder="-- Sin mapear --"
+                                    isClearable
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+                </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }

@@ -1,19 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-    Plus, Trash2, Edit2,
-    ClipboardList, FileText, BadgeDollarSign
-} from 'lucide-react';
-import LoadingSpinner from '../components/LoadingSpinner';
-import ViewToggle from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
+import { Plus, Trash2, Edit2, ClipboardList, Search } from 'lucide-react';
 import { cateringAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import { useCurrency } from '../hooks/useCurrency';
-import { Button, DataTable, FullScreenModal, PageHeader, formatNumber, type Column } from '@/ui';
-import './CateringMod.css';
+import {
+    Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    PageContent, PageHeader, TableToolbar, Textarea, formatNumber, type Column, type Tone,
+} from '@/ui';
+import styles from './catalog.module.css';
 import { getApiErrorMessage } from '../utils/apiError';
 import { notifyError } from '../services/notify';
 
@@ -27,8 +24,7 @@ interface CateringServiceRow {
 
 const marginPct = (s: { internalCost: number; salePrice: number }) =>
     s.salePrice > 0 ? ((s.salePrice - s.internalCost) / s.salePrice) * 100 : 0;
-const marginColor = (pct: number) =>
-    pct >= 50 ? 'var(--ui-success)' : pct >= 20 ? 'var(--ui-warning)' : 'var(--ui-danger)';
+const marginTone = (pct: number): Tone => (pct >= 50 ? 'success' : pct >= 20 ? 'warning' : 'danger');
 export default function CateringServices() {
     const { user } = useAuth();
     const { formatMoney: money } = useCurrency();
@@ -41,9 +37,7 @@ export default function CateringServices() {
     const [saving, setSaving] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingService, setEditingService] = useState<CateringServiceRow | null>(null);
-    const [activeServiceTab, setActiveServiceTab] = useState<'general' | 'pricing'>('general');
     const [searchQuery, setSearchQuery] = useState('');
-    const { viewMode, setViewMode } = useViewMode('catering-services', 'table');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -74,7 +68,6 @@ export default function CateringServices() {
             showWarning('No tienes permisos para gestionar servicios de catering');
             return;
         }
-        setActiveServiceTab('general');
         if (service) {
             setEditingService(service);
             setFormData({
@@ -102,8 +95,7 @@ export default function CateringServices() {
             return;
         }
         if (!formData.name.trim()) {
-            setActiveServiceTab('general');
-            showError('El nombre del servicio es obligatorio.');
+                showError('El nombre del servicio es obligatorio.');
             return;
         }
         const internalCost = Number(formData.internalCost);
@@ -116,7 +108,6 @@ export default function CateringServices() {
             internalCost < 0 ||
             salePrice < 0
         ) {
-            setActiveServiceTab('pricing');
             showError('Ingresa costos y precios válidos, mayores o iguales a cero.');
             return;
         }
@@ -164,252 +155,170 @@ export default function CateringServices() {
         (s.description || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const draftCost = parseFloat(formData.internalCost) || 0;
+    const draftPrice = parseFloat(formData.salePrice) || 0;
+    const draftMargin = draftPrice > 0 ? ((draftPrice - draftCost) / draftPrice) * 100 : null;
+
+    const columns: Column<CateringServiceRow>[] = [
+        {
+            key: 'name',
+            header: 'Servicio',
+            render: (s) => (
+                <div className={styles.cellStack}>
+                    <span className={styles.cellTitle}>{s.name}</span>
+                    {s.description && <span className={styles.muted}>{s.description}</span>}
+                </div>
+            )
+        },
+        { key: 'cost', header: 'Costo', type: 'money', render: (s) => money(s.internalCost) },
+        { key: 'sale', header: 'Venta', type: 'money', render: (s) => money(s.salePrice) },
+        {
+            key: 'margin',
+            header: 'Margen',
+            type: 'percent',
+            render: (s) => {
+                const m = marginPct(s);
+                return <Badge tone={marginTone(m)}>{formatNumber(m, 1)} %</Badge>;
+            }
+        },
+        ...(canManageCatering ? [{
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (s: CateringServiceRow) => (
+                <div className={styles.rowActions}>
+                    <IconButton size="sm" icon={Edit2} label={`Editar ${s.name}`} onClick={() => handleOpenSidebar(s)} />
+                    <IconButton size="sm" icon={Trash2} label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />
+                </div>
+            )
+        }] : [])
+    ] as Column<CateringServiceRow>[];
+
     return (
-        <div className="catering-page">
+        <PageContent>
             <PageHeader
-                title="Catálogo de Servicios"
+                title="Catálogo de servicios"
                 description="Gestiona servicios, costos y precios de catering"
-                actions={
-                    <div className="ui-page-actions">
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button variant="primary" onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
-                            <Plus size={20} />
-                            Nuevo Servicio
-                        </Button>
-                    </div>
-                }
+                actions={(
+                    <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
+                        Nuevo servicio
+                    </Button>
+                )}
             />
 
-            <div className="catering-filters">
-                <div className="filter-right-section" style={{ width: '100%', maxWidth: '400px' }}>
-                    <div style={{ position: 'relative', width: '100%' }}>
-                        <input
-                            type="text"
-                            placeholder="Buscar en el catálogo..."
+            <DataTable<CateringServiceRow>
+                ariaLabel="Servicios de catering"
+                rows={filteredServices}
+                rowKey={(s) => s.id}
+                columns={columns}
+                loading={loading}
+                resetKey={searchQuery}
+                onRowClick={canManageCatering ? (s) => handleOpenSidebar(s) : undefined}
+                empty={<EmptyState icon={ClipboardList} title="No hay servicios registrados en el catálogo" />}
+                toolbar={(
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            aria-label="Buscar en el catálogo"
+                            placeholder="Buscar en el catálogo"
+                            prefix={<Search size={14} aria-hidden="true" />}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="search-input catering-search"
-                            style={{ paddingLeft: '16px' }}
                         />
-                    </div>
-                </div>
-            </div>
-
-            {loading ? (
-                <LoadingSpinner text="Cargando catálogo..." />
-            ) : filteredServices.length === 0 ? (
-                <div className="empty-state">
-                    <ClipboardList size={64} opacity={0.2} />
-                    <p>No hay servicios registrados en el catálogo</p>
-                </div>
-            ) : viewMode === 'table' ? (
-                <DataTable<CateringServiceRow>
-                    ariaLabel="Servicios de catering"
-                    rows={filteredServices}
-                    rowKey={(s) => s.id}
-                    resetKey={`${searchQuery}-${filteredServices.length}`}
-                    columns={[
-                        {
-                            key: 'name',
-                            header: 'Servicio',
-                            render: (s) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">{s.name}</span>
-                                    {s.description && <span className="cell-sub">{s.description}</span>}
-                                </div>
-                            )
-                        },
-                        { key: 'cost', header: 'Costo', type: 'number', render: (s) => money(s.internalCost) },
-                        { key: 'sale', header: 'Venta', type: 'number', render: (s) => <span style={{ color: 'var(--ui-success)' }}>{money(s.salePrice)}</span> },
-                        { key: 'margin', header: 'Margen', type: 'number', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{formatNumber(m, 1)}%</span>; } },
-                        ...(canManageCatering ? [{
-                            key: 'actions',
-                            header: 'Acciones',
-                            type: 'number',
-                            render: (s: CateringServiceRow) => (
-                                <div className="catalog-table-actions">
-                                    <button className="catalog-action-btn" onClick={() => handleOpenSidebar(s)} title="Editar"><Edit2 size={16} /></button>
-                                    <button className="catalog-action-btn danger" onClick={() => handleDelete(s.id)} title="Eliminar"><Trash2 size={16} /></button>
-                                </div>
-                            )
-                        }] : [])
-                    ] as Column<CateringServiceRow>[]}
-                />
-            ) : (
-                <div className="catalog-cards" style={{ marginTop: '24px' }}>
-                    {filteredServices.map((service) => {
-                        const m = marginPct(service);
-                        return (
-                            <div key={service.id} className="catalog-card">
-                                <div>
-                                    <div className="catalog-card-title">{service.name}</div>
-                                    <div className="catalog-card-sub">{service.description || 'Sin descripción'}</div>
-                                </div>
-                                <div className="catalog-card-rows">
-                                    <div className="catalog-card-row"><span className="label">Costo</span><span className="value">{money(service.internalCost)}</span></div>
-                                    <div className="catalog-card-row"><span className="label">Venta</span><span className="value" style={{ color: 'var(--ui-success)' }}>{money(service.salePrice)}</span></div>
-                                    <div className="catalog-card-row"><span className="label">Margen</span><span className="value" style={{ color: marginColor(m) }}>{formatNumber(m, 1)}%</span></div>
-                                </div>
-                                {canManageCatering && (
-                                    <div className="catalog-card-actions">
-                                        <button className="action-btn-mini" onClick={() => handleOpenSidebar(service)} title="Editar"><Edit2 size={15} /></button>
-                                        <button className="action-btn-mini delete" onClick={() => handleDelete(service.id)} title="Eliminar"><Trash2 size={15} /></button>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+                    </TableToolbar>
+                )}
+            />
 
             <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
-                title={editingService ? `Editar: ${editingService.name}` : 'Nuevo Servicio de Catering'}
-            >
-                <div className="premium-modal-content catering-modal-content catering-service-modal-content">
-                    <div className="modal-tabs" role="tablist" aria-label="Secciones del servicio de catering">
-                        <button
-                            type="button"
-                            id="catering-service-tab-general"
-                            className={`modal-tab ${activeServiceTab === 'general' ? 'active' : ''}`}
-                            role="tab"
-                            aria-selected={activeServiceTab === 'general'}
-                            aria-controls="catering-service-panel-general"
-                            onClick={() => setActiveServiceTab('general')}
-                        >
-                            <FileText size={18} aria-hidden="true" />
-                            <span>General</span>
-                        </button>
-                        <button
-                            type="button"
-                            id="catering-service-tab-pricing"
-                            className={`modal-tab ${activeServiceTab === 'pricing' ? 'active' : ''}`}
-                            role="tab"
-                            aria-selected={activeServiceTab === 'pricing'}
-                            aria-controls="catering-service-panel-pricing"
-                            onClick={() => setActiveServiceTab('pricing')}
-                        >
-                            <BadgeDollarSign size={18} aria-hidden="true" />
-                            <span>Costos y precios</span>
-                        </button>
+                title={editingService ? `Editar: ${editingService.name}` : 'Nuevo servicio de catering'}
+                breadcrumb={['Catering', 'Servicios']}
+                aside={(
+                    <div className={styles.summary} aria-label="Resumen del servicio">
+                        <h3>Resumen</h3>
+                        <div className={styles.summaryRow}><span>Costo</span><strong>{money(draftCost)}</strong></div>
+                        <div className={styles.summaryRow}><span>Precio de venta</span><strong>{money(draftPrice)}</strong></div>
+                        <div className={styles.summaryRow}><span>Utilidad</span><strong>{money(draftPrice - draftCost)}</strong></div>
+                        <div className={styles.summaryRow}>
+                            <span>Margen</span>
+                            <strong>{draftMargin === null ? '—' : `${formatNumber(draftMargin, 1)} %`}</strong>
+                        </div>
                     </div>
-                    <form
-                        className="modal-form-new"
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            void handleSave();
-                        }}
-                    >
-                        <div className="modal-tab-content">
-                            {activeServiceTab === 'general' && <div
-                                id="catering-service-panel-general"
-                                className="modal-content-group"
-                                role="tabpanel"
-                                aria-labelledby="catering-service-tab-general"
-                            >
-                                <div className="modal-section-header">
-                                    <FileText size={18} aria-hidden="true" />
-                                    <h3>Información general</h3>
-                                </div>
-                                <div className="modal-input-group">
-                                    <label htmlFor="catering-service-name">Nombre del servicio</label>
-                                    <input
-                                        id="catering-service-name"
-                                        className="modal-standard-input"
-                                        placeholder="Ej: Servicio de Mesoneros Premium"
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        autoComplete="off"
-                                        required
-                                    />
-                                </div>
-                                <div className="modal-input-group">
-                                    <label htmlFor="catering-service-description">Descripción / detalles</label>
-                                    <textarea
-                                        id="catering-service-description"
-                                        className="modal-textarea"
-                                        rows={4}
-                                        placeholder="Describa qué incluye este servicio..."
-                                        value={formData.description}
-                                        onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    />
-                                </div>
-                            </div>}
+                )}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="catering-service-form" loading={saving} disabled={!canManageCatering}>
+                            {editingService ? 'Guardar cambios' : 'Guardar servicio'}
+                        </Button>
+                    </>
+                )}
+            >
+                <form
+                    id="catering-service-form"
+                    className={styles.stack}
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleSave();
+                    }}
+                >
+                    <FormSection step={1} title="Información general" description="Cómo aparece el servicio en las cotizaciones.">
+                        <Field label="Nombre del servicio" htmlFor="catering-service-name" required>
+                            <Input
+                                id="catering-service-name"
+                                placeholder="Ej: Servicio de Mesoneros Premium"
+                                value={formData.name}
+                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                autoComplete="off"
+                                required
+                            />
+                        </Field>
+                        <Field label="Descripción / detalles" htmlFor="catering-service-description">
+                            <Textarea
+                                id="catering-service-description"
+                                rows={4}
+                                placeholder="Describa qué incluye este servicio..."
+                                value={formData.description}
+                                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            />
+                        </Field>
+                    </FormSection>
 
-                            {activeServiceTab === 'pricing' && <div
-                                id="catering-service-panel-pricing"
-                                className="modal-content-group"
-                                role="tabpanel"
-                                aria-labelledby="catering-service-tab-pricing"
-                            >
-                                <div className="modal-section-header">
-                                    <BadgeDollarSign size={18} aria-hidden="true" />
-                                    <h3>Análisis de costos y precios</h3>
-                                </div>
-                                <div className="modal-form-row">
-                                    <div className="modal-input-group">
-                                        <label htmlFor="catering-service-cost">Costo interno</label>
-                                        <input
-                                            id="catering-service-cost"
-                                            type="number"
-                                            className="modal-standard-input"
-                                            placeholder="0.00"
-                                            value={formData.internalCost}
-                                            onChange={e => setFormData({ ...formData, internalCost: e.target.value })}
-                                            min="0"
-                                            step="0.01"
-                                            inputMode="decimal"
-                                            required
-                                        />
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label htmlFor="catering-service-price">Precio de venta</label>
-                                        <input
-                                            id="catering-service-price"
-                                            type="number"
-                                            className="modal-standard-input"
-                                            placeholder="0.00"
-                                            value={formData.salePrice}
-                                            onChange={e => setFormData({ ...formData, salePrice: e.target.value })}
-                                            min="0"
-                                            step="0.01"
-                                            inputMode="decimal"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                {formData.internalCost && formData.salePrice && parseFloat(formData.salePrice) > 0 && (
-                                    <div className="financial-container" style={{ marginTop: '20px' }}>
-                                        <div className="financial-main-row">
-                                            <div className="summary-item">
-                                                <span className="label">Costo</span>
-                                                <span className="value">{money(parseFloat(formData.internalCost) || 0)}</span>
-                                            </div>
-                                            <div className="summary-item success">
-                                                <span className="label">Utilidad</span>
-                                                <span className="value">{money((parseFloat(formData.salePrice) || 0) - (parseFloat(formData.internalCost) || 0))}</span>
-                                            </div>
-                                            <div className="summary-item highlighted">
-                                                <span className="label">Margen %</span>
-                                                <span className="value">{formatNumber((parseFloat(formData.salePrice) - parseFloat(formData.internalCost)) / parseFloat(formData.salePrice) * 100, 1)}%</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>}
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
-                            <Button variant="primary" type="submit" disabled={!canManageCatering || saving}>
-                            {saving ? 'Guardando...' : editingService ? 'Actualizar Servicio' : 'Guardar Servicio'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
+                    <FormSection step={2} title="Costos y precios" description="El margen se recalcula al instante en el resumen.">
+                        <FormGrid>
+                            <Field label="Costo interno" htmlFor="catering-service-cost" required>
+                                <Input
+                                    id="catering-service-cost"
+                                    type="number"
+                                    className="ui-input--number"
+                                    placeholder="0.00"
+                                    value={formData.internalCost}
+                                    onChange={e => setFormData({ ...formData, internalCost: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    inputMode="decimal"
+                                    required
+                                />
+                            </Field>
+                            <Field label="Precio de venta" htmlFor="catering-service-price" required>
+                                <Input
+                                    id="catering-service-price"
+                                    type="number"
+                                    className="ui-input--number"
+                                    placeholder="0.00"
+                                    value={formData.salePrice}
+                                    onChange={e => setFormData({ ...formData, salePrice: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    inputMode="decimal"
+                                    required
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+                </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }
