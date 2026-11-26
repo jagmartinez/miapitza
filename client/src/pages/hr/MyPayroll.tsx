@@ -1,6 +1,6 @@
 import { formatHrMoney } from '../../utils/hrFormat';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, FileText, Gift, RefreshCw } from 'lucide-react';
+import { FileText, Gift, RefreshCw } from 'lucide-react';
 import { AppSelect, Button, DataTable, EmptyState, Field, Input, LoadErrorState, PageHeader, type Column } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import MyHrNav from '../../components/hr/MyHrNav';
@@ -161,7 +161,7 @@ export default function MyPayroll() {
       {!loading && error ? (
         <LoadErrorState message={error} onRetry={() => void load()} />
       ) : (
-        <div className={styles.layout}>
+        <div className={selected || detailLoading ? styles.layout : undefined}>
           <DataTable<HrPayrollReceiptSummary>
             ariaLabel="Recibos publicados"
             columns={columns}
@@ -188,24 +188,20 @@ export default function MyPayroll() {
             }
           />
 
-          <section className={styles.workspace} aria-live="polite" aria-label="Desglose del recibo">
-            {detailLoading ? (
-              <LoadingSpinner text="Abriendo desglose…" />
-            ) : selected ? (
-              <PayrollReceiptBreakdown
-                receipt={selected}
-                online={online}
-                downloading={downloading}
-                onDownload={() => void downloadReceipt()}
-              />
-            ) : (
-              <EmptyState
-                icon={Download}
-                title="Selecciona un recibo"
-                description="Verás importes, componentes y trazabilidad exactamente como fueron publicados por el servidor."
-              />
-            )}
-          </section>
+          {detailLoading || selected ? (
+            <section className={styles.workspace} aria-live="polite" aria-label="Desglose del recibo">
+              {detailLoading || !selected ? (
+                <LoadingSpinner text="Abriendo desglose…" />
+              ) : (
+                <PayrollReceiptBreakdown
+                  receipt={selected}
+                  online={online}
+                  downloading={downloading}
+                  onDownload={() => void downloadReceipt()}
+                />
+              )}
+            </section>
+          ) : null}
         </div>
       )}
     </div>

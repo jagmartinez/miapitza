@@ -12,7 +12,7 @@
 .ui-table tfoot tr { border-top: 1px solid var(--ui-border); background: var(--ui-surface-2); font-weight: 600; }
 .ui-cell { padding: var(--ui-space-2) var(--ui-space-3); text-align: left; min-width: 0; overflow-wrap: anywhere; }
 th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); text-transform: uppercase; letter-spacing: .02em; }
-.ui-cell--numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.ui-cell--numeric { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ui-cell--actions { display: flex; justify-content: flex-end; gap: var(--ui-space-1); }
 .ui-row--clickable { cursor: pointer; }
 .ui-row--clickable:hover { background: var(--ui-surface-2); }
