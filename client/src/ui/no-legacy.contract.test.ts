@@ -64,3 +64,13 @@ describe('guardas de consistencia del design system', () => {
     });
   }
 });
+
+describe('clases de botón heredadas', () => {
+  it('ningún className usa btn / btn-primary / btn-secondary / btn-danger / btn-ghost / btn-sm|md|lg', () => {
+    const LEGACY_BTN = /className=(?:"[^"]*|'[^']*|\{[^}]*["'`][^"'`]*)(?<![\w-])btn(?:-(?:primary|secondary|danger|ghost|sm|md|lg))?(?![\w-])/;
+    const offenders = walk(SRC)
+      .filter((f) => readFileSync(f, 'utf8').split(/\r?\n/).some((l) => LEGACY_BTN.test(l)))
+      .map((f) => relative(SRC, f).split(sep).join('/'));
+    expect(offenders, 'Usa Button de @/ui o las clases ui-button ui-button--*').toEqual([]);
+  });
+});

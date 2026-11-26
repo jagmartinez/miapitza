@@ -24,6 +24,7 @@ export function binScatter(
     yKey: string,
     fmt: (n: number) => string,
     bins = 6,
+    fmtY: (n: number) => string = fmt,
 ): BinnedScatter {
     const valid = points
         .map((p) => ({ x: Number(p[xKey]), y: Number(p[yKey]) }))
@@ -44,7 +45,7 @@ export function binScatter(
     }
     const columns = Array.from({ length: bins }, (_, i) => `${fmt(rx.min + i * rx.step)}–${fmt(rx.min + (i + 1) * rx.step)}`);
     const rows = grid
-        .map((values, yi) => ({ label: `${fmt(ry.min + yi * ry.step)}–${fmt(ry.min + (ry.step * (yi + 1)))}`, values }))
+        .map((values, yi) => ({ label: `${fmtY(ry.min + yi * ry.step)}–${fmtY(ry.min + (ry.step * (yi + 1)))}`, values }))
         .reverse();
     return { columns, rows };
 }

@@ -308,7 +308,7 @@ export default function ProductionDashboard() {
                                         current={data.timeSeries.map((d) => d.realCost)}
                                         previous={data.timeSeries.map((d) => d.estimatedCost)}
                                         previousLabel="Costo estimado"
-                                        format={(v) => `${symbol}${formatNumber(v, 0)}`}
+                                        format={(v) => formatMoney(v)}
                                         ariaLabel="Costo real frente al estimado por día"
                                     />
                                     <TrendChart

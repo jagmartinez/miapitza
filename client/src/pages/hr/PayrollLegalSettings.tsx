@@ -234,7 +234,7 @@ export default function PayrollLegalSettings() {
       {!loading && !error && rules.length === 0 && <div className="hr-payroll-legal-empty hr-legal-empty-state"><Scale size={42} /><strong>No hay una versión legal de nómina.</strong><span>Crea una vigencia para luego configurar tasas de INSS, INATEC y tramos de IR laboral.</span><Button variant="primary" onClick={() => { setCloneSource(null); setCreateOpen(true); }} disabled={!online || !companyTaxProfile?.ready}>Crear primera versión</Button></div>}
 
       {!loading && !error && companyTaxProfile && <section className="hr-legal-command-center" aria-label="Centro de control legal de nómina">
-        <div className="hr-legal-command-intro"><span className="hr-legal-command-icon"><Landmark size={24} aria-hidden="true" /></span><div><span className="hr-legal-eyebrow">Centro de control legal</span><h2>{companyTaxProfile.companyName}</h2><p>Administra en un solo flujo el perfil fiscal, las vigencias y los parámetros congelados que utiliza cada nómina.</p></div><Link className="btn btn-secondary btn-sm" to="/companies">Editar perfil fiscal</Link></div>
+        <div className="hr-legal-command-intro"><span className="hr-legal-command-icon"><Landmark size={24} aria-hidden="true" /></span><div><span className="hr-legal-eyebrow">Centro de control legal</span><h2>{companyTaxProfile.companyName}</h2><p>Administra en un solo flujo el perfil fiscal, las vigencias y los parámetros congelados que utiliza cada nómina.</p></div><Link className="ui-button ui-button--secondary ui-button--sm" to="/companies">Editar perfil fiscal</Link></div>
         <dl className="hr-legal-command-facts">
           <div><dt>Régimen DGI</dt><dd>{companyTaxProfile.taxRegime === 'GENERAL' ? 'General' : companyTaxProfile.taxRegime === 'SIMPLIFIED_FIXED_QUOTA' ? 'Cuota fija / simplificado' : companyTaxProfile.taxRegime === 'SPECIAL' ? 'Especial' : companyTaxProfile.taxRegime === 'EXEMPT' ? 'Exento' : 'Otro'}</dd><small>{companyTaxProfile.incomeTaxWithholding ? 'Retiene IR laboral' : 'No retiene IR laboral'}</small></div>
           <div><dt>Perfil maestro</dt><dd>{companyTaxProfile.ready ? 'Confirmado' : 'Pendiente'}</dd><small>Fuente para nuevas versiones</small></div>
@@ -243,7 +243,7 @@ export default function PayrollLegalSettings() {
         </dl>
       </section>}
 
-      {!loading && !error && companyTaxProfile && !companyTaxProfile.ready && <div className="hr-legal-profile-warning" role="alert"><AlertTriangle size={20} /><div><strong>El perfil fiscal de la empresa está pendiente.</strong><p>Confirma régimen, retención de IR y respaldo en Empresas. Hasta entonces no se pueden validar reglas ni iniciar nuevas corridas.</p></div><Link className="btn btn-primary btn-sm" to="/companies">Completar perfil</Link></div>}
+      {!loading && !error && companyTaxProfile && !companyTaxProfile.ready && <div className="hr-legal-profile-warning" role="alert"><AlertTriangle size={20} /><div><strong>El perfil fiscal de la empresa está pendiente.</strong><p>Confirma régimen, retención de IR y respaldo en Empresas. Hasta entonces no se pueden validar reglas ni iniciar nuevas corridas.</p></div><Link className="ui-button ui-button--primary ui-button--sm" to="/companies">Completar perfil</Link></div>}
 
       {!loading && !error && selectedRule && companyTaxProfile && <>
         <section className="hr-legal-version-list pr-table-card" aria-labelledby="legal-version-list-title">

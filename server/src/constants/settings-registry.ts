@@ -56,6 +56,8 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     D({ key: 'credit_note_series', type: 'string', default: 'NC', group: 'ventas', section: 'facturacion', label: 'Serie de nota de crédito', description: 'Prefijo de la numeración de notas de crédito.', max: 10 }),
     D({ key: 'invoiceFooter', type: 'string', default: '', group: 'ventas', section: 'facturacion', label: 'Pie del comprobante', description: 'Texto al final de tickets y facturas.', max: 191 }),
     D({ key: 'fiscal_tax_id_length', type: 'integer', default: '14', group: 'ventas', section: 'facturacion', label: 'Longitud del identificador fiscal', description: 'Caracteres esperados en la cédula o RUC del cliente.', min: 1, max: 40 }),
+    D({ key: 'fiscal_jurisdiction', type: 'string', default: '', group: 'ventas', section: 'facturacion', label: 'Jurisdicción fiscal', description: 'Código definido por la empresa. Sin él, notas de crédito y anulaciones quedan bloqueadas.', max: 32 }),
+    D({ key: 'fiscal_tax_id_charset', type: 'enum', default: '', group: 'ventas', section: 'facturacion', label: 'Caracteres del identificador fiscal', description: 'Tipo de caracteres permitidos en RUC/NIT.', options: [{ value: 'DIGITS', label: 'Solo dígitos' }, { value: 'ALPHANUMERIC', label: 'Alfanumérico y guion' }] }),
     // Propinas y cobro
     D({ key: 'tipEnabled', type: 'boolean', default: 'false', group: 'ventas', section: 'propinas', label: 'Propina sugerida', description: 'Agrega la propina sugerida a la cuenta.', branchable: true }),
     D({ key: 'tipRate', type: 'number', default: '0', group: 'ventas', section: 'propinas', label: 'Porcentaje de propina', description: 'Porcentaje sobre el subtotal.', min: 0, max: 100, suffix: '%', branchable: true }),

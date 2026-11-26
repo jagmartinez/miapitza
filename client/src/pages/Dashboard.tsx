@@ -1028,7 +1028,7 @@ export default function Dashboard() {
                     </div>
                     <div className="chart-wrapper">
                         <ParetoBars
-                            items={toPareto(incomeData.map((d) => ({ name: d.name, value: d.value })))}
+                            items={toPareto(incomeData.map((d) => ({ name: d.name, value: d.value })), Math.max(12, incomeData.length))}
                             format={(v) => formatCurrency(v)}
                             ariaLabel="Venta bruta por categoría con porcentaje acumulado"
                         />
@@ -1079,7 +1079,7 @@ export default function Dashboard() {
                         <PeriodSelector value={tipsPeriod} onChange={setTipsPeriod} />
                     </div>
                     <Heatmap
-                        {...binScatter(scatterTipsData as Array<Record<string, number | undefined>>, 'waitTime', 'tip', (n) => formatNumber(n, 0))}
+                        {...binScatter(scatterTipsData as Array<Record<string, number | undefined>>, 'waitTime', 'tip', (n) => formatNumber(n, 1), 6, (n) => formatCurrency(n))}
                         format={(v) => `${formatNumber(v, 0)} mesas`}
                         ariaLabel="Mesas por tiempo de espera (min, columnas) y propina (filas)"
                         caption="Columnas: tiempo de espera (min). Filas: propina."
@@ -1092,7 +1092,7 @@ export default function Dashboard() {
                         <PeriodSelector value={spendPeriod} onChange={setSpendPeriod} />
                     </div>
                     <Heatmap
-                        {...binScatter(scatterSpendData as Array<Record<string, number | undefined>>, 'dwellTime', 'spend', (n) => formatNumber(n, 0))}
+                        {...binScatter(scatterSpendData as Array<Record<string, number | undefined>>, 'dwellTime', 'spend', (n) => formatNumber(n, 1), 6, (n) => formatCurrency(n))}
                         format={(v) => `${formatNumber(v, 0)} mesas`}
                         ariaLabel="Mesas por permanencia (min, columnas) y consumo (filas)"
                         caption="Columnas: permanencia (min). Filas: consumo."
