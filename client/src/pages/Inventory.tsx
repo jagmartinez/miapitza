@@ -10,11 +10,11 @@ import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
-    Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, Printer,
+    Upload, Download, FileSpreadsheet, Search, Printer,
     FlaskConical, Box, Eye
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
-import { formatCurrency, currencyInputPadding, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
+import { formatCurrency, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
 import { resolveEffectiveUnitCost, type ProductCostResolution } from '../utils/productCost';
@@ -24,7 +24,11 @@ import s from './Inventory.module.css';
 import { computeInventoryKpis } from '../utils/inventoryKpis';
 import { buildWarehouseBreakdown, type WarehouseStockInput } from '../utils/inventoryWarehouses';
 import { buildInventoryCountSheetHtml } from '../utils/inventoryCountSheet';
-import { AppSelect, Button, SegmentedControl, Field, FullScreenModal, Badge, DataTable, EmptyState, IconButton, PageHeader, StatCard, formatNumber, formatPercent, type Column } from '@/ui';
+import catalog from './catalog.module.css';
+import {
+    AppSelect, Button, Checkbox, SegmentedControl, Field, FormGrid, FormSection, FullScreenModal, Badge, DataTable, EmptyState, IconButton, Input, PageContent,
+    PageHeader, StatCard, TableToolbar, Textarea, formatNumber, formatPercent, type Column,
+} from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
 // Suggestions carry the line already expressed in the product's default
@@ -134,6 +138,14 @@ const STORAGE_TYPE_OPTIONS: { value: '' | 'PERISHABLE' | 'FROZEN' | 'NON_PERISHA
     { value: 'NON_PERISHABLE', label: 'No Perecedero', icon: ShoppingBag }
 ];
 
+const PRODUCT_TYPE_OPTIONS: { value: Product['type']; label: string; description: string }[] = [
+    { value: 'INGREDIENT', label: 'Ingrediente', description: 'Uso interno' },
+    { value: 'PRODUCT_FOR_SALE', label: 'Venta', description: 'Venta directa' },
+    { value: 'BOTH', label: 'Ambos', description: 'Uso y venta' },
+    { value: 'INTERMEDIATE', label: 'Intermedio', description: 'Semielaborado' },
+    { value: 'PACKAGING', label: 'Empaque', description: 'Material' },
+];
+
 const PRODUCT_TYPE_LABELS: Record<Product['type'], string> = {
     INGREDIENT: 'Ingrediente / insumo',
     PRODUCT_FOR_SALE: 'Producto de venta',
@@ -161,9 +173,6 @@ export default function Inventory() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
-        (localStorage.getItem('inventory_view_mode') as 'cards' | 'table') || 'cards'
-    );
     const TABLE_PAGE_SIZE = 25;
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -845,86 +854,54 @@ export default function Inventory() {
         return `${critical} ${critical === 1 ? 'alerta crítica' : 'alertas críticas'}${top ? ` (más en ${top[0]})` : ''}, ${warning} ${warning === 1 ? 'preventiva' : 'preventivas'}`;
     })();
 
-    // Type helpers
-    const getTypeClass = (type: string, isLow: boolean) => {
-        if (isLow) return 'low-stock';
-        switch (type) {
-            case 'INGREDIENT': return 'ingredient';
-            case 'PRODUCT_FOR_SALE': return 'product';
-            case 'BOTH': return 'both';
-            case 'INTERMEDIATE': return 'intermediate';
-            case 'PACKAGING': return 'packaging';
-            default: return 'ingredient';
-        }
-    };
-
-
-    if (loading) {
-        return <div className="inventory-loading">Cargando inventario...</div>;
-    }
+    const categoryFilterOptions = [
+        { value: 'all', label: 'Todas las categorías' },
+        ...categories.filter(c => isCategoryVisibleInInventory(c) && (c._count?.products ?? 0) > 0).map(cat => ({ value: cat.id.toString(), label: cat.name }))
+    ];
+    const storageFilterOptions = [
+        { value: 'all', label: 'Todo almacenamiento' },
+        { value: 'PERISHABLE', label: 'Perecedero' },
+        { value: 'FROZEN', label: 'Congelado' },
+        { value: 'NON_PERISHABLE', label: 'No perecedero' }
+    ];
+    const hasFilters = filter !== 'all' || selectedCategory !== 'all' || storageFilter !== 'all' || searchQuery.trim() !== '';
 
     return (
-        <div className="inventory-page">
+        <PageContent>
             <PageHeader
-                title="Gestión de Inventario"
+                title="Inventario"
+                description="Existencias valorizadas por bodega, costo promedio ponderado."
                 actions={(
                     <>
-                    <div className="inventory-view-toggle">
-                        <button
-                            type="button"
-                            className={`view-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
-                            onClick={() => { setViewMode('cards'); localStorage.setItem('inventory_view_mode', 'cards'); }}
-                            title="Vista de tarjetas"
-                        >
-                            <LayoutGrid size={18} />
-                        </button>
-                        <button
-                            type="button"
-                            className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-                            onClick={() => { setViewMode('table'); localStorage.setItem('inventory_view_mode', 'table'); }}
-                            title="Vista de tabla"
-                        >
-                            <List size={18} />
-                        </button>
-                    </div>
-                    <Button variant="secondary" onClick={handlePrintInventory} title="Imprimir inventario">
-                        <Printer size={18} />
-                        Imprimir
-                    </Button>
-                    {canMutateProduct && (
-                        <Button variant="secondary" onClick={handleDownloadTemplate}>
-                            <Download size={18} />
-                            Plantilla Excel
-                        </Button>
-                    )}
-                    {canMutateProduct && (
-                        <Button variant="secondary" onClick={() => { setShowImportSidebar(true); setImportFile(null); setImportValidation(null); }}>
-                            <Upload size={18} />
-                            Importar Excel
-                        </Button>
-                    )}
-                    {canCreateAutoPO && (
-                        <Button
-                            variant="secondary"
-                            onClick={() => setShowAutoPurchaseSidebar(true)}
-                            disabled={autoPurchaseSuggestions.length === 0}
-                        >
-                            <FileText size={18} />
-                            Crear OC sugerida
-                        </Button>
-                    )}
-                    {/* Acceso a "Unidades de Medida" se gestiona desde su propia vista (sidebar/menú). */}
-                    {canMutateProduct && (
-                        <Button variant="primary" onClick={() => handleOpenSidebar()} title="Nuevo producto" aria-label="Nuevo producto">
-                            <Plus size={20} />
-                        </Button>
-                    )}
+                        <Button icon={Printer} onClick={handlePrintInventory}>Imprimir</Button>
+                        {canMutateProduct && (
+                            <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla Excel</Button>
+                        )}
+                        {canMutateProduct && (
+                            <Button icon={Upload} onClick={() => { setShowImportSidebar(true); setImportFile(null); setImportValidation(null); }}>
+                                Importar Excel
+                            </Button>
+                        )}
+                        {canCreateAutoPO && (
+                            <Button
+                                icon={FileText}
+                                onClick={() => setShowAutoPurchaseSidebar(true)}
+                                disabled={autoPurchaseSuggestions.length === 0}
+                            >
+                                Crear OC sugerida
+                            </Button>
+                        )}
+                        {canMutateProduct && (
+                            <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>
+                                Nuevo producto
+                            </Button>
+                        )}
                     </>
                 )}
             />
 
             {Object.keys(loadIssues).length > 0 && (
-                <div className="inventory-load-error" role="alert">
+                <div className={s.loadError} role="alert">
                     <div>
                         <strong>Inventario cargado parcialmente.</strong>
                         <span>Los datos faltantes no se mostraran como cero ni como listas vacias.</span>
@@ -935,7 +912,6 @@ export default function Inventory() {
                         </ul>
                     </div>
                     <Button
-                        variant="secondary"
                         onClick={() => {
                             void loadInventory();
                             void loadWarehouses();
@@ -952,7 +928,7 @@ export default function Inventory() {
                 </div>
             )}
 
-            <div className="inventory-kpi-grid" style={{ display: 'grid', gap: 'var(--ui-space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', marginBottom: 'var(--ui-space-4)' }}>
+            <div className={catalog.kpiGrid}>
                 {productsFailed ? (
                     <>
                         <StatCard label="Valor del inventario (C$)" value="No disponible" tone="neutral" context="No se pudieron cargar los productos" />
@@ -963,12 +939,12 @@ export default function Inventory() {
                     <>
                         <StatCard
                             label="Valor del inventario (C$)"
-                            value={formatNumber(kpis.totalValue)}
+                            value={loading ? '…' : formatNumber(kpis.totalValue)}
                             context={[warehouseValueContext, unknownCostNote].filter(Boolean).join(' · ') + (productsTruncated ? ' (primeros 500 productos)' : '')}
                         />
                         <StatCard
                             label="Reposición requerida (C$)"
-                            value={formatNumber(kpis.replenishmentCost)}
+                            value={loading ? '…' : formatNumber(kpis.replenishmentCost)}
                             tone={kpis.belowMinCount > 0 ? 'warning' : 'success'}
                             context={[
                                 kpis.belowMinCount > 0
@@ -983,246 +959,106 @@ export default function Inventory() {
                         />
                         <StatCard
                             label="Concentración del capital"
-                            value={formatPercent(kpis.concentrationPct)}
+                            value={loading ? '…' : formatPercent(kpis.concentrationPct)}
                             context={[kpis.topNames.length > 0 ? `En: ${kpis.topNames.join(', ')}` : 'Sin existencias valorizadas', unknownCostNote].filter(Boolean).join(' · ')}
                         />
                     </>
                 )}
             </div>
 
-            {/* Filters Row - Reservations Style Alignment */}
-            <div className="inventory-filters-row">
-                <div className="inventory-status-filters">
-                    <SegmentedControl
-                        ariaLabel="Filtrar por tipo"
-                        value={filter}
-                        onChange={setFilter}
-                        options={[
-                            { value: 'all', label: 'Todos' },
-                            { value: 'INGREDIENT', label: 'Ingredientes' },
-                            { value: 'PRODUCT_FOR_SALE', label: 'Productos' },
-                            { value: 'INTERMEDIATE', label: 'Intermedios' },
-                            { value: 'PACKAGING', label: 'Empaques' },
-                            { value: 'low', label: 'Stock bajo' },
-                        ]}
-                    />
-
-                    <div style={{ width: '1px', height: '24px', background: 'var(--ui-border)', margin: '0 8px' }} />
-
-                    <div className="inventory-category-select-wrapper">
-                        <AppSelect options={[
-                                { value: 'all', label: 'Todas las Categorías' },
-                                ...categories.filter(c => isCategoryVisibleInInventory(c) && (c._count?.products ?? 0) > 0).map(cat => ({ value: cat.id.toString(), label: cat.name }))
-                            ]} value={(selectedCategory === 'all' ? { value: 'all', label: 'Todas las Categorías' } : { value: selectedCategory, label: categories.find(c => c.id.toString() === selectedCategory)?.name || 'Categoría' })?.value ?? null} onChange={(__v) => { const option = ([
-                                { value: 'all', label: 'Todas las Categorías' },
-                                ...categories.filter(c => isCategoryVisibleInInventory(c) && (c._count?.products ?? 0) > 0).map(cat => ({ value: cat.id.toString(), label: cat.name }))
-                            ]).find((o) => o.value === __v) ?? null; return setSelectedCategory(option?.value || 'all'); }} placeholder="Filtrar por categoría..." />
-                    </div>
-
-                    <div className="inventory-category-select-wrapper">
-                        <AppSelect options={[
-                                { value: 'all', label: 'Almacenamiento' },
-                                { value: 'PERISHABLE', label: 'Perecedero' },
-                                { value: 'FROZEN', label: 'Congelado' },
-                                { value: 'NON_PERISHABLE', label: 'No Perecedero' }
-                            ]} value={storageFilter ?? null} onChange={(__v) => { const option = ([
-                                { value: 'all', label: 'Almacenamiento' },
-                                { value: 'PERISHABLE', label: 'Perecedero' },
-                                { value: 'FROZEN', label: 'Congelado' },
-                                { value: 'NON_PERISHABLE', label: 'No Perecedero' }
-                            ]).find((o) => o.value === __v) ?? null; return setStorageFilter(option?.value || 'all'); }} placeholder="Almacenamiento..." />
-                    </div>
-                </div>
-
-                <div className="filter-right-section">
-
-                    <input
-                        type="text"
-                        placeholder="Buscar por nombre o SKU..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="search-input inventory-search"
-                    />
-                </div>
-            </div>
-
-            {/* Products Grid - Tables Style */}
-            {viewMode === 'cards' && (
-            <div className="inventory-grid-new">
-                {filteredProducts.map(product => {
-                    const isLow = lowStock.some(p => p.id === product.id);
-
-                    return (
-                        <div key={product.id} className={`inventory-card-new ${getTypeClass(product.type, isLow)}`}>
-
-                            {/* Card Body */}
-                            <div className="inventory-card-body-new">
-                                <div className="product-name-new">{product.name}</div>
-
-                                <div className="product-details-new">
-                                    {product.sku && (
-                                        <div className="detail-item">
-                                            <span className="sku-tag">{product.sku}</span>
-                                        </div>
-                                    )}
-                                    {product.storageType && (
-                                        <div className="detail-item">
-                                            <span className="sku-tag" style={{
-                                                background: product.storageType === 'PERISHABLE' ? 'var(--ui-danger-soft)' : product.storageType === 'FROZEN' ? 'var(--ui-primary-soft)' : 'var(--ui-success-soft)',
-                                                color: product.storageType === 'PERISHABLE' ? 'var(--ui-danger)' : product.storageType === 'FROZEN' ? 'var(--ui-primary)' : 'var(--ui-success)',
-                                                border: `1px solid ${product.storageType === 'PERISHABLE' ? 'var(--ui-danger)' : product.storageType === 'FROZEN' ? 'var(--ui-primary)' : 'var(--ui-success)'}`
-                                            }}>
-                                                {{ 'PERISHABLE': 'Perecedero', 'FROZEN': 'Congelado', 'NON_PERISHABLE': 'No Perecedero' }[product.storageType]}
-                                            </span>
-                                        </div>
-                                    )}
-                                    <div className="detail-item">
-                                        <span>{product.baseUnit?.abbreviation || product.unit}</span>
-                                    </div>
-                                </div>
-
-                                <div className="product-pricing-new">
-                                    <div className="pricing-item">
-                                        <span className="pricing-label">Costo unit.</span>
-                                        <span className="pricing-value">{formatInventoryCost(product as ProductInventory, settings)}</span>
-                                    </div>
-                                    <div className="pricing-item">
-                                        <span className="pricing-label">Precio</span>
-                                        <span className="pricing-value price">
-                                            {product.price ? formatCurrency(Number(product.price), settings) : '-'}
-                                        </span>
-                                    </div>
-                                    <div className="pricing-item">
-                                        <span className="pricing-label">Mín</span>
-                                        <span className="pricing-value">{product.minStock}</span>
-                                    </div>
-                                </div>
-
-                                {/* Low Stock Warning */}
-                                {isLow && (
-                                    <div className="low-stock-badge-new">
-                                        <AlertTriangle size={14} />
-                                        Stock Mínimo Alcanzado
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Actions Bar - Tables Style */}
-                            <div className="inventory-card-actions-new">
-                                <button
-                                    className="action-btn-new view"
-                                    onClick={() => handleViewProduct(product)}
-                                    title="Ver detalle"
-                                >
-                                    <Eye size={20} />
-                                    <span>Ver</span>
-                                </button>
-                                <button
-                                    className="action-btn-new kardex"
-                                    onClick={() => navigate(`/kardex?productId=${product.id}`)}
-                                    title="Ver Kardex"
-                                >
-                                    <FileText size={20} />
-                                    <span>Kardex</span>
-                                </button>
-                                {canAdjustStock && (
-                                    <button
-                                        className="action-btn-new adjust"
-                                        onClick={() => handleOpenAdjustment(product)}
-                                        title="Ajustar Stock"
-                                    >
-                                        <Activity size={20} />
-                                        <span>Ajustar</span>
-                                    </button>
-                                )}
-                                {canMutateProduct && (
-                                    <button
-                                        className="action-btn-new adjust"
-                                        onClick={() => navigate(`/inventory/${product.id}/units`)}
-                                        title="Conversiones de unidades"
-                                    >
-                                        <Layers size={20} />
-                                        <span>Conversiones</span>
-                                    </button>
-                                )}
-                                {canMutateProduct && (
-                                    <button
-                                        className="action-btn-new edit"
-                                        onClick={() => handleOpenSidebar(product)}
-                                        title="Editar"
-                                    >
-                                        <Edit2 size={20} />
-                                        <span>Editar</span>
-                                    </button>
-                                )}
-                                {canDeleteProduct && (
-                                    <button
-                                        className="action-btn-new delete"
-                                        onClick={() => handleDelete(product.id)}
-                                        title="Eliminar"
-                                    >
-                                        <Trash2 size={20} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-            )}
-
-            {/* Table View */}
-            {viewMode === 'table' && filteredProducts.length > 0 && (
-                <DataTable<ProductInventory>
-                    ariaLabel="Inventario de productos"
-                    rows={filteredProducts as ProductInventory[]}
-                    rowKey={(product) => product.id}
-                    defaultPageSize={TABLE_PAGE_SIZE}
-                    pageSizeOptions={[10, 25, 50, 100]}
-                    resetKey={`${filter}|${searchQuery}|${selectedCategory}|${storageFilter}`}
-                    rowTone={(product) => (isLowStockProduct(product.id) ? 'warning' : undefined)}
-                    footerLabel="Total (sin productos N/D)"
-                    columns={[
-                        { key: 'sku', header: 'Código', width: 'minmax(5.5rem,.8fr)', render: (product) => product.sku || '-' },
-                        { key: 'name', header: 'Producto', width: '2.4fr', render: (product) => product.name },
-                        { key: 'category', header: 'Categoría', width: '1.2fr', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '-' },
-                        { key: 'warehouse', header: 'Bodega', width: '1.1fr', render: (product) => warehouseBreakdown.labelByProduct.get(product.id) ?? '-' },
-                        { key: 'stock', header: 'Existencia', width: '1fr', type: 'qty', accessor: (product) => product.totalStock ?? 0 },
-                        { key: 'unit', header: 'Unidad', width: '.6fr', render: (product) => product.baseUnit?.abbreviation || product.unit },
-                        { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
-                        { key: 'value', header: 'Valor (C$)', width: '1.2fr', type: 'money', total: true, accessor: (product) => (inventoryCostQuality(product).known ? Number(product.totalStock ?? 0) * inventoryCostQuality(product).value : null), render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
-                        { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (product) => (
-                            <Badge tone={isLowStockProduct(product.id) ? 'warning' : 'success'} dot>
-                                {isLowStockProduct(product.id) ? 'Stock bajo' : 'OK'}
-                            </Badge>
-                        ) },
-                        { key: 'actions', header: 'Acciones', width: '48px', type: 'actions', render: (product) => (
-                            <div className="table-actions">
-                                <IconButton icon={Eye} label={`Ver detalle de ${product.name}`} onClick={() => handleViewProduct(product)} />
-                                <IconButton icon={FileText} label={`Ver kardex de ${product.name}`} onClick={() => navigate(`/kardex?productId=${product.id}`)} />
-                                {canAdjustStock && <IconButton icon={Activity} label={`Ajustar stock de ${product.name}`} onClick={() => handleOpenAdjustment(product)} />}
-                                {canMutateProduct && <IconButton icon={Layers} label={`Conversiones de ${product.name}`} onClick={() => navigate(`/inventory/${product.id}/units`)} />}
-                                {canMutateProduct && <IconButton icon={Edit2} label={`Editar ${product.name}`} onClick={() => handleOpenSidebar(product)} />}
-                                {canDeleteProduct && <IconButton icon={Trash2} label={`Eliminar ${product.name}`} onClick={() => handleDelete(product.id)} />}
-                            </div>
-                        ) },
-                    ] as Column<ProductInventory>[]}
-                />
-            )}
-
-            {
-                filteredProducts.length === 0 && (
-                    <div className="no-products-message">
-                        <Package size={48} />
-                        <p>No hay productos {filter !== 'all' ? 'con este filtro' : 'registrados'}</p>
-                        {filter !== 'all' ? (
-                            <Button variant="primary" onClick={() => setFilter('all')}>Ver todos</Button>
+            <DataTable<ProductInventory>
+                ariaLabel="Inventario de productos"
+                rows={filteredProducts as ProductInventory[]}
+                rowKey={(product) => product.id}
+                loading={loading}
+                defaultPageSize={TABLE_PAGE_SIZE}
+                pageSizeOptions={[10, 25, 50, 100]}
+                resetKey={`${filter}|${searchQuery}|${selectedCategory}|${storageFilter}`}
+                rowTone={(product) => (isLowStockProduct(product.id) ? 'warning' : undefined)}
+                onRowClick={(product) => handleViewProduct(product)}
+                footerLabel="Total (sin productos N/D)"
+                empty={(
+                    <EmptyState
+                        icon={Package}
+                        title={hasFilters ? 'Sin resultados' : 'No hay productos registrados'}
+                        description={hasFilters ? 'Ajusta o limpia los filtros.' : undefined}
+                        action={hasFilters ? (
+                            <Button onClick={() => { setFilter('all'); setSelectedCategory('all'); setStorageFilter('all'); setSearchQuery(''); }}>Limpiar filtros</Button>
                         ) : canMutateProduct ? (
                             <Button variant="primary" onClick={() => handleOpenSidebar()}>Crear primer producto</Button>
-                        ) : null}
+                        ) : undefined}
+                    />
+                )}
+                toolbar={(
+                    <div className={s.toolbarStack}>
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            aria-label="Buscar producto"
+                            placeholder="Buscar por código o producto"
+                            prefix={<Search size={14} aria-hidden="true" />}
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                        />
+                        <AppSelect
+                            aria-label="Filtrar por categoría"
+                            isClearable={false}
+                            options={categoryFilterOptions}
+                            value={selectedCategory}
+                            onChange={(v) => setSelectedCategory(v || 'all')}
+                        />
+                        <AppSelect
+                            aria-label="Filtrar por almacenamiento"
+                            isClearable={false}
+                            isSearchable={false}
+                            options={storageFilterOptions}
+                            value={storageFilter}
+                            onChange={(v) => setStorageFilter(v || 'all')}
+                        />
+                    </TableToolbar>
+                        <div className={s.segmentWrap}>
+                            <SegmentedControl
+                                ariaLabel="Filtrar por tipo"
+                                value={filter}
+                                onChange={setFilter}
+                                options={[
+                                    { value: 'all', label: 'Todos' },
+                                    { value: 'INGREDIENT', label: 'Ingredientes' },
+                                    { value: 'PRODUCT_FOR_SALE', label: 'Productos' },
+                                    { value: 'INTERMEDIATE', label: 'Intermedios' },
+                                    { value: 'PACKAGING', label: 'Empaques' },
+                                    { value: 'low', label: 'Stock bajo' },
+                                ]}
+                            />
+                        </div>
                     </div>
-                )
-            }
+                )}
+                columns={[
+                    { key: 'sku', header: 'Código', width: 'minmax(7.5rem,.8fr)', render: (product) => product.sku || '—' },
+                    { key: 'name', header: 'Producto', width: '2.4fr', render: (product) => product.name },
+                    { key: 'category', header: 'Categoría', width: '1.2fr', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '—' },
+                    { key: 'warehouse', header: 'Bodega', width: '1.1fr', render: (product) => warehouseBreakdown.labelByProduct.get(product.id) ?? '—' },
+                    { key: 'stock', header: 'Existencia', width: '1fr', type: 'qty', accessor: (product) => product.totalStock ?? 0 },
+                    { key: 'unit', header: 'Unidad', width: '.6fr', render: (product) => product.baseUnit?.abbreviation || product.unit },
+                    { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
+                    { key: 'value', header: 'Valor (C$)', width: '1.2fr', type: 'money', total: true, accessor: (product) => (inventoryCostQuality(product).known ? Number(product.totalStock ?? 0) * inventoryCostQuality(product).value : null), render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
+                    { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (product) => (
+                        <Badge tone={isLowStockProduct(product.id) ? 'warning' : 'success'} dot>
+                            {isLowStockProduct(product.id) ? 'Stock bajo' : 'OK'}
+                        </Badge>
+                    ) },
+                    { key: 'actions', header: 'Acciones', width: 'minmax(12rem, auto)', type: 'actions', render: (product) => (
+                        <div className={catalog.rowActions}>
+                            <IconButton size="sm" icon={Eye} label={`Ver detalle de ${product.name}`} onClick={() => handleViewProduct(product)} />
+                            <IconButton size="sm" icon={FileText} label={`Ver kardex de ${product.name}`} onClick={() => navigate(`/kardex?productId=${product.id}`)} />
+                            {canAdjustStock && <IconButton size="sm" icon={Activity} label={`Ajustar stock de ${product.name}`} onClick={() => handleOpenAdjustment(product)} />}
+                            {canMutateProduct && <IconButton size="sm" icon={Layers} label={`Conversiones de ${product.name}`} onClick={() => navigate(`/inventory/${product.id}/units`)} />}
+                            {canMutateProduct && <IconButton size="sm" icon={Edit2} label={`Editar ${product.name}`} onClick={() => handleOpenSidebar(product)} />}
+                            {canDeleteProduct && <IconButton size="sm" icon={Trash2} label={`Eliminar ${product.name}`} onClick={() => handleDelete(product.id)} />}
+                        </div>
+                    ) },
+                ] as Column<ProductInventory>[]}
+            />
 
             {/* Product Form Sidebar */}
             <FullScreenModal
@@ -1382,766 +1218,498 @@ export default function Inventory() {
             <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
-                title={editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
-            >
-                <div className="premium-modal-content product-modal-content">
-                    {/* Tabs Navigation */}
-                    <div className="modal-tabs" role="tablist" aria-label="Secciones del producto">
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'general'}
-                            className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('general')}
-                        >
-                            <Package size={18} />
-                            <span>General</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'stock'}
-                            className={`modal-tab ${activeTab === 'stock' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('stock')}
-                        >
-                            <Truck size={18} />
-                            <span>Stock</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'finanzas'}
-                            className={`modal-tab ${activeTab === 'finanzas' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('finanzas')}
-                        >
-                            <DollarSign size={18} />
-                            <span>Finanzas</span>
-                        </button>
+                title={editingProduct ? 'Editar producto' : 'Nuevo producto'}
+                breadcrumb={['Inventario', 'Productos']}
+                subtitle={editingProduct?.sku || undefined}
+                tabs={[
+                    { id: 'general', label: 'General' },
+                    { id: 'stock', label: 'Stock' },
+                    { id: 'finanzas', label: 'Finanzas' },
+                ]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as typeof activeTab)}
+                aside={editingProduct ? (
+                    <div className={catalog.summary} aria-label="Costeo transaccional">
+                        <h3>Costeo transaccional</h3>
+                        <div className={catalog.summaryRow}><span>Costo efectivo para recetas</span><strong>{formatInventoryCost(editingProduct as ProductInventory, settings)}</strong></div>
+                        <div className={catalog.summaryRow}><span>Última compra</span><strong>{formatLastPurchaseCost(editingProduct as ProductInventory, settings)}</strong></div>
+                        <p className={catalog.muted}>
+                            El promedio ponderado y la última compra se actualizan únicamente al recibir compras. El costo de referencia no modifica esos valores.
+                        </p>
                     </div>
-
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            {activeTab === 'general' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Package size={18} />
-                                        <h3>Información General</h3>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="inventory-product-name">Nombre del Producto</label>
-                                        <input
+                ) : undefined}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button type="submit" form="inventory-product-form" variant="primary" loading={saving}>
+                            {editingProduct ? 'Guardar cambios' : 'Crear producto'}
+                        </Button>
+                    </>
+                )}
+            >
+                <form id="inventory-product-form" onSubmit={handleSubmit} className={catalog.stack}>
+                    {activeTab === 'general' && (
+                        <>
+                            <FormSection step={1} title="Información general" description="Nombre, tipo y clasificación del producto.">
+                                <FormGrid>
+                                    <Field label="Nombre del producto" htmlFor="inventory-product-name" required>
+                                        <Input
                                             id="inventory-product-name"
-                                            type="text"
-                                            className="modal-standard-input"
                                             value={formData.name}
                                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                             required
                                             placeholder="Ej: Tomate, Pizza Margherita"
                                         />
-                                    </div>
-
-                                    <div className={formData.type === 'INGREDIENT' ? 'disabled-group' : ''}>
-                                        <Field label={formData.type === 'INGREDIENT' ? 'Categoría del Producto (No aplica para ingredientes)' : 'Categoría del Producto'} htmlFor="inventory-product-category">
-<AppSelect inputId="inventory-product-category" options={categories.filter(c => isCategoryVisibleInInventory(c)).map(c => ({ value: c.id.toString(), label: c.name }))} value={(formData.categoryId
-                                                    ? categories
-                                                        .filter(c => isCategoryVisibleInInventory(c))
-                                                        .map(c => ({ value: c.id.toString(), label: c.name }))
-                                                        .find(opt => opt.value === formData.categoryId) || null
-                                                    : null)?.value ?? null} onChange={(__v) => { const option = (categories.filter(c => isCategoryVisibleInInventory(c)).map(c => ({ value: c.id.toString(), label: c.name }))).find((o) => o.value === __v) ?? null; return setFormData({ ...formData, categoryId: option ? option.value : '' }); }} placeholder={formData.type === 'INGREDIENT' ? 'N/A' : 'Seleccionar categoría...'} isDisabled={formData.type === 'INGREDIENT'} isClearable />
-</Field>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" id="inventory-product-type-label">Tipo de Producto</label>
-                                        <div className="type-selector-grid" role="group" aria-labelledby="inventory-product-type-label">
-                                            <button
-                                                type="button"
-                                                className={`type-option ${formData.type === 'INGREDIENT' ? 'active' : ''}`}
-                                                onClick={() => setFormData({ ...formData, type: 'INGREDIENT', categoryId: '' })}
-                                                aria-pressed={formData.type === 'INGREDIENT'}
-                                            >
-                                                <Package size={20} />
-                                                <div className="type-info">
-                                                    <span className="type-name">Ingrediente</span>
-                                                    <span className="type-desc">Uso interno</span>
-                                                </div>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`type-option ${formData.type === 'PRODUCT_FOR_SALE' ? 'active' : ''}`}
-                                                onClick={() => setFormData({ ...formData, type: 'PRODUCT_FOR_SALE' })}
-                                                aria-pressed={formData.type === 'PRODUCT_FOR_SALE'}
-                                            >
-                                                <ShoppingBag size={20} />
-                                                <div className="type-info">
-                                                    <span className="type-name">Venta</span>
-                                                    <span className="type-desc">Directo</span>
-                                                </div>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`type-option ${formData.type === 'BOTH' ? 'active' : ''}`}
-                                                onClick={() => setFormData({ ...formData, type: 'BOTH' })}
-                                                aria-pressed={formData.type === 'BOTH'}
-                                            >
-                                                <Layers size={20} />
-                                                <div className="type-info">
-                                                    <span className="type-name">Ambos</span>
-                                                    <span className="type-desc">Uso y Venta</span>
-                                                </div>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`type-option ${formData.type === 'INTERMEDIATE' ? 'active' : ''}`}
-                                                onClick={() => setFormData({ ...formData, type: 'INTERMEDIATE' })}
-                                                aria-pressed={formData.type === 'INTERMEDIATE'}
-                                            >
-                                                <FlaskConical size={20} />
-                                                <div className="type-info">
-                                                    <span className="type-name">Intermedio</span>
-                                                    <span className="type-desc">Semielaborado</span>
-                                                </div>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`type-option ${formData.type === 'PACKAGING' ? 'active' : ''}`}
-                                                onClick={() => setFormData({ ...formData, type: 'PACKAGING' })}
-                                                aria-pressed={formData.type === 'PACKAGING'}
-                                            >
-                                                <Box size={20} />
-                                                <div className="type-info">
-                                                    <span className="type-name">Empaque</span>
-                                                    <span className="type-desc">Material</span>
-                                                </div>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" id="inventory-storage-type-label">Tipo de Almacenamiento</label>
-                                        <div className="type-selector-grid type-selector-grid--storage" role="group" aria-labelledby="inventory-storage-type-label">
-                                            {STORAGE_TYPE_OPTIONS.map((opt) => (
-                                                <button type="button" key={opt.value || 'none'}
-                                                    className={`type-option ${formData.storageType === opt.value ? 'active' : ''}`}
-                                                    onClick={() => setFormData({ ...formData, storageType: opt.value })}
-                                                    aria-pressed={formData.storageType === opt.value}
-                                                >
-                                                    <opt.icon size={18} />
-                                                    <div className="type-info">
-                                                        <span className="type-name">{opt.label}</span>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="inventory-product-sku">
-                                                SKU / Código
-                                                {!editingProduct && (
-                                                    <span className="label-note"> </span>
-                                                )}
-                                            </label>
-                                            <input
-                                                id="inventory-product-sku"
-                                                type="text"
-                                                className="modal-standard-input"
-                                                value={formData.sku}
-                                                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                                                placeholder={editingProduct ? 'Ej: ING-000001' : 'Dejar vacío para autogenerar'}
-                                            />
-                                        </div>
-                                        <Field label="Unidad de referencia" htmlFor="sel-1578">
-<AppSelect inputId="sel-1578" options={allUnits.map((unit) => ({
-                                                value: unit.abbreviation,
-                                                label: `${unit.name} (${unit.abbreviation})`
-                                            }))} value={(formData.unit
-                                                ? {
-                                                    value: formData.unit,
-                                                    label: allUnits.find((unit) => unit.abbreviation === formData.unit)
-                                                        ? `${allUnits.find((unit) => unit.abbreviation === formData.unit)!.name} (${formData.unit})`
-                                                        : formData.unit
-                                                }
-                                                : null)?.value ?? null} onChange={(__v) => { const option = (allUnits.map((unit) => ({
-                                                value: unit.abbreviation,
-                                                label: `${unit.name} (${unit.abbreviation})`
-                                            }))).find((o) => o.value === __v) ?? null; 
-                                                if (!option) return;
-                                                setFormData({ ...formData, unit: option.value });
-                                            }} placeholder={allUnits.length === 0 ? 'Sin unidades' : 'Seleccionar...'} isDisabled={allUnits.length === 0 || !!editingProduct} />
-</Field>
-                                        {editingProduct && (
-                                            <p className="modal-input-hint">
-                                                La unidad base y sus factores se administran desde Conversiones para proteger el historial físico.
-                                            </p>
-                                        )}
-                                        {allUnits.length === 0 && (
-                                            <p className="modal-input-hint">
-                                                No hay unidades activas.{' '}
-                                                <button
-                                                    type="button"
-                                                    className="units-inline-link"
-                                                    onClick={() => navigate('/units-of-measure')}
-                                                >
-                                                    Gestionar unidades de medida
-                                                </button>
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="inventory-observation">Observación</label>
-                                        <textarea
-                                            id="inventory-observation"
-                                            className="modal-textarea inventory-observation-input"
-                                            value={formData.observation}
-                                            onChange={(e) => setFormData({ ...formData, observation: e.target.value })}
-                                            placeholder="Notas internas sobre el producto (opcional)..."
+                                    </Field>
+                                    <Field label="Tipo de producto" htmlFor="inventory-product-type" required>
+                                        <AppSelect<Product['type']>
+                                            inputId="inventory-product-type"
+                                            isClearable={false}
+                                            isSearchable={false}
+                                            options={PRODUCT_TYPE_OPTIONS}
+                                            value={formData.type}
+                                            onChange={(type) => type && setFormData({ ...formData, type, categoryId: type === 'INGREDIENT' ? '' : formData.categoryId })}
                                         />
-                                    </div>
-                                </div>
-                            )}
+                                    </Field>
+                                    <Field
+                                        label="Categoría del producto"
+                                        htmlFor="inventory-product-category"
+                                        hint={formData.type === 'INGREDIENT' ? 'No aplica para ingredientes.' : undefined}
+                                    >
+                                        <AppSelect
+                                            inputId="inventory-product-category"
+                                            options={categories.filter(c => isCategoryVisibleInInventory(c)).map(c => ({ value: c.id.toString(), label: c.name }))}
+                                            value={formData.categoryId || null}
+                                            onChange={(v) => setFormData({ ...formData, categoryId: v ?? '' })}
+                                            placeholder={formData.type === 'INGREDIENT' ? 'N/A' : 'Seleccionar categoría...'}
+                                            isDisabled={formData.type === 'INGREDIENT'}
+                                            isClearable
+                                        />
+                                    </Field>
+                                    <Field label="Tipo de almacenamiento" htmlFor="inventory-storage-type">
+                                        <AppSelect<string>
+                                            inputId="inventory-storage-type"
+                                            isClearable={false}
+                                            isSearchable={false}
+                                            options={STORAGE_TYPE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+                                            value={formData.storageType}
+                                            onChange={(v) => setFormData({ ...formData, storageType: (v ?? '') as typeof formData.storageType })}
+                                        />
+                                    </Field>
+                                </FormGrid>
+                            </FormSection>
 
-                            {activeTab === 'stock' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Truck size={18} />
-                                        <h3>Gestión de Existencias</h3>
+                            <FormSection step={2} title="Identificación y unidad">
+                                <FormGrid>
+                                    <Field label="SKU / Código" htmlFor="inventory-product-sku" hint={editingProduct ? undefined : 'Déjalo vacío para autogenerar.'}>
+                                        <Input
+                                            id="inventory-product-sku"
+                                            value={formData.sku}
+                                            onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                                            placeholder={editingProduct ? 'Ej: ING-000001' : 'Dejar vacío para autogenerar'}
+                                        />
+                                    </Field>
+                                    <Field
+                                        label="Unidad de referencia"
+                                        htmlFor="inventory-product-unit"
+                                        required
+                                        hint={editingProduct
+                                            ? 'La unidad base y sus factores se administran desde Conversiones para proteger el historial físico.'
+                                            : allUnits.length === 0 ? 'No hay unidades activas.' : undefined}
+                                    >
+                                        <AppSelect
+                                            inputId="inventory-product-unit"
+                                            options={allUnits.map((unit) => ({ value: unit.abbreviation, label: `${unit.name} (${unit.abbreviation})` }))}
+                                            value={formData.unit || null}
+                                            onChange={(v) => { if (v) setFormData({ ...formData, unit: v }); }}
+                                            placeholder={allUnits.length === 0 ? 'Sin unidades' : 'Seleccionar...'}
+                                            isDisabled={allUnits.length === 0 || !!editingProduct}
+                                        />
+                                    </Field>
+                                </FormGrid>
+                                {allUnits.length === 0 && (
+                                    <div>
+                                        <Button size="sm" variant="ghost" onClick={() => navigate('/units-of-measure')}>Gestionar unidades de medida</Button>
                                     </div>
+                                )}
+                                <Field label="Observación" htmlFor="inventory-observation">
+                                    <Textarea
+                                        id="inventory-observation"
+                                        rows={3}
+                                        value={formData.observation}
+                                        onChange={(e) => setFormData({ ...formData, observation: e.target.value })}
+                                        placeholder="Notas internas sobre el producto (opcional)..."
+                                    />
+                                </Field>
+                            </FormSection>
+                        </>
+                    )}
 
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="inventory-min-stock">
-                                            Stock Mínimo (Alerta){formData.unit ? ` — en ${formData.unit}` : ''}
-                                        </label>
-                                        <input
-                                            id="inventory-min-stock"
+                    {activeTab === 'stock' && (
+                        <FormSection step={1} title="Gestión de existencias">
+                            <FormGrid>
+                                <Field
+                                    label={`Stock mínimo (alerta)${formData.unit ? ` — en ${formData.unit}` : ''}`}
+                                    htmlFor="inventory-min-stock"
+                                    required
+                                    hint={`Se mostrará una alerta cuando el stock sea inferior a este valor. La cantidad está expresada en la unidad base del producto${formData.unit ? ` (${formData.unit})` : ''}.`}
+                                >
+                                    <Input
+                                        id="inventory-min-stock"
+                                        type="number"
+                                        step="0.001"
+                                        min="0"
+                                        className="ui-input--number"
+                                        suffix={formData.unit || undefined}
+                                        value={formData.minStock}
+                                        onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
+                                        required
+                                    />
+                                </Field>
+                            </FormGrid>
+                        </FormSection>
+                    )}
+
+                    {activeTab === 'finanzas' && (() => {
+                        const isSellable = formData.type === 'PRODUCT_FOR_SALE' || formData.type === 'BOTH';
+                        return (
+                            <FormSection step={1} title="Información financiera">
+                                <FormGrid>
+                                    <Field
+                                        label={`Costo de referencia${formData.unit ? ` por ${formData.unit}` : ''}`}
+                                        htmlFor="inventory-reference-cost"
+                                        required
+                                        hint={editingProduct && Number((editingProduct as ProductInventory).currentAverageCost || 0) > 0
+                                            ? 'Valor alternativo para estimaciones; el promedio transaccional vigente tiene prioridad.'
+                                            : 'Se usa para recetas y estimaciones mientras no exista un costo promedio transaccional.'}
+                                    >
+                                        <Input
+                                            id="inventory-reference-cost"
                                             type="number"
-                                            step="0.001"
+                                            step="any"
                                             min="0"
-                                            className="modal-standard-input"
-                                            value={formData.minStock}
-                                            onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
+                                            className="ui-input--number"
+                                            prefix={symbol}
+                                            value={formData.cost}
+                                            onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
                                             required
                                         />
-                                        <small style={{ color: 'var(--ui-text-muted)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
-                                            Se mostrará una alerta cuando el stock sea inferior a este valor. La cantidad
-                                            está expresada en la <strong>unidad base</strong> del producto{formData.unit ? ` (${formData.unit})` : ''}.
-                                        </small>
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'finanzas' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <DollarSign size={18} />
-                                        <h3>Información Financiera</h3>
-                                    </div>
-
-                                    {editingProduct && (
-                                        <div className="inventory-cost-summary">
-                                            <div className="inventory-cost-summary-title">
-                                                💡 Costeo transaccional activo
-                                            </div>
-                                            <div className="inventory-cost-summary-copy">
-                                                El <strong>promedio ponderado</strong> y la <strong>última compra</strong> se actualizan únicamente al recibir compras. El costo de referencia no modifica esos valores.
-                                            </div>
-                                            <div className="inventory-cost-summary-metrics">
-                                                <div className="inventory-cost-metric">
-                                                    <span>Costo efectivo para recetas</span>
-                                                    <strong>
-                                                        {formatInventoryCost(editingProduct as ProductInventory, settings)}
-                                                    </strong>
-                                                </div>
-                                                <div className="inventory-cost-metric">
-                                                    <span>Última compra</span>
-                                                    <strong>
-                                                        {formatLastPurchaseCost(editingProduct as ProductInventory, settings)}
-                                                    </strong>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="inventory-finance-fields">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="inventory-reference-cost">
-                                                Costo de referencia{formData.unit ? ` por ${formData.unit}` : ''}
-                                            </label>
-                                            <div className="price-input-wrapper">
-                                                <span className="price-currency-icon">{symbol}</span>
-                                                <input
-                                                    id="inventory-reference-cost"
-                                                    type="number"
-                                                    step="any"
-                                                    min="0"
-                                                    className="modal-standard-input"
-                                                    style={{ paddingLeft: currencyInputPadding(symbol) }}
-                                                    value={formData.cost}
-                                                    onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                                                    required
-                                                />
-                                            </div>
-                                            <small className="inventory-finance-helper">
-                                                {editingProduct && Number((editingProduct as ProductInventory).currentAverageCost || 0) > 0
-                                                    ? 'Valor alternativo para estimaciones; el promedio transaccional vigente tiene prioridad.'
-                                                    : 'Se usa para recetas y estimaciones mientras no exista un costo promedio transaccional.'}
-                                            </small>
-                                        </div>
-
-                                        {(() => {
-                                            const isSellable = formData.type === 'PRODUCT_FOR_SALE' || formData.type === 'BOTH';
-                                            return (
-                                            <div className="modal-input-group">
-                                                <label className="modal-input-label" htmlFor="inventory-sale-price">Precio de Venta</label>
-                                                <div className="price-input-wrapper">
-                                                    <span className="price-currency-icon">{symbol}</span>
-                                                    <input
-                                                        id="inventory-sale-price"
-                                                        type="number"
-                                                        step="0.01"
-                                                        min="0"
-                                                        className="modal-standard-input"
-                                                        style={{ paddingLeft: currencyInputPadding(symbol) }}
-                                                        value={isSellable ? formData.price : ''}
-                                                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                                                        placeholder={isSellable ? 'Opcional' : 'No aplica'}
-                                                        disabled={!isSellable}
-                                                    />
-                                                </div>
-                                                {!isSellable && (
-                                                    <small className="inventory-finance-helper">
-                                                        El precio de venta solo aplica a productos de tipo <strong>Producto de Venta</strong> o <strong>Ambos</strong>.
-                                                    </small>
-                                                )}
-                                                {isSellable && (
-                                                    <small className="inventory-finance-helper">
-                                                        Importe cobrado al cliente; no se utiliza para costear recetas ni inventario.
-                                                    </small>
-                                                )}
-                                            </div>
-                                            );
-                                        })()}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" variant="primary" disabled={saving}>
-                                {saving ? 'Guardando...' : editingProduct ? 'Guardar Cambios' : 'Crear Producto'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
+                                    </Field>
+                                    <Field
+                                        label="Precio de venta"
+                                        htmlFor="inventory-sale-price"
+                                        hint={isSellable
+                                            ? 'Importe cobrado al cliente; no se utiliza para costear recetas ni inventario.'
+                                            : 'El precio de venta solo aplica a productos de tipo Producto de venta o Ambos.'}
+                                    >
+                                        <Input
+                                            id="inventory-sale-price"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            className="ui-input--number"
+                                            prefix={symbol}
+                                            value={isSellable ? formData.price : ''}
+                                            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                                            placeholder={isSellable ? 'Opcional' : 'No aplica'}
+                                            disabled={!isSellable}
+                                        />
+                                    </Field>
+                                </FormGrid>
+                            </FormSection>
+                        );
+                    })()}
+                </form>
             </FullScreenModal>
 
-            {/* Adjustment Modal Sidebar */}
+            {/* Adjustment Modal */}
             <FullScreenModal
                 isOpen={isAdjustmentModalOpen}
                 onClose={() => setIsAdjustmentModalOpen(false)}
-                title="Ajuste de Inventario"
+                title="Ajuste de inventario"
+                subtitle={adjustmentData.productName || undefined}
+                breadcrumb={['Inventario', 'Productos']}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button type="submit" form="inventory-adjustment-form" variant="primary" loading={adjusting}>
+                            Confirmar ajuste
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content product-modal-content">
-                    <form onSubmit={handleAdjustmentSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <div className="modal-content-group">
-                                <div className="modal-section-header">
-                                    <Activity size={18} />
-                                    <h3>Ajuste para: {adjustmentData.productName}</h3>
-                                </div>
-
-                                <Field label="Almacén" htmlFor="sel-1780">
-<AppSelect inputId="sel-1780" options={warehouses.map(warehouse => ({
-                                        value: warehouse.id.toString(),
-                                        label: warehouse.name
-                                    }))} value={(adjustmentData.warehouseId
-                                        ? {
-                                            value: adjustmentData.warehouseId,
-                                            label: warehouses.find(warehouse => warehouse.id.toString() === adjustmentData.warehouseId)?.name || 'Seleccionar almacén...'
-                                        }
-                                        : null)?.value ?? null} onChange={(__v) => { const option = (warehouses.map(warehouse => ({
-                                        value: warehouse.id.toString(),
-                                        label: warehouse.name
-                                    }))).find((o) => o.value === __v) ?? null; return setAdjustmentData({ ...adjustmentData, warehouseId: option?.value || '' }); }} placeholder="Seleccionar almacén..." />
-</Field>
-
-                                <Field label="Tipo de Movimiento" htmlFor="sel-1798">
-<AppSelect inputId="sel-1798" options={[
+                <form id="inventory-adjustment-form" onSubmit={handleAdjustmentSubmit} className={catalog.stack}>
+                    <FormSection step={1} title={`Ajuste para: ${adjustmentData.productName}`} description="Almacén, tipo de movimiento y cantidad.">
+                        <FormGrid>
+                            <Field label="Almacén" htmlFor="inventory-adjustment-warehouse">
+                                <AppSelect
+                                    inputId="inventory-adjustment-warehouse"
+                                    options={warehouses.map(warehouse => ({ value: warehouse.id.toString(), label: warehouse.name }))}
+                                    value={adjustmentData.warehouseId || null}
+                                    onChange={(v) => setAdjustmentData({ ...adjustmentData, warehouseId: v || '' })}
+                                    placeholder="Seleccionar almacén..."
+                                />
+                            </Field>
+                            <Field label="Tipo de movimiento" htmlFor="inventory-adjustment-type">
+                                <AppSelect<typeof adjustmentData.type>
+                                    inputId="inventory-adjustment-type"
+                                    isClearable={false}
+                                    isSearchable={false}
+                                    options={[
                                         { value: 'OUT', label: 'Salida (Desperdicio/Uso)' },
                                         { value: 'ADJUSTMENT', label: 'Entrada (Corrección de conteo)' },
                                         { value: 'IN', label: 'Entrada Directa' },
                                         { value: 'COUNT', label: 'Conteo físico (cantidad contada)' }
-                                    ]} value={({
-                                        value: adjustmentData.type,
-                                        label: {
-                                            'OUT': 'Salida (Desperdicio/Uso)',
-                                            'ADJUSTMENT': 'Entrada (Corrección de conteo)',
-                                            'IN': 'Entrada Directa',
-                                            'COUNT': 'Conteo físico (cantidad contada)'
-                                        }[adjustmentData.type]
-                                    })?.value ?? null} onChange={(__v) => { const option = ([
-                                        { value: 'OUT', label: 'Salida (Desperdicio/Uso)' },
-                                        { value: 'ADJUSTMENT', label: 'Entrada (Corrección de conteo)' },
-                                        { value: 'IN', label: 'Entrada Directa' },
-                                        { value: 'COUNT', label: 'Conteo físico (cantidad contada)' }
-                                    ]).find((o) => o.value === __v) ?? null; return option && setAdjustmentData({ ...adjustmentData, type: option.value as typeof adjustmentData.type }); }} />
-</Field>
-
-                                <div className="modal-form-row">
-                                    <div className="modal-input-group" style={{ flex: 2 }}>
-                                        <label className="modal-input-label" htmlFor="inventory-adjustment-quantity">
-                                            {adjustmentData.type === 'COUNT' ? 'Cantidad contada' : 'Cantidad'}
-                                        </label>
-                                        <input
-                                            id="inventory-adjustment-quantity"
-                                            type="number"
-                                            step="0.001"
-                                            min={adjustmentData.type === 'COUNT' ? 0 : undefined}
-                                            className="modal-standard-input"
-                                            value={adjustmentData.quantity}
-                                            onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })}
-                                            required
-                                            placeholder="0.00"
-                                        />
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <Field label="Unidad" htmlFor="sel-1834">
-<AppSelect inputId="sel-1834" options={adjustmentUnits.length > 0
-                                                ? adjustmentUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))
-                                                : [{ value: '', label: 'Sin unidades' }]} value={(adjustmentData.unit
-                                                ? {
-                                                    value: adjustmentData.unit,
-                                                    label: adjustmentUnits.find(u => u.abbreviation === adjustmentData.unit)
-                                                        ? `${adjustmentUnits.find(u => u.abbreviation === adjustmentData.unit)!.name} (${adjustmentData.unit})`
-                                                        : adjustmentData.unit
-                                                }
-                                                : null)?.value ?? null} onChange={(__v) => { const option = (adjustmentUnits.length > 0
-                                                ? adjustmentUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))
-                                                : [{ value: '', label: 'Sin unidades' }]).find((o) => o.value === __v) ?? null; return setAdjustmentData({ ...adjustmentData, unit: option?.value || '' }); }} placeholder="Unidad..." />
-</Field>
-                                    </div>
-                                </div>
-
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="inventory-adjustment-reason">Motivo / Notas</label>
-                                    <textarea
-                                        id="inventory-adjustment-reason"
-                                        className="modal-textarea"
-                                        rows={3}
-                                        value={adjustmentData.reason}
-                                        onChange={(e) => setAdjustmentData({ ...adjustmentData, reason: e.target.value })}
-                                        placeholder="Ej: Producto caducado, corrección de inventario..."
-                                        required
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsAdjustmentModalOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" variant="primary" disabled={adjusting}>
-                                {adjusting ? 'Aplicando...' : 'Confirmar Ajuste'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
+                                    ]}
+                                    value={adjustmentData.type}
+                                    onChange={(v) => v && setAdjustmentData({ ...adjustmentData, type: v })}
+                                />
+                            </Field>
+                            <Field label={adjustmentData.type === 'COUNT' ? 'Cantidad contada' : 'Cantidad'} htmlFor="inventory-adjustment-quantity" required>
+                                <Input
+                                    id="inventory-adjustment-quantity"
+                                    type="number"
+                                    step="0.001"
+                                    min={adjustmentData.type === 'COUNT' ? 0 : undefined}
+                                    className="ui-input--number"
+                                    value={adjustmentData.quantity}
+                                    onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })}
+                                    required
+                                    placeholder="0.00"
+                                />
+                            </Field>
+                            <Field label="Unidad" htmlFor="inventory-adjustment-unit">
+                                <AppSelect
+                                    inputId="inventory-adjustment-unit"
+                                    options={adjustmentUnits.length > 0
+                                        ? adjustmentUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))
+                                        : [{ value: '', label: 'Sin unidades' }]}
+                                    value={adjustmentData.unit || null}
+                                    onChange={(v) => setAdjustmentData({ ...adjustmentData, unit: v || '' })}
+                                    placeholder="Unidad..."
+                                />
+                            </Field>
+                        </FormGrid>
+                        <Field label="Motivo / notas" htmlFor="inventory-adjustment-reason" required>
+                            <Textarea
+                                id="inventory-adjustment-reason"
+                                rows={3}
+                                value={adjustmentData.reason}
+                                onChange={(e) => setAdjustmentData({ ...adjustmentData, reason: e.target.value })}
+                                placeholder="Ej: Producto caducado, corrección de inventario..."
+                                required
+                            />
+                        </Field>
+                    </FormSection>
+                </form>
             </FullScreenModal>
 
             <FullScreenModal
                 isOpen={showAutoPurchaseSidebar}
                 onClose={() => setShowAutoPurchaseSidebar(false)}
-                title="Crear Orden de Compra Sugerida"
+                title="Crear orden de compra sugerida"
+                breadcrumb={['Inventario', 'Reposición']}
+                subtitle={`${selectedSuggestions.length} seleccionados de ${autoPurchaseSuggestions.length} sugerencias`}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button
+                            type="submit"
+                            form="inventory-auto-po-form"
+                            variant="primary"
+                            loading={creatingAutoPurchaseOrder}
+                            disabled={selectedSuggestions.length === 0}
+                        >
+                            Crear borrador
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content product-modal-content">
-                    <form onSubmit={handleCreateAutoPurchaseOrder} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <div className="modal-content-group">
-                                <div className="modal-section-header">
-                                    <FileText size={18} />
-                                    <h3>Sugerencias de reposición</h3>
-                                </div>
-
-                                <div className="modal-form-row">
-                                    <Field label="Sucursal" htmlFor="sel-1898">
-<AppSelect inputId="sel-1898" options={branches.map((branch) => ({
-                                            value: branch.id.toString(),
-                                            label: branch.name
-                                        }))} value={(autoPurchaseForm.branchId
-                                            ? {
-                                                value: autoPurchaseForm.branchId,
-                                                label: branches.find((branch) => branch.id.toString() === autoPurchaseForm.branchId)?.name || 'Seleccionar sucursal'
-                                            }
-                                            : null)?.value ?? null} onChange={(__v) => { const option = (branches.map((branch) => ({
-                                            value: branch.id.toString(),
-                                            label: branch.name
-                                        }))).find((o) => o.value === __v) ?? null; return setAutoPurchaseForm((prev) => ({ ...prev, branchId: option?.value || '' })); }} placeholder="Seleccionar sucursal..." />
-</Field>
-
-                                    <Field label="Proveedor" htmlFor="sel-1916">
-<AppSelect inputId="sel-1916" options={suppliers.map((supplier) => ({
-                                            value: supplier.id.toString(),
-                                            label: supplier.name
-                                        }))} value={(autoPurchaseForm.supplierId
-                                            ? {
-                                                value: autoPurchaseForm.supplierId,
-                                                label: suppliers.find((supplier) => supplier.id.toString() === autoPurchaseForm.supplierId)?.name || 'Seleccionar proveedor'
-                                            }
-                                            : null)?.value ?? null} onChange={(__v) => { const option = (suppliers.map((supplier) => ({
-                                            value: supplier.id.toString(),
-                                            label: supplier.name
-                                        }))).find((o) => o.value === __v) ?? null; return setAutoPurchaseForm((prev) => ({ ...prev, supplierId: option?.value || '' })); }} placeholder="Seleccionar proveedor..." />
-</Field>
-                                </div>
-
-                                <div className={s.poSuggestionToolbar}>
-                                    <span className={s.poSuggestionCount}>
-                                        {selectedSuggestions.length} seleccionados de {autoPurchaseSuggestions.length} sugerencias
-                                    </span>
-                                    <div className={s.poSuggestionToolbarActions}>
-                                        <Button type="button" variant="ghost" onClick={handleSelectUrgentSuggestions}>
-                                            Seleccionar urgentes
-                                        </Button>
-                                        <Button type="button" variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>
-                                            Limpiar
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                <div className={s.poSuggestionList}>
-                                    {autoPurchaseSuggestions.length === 0 ? (
-                                        <div className={s.poSuggestionEmpty}>
-                                            No hay productos con stock bajo para sugerir compra.
-                                        </div>
-                                    ) : (
-                                        autoPurchaseSuggestions.map((suggestion) => {
-                                            const key = getSuggestionKey(suggestion);
-                                            const checked = Boolean(selectedSuggestionKeys[key]);
-                                            const isUrgent = suggestion.priority === 'URGENT';
-                                            const displayName = suggestion.productName?.trim() || `Producto #${suggestion.productId}`;
-                                            return (
-                                                <label
-                                                    key={key}
-                                                    className={`${s.poSuggestionCard}${checked ? ` ${s.isSelected}` : ''}${isUrgent ? ` ${s.isUrgent}` : ''}`}
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        className={s.poSuggestionCheckbox}
-                                                        checked={checked}
-                                                        onChange={() => handleToggleSuggestion(suggestion)}
-                                                    />
-                                                    <div className={s.poSuggestionBody}>
-                                                        <div className={s.poSuggestionHeader}>
-                                                            <span className={s.poSuggestionName}>{displayName}</span>
-                                                            <span className={`po-priority-badge${isUrgent ? ' po-priority-badge--urgent' : ' po-priority-badge--normal'}`}>
-                                                                {isUrgent ? 'Urgente' : 'Normal'}
-                                                            </span>
-                                                        </div>
-                                                        <div className={s.poSuggestionTags}>
-                                                            <span className="sku-tag">{suggestion.warehouseName}</span>
-                                                        </div>
-                                                        <div className={s.poSuggestionMetrics}>
-                                                            <span><strong>Actual:</strong> {formatNumber(suggestion.currentStock || 0)}</span>
-                                                            <span><strong>Mín:</strong> {formatNumber(suggestion.minStock || 0)}</span>
-                                                            <span><strong>Sugerido:</strong> {formatSuggestionQuantity(suggestion)}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className={s.poSuggestionCost}>
-                                                        <span className={s.poSuggestionCostValue}>
-                                                            {formatCurrency(Number(suggestion.estimatedCost || 0), settings)}
-                                                        </span>
-                                                        <span className={s.poSuggestionCostLabel}>estimado</span>
-                                                    </div>
-                                                </label>
-                                            );
-                                        })
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setShowAutoPurchaseSidebar(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" variant="primary" disabled={creatingAutoPurchaseOrder || selectedSuggestions.length === 0}>
-                                {creatingAutoPurchaseOrder ? 'Creando...' : 'Crear borrador'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
+                <form id="inventory-auto-po-form" onSubmit={handleCreateAutoPurchaseOrder} className={catalog.stack}>
+                    <FormSection step={1} title="Configurar borrador">
+                        <FormGrid>
+                            <Field label="Sucursal" htmlFor="inventory-auto-po-branch">
+                                <AppSelect
+                                    inputId="inventory-auto-po-branch"
+                                    options={branches.map((branch) => ({ value: branch.id.toString(), label: branch.name }))}
+                                    value={autoPurchaseForm.branchId || null}
+                                    onChange={(v) => setAutoPurchaseForm((prev) => ({ ...prev, branchId: v || '' }))}
+                                    placeholder="Seleccionar sucursal..."
+                                />
+                            </Field>
+                            <Field label="Proveedor" htmlFor="inventory-auto-po-supplier">
+                                <AppSelect
+                                    inputId="inventory-auto-po-supplier"
+                                    options={suppliers.map((supplier) => ({ value: supplier.id.toString(), label: supplier.name }))}
+                                    value={autoPurchaseForm.supplierId || null}
+                                    onChange={(v) => setAutoPurchaseForm((prev) => ({ ...prev, supplierId: v || '' }))}
+                                    placeholder="Seleccionar proveedor..."
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+                    <FormSection step={2} title="Sugerencias de reposición" description="Marca los productos que entran en el borrador.">
+                        <DataTable<AutoPurchaseSuggestion>
+                            ariaLabel="Sugerencias de reposición"
+                            rows={autoPurchaseSuggestions}
+                            rowKey={getSuggestionKey}
+                            rowTone={(sg) => (sg.priority === 'URGENT' ? 'danger' : undefined)}
+                            empty="No hay productos con stock bajo para sugerir compra."
+                            toolbar={(
+                                <TableToolbar actions={(
+                                    <>
+                                        <Button variant="ghost" onClick={handleSelectUrgentSuggestions}>Seleccionar urgentes</Button>
+                                        <Button variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>Limpiar</Button>
+                                    </>
+                                )} />
+                            )}
+                            columns={[
+                                {
+                                    key: 'select', header: '', width: '3rem',
+                                    render: (sg) => (
+                                        <Checkbox
+                                            aria-label={`Seleccionar ${sg.productName?.trim() || `Producto #${sg.productId}`}`}
+                                            checked={Boolean(selectedSuggestionKeys[getSuggestionKey(sg)])}
+                                            onChange={() => handleToggleSuggestion(sg)}
+                                            label=""
+                                        />
+                                    ),
+                                },
+                                { key: 'product', header: 'Producto', width: '2fr', render: (sg) => sg.productName?.trim() || `Producto #${sg.productId}` },
+                                { key: 'warehouse', header: 'Bodega', width: '1.2fr', hideBelow: 'md', render: (sg) => sg.warehouseName || 'Sin bodega' },
+                                {
+                                    key: 'priority', header: 'Prioridad', width: '0.9fr',
+                                    render: (sg) => <Badge tone={sg.priority === 'URGENT' ? 'danger' : 'neutral'}>{sg.priority === 'URGENT' ? 'Urgente' : 'Normal'}</Badge>,
+                                },
+                                { key: 'current', header: 'Actual', width: '1fr', type: 'qty', hideBelow: 'md', accessor: (sg) => sg.currentStock || 0 },
+                                { key: 'min', header: 'Mín', width: '1fr', type: 'qty', hideBelow: 'lg', accessor: (sg) => sg.minStock || 0 },
+                                { key: 'suggested', header: 'Sugerido', width: '1fr', type: 'qty', render: (sg) => formatSuggestionQuantity(sg) },
+                                { key: 'cost', header: 'Estimado', width: '1fr', type: 'money', render: (sg) => formatCurrency(Number(sg.estimatedCost || 0), settings) },
+                            ] as Column<AutoPurchaseSuggestion>[]}
+                        />
+                    </FormSection>
+                </form>
             </FullScreenModal>
 
-            {/* Import Excel Sidebar */}
-            <FullScreenModal isOpen={showImportSidebar} onClose={closeImportSidebar} title="Importar Productos desde Excel">
-                <div className="premium-modal-content product-import-modal">
-                    <div className="modal-tab-content">
-                        <div className="import-steps" aria-label="Pasos de importación">
-                            <div className={`import-step${importFile ? ' is-done' : ' is-active'}`}>
-                                <span className="import-step-num">1</span>
-                                <span>Archivo</span>
-                            </div>
-                            <div className={`import-step${importValidation ? ' is-done' : importFile ? ' is-active' : ''}`}>
-                                <span className="import-step-num">2</span>
-                                <span>Validar</span>
-                            </div>
-                            <div className={`import-step${importValidation ? ' is-active' : ''}`}>
-                                <span className="import-step-num">3</span>
-                                <span>Confirmar</span>
-                            </div>
-                        </div>
-
-                        <div className="import-info-banner">
-                            <p>
-                                Sube un archivo <strong>.xlsx</strong> con tus productos. Los SKU existentes se actualizan; los nuevos se crean.
-                                Usa la plantilla para el formato correcto.
-                            </p>
-                        </div>
-
-                        <div className="import-upload-section">
-                            <label className="modal-input-label" htmlFor="inventory-import-file">Archivo Excel</label>
-                            <input
-                                id="inventory-import-file"
-                                ref={importFileInputRef}
-                                type="file"
-                                accept=".xlsx,.xls"
-                                className="import-file-input-hidden"
-                                onChange={(e) => {
-                                    setImportFile(e.target.files?.[0] || null);
-                                    setImportValidation(null);
-                                    setImportSearch('');
-                                    setImportShowErrorsOnly(false);
-                                }}
-                            />
-                            <button
-                                type="button"
-                                className={`import-file-zone${importFile ? ' has-file' : ''}`}
-                                onClick={() => importFileInputRef.current?.click()}
-                            >
-                                <FileSpreadsheet size={28} className="import-file-zone-icon" />
-                                <span className="import-file-zone-title">
-                                    {importFile ? importFile.name : 'Haz clic para elegir un archivo Excel'}
-                                </span>
-                                <span className="import-file-zone-hint">
-                                    {importFile
-                                        ? `${(importFile.size / 1024).toFixed(1)} KB · .xlsx / .xls`
-                                        : 'Formatos aceptados: .xlsx, .xls'}
-                                </span>
-                            </button>
-                        </div>
-
-                        <div className="import-actions-row">
-                            <Button type="button" variant="secondary" onClick={handleDownloadTemplate}>
-                                <Download size={16} /> Descargar plantilla
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="primary"
-                                onClick={handleImportValidate}
-                                disabled={!importFile || importLoading}
-                            >
-                                {importLoading ? 'Validando...' : 'Validar archivo'}
-                            </Button>
-                        </div>
-
+            {/* Import Excel */}
+            <FullScreenModal
+                isOpen={showImportSidebar}
+                onClose={closeImportSidebar}
+                title="Importar productos desde Excel"
+                breadcrumb={['Inventario', 'Productos']}
+                subtitle="Los SKU existentes se actualizan; los nuevos se crean. Usa la plantilla para el formato correcto."
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
                         {importValidation && (
-                            <>
-                                <div className="import-summary-grid">
-                                    <div className="import-summary-card">
-                                        <div className="import-summary-value">{importValidation.summary.totalRows}</div>
-                                        <div className="import-summary-label">Total filas</div>
-                                    </div>
-                                    <div className="import-summary-card import-summary-success">
-                                        <div className="import-summary-value">{importValidation.summary.valid}</div>
-                                        <div className="import-summary-label">Válidos</div>
-                                    </div>
-                                    <div className={`import-summary-card${importValidation.summary.invalid > 0 ? ' import-summary-error' : ''}`}>
-                                        <div className="import-summary-value">{importValidation.summary.invalid}</div>
-                                        <div className="import-summary-label">Con errores</div>
-                                    </div>
-                                    <div className="import-summary-card import-summary-new">
-                                        <div className="import-summary-value">{importValidation.summary.newProducts}</div>
-                                        <div className="import-summary-label">Nuevos</div>
-                                    </div>
-                                </div>
+                            <Button
+                                variant="primary"
+                                onClick={handleImportConfirm}
+                                loading={importLoading}
+                                disabled={importValidation.summary.valid === 0}
+                            >
+                                {`Confirmar importación (${importValidation.summary.valid})`}
+                            </Button>
+                        )}
+                    </>
+                )}
+            >
+                <div className={catalog.stack}>
+                    <FormSection step={1} title="Archivo" description="Sube un archivo .xlsx o .xls con tus productos.">
+                        <input
+                            id="inventory-import-file"
+                            ref={importFileInputRef}
+                            type="file"
+                            accept=".xlsx,.xls"
+                            className={s.hiddenFile}
+                            onChange={(e) => {
+                                setImportFile(e.target.files?.[0] || null);
+                                setImportValidation(null);
+                                setImportSearch('');
+                                setImportShowErrorsOnly(false);
+                            }}
+                        />
+                        <button
+                            type="button"
+                            className={`${s.fileZone}${importFile ? ` ${s.fileZoneReady}` : ''}`}
+                            onClick={() => importFileInputRef.current?.click()}
+                        >
+                            <FileSpreadsheet size={28} aria-hidden="true" />
+                            <strong>{importFile ? importFile.name : 'Haz clic para elegir un archivo Excel'}</strong>
+                            <span className={catalog.muted}>
+                                {importFile
+                                    ? `${formatNumber(importFile.size / 1024, 1)} KB · .xlsx / .xls`
+                                    : 'Formatos aceptados: .xlsx, .xls'}
+                            </span>
+                        </button>
+                        <div className={catalog.inline}>
+                            <Button icon={Download} onClick={handleDownloadTemplate}>Descargar plantilla</Button>
+                            <Button variant="primary" onClick={handleImportValidate} loading={importLoading} disabled={!importFile}>
+                                Validar archivo
+                            </Button>
+                        </div>
+                    </FormSection>
 
-                                <div className="import-table-toolbar">
-                                    <div className="import-search-wrap">
-                                        <Search size={16} aria-hidden />
-                                        <input
+                    {importValidation && (
+                        <FormSection step={2} title="Validación" description="Revisa las filas antes de confirmar.">
+                            <div className={catalog.kpiGrid}>
+                                <StatCard label="Total filas" value={formatNumber(importValidation.summary.totalRows, 0)} context="Filas leídas del archivo" />
+                                <StatCard label="Válidos" value={formatNumber(importValidation.summary.valid, 0)} tone="success" context={`${formatNumber(importValidation.summary.newProducts, 0)} nuevos, el resto actualiza productos existentes`} />
+                                <StatCard
+                                    label="Con errores"
+                                    value={formatNumber(importValidation.summary.invalid, 0)}
+                                    tone={importValidation.summary.invalid > 0 ? 'danger' : 'neutral'}
+                                    context={importValidation.summary.invalid > 0 ? 'No se importan; corrige el archivo y vuelve a validar' : 'Todas las filas se pueden importar'}
+                                />
+                            </div>
+                            <DataTable
+                                ariaLabel="Vista previa de importación"
+                                rows={filteredImportItems}
+                                rowKey={(item) => `${item.rowNumber}-${item.sku}`}
+                                defaultPageSize={25}
+                                pageSizeOptions={[25, 50, 100]}
+                                resetKey={`${importSearch}|${importShowErrorsOnly}`}
+                                rowTone={(item) => (item.isValid ? undefined : 'danger')}
+                                empty={<EmptyState title="No hay filas que coincidan con el filtro." />}
+                                toolbar={(
+                                    <TableToolbar>
+                                        <Input
                                             type="search"
-                                            className="import-search-input"
-                                            placeholder="Buscar por SKU o nombre..."
+                                            aria-label="Buscar fila"
+                                            placeholder="Buscar por SKU o nombre"
+                                            prefix={<Search size={14} aria-hidden="true" />}
                                             value={importSearch}
                                             onChange={(e) => setImportSearch(e.target.value)}
                                         />
-                                    </div>
-                                    {importValidation.summary.invalid > 0 && (
-                                        <label className="import-errors-toggle">
-                                            <input
-                                                type="checkbox"
+                                        {importValidation.summary.invalid > 0 && (
+                                            <Checkbox
+                                                label="Solo errores"
                                                 checked={importShowErrorsOnly}
                                                 onChange={(e) => setImportShowErrorsOnly(e.target.checked)}
                                             />
-                                            Solo errores
-                                        </label>
-                                    )}
-                                    <span className="import-table-count">
-                                        {filteredImportItems.length} de {importValidation.items.length} filas
-                                    </span>
-                                </div>
-
-                                <DataTable
-                                    ariaLabel="Vista previa de importación"
-                                    rows={filteredImportItems}
-                                    rowKey={(item) => `${item.rowNumber}-${item.sku}`}
-                                    defaultPageSize={25}
-                                    pageSizeOptions={[25, 50, 100]}
-                                    rowTone={(item) => (item.isValid ? undefined : 'danger')}
-                                    empty={<EmptyState title="No hay filas que coincidan con el filtro." />}
-                                    columns={[
-                                        { key: 'rowNumber', header: '#', type: 'number', decimals: 0 },
-                                        { key: 'sku', header: 'SKU' },
-                                        { key: 'name', header: 'Nombre' },
-                                        { key: 'action', header: 'Acción', render: (item) => (
-                                            <Badge tone={item.isUpdate ? 'neutral' : 'success'}>{item.isUpdate ? 'Actualizar' : 'Nuevo'}</Badge>
-                                        ) },
-                                        { key: 'status', header: 'Estado', type: 'status', render: (item) => (
-                                            item.isValid
-                                                ? <Badge tone="success">✓ OK</Badge>
-                                                : <span title={item.errors.join(', ')}><Badge tone="danger">✗ {item.errors[0]}</Badge></span>
-                                        ) },
-                                    ] as Column<(typeof filteredImportItems)[number]>[]}
-                                />
-                            </>
-                        )}
-                    </div>
-                    <div className="modal-footer">
-                        <Button type="button" variant="ghost" onClick={closeImportSidebar}>
-                            Cancelar
-                        </Button>
-                        {importValidation && (
-                            <Button
-                                type="button"
-                                variant="primary"
-                                onClick={handleImportConfirm}
-                                disabled={importValidation.summary.valid === 0 || importLoading}
-                            >
-                                {importLoading ? 'Importando...' : `Confirmar importación (${importValidation.summary.valid})`}
-                            </Button>
-                        )}
-                    </div>
+                                        )}
+                                    </TableToolbar>
+                                )}
+                                columns={[
+                                    { key: 'rowNumber', header: '#', type: 'number', decimals: 0, width: '4rem' },
+                                    { key: 'sku', header: 'SKU' },
+                                    { key: 'name', header: 'Nombre' },
+                                    { key: 'action', header: 'Acción', render: (item) => (
+                                        <Badge tone={item.isUpdate ? 'neutral' : 'success'}>{item.isUpdate ? 'Actualizar' : 'Nuevo'}</Badge>
+                                    ) },
+                                    { key: 'status', header: 'Estado', type: 'status', render: (item) => (
+                                        item.isValid
+                                            ? <Badge tone="success">OK</Badge>
+                                            : <span title={item.errors.join(', ')}><Badge tone="danger">{item.errors[0]}</Badge></span>
+                                    ) },
+                                ] as Column<(typeof filteredImportItems)[number]>[]}
+                            />
+                        </FormSection>
+                    )}
                 </div>
             </FullScreenModal>
 
             <ToastContainer toasts={toasts} onRemove={removeToast} />
-        </div >
+        </PageContent>
     );
 }
