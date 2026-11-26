@@ -281,3 +281,151 @@
   background: var(--ui-surface);
   cursor: pointer;
 }
+
+/* Selector de alcance (empresa / sucursal) como en Configuración. */
+.scopeBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-2) var(--ui-space-3);
+  min-width: 0;
+}
+
+.scopeSelect {
+  flex: 0 1 16rem;
+  min-width: 12rem;
+}
+
+/* Barra de guardado al pie del formulario de configuración, fija al fondo de la vista. */
+.saveBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+}
+
+.secret {
+  display: block;
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-2);
+  font-size: var(--ui-text-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.fullRow {
+  flex: 1 1 100%;
+}
+
+/* Panel único (una tarjeta, sin tarjetas internas). */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-5);
+  min-width: 0;
+  padding: var(--ui-space-5);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+}
+
+/* Dos columnas: acción principal + resumen; se apilan en pantallas angostas. */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--ui-space-5);
+  align-items: start;
+  min-width: 0;
+}
+
+@media (max-width: 1024px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: var(--ui-space-4);
+  }
+}
+
+.panelHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ui-space-3);
+  min-width: 0;
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--ui-text);
+  font-size: var(--ui-text-lg);
+  font-weight: 600;
+}
+
+/* Pasos de un flujo (como el avance de la corrida de nómina). */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: var(--ui-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps > li {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  min-width: 0;
+  padding: var(--ui-space-2) var(--ui-space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  color: var(--ui-text-muted);
+}
+
+.steps > li[data-state='current'] {
+  border-color: var(--ui-primary);
+  background: var(--ui-primary-soft);
+  color: var(--ui-text);
+}
+
+.steps > li[data-state='done'] {
+  color: var(--ui-text);
+}
+
+.stepMark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ui-surface-2);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
+  font-weight: 700;
+}
+
+.steps > li[data-state='current'] .stepMark {
+  background: var(--ui-primary);
+  color: var(--ui-primary-fg);
+}
+
+.steps > li[data-state='done'] .stepMark {
+  background: var(--ui-success-soft);
+  color: var(--ui-success);
+}

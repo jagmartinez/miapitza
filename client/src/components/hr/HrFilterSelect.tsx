@@ -1,6 +1,4 @@
-import { useId } from 'react';
-import { AppSelect, Field, type Opt } from '@/ui';
-import './HrControls.css';
+import { AppSelect, type Opt } from '@/ui';
 
 interface HrFilterSelectProps {
   label: string;
@@ -10,21 +8,20 @@ interface HrFilterSelectProps {
   disabled?: boolean;
 }
 
-/** Filtro con etiqueta sobre AppSelect: cadena vacía = "sin filtro". Conserva un ancho mínimo legible. */
+/**
+ * Filtro sin caja para TableToolbar (como Menú): el nombre del filtro es la etiqueta accesible y la
+ * primera opción ("Todos…") hace de texto visible. Cadena vacía = "sin filtro".
+ */
 export default function HrFilterSelect({ label, options, value, onChange, disabled }: HrFilterSelectProps) {
-  const id = useId();
   return (
-    <div className="hr-filter-select">
-      <Field label={label} htmlFor={id}>
-        <AppSelect<string>
-          inputId={id}
-          options={options}
-          value={options.some((option) => option.value === value) ? value : null}
-          onChange={(next) => onChange(next ?? '')}
-          isDisabled={disabled}
-          isClearable={false}
-        />
-      </Field>
-    </div>
+    <AppSelect<string>
+      aria-label={label}
+      options={options}
+      value={options.some((option) => option.value === value) ? value : null}
+      placeholder={label}
+      onChange={(next) => onChange(next ?? '')}
+      isDisabled={disabled}
+      isClearable={false}
+    />
   );
 }

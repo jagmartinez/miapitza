@@ -17,15 +17,16 @@ const attendanceCss = read('./attendance.css');
 const punchWizard = read('../../components/hr/AttendancePunchWizard.tsx');
 const geolocationCapture = read('../../components/hr/GeolocationCapture.tsx');
 
+// Pantallas ya migradas a PageContent de @/ui (sin contenedores hr-operation-page / my-hr-page).
+const migratedPages = [attendanceReview, timeClock];
+
 const adminOperationalPages = [
-  attendanceReview,
   attendanceManagement,
   leaveManagement,
   benefitsManagement,
 ];
 
 const selfServicePages = [
-  timeClock,
   myBenefits,
   myPayroll,
   myWorkforce,
@@ -33,6 +34,7 @@ const selfServicePages = [
 
 describe('RH operational UI contract', () => {
   it('uses the shared Inventory-inspired operational composition without global selectors', () => {
+    migratedPages.forEach((source) => expect(source).toContain('<PageContent'));
     adminOperationalPages.forEach((source) => expect(source).toContain('hr-operation-page'));
     selfServicePages.forEach((source) => expect(source).toContain('my-hr-page'));
     expect(adminCss).toContain('.hr-operation-page .hr-operation-toolbar');
@@ -89,10 +91,9 @@ describe('RH operational UI contract', () => {
     expect(attendanceReview).toContain('Reintentar catálogos');
     expect(attendanceManagement).toContain('Minutos a aprobar');
     expect(attendanceManagement).toContain('Los periodos de asistencia son de toda la empresa');
-    expect(attendanceCss).toContain('.hr-time-clock-workspace');
-    expect(attendanceCss).toContain('@media (max-width: 1080px)');
-    expect(attendanceCss).toContain('.hr-time-clock-action-panel { order: -1; }');
-    expect(attendanceCss).toContain('.hr-time-clock-page > .hr-time-clock-workspace { order: 1; }');
+    // Layout migrado: acción de marcaje y resumen en form.split (se apilan en pantallas angostas).
+    expect(timeClock).toContain('className={form.split}');
+    expect(timeClock).toContain('hr-time-clock-action-panel');
   });
 
   it('prevents a guaranteed GPS rejection and keeps internal snapshots out of the result UI', () => {

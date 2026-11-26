@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, RefreshCw, UserCheck, X } from 'lucide-react';
-import { Button, Textarea } from '@/ui';
+import { Check, RefreshCw, X } from 'lucide-react';
+import { Button, Field, Textarea } from '@/ui';
+import { HrSettingsBlock, HrSettingsSection } from './HrSettingsSection';
+import form from './hrForm.module.css';
 import { attendanceClient, getAttendanceErrorMessage } from './attendanceClient';
 import { validateBiometricRevocation } from './attendanceSettingsRules';
 import { useAppToast } from '../../context/ToastContext';
@@ -94,51 +96,47 @@ export default function PendingBiometricEnrollmentsPanel({ online, branchId }: P
   };
 
   return (
-    <section className="hr-settings-card hr-pending-enrollments" aria-labelledby="pending-enrollments-title">
-      <header>
-        <div>
-          <h2 id="pending-enrollments-title">Registros faciales pendientes de aprobación</h2>
-          <p>
-            El primer registro facial de cada empleado lo aprueba RRHH. Después de aprobado, el empleado
-            puede volver a enrolarse y marcar sin nueva aprobación.
-          </p>
-        </div>
-        <UserCheck size={22} />
-      </header>
-      <div className="hr-settings-action-form">
-        {loading && <p className="hr-form-help" role="status">Cargando registros pendientes…</p>}
-        {!loading && loadError && <p className="hr-form-help" role="alert">{loadError}</p>}
+    <HrSettingsSection
+      id="pending-enrollments"
+      group="Biometría"
+      title="Registros faciales pendientes de aprobación"
+      description="El primer registro facial de cada empleado lo aprueba RRHH. Después de aprobado, el empleado puede volver a enrolarse y marcar sin nueva aprobación."
+      actions={<Button variant="ghost" size="sm" icon={RefreshCw} onClick={() => void load()} disabled={loading}>Actualizar pendientes</Button>}
+    >
+      <HrSettingsBlock>
+        {loading && <p className={form.help} role="status">Cargando registros pendientes…</p>}
+        {!loading && loadError && <p className={form.alertDanger} role="alert">{loadError}</p>}
         {!loading && !loadError && items.length === 0 && (
-          <p className="hr-form-help" role="status">No hay registros faciales pendientes de aprobación.</p>
+          <p className={form.help} role="status">No hay registros faciales pendientes de aprobación.</p>
         )}
         {!loading && items.length > 0 && (
-          <ul className="hr-pending-enrollments__list">
+          <ul className={form.list}>
             {items.map((item) => {
               const busy = busyUserId === item.userId;
               const rejecting = rejectingUserId === item.userId;
               return (
-                <li key={item.profileId} className="hr-pending-enrollments__item">
-                  <div className="hr-pending-enrollments__identity">
-                    <strong>{item.employeeName}</strong>
-                    <span>
+                <li key={item.profileId}>
+                  <span className={form.cellStack}>
+                    <span className={form.cellTitle}>{item.employeeName}</span>
+                    <span className={form.cellSub}>
                       {item.employeeCode ? `${item.employeeCode} · ` : ''}{item.username} · Registrado {displayDateTime(item.enrolledAt)}
                     </span>
-                  </div>
+                  </span>
                   {!rejecting && (
-                    <div className="hr-pending-enrollments__actions">
-                      <Button variant="primary" size="sm" onClick={() => void approve(item)} disabled={!online || busy}>
-                        <Check size={15} /> {busy ? 'Aprobando…' : 'Aprobar'}
+                    <span className={form.actions}>
+                      <Button variant="primary" size="sm" icon={Check} loading={busy} onClick={() => void approve(item)} disabled={!online}>
+                        Aprobar
                       </Button>
-                      <Button size="sm" variant="danger" onClick={() => startReject(item.userId)} disabled={!online || busy}>
-                        <X size={15} /> Rechazar
+                      <Button size="sm" variant="danger" icon={X} onClick={() => startReject(item.userId)} disabled={!online || busy}>
+                        Rechazar
                       </Button>
-                    </div>
+                    </span>
                   )}
                   {rejecting && (
-                    <form className="hr-pending-enrollments__reject" onSubmit={(event) => void reject(event, item)}>
-                      <label>
-                        Motivo del rechazo (obligatorio)
+                    <form className={`${form.stack} ${form.fullRow}`} onSubmit={(event) => void reject(event, item)}>
+                      <Field label="Motivo del rechazo (obligatorio)" htmlFor={`hr-reject-${item.userId}`} required>
                         <Textarea
+                          id={`hr-reject-${item.userId}`}
                           rows={2}
                           minLength={3}
                           maxLength={500}
@@ -148,13 +146,13 @@ export default function PendingBiometricEnrollmentsPanel({ online, branchId }: P
                           required
                           autoFocus
                         />
-                      </label>
-                      <div className="hr-pending-enrollments__actions">
+                      </Field>
+                      <div className={form.actionsEnd}>
                         <Button size="sm" variant="ghost" type="button" onClick={() => setRejectingUserId(null)} disabled={busy}>
                           Cancelar
                         </Button>
-                        <Button size="sm" variant="danger" type="submit" disabled={!online || busy || rejectReason.trim().length < 3}>
-                          {busy ? 'Rechazando…' : 'Confirmar rechazo'}
+                        <Button size="sm" variant="danger" type="submit" loading={busy} disabled={!online || rejectReason.trim().length < 3}>
+                          Confirmar rechazo
                         </Button>
                       </div>
                     </form>
@@ -164,10 +162,7 @@ export default function PendingBiometricEnrollmentsPanel({ online, branchId }: P
             })}
           </ul>
         )}
-        <Button variant="ghost" onClick={() => void load()} disabled={loading}>
-          <RefreshCw size={15} /> Actualizar pendientes
-        </Button>
-      </div>
-    </section>
+      </HrSettingsBlock>
+    </HrSettingsSection>
   );
 }

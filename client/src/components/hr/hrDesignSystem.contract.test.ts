@@ -21,7 +21,7 @@ const schedules = readFileSync(new URL('../../pages/hr/Schedules.tsx', import.me
 const employees = readFileSync(new URL('../../pages/hr/Employees.tsx', import.meta.url), 'utf8');
 const shiftForm = readFileSync(new URL('./ScheduleShiftForm.tsx', import.meta.url), 'utf8');
 const attendanceSettings = readFileSync(new URL('../../pages/hr/AttendanceSettings.tsx', import.meta.url), 'utf8');
-const attendanceStyles = readFileSync(new URL('../../pages/hr/attendance-settings.css', import.meta.url), 'utf8');
+const settingsSection = readFileSync(new URL('./HrSettingsSection.tsx', import.meta.url), 'utf8');
 const payroll = readFileSync(new URL('../../pages/hr/PayrollManagement.tsx', import.meta.url), 'utf8');
 const payrollLegal = readFileSync(new URL('../../pages/hr/PayrollLegalSettings.tsx', import.meta.url), 'utf8');
 const attendanceReview = readFileSync(new URL('../../pages/hr/AttendanceReview.tsx', import.meta.url), 'utf8');
@@ -55,7 +55,9 @@ describe('RH and Catering UI design-system contract', () => {
   });
 
   it('styles attendance controls without leaking into React Select internals', () => {
-    expect(attendanceStyles).toContain("label > :is(input, textarea)");
+    // Layout migrado: filas de configuración con controles de @/ui (sin estilos sobre inputs nativos).
+    expect(settingsSection).toContain('export function HrSettingRow');
+    expect(attendanceSettings).toContain('<HrSettingRow');
     expect(attendanceSettings).toContain('¿Qué es el proveedor biométrico?');
     expect(attendanceSettings).toContain('Verificar conexión');
   });
