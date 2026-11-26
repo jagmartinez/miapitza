@@ -448,5 +448,11 @@
 /* Phones: the 42px third column squeezed "Nueva mesa" to an unreadable sliver;
    use two flexible columns (filter | utilities) so every action keeps its label. */
 @media (max-width: 600px) {
-    .table-map-actions { grid-template-columns: minmax(0, 1fr) auto; }
+    .table-map-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .table-map-actions > * { min-width: 0; }
+    .table-map-actions > .table-map-status-filter,
+    .table-map-actions > .table-map-branch-control,
+    .table-map-actions > .table-map-zone-filter { flex: 1 1 100%; max-width: none; min-width: 0; }
+    .table-map-actions > .table-map-utility-controls { flex: 1 1 100%; flex-wrap: wrap; }
+    .table-map-actions > button, .table-map-utility-controls > button { flex: 1 1 auto; }
 }
