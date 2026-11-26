@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, StatCard, AppSelect, Button } from '@/ui';
+import { AppSelect, Button, DataTable, FullScreenModal, Input, PageHeader, StatCard } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
@@ -535,7 +535,7 @@ export default function BenefitsManagement() {
           <span className="sr-only">Buscar</span>
           <span>
             <Search size={16} aria-hidden="true" />
-            <input
+            <Input
               type="search"
               aria-label="Buscar por código, empleado o detalle"
               value={search}

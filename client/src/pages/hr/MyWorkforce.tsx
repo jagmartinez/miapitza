@@ -11,7 +11,7 @@ import {
   RefreshCw,
   WalletCards,
 } from 'lucide-react';
-import { FullScreenModal, Button } from '@/ui';
+import { Button, DateInput, FullScreenModal, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
@@ -316,16 +316,16 @@ export default function MyWorkforce() {
       <HrToolbar ariaLabel="Rango de consulta">
         <label>
           Desde
-          <input
-            type="date"
+          <DateInput
+           
             value={dateFrom}
             onChange={(event) => setDateFrom(event.target.value)}
           />
         </label>
         <label>
           Hasta
-          <input
-            type="date"
+          <DateInput
+           
             min={dateFrom}
             value={dateTo}
             onChange={(event) => setDateTo(event.target.value)}
@@ -734,7 +734,7 @@ export default function MyWorkforce() {
         >
           <label className="span-full">
             Razón de cancelación
-            <textarea
+            <Textarea
               rows={5}
               maxLength={700}
               value={cancelReason}

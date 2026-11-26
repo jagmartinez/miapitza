@@ -12,7 +12,7 @@ import {
   RefreshCw,
   SlidersHorizontal,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, StatCard, AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, DataTable, DateInput, FullScreenModal, Input, PageHeader, StatCard, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import LeaveCalendarGrid from '../../components/hr/LeaveCalendarGrid';
@@ -366,16 +366,16 @@ export default function LeaveManagement() {
         )}
         <label>
           Desde
-          <input
-            type="date"
+          <DateInput
+           
             value={dateFrom}
             onChange={(event) => setDateFrom(event.target.value)}
           />
         </label>
         <label>
           Hasta
-          <input
-            type="date"
+          <DateInput
+           
             min={dateFrom}
             value={dateTo}
             onChange={(event) => setDateTo(event.target.value)}
@@ -573,7 +573,7 @@ export default function LeaveManagement() {
           >
             <label>
               Código
-              <input
+              <Input
                 value={typeForm.code}
                 onChange={(event) =>
                   setTypeForm((current) => ({
@@ -586,7 +586,7 @@ export default function LeaveManagement() {
             </label>
             <label>
               Nombre
-              <input
+              <Input
                 value={typeForm.name}
                 onChange={(event) =>
                   setTypeForm((current) => ({ ...current, name: event.target.value }))
@@ -614,7 +614,7 @@ export default function LeaveManagement() {
             </label>
             <label className="span-full">
               Descripción
-              <textarea
+              <Textarea
                 rows={3}
                 value={typeForm.description}
                 onChange={(event) =>
@@ -623,52 +623,28 @@ export default function LeaveManagement() {
               />
             </label>
             <div className="hr-checkbox-grid span-full">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={typeForm.paid}
+              <Checkbox checked={typeForm.paid}
                   onChange={(event) =>
                     setTypeForm((current) => ({ ...current, paid: event.target.checked }))
-                  }
-                />{' '}
-                Remunerada
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={typeForm.balanceTracked}
+                  } label={<>Remunerada</>} />
+              <Checkbox checked={typeForm.balanceTracked}
                   onChange={(event) =>
                     setTypeForm((current) => ({
                       ...current,
                       balanceTracked: event.target.checked,
                     }))
-                  }
-                />{' '}
-                Controla saldo
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={typeForm.requiresAttachment}
+                  } label={<>Controla saldo</>} />
+              <Checkbox checked={typeForm.requiresAttachment}
                   onChange={(event) =>
                     setTypeForm((current) => ({
                       ...current,
                       requiresAttachment: event.target.checked,
                     }))
-                  }
-                />{' '}
-                Requiere soporte
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={typeForm.active}
+                  } label={<>Requiere soporte</>} />
+              <Checkbox checked={typeForm.active}
                   onChange={(event) =>
                     setTypeForm((current) => ({ ...current, active: event.target.checked }))
-                  }
-                />{' '}
-                Activo
-              </label>
+                  } label={<>Activo</>} />
             </div>
           </HrModalFormShell>
         )}
@@ -745,8 +721,8 @@ export default function LeaveManagement() {
             </label>
             <label>
               Fecha efectiva
-              <input
-                type="date"
+              <DateInput
+               
                 value={adjustment.effectiveDate}
                 onChange={(event) =>
                   setAdjustment((current) => ({ ...current, effectiveDate: event.target.value }))
@@ -756,7 +732,7 @@ export default function LeaveManagement() {
             </label>
             <label>
               Cantidad con signo
-              <input
+              <Input
                 type="number"
                 step="0.01"
                 value={adjustment.amount}
@@ -786,7 +762,7 @@ export default function LeaveManagement() {
             </label>
             <label>
               Referencia
-              <input
+              <Input
                 value={adjustment.reference}
                 onChange={(event) =>
                   setAdjustment((current) => ({ ...current, reference: event.target.value }))
@@ -795,7 +771,7 @@ export default function LeaveManagement() {
             </label>
             <label className="span-full">
               Razón obligatoria
-              <textarea
+              <Textarea
                 rows={4}
                 maxLength={700}
                 value={adjustment.reason}
@@ -852,7 +828,7 @@ export default function LeaveManagement() {
           )}
           <label className="span-full">
             Razón obligatoria
-            <textarea
+            <Textarea
               rows={5}
               maxLength={700}
               value={actionReason}

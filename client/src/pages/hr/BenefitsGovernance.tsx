@@ -1,4 +1,4 @@
-import { DataTable, PageHeader, FullScreenModal, StatCard, AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, DataTable, DateInput, FullScreenModal, Input, PageHeader, StatCard, Textarea } from '@/ui';
 import { useCallback, useEffect, useState } from 'react';
 import {
   BadgeDollarSign,
@@ -457,7 +457,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 <p>Cada fila conserva cálculo, aprobaciones, pago y constancia PDF.</p>
               </div>
               <div className="governance-toolbar-actions">
-                <input
+                <Input
                   aria-label="Buscar liquidación"
                   placeholder="Buscar código o empleado"
                   value={search}
@@ -519,8 +519,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Fecha de terminación
-                    <input
-                      type="date"
+                    <DateInput
+                     
                       value={previewInput.terminationDate}
                       onChange={(event) =>
                         setPreviewInput((value) => ({
@@ -552,7 +552,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Días de salario pendientes
-                    <input
+                    <Input
                       type="number"
                       min="0"
                       max="31"
@@ -567,7 +567,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Monto de aguinaldo pendiente
-                    <input
+                    <Input
                       value={settlementMeta.aguinaldoPendingAmount}
                       onChange={(event) =>
                         setSettlementMeta((value) => ({
@@ -580,7 +580,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Referencia de conciliación aguinaldo
-                    <input
+                    <Input
                       value={settlementMeta.aguinaldoBasisReference}
                       onChange={(event) =>
                         setSettlementMeta((value) => ({
@@ -592,7 +592,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Base mensual manual (solo variable/horaria)
-                    <input
+                    <Input
                       value={settlementMeta.manualOrdinaryMonthlyBase}
                       onChange={(event) =>
                         setSettlementMeta((value) => ({
@@ -604,7 +604,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Referencia de base manual
-                    <input
+                    <Input
                       value={settlementMeta.manualBaseReference}
                       onChange={(event) =>
                         setSettlementMeta((value) => ({
@@ -615,38 +615,26 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     />
                   </label>
                 </div>
-                <label className="governance-check">
-                  <input
-                    type="checkbox"
-                    checked={previewInput.indemnityApplicable}
+                <Checkbox className="governance-check" checked={previewInput.indemnityApplicable}
                     onChange={(event) =>
                       setPreviewInput((value) => ({
                         ...value,
                         indemnityApplicable: event.target.checked,
                         indemnityConfirmed: false,
                       }))
-                    }
-                  />{' '}
-                  Evaluar indemnización por decisión legal expresa
-                </label>
+                    } label={<>Evaluar indemnización por decisión legal expresa</>} />
                 {previewInput.indemnityApplicable && (
                   <>
-                    <label className="governance-check">
-                      <input
-                        type="checkbox"
-                        checked={previewInput.indemnityConfirmed ?? false}
+                    <Checkbox className="governance-check" checked={previewInput.indemnityConfirmed ?? false}
                         onChange={(event) =>
                           setPreviewInput((value) => ({
                             ...value,
                             indemnityConfirmed: event.target.checked,
                           }))
-                        }
-                      />{' '}
-                      Confirmo que la causal aplica
-                    </label>
+                        } label={<>Confirmo que la causal aplica</>} />
                     <label>
                       Justificación legal
-                      <textarea
+                      <Textarea
                         value={settlementMeta.indemnityJustification}
                         onChange={(event) =>
                           setSettlementMeta((value) => ({
@@ -692,7 +680,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                       <div className="governance-grid">
                         <label>
                           Causal
-                          <input
+                          <Input
                             value={settlementMeta.cause}
                             onChange={(event) =>
                               setSettlementMeta((value) => ({
@@ -704,7 +692,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         </label>
                         <label>
                           Justificación operativa
-                          <input
+                          <Input
                             value={settlementMeta.justification}
                             onChange={(event) =>
                               setSettlementMeta((value) => ({
@@ -716,7 +704,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         </label>
                         <label className="span-2">
                           Soportes/referencias (uno por línea)
-                          <textarea
+                          <Textarea
                             value={settlementMeta.evidence}
                             onChange={(event) =>
                               setSettlementMeta((value) => ({
@@ -850,8 +838,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 <div className="governance-grid">
                   <label>
                     Vigente desde
-                    <input
-                      type="date"
+                    <DateInput
+                     
                       min={today}
                       value={policy.effectiveFrom}
                       onChange={(event) =>
@@ -861,7 +849,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Moneda
-                    <input
+                    <Input
                       maxLength={3}
                       value={policy.currency}
                       onChange={(event) =>
@@ -874,7 +862,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Máximo días de viaje
-                    <input
+                    <Input
                       type="number"
                       value={policy.travelMaxDays}
                       onChange={(event) =>
@@ -887,7 +875,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Antigüedad mínima préstamo (meses)
-                    <input
+                    <Input
                       type="number"
                       value={policy.loanMinTenureMonths}
                       onChange={(event) =>
@@ -900,7 +888,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Tope préstamo
-                    <input
+                    <Input
                       value={policy.loanMaxAmount}
                       onChange={(event) =>
                         setPolicy((value) => ({ ...value, loanMaxAmount: event.target.value }))
@@ -909,7 +897,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Máximo cuotas
-                    <input
+                    <Input
                       type="number"
                       value={policy.loanMaxInstallments}
                       onChange={(event) =>
@@ -922,7 +910,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Cuota máxima sobre salario (%)
-                    <input
+                    <Input
                       value={policy.loanMaxPaymentPercent}
                       onChange={(event) =>
                         setPolicy((value) => ({
@@ -934,7 +922,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Fuente normativa/política
-                    <input
+                    <Input
                       value={policy.sourceReference}
                       onChange={(event) =>
                         setPolicy((value) => ({ ...value, sourceReference: event.target.value }))
@@ -943,7 +931,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label className="span-2">
                     Motivo de la versión
-                    <textarea
+                    <Textarea
                       value={policy.reason}
                       onChange={(event) =>
                         setPolicy((value) => ({ ...value, reason: event.target.value }))
@@ -953,26 +941,20 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   {editingPolicy && (
                     <label className="span-2">
                       Motivo del ajuste
-                      <textarea
+                      <Textarea
                         value={policyAdjustmentReason}
                         onChange={(event) => setPolicyAdjustmentReason(event.target.value)}
                       />
                     </label>
                   )}
                 </div>
-                <label className="governance-check">
-                  <input
-                    type="checkbox"
-                    checked={policy.travelEvidenceRequired}
+                <Checkbox className="governance-check" checked={policy.travelEvidenceRequired}
                     onChange={(event) =>
                       setPolicy((value) => ({
                         ...value,
                         travelEvidenceRequired: event.target.checked,
                       }))
-                    }
-                  />{' '}
-                  Exigir soporte para todos los gastos de viático
-                </label>
+                    } label={<>Exigir soporte para todos los gastos de viático</>} />
                 <h4>Categorías de viático</h4>
                 <div className="governance-form-table">
                   <DataTable
@@ -983,28 +965,28 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 minWidth="56rem"
                 empty={'Sin registros'}
                 columns={[
-                  { key: 'c0', header: 'Código', render: ({ category, index }) => (<><input
+                  { key: 'c0', header: 'Código', render: ({ category, index }) => (<><Input
                               aria-label={`Código de categoría ${index + 1}`}
                               value={category.code}
                               onChange={(event) =>
                                 updateCategory(index, 'code', event.target.value.toUpperCase())
                               }
                             /></>) },
-                  { key: 'c1', header: 'Nombre', render: ({ category, index }) => (<><input
+                  { key: 'c1', header: 'Nombre', render: ({ category, index }) => (<><Input
                               aria-label={`Nombre de categoría ${index + 1}`}
                               value={category.name}
                               onChange={(event) =>
                                 updateCategory(index, 'name', event.target.value)
                               }
                             /></>) },
-                  { key: 'c2', header: 'Tope diario', render: ({ category, index }) => (<><input
+                  { key: 'c2', header: 'Tope diario', render: ({ category, index }) => (<><Input
                               aria-label={`Tope diario de categoría ${index + 1}`}
                               value={category.dailyLimit}
                               onChange={(event) =>
                                 updateCategory(index, 'dailyLimit', event.target.value)
                               }
                             /></>) },
-                  { key: 'c3', header: 'Desde', render: ({ category, index }) => (<><input
+                  { key: 'c3', header: 'Desde', render: ({ category, index }) => (<><Input
                               aria-label={`Hora inicial de categoría ${index + 1}`}
                               type="time"
                               value={category.allowedAfter ?? ''}
@@ -1012,7 +994,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                                 updateCategory(index, 'allowedAfter', event.target.value)
                               }
                             /></>) },
-                  { key: 'c4', header: 'Hasta', render: ({ category, index }) => (<><input
+                  { key: 'c4', header: 'Hasta', render: ({ category, index }) => (<><Input
                               aria-label={`Hora final de categoría ${index + 1}`}
                               type="time"
                               value={category.allowedBefore ?? ''}
@@ -1020,14 +1002,14 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                                 updateCategory(index, 'allowedBefore', event.target.value)
                               }
                             /></>) },
-                  { key: 'c5', header: 'Soporte', render: ({ category, index }) => (<><input
+                  { key: 'c5', header: 'Soporte', render: ({ category, index }) => (<Checkbox
                               aria-label={`Exigir soporte en categoría ${index + 1}`}
-                              type="checkbox"
                               checked={category.requiresEvidence}
                               onChange={(event) =>
                                 updateCategory(index, 'requiresEvidence', event.target.checked)
                               }
-                            /></>) },
+                              label={<span className="sr-only">Exigir soporte</span>}
+                            />) },
                   { key: 'c6', header: 'Acción', render: ({ index }) => (<Button
                               className="table-action-btn danger"
                               variant="ghost"
@@ -1187,8 +1169,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               </label>
               <label>
                 Fecha de terminación
-                <input
-                  type="date"
+                <DateInput
+                 
                   value={draftSettlement.terminationDate}
                   onChange={(event) =>
                     setDraftSettlement((value) =>
@@ -1199,7 +1181,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               </label>
               <label>
                 Moneda
-                <input
+                <Input
                   maxLength={3}
                   value={draftSettlement.currency}
                   onChange={(event) =>
@@ -1211,7 +1193,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               </label>
               <label>
                 Causal
-                <input
+                <Input
                   value={draftSettlement.cause}
                   onChange={(event) =>
                     setDraftSettlement((value) =>
@@ -1222,7 +1204,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               </label>
               <label className="span-2">
                 Justificación
-                <textarea
+                <Textarea
                   value={draftSettlement.justification}
                   onChange={(event) =>
                     setDraftSettlement((value) =>
@@ -1233,7 +1215,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               </label>
               <label className="span-2">
                 Soportes/referencias (uno por línea)
-                <textarea
+                <Textarea
                   value={draftSettlement.evidenceReferences.join('\n')}
                   onChange={(event) =>
                     setDraftSettlement((value) =>
@@ -1277,28 +1259,28 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                                                                                }
                                                                                isClearable={false}
                                                                              />) },
-                  { key: 'c1', header: 'Concepto', render: ({ line, index }) => (<><input
+                  { key: 'c1', header: 'Concepto', render: ({ line, index }) => (<><Input
                           aria-label={`Concepto ${index + 1}`}
                           value={line.concept}
                           onChange={(event) =>
                             updateDraftLine(index, 'concept', event.target.value)
                           }
                         /></>) },
-                  { key: 'c2', header: 'Base/fórmula', render: ({ line, index }) => (<><input
+                  { key: 'c2', header: 'Base/fórmula', render: ({ line, index }) => (<><Input
                           aria-label={`Base del concepto ${index + 1}`}
                           value={line.formulaBasis}
                           onChange={(event) =>
                             updateDraftLine(index, 'formulaBasis', event.target.value)
                           }
                         /></>) },
-                  { key: 'c3', header: 'Fuente', render: ({ line, index }) => (<><input
+                  { key: 'c3', header: 'Fuente', render: ({ line, index }) => (<><Input
                           aria-label={`Fuente del concepto ${index + 1}`}
                           value={line.sourceReference}
                           onChange={(event) =>
                             updateDraftLine(index, 'sourceReference', event.target.value)
                           }
                         /></>) },
-                  { key: 'c4', header: 'Monto', render: ({ line, index }) => (<><input
+                  { key: 'c4', header: 'Monto', render: ({ line, index }) => (<><Input
                           className="hr-money-input"
                           aria-label={`Monto del concepto ${index + 1}`}
                           value={line.amount}
@@ -1358,7 +1340,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             {draftSettlement.lines.some((line) => line.type === 'INDEMNITY') && (
               <label>
                 Justificación legal de indemnización
-                <textarea
+                <Textarea
                   value={draftIndemnityJustification}
                   onChange={(event) => setDraftIndemnityJustification(event.target.value)}
                 />
@@ -1366,7 +1348,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             )}
             <label>
               Motivo del ajuste
-              <textarea
+              <Textarea
                 value={draftAdjustmentReason}
                 onChange={(event) => setDraftAdjustmentReason(event.target.value)}
               />
@@ -1458,7 +1440,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 <h4>{actionLabel[settlementAction] ?? settlementAction}</h4>
                 <label>
                   Motivo
-                  <textarea
+                  <Textarea
                     value={actionReason}
                     onChange={(event) => setActionReason(event.target.value)}
                   />
@@ -1466,20 +1448,14 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 {['PAY', 'VOID'].includes(settlementAction) && (
                   <label>
                     Referencia documental/financiera
-                    <input
+                    <Input
                       value={actionReference}
                       onChange={(event) => setActionReference(event.target.value)}
                     />
                   </label>
                 )}
-                <label className="governance-check">
-                  <input
-                    type="checkbox"
-                    checked={actionConfirmed}
-                    onChange={(event) => setActionConfirmed(event.target.checked)}
-                  />{' '}
-                  Confirmo esta decisión y su efecto en el expediente
-                </label>
+                <Checkbox className="governance-check" checked={actionConfirmed}
+                    onChange={(event) => setActionConfirmed(event.target.checked)} label={<>Confirmo esta decisión y su efecto en el expediente</>} />
                 <div className="row-actions">
                   <Button
                     variant="ghost"
@@ -1556,14 +1532,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               anterior se cerrará el día previo, sin alterar corridas históricas.
             </p>
             <p>Por segregación de funciones, quien creó esta versión no puede activarla.</p>
-            <label className="governance-check">
-              <input
-                type="checkbox"
-                checked={policyActivationConfirmed}
-                onChange={(event) => setPolicyActivationConfirmed(event.target.checked)}
-              />{' '}
-              Confirmo que revisé vigencia, topes, categorías y fuente
-            </label>
+            <Checkbox className="governance-check" checked={policyActivationConfirmed}
+                onChange={(event) => setPolicyActivationConfirmed(event.target.checked)} label={<>Confirmo que revisé vigencia, topes, categorías y fuente</>} />
             <div className="row-actions">
               <Button variant="ghost" onClick={() => setPolicyToActivate(null)}>
                 Cancelar

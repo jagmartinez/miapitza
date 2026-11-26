@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, RefreshCw, UserCheck, X } from 'lucide-react';
-import { Button } from '@/ui';
+import { Button, Textarea } from '@/ui';
 import { attendanceClient, getAttendanceErrorMessage } from './attendanceClient';
 import { validateBiometricRevocation } from './attendanceSettingsRules';
 import { useAppToast } from '../../context/ToastContext';
@@ -138,7 +138,7 @@ export default function PendingBiometricEnrollmentsPanel({ online, branchId }: P
                     <form className="hr-pending-enrollments__reject" onSubmit={(event) => void reject(event, item)}>
                       <label>
                         Motivo del rechazo (obligatorio)
-                        <textarea
+                        <Textarea
                           rows={2}
                           minLength={3}
                           maxLength={500}

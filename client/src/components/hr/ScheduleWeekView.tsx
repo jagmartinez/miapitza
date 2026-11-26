@@ -173,15 +173,16 @@ export default function ScheduleWeekView({
                                         {items.map((item) => <ShiftCard key={`${item.parentSchedule.id}-${item.id}`} item={item} compact readOnly={readOnly} onEdit={onEdit} onDelete={onDelete} />)}
                                         {items.length === 0 && !readOnly && employee.worker && onCreate
                                             ? (
-                                                <button
-                                                    type="button"
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    icon={Plus}
                                                     className="hr-schedule-empty-cell-button"
                                                     onClick={() => onCreate(employee.worker!, day)}
                                                     aria-label={`Agregar turno para ${employee.name} el ${formatDay(day, true)}`}
                                                 >
-                                                    <Plus size={16} aria-hidden="true" />
-                                                    <span>Agregar</span>
-                                                </button>
+                                                    Agregar
+                                                </Button>
                                             )
                                             : items.length === 0 && <span className="hr-schedule-no-shift">—</span>}
                                     </div>

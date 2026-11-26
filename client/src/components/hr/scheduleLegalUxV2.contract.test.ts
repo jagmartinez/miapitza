@@ -10,18 +10,18 @@ const legalPanel = read('./PayrollRuleConfigurationPanel.tsx');
 const legalStyles = read('../../pages/hr/payroll-legal.css');
 
 describe('RH UX/UI V2 schedule and legal configuration contract', () => {
-  it('keeps schedule actions in the filters toolbar without a redundant action bar', () => {
-    expect(schedules).toMatch(/hr-schedule-filters[\s\S]*filter-actions[\s\S]*Copiar semana[\s\S]*Publicar semana[\s\S]*Cancelar semana/);
+  // Layout migrado al design system: las acciones de la semana viven en las acciones de PageHeader y los filtros en TableToolbar.
+  it('keeps schedule actions in the page header without a redundant action bar', () => {
+    expect(schedules).toMatch(/<PageHeader[\s\S]*Copiar semana[\s\S]*Cancelar semana[\s\S]*Publicar semana[\s\S]*<TableToolbar/);
     expect(schedules).toContain('scheduleClient.cancelSchedule');
     expect(schedules).not.toContain('hr-schedule-actions-bar');
     expect(scheduleStyles).not.toContain('hr-schedule-actions-bar');
   });
 
-  it('gives schedule selects and wrapped actions practical responsive width', () => {
-    expect(scheduleStyles).toContain('flex: 1 1 330px');
-    expect(scheduleStyles).toContain('max-width: 440px');
-    expect(scheduleStyles).toContain('.hr-schedule-filters .filter-actions');
-    expect(scheduleStyles).toContain('flex: 1 1 150px');
+  it('uses the shared TableToolbar for schedule filters instead of page-specific widths', () => {
+    expect(schedules).toContain('<TableToolbar');
+    expect(schedules).toContain('<AppSelect<string> aria-label="Sucursal"');
+    expect(scheduleStyles).not.toContain('.hr-schedule-filters');
   });
 
   it('hides the positive online payroll notice while preserving the offline warning', () => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
-import { DataTable, EmptyState, FullScreenModal, PageHeader, StatCard, formatMoney, formatNumber, formatPercent, AppSelect, Button } from '@/ui';
+import { AppSelect, Button, DataTable, DateInput, EmptyState, formatMoney, formatNumber, formatPercent, FullScreenModal, Input, PageHeader, StatCard, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -483,7 +483,7 @@ export default function PayrollManagement() {
                 <p>Consulta el periodo, los totales y el estado. Abre una fila para continuar el proceso.</p>
               </div>
               <div className="payroll-run-register-tools">
-                <label htmlFor="payroll-run-search">Buscar código o periodo<div className="payroll-run-search"><Search size={15} aria-hidden="true" /><input id="payroll-run-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Ej. 2026-Q1" /></div></label>
+                <label htmlFor="payroll-run-search">Buscar código o periodo<div className="payroll-run-search"><Search size={15} aria-hidden="true" /><Input id="payroll-run-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Ej. 2026-Q1" /></div></label>
                 <label>Estado<AppSelect<string>
                                options={[
                                  { value: '', label: 'Todos los estados' },
@@ -552,11 +552,11 @@ export default function PayrollManagement() {
         {createPanel?.kind === 'rule' && <PayrollRuleForm initial={createPanel.rule} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={saveRule} onCancel={() => setCreatePanel(null)} />}
         {createPanel?.kind === 'period' && (
           <HrModalFormShell ariaLabel="Crear periodo de nómina" tabLabel="1. Periodo" sectionTitle="Define las fechas que se pagarán" icon={<FilePlus2 size={18} />} formClassName="hr-payroll-form" notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(event) => void savePeriod(event)} footer={<><Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>Cancelar</Button><Button variant="primary" type="submit" disabled={!online || saving || !periodForm.code.trim() || !periodForm.reason.trim()}>{saving ? 'Creando…' : 'Crear y continuar'}</Button></>}>
-            <label>Código<input value={periodForm.code} onChange={(event) => setPeriodForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="2026-Q15" required /></label>
-            <label>Desde<input type="date" value={periodForm.dateFrom} onChange={(event) => setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))} required /></label>
-            <label>Hasta<input type="date" min={periodForm.dateFrom} value={periodForm.dateTo} onChange={(event) => setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))} required /></label>
-            <label>Fecha de pago<input type="date" min={periodForm.dateTo} value={periodForm.payDate} onChange={(event) => setPeriodForm((current) => ({ ...current, payDate: event.target.value }))} required /></label>
-            <label className="span-full">Motivo de apertura<textarea rows={4} value={periodForm.reason} onChange={(event) => setPeriodForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Ej. Nómina ordinaria de la segunda quincena" required /></label>
+            <label>Código<Input value={periodForm.code} onChange={(event) => setPeriodForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="2026-Q15" required /></label>
+            <label>Desde<DateInput value={periodForm.dateFrom} onChange={(event) => setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))} required /></label>
+            <label>Hasta<DateInput min={periodForm.dateFrom} value={periodForm.dateTo} onChange={(event) => setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))} required /></label>
+            <label>Fecha de pago<DateInput min={periodForm.dateTo} value={periodForm.payDate} onChange={(event) => setPeriodForm((current) => ({ ...current, payDate: event.target.value }))} required /></label>
+            <label className="span-full">Motivo de apertura<Textarea rows={4} value={periodForm.reason} onChange={(event) => setPeriodForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Ej. Nómina ordinaria de la segunda quincena" required /></label>
           </HrModalFormShell>
         )}
         {createPanel?.kind === 'run' && <PayrollRunForm kind={createPanel.runKind} periods={periods} rules={rules} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(payload) => saveRun(createPanel.runKind, payload)} onCancel={() => setCreatePanel(null)} />}

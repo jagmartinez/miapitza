@@ -13,7 +13,7 @@ import {
   ShieldCheck,
   TabletSmartphone,
 } from 'lucide-react';
-import { FormSection, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, FormSection, FullScreenModal, Input, PageHeader, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -422,54 +422,24 @@ export default function AttendanceSettings() {
                 <ScanFace size={22} />
               </header>
               <div className="hr-settings-check-grid">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={policy.requireBiometric}
+                <Checkbox checked={policy.requireBiometric}
                     onChange={(event) =>
                       updatePolicyField('requireBiometric', event.target.checked)
-                    }
-                  />
-                  Reconocimiento facial requerido
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={policy.requireLiveness}
-                    onChange={(event) => updatePolicyField('requireLiveness', event.target.checked)}
-                  />
-                  Prueba de vida requerida
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={policy.requireGeolocation}
+                    } label={<>Reconocimiento facial requerido</>} />
+                <Checkbox checked={policy.requireLiveness}
+                    onChange={(event) => updatePolicyField('requireLiveness', event.target.checked)} label={<>Prueba de vida requerida</>} />
+                <Checkbox checked={policy.requireGeolocation}
                     onChange={(event) =>
                       updatePolicyField('requireGeolocation', event.target.checked)
-                    }
-                  />
-                  Geolocalización requerida
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={policy.allowUnscheduledPunch}
+                    } label={<>Geolocalización requerida</>} />
+                <Checkbox checked={policy.allowUnscheduledPunch}
                     onChange={(event) =>
                       updatePolicyField('allowUnscheduledPunch', event.target.checked)
-                    }
-                  />
-                  Permitir marcaje sin turno
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={policy.allowManualFallback}
+                    } label={<>Permitir marcaje sin turno</>} />
+                <Checkbox checked={policy.allowManualFallback}
                     onChange={(event) =>
                       updatePolicyField('allowManualFallback', event.target.checked)
-                    }
-                  />
-                  Permitir ajuste manual compensatorio
-                </label>
+                    } label={<>Permitir ajuste manual compensatorio</>} />
               </div>
               <div className="hr-settings-fields three-columns">
                 <label>
@@ -549,7 +519,7 @@ export default function AttendanceSettings() {
               <div className="hr-settings-fields three-columns">
                 <label>
                   Entrada anticipada (min)
-                  <input
+                  <Input
                     type="number"
                     min={0}
                     max={1440}
@@ -563,7 +533,7 @@ export default function AttendanceSettings() {
                 </label>
                 <label>
                   Tolerancia llegada tarde (min)
-                  <input
+                  <Input
                     type="number"
                     min={0}
                     max={1440}
@@ -577,7 +547,7 @@ export default function AttendanceSettings() {
                 </label>
                 <label>
                   Salida anticipada (min)
-                  <input
+                  <Input
                     type="number"
                     min={0}
                     max={1440}
@@ -591,7 +561,7 @@ export default function AttendanceSettings() {
                 </label>
                 <label>
                   Ventana posterior salida (min)
-                  <input
+                  <Input
                     type="number"
                     min={0}
                     max={2880}
@@ -605,7 +575,7 @@ export default function AttendanceSettings() {
                 </label>
                 <label>
                   Precisión máxima GPS (m)
-                  <input
+                  <Input
                     type="number"
                     min={MIN_LOCATION_ACCURACY_M}
                     max={5000}
@@ -619,7 +589,7 @@ export default function AttendanceSettings() {
                 </label>
                 <label>
                   Zona horaria
-                  <input
+                  <Input
                     value={policy.timezone}
                     maxLength={64}
                     onChange={(event) => updatePolicyField('timezone', event.target.value)}
@@ -642,7 +612,7 @@ export default function AttendanceSettings() {
               <div className="hr-settings-fields two-columns">
                 <label>
                   Versión de consentimiento
-                  <input
+                  <Input
                     value={policy.biometricConsentVersion}
                     maxLength={64}
                     readOnly={Boolean(scopeBranchId)}
@@ -655,7 +625,7 @@ export default function AttendanceSettings() {
                 </label>
                 <label>
                   Retención biométrica (días)
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     max={3650}
@@ -669,7 +639,7 @@ export default function AttendanceSettings() {
                 </label>
                 <label className="span-full">
                   Aviso de retención
-                  <textarea
+                  <Textarea
                     rows={5}
                     maxLength={5000}
                     value={policy.biometricRetentionNotice ?? ''}
@@ -807,7 +777,7 @@ export default function AttendanceSettings() {
                 </label>
                 <label>
                   Razón obligatoria
-                  <textarea
+                  <Textarea
                     rows={4}
                     minLength={3}
                     maxLength={500}
@@ -912,7 +882,7 @@ export default function AttendanceSettings() {
           </label>
           <label>
             Nombre descriptivo
-            <input
+            <Input
               value={deviceForm.name}
               maxLength={100}
               onChange={(event) =>
@@ -924,7 +894,7 @@ export default function AttendanceSettings() {
           </label>
           <label>
             Código operativo
-            <input
+            <Input
               value={deviceForm.code}
               maxLength={50}
               onChange={(event) =>

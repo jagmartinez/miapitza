@@ -1,4 +1,4 @@
-import { DataTable, AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, DataTable, Input } from '@/ui';
 import { useMemo, useState } from 'react';
 import { CheckCircle2, Pencil, Plus, Power, Save, X } from 'lucide-react';
 import type { HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
@@ -98,8 +98,8 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
             <Button type="button" size="sm" variant="ghost" onClick={cancel} aria-label="Cerrar editor"><X size={16} /></Button>
           </div>
           <div className="hr-legal-concept-fields">
-            <label>Código<input value={draft.code} maxLength={64} onChange={(event) => updateDraft({ code: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })} disabled={editingIndex !== -1} required /><small>{!codeIsUnique ? 'Ese código ya existe.' : 'No cambia después de crear el concepto.'}</small></label>
-            <label>Nombre<input value={draft.name} maxLength={160} onChange={(event) => updateDraft({ name: event.target.value })} required /></label>
+            <label>Código<Input value={draft.code} maxLength={64} onChange={(event) => updateDraft({ code: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })} disabled={editingIndex !== -1} required /><small>{!codeIsUnique ? 'Ese código ya existe.' : 'No cambia después de crear el concepto.'}</small></label>
+            <label>Nombre<Input value={draft.name} maxLength={160} onChange={(event) => updateDraft({ name: event.target.value })} required /></label>
             <label>Tipo<AppSelect<string>
                          options={[
                            { value: 'INCOME', label: 'Ingreso' },
@@ -131,10 +131,10 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
                                  }
                                  isClearable={false}
                                /></label>
-              <label className="hr-legal-switch"><input type="checkbox" checked={draft.socialSecurityApplicable} onChange={(event) => updateDraft({ socialSecurityApplicable: event.target.checked })} /><span>Forma base de INSS</span></label>
-              <label className="hr-legal-switch"><input type="checkbox" checked={draft.trainingContributionApplicable} onChange={(event) => updateDraft({ trainingContributionApplicable: event.target.checked })} /><span>Forma base de INATEC</span></label>
-            </> : <label className="hr-legal-switch"><input type="checkbox" checked={draft.incomeTaxDeductible} onChange={(event) => updateDraft({ incomeTaxDeductible: event.target.checked })} /><span>Deducción autorizada para IR</span></label>}
-            <label className="span-full">Fuente o respaldo<input value={draft.sourceReference} maxLength={500} onChange={(event) => updateDraft({ sourceReference: event.target.value })} required /></label>
+              <Checkbox className="hr-legal-switch" checked={draft.socialSecurityApplicable} onChange={(event) => updateDraft({ socialSecurityApplicable: event.target.checked })} label={<><span>Forma base de INSS</span></>} />
+              <Checkbox className="hr-legal-switch" checked={draft.trainingContributionApplicable} onChange={(event) => updateDraft({ trainingContributionApplicable: event.target.checked })} label={<><span>Forma base de INATEC</span></>} />
+            </> : <Checkbox className="hr-legal-switch" checked={draft.incomeTaxDeductible} onChange={(event) => updateDraft({ incomeTaxDeductible: event.target.checked })} label={<><span>Deducción autorizada para IR</span></>} />}
+            <label className="span-full">Fuente o respaldo<Input value={draft.sourceReference} maxLength={500} onChange={(event) => updateDraft({ sourceReference: event.target.value })} required /></label>
           </div>
           <div className="hr-legal-concept-editor-actions"><Button type="button" variant="ghost" onClick={cancel}>Cancelar</Button><Button variant="primary" type="button" onClick={save} disabled={!draftReady}><Save size={16} /> Guardar concepto</Button></div>
         </div>

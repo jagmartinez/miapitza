@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DataTable, FullScreenModal, PageHeader, StatCard, Button } from '@/ui';
+import { Button, DataTable, DateInput, FullScreenModal, Input, PageHeader, StatCard, Textarea } from '@/ui';
 import type { SingleValue } from '../../components/hr/HrOptionSelect';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, Plus, RefreshCw, XCircle } from 'lucide-react';
 import HrLoading from '../../components/hr/HrLoading';
@@ -202,8 +202,8 @@ export default function AttendanceReview() {
             )}
 
             <div className="hr-filters hr-attendance-filters">
-                <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-from">Desde</label><input id="attendance-from" className="filter-input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
-                <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-to">Hasta</label><input id="attendance-to" className="filter-input" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
+                <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-from">Desde</label><DateInput id="attendance-from" className="filter-input" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
+                <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-to">Hasta</label><DateInput id="attendance-to" className="filter-input" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
                 <HrFilterSelect label="Sucursal" options={branchOptions} value={branchId} onChange={setBranchId} />
                 <HrFilterSelect label="Usuario" options={userOptions} value={userId} onChange={setUserId} />
                 <HrFilterSelect label="Acción" options={ACTION_OPTIONS} value={action} onChange={setAction} />
@@ -250,7 +250,7 @@ export default function AttendanceReview() {
                     >
                         <div className="hr-review-summary span-full"><strong>{selected.user?.name ?? `Usuario #${selected.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[selected.action]} · {displayDate(selected.occurredAt)}</span><p>{selected.message ?? selected.reasonCode ?? 'Sin explicación adicional.'}</p></div>
                         <div className="hr-review-decisions span-full" role="radiogroup" aria-label="Decisión de revisión"><label className={`hr-inline-choice ${reviewForm.decision === 'APPROVED' ? 'selected' : ''}`}><input type="radio" name="review-decision" checked={reviewForm.decision === 'APPROVED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'APPROVED' }))} /><CheckCircle2 size={18} /> Aprobar</label><label className={`hr-inline-choice danger ${reviewForm.decision === 'REJECTED' ? 'selected' : ''}`}><input type="radio" name="review-decision" checked={reviewForm.decision === 'REJECTED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'REJECTED' }))} /><XCircle size={18} /> Rechazar</label></div>
-                        <label className="span-full" htmlFor="attendance-review-reason">Razón de la decisión<textarea id="attendance-review-reason" rows={5} maxLength={500} value={reviewForm.reason} onChange={(event) => setReviewForm((current) => ({ ...current, reason: event.target.value }))} required /></label>
+                        <label className="span-full" htmlFor="attendance-review-reason">Razón de la decisión<Textarea id="attendance-review-reason" rows={5} maxLength={500} value={reviewForm.reason} onChange={(event) => setReviewForm((current) => ({ ...current, reason: event.target.value }))} required /></label>
                     </HrModalFormShell>
                 )}
             </FullScreenModal>
@@ -274,8 +274,8 @@ export default function AttendanceReview() {
                     <Select<Option> variant="modal" label="Usuario" options={userOptions.filter((option) => option.value)} value={userOptions.find((option) => option.value === manual.userId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, userId: option?.value ?? '' }))} isSearchable />
                     <Select<Option> variant="modal" label="Sucursal" options={branchOptions.filter((option) => option.value)} value={branchOptions.find((option) => option.value === manual.branchId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, branchId: option?.value ?? '' }))} isSearchable />
                     <Select<Option> variant="modal" label="Acción" options={ACTION_OPTIONS.filter((option) => option.value)} value={ACTION_OPTIONS.find((option) => option.value === manual.action)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, action: (option?.value ?? 'CHECK_IN') as HrAttendanceAction }))} />
-                    <label htmlFor="attendance-manual-at">Fecha y hora real<input id="attendance-manual-at" type="datetime-local" value={manual.occurredAt} onChange={(event) => setManual((current) => ({ ...current, occurredAt: event.target.value }))} required /></label>
-                    <label className="span-full" htmlFor="attendance-manual-reason">Razón del fallback<textarea id="attendance-manual-reason" rows={5} maxLength={500} value={manual.reason} onChange={(event) => setManual((current) => ({ ...current, reason: event.target.value }))} required /></label>
+                    <label htmlFor="attendance-manual-at">Fecha y hora real<Input id="attendance-manual-at" type="datetime-local" value={manual.occurredAt} onChange={(event) => setManual((current) => ({ ...current, occurredAt: event.target.value }))} required /></label>
+                    <label className="span-full" htmlFor="attendance-manual-reason">Razón del fallback<Textarea id="attendance-manual-reason" rows={5} maxLength={500} value={manual.reason} onChange={(event) => setManual((current) => ({ ...current, reason: event.target.value }))} required /></label>
                 </HrModalFormShell>
             </FullScreenModal>
         </div>

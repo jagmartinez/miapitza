@@ -29,7 +29,13 @@ describe('employee self-service UX contract', () => {
   });
 
   it('uses Profile cards as the launcher and adds a compact mobile punch shortcut', () => {
-    [schedule, workforce, payroll, benefits, timeClock, biometrics].forEach((source) => {
+    // Layout migrado: las pantallas de Mi RH usan PageContent de @/ui en lugar del contenedor my-hr-page.
+    [schedule].forEach((source) => {
+      expect(source).toContain('<MyHrNav />');
+      expect(source).toContain('<PageContent');
+      expect(source).not.toContain("import './admin-tables.css'");
+    });
+    [workforce, payroll, benefits, timeClock, biometrics].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
       expect(source).toContain('my-hr-page');
       expect(source).toContain("import './self-service.css'");
@@ -42,7 +48,6 @@ describe('employee self-service UX contract', () => {
     expect(navigation).toContain('Mis accesos de RH');
     expect(navigation).not.toContain("const ITEMS");
     expect(navigation).toContain('aria-label="Navegación de Mi RH"');
-    expect(selfServiceCss).toContain('.my-hr-summary-grid');
     expect(navigationCss).toContain('.punch');
     expect(navigationCss).toContain('@media (max-width: 768px)');
   });

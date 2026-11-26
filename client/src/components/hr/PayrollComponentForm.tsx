@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import HrModalFormShell from './HrModalFormShell';
 import PayrollOnlineNotice from './PayrollOnlineNotice';
@@ -124,11 +124,11 @@ export default function PayrollComponentForm({
         <span>IR laboral: {selectedConcept.incomeTaxTreatment ?? (selectedConcept.incomeTaxDeductible ? 'Deducción autorizada' : 'No aplica')}</span>
         <span>IR por régimen empresarial: {incomeTaxApplicability === 'APPLIES' ? 'Se calcula' : incomeTaxApplicability === 'DOES_NOT_APPLY' ? 'No se calcula' : 'Sin configuración disponible'}</span>
         <small>Fuente configurada: {selectedConcept.sourceReference}</small>
-        <label><input type="checkbox" checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} /> Confirmo que este es el concepto correcto; las banderas no pueden modificarse en la corrida.</label>
+        <Checkbox checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} label={<>Confirmo que este es el concepto correcto; las banderas no pueden modificarse en la corrida.</>} />
       </fieldset>}
       <label>
         Referencia de soporte
-        <input
+        <Input
           value={reference}
           onChange={(event) => setReference(event.target.value)}
           maxLength={500}
@@ -137,7 +137,7 @@ export default function PayrollComponentForm({
       </label>
       <label className="span-full">
         Motivo
-        <textarea
+        <Textarea
           rows={4}
           value={reason}
           onChange={(event) => setReason(event.target.value)}

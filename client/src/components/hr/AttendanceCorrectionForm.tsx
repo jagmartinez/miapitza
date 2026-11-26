@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Input, Textarea } from '@/ui';
 import { useState, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
@@ -129,7 +129,7 @@ export default function AttendanceCorrectionForm({
       )}
       <label>
         ID de marcaje afectado (si aplica)
-        <input
+        <Input
           type="number"
           min="1"
           value={targetEventId}
@@ -140,7 +140,7 @@ export default function AttendanceCorrectionForm({
         <>
           <label>
             Fecha y hora local solicitada
-            <input
+            <Input
               type="datetime-local"
               value={requestedOccurredAt}
               onChange={(event) => setRequestedOccurredAt(event.target.value)}
@@ -169,7 +169,7 @@ export default function AttendanceCorrectionForm({
       )}
       <label className="span-full">
         Razón y evidencia operativa
-        <textarea
+        <Textarea
           rows={4}
           maxLength={700}
           value={reason}

@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { FileCheck2 } from 'lucide-react';
@@ -83,8 +83,8 @@ export default function TravelExpenseForm({
       </label>
       <label>
         Fecha
-        <input
-          type="date"
+        <DateInput
+         
           value={form.occurredOn}
           onChange={(event) =>
             setForm((current) => ({ ...current, occurredOn: event.target.value }))
@@ -116,7 +116,7 @@ export default function TravelExpenseForm({
       </label>
       <label className="span-full">
         Referencia de factura o soporte
-        <input
+        <Input
           value={form.receiptReference ?? ''}
           onChange={(event) =>
             setForm((current) => ({ ...current, receiptReference: event.target.value }))
@@ -126,7 +126,7 @@ export default function TravelExpenseForm({
       </label>
       <label className="span-full">
         ID de evidencia segura
-        <input
+        <Input
           type="number"
           min="1"
           inputMode="numeric"
@@ -145,7 +145,7 @@ export default function TravelExpenseForm({
       </label>
       <label className="span-full">
         Descripción
-        <textarea
+        <Textarea
           rows={4}
           value={form.description}
           onChange={(event) =>
@@ -155,14 +155,8 @@ export default function TravelExpenseForm({
           required
         />
       </label>
-      <label className="hr-benefits-confirm span-full">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-        />
-        <span>Confirmo que el gasto y su referencia coinciden con el soporte.</span>
-      </label>
+      <Checkbox className="hr-benefits-confirm span-full" checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)} label={<><span>Confirmo que el gasto y su referencia coinciden con el soporte.</span></>} />
     </HrModalFormShell>
   );
 }

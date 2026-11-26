@@ -1,4 +1,4 @@
-import { DataTable, FullScreenModal, Button } from '@/ui';
+import { Button, Checkbox, DataTable, FullScreenModal, Input } from '@/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -329,8 +329,8 @@ export default function PayrollLegalSettings() {
                     description={<>Al activarla, las nuevas corridas con fecha dentro de <strong>{selectedRule.effectiveFrom} – {selectedRule.effectiveTo ?? 'sin fecha fin'}</strong> podrán usar estos parámetros.</>}
                   >
                     <div className="nm-legal-activation-form">
-                      <label className="nm-field">Motivo de activación<input value={activationReason} onChange={(event) => setActivationReason(event.target.value)} maxLength={900} /></label>
-                      <label className="hr-payroll-confirm"><input type="checkbox" checked={activationConfirmed} onChange={(event) => setActivationConfirmed(event.target.checked)} /><span>Confirmo la vigencia y que esta versión debe quedar disponible para calcular nómina.</span></label>
+                      <label className="nm-field">Motivo de activación<Input value={activationReason} onChange={(event) => setActivationReason(event.target.value)} maxLength={900} /></label>
+                      <Checkbox className="hr-payroll-confirm" checked={activationConfirmed} onChange={(event) => setActivationConfirmed(event.target.checked)} label={<><span>Confirmo la vigencia y que esta versión debe quedar disponible para calcular nómina.</span></>} />
                       <Button variant="primary" onClick={() => void activateRule()} disabled={!online || saving || !activationConfirmed || activationReason.trim().length < 3}><LockKeyhole size={16} aria-hidden="true" /> {saving ? 'Activando…' : 'Activar versión legal'}</Button>
                     </div>
                   </HrSection>

@@ -10,7 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
+import { AppSelect, Button, DataTable, DateInput, FullScreenModal, Input, PageHeader, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -283,7 +283,7 @@ export default function AttendanceManagement() {
       <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros del resumen diario">
         <label>
           Fecha
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <DateInput value={date} onChange={(event) => setDate(event.target.value)} />
         </label>
         <label>
           Sucursal
@@ -534,8 +534,8 @@ export default function AttendanceManagement() {
           >
             <label>
               Desde
-              <input
-                type="date"
+              <DateInput
+               
                 value={periodForm.dateFrom}
                 onChange={(event) =>
                   setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))
@@ -545,8 +545,8 @@ export default function AttendanceManagement() {
             </label>
             <label>
               Hasta
-              <input
-                type="date"
+              <DateInput
+               
                 min={periodForm.dateFrom}
                 value={periodForm.dateTo}
                 onChange={(event) =>
@@ -557,7 +557,7 @@ export default function AttendanceManagement() {
             </label>
             <label className="span-full">
               Razón de apertura
-              <textarea
+              <Textarea
                 rows={4}
                 value={periodForm.reason}
                 onChange={(event) =>
@@ -621,7 +621,7 @@ export default function AttendanceManagement() {
           {decisionPanel?.kind === 'overtime' && decision === 'APPROVED' && (
             <label>
               Minutos a aprobar
-              <input
+              <Input
                 type="number"
                 min="0"
                 max={decisionPanel.item.requestedMinutes}
@@ -637,7 +637,7 @@ export default function AttendanceManagement() {
           )}
           <label className="span-full">
             Razón obligatoria
-            <textarea
+            <Textarea
               rows={5}
               maxLength={700}
               value={reason}

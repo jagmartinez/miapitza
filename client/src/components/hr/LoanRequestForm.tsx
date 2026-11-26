@@ -1,4 +1,4 @@
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { ShieldCheck, WalletCards } from 'lucide-react';
@@ -100,7 +100,7 @@ export default function LoanRequestForm({
       </label>
       <label>
         Cuotas preferidas
-        <input
+        <Input
           type="number"
           min="1"
           max="120"
@@ -117,8 +117,8 @@ export default function LoanRequestForm({
       </label>
       <label>
         Primera fecha preferida
-        <input
-          type="date"
+        <DateInput
+         
           value={form.firstPreferredDeductionDate ?? ''}
           onChange={(event) =>
             setForm((current) => ({
@@ -130,7 +130,7 @@ export default function LoanRequestForm({
       </label>
       <label className="span-full">
         Finalidad
-        <textarea
+        <Textarea
           rows={4}
           value={form.purpose}
           onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value }))}
@@ -138,27 +138,15 @@ export default function LoanRequestForm({
           required
         />
       </label>
-      <label className="hr-benefits-check span-full">
-        <input
-          type="checkbox"
-          checked={form.payrollDeductionRequested}
+      <Checkbox className="hr-benefits-check span-full" checked={form.payrollDeductionRequested}
           onChange={(event) =>
             setForm((current) => ({ ...current, payrollDeductionRequested: event.target.checked }))
-          }
-        />
-        <span>Solicitar descuento por nómina, sujeto a elegibilidad, límites y aprobación.</span>
-      </label>
-      <label className="hr-benefits-confirm span-full">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-        />
-        <span>
+          } label={<><span>Solicitar descuento por nómina, sujeto a elegibilidad, límites y aprobación.</span></>} />
+      <Checkbox className="hr-benefits-confirm span-full" checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           <ShieldCheck size={17} aria-hidden="true" /> Confirmo que los datos son correctos y
           entiendo que no representan aprobación.
-        </span>
-      </label>
+        </span></>} />
     </HrModalFormShell>
   );
 }
