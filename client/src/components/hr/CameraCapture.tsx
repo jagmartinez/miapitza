@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Camera, CameraOff, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { HrAttendanceChallenge, HrFaceCaptureEvidence } from '../../types/hr-attendance';
 import { cameraErrorMessage } from './attendanceRules';
+import form from './hrForm.module.css';
 
 interface CameraCaptureProps {
     onCapture: (evidence: HrFaceCaptureEvidence | null) => void;
@@ -342,8 +343,8 @@ export default function CameraCapture({
                 )}
             </div>
             <canvas ref={canvasRef} hidden aria-hidden="true" />
-            {captureStatus && <div className="hr-attendance-alert info" role="status" aria-live="polite">{captureStatus}</div>}
-            {error && <div className="hr-attendance-alert danger" role="alert">{error}</div>}
+            {captureStatus && <div className={form.alertInfo} role="status" aria-live="polite">{captureStatus}</div>}
+            {error && <div className={form.alertDanger} role="alert">{error}</div>}
             <div className="hr-evidence-actions">
                 {(state === 'IDLE' || state === 'ERROR') && <Button type="button" variant="secondary" onClick={() => void startCamera()} disabled={disabled}><Camera size={17} /> Activar cámara</Button>}
                 {state === 'REQUESTING' && <Button type="button" variant="secondary" disabled>Solicitando permiso…</Button>}

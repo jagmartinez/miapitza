@@ -17,7 +17,8 @@ const legalConfiguration = read('./PayrollRuleConfigurationPanel.tsx');
 const concepts = read('./PayrollPaymentConceptCatalogEditor.tsx');
 const companies = read('../../pages/Companies.tsx');
 const payrollClient = read('./payrollClient.ts');
-const adminCss = read('../../pages/hr/admin-tables.css');
+// Layout migrado: admin-tables.css se eliminó; las acciones por fila son Button/IconButton de @/ui.
+const hrForm = read('./hrForm.module.css');
 const layoutCss = read('../../ui/layout/layout.css');
 
 describe('reconstrucción RH: criterios de aceptación integrados', () => {
@@ -89,8 +90,7 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
     expect(layoutCss).toContain('.ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within)');
     expect(layoutCss).toContain('@media (min-width: 769px)');
     expect(layoutCss).toContain('@media (max-width: 767px)');
-    expect(adminCss).toContain('.table-action-btn.ui-button');
-    expect(adminCss).toContain('scrollbar-gutter: stable');
+    expect(hrForm).toContain('.rowActions');
   });
 
   it('toma el perfil fiscal de Empresas y permite gestionar conceptos legales sin perder histórico', () => {

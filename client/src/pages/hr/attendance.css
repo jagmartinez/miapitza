@@ -1,16 +1,10 @@
-.hr-time-clock-action-panel > :is(.hr-punch-actions, .hr-punch-evidence, .hr-punch-result { margin: 0; }
-
 .hr-time-clock-action-panel { min-width: 0; }
-.hr-time-clock-action-panel > :is(.hr-punch-actions, .hr-punch-evidence, .hr-punch-result { min-height: 100%; box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text) 14%, transparent); }
 
+/* El asistente vive dentro del panel de la página: sus pasos son planos (sin tarjeta propia). */
 .hr-punch-actions,
 .hr-punch-evidence,
 .hr-punch-result {
-    margin-bottom: var(--ui-space-4);
-    padding: var(--ui-space-4);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-md);
-    background: var(--ui-surface);
+    min-width: 0;
 }
 
 .hr-panel-heading,
@@ -335,34 +329,6 @@
 
 .hr-location-result.ok { border-color: color-mix(in srgb, var(--ui-success) 35%, transparent); color: var(--ui-success); }
 .hr-location-result.warning { border-color: color-mix(in srgb, var(--ui-warning) 40%, transparent); color: var(--ui-warning); }
-
-.hr-attendance-alert {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--ui-space-2);
-    padding: var(--ui-space-3);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-sm);
-    color: var(--ui-text-muted);
-}
-
-.hr-attendance-alert.danger {
-    border-color: color-mix(in srgb, var(--ui-danger) 38%, transparent);
-    background: color-mix(in srgb, var(--ui-danger) 8%, transparent);
-    color: var(--ui-danger);
-}
-
-.hr-attendance-alert.warning {
-    border-color: color-mix(in srgb, var(--ui-warning) 38%, transparent);
-    background: color-mix(in srgb, var(--ui-warning) 8%, transparent);
-}
-
-.hr-attendance-alert.info {
-    border-color: color-mix(in srgb, var(--ui-primary) 35%, transparent);
-    background: color-mix(in srgb, var(--ui-primary) 7%, transparent);
-    color: var(--ui-text-muted);
-    margin-bottom: var(--ui-space-3);
-}
 
 .hr-challenge-expiry {
     margin: var(--ui-space-2) 0 0;

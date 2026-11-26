@@ -14,7 +14,9 @@ function readTsx(directory: URL): string {
 const hrSource = `${readTsx(componentDirectory)}\n${readTsx(pageDirectory)}`;
 const moneyInput = readFileSync(new URL('./HrMoneyInput.tsx', import.meta.url), 'utf8');
 const moneyInputFormat = readFileSync(new URL('./hrMoneyInputFormat.ts', import.meta.url), 'utf8');
-const sharedStyles = readFileSync(new URL('../../pages/hr/hr-ui.css', import.meta.url), 'utf8');
+// Layout migrado: hr-ui.css se eliminó; el ancho lo da PageContent de @/ui y los montos HrControls.css.
+const pageContent = readFileSync(new URL('../../ui/layout/PageContent.tsx', import.meta.url), 'utf8');
+const sharedStyles = readFileSync(new URL('./HrControls.css', import.meta.url), 'utf8');
 const catering = readFileSync(new URL('../../pages/Catering.tsx', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../../navigation/navConfig.ts', import.meta.url), 'utf8');
 const schedules = readFileSync(new URL('../../pages/hr/Schedules.tsx', import.meta.url), 'utf8');
@@ -30,9 +32,9 @@ const modalStyles = readFileSync(new URL('./HrControls.css', import.meta.url), '
 
 describe('RH and Catering UI design-system contract', () => {
   it('keeps RH views inside the shared 1700px content boundary', () => {
-    expect(sharedStyles).toContain(".page-wrapper[class*='hr-']");
-    expect(sharedStyles).toContain('max-width: 1700px');
-    expect(sharedStyles).toContain('margin-inline: auto');
+    expect(pageContent).toContain('maxWidth = 1700');
+    expect(hrSource).toContain('<PageContent');
+    expect(hrSource).not.toContain('page-wrapper');
   });
 
   it('uses the project React Select adapter instead of native selects in RH', () => {

@@ -14,7 +14,7 @@ const profile = read('../../pages/Profile.tsx');
 const navigation = read('./MyHrNav.tsx');
 const punchWizard = read('./AttendancePunchWizard.tsx');
 const layout = read('../Layout.tsx') + read('../../navigation/navConfig.ts') + read('../../ui/layout/Topbar.tsx');
-const selfServiceCss = read('../../pages/hr/self-service.css');
+// Layout migrado: self-service.css se eliminó (pestañas y tablas de @/ui).
 const navigationCss = read('./MyHrNav.module.css');
 const dataTable = read('../../ui/data/DataTable.tsx');
 const dataTableCss = read('../../ui/data/data.css');
@@ -25,20 +25,13 @@ describe('employee self-service UX contract', () => {
     expect(payroll).toContain('stackOnMobile');
     expect(dataTable).toContain('data-label={labelOf(c)}');
     expect(dataTableCss).toContain('content: attr(data-label)');
-    expect(selfServiceCss).toContain('scroll-snap-type: x proximity');
   });
 
   it('uses Profile cards as the launcher and adds a compact mobile punch shortcut', () => {
     // Layout migrado: las pantallas de Mi RH usan PageContent de @/ui en lugar del contenedor my-hr-page.
-    [schedule, timeClock, biometrics, benefits, payroll].forEach((source) => {
+    [schedule, workforce, payroll, benefits, timeClock, biometrics].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
       expect(source).toContain('<PageContent');
-      expect(source).not.toContain("import './admin-tables.css'");
-    });
-    [workforce].forEach((source) => {
-      expect(source).toContain('<MyHrNav />');
-      expect(source).toContain('my-hr-page');
-      expect(source).toContain("import './self-service.css'");
       expect(source).not.toContain("import './admin-tables.css'");
     });
     expect(profile).not.toContain('<MyHrNav />');

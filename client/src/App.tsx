@@ -9,7 +9,6 @@ import Layout from './components/Layout';
 import LoadingSpinner from './components/LoadingSpinner';
 
 import { ThemeProvider } from './context/ThemeContext';
-import './pages/hr/hr-ui.css';
 import { LanguageProvider } from './context/LanguageContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './context/ToastContext';

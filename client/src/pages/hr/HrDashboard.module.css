@@ -40,18 +40,19 @@
 
 .taskList { display: grid; }
 
-.taskList button,
-.route button,
-.setupGrid button {
+.taskList a,
+.route a,
+.setupGrid a {
     width: 100%;
     border: 0;
     background: transparent;
     color: var(--ui-text);
     cursor: pointer;
     text-align: left;
+    text-decoration: none;
 }
 
-.taskList button {
+.taskList a {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
@@ -60,18 +61,18 @@
     border-bottom: 1px solid var(--ui-border);
 }
 
-.taskList button:last-child { border-bottom: 0; }
+.taskList a:last-child { border-bottom: 0; }
 
-.taskList button > svg:first-child { color: var(--ui-primary); }
+.taskList a > svg:first-child { color: var(--ui-primary); }
 
-.taskList button > svg:last-child { color: var(--ui-text-muted); }
+.taskList a > svg:last-child { color: var(--ui-text-muted); }
 
-.taskList button span,
-.taskList button small,
-.route button span,
-.route button small,
-.setupGrid button span,
-.setupGrid button small { display: block; }
+.taskList a span,
+.taskList a small,
+.route a span,
+.route a small,
+.setupGrid a span,
+.setupGrid a small { display: block; }
 
 .taskList small,
 .route small,
@@ -79,13 +80,13 @@
 
 .taskList b { min-width: 2rem; padding: 0.3rem 0.55rem; border-radius: 999px; background: var(--ui-surface-2); color: var(--ui-text); text-align: center; font-variant-numeric: tabular-nums; }
 
-.taskList button:hover,
-.route button:hover,
-.setupGrid button:hover { background: color-mix(in srgb, var(--ui-primary) 7%, transparent); }
+.taskList a:hover,
+.route a:hover,
+.setupGrid a:hover { background: color-mix(in srgb, var(--ui-primary) 7%, transparent); }
 
-.taskList button:focus-visible,
-.route button:focus-visible,
-.setupGrid button:focus-visible { outline: 3px solid color-mix(in srgb, var(--ui-primary) 35%, transparent); outline-offset: -3px; }
+.taskList a:focus-visible,
+.route a:focus-visible,
+.setupGrid a:focus-visible { outline: 3px solid color-mix(in srgb, var(--ui-primary) 35%, transparent); outline-offset: -3px; }
 
 .route { display: grid; margin: 0; padding: 0; list-style: none; }
 
@@ -93,7 +94,7 @@
 
 .route li:last-child { border-bottom: 0; }
 
-.route button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--ui-space-3); padding: var(--ui-space-3) var(--ui-space-4); }
+.route a { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--ui-space-3); padding: var(--ui-space-3) var(--ui-space-4); }
 
 .route .stepNumber { display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface-2); font-weight: 800; }
 
@@ -105,29 +106,28 @@
 
 .setupGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
-.setupGrid button { display: flex; align-items: flex-start; gap: var(--ui-space-2); padding: var(--ui-space-4); border-right: 1px solid var(--ui-border); }
+.setupGrid a { display: flex; align-items: flex-start; gap: var(--ui-space-2); padding: var(--ui-space-4); border-right: 1px solid var(--ui-border); }
 
-.setupGrid button:last-child { border-right: 0; }
+.setupGrid a:last-child { border-right: 0; }
 
 .setupGrid svg { flex: 0 0 auto; color: var(--ui-primary); }
 
 @media (max-width: 1100px) {
     .workgrid { grid-template-columns: 1fr; }
     .setupGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .setupGrid button:nth-child(2) { border-right: 0; }
-    .setupGrid button:nth-child(-n + 2) { border-bottom: 1px solid var(--ui-border); }
+    .setupGrid a:nth-child(2) { border-right: 0; }
+    .setupGrid a:nth-child(-n + 2) { border-bottom: 1px solid var(--ui-border); }
 }
 
 @media (max-width: 640px) {
     .headerActions,
     .headerActions button { width: 100%; }
     .setupGrid { grid-template-columns: 1fr; }
-    .setupGrid button { border-right: 0; border-bottom: 1px solid var(--ui-border); }
-    .setupGrid button:last-child { border-bottom: 0; }
-    .taskList button { grid-template-columns: auto minmax(0, 1fr) auto; }
-    .taskList button > svg:last-child { display: none; }
+    .setupGrid a { border-right: 0; border-bottom: 1px solid var(--ui-border); }
+    .setupGrid a:last-child { border-bottom: 0; }
+    .taskList a { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .taskList a > svg:last-child { display: none; }
 }
 
-.page { display: grid; gap: var(--ui-space-4); min-width: 0; }
 /* tarjetas KPI de @/ui/StatCard: se reparten el ancho y bajan de línea */
 .kpiRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--ui-space-3); min-width: 0; }

@@ -89,47 +89,6 @@
   line-height: 1.45;
 }
 
-/* Barra de filtros sin caja: se acomoda en varias líneas sin aplastar los controles. */
-.hr-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--ui-space-3);
-  min-width: 0;
-  margin-bottom: var(--ui-space-4);
-}
-
-.hr-filters > * {
-  min-width: 0;
-}
-
-.hr-filter-select {
-  flex: 1 1 12rem;
-  min-width: 11rem;
-  max-width: 100%;
-}
-
-.hr-filters .hr-filter-search {
-  flex: 2 1 16rem;
-  min-width: 12rem;
-}
-
-.hr-filters .hr-filters-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ui-space-2);
-  margin-left: auto;
-}
-
-/* Tarjetas KPI de RH: se reparten el ancho y bajan de línea sin aplastarse. */
-.hr-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: var(--ui-space-3);
-  margin-bottom: var(--ui-space-4);
-  min-width: 0;
-}
-
 /* El formulario ocupa todo el alto del cuerpo del modal para que el pie quede siempre abajo. */
 .ui-fsm__body:has(> .ui-fsm__main > .hr-modal-form) {
   align-content: stretch;
