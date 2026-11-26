@@ -664,10 +664,15 @@
 .catering-modal-content {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    background: var(--ui-surface-2);
-    /* Force Dark Background */
-    color: var(--ui-surface-2);
+    color: var(--ui-text);
+}
+
+/* Un solo scroll: el cuerpo de FullScreenModal; aquí solo se apilan las secciones. */
+.catering-tab-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-5);
+    min-width: 0;
 }
 
 /* Form Grid & Inputs */

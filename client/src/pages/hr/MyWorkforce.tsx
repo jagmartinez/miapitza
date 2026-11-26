@@ -12,7 +12,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { FullScreenModal, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
@@ -348,7 +348,7 @@ export default function MyWorkforce() {
         </div>
       </HrToolbar>
 
-      {loading && <LoadingSpinner text="Cargando tu gestión laboral…" />}
+      {loading && <HrLoading text="Cargando tu gestión laboral…" />}
       {!loading && error && (
         <div className="state-placeholder" role="alert">
           <AlertTriangle size={42} />

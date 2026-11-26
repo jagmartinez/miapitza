@@ -17,9 +17,8 @@ import {
   TrendingUp,
   UserRound,
   UsersRound,
-  X,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, formatMoney, formatPercent, Button } from '@/ui';
+import { Checkbox, DataTable, FullScreenModal, Input, TableToolbar, formatMoney, formatPercent, Button } from '@/ui';
 import { HrSection, HrSplit } from './layout/HrWorkspace';
 import type {
   HrPayrollAction,
@@ -156,6 +155,11 @@ export default function PayrollOperationWorkspace({
       ? null
       : componentGross - componentDeductions;
     const net = authoritativeMoney(receipt?.netPay, componentNet);
+    const overtimeComponents = components.filter((item) => item.type === 'INCOME' && item.source === 'OVERTIME');
+    const overtimePay = hasCalculation ? componentsTotal(overtimeComponents, 'INCOME') : null;
+    const salary = hasCalculation
+      ? componentsTotal(components.filter((item) => item.type === 'INCOME' && item.source !== 'OVERTIME'), 'INCOME')
+      : null;
     return {
       userId: snapshot.userId,
       name: employeeName(snapshot),
@@ -164,6 +168,8 @@ export default function PayrollOperationWorkspace({
       deductions,
       inss: statutory ? moneyNumber(statutory.employeeInss) : null,
       incomeTax: statutory ? moneyNumber(statutory.currentIncomeTaxWithheld) : null,
+      salary,
+      overtimePay,
       net,
       overtimeMinutes: snapshot.approvedOvertimeMinutes,
       components,
@@ -204,7 +210,7 @@ export default function PayrollOperationWorkspace({
     const matchesQuery = row.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
     return matchesQuery && (!onlyIncidents || row.anomalies.length > 0);
   });
-  const totalsKnown = filteredRows.every((row) => [row.gross, row.inss, row.incomeTax, row.deductions, row.net].every((v) => v !== null));
+  const totalsKnown = filteredRows.every((row) => [row.gross, row.inss, row.incomeTax, row.deductions, row.net, row.salary, row.overtimePay].every((v) => v !== null));
   const receiptIds = run.receipts.filter((receipt) => receipt.status === 'PUBLISHED').map((receipt) => receipt.id);
 
   type PayrollRow = (typeof rows)[number];
@@ -272,36 +278,38 @@ export default function PayrollOperationWorkspace({
       description="Abre una fila para revisar el detalle de ingresos, deducciones, horas extra e incidencias."
       actions={run.status === 'CALCULATED' && <Button size="sm" variant="secondary" onClick={onAddComponent} disabled={!online || busy}><Plus size={15} /> Agregar ingreso o deducción</Button>}
     >
-      <div className="nm-employee-tools">
-        <div className="nm-employee-search">
-          <label htmlFor="payroll-employee-search">Buscar colaborador</label>
-          <div className="payroll-operation-search-control">
-            <Search size={17} aria-hidden="true" />
-            <input
-              id="payroll-employee-search"
-              type="search"
-              placeholder="Nombre del colaborador"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              autoComplete="off"
-            />
-            {query && <button type="button" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15} /></button>}
-          </div>
-        </div>
-        <label className="nm-check"><input type="checkbox" checked={onlyIncidents} onChange={(event) => setOnlyIncidents(event.target.checked)} /> Solo con incidencias</label>
-        <small className="nm-employee-count" aria-live="polite">{filteredRows.length} de {rows.length} colaborador(es)</small>
-      </div>
         <DataTable<PayrollRow>
           ariaLabel="Pago por colaborador"
           rows={filteredRows}
           rowKey={(row) => row.userId}
           pagination={{ mode: 'client' }}
           resetKey={`${query}|${onlyIncidents}`}
-          minWidth="60rem"
+          footerLabel="Total de la vista"
+          toolbar={(
+            <TableToolbar actions={<small className="nm-employee-count" aria-live="polite">{filteredRows.length} de {rows.length} colaborador(es)</small>}>
+              <Input
+                id="payroll-employee-search"
+                type="search"
+                aria-label="Buscar colaborador"
+                placeholder="Buscar colaborador"
+                prefix={<Search size={14} aria-hidden="true" />}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                autoComplete="off"
+              />
+              <Checkbox label="Solo con incidencias" checked={onlyIncidents} onChange={(event) => setOnlyIncidents(event.target.checked)} />
+            </TableToolbar>
+          )}
+          minWidth="72rem"
           rowTone={(row) => (row.anomalies.some((item) => item.blocking) ? 'danger' : undefined)}
           empty="No hay colaboradores que coincidan con los filtros."
           columns={[
             { key: 'name', header: 'Colaborador', width: '1.6fr', render: (row) => <><strong>{row.name}</strong><small>{row.branch ?? `ID ${row.userId}`}</small></> },
+            { key: 'salary', header: 'Salario', width: '1fr', type: 'money', hideBelow: 'lg', total: totalsKnown, accessor: (row) => row.salary, render: (row) => formatEmployeeMoney(currency, row.salary) },
+            {
+              key: 'overtime', header: 'Horas extra', width: '1fr', type: 'money', hideBelow: 'lg', total: totalsKnown, accessor: (row) => row.overtimePay,
+              render: (row) => <><span>{formatEmployeeMoney(currency, row.overtimePay)}</span>{row.overtimeMinutes > 0 && <small>{row.overtimeMinutes} min</small>}</>,
+            },
             { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.gross, render: (row) => formatEmployeeMoney(currency, row.gross) },
             { key: 'inss', header: 'INSS laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.inss, render: (row) => formatEmployeeMoney(currency, row.inss) },
             { key: 'ir', header: 'IR laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.incomeTax, render: (row) => formatEmployeeMoney(currency, row.incomeTax) },

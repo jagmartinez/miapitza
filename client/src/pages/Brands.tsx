@@ -5,12 +5,20 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import ViewToggle from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
-import { Plus, Tags, Edit2, Trash2, List } from 'lucide-react';
+import { Plus, Tags, Edit2, Trash2, Search } from 'lucide-react';
 import type { MenuBrand } from '../types';
-import './Categories.css';
-import { Button, DataTable, FullScreenModal, PageHeader, type Column } from '@/ui';
+import styles from './catalog.module.css';
+import {
+    Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    NumberInput, PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, type Column,
+} from '@/ui';
+
+type StatusFilter = 'all' | 'active' | 'inactive';
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+    { value: 'all', label: 'Todas' },
+    { value: 'active', label: 'Activas' },
+    { value: 'inactive', label: 'Inactivas' },
+];
 
 const DEFAULT_COLOR = '#2563eb';
 
@@ -32,7 +40,8 @@ export default function Brands() {
         active: true
     });
     const [saving, setSaving] = useState(false);
-    const { viewMode, setViewMode } = useViewMode('brands');
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
     const loadData = useCallback(async () => {
         try {
@@ -120,224 +129,151 @@ export default function Brands() {
         setIsModalOpen(true);
     };
 
-    if (loading) return <div className="categories-loading">Sincronizando Marcas...</div>;
+    const columns: Column<MenuBrand>[] = [
+        {
+            key: 'name',
+            header: 'Marca',
+            render: (b) => (
+                <span className={styles.cellTitle}>
+                    <span className={styles.swatch} style={{ background: b.color || DEFAULT_COLOR }} aria-hidden="true" />
+                    {b.name}
+                </span>
+            )
+        },
+        { key: 'items', header: 'Platos', type: 'number', decimals: 0, accessor: (b) => b._count?.menuItems || 0 },
+        { key: 'order', header: 'Orden', type: 'number', decimals: 0, accessor: (b) => b.sortOrder ?? 0 },
+        {
+            key: 'status',
+            header: 'Estado',
+            render: (b) => <Badge tone={b.active ? 'success' : 'neutral'} dot>{b.active ? 'Activa' : 'Inactiva'}</Badge>
+        },
+        ...(canMutate ? [{
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (b: MenuBrand) => (
+                <div className={styles.rowActions}>
+                    <IconButton size="sm" icon={Edit2} label={`Editar ${b.name}`} onClick={() => openModal(b)} />
+                    <IconButton
+                        size="sm"
+                        icon={Trash2}
+                        label={`Eliminar ${b.name}`}
+                        onClick={() => handleDelete(b)}
+                        disabled={Number(b._count?.menuItems || 0) > 0}
+                    />
+                </div>
+            )
+        }] : [])
+    ] as Column<MenuBrand>[];
+
+    const q = search.trim().toLowerCase();
+    const filtered = brands.filter((b) => {
+        if (statusFilter === 'active' && !b.active) return false;
+        if (statusFilter === 'inactive' && b.active) return false;
+        return !q || b.name.toLowerCase().includes(q);
+    });
 
     return (
-        <div className="categories-page">
+        <PageContent>
             <PageHeader
                 title="Marcas"
                 description={`${brands.length} marcas configuradas`}
-                actions={(
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        {canMutate && (
-                            <Button variant="primary" onClick={() => openModal()}>
-                                <Plus size={20} />
-                                Nueva Marca
-                            </Button>
-                        )}
-                    </div>
-                )}
+                actions={canMutate ? (
+                    <Button variant="primary" icon={Plus} onClick={() => openModal()}>
+                        Nueva marca
+                    </Button>
+                ) : undefined}
             />
 
-            {viewMode === 'table' && brands.length > 0 && (
-                <DataTable<MenuBrand>
-                    ariaLabel="Listado de marcas"
-                    rows={brands}
-                    rowKey={(b) => b.id}
-                    columns={[
-                        {
-                            key: 'name',
-                            header: 'Marca',
-                            render: (b) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ width: 12, height: 12, borderRadius: '50%', background: b.color || DEFAULT_COLOR, display: 'inline-block', flexShrink: 0 }} />
-                                        {b.name}
-                                    </span>
-                                </div>
-                            )
-                        },
-                        { key: 'items', header: 'Platos', type: 'number', decimals: 0, render: (b) => b._count?.menuItems || 0 },
-                        { key: 'order', header: 'Orden', type: 'number', decimals: 0, render: (b) => b.sortOrder ?? 0 },
-                        {
-                            key: 'status',
-                            header: 'Estado',
-                            render: (b) => <span className={`catalog-pill ${b.active ? 'ok' : 'neutral'}`}>{b.active ? 'Activa' : 'Inactiva'}</span>
-                        },
-                        ...(canMutate ? [{
-                            key: 'actions',
-                            header: 'Acciones',
-                            type: 'actions',
-                            render: (b: MenuBrand) => (
-                                <div className="catalog-table-actions">
-                                    <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
-                                        <Edit2 size={16} />
-                                    </button>
-                                    <button
-                                        className="catalog-action-btn danger"
-                                        onClick={() => handleDelete(b)}
-                                        title="Eliminar"
-                                        disabled={Number(b._count?.menuItems || 0) > 0}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            )
-                        }] : [])
-                    ] as Column<MenuBrand>[]}
-                />
-            )}
-
-            {viewMode === 'cards' && (
-            <div className="categories-grid-new">
-                {brands.map((brand) => (
-                    <div key={brand.id} className="category-card-new">
-                        <div className={`status-badge-new ${brand.active ? 'active' : 'inactive'}`}>
-                            {brand.active ? 'Activa' : 'Inactiva'}
-                        </div>
-
-                        <div className="category-card-body-new">
-                            <div className="category-name-new" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span
-                                    style={{
-                                        width: 14,
-                                        height: 14,
-                                        borderRadius: '50%',
-                                        background: brand.color || DEFAULT_COLOR,
-                                        display: 'inline-block',
-                                        flexShrink: 0
-                                    }}
-                                />
-                                {brand.name}
-                            </div>
-
-                            <div className="category-details-new">
-                                <div className="detail-item">
-                                    <List size={16} />
-                                    <span>{brand._count?.menuItems || 0} platillos asociados</span>
-                                </div>
-                                <div className="detail-item">
-                                    <Tags size={16} />
-                                    <span>Orden: {brand.sortOrder}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {canMutate && (
-                            <div className="category-card-actions-new">
-                                <button className="action-btn-new edit" onClick={() => openModal(brand)} title="Editar">
-                                    <Edit2 size={20} />
-                                    <span>Editar</span>
-                                </button>
-                                <button
-                                    className="action-btn-new delete"
-                                    onClick={() => handleDelete(brand)}
-                                    title="Eliminar"
-                                    disabled={Number(brand._count?.menuItems || 0) > 0}
-                                >
-                                    <Trash2 size={20} />
-                                    <span>Eliminar</span>
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-            )}
-
-            {brands.length === 0 && (
-                <div className="no-categories-message">
-                    <Tags size={48} />
-                    <p>No hay marcas configuradas</p>
-                    {canMutate && (
-                        <Button variant="primary" onClick={() => openModal()}>Crear primera marca</Button>
-                    )}
-                </div>
-            )}
+            <DataTable<MenuBrand>
+                ariaLabel="Listado de marcas"
+                rows={filtered}
+                rowKey={(b) => b.id}
+                columns={columns}
+                loading={loading}
+                resetKey={`${q}|${statusFilter}`}
+                onRowClick={canMutate ? (b) => openModal(b) : undefined}
+                empty={brands.length === 0 ? (
+                    <EmptyState
+                        icon={Tags}
+                        title="No hay marcas configuradas"
+                        action={canMutate ? <Button variant="primary" onClick={() => openModal()}>Crear primera marca</Button> : undefined}
+                    />
+                ) : 'Sin resultados. Ajusta o limpia los filtros.'}
+                toolbar={(
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            aria-label="Buscar marca"
+                            placeholder="Buscar marca"
+                            prefix={<Search size={14} aria-hidden="true" />}
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                        <SegmentedControl
+                            ariaLabel="Estado"
+                            options={STATUS_OPTIONS}
+                            value={statusFilter}
+                            onChange={setStatusFilter}
+                        />
+                    </TableToolbar>
+                )}
+            />
 
             <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={closeModal}
-                title={editing ? 'Editar Marca' : 'Nueva Marca'}
+                title={editing ? 'Editar marca' : 'Nueva marca'}
+                breadcrumb={['Menú', 'Marcas']}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="brand-form" loading={saving}>
+                            {editing ? 'Guardar cambios' : 'Crear marca'}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content categories-modal-content">
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <div className="modal-content-group">
-                                <div className="modal-section-header">
-                                    <Tags size={18} />
-                                    <h3>Detalles de la Marca</h3>
-                                </div>
-
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="brand-name">Nombre de la Marca</label>
-                                    <input
-                                        id="brand-name"
-                                        type="text"
-                                        className="modal-standard-input"
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Ej: Pizzería, Cafetería, Heladería..."
-                                        required
-                                    />
-                                </div>
-
-                                <div className="modal-form-row">
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="brand-color">Color</label>
-                                        <input
-                                            id="brand-color"
-                                            type="color"
-                                            className="modal-standard-input"
-                                            style={{ padding: '4px', height: '44px' }}
-                                            value={formData.color}
-                                            onChange={e => setFormData({ ...formData, color: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="brand-sort">Orden</label>
-                                        <input
-                                            id="brand-sort"
-                                            type="number"
-                                            className="modal-standard-input"
-                                            value={formData.sortOrder}
-                                            onChange={e => setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })}
-                                            placeholder="0"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" id="brand-active-label">Estado de la Marca</label>
-                                    <div
-                                        role="switch"
-                                        aria-checked={formData.active}
-                                        aria-labelledby="brand-active-label"
-                                        className={`modal-toggle-card ${formData.active ? 'active' : ''}`}
-                                        onClick={() => setFormData({ ...formData, active: !formData.active })}
-                                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)' }}
-                                    >
-                                        <div className="toggle-switch">
-                                            <div className={`toggle-dot ${formData.active ? 'active' : ''}`} />
-                                        </div>
-                                        <span>{formData.active ? 'Visible en el POS' : 'Oculta en el POS'}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button variant="ghost" type="button" onClick={closeModal}>
-                                Cancelar
-                            </Button>
-                            <Button variant="primary" type="submit" disabled={saving}>
-                                {saving ? 'Guardando...' : editing ? 'Guardar Cambios' : 'Crear Marca'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
+                <form id="brand-form" onSubmit={handleSubmit} className={styles.stack}>
+                    <FormSection step={1} title="Detalles de la marca" description="Nombre, color y posición en el POS.">
+                        <FormGrid>
+                            <Field label="Nombre de la marca" htmlFor="brand-name" required>
+                                <Input
+                                    id="brand-name"
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    placeholder="Ej: Pizzería, Cafetería, Heladería..."
+                                    required
+                                />
+                            </Field>
+                            <Field label="Color" htmlFor="brand-color">
+                                <input
+                                    id="brand-color"
+                                    type="color"
+                                    className={styles.colorInput}
+                                    value={formData.color}
+                                    onChange={e => setFormData({ ...formData, color: e.target.value })}
+                                />
+                            </Field>
+                            <Field label="Orden" htmlFor="brand-sort">
+                                <NumberInput
+                                    id="brand-sort"
+                                    decimals={0}
+                                    min={0}
+                                    value={formData.sortOrder}
+                                    onChange={(v) => setFormData({ ...formData, sortOrder: v ?? 0 })}
+                                />
+                            </Field>
+                        </FormGrid>
+                        <Switch
+                            id="brand-active"
+                            checked={formData.active}
+                            onChange={(active) => setFormData({ ...formData, active })}
+                            label={formData.active ? 'Visible en el POS' : 'Oculta en el POS'}
+                        />
+                    </FormSection>
+                </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }

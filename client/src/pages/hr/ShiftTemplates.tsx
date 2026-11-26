@@ -2,7 +2,7 @@ import { type ComponentProps, useCallback, useEffect, useMemo, useState } from '
 import { AlertTriangle, ArrowLeft, Clock3, Plus, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, FullScreenModal } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import {
     ShiftTemplateCatalog,
     ShiftTemplateForm,
@@ -236,7 +236,7 @@ export default function ShiftTemplates() {
                 aria-labelledby={`hr-shift-templates-tab-${statusFilter.toLowerCase()}`}
                 className="hr-hz-catalog"
             >
-                {loading && <HrPanelState><LoadingSpinner text="Cargando jornadas configuradas…" /></HrPanelState>}
+                {loading && <HrPanelState><HrLoading text="Cargando jornadas configuradas…" /></HrPanelState>}
                 {!loading && loadError && (
                     <HrPanelState role="alert">
                         <AlertTriangle size={42} aria-hidden="true" />

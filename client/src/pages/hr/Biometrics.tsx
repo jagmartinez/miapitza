@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, LoadErrorState } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import { HrHero, HrPage, HrSection, HrSplit, type HrFact } from '../../components/hr/layout/HrWorkspace';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -243,7 +243,7 @@ export default function Biometrics() {
             />
             {!online && <OnlineOnlyNotice online={false} />}
 
-            {loading && <LoadingSpinner text="Cargando estado biométrico…" />}
+            {loading && <HrLoading text="Cargando estado biométrico…" />}
             {!loading && error && !profile && <LoadErrorState message={error} onRetry={() => void load()} />}
 
             {!loading && profile && policy && statusCopy && (

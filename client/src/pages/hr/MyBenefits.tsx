@@ -11,7 +11,7 @@ import {
   Route,
 } from 'lucide-react';
 import { DataTable, PageHeader, FullScreenModal, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
@@ -298,7 +298,7 @@ export default function MyBenefits() {
           <RefreshCw size={16} /> Actualizar
         </Button>
       </div>
-      {loading && <LoadingSpinner text="Cargando tus beneficios…" />}
+      {loading && <HrLoading text="Cargando tus beneficios…" />}
       {!loading && error && (
         <div className="state-placeholder" role="alert">
           <AlertTriangle size={42} />
@@ -378,7 +378,7 @@ export default function MyBenefits() {
           </section>
           {(detailLoading || selected) && <section className="hr-benefits-workspace" aria-live="polite">
             {detailLoading ? (
-              <LoadingSpinner text="Abriendo detalle…" />
+              <HrLoading text="Abriendo detalle…" />
             ) : selected ? (
               <>
                 <div className="hr-benefits-workspace-head">

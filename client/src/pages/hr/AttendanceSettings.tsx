@@ -14,7 +14,7 @@ import {
   TabletSmartphone,
 } from 'lucide-react';
 import { FormSection, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import PendingBiometricEnrollmentsPanel from '../../components/hr/PendingBiometricEnrollmentsPanel';
@@ -366,7 +366,7 @@ export default function AttendanceSettings() {
           <span>{actionError}</span>
         </div>
       )}
-      {loading && <LoadingSpinner text="Cargando configuración de asistencia…" />}
+      {loading && <HrLoading text="Cargando configuración de asistencia…" />}
       {!loading && error && (
         <div className="state-placeholder" role="alert">
           <AlertTriangle size={42} />

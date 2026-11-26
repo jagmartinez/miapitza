@@ -2,14 +2,21 @@ import { useState, useEffect } from 'react';
 import { getApiErrorMessage } from '../utils/apiError';
 import { notifyError } from '../services/notify';
 import { companiesAPI } from '../services/api';
-import ViewToggle from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
-import LoadingSpinner from '../components/LoadingSpinner';
-import { Plus, Building2, Edit2, CheckCircle, XCircle, FileText } from 'lucide-react';
+import { Plus, Building2, Edit2, CheckCircle, XCircle, FileText, Search } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
 import { resolveAssetUrl } from '../utils/assets';
-import './Companies.css';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, type Column, PageHeader } from '@/ui';
+import styles from './catalog.module.css';
+import {
+    AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    PageContent, PageHeader, SegmentedControl, TableToolbar, Textarea, type Column,
+} from '@/ui';
+
+type StatusFilter = 'all' | 'active' | 'inactive';
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+    { value: 'all', label: 'Todas' },
+    { value: 'active', label: 'Activas' },
+    { value: 'inactive', label: 'Inactivas' },
+];
 
 interface Company {
     id: number;
@@ -53,8 +60,8 @@ export default function Companies() {
     const { error: showError } = useAppToast();
     const [companies, setCompanies] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
-    const [statusFilter, setStatusFilter] = useState<boolean | null>(null);
-    const { viewMode, setViewMode } = useViewMode('companies');
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCompany, setEditingCompany] = useState<Company | null>(null);
     const [formData, setFormData] = useState(defaultCompanyForm);
@@ -127,338 +134,230 @@ export default function Companies() {
         setEditingCompany(null);
     };
 
-    const filteredCompanies = statusFilter !== null
-        ? companies.filter(c => c.active === statusFilter)
-        : companies;
+    const q = search.trim().toLowerCase();
+    const filteredCompanies = companies.filter((c) => {
+        if (statusFilter === 'active' && !c.active) return false;
+        if (statusFilter === 'inactive' && c.active) return false;
+        return !q || c.name.toLowerCase().includes(q) || (c.ruc ?? '').toLowerCase().includes(q);
+    });
 
-
-    if (loading) return <LoadingSpinner text="Cargando empresas..." />;
+    const columns: Column<Company>[] = [
+        {
+            key: 'name',
+            header: 'Empresa',
+            render: (c) => (
+                <span className={styles.cellTitle}>
+                    {c.logo
+                        ? <img src={resolveAssetUrl(c.logo)} alt="" width={24} height={24} style={{ objectFit: 'contain', borderRadius: 4 }} />
+                        : <Building2 size={16} aria-hidden="true" />}
+                    <span className={styles.cellStack}>
+                        <span>{c.name}</span>
+                        <span className={styles.muted}>RUC: {c.ruc || 'No registrado'}</span>
+                    </span>
+                </span>
+            )
+        },
+        { key: 'branches', header: 'Sucursales', type: 'number', decimals: 0, accessor: (c) => c._count?.branches || 0 },
+        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, accessor: (c) => c._count?.users || 0 },
+        {
+            key: 'taxRegime',
+            header: 'Perfil fiscal',
+            render: (c) => (
+                <div className={styles.cellStack}>
+                    <span>{TAX_REGIMES.find((item) => item.value === c.payrollTaxRegime)?.label ?? c.payrollTaxRegime}</span>
+                    {!c.payrollTaxProfileReady
+                        ? <Badge tone="warning">Perfil fiscal pendiente</Badge>
+                        : <span className={styles.muted}>{c.payrollIncomeTaxWithholding ? 'Retiene IR laboral' : 'No retiene IR laboral'}</span>}
+                </div>
+            )
+        },
+        {
+            key: 'status',
+            header: 'Estado',
+            render: (c) => <Badge tone={c.active ? 'success' : 'neutral'} dot>{c.active ? 'Activa' : 'Inactiva'}</Badge>
+        },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (c) => (
+                <div className={styles.rowActions}>
+                    <IconButton size="sm" icon={Edit2} label={`Editar ${c.name}`} onClick={() => openModal(c)} />
+                    <IconButton
+                        size="sm"
+                        icon={c.active ? XCircle : CheckCircle}
+                        label={`${c.active ? 'Desactivar' : 'Activar'} ${c.name}`}
+                        onClick={() => toggleActive(c)}
+                    />
+                </div>
+            )
+        }
+    ] as Column<Company>[];
 
     return (
-        <div className="companies-page">
+        <PageContent>
             <PageHeader
-                title="Gestión de Empresas"
+                title="Empresas"
+                description={`${companies.filter((c) => c.active).length} activas · ${companies.length} registradas`}
                 actions={(
-                    <>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button variant="primary" onClick={() => openModal()}>
-                            <Plus size={20} />
-                            Nueva Empresa
-                        </Button>
-                    </>
+                    <Button variant="primary" icon={Plus} onClick={() => openModal()}>
+                        Nueva empresa
+                    </Button>
                 )}
             />
 
-            {/* Filters Row */}
-            <div className="companies-filters-row">
-                <div className="company-status-filters">
-                    <button
-                        className={`company-status-btn ${statusFilter === null ? 'active' : ''}`}
-                        onClick={() => setStatusFilter(null)}
-                    >
-                        Todas
-                    </button>
-                    <button
-                        className={`company-status-btn active-filter ${statusFilter === true ? 'active' : ''}`}
-                        onClick={() => setStatusFilter(true)}
-                    >
-                        Activas
-                    </button>
-                    <button
-                        className={`company-status-btn inactive-filter ${statusFilter === false ? 'active' : ''}`}
-                        onClick={() => setStatusFilter(false)}
-                    >
-                        Inactivas
-                    </button>
-                </div>
-
-            </div>
-
-            {/* Table view */}
-            {viewMode === 'table' && filteredCompanies.length > 0 && (
-                <DataTable<Company>
-                    ariaLabel="Listado de empresas"
-                    rows={filteredCompanies}
-                    rowKey={(c) => c.id}
-                    resetKey={statusFilter}
-                    columns={[
-                        {
-                            key: 'name',
-                            header: 'Empresa',
-                            render: (c) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">{c.name}</span>
-                                    <span className="cell-sub">RUC: {c.ruc || 'No registrado'}</span>
-                                </div>
-                            )
-                        },
-                        { key: 'branches', header: 'Sucursales', type: 'number', decimals: 0, render: (c) => c._count?.branches || 0 },
-                        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, render: (c) => c._count?.users || 0 },
-                        {
-                            key: 'taxRegime',
-                            header: 'Perfil fiscal',
-                            render: (c) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">{TAX_REGIMES.find((item) => item.value === c.payrollTaxRegime)?.label ?? c.payrollTaxRegime}</span>
-                                    <span className="cell-sub">{!c.payrollTaxProfileReady ? 'Perfil fiscal pendiente' : c.payrollIncomeTaxWithholding ? 'Retiene IR laboral' : 'No retiene IR laboral'}</span>
-                                </div>
-                            )
-                        },
-                        {
-                            key: 'status',
-                            header: 'Estado',
-                            render: (c) => <span className={`catalog-pill ${c.active ? 'ok' : 'neutral'}`}>{c.active ? 'Activa' : 'Inactiva'}</span>
-                        },
-                        {
-                            key: 'actions',
-                            header: 'Acciones',
-                            type: 'actions',
-                            render: (c) => (
-                                <div className="catalog-table-actions">
-                                    <button className="catalog-action-btn" onClick={() => openModal(c)} title="Editar">
-                                        <Edit2 size={16} />
-                                    </button>
-                                    <button
-                                        className={`catalog-action-btn ${c.active ? 'danger' : ''}`}
-                                        onClick={() => toggleActive(c)}
-                                        title={c.active ? 'Desactivar' : 'Activar'}
-                                    >
-                                        {c.active ? <XCircle size={16} /> : <CheckCircle size={16} />}
-                                    </button>
-                                </div>
-                            )
-                        }
-                    ] as Column<Company>[]}
-                />
-            )}
-
-            {/* Enhanced Companies Grid */}
-            {viewMode === 'cards' && (
-            <div className="companies-grid-new">
-                {filteredCompanies.map((company) => (
-                    <div key={company.id} className={`company-card-new ${company.active ? 'active' : 'inactive'}`}>
-                        {/* Status Badge */}
-                        <div className={`status-badge-new ${company.active ? 'active' : 'inactive'}`}>
-                            {company.active ? 'Activa' : 'Inactiva'}
-                        </div>
-
-                        {/* Card Body */}
-                        <div className="company-card-body-new">
-                            <div className="company-logo-new">
-                                {company.logo ? (
-                                    <img src={resolveAssetUrl(company.logo)} alt={company.name} />
-                                ) : (
-                                    <Building2 size={40} />
-                                )}
-                            </div>
-
-                            <div className="company-name-new">{company.name}</div>
-
-                            <div className="company-ruc-new">
-                                RUC: {company.ruc || 'No registrado'}
-                            </div>
-
-                            <div className="company-tax-profile-summary">
-                                <strong>{TAX_REGIMES.find((item) => item.value === company.payrollTaxRegime)?.label ?? company.payrollTaxRegime}</strong>
-                                <span>{!company.payrollTaxProfileReady ? 'Perfil fiscal pendiente' : company.payrollIncomeTaxWithholding ? 'Retiene IR laboral' : 'No retiene IR laboral'}</span>
-                            </div>
-
-                            <div className="company-stats-new">
-                                <div className="stat-item-new">
-                                    <span className="stat-value-new">{company._count?.branches || 0}</span>
-                                    <span className="stat-label-new">Sucursales</span>
-                                </div>
-                                <div className="stat-item-new">
-                                    <span className="stat-value-new">{company._count?.users || 0}</span>
-                                    <span className="stat-label-new">Usuarios</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="company-card-actions-new">
-                            <button
-                                className="action-btn-new edit"
-                                onClick={(e) => { e.stopPropagation(); openModal(company); }}
-                                title="Editar"
-                            >
-                                <Edit2 size={20} />
-                                <span>Editar</span>
-                            </button>
-                            <button
-                                className={`action-btn-new ${company.active ? 'deactivate' : 'activate'}`}
-                                onClick={(e) => { e.stopPropagation(); toggleActive(company); }}
-                                title={company.active ? 'Desactivar' : 'Activar'}
-                            >
-                                {company.active ? (
-                                    <>
-                                        <XCircle size={20} />
-                                        <span>Desactivar</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <CheckCircle size={20} />
-                                        <span>Activar</span>
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-            )}
-
-            {filteredCompanies.length === 0 && (
-                <div className="no-companies-message">
-                    <Building2 size={48} />
-                    <p>No hay empresas {statusFilter !== null ? 'con este estado' : 'registradas'}</p>
-                    <Button variant="primary" onClick={() => statusFilter !== null ? setStatusFilter(null) : openModal()}>
-                        {statusFilter !== null ? 'Ver todas' : 'Crear primera empresa'}
-                    </Button>
-                </div>
-            )}
+            <DataTable<Company>
+                ariaLabel="Listado de empresas"
+                rows={filteredCompanies}
+                rowKey={(c) => c.id}
+                columns={columns}
+                loading={loading}
+                resetKey={`${statusFilter}|${q}`}
+                onRowClick={(c) => openModal(c)}
+                empty={companies.length === 0 ? (
+                    <EmptyState
+                        icon={Building2}
+                        title="No hay empresas registradas"
+                        action={<Button variant="primary" onClick={() => openModal()}>Crear primera empresa</Button>}
+                    />
+                ) : 'No hay empresas con este filtro.'}
+                toolbar={(
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            aria-label="Buscar empresa"
+                            placeholder="Buscar por nombre o RUC"
+                            prefix={<Search size={14} aria-hidden="true" />}
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                        <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+                    </TableToolbar>
+                )}
+            />
 
             <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={closeModal}
-                title={editingCompany ? 'Editar Empresa' : 'Nueva Empresa'}
+                title={editingCompany ? 'Editar empresa' : 'Nueva empresa'}
+                breadcrumb={['Configuración', 'Empresas']}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="company-form" loading={saving}>
+                            {editingCompany ? 'Guardar cambios' : 'Crear empresa'}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content companies-modal-content">
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <div className="modal-content-group">
-                                <div className="modal-section-header">
-                                    <Building2 size={18} />
-                                    <h3>Información General</h3>
-                                </div>
-
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="company-name">Nombre de la Empresa</label>
-                                    <input
-                                        id="company-name"
-                                        type="text"
-                                        className="modal-standard-input"
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Ej: Restaurante Mi Casa"
-                                        required
-                                        autoFocus
+                <form id="company-form" onSubmit={handleSubmit} className={styles.stack}>
+                    <FormSection step={1} title="Información general">
+                        <FormGrid>
+                            <Field label="Nombre de la empresa" htmlFor="company-name" required>
+                                <Input
+                                    id="company-name"
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    placeholder="Ej: Restaurante Mi Casa"
+                                    required
+                                    autoFocus
+                                />
+                            </Field>
+                            <Field label="RUC (Registro Único de Contribuyente)" htmlFor="company-ruc">
+                                <Input
+                                    id="company-ruc"
+                                    prefix={<FileText size={14} aria-hidden="true" />}
+                                    value={formData.ruc}
+                                    onChange={e => setFormData({ ...formData, ruc: e.target.value })}
+                                    placeholder="Ej: J0310000123456"
+                                />
+                            </Field>
+                            {editingCompany && (
+                                <Field label="Estado de la empresa" htmlFor="company-active">
+                                    <AppSelect
+                                        isClearable={false}
+                                        isSearchable={false}
+                                        inputId="company-active"
+                                        options={[
+                                            { value: 'true', label: 'Activa' },
+                                            { value: 'false', label: 'Inactiva' }
+                                        ]}
+                                        value={formData.active ? 'true' : 'false'}
+                                        onChange={(v) => setFormData({ ...formData, active: v === 'true' })}
                                     />
-                                </div>
+                                </Field>
+                            )}
+                        </FormGrid>
+                    </FormSection>
 
-                                <div className="company-tax-profile-form" aria-labelledby="company-tax-profile-title">
-                                    <div className="modal-section-header">
-                                        <FileText size={18} />
-                                        <div>
-                                            <h3 id="company-tax-profile-title">Perfil fiscal para nómina</h3>
-                                            <p>Se administra aquí. Cada nueva versión legal toma estos datos y conserva una copia para auditoría.</p>
-                                        </div>
-                                    </div>
-                                    <Field label="Régimen tributario registrado" htmlFor="company-tax-regime">
-                                        <AppSelect
-                                            inputId="company-tax-regime"
-                                            isClearable={false}
-                                            options={TAX_REGIMES}
-                                            value={formData.payrollTaxRegime ?? null}
-                                            onChange={(value) => {
-                                                if (!value) return;
-                                                const stopsWithholding = ['SIMPLIFIED_FIXED_QUOTA', 'EXEMPT'].includes(value);
-                                                setFormData({
-                                                    ...formData,
-                                                    payrollTaxRegime: value as TaxRegime,
-                                                    payrollIncomeTaxWithholding: stopsWithholding ? false : formData.payrollIncomeTaxWithholding,
-                                                    payrollIncomeTaxException: formData.payrollIncomeTaxException,
-                                                });
-                                            }}
-                                        />
-                                    </Field>
-                                    <Field label="Retención de IR laboral" htmlFor="company-ir-withholding">
-                                        <AppSelect
-                                            inputId="company-ir-withholding"
-                                            isClearable={false}
-                                            options={[
-                                                { value: 'true', label: 'Sí, la empresa retiene IR laboral' },
-                                                { value: 'false', label: 'No retiene IR laboral' },
-                                            ]}
-                                            value={formData.payrollIncomeTaxWithholding ? 'true' : 'false'}
-                                            onChange={(value) => setFormData({
-                                                ...formData,
-                                                payrollIncomeTaxWithholding: value === 'true',
-                                                payrollIncomeTaxException: value === 'true' ? '' : formData.payrollIncomeTaxException,
-                                            })}
-                                        />
-                                    </Field>
-                                    <div className="modal-input-group company-tax-reference">
-                                        <label className="modal-input-label" htmlFor="company-tax-reference">Referencia o respaldo fiscal</label>
-                                        <input
-                                            id="company-tax-reference"
-                                            className="modal-standard-input"
-                                            value={formData.payrollTaxRegimeReference}
-                                            onChange={(event) => setFormData({ ...formData, payrollTaxRegimeReference: event.target.value })}
-                                            placeholder="Constancia DGI, resolución o referencia verificable"
-                                            maxLength={500}
-                                            required
-                                        />
-                                    </div>
-                                    {!formData.payrollIncomeTaxWithholding && (
-                                        <div className="modal-input-group company-tax-reference">
-                                            <label className="modal-input-label" htmlFor="company-tax-exception">Fundamento para no retener IR laboral</label>
-                                            <textarea
-                                                id="company-tax-exception"
-                                                className="modal-standard-input"
-                                                rows={3}
-                                                value={formData.payrollIncomeTaxException}
-                                                onChange={(event) => setFormData({ ...formData, payrollIncomeTaxException: event.target.value })}
-                                                placeholder="Resolución, excepción o justificación fiscal aplicable"
-                                                minLength={3}
-                                                maxLength={500}
-                                                required
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="company-ruc">RUC (Registro Único de Contribuyente)</label>
-                                    <div style={{ position: 'relative' }}>
-                                        <FileText size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ui-text-muted)' }} />
-                                        <input
-                                            id="company-ruc"
-                                            type="text"
-                                            className="modal-standard-input"
-                                            style={{ paddingLeft: '36px' }}
-                                            value={formData.ruc}
-                                            onChange={e => setFormData({ ...formData, ruc: e.target.value })}
-                                            placeholder="Ej: J0310000123456"
-                                        />
-                                    </div>
-                                </div>
-
-                                {editingCompany && (
-                                    <Field label="Estado de la Empresa" htmlFor="sel-331">
-<AppSelect isClearable={false} inputId="sel-331" options={[
-                                            { value: 'true', label: 'Activa' },
-                                            { value: 'false', label: 'Inactiva' }
-                                        ]} value={(formData.active ? { value: 'true', label: 'Activa' } : { value: 'false', label: 'Inactiva' })?.value ?? null} onChange={(__v) => { const option = ([
-                                            { value: 'true', label: 'Activa' },
-                                            { value: 'false', label: 'Inactiva' }
-                                        ]).find((o) => o.value === __v) ?? null; return setFormData({ ...formData, active: option?.value === 'true' }); }} />
-</Field>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button variant="ghost" onClick={closeModal} type="button">
-                                Cancelar
-                            </Button>
-                            <Button variant="primary" type="submit" disabled={saving}>
-                                {saving ? 'Guardando...' : editingCompany ? 'Guardar Cambios' : 'Crear Empresa'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
+                    <FormSection
+                        step={2}
+                        title="Perfil fiscal para nómina"
+                        description="Se administra aquí. Cada nueva versión legal toma estos datos y conserva una copia para auditoría."
+                    >
+                        <FormGrid>
+                            <Field label="Régimen tributario registrado" htmlFor="company-tax-regime">
+                                <AppSelect
+                                    inputId="company-tax-regime"
+                                    isClearable={false}
+                                    options={TAX_REGIMES}
+                                    value={formData.payrollTaxRegime ?? null}
+                                    onChange={(value) => {
+                                        if (!value) return;
+                                        const stopsWithholding = ['SIMPLIFIED_FIXED_QUOTA', 'EXEMPT'].includes(value);
+                                        setFormData({
+                                            ...formData,
+                                            payrollTaxRegime: value as TaxRegime,
+                                            payrollIncomeTaxWithholding: stopsWithholding ? false : formData.payrollIncomeTaxWithholding,
+                                            payrollIncomeTaxException: formData.payrollIncomeTaxException,
+                                        });
+                                    }}
+                                />
+                            </Field>
+                            <Field label="Retención de IR laboral" htmlFor="company-ir-withholding">
+                                <AppSelect
+                                    inputId="company-ir-withholding"
+                                    isClearable={false}
+                                    options={[
+                                        { value: 'true', label: 'Sí, la empresa retiene IR laboral' },
+                                        { value: 'false', label: 'No retiene IR laboral' },
+                                    ]}
+                                    value={formData.payrollIncomeTaxWithholding ? 'true' : 'false'}
+                                    onChange={(value) => setFormData({
+                                        ...formData,
+                                        payrollIncomeTaxWithholding: value === 'true',
+                                        payrollIncomeTaxException: value === 'true' ? '' : formData.payrollIncomeTaxException,
+                                    })}
+                                />
+                            </Field>
+                            <Field label="Referencia o respaldo fiscal" htmlFor="company-tax-reference" required>
+                                <Input
+                                    id="company-tax-reference"
+                                    value={formData.payrollTaxRegimeReference}
+                                    onChange={(event) => setFormData({ ...formData, payrollTaxRegimeReference: event.target.value })}
+                                    placeholder="Constancia DGI, resolución o referencia verificable"
+                                    maxLength={500}
+                                    required
+                                />
+                            </Field>
+                        </FormGrid>
+                        {!formData.payrollIncomeTaxWithholding && (
+                            <Field label="Fundamento para no retener IR laboral" htmlFor="company-tax-exception" required>
+                                <Textarea
+                                    id="company-tax-exception"
+                                    rows={3}
+                                    value={formData.payrollIncomeTaxException}
+                                    onChange={(event) => setFormData({ ...formData, payrollIncomeTaxException: event.target.value })}
+                                    placeholder="Resolución, excepción o justificación fiscal aplicable"
+                                    minLength={3}
+                                    maxLength={500}
+                                    required
+                                />
+                            </Field>
+                        )}
+                    </FormSection>
+                </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }

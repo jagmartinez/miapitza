@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
-import ViewToggle from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
-import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
+import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Lock, Search } from 'lucide-react';
 import type { User, Branch, Company, UserAccountType } from '../types';
 
 interface UserSavePayload {
@@ -23,10 +21,12 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import { activateOnKeyboard } from '../utils/keyboardActivation';
 import { createLatestRequestGuard } from '../utils/latestRequest';
-import './Users.css';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, LoadErrorState, PageHeader, type Column } from '@/ui';
+import styles from './catalog.module.css';
+import {
+    AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
+} from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
@@ -52,8 +52,7 @@ export default function Users() {
     // Filter States
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState<string>('all');
-    const [statusFilter, setStatusFilter] = useState<string>('all');
-    const { viewMode, setViewMode } = useViewMode('users');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'ACTIVE' | 'INACTIVE'>('all');
 
     // Sidebar State
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -76,12 +75,12 @@ export default function Users() {
     const [saving, setSaving] = useState(false);
 
     const roleOptions = [
-        { value: 'all', label: 'Todos los Roles' },
+        { value: 'all', label: 'Todos los roles' },
         ...availableRoles.map(r => ({ value: r.name, label: r.name }))
     ];
 
-    const statusOptions = [
-        { value: 'all', label: 'Cualquier Estado' },
+    const statusOptions: { value: 'all' | 'ACTIVE' | 'INACTIVE'; label: string }[] = [
+        { value: 'all', label: 'Todos' },
         { value: 'ACTIVE', label: 'Activos' },
         { value: 'INACTIVE', label: 'Inactivos' }
     ];
@@ -318,531 +317,342 @@ export default function Users() {
         return true;
     });
 
-    // Generate user initials
-    const getUserInitials = (name: string) => {
-        return name
-            .split(' ')
-            .map(n => n[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 2);
-    };
+    const roleNamesOf = (u: User) => (u.userRoles ? u.userRoles.map(ur => ur.role.name) : [u.role?.name || '']).filter(Boolean);
 
-    // Get role color
-    const getRoleColor = (roleName: string) => {
-        const colors: Record<string, string> = {
-            'SUPERADMIN': '#9333EA',
-            'ADMIN': '#2563EB',
-            'WAITER': '#10B981',
-            'MESERO': '#10B981',
-            'KITCHEN': '#F59E0B',
-            'CASHIER': '#06B6D4',
-            'CAJERO': '#06B6D4'
-        };
-        return colors[roleName] || '#6B7280';
-    };
+    const columns: Column<User>[] = [
+        {
+            key: 'name',
+            header: 'Usuario',
+            render: (u) => (
+                <span className={styles.cellTitle}>
+                    <span className={styles.swatch} style={{ background: u.color || 'var(--ui-border)' }} aria-hidden="true" />
+                    <span className={styles.cellStack}>
+                        <span>{u.name}</span>
+                        <span className={styles.muted}>@{u.username}</span>
+                    </span>
+                </span>
+            )
+        },
+        { key: 'email', header: 'Email', accessor: (u) => u.email || '—', hideBelow: 'lg' },
+        {
+            key: 'roles',
+            header: 'Rol',
+            render: (u) => (
+                <div className={styles.inline}>
+                    {roleNamesOf(u).map((rn) => <Badge key={rn} tone="primary">{rn}</Badge>)}
+                </div>
+            )
+        },
+        { key: 'branch', header: 'Sucursal', accessor: (u) => u.branch?.name || 'Todas las sucursales' },
+        ...(isSuperAdmin ? [{
+            key: 'company',
+            header: 'Empresa',
+            accessor: (u: User) => u.company?.name || '—'
+        }] : []),
+        {
+            key: 'accountType',
+            header: 'Tipo',
+            render: (u) => {
+                const accountType = u.accountType || (u.employee ? 'INTERNAL' : 'EXTERNAL');
+                return (
+                    <div className={styles.cellStack}>
+                        <span>{accountType === 'INTERNAL' ? 'Interno' : 'Externo'}</span>
+                        {accountType === 'INTERNAL' && (
+                            <span className={styles.muted}>
+                                {u.employee ? `Expediente ${u.employee.employeeCode || u.employee.employeeNumber || `#${u.employee.id}`}` : 'Vínculo pendiente'}
+                            </span>
+                        )}
+                    </div>
+                );
+            }
+        },
+        {
+            key: 'status',
+            header: 'Estado',
+            render: (u) => <Badge tone={u.status === 'ACTIVE' ? 'success' : 'neutral'} dot>{u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</Badge>
+        },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (u) => (
+                <div className={styles.rowActions}>
+                    <IconButton size="sm" icon={Edit2} label={`Editar ${u.name}`} onClick={() => handleOpenSidebar(u)} />
+                    {canManageUserStatus && (
+                        <IconButton
+                            size="sm"
+                            icon={u.status === 'ACTIVE' ? UserX : UserCheck}
+                            label={u.status === 'ACTIVE' ? `Inhabilitar ${u.name} sin borrar historial` : `Reactivar ${u.name}`}
+                            onClick={() => handleStatusChange(u)}
+                        />
+                    )}
+                </div>
+            )
+        }
+    ] as Column<User>[];
 
-    if (loading && users.length === 0) return <div className="users-loading">Cargando usuarios...</div>;
+    const activeBranchOptions = isSuperAdmin
+        ? [
+            { value: '', label: 'Ninguna (Global / Superadmin)' },
+            ...branches.filter(b => formData.branchIds.includes(b.id.toString())).map(b => ({ value: b.id.toString(), label: b.name }))
+        ]
+        : [
+            { value: '', label: 'Sin sucursal' },
+            ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
+        ];
 
     return (
-        <div className="users-page">
+        <PageContent>
             <PageHeader
-                title="Gestión de Usuarios"
-                actions={
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button variant="primary" onClick={() => handleOpenSidebar()} disabled={Boolean(loadError)}>
-                            <Plus size={20} />
-                            Nuevo Usuario
-                        </Button>
-                    </div>
-                }
+                title="Usuarios"
+                description={`${users.filter((u) => u.status === 'ACTIVE').length} activos · ${users.length} registrados`}
+                actions={(
+                    <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()} disabled={Boolean(loadError)}>
+                        Nuevo usuario
+                    </Button>
+                )}
             />
 
-            {loadError && (
+            {loadError ? (
                 <LoadErrorState
                     message={loadError}
                     onRetry={() => { void loadData(lastRequestedCompanyId.current, true); }}
                 />
-            )}
-
-            {/* Filters */}
-            {!loadError && <div className="users-filters">
-                {/* Search */}
-                <div className="search-container">
-                    <input
-                        type="text"
-                        className="search-input"
-                        placeholder="Buscar por nombre, usuario o email..."
-                        aria-label="Buscar usuarios"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
-
-                {/* Role Filter */}
-                <div className="filter-group-container">
-                    <AppSelect isClearable={false} options={roleOptions} value={roleFilter} onChange={(v) => { if (v) setRoleFilter(String(v)); }} placeholder="Filtrar por Rol" />
-                </div>
-
-                <div className="filter-group-container">
-                    <AppSelect isClearable={false} options={statusOptions} value={statusFilter} onChange={(v) => { if (v) setStatusFilter(String(v)); }} placeholder="Estado" />
-                </div>
-            </div>}
-
-            {/* Table view */}
-            {!loadError && viewMode === 'table' && filteredUsers.length > 0 && (
+            ) : (
                 <DataTable<User>
                     ariaLabel="Listado de usuarios"
                     rows={filteredUsers}
                     rowKey={(u) => u.id}
+                    columns={columns}
+                    loading={loading && users.length === 0}
                     resetKey={`${searchQuery}|${roleFilter}|${statusFilter}`}
-                    columns={[
-                        {
-                            key: 'name',
-                            header: 'Usuario',
-                            render: (u) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">{u.name}</span>
-                                    <span className="cell-sub">@{u.username}</span>
-                                </div>
-                            )
-                        },
-                        { key: 'email', header: 'Email', render: (u) => u.email || '-' },
-                        {
-                            key: 'roles',
-                            header: 'Rol',
-                            render: (u) => {
-                                const roles = u.userRoles ? u.userRoles.map(ur => ur.role.name) : [u.role?.name || ''];
-                                return (
-                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                        {roles.filter(Boolean).map((rn, i) => (
-                                            <span key={i} className="user-role-badge" style={{ background: getRoleColor(rn), position: 'relative', top: 0, right: 0 }}>{rn}</span>
-                                        ))}
-                                    </div>
-                                );
-                            }
-                        },
-                        { key: 'branch', header: 'Sucursal', render: (u) => u.branch?.name || 'Todas las Sucursales' },
-                        ...(isSuperAdmin ? [{
-                            key: 'company',
-                            header: 'Empresa',
-                            render: (u: User) => u.company?.name || '-'
-                        }] : []),
-                        {
-                            key: 'accountType',
-                            header: 'Tipo',
-                            render: (u) => {
-                                const accountType = u.accountType || (u.employee ? 'INTERNAL' : 'EXTERNAL');
-                                return (
-                                    <div className="catalog-cell-stack">
-                                        <span className={`catalog-pill ${accountType === 'INTERNAL' ? 'ok' : 'neutral'}`}>
-                                            {accountType === 'INTERNAL' ? 'Interno' : 'Externo'}
-                                        </span>
-                                        {accountType === 'INTERNAL' && (
-                                            <span className="cell-sub">
-                                                {u.employee ? `Expediente ${u.employee.employeeCode || u.employee.employeeNumber || `#${u.employee.id}`}` : 'Vínculo pendiente'}
-                                            </span>
-                                        )}
-                                    </div>
-                                );
-                            }
-                        },
-                        {
-                            key: 'status',
-                            header: 'Estado',
-                            render: (u) => <span className={`catalog-pill ${u.status === 'ACTIVE' ? 'ok' : 'neutral'}`}>{u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</span>
-                        },
-                        {
-                            key: 'actions',
-                            header: 'Acciones',
-                            type: 'actions',
-                            render: (u) => (
-                                <div className="catalog-table-actions">
-                                    <button className="catalog-action-btn" onClick={() => handleOpenSidebar(u)} title="Editar">
-                                        <Edit2 size={16} />
-                                    </button>
-                                    {canManageUserStatus && (
-                                        <button className={`catalog-action-btn ${u.status === 'ACTIVE' ? 'danger' : ''}`} onClick={() => handleStatusChange(u)} title={u.status === 'ACTIVE' ? 'Inhabilitar sin borrar historial' : 'Reactivar usuario'}>
-                                            {u.status === 'ACTIVE' ? <UserX size={16} /> : <UserCheck size={16} />}
-                                        </button>
-                                    )}
-                                </div>
-                            )
-                        }
-                    ] as Column<User>[]}
+                    onRowClick={(u) => handleOpenSidebar(u)}
+                    empty={(
+                        <EmptyState
+                            icon={UsersIcon}
+                            title="No se encontraron usuarios"
+                            description="Intenta ajustar los filtros o crear un nuevo usuario para comenzar."
+                        />
+                    )}
+                    toolbar={(
+                        <TableToolbar>
+                            <Input
+                                type="search"
+                                aria-label="Buscar usuarios"
+                                placeholder="Buscar por nombre, usuario o email"
+                                prefix={<Search size={14} aria-hidden="true" />}
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                            <AppSelect isClearable={false} aria-label="Filtrar por rol" options={roleOptions} value={roleFilter} onChange={(v) => { if (v) setRoleFilter(String(v)); }} placeholder="Filtrar por rol" />
+                            <SegmentedControl ariaLabel="Estado" options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+                        </TableToolbar>
+                    )}
                 />
-            )}
-
-            {/* Users Grid */}
-            {!loadError && viewMode === 'cards' && filteredUsers.length > 0 && (
-                <div className="users-grid">
-                    {filteredUsers.map(user => {
-                        const userAllRoles = user.userRoles
-                            ? user.userRoles.map(ur => ur.role.name)
-                            : [user.role?.name || ''];
-                        return (
-                        <div key={user.id} className="user-card" role="button" tabIndex={0} aria-label={`Editar usuario ${user.name}`} onClick={() => handleOpenSidebar(user)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(user))}>
-                            {/* Role Badges */}
-                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', position: 'absolute', top: '12px', right: '12px', zIndex: 1 }}>
-                                {userAllRoles.map((rn, i) => (
-                                    <div key={i} className="user-role-badge" style={{ background: getRoleColor(rn), position: 'relative', top: 0, right: 0 }}>
-                                        {rn}
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Card Header with Avatar */}
-                            <div className="user-card-header">
-                                <div className="user-avatar-container">
-                                    <div className="user-avatar" style={{ backgroundColor: user.color || getRoleColor(user.role?.name || '') }}>
-                                        {getUserInitials(user.name)}
-                                    </div>
-                                    <div className={`user-status-dot ${user.status === 'ACTIVE' ? 'active' : 'inactive'}`} />
-                                </div>
-                                <div className="user-card-info">
-                                    <h3 className="user-name">{user.name}</h3>
-                                    {user.color && (
-                                        <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: user.color, marginLeft: '6px', verticalAlign: 'middle', border: '1px solid var(--ui-border)' }} />
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Card Body */}
-                            <div className="user-card-body">
-                                <div className="user-detail">
-                                    <span className="detail-value">Usuario: <span className="username-tag">@{user.username}</span></span>
-                                </div>
-                                <div className="user-detail">
-                                    <Mail size={16} />
-                                    <span className="detail-value">{user.email}</span>
-                                </div>
-                                <div className="user-detail">
-                                    <MapPin size={16} />
-                                    <span className="detail-value">{user.branch?.name || 'Todas las Sucursales'}</span>
-                                </div>
-                                <div className="user-detail">
-                                    <UserIcon size={16} />
-                                    <span className="detail-value">
-                                        {(user.accountType || (user.employee ? 'INTERNAL' : 'EXTERNAL')) === 'INTERNAL'
-                                            ? `Personal interno${user.employee?.employeeCode || user.employee?.employeeNumber ? ` · ${user.employee.employeeCode || user.employee?.employeeNumber}` : ''}`
-                                            : 'Usuario externo'}
-                                    </span>
-                                </div>
-                                {isSuperAdmin && user.company && (
-                                    <div className="user-detail">
-                                        <Building2 size={16} />
-                                        <span className="detail-value">{user.company.name}</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Card Actions */}
-                            <div className="user-card-actions">
-                                <button className="action-btn-new" onClick={(e) => { e.stopPropagation(); handleOpenSidebar(user); }}>
-                                    <Edit2 size={20} />
-                                    <span>Editar</span>
-                                </button>
-                                {canManageUserStatus && (
-                                    <button className={`action-btn-new ${user.status === 'ACTIVE' ? 'delete' : ''}`} onClick={(e) => { e.stopPropagation(); handleStatusChange(user); }}>
-                                        {user.status === 'ACTIVE' ? <UserX size={20} /> : <UserCheck size={20} />}
-                                        <span>{user.status === 'ACTIVE' ? 'Inhabilitar' : 'Reactivar'}</span>
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {!loadError && filteredUsers.length === 0 && (
-                <div className="users-empty">
-                    <UsersIcon size={64} />
-                    <h3>No se encontraron usuarios</h3>
-                    <p>Intenta ajustar los filtros o crear un nuevo usuario para comenzar</p>
-                </div>
             )}
 
             <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => { setIsSidebarOpen(false); setActiveTab('perfil'); }}
-                title={editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
+                title={editingUser ? 'Editar usuario' : 'Nuevo usuario'}
+                subtitle={editingUser ? `@${editingUser.username}` : undefined}
+                breadcrumb={['Configuración', 'Usuarios']}
+                tabs={[
+                    { id: 'perfil', label: 'Perfil' },
+                    { id: 'acceso', label: 'Rol y acceso' },
+                ]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as 'perfil' | 'acceso')}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button type="submit" form="user-form" variant="primary" loading={saving}>
+                            {editingUser ? 'Guardar cambios' : 'Crear usuario'}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content users-modal-content">
-                    {/* Tabs Navigation */}
-                    <div className="modal-tabs">
-                        <button
-                            type="button"
-                            className={`modal-tab ${activeTab === 'perfil' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('perfil')}
-                        >
-                            <UserIcon size={18} />
-                            <span>Perfil</span>
-                        </button>
-                        <button
-                            type="button"
-                            className={`modal-tab ${activeTab === 'acceso' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('acceso')}
-                        >
-                            <Shield size={18} />
-                            <span>Rol y Acceso</span>
-                        </button>
-                    </div>
+                <form id="user-form" onSubmit={handleSubmit} className={styles.stack}>
+                    {activeTab === 'perfil' && (
+                        <FormSection step={1} title="Información de perfil" description="Datos con los que la persona inicia sesión.">
+                            <FormGrid>
+                                <Field label="Nombre completo" htmlFor="user-name" required>
+                                    <Input
+                                        id="user-name"
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Ej: Juan Pérez"
+                                        required
+                                        autoFocus
+                                    />
+                                </Field>
+                                <Field label="Email" htmlFor="user-email" required>
+                                    <Input
+                                        id="user-email"
+                                        type="email"
+                                        value={formData.email}
+                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                        placeholder="juan@empresa.com"
+                                        required
+                                    />
+                                </Field>
+                                <Field label="Nombre de usuario" htmlFor="user-username" required>
+                                    <Input
+                                        id="user-username"
+                                        value={formData.username}
+                                        onChange={e => setFormData({ ...formData, username: e.target.value })}
+                                        placeholder="jperez"
+                                        required
+                                    />
+                                </Field>
+                                <Field
+                                    label={editingUser ? 'Nueva contraseña' : 'Contraseña'}
+                                    htmlFor="user-password"
+                                    required={!editingUser}
+                                    hint={editingUser ? 'Déjala en blanco para no cambiarla.' : undefined}
+                                >
+                                    <Input
+                                        id="user-password"
+                                        type="password"
+                                        prefix={<Lock size={14} aria-hidden="true" />}
+                                        value={formData.password}
+                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                        required={!editingUser}
+                                        maxLength={72}
+                                        autoComplete="new-password"
+                                        placeholder="Mín. 8: mayúscula, minúscula, número y símbolo"
+                                    />
+                                </Field>
+                            </FormGrid>
+                        </FormSection>
+                    )}
 
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            {/* 1. PERFIL TAB */}
-                            {activeTab === 'perfil' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <UserIcon size={18} />
-                                        <h3>Información de Perfil</h3>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="user-name">Nombre Completo</label>
-                                        <input
-                                            id="user-name"
-                                            type="text"
-                                            className="modal-standard-input"
-                                            value={formData.name}
-                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                            placeholder="Ej: Juan Pérez"
-                                            required
-                                            autoFocus
-                                        />
-                                    </div>
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="user-email">Email</label>
-                                            <input
-                                                id="user-email"
-                                                type="email"
-                                                className="modal-standard-input"
-                                                value={formData.email}
-                                                onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                                placeholder="juan@empresa.com"
-                                                required
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="user-username">Nombre de Usuario</label>
-                                            <input
-                                                id="user-username"
-                                                type="text"
-                                                className="modal-standard-input"
-                                                value={formData.username}
-                                                onChange={e => setFormData({ ...formData, username: e.target.value })}
-                                                placeholder="jperez"
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="user-password">
-                                            {editingUser ? "Nueva Contraseña (dejar en blanco para no cambiar)" : "Contraseña"}
-                                        </label>
-                                        <div style={{ position: 'relative' }}>
-                                            <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ui-text-muted)' }} />
-                                            <input
-                                                id="user-password"
-                                                type="password"
-                                                className="modal-standard-input"
-                                                style={{ paddingLeft: '36px' }}
-                                                value={formData.password}
-                                                onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                                required={!editingUser}
-                                                maxLength={72}
-                                                placeholder="Mín. 8: mayúscula, minúscula, número y símbolo"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* 2. ACCESO TAB */}
-                            {activeTab === 'acceso' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Shield size={18} />
-                                        <h3>Configuración de Acceso</h3>
-                                    </div>
-
+                    {activeTab === 'acceso' && (
+                        <>
+                            <FormSection step={1} title="Cuenta" description="Tipo, estado y color identificador.">
+                                <FormGrid>
                                     {isSuperAdmin && !editingUser && (
-                                        <div className="modal-input-group">
-                                            <Field label="Empresa" htmlFor="sel-660" required>
-<AppSelect isClearable={false} inputId="sel-660" options={companies.map(c => ({ value: c.id, label: c.name }))} value={((() => {
-                                                    const c = companies.find(co => co.id.toString() === formData.companyId);
-                                                    return c ? { value: c.id, label: c.name } : null;
-                                                })())?.value ?? null} onChange={(__v) => { const option = (companies.map(c => ({ value: c.id, label: c.name }))).find((o) => o.value === __v) ?? null; 
-                                                    if (!option) return;
-                                                    const cid = String(option.value);
+                                        <Field label="Empresa" htmlFor="user-company" required>
+                                            <AppSelect
+                                                isClearable={false}
+                                                inputId="user-company"
+                                                options={companies.map(c => ({ value: c.id.toString(), label: c.name }))}
+                                                value={formData.companyId || null}
+                                                onChange={(cid) => {
+                                                    if (!cid) return;
                                                     setFormData({ ...formData, companyId: cid, branchId: '' });
                                                     loadData(cid);
-                                                }} placeholder="Seleccionar Empresa" />
-</Field>
-                                        </div>
+                                                }}
+                                                placeholder="Seleccionar empresa"
+                                            />
+                                        </Field>
                                     )}
-
-                                    <div className="modal-input-group">
-                                        <Field label="Tipo de cuenta" htmlFor="sel-681">
-<AppSelect isClearable={false} inputId="sel-681" options={accountTypeOptions.filter((o) => o.value === formData.accountType)} value={formData.accountType} onChange={() => undefined} isDisabled />
-</Field>
-                                        <small style={{ color: 'var(--ui-text-muted)', lineHeight: 1.45 }}>
-                                            {formData.accountType === 'INTERNAL'
-                                                ? editingUser?.employee
-                                                    ? `Vinculado al expediente ${editingUser.employee.employeeCode || editingUser.employee.employeeNumber || `#${editingUser.employee.id}`} · ${editingUser.employee.status}.`
-                                                    : 'La cuenta quedará interna únicamente cuando exista un expediente laboral válido.'
-                                                : 'Crea primero la cuenta externa y conviértela en interna desde Recursos Humanos > Personal, capturando el expediente y la fecha de ingreso.'}
-                                        </small>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" id="user-roles-label">Roles del Sistema (puede tener varios)</label>
-                                        <div role="group" aria-labelledby="user-roles-label" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '8px 0' }}>
-                                            {availableRoles.map(r => {
-                                                const isChecked = formData.roleIds.includes(r.id.toString());
-                                                return (
-                                                    <label key={r.id} style={{
-                                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                                        padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                                                        background: isChecked ? getRoleColor(r.name) + '20' : 'var(--ui-bg)',
-                                                        border: `1.5px solid ${isChecked ? getRoleColor(r.name) : 'var(--ui-border)'}`,
-                                                        color: 'var(--ui-text)',
-                                                        fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
-                                                        transition: 'all 0.15s ease'
-                                                    }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isChecked}
-                                                            onChange={() => {
-                                                                const rid = r.id.toString();
-                                                                let newIds: string[];
-                                                                if (isChecked) {
-                                                                    newIds = formData.roleIds.filter(id => id !== rid);
-                                                                } else {
-                                                                    newIds = [...formData.roleIds, rid];
-                                                                }
-                                                                if (newIds.length === 0) newIds = [formData.roleId];
-                                                                setFormData({ ...formData, roleIds: newIds, roleId: newIds[0] });
-                                                            }}
-                                                            style={{ accentColor: getRoleColor(r.name) }}
-                                                        />
-                                                        <span style={{ color: isChecked ? getRoleColor(r.name) : 'inherit' }}>{r.name}</span>
-                                                    </label>
-                                                );
-                                            })}
+                                    <Field
+                                        label="Tipo de cuenta"
+                                        htmlFor="user-account-type"
+                                        hint={formData.accountType === 'INTERNAL'
+                                            ? editingUser?.employee
+                                                ? `Vinculado al expediente ${editingUser.employee.employeeCode || editingUser.employee.employeeNumber || `#${editingUser.employee.id}`} · ${editingUser.employee.status}.`
+                                                : 'La cuenta quedará interna únicamente cuando exista un expediente laboral válido.'
+                                            : 'Crea primero la cuenta externa y conviértela en interna desde Recursos Humanos > Personal, capturando el expediente y la fecha de ingreso.'}
+                                    >
+                                        <AppSelect isClearable={false} inputId="user-account-type" options={accountTypeOptions.filter((o) => o.value === formData.accountType)} value={formData.accountType} onChange={() => undefined} isDisabled />
+                                    </Field>
+                                    <Field label="Estado de cuenta" htmlFor="user-status">
+                                        <AppSelect isClearable={false} isSearchable={false} inputId="user-status" options={accountStatusOptions} value={formData.status} onChange={(v) => { if (v) setFormData({ ...formData, status: String(v) as typeof formData.status }); }} isDisabled={!editingUser} />
+                                    </Field>
+                                    <Field label="Color identificador" htmlFor="user-color" hint={formData.color || 'Sin color'}>
+                                        <div className={styles.inline}>
+                                            <input
+                                                id="user-color"
+                                                type="color"
+                                                className={styles.colorInput}
+                                                style={{ width: 56 }}
+                                                value={formData.color || '#6B7280'}
+                                                onChange={e => setFormData({ ...formData, color: e.target.value })}
+                                            />
+                                            {formData.color && (
+                                                <Button size="sm" variant="ghost" onClick={() => setFormData({ ...formData, color: '' })}>Quitar color</Button>
+                                            )}
                                         </div>
-                                    </div>
+                                    </Field>
+                                </FormGrid>
+                            </FormSection>
 
-                                    <div className="modal-form-row">
-                                        <Field label="Estado de Cuenta" htmlFor="sel-745">
-<AppSelect isClearable={false} inputId="sel-745" options={accountStatusOptions} value={formData.status} onChange={(v) => { if (v) setFormData({ ...formData, status: String(v) as typeof formData.status }); }} isDisabled={!editingUser} />
-</Field>
-
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="user-color"><Palette size={14} style={{ marginRight: 4 }} />Color Identificador</label>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <input
-                                                    id="user-color"
-                                                    type="color"
-                                                    value={formData.color || '#6B7280'}
-                                                    onChange={e => setFormData({ ...formData, color: e.target.value })}
-                                                    style={{ width: '40px', height: '36px', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: 0 }}
-                                                />
-                                                <span style={{ fontSize: '0.85rem', color: 'var(--ui-text-muted)' }}>
-                                                    {formData.color || 'Sin color'}
-                                                </span>
-                                                {formData.color && (
-                                                    <button type="button" onClick={() => setFormData({ ...formData, color: '' })}
-                                                        style={{ fontSize: '0.75rem', color: 'var(--ui-danger)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                                                        Quitar
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {isSuperAdmin ? (
-                                        <>
-                                            <div className="modal-input-group">
-                                                <label className="modal-input-label" id="user-branches-label">Sucursales permitidas (rotación)</label>
-                                                <div role="group" aria-labelledby="user-branches-label" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '8px 0' }}>
-                                                    {branches.map(b => {
-                                                        const bid = b.id.toString();
-                                                        const isChecked = formData.branchIds.includes(bid);
-                                                        return (
-                                                            <label key={b.id} style={{
-                                                                display: 'flex', alignItems: 'center', gap: '6px',
-                                                                padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                                                                background: isChecked ? 'color-mix(in srgb, var(--ui-primary) 18%, transparent)' : 'var(--ui-bg)',
-                                                                border: `1.5px solid ${isChecked ? 'var(--ui-primary)' : 'var(--ui-border)'}`,
-                                                                color: isChecked ? 'var(--ui-primary)' : 'var(--ui-text)',
-                                                                fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
-                                                            }}>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={isChecked}
-                                                                    onChange={() => {
-                                                                        const next = isChecked
-                                                                            ? formData.branchIds.filter(id => id !== bid)
-                                                                            : [...formData.branchIds, bid];
-                                                                        // If the active branch is removed from the permitted set, clear it.
-                                                                        const nextActive = next.includes(formData.branchId) ? formData.branchId : '';
-                                                                        setFormData({ ...formData, branchIds: next, branchId: nextActive });
-                                                                    }}
-                                                                />
-                                                                <span>{b.name}</span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                </div>
-                                                <small style={{ color: 'var(--ui-text-muted)' }}>El usuario solo verá información de su sucursal activa. El superadmin rota la sucursal activa entre las permitidas.</small>
-                                            </div>
-
-                                            <Field label="Sucursal activa" htmlFor="sel-821">
-<AppSelect isClearable={false} inputId="sel-821" options={[
-                                                    { value: '', label: 'Ninguna (Global / Superadmin)' },
-                                                    ...branches
-                                                        .filter(b => formData.branchIds.includes(b.id.toString()))
-                                                        .map(b => ({ value: b.id.toString(), label: b.name }))
-                                                ]} value={(formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Ninguna (Global / Superadmin)' })?.value ?? null} onChange={(__v) => { const option = ([
-                                                    { value: '', label: 'Ninguna (Global / Superadmin)' },
-                                                    ...branches
-                                                        .filter(b => formData.branchIds.includes(b.id.toString()))
-                                                        .map(b => ({ value: b.id.toString(), label: b.name }))
-                                                ]).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, branchId: option.value }); }} placeholder="Ninguna (Global / Superadmin)" />
-</Field>
-                                        </>
-                                    ) : (
-                                        <Field label="Sucursal activa" htmlFor="sel-836">
-<AppSelect isClearable={false} inputId="sel-836" options={[
-                                                { value: '', label: 'Sin sucursal' },
-                                                ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
-                                            ]} value={(formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Sin sucursal' })?.value ?? null} onChange={(__v) => { const option = ([
-                                                { value: '', label: 'Sin sucursal' },
-                                                ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
-                                            ]).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, branchId: option.value }); }} placeholder="Seleccionar sucursal" isDisabled={!!editingUser} />
-</Field>
-                                    )}
+                            <FormSection step={2} title="Roles del sistema" description="Puede tener varios; el primero marcado es el principal.">
+                                <div role="group" aria-label="Roles del sistema" className={styles.checkGrid}>
+                                    {availableRoles.map(r => {
+                                        const isChecked = formData.roleIds.includes(r.id.toString());
+                                        return (
+                                            <Checkbox
+                                                key={r.id}
+                                                label={r.name}
+                                                checked={isChecked}
+                                                onChange={() => {
+                                                    const rid = r.id.toString();
+                                                    let newIds: string[];
+                                                    if (isChecked) {
+                                                        newIds = formData.roleIds.filter(id => id !== rid);
+                                                    } else {
+                                                        newIds = [...formData.roleIds, rid];
+                                                    }
+                                                    if (newIds.length === 0) newIds = [formData.roleId];
+                                                    setFormData({ ...formData, roleIds: newIds, roleId: newIds[0] });
+                                                }}
+                                            />
+                                        );
+                                    })}
                                 </div>
-                            )}
-                        </div>
+                            </FormSection>
 
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" variant="primary" disabled={saving}>
-                                {saving ? 'Guardando...' : editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
+                            <FormSection
+                                step={3}
+                                title="Sucursales"
+                                description={isSuperAdmin
+                                    ? 'El usuario solo verá información de su sucursal activa. El superadmin rota la sucursal activa entre las permitidas.'
+                                    : undefined}
+                            >
+                                {isSuperAdmin && (
+                                    <div role="group" aria-label="Sucursales permitidas (rotación)" className={styles.checkGrid}>
+                                        {branches.map(b => {
+                                            const bid = b.id.toString();
+                                            const isChecked = formData.branchIds.includes(bid);
+                                            return (
+                                                <Checkbox
+                                                    key={b.id}
+                                                    label={b.name}
+                                                    checked={isChecked}
+                                                    onChange={() => {
+                                                        const next = isChecked
+                                                            ? formData.branchIds.filter(id => id !== bid)
+                                                            : [...formData.branchIds, bid];
+                                                        // If the active branch is removed from the permitted set, clear it.
+                                                        const nextActive = next.includes(formData.branchId) ? formData.branchId : '';
+                                                        setFormData({ ...formData, branchIds: next, branchId: nextActive });
+                                                    }}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <FormGrid>
+                                    <Field label="Sucursal activa" htmlFor="user-active-branch">
+                                        <AppSelect
+                                            isClearable={false}
+                                            inputId="user-active-branch"
+                                            options={activeBranchOptions}
+                                            value={formData.branchId}
+                                            onChange={(v) => v !== null && setFormData({ ...formData, branchId: v })}
+                                            placeholder={isSuperAdmin ? 'Ninguna (Global / Superadmin)' : 'Seleccionar sucursal'}
+                                            isDisabled={!isSuperAdmin && !!editingUser}
+                                        />
+                                    </Field>
+                                </FormGrid>
+                            </FormSection>
+                        </>
+                    )}
+                </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }

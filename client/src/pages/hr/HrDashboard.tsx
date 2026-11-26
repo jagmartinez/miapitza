@@ -17,7 +17,7 @@ import {
     WalletCards,
 } from 'lucide-react';
 import { PageHeader, StatCard, formatNumber, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import type { HrDashboardData } from '../../types/hr';
 import styles from './HrDashboard.module.css';
@@ -76,7 +76,7 @@ export default function HrDashboard() {
                 }
       />
 
-            {loading && <LoadingSpinner text="Cargando operación de RH…" />}
+            {loading && <HrLoading text="Cargando operación de RH…" />}
 
             {!loading && error && (
                 <div className="state-placeholder" role="alert">

@@ -2,7 +2,7 @@ import { formatHrMoney } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FileText, Gift, RefreshCw } from 'lucide-react';
 import { AppSelect, Button, DataTable, EmptyState, Field, Input, LoadErrorState, PageHeader, type Column } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollReceiptBreakdown from '../../components/hr/PayrollReceiptBreakdown';
@@ -192,7 +192,7 @@ export default function MyPayroll() {
           {detailLoading || selected ? (
             <section className={styles.workspace} aria-live="polite" aria-label="Desglose del recibo">
               {detailLoading || !selected ? (
-                <LoadingSpinner text="Abriendo desglose…" />
+                <HrLoading text="Abriendo desglose…" />
               ) : (
                 <PayrollReceiptBreakdown
                   receipt={selected}

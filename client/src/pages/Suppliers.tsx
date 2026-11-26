@@ -7,12 +7,13 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import ViewToggle from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
-import { Plus, Trash2, Phone, Mail, MapPin, Truck, Search, Users, Info, Building2, Tag, History, X, Edit2 } from 'lucide-react'; // Tag kept for use inside modal
+import { Plus, Trash2, Truck, Search, History, Edit2 } from 'lucide-react';
 import type { Supplier } from '../types';
-import './Suppliers.css';
-import { AppSelect, Button, DataTable, FullScreenModal, PageHeader, type Column } from '@/ui';
+import styles from './catalog.module.css';
+import {
+    AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    PageContent, PageHeader, TableToolbar, Textarea, type Column,
+} from '@/ui';
 
 
 interface PriceHistoryRow {
@@ -26,6 +27,11 @@ interface PriceHistoryRow {
     purchaseOrderId: number;
     branchName?: string;
 }
+
+const FIXED_SUPPLY_TYPES = [
+    'Aceites y Especias', 'Carnes y Embutidos', 'Lácteos', 'Frutas y Verduras',
+    'Vinos', 'Mariscos', 'Harinas y Sales', 'Panadería', 'Bebidas', 'Suministros'
+];
 
 export default function Suppliers() {
     const { user } = useAuth();
@@ -51,8 +57,6 @@ export default function Suppliers() {
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [supplyTypeFilter, setSupplyTypeFilter] = useState<string | null>(null);
-    const { viewMode, setViewMode } = useViewMode('suppliers');
-    const [activeTab, setActiveTab] = useState<'empresa' | 'contacto' | 'ubicacion'>('empresa');
     const [saving, setSaving] = useState(false);
 
     // Price history
@@ -120,7 +124,6 @@ export default function Suppliers() {
             });
         }
         setIsModalOpen(true);
-        setActiveTab('empresa');
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -165,394 +168,195 @@ export default function Suppliers() {
         return matchesSearch && matchesType;
     });
 
-    const FIXED_SUPPLY_TYPES = [
-        'Aceites y Especias', 'Carnes y Embutidos', 'Lácteos', 'Frutas y Verduras',
-        'Vinos', 'Mariscos', 'Harinas y Sales', 'Panadería', 'Bebidas', 'Suministros'
+
+
+    const columns: Column<Supplier>[] = [
+        {
+            key: 'name',
+            header: 'Proveedor',
+            render: (s) => (
+                <div className={styles.cellStack}>
+                    <span className={styles.cellTitle}>{s.name}</span>
+                    {s.taxId && <span className={styles.muted}>RUC/NIT: {s.taxId}</span>}
+                </div>
+            )
+        },
+        { key: 'type', header: 'Tipo', render: (s) => s.supplyType ? <Badge>{s.supplyType}</Badge> : '—' },
+        { key: 'contact', header: 'Contacto', accessor: (s) => s.contact || '—' },
+        { key: 'phone', header: 'Teléfono', accessor: (s) => s.phone || '—' },
+        { key: 'email', header: 'Email', accessor: (s) => s.email || '—', hideBelow: 'lg' },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (s) => (
+                <div className={styles.rowActions}>
+                    <IconButton size="sm" icon={History} label={`Historial de precios de ${s.name}`} onClick={() => viewPriceHistory(s)} />
+                    {canManageSupplier && <IconButton size="sm" icon={Edit2} label={`Editar ${s.name}`} onClick={() => handleOpenModal(s)} />}
+                    {canDeleteSupplier && <IconButton size="sm" icon={Trash2} label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />}
+                </div>
+            )
+        }
+    ] as Column<Supplier>[];
+
+    const priceColumns: Column<PriceHistoryRow>[] = [
+        {
+            key: 'product',
+            header: 'Producto',
+            render: (item) => (
+                <div className={styles.cellStack}>
+                    <span className={styles.cellTitle}>{item.productName}</span>
+                    {item.productSku && <span className={styles.muted}>{item.productSku}</span>}
+                </div>
+            )
+        },
+        { key: 'unitCost', header: 'Precio unit.', type: 'money', render: (item) => `${formatCurrency(item.unitCost, settings)}/${item.unit}` },
+        { key: 'quantity', header: 'Cantidad', type: 'qty', accessor: (item) => item.quantity },
+        { key: 'subtotal', header: 'Subtotal', type: 'money', render: (item) => formatCurrency(item.subtotal, settings) },
+        { key: 'date', header: 'Fecha', type: 'date', accessor: (item) => item.date },
+        { key: 'po', header: 'OC', accessor: (item) => `#${item.purchaseOrderId}` },
+        { key: 'branch', header: 'Sucursal', accessor: (item) => item.branchName || '—' },
     ];
-    const supplyTypes = FIXED_SUPPLY_TYPES;
-
-
-    if (loading) return <div className="suppliers-loading">Cargando...</div>;
 
     return (
-        <div className="suppliers-page">
+        <PageContent>
             <PageHeader
                 title="Proveedores"
-                actions={(
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        {canManageSupplier && (
-                            <Button variant="primary" onClick={() => handleOpenModal()}>
-                                <Plus size={20} />
-                                Nuevo Proveedor
-                            </Button>
-                        )}
-                    </div>
-                )}
+                description={`${suppliers.length} proveedores registrados`}
+                actions={canManageSupplier ? (
+                    <Button variant="primary" icon={Plus} onClick={() => handleOpenModal()}>
+                        Nuevo proveedor
+                    </Button>
+                ) : undefined}
             />
 
-            {/* Filters Row */}
-            <div className="suppliers-filters-row">
-                <div className="supplier-search-section">
-                    <div className="search-input-wrapper">
-                        <Search size={18} className="search-icon" />
-                        <input
-                            type="text"
-                            placeholder="Buscar por nombre, contacto o tipo..."
+            <DataTable<Supplier>
+                ariaLabel="Listado de proveedores"
+                rows={filteredSuppliers}
+                rowKey={(s) => s.id}
+                columns={columns}
+                loading={loading}
+                resetKey={`${searchTerm}|${supplyTypeFilter}`}
+                onRowClick={canManageSupplier ? (s) => handleOpenModal(s) : undefined}
+                empty={(
+                    <EmptyState
+                        icon={Truck}
+                        title={suppliers.length === 0 ? 'No hay proveedores registrados' : 'No se encontraron proveedores'}
+                        action={searchTerm || supplyTypeFilter ? (
+                            <Button onClick={() => { setSearchTerm(''); setSupplyTypeFilter(null); }}>Limpiar filtros</Button>
+                        ) : undefined}
+                    />
+                )}
+                toolbar={(
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            aria-label="Buscar proveedor"
+                            placeholder="Buscar por nombre, contacto o tipo"
+                            prefix={<Search size={14} aria-hidden="true" />}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="search-input-new"
                         />
-                        {searchTerm && (
-                            <button
-                                type="button"
-                                className="search-clear-btn"
-                                onClick={() => setSearchTerm('')}
-                                aria-label="Limpiar búsqueda"
-                            >
-                                <X size={14} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                <div className="supplier-filter-group">
-                    <AppSelect options={supplyTypes.map(type => ({ value: type, label: type }))} value={(supplyTypeFilter ? { value: supplyTypeFilter, label: supplyTypeFilter } : null)?.value ?? null} onChange={(__v) => { const option = (supplyTypes.map(type => ({ value: type, label: type }))).find((o) => o.value === __v) ?? null; return setSupplyTypeFilter(option?.value ?? null); }} placeholder="Todos los tipos" isClearable aria-label="Filtrar por tipo de suministro" />
-                </div>
-
-                <div className="supplier-results-info">
-                    <span className="results-count">{filteredSuppliers.length}</span>
-                    <span className="results-label">
-                        {filteredSuppliers.length === 1 ? 'proveedor' : 'proveedores'}
-                    </span>
-                    {(searchTerm || supplyTypeFilter) && (
-                        <button
-                            type="button"
-                            className="filter-clear-btn"
-                            onClick={() => { setSearchTerm(''); setSupplyTypeFilter(null); }}
-                        >
-                            <X size={14} />
-                            Limpiar
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* Table view */}
-            {viewMode === 'table' && filteredSuppliers.length > 0 && (
-                <DataTable<Supplier>
-                    ariaLabel="Listado de proveedores"
-                    rows={filteredSuppliers}
-                    rowKey={(s) => s.id}
-                    resetKey={`${searchTerm}|${supplyTypeFilter}`}
-                    columns={[
-                        {
-                            key: 'name',
-                            header: 'Proveedor',
-                            render: (s) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">{s.name}</span>
-                                    {s.taxId && <span className="cell-sub">RUC/NIT: {s.taxId}</span>}
-                                </div>
-                            )
-                        },
-                        { key: 'type', header: 'Tipo', render: (s) => s.supplyType || '-' },
-                        { key: 'contact', header: 'Contacto', render: (s) => s.contact || '-' },
-                        { key: 'phone', header: 'Teléfono', render: (s) => s.phone || '-' },
-                        { key: 'email', header: 'Email', render: (s) => s.email || '-' },
-                        {
-                            key: 'actions',
-                            header: 'Acciones',
-                            type: 'actions',
-                            render: (s) => (
-                                <div className="catalog-table-actions">
-                                    <button className="catalog-action-btn" onClick={() => viewPriceHistory(s)} title="Historial de Precios">
-                                        <History size={16} />
-                                    </button>
-                                    {canManageSupplier && (
-                                        <button className="catalog-action-btn" onClick={() => handleOpenModal(s)} title="Editar">
-                                            <Edit2 size={16} />
-                                        </button>
-                                    )}
-                                    {canDeleteSupplier && (
-                                        <button className="catalog-action-btn danger" onClick={() => handleDelete(s.id)} title="Eliminar">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            )
-                        }
-                    ] as Column<Supplier>[]}
-                />
-            )}
-
-            {/* Enhanced Suppliers Grid */}
-            {viewMode === 'cards' && (
-            <div className="suppliers-grid-new">
-                {filteredSuppliers.map(supplier => (
-                    <div key={supplier.id} className="supplier-card-new">
-
-                        {/* Supplier Info */}
-                        <div className="supplier-card-body-new">
-                            <div className="supplier-name-new">{supplier.name}</div>
-
-                            <div className="supplier-details-new">
-                                {supplier.contact && (
-                                    <div className="detail-item">
-                                        <Users size={16} />
-                                        <span>{supplier.contact}</span>
-                                    </div>
-                                )}
-                                {supplier.phone && (
-                                    <div className="detail-item">
-                                        <Phone size={16} />
-                                        <span>{supplier.phone}</span>
-                                    </div>
-                                )}
-                                {supplier.email && (
-                                    <div className="detail-item">
-                                        <Mail size={16} />
-                                        <span>{supplier.email}</span>
-                                    </div>
-                                )}
-                                {supplier.address && (
-                                    <div className="detail-item">
-                                        <MapPin size={16} />
-                                        <span>{supplier.address}</span>
-                                    </div>
-                                )}
-                                {supplier.taxId && (
-                                    <div className="detail-item">
-                                        <span className="tax-id-label">RUC/NIT:</span>
-                                        <span>{supplier.taxId}</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="supplier-card-actions-new">
-                            <button
-                                className="action-btn-new"
-                                onClick={() => viewPriceHistory(supplier)}
-                                title="Historial de Precios"
-                            >
-                                <History size={20} />
-                                <span>Precios</span>
-                            </button>
-                            {canManageSupplier && (
-                                <button
-                                    className="action-btn-new edit"
-                                    onClick={() => handleOpenModal(supplier)}
-                                    title="Editar"
-                                >
-                                    <Plus size={20} />
-                                    <span>Editar</span>
-                                </button>
-                            )}
-                            {canDeleteSupplier && (
-                                <button
-                                    className="action-btn-new delete"
-                                    onClick={() => handleDelete(supplier.id)}
-                                    title="Eliminar"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-            )}
-
-            {filteredSuppliers.length === 0 && (
-                <div className="no-suppliers-message">
-                    <Truck size={48} />
-                    <p>No se encontraron proveedores</p>
-                    <Button variant="primary" onClick={() => { setSearchTerm(''); setSupplyTypeFilter(null); }}>
-                        Limpiar filtros
-                    </Button>
-                </div>
-            )}
-
+                        <AppSelect
+                            options={FIXED_SUPPLY_TYPES.map(type => ({ value: type, label: type }))}
+                            value={supplyTypeFilter}
+                            onChange={(v) => setSupplyTypeFilter(v)}
+                            placeholder="Todos los tipos"
+                            isClearable
+                            aria-label="Filtrar por tipo de suministro"
+                        />
+                    </TableToolbar>
+                )}
+            />
 
             <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                title={editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
+                title={editingSupplier ? 'Editar proveedor' : 'Nuevo proveedor'}
+                breadcrumb={['Compras', 'Proveedores']}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="supplier-form" loading={saving}>
+                            {editingSupplier ? 'Guardar cambios' : 'Guardar proveedor'}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content">
-                    <div className="modal-tabs" role="tablist" aria-label="Secciones del proveedor">
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'empresa'}
-                            className={`modal-tab ${activeTab === 'empresa' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('empresa')}
-                        >
-                            <Building2 size={18} />
-                            <span>Empresa</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'contacto'}
-                            className={`modal-tab ${activeTab === 'contacto' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('contacto')}
-                        >
-                            <Users size={18} />
-                            <span>Contacto</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'ubicacion'}
-                            className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('ubicacion')}
-                        >
-                            <MapPin size={18} />
-                            <span>Ubicación</span>
-                        </button>
-                    </div>
+                <form id="supplier-form" onSubmit={handleSubmit} className={styles.stack}>
+                    <FormSection step={1} title="Empresa" description="Razón social, identificación fiscal y tipo de suministro.">
+                        <FormGrid>
+                            <Field label="Nombre de la empresa" htmlFor="supplier-name" required>
+                                <Input id="supplier-name" value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    required placeholder="Ej: Distribuidora Central S.A." />
+                            </Field>
+                            <Field label="RUC / NIT (opcional)" htmlFor="supplier-tax-id">
+                                <Input id="supplier-tax-id" value={formData.taxId}
+                                    onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
+                                    placeholder="Ej: J031000000123" />
+                            </Field>
+                            <Field label="Tipo de suministro" htmlFor="supplier-supply-type">
+                                <AppSelect
+                                    inputId="supplier-supply-type"
+                                    options={FIXED_SUPPLY_TYPES.map(type => ({ value: type, label: type }))}
+                                    value={formData.supplyType || null}
+                                    onChange={(v) => setFormData({ ...formData, supplyType: v ?? '' })}
+                                    placeholder="Seleccionar tipo"
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
 
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            {activeTab === 'empresa' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Info size={16} />
-                                        <h3>Información Principal</h3>
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="supplier-name">Nombre de la Empresa</label>
-                                        <input id="supplier-name" type="text" className="modal-standard-input" value={formData.name}
-                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                            required placeholder="Ej: Distribuidora Central S.A." />
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="supplier-tax-id">RUC / NIT (Opcional)</label>
-                                        <input id="supplier-tax-id" type="text" className="modal-standard-input" value={formData.taxId}
-                                            onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
-                                            placeholder="Ej: J031000000123" />
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" id="supplier-supply-type-label">
-                                            <Tag size={14} />
-                                            Tipo de Suministro
-                                        </label>
-                                        <div className="supply-type-chips" role="group" aria-labelledby="supplier-supply-type-label">
-                                            {FIXED_SUPPLY_TYPES.map(type => (
-                                                <button
-                                                    key={type}
-                                                    type="button"
-                                                    className={`type-chip ${formData.supplyType === type ? 'active' : ''}`}
-                                                    onClick={() => setFormData({ ...formData, supplyType: type })}
-                                                >
-                                                    {type}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                    <FormSection step={2} title="Contacto" description="Persona y medios para pedidos y cobros.">
+                        <FormGrid>
+                            <Field label="Nombre del contacto" htmlFor="supplier-contact">
+                                <Input id="supplier-contact" value={formData.contact}
+                                    onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
+                                    placeholder="Ej: Juan Pérez" />
+                            </Field>
+                            <Field label="Teléfono" htmlFor="supplier-phone">
+                                <Input id="supplier-phone" type="tel" value={formData.phone}
+                                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                    placeholder="Ej: +505 8888 8888" />
+                            </Field>
+                            <Field label="Email" htmlFor="supplier-email">
+                                <Input id="supplier-email" type="email" value={formData.email}
+                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    placeholder="Ej: contacto@empresa.com" />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
 
-                            {activeTab === 'contacto' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Users size={16} />
-                                        <h3>Datos de Contacto</h3>
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="supplier-contact">Nombre del Contacto</label>
-                                        <input id="supplier-contact" type="text" className="modal-standard-input" value={formData.contact}
-                                            onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-                                            placeholder="Ej: Juan Pérez" />
-                                    </div>
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="supplier-phone">Teléfono</label>
-                                            <input id="supplier-phone" type="text" className="modal-standard-input" value={formData.phone}
-                                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                                placeholder="Ej: +505 8888 8888" />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="supplier-email">Email</label>
-                                            <input id="supplier-email" type="email" className="modal-standard-input" value={formData.email}
-                                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                                placeholder="Ej: contacto@empresa.com" />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'ubicacion' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <MapPin size={16} />
-                                        <h3>Ubicación Física</h3>
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="supplier-address">Dirección Completa</label>
-                                        <textarea
-                                            id="supplier-address"
-                                            className="modal-textarea"
-                                            rows={4}
-                                            value={formData.address}
-                                            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                                            placeholder="Calle, ciudad, puntos de referencia..."
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button variant="primary" type="submit" disabled={saving}>
-                                {saving ? 'Guardando...' : editingSupplier ? 'Actualizar Proveedor' : 'Guardar Proveedor'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
-            </FullScreenModal>
-
-            {/* Price History Sidebar */}
-            <FullScreenModal isOpen={showPriceHistory} onClose={() => setShowPriceHistory(false)}
-                title={`Historial de Precios - ${priceHistorySupplier?.name || ''}`}>
-                <div className="premium-modal-content">
-                    <div className="modal-tab-content">
-                        {priceHistoryLoading ? (
-                            <p className="stock-empty-message">Cargando...</p>
-                        ) : priceHistory.length > 0 ? (
-                            <DataTable
-                                ariaLabel="Historial de precios"
-                                rows={priceHistory}
-                                rowKey={(item) => `${item.purchaseOrderId}-${item.productName}-${item.date}`}
-                                columns={[
-                                    { key: 'product', header: 'Producto', render: (item) => (
-                                        <div>
-                                            <div className="product-cell-name">{item.productName}</div>
-                                            {item.productSku && <div className="product-cell-sku">{item.productSku}</div>}
-                                        </div>
-                                    ) },
-                                    { key: 'unitCost', header: 'Precio Unit.', type: 'money', render: (item) => `${formatCurrency(item.unitCost, settings)}/${item.unit}` },
-                                    { key: 'quantity', header: 'Cantidad', type: 'qty', accessor: (item) => item.quantity },
-                                    { key: 'subtotal', header: 'Subtotal', type: 'money', render: (item) => formatCurrency(item.subtotal, settings) },
-                                    { key: 'date', header: 'Fecha', type: 'date', accessor: (item) => item.date },
-                                    { key: 'po', header: 'OC#', render: (item) => `#${item.purchaseOrderId}` },
-                                    { key: 'branch', header: 'Sucursal', render: (item) => item.branchName || '-' },
-                                ] as Column<(typeof priceHistory)[number]>[]}
+                    <FormSection step={3} title="Ubicación">
+                        <Field label="Dirección completa" htmlFor="supplier-address">
+                            <Textarea
+                                id="supplier-address"
+                                rows={3}
+                                value={formData.address}
+                                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                placeholder="Calle, ciudad, puntos de referencia..."
                             />
-                        ) : (
-                            <p className="stock-empty-message">
-                                No hay historial de precios para este proveedor
-                            </p>
-                        )}
-                    </div>
-                </div>
+                        </Field>
+                    </FormSection>
+                </form>
             </FullScreenModal>
-        </div>
+
+            <FullScreenModal
+                isOpen={showPriceHistory}
+                onClose={() => setShowPriceHistory(false)}
+                title={`Historial de precios · ${priceHistorySupplier?.name || ''}`}
+                breadcrumb={['Compras', 'Proveedores']}
+            >
+                <DataTable<PriceHistoryRow>
+                    ariaLabel="Historial de precios"
+                    rows={priceHistory}
+                    loading={priceHistoryLoading}
+                    rowKey={(item) => `${item.purchaseOrderId}-${item.productName}-${item.date}`}
+                    columns={priceColumns}
+                    empty="No hay historial de precios para este proveedor"
+                />
+            </FullScreenModal>
+        </PageContent>
     );
 }

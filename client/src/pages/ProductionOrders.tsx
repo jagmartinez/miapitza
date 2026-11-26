@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { productionOrdersAPI, productsAPI, warehousesAPI, branchesAPI } from '../services/api';
 import {
-    AppSelect, Badge, Button, Checkbox, ConfirmDialog, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    AppSelect, Badge, Button, Checkbox, ConfirmDialog, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
     PageContent, PageHeader, SegmentedControl, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
     type Column, type Opt, type Tone, LoadErrorState,
 } from '@/ui';
@@ -52,6 +52,18 @@ function formatDate(value?: string | null): string {
     return new Date(value).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+/** Agrupa por receta; sin receta, por producto. */
+function recipeKey(order: ProductionOrder): string {
+    return order.recipeId ? `r${order.recipeId}` : `p${order.productId}`;
+}
+
+/** Rendimiento real (producido / planificado) solo para órdenes finalizadas. */
+function yieldPct(order: ProductionOrder): number | null {
+    const planned = Number(order.plannedQuantity);
+    if (order.status !== 'FINISHED' || !planned) return null;
+    return (Number(order.producedQuantity) / planned) * 100;
+}
+
 function outputUnit(product?: Pick<Product, 'unit' | 'baseUnit'> | null): string {
     return product?.baseUnit?.abbreviation || product?.unit || '';
 }
@@ -72,6 +84,9 @@ export default function ProductionOrders() {
     const [formError, setFormError] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+    const [recipeFilter, setRecipeFilter] = useState<string | null>(null);
 
     // Create flow
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -147,9 +162,23 @@ export default function ProductionOrders() {
                 order.code?.toLowerCase().includes(searchLower) ||
                 order.product?.name?.toLowerCase().includes(searchLower) ||
                 order.product?.sku?.toLowerCase().includes(searchLower);
-            return matchesStatus && matchesSearch;
+            const day = (order.date ?? '').slice(0, 10);
+            const matchesDate = (!dateFrom || day >= dateFrom) && (!dateTo || day <= dateTo);
+            const matchesRecipe = !recipeFilter || recipeKey(order) === recipeFilter;
+            return matchesStatus && matchesSearch && matchesDate && matchesRecipe;
         });
-    }, [orders, statusFilter, searchQuery]);
+    }, [orders, statusFilter, searchQuery, dateFrom, dateTo, recipeFilter]);
+
+    const recipeOptions = useMemo(() => {
+        const seen = new Map<string, string>();
+        for (const order of orders) {
+            const key = recipeKey(order);
+            if (key && !seen.has(key)) seen.set(key, order.recipe?.name ?? order.product?.name ?? key);
+        }
+        return [...seen.entries()]
+            .map(([value, label]) => ({ value, label }))
+            .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+    }, [orders]);
 
     // ----- Create flow -----
     const handleOpenCreate = () => {
@@ -384,6 +413,17 @@ export default function ProductionOrders() {
             render: (order) => `${formatNumber(order.producedQuantity)} ${outputUnit(order.product)}`,
         },
         {
+            key: 'yield',
+            header: 'Rendimiento',
+            type: 'percent',
+            width: '1fr',
+            hideBelow: 'md',
+            render: (order) => {
+                const pct = yieldPct(order);
+                return pct === null ? <span className={s.nd}>-</span> : formatPercent(pct);
+            },
+        },
+        {
             key: 'status',
             header: 'Estado',
             width: '1fr',
@@ -395,6 +435,8 @@ export default function ProductionOrders() {
             header: `Costo estimado (${symbol})`,
             type: 'money',
             width: '1.1fr',
+            total: true,
+            accessor: (order) => (order.status === 'FINISHED' ? Number(order.estimatedCost) || 0 : 0),
             render: (order) => (Number(order.estimatedCost) > 0 ? formatNumber(order.estimatedCost) : <span className={s.nd} title="Sin costo estimado calculado">N/D</span>),
         },
         {
@@ -402,6 +444,8 @@ export default function ProductionOrders() {
             header: `Costo real (${symbol})`,
             type: 'money',
             width: '1.1fr',
+            total: true,
+            accessor: (order) => (order.status === 'FINISHED' ? Number(order.realCost) || 0 : 0),
             render: (order) => {
                 if (order.status !== 'FINISHED') return <span className={s.nd}>-</span>;
                 return Number(order.realCost) > 0 ? formatNumber(order.realCost) : <span className={s.nd} title="La orden no registró costo real">N/D</span>;
@@ -420,6 +464,7 @@ export default function ProductionOrders() {
             },
         },
         { key: 'date', header: 'Fecha', type: 'date', width: '1fr', hideBelow: 'lg', render: (order) => formatDate(order.date) },
+        { key: 'user', header: 'Responsable', width: '1.2fr', hideBelow: 'lg', render: (order) => order.user?.name ?? '-' },
         {
             key: 'actions',
             header: 'Acciones',
@@ -536,25 +581,39 @@ export default function ProductionOrders() {
                 </div>
             )}
 
-            <TableToolbar>
-                <SegmentedControl ariaLabel="Filtrar por estado" size="sm" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTERS} />
-                <div className={s.search}>
-                    <Input
-                        type="search"
-                        aria-label="Buscar orden"
-                        placeholder="Buscar por código o producto..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
-            </TableToolbar>
-
             <DataTable<ProductionOrder>
                 ariaLabel="Órdenes de producción"
                 columns={columns}
                 rows={filteredOrders}
                 rowKey={(order) => order.id}
-                resetKey={`${statusFilter}-${searchQuery}`}
+                resetKey={`${statusFilter}-${searchQuery}-${dateFrom}-${dateTo}-${recipeFilter}`}
+                footerLabel="Total finalizadas (página)"
+                toolbar={(
+                    <div className={s.toolbarStack}>
+                        <TableToolbar>
+                            <Input
+                                type="search"
+                                aria-label="Buscar orden"
+                                placeholder="Buscar por código o producto..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                            <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                            <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                            <AppSelect
+                                aria-label="Filtrar por receta"
+                                options={recipeOptions}
+                                value={recipeFilter}
+                                onChange={setRecipeFilter}
+                                placeholder="Todas las recetas"
+                                isClearable
+                            />
+                        </TableToolbar>
+                        <div className={s.segmentWrap}>
+                            <SegmentedControl ariaLabel="Filtrar por estado" size="sm" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTERS} />
+                        </div>
+                    </div>
+                )}
                 onRowClick={(order) => void handleOpenDetail(order.id)}
                 empty={<EmptyState icon={Factory} title="No se encontraron órdenes de producción" />}
             />

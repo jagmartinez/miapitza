@@ -12,7 +12,7 @@ import {
     Send,
     AlertTriangle,
 } from 'lucide-react';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import HrFilterSelect from '../../components/hr/HrFilterSelect';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
@@ -597,7 +597,7 @@ export default function Schedules() {
             )}
 
             <HrTablePanel className="hr-hz-planner" aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
-                {loading && <HrPanelState><LoadingSpinner text="Cargando horarios…" /></HrPanelState>}
+                {loading && <HrPanelState><HrLoading text="Cargando horarios…" /></HrPanelState>}
                 {!loading && error && (
                     <HrPanelState role="alert"><CalendarDays size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></HrPanelState>
                 )}

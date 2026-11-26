@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, Clock3, Fingerprint, MapPin, RefreshCw } from 'lucide-react';
 import { Button, LoadErrorState, PageHeader, StatCard } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -70,7 +70,7 @@ export default function TimeClock() {
         actions={<MyHrNav />}
       />
             {!online && <OnlineOnlyNotice online={false} />}
-            {loading && <LoadingSpinner text="Preparando marcaje…" />}
+            {loading && <HrLoading text="Preparando marcaje…" />}
             {!loading && error && <LoadErrorState message={error} onRetry={() => void load()} />}
 
             {!loading && !error && policy && today && (

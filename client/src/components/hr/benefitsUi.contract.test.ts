@@ -93,8 +93,11 @@ describe('Phase 6 benefits UI contract', () => {
     [transition, travel, loan, deduction, expense].forEach((source) => {
       expect(source).toContain('HrModalFormShell');
     });
-    expect(governance).toContain('premium-modal-content governance-form governance-sidebar-form');
-    expect(governance).toContain('premium-modal-content governance-detail');
+    // Los paneles de gobierno viven en FullScreenModal sin el envoltorio heredado premium-modal-content.
+    expect(governance).toContain('<FullScreenModal');
+    expect(governance).toContain('className="governance-form governance-sidebar-form"');
+    expect(governance).toContain('className="governance-detail"');
+    expect(governance).not.toContain('premium-modal-content');
   });
 
   it('keeps one idempotency key across ambiguous expense retries', () => {

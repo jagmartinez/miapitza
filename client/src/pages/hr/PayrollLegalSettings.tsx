@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import { HrHero, HrPage, HrSection, HrSplit, type HrFact } from '../../components/hr/layout/HrWorkspace';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollRuleConfigurationPanel from '../../components/hr/PayrollRuleConfigurationPanel';
@@ -264,7 +264,7 @@ export default function PayrollLegalSettings() {
 
       {!online && <PayrollOnlineNotice online={online} />}
 
-      {loading && <LoadingSpinner text="Cargando configuración legal…" />}
+      {loading && <HrLoading text="Cargando configuración legal…" />}
       {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadRules()}>Reintentar</Button></div>}
       {!loading && !error && rules.length === 0 && (
         <HrSection className="nm-legal-empty">

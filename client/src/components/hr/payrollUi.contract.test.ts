@@ -109,13 +109,13 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
   });
 
   it('keeps the collaborator search and expanded detail usable and accessible', () => {
-    expect(operation).toContain('payroll-operation-search-control');
+    // La búsqueda usa Input + TableToolbar del sistema de diseño (sin el control heredado).
+    expect(operation).toContain('<TableToolbar');
     expect(operation).toContain('id="payroll-employee-search"');
     expect(operation).toContain('aria-live="polite"');
     expect(operation).toContain('aria-controls={`payroll-employee-detail-${row.userId}`}');
     expect(operation).toContain('payroll-operation-employee-summary');
     expect(operation).toContain('Disponible para el colaborador en Mi RH');
-    expect(operationCss).toContain('.payroll-operation-search-control:focus-within');
     expect(operationCss).toContain('.payroll-operation-employee-summary');
   });
 

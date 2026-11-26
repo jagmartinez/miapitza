@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
 import { DataTable, EmptyState, FullScreenModal, PageHeader, StatCard, formatMoney, formatNumber, formatPercent, AppSelect, Button } from '@/ui';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import PayrollComponentForm from '../../components/hr/PayrollComponentForm';
@@ -383,7 +383,7 @@ export default function PayrollManagement() {
   }, [aguinaldoRuns, regularRuns]);
 
   return (
-    <div className="page-wrapper inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page">
+    <div className="page-wrapper inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page nm-page">
       {runParam ? (
         <div className="nm-detail-view" id="payroll-run-detail">
           <nav className="nm-detail-bar" aria-label="Navegación de corrida">
@@ -391,7 +391,7 @@ export default function PayrollManagement() {
             <span className="nm-detail-crumb">{(targetRun?.kind ?? selected?.kind) === 'AGUINALDO' ? 'Aguinaldo' : 'Nómina ordinaria'}{targetRun ? ` · ${targetRun.code}` : ''}</span>
           </nav>
           <PayrollOnlineNotice online={online} />
-          {loading || workspaceLoading || (targetRun && !selected) ? <LoadingSpinner text="Abriendo la corrida…" /> : selected ? (
+          {loading || workspaceLoading || (targetRun && !selected) ? <HrLoading text="Abriendo la corrida…" /> : selected ? (
             <>
               <PayrollRunStepper status={selected.status} />
               <PayrollOperationWorkspace run={selected} previous={previousRun ? { code: previousRun.code, netPay: previousRun.totals?.netPay } : null} online={online} busy={saving || downloading} onAction={(action) => { transitionOperationKey.current = createPayrollIdempotencyKey(); setTransition({ run: selected, action }); }} onRefresh={() => void openWorkspace(selected)} onAddComponent={() => { componentOperationKey.current = createPayrollIdempotencyKey(); setCreatePanel({ kind: 'component' }); }} onExport={(format) => void exportRun(format)} onDownloadReceipt={(id) => void downloadReceipt(id)} onDownloadReceiptBatch={(ids) => void downloadReceiptBatch(ids)} />
@@ -472,7 +472,7 @@ export default function PayrollManagement() {
         </div>
       )}
 
-      {loading && <LoadingSpinner text="Cargando corridas…" />}
+      {loading && <HrLoading text="Cargando corridas…" />}
       {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={42} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}>Reintentar</Button></div>}
       {!loading && !error && (
         <>
