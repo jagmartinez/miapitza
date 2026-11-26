@@ -66,3 +66,11 @@
   padding: var(--ui-space-3) var(--ui-space-5); background: var(--ui-surface); border-top: 1px solid var(--ui-border);
 }
 .ui-fsm__footer-start, .ui-fsm__footer-end { display: flex; align-items: center; gap: var(--ui-space-2); }
+/* Variante compacta: avisos y confirmaciones cortas, centrados sobre un velo. */
+.ui-fsm--compact {
+  inset: 50% auto auto 50%; transform: translate(-50%, -50%);
+  width: min(560px, calc(100dvw - 2 * var(--ui-space-4))); height: auto; max-height: calc(100dvh - 2 * var(--ui-space-4));
+  border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); overflow: hidden;
+  box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 45%, transparent), var(--ui-shadow-overlay, 0 12px 32px rgba(0,0,0,.18));
+}
+.ui-fsm--compact .ui-fsm__body { flex: 0 1 auto; overflow-y: auto; }

@@ -763,6 +763,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             })()}
 
             <FullScreenModal
+                size="compact"
                 isOpen={showProblemModal}
                 onClose={() => {
                     setShowProblemModal(false);

@@ -29,6 +29,8 @@ export interface FullScreenModalProps {
   dirty?: boolean;
   dirtyMessage?: string;
   headerActions?: ReactNode;
+  /** 'compact' muestra un diálogo centrado para avisos y confirmaciones cortas. */
+  size?: 'full' | 'compact';
   children: ReactNode;
 }
 
@@ -49,6 +51,7 @@ export function FullScreenModal({
   dirtyMessage = 'Hay cambios sin guardar. Si cierras ahora se perderán.',
   headerActions,
   children,
+  size = 'full',
 }: FullScreenModalProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [confirming, setConfirming] = useState(false);
@@ -75,7 +78,7 @@ export function FullScreenModal({
   if (!isOpen) return null;
   return createPortal(
     <>
-      <div ref={ref} className="ui-fsm" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <div ref={ref} className={`ui-fsm${size === 'compact' ? ' ui-fsm--compact' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <header className="ui-fsm__header">
           <div className="ui-fsm__heading">
             {breadcrumb?.length ? <p className="ui-fsm__breadcrumb">{breadcrumb.join(' / ')}</p> : null}

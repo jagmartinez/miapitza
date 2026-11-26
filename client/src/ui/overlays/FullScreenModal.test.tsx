@@ -120,3 +120,10 @@ describe('ConfirmDialog', () => {
     expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
   });
 });
+
+describe('FullScreenModal compact', () => {
+  it('adds the compact modifier for short dialogs', () => {
+    render(<FullScreenModal isOpen onClose={() => {}} title="Aviso" size="compact"><p>x</p></FullScreenModal>);
+    expect(screen.getByRole('dialog').className).toContain('ui-fsm--compact');
+  });
+});

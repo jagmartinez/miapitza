@@ -329,6 +329,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
 
   return (
     <FullScreenModal
+      size="compact"
       isOpen={isOpen}
       onClose={onClose}
       title={type === 'kitchen' ? 'Ticket de Cocina' : 'Ticket de Cliente'}

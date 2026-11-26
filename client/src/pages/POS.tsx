@@ -1405,6 +1405,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             {showFiscalCustomer && (
                 <FullScreenModal
+                    size="compact"
                     isOpen
                     onClose={() => setShowFiscalCustomer(false)}
                     title="Datos fiscales del cliente"
@@ -1453,6 +1454,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             {warehouseAction && (
                 <FullScreenModal
+                    size="compact"
                     isOpen
                     onClose={() => {
                         setWarehouseAction(null);
@@ -1507,6 +1509,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             {/* Cash Shift Warning Modal */}
             {showShiftWarning && shiftStatus && (
                 <FullScreenModal
+                    size="compact"
                     isOpen
                     onClose={() => setShowShiftWarning(false)}
                     title={shiftStatus.requiresClose ? 'Turno de caja pendiente' : 'Sin turno de caja'}
