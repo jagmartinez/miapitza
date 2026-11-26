@@ -127,13 +127,6 @@
     }
 }
 
-.product-units-page .premium-modal-content {
-    background: var(--ui-surface);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-}
-
 .view-toggle-btn {
     display: inline-flex;
     align-items: center;
