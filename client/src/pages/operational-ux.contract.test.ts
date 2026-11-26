@@ -18,18 +18,15 @@ describe('operational UX contracts', () => {
         expect(dashboardStyles).toContain('margin: 0 auto');
     });
 
-    it('lets only the operational table map use the complete viewport', () => {
+    it('renders Mesas inside the normal shell (rail + topbar) as in the approved mockup', () => {
         const tablesSource = read('./Tables.tsx');
         const tablesStyles = read('./Tables.css');
+        const layoutSource = read('../components/Layout.tsx');
 
-        expect(tablesSource).toContain("showMap ? 'tables-page--map' : 'tables-page--list'");
-        expect(tablesStyles).toContain('.tables-page--map {');
-        expect(tablesStyles).toContain('width: 100dvw !important');
-        expect(tablesStyles).toContain('margin-inline: calc(50% - 50dvw) !important');
-        expect(tablesStyles).toContain('padding: 0');
+        expect(layoutSource).toContain("const isTableWorkspace = location.pathname === '/kds'");
+        expect(tablesSource).toContain("view === 'plan' ? 'tables-page--map' : 'tables-page--ops'");
         expect(tablesStyles).toContain('.tables-page--map .table-map-shell');
-        expect(tablesStyles).toContain('border-inline: 0');
-        expect(tablesStyles).toContain('border-radius: 0');
+        expect(tablesStyles).not.toContain('width: 100dvw !important');
         expect(tablesStyles).toContain('.tables-page:not(.tables-page--map)');
     });
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const tablesSource = read('../pages/Tables.tsx');
-const panelSource = read('./TableOrdersModal.tsx');
+const panelSource = read('./TableDetailPanel.tsx');
 const posSource = read('../pages/POS.tsx');
 const paymentSource = read('./PaymentModal.tsx');
 const ordersSource = read('../pages/Orders.tsx');
@@ -18,13 +18,16 @@ const posStyles = read('../pages/POS.css');
 const kitchenSource = read('../pages/Kitchen.tsx');
 const layoutSource = read('./Layout.tsx');
 const bellSource = read('./KitchenNotificationBell.tsx');
-const panelStyles = read('./TableOrdersModal.module.css');
+const panelStyles = read('./TableDetailPanel.module.css');
 const apiSource = read('../services/api.ts');
 const tableAccountServiceSource = read('../../../server/src/services/table-account.service.ts');
 
 describe('table operational center contract', () => {
     it('opens the real POS workspace with the selected table', () => {
-        expect(tablesSource).toContain('initialTableId={posTable.id}');
+        expect(tablesSource).toContain('initialTableId={posTarget.table?.id}');
+        // "Orden para llevar" abre el mismo POS sin mesa (el backend acepta tableId opcional).
+        expect(tablesSource).toContain("initialOrderType={posTarget.table ? undefined : 'TAKEOUT'}");
+        expect(posSource).toContain("initialOrderType?: 'DINE_IN' | 'TAKEOUT'");
         expect(tablesSource).toContain('embedded');
         expect(posSource).toContain('initialTableId?: number');
         expect(posSource).toContain('tables.find((candidate) => candidate.id === initialTableId)');
@@ -35,10 +38,11 @@ describe('table operational center contract', () => {
         expect(panelSource).not.toContain('Abrir pedido');
         expect(panelSource).not.toContain('Continuar pedido');
         expect(panelSource).toContain('canOperatePOS');
-        expect(panelSource).toContain('Emitir Factura');
+        // Mockup Mesas: la prefactura se emite desde "Pre-cuenta" en el panel "Detalle de mesa".
+        expect(panelSource).toContain("'Pre-cuenta'");
         expect(panelSource).not.toContain('Imprimir cuenta');
         expect(panelSource.match(/Agregar productos/g)).toHaveLength(1);
-        expect(panelSource.match(/Emitir Factura/g)).toHaveLength(1);
+        expect(panelSource.match(/'Pre-cuenta'/g)).toHaveLength(1);
         expect(panelSource).toContain('invoiceTargetOrderId');
         expect(panelSource).toContain('Cobrar');
         expect(panelSource).toContain('Dividir por consumo');
@@ -105,13 +109,14 @@ describe('table operational center contract', () => {
         expect(mapSource).toContain('Nueva mesa');
         expect(mapSource).toContain('onStatusFilterChange');
         expect(tablesSource).toMatch(/!showMap && \(\s*<PageContent>\s*<PageHeader/);
-        expect(tablesSource).toContain('branchControl=');
+        expect(tablesSource).toContain('{branchControl}');
         expect(mapSource).not.toContain('<select');
         expect(mapSource).not.toContain('onShowList');
         expect(mapSource).not.toContain('<span>Estado</span>');
         expect(mapSource).toContain('canvas-resize-handle');
         expect(mapSource.indexOf('Nueva mesa')).toBeLessThan(mapSource.indexOf('Administración'));
-        expect(tablesSource).toContain('themeControl={(');
+        // La campana de cocina vive en el encabezado de Mesas (mockup); el tema, en la barra superior del shell.
+        expect(tablesSource).not.toContain('themeControl={(');
         expect(tablesSource).toContain('<KitchenNotificationBell inline />');
     });
 
@@ -167,7 +172,7 @@ describe('table operational center contract', () => {
         expect(panelSource).toContain('&& !hasActiveFinancialConsolidation');
         expect(tablesSource).not.toContain('consolidationIntent');
         expect(tablesSource).toContain('Emite la factura para continuar al cobro');
-        expect(panelSource).toContain('Emitir Factura');
+        expect(panelSource).toContain("'Pre-cuenta'");
         expect(panelSource).toContain('Cobrar');
     });
 
@@ -206,14 +211,14 @@ describe('table operational center contract', () => {
         expect(panelSource).not.toContain('role="tablist"');
     });
 
-    it('uses the full-screen modal with touch-sized actions and no horizontal overflow', () => {
-        expect(panelSource).toContain('<FullScreenModal');
-        expect(panelSource).toContain('<DataTable');
+    it('uses the side detail panel (not a modal) with touch-sized actions and no horizontal overflow', () => {
+        expect(panelSource).toContain('aria-label="Detalle de mesa"');
+        expect(panelSource).not.toContain('<FullScreenModal');
+        expect(tablesSource).not.toContain('TableOrdersModal');
         expect(panelSource).toContain('formatMoney(');
         expect(panelStyles).toContain('min-height: var(--ui-control-touch)');
         expect(panelStyles).toContain('flex-wrap: wrap');
-        expect(panelStyles).toContain('.addProducts');
-        expect(panelStyles).toContain('display: none');
+        expect(panelStyles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))');
         expect(panelSource).toContain("loading ? 'Cargando…'");
     });
 

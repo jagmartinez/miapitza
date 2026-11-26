@@ -1,0 +1,259 @@
+/* Panel lateral "Detalle de mesa" (mockup Mesas). */
+.panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+.placeholder {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  padding: var(--ui-space-6) var(--ui-space-4);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  text-align: center;
+}
+
+.placeholder p { margin: 0; }
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-1);
+  padding: var(--ui-space-4);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-3);
+  min-width: 0;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--ui-text-lg);
+  font-weight: 600;
+}
+
+.state {
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  color: var(--ui-primary);
+}
+
+.state[data-state='AVAILABLE'] { color: var(--ui-success); }
+.state[data-state='PENDING_PAYMENT'] { color: var(--ui-warning); }
+.state[data-state='RESERVED'] { color: var(--ui-text-muted); }
+.state[data-state='OUT_OF_SERVICE'] { color: var(--ui-danger); }
+
+.close { flex: none; }
+
+.meta {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-2) var(--ui-space-4);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--ui-space-6) 0;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  text-align: center;
+}
+
+.order { display: flex; flex-direction: column; min-width: 0; }
+
+.orderHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-1) var(--ui-space-3);
+  padding-top: var(--ui-space-2);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
+}
+
+.orderHead strong { color: var(--ui-text); }
+
+.docTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ui-success);
+  font-weight: 600;
+}
+
+.lines { list-style: none; margin: 0; padding: 0; }
+
+.line {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  gap: var(--ui-space-2);
+  align-items: start;
+  padding: var(--ui-space-3) 0;
+  border-bottom: 1px solid var(--ui-border);
+  font-size: var(--ui-text-md);
+}
+
+.qty { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+
+.lineName { display: flex; min-width: 0; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+
+.amount { text-align: right; font-variant-numeric: tabular-nums; }
+
+.voidBtn { grid-column: 2 / -1; justify-self: end; }
+
+.kitchen {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-1);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
+}
+
+.kitchen[data-status='IN_PROGRESS'] { color: var(--ui-warning); }
+.kitchen[data-status='DONE'] { color: var(--ui-success); }
+
+.voidedName { color: var(--ui-text-muted); text-decoration: line-through; }
+.voidBadge { color: var(--ui-danger); font-size: var(--ui-text-xs); font-weight: 600; }
+
+.totals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-2);
+  margin: 0;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  font-size: var(--ui-text-md);
+}
+
+.totals > div { display: flex; justify-content: space-between; gap: var(--ui-space-3); }
+.totals dt { color: var(--ui-text-muted); }
+.totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.grandTotal {
+  align-items: baseline;
+  padding-top: var(--ui-space-2);
+  border-top: 1px solid var(--ui-border);
+}
+
+.grandTotal dt { color: var(--ui-text); font-weight: 600; }
+.grandTotal dd { font-size: var(--ui-text-xl, 1.25rem); font-weight: 700; }
+
+.spacer { flex: 1; }
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-4);
+  border-top: 1px solid var(--ui-border);
+}
+
+.mainAction { width: 100%; justify-content: center; min-height: var(--ui-control-touch); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ui-space-2);
+}
+
+.grid > * { justify-content: center; }
+
+.more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-space-2);
+  padding-top: var(--ui-space-2);
+  border-top: 1px dashed var(--ui-border);
+}
+
+.moreHint { margin: 0; flex-basis: 100%; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-2);
+  min-width: 0;
+}
+
+.touch {
+  min-width: 44px;
+  min-height: var(--ui-control-touch);
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-3);
+  min-width: 0;
+  margin: var(--ui-space-3) var(--ui-space-4) 0;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+}
+
+.banner .banner { margin: 0; }
+
+.banner[data-block] { flex-direction: column; align-items: stretch; }
+
+.banner > div,
+.banner > span {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner p { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+
+.banner small,
+.banner span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+
+.bannerHead { display: flex; align-items: center; gap: var(--ui-space-3); }
+
+.bannerError { border-color: var(--ui-danger); background: var(--ui-danger-soft); }
+
+.reversalForm { display: flex; min-width: 0; flex-direction: column; gap: var(--ui-space-3); padding-top: var(--ui-space-3); }
+
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-6) var(--ui-space-4);
+  color: var(--ui-text-muted);
+  text-align: center;
+}
+
+.loadingState p { margin: 0; }
+
+.spin { animation: tableDetailSpin 1s linear infinite; }
+
+@keyframes tableDetailSpin { to { transform: rotate(360deg); } }
+
+.invoiceSelector { min-width: 0; }

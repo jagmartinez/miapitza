@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -11,8 +12,9 @@ vi.mock('../services/api', () => ({
     tablesAPI: {
         getAll: vi.fn().mockResolvedValue({ data: { data: tableRows } }),
         getFloorPlan: vi.fn().mockResolvedValue({ data: { data: { id: 1, areas: [], tables: [] } } }),
+        getActiveConsolidation: vi.fn().mockResolvedValue({ data: { data: null } }),
     },
-    ordersAPI: { getAll: vi.fn(), getById: vi.fn(), getActive: (...a: unknown[]) => activeOrders(...a) },
+    ordersAPI: { getAll: vi.fn().mockResolvedValue({ data: { data: [] } }), getById: vi.fn(), getActive: (...a: unknown[]) => activeOrders(...a) },
     reservationsAPI: { getUpcoming: vi.fn().mockResolvedValue({ data: { data: [] } }) },
     branchesAPI: { getAll: vi.fn().mockResolvedValue({ data: { data: [] } }) },
     invoicesAPI: {},
@@ -28,7 +30,11 @@ vi.mock('../hooks/useCurrency', () => ({ useCurrency: () => ({ symbol: 'C$', for
 vi.mock('../utils/websocket', () => ({ initializeWebSocket: vi.fn(), subscribeWebSocket: () => () => undefined, WS_EVENTS: {} }));
 vi.mock('./POS', () => ({ default: () => null }));
 vi.mock('../components/PaymentModal', () => ({ default: () => null }));
-vi.mock('../components/TableOrdersModal', () => ({ default: () => null }));
+vi.mock('../components/TableDetailPanel', () => ({
+    default: ({ table }: { table: { number: string } | null }) => (
+        <aside aria-label="Detalle de mesa">{table ? `Mesa ${table.number}` : 'Selecciona una mesa'}</aside>
+    ),
+}));
 vi.mock('../components/TableOperationModal', () => ({ default: () => null }));
 vi.mock('../components/ThemeToggle', () => ({ default: () => null }));
 vi.mock('../components/KitchenNotificationBell', () => ({ default: () => null }));
@@ -41,25 +47,42 @@ const orders = [
     { id: 11, tableId: 1, table: { id: 1, number: '1' }, total: 1500.5, status: 'OPEN', financialStatus: 'UNPAID', invoiceNumber: 'F-1', createdAt: new Date(Date.now() - 45 * 60000).toISOString() },
 ];
 
-describe('Tables (design system)', () => {
-    it('el plano recibe las tarjetas del salón con consumo abierto y mesa abierta más tiempo', async () => {
+describe('Tables (mockup Mesas)', () => {
+    it('muestra los indicadores del salón visibles por defecto, con consumo abierto y mesa abierta más tiempo', async () => {
         activeOrders.mockResolvedValue({ data: { data: orders } });
         renderPage();
-        const map = await screen.findByTestId('map');
-        const consumo = await within(map).findByRole('region', { name: 'Consumo abierto' });
+        const consumo = await screen.findByRole('region', { name: 'Consumo abierto' });
         expect(await within(consumo).findByText('C$ 1,500.50')).toBeInTheDocument();
         expect(consumo).toHaveTextContent('1 facturadas sin cobrar');
-        const longest = within(map).getByRole('region', { name: 'Mesa abierta más tiempo' });
+        const longest = screen.getByRole('region', { name: 'Mesa abierta más tiempo' });
         expect(await within(longest).findByText('45 min')).toBeInTheDocument();
     });
 
     it('si las órdenes activas fallan muestra N/D y no 0', async () => {
         activeOrders.mockRejectedValue(new Error('down'));
         renderPage();
-        const map = await screen.findByTestId('map');
-        const consumo = await within(map).findByRole('region', { name: 'Consumo abierto' });
+        const consumo = await screen.findByRole('region', { name: 'Consumo abierto' });
         await within(consumo).findByText('N/D');
         expect(consumo).not.toHaveTextContent('C$ 0');
         expect(within(consumo).getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    });
+
+    it('al tocar una mesa abre el panel lateral "Detalle de mesa" (no un modal)', async () => {
+        activeOrders.mockResolvedValue({ data: { data: orders } });
+        renderPage();
+        const floor = await screen.findByRole('region', { name: 'Plano de mesas' });
+        const tile = await within(floor).findByRole('button', { name: 'Mesa 1, Ocupada' });
+        expect(within(tile).getByText('45 min')).toBeInTheDocument();
+        await userEvent.click(tile);
+        expect(tile).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('complementary', { name: 'Detalle de mesa' })).toHaveTextContent('Mesa 1');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('ofrece "Orden para llevar" en el encabezado', async () => {
+        activeOrders.mockResolvedValue({ data: { data: [] } });
+        renderPage();
+        expect(await screen.findByRole('button', { name: 'Orden para llevar' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'Mesas' })).toBeInTheDocument();
     });
 });

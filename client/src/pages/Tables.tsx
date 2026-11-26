@@ -3,11 +3,11 @@ import axios from 'axios';
 import { tablesAPI, ordersAPI, branchesAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton,
-    Input, NumberInput, PageContent, PageHeader, SegmentedControl,
+    Input, NumberInput, PageContent, PageHeader, SegmentedControl, formatMoney, formatNumber,
     type Column, type Opt, type Tone,
 } from '@/ui';
 import SalonCards from '../components/SalonCards';
-import TableOrdersModal from '../components/TableOrdersModal';
+import TableDetailPanel from '../components/TableDetailPanel';
 import LegacyConsolidationReview from '../components/LegacyConsolidationReview';
 import PaymentModal from '../components/PaymentModal';
 import { useAuth } from '../hooks/useAuth';
@@ -16,7 +16,7 @@ import { useAppToast } from '../context/ToastContext';
 import { canCreatePayment, canVoidKitchenLine } from '../utils/authz';
 import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
 import { getTableAccess } from '../utils/tableAccess';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, MapPin, MapPinned, History } from 'lucide-react';
+import { Grid3x3, Plus, Edit2, Trash2, Eye, MapPin, MapPinned, History, Link2, ShoppingBag } from 'lucide-react';
 import type {
     ActiveTableConsolidation,
     LegacyTableConsolidationCandidate,
@@ -29,6 +29,7 @@ import type {
 import './Tables.css';
 import TableMap, { type FloorPlanDraft } from '../components/TableMap';
 import { resolveTablePresentationState } from '../utils/tablePresentation';
+import { TABLE_TILE_LEGEND, tableTileState } from '../utils/tableTileState';
 import {
     getIdempotentAttempt,
     newIdempotencyKey,
@@ -41,7 +42,6 @@ import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess'
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { useCurrency } from '../hooks/useCurrency';
 import { openMinutesByTable, openAmountByTable, openTableOrders } from '../utils/salonInsights';
-import ThemeToggle from '../components/ThemeToggle';
 import KitchenNotificationBell from '../components/KitchenNotificationBell';
 import { doesOrderRemainVisibleAtTable } from '../utils/posOrderBucket';
 import {
@@ -54,6 +54,9 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { getApiErrorMessage } from '../utils/apiError';
 import { markErrorHandled, notifyError } from '../services/notify';
+
+type TablesView = 'tiles' | 'plan' | 'list';
+const TABLES_VIEW_KEY = 'tables.view';
 
 interface ApiValidationError { field?: string; message?: string }
 function extractApiError(error: unknown, fallback: string): string {
@@ -109,9 +112,9 @@ export default function Tables() {
     const [activeTab, setActiveTab] = useState<'general' | 'ubicacion'>('general');
     const [formDirty, setFormDirty] = useState(false);
 
-    // Orders Modal State
-    const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
+    // Detalle de mesa (panel lateral)
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+    const detailPanelRef = useRef<HTMLDivElement>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
     const canVoidLines = canVoidKitchenLine(user);
     const [voidLineTarget, setVoidLineTarget] = useState<{ order: Order; itemId: number } | null>(null);
@@ -133,7 +136,15 @@ export default function Tables() {
     const [legacyInventoryError, setLegacyInventoryError] = useState<string | null>(null);
     const [legacyReviewActionError, setLegacyReviewActionError] = useState<string | null>(null);
     const [markingLegacyCandidateKey, setMarkingLegacyCandidateKey] = useState<string | null>(null);
-    const [showMap, setShowMap] = useState(true);
+    // Vista operativa: mesas (mosaico del mockup), plano editable o lista administrativa.
+    const [view, setView] = useState<TablesView>(() => {
+        try {
+            const saved = localStorage.getItem(TABLES_VIEW_KEY);
+            return saved === 'plan' || saved === 'list' ? saved : 'tiles';
+        } catch { return 'tiles'; }
+    });
+    const showMap = view !== 'list';
+    const [zoneFilter, setZoneFilter] = useState<string>('ALL');
     const [openOrders, setOpenOrders] = useState<Order[] | null>(null);
     const [openOrdersFailed, setOpenOrdersFailed] = useState(false);
     const [metaNow, setMetaNow] = useState(() => Date.now());
@@ -147,7 +158,8 @@ export default function Tables() {
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
     const [paymentMode, setPaymentMode] = useState<'single' | 'split'>('single');
     const [cashShiftStatus, setCashShiftStatus] = useState<CashShiftScope | null>(null);
-    const [posTable, setPosTable] = useState<Table | null>(null);
+    // Espacio del POS: con mesa (desde el detalle) o sin mesa para una orden para llevar.
+    const [posTarget, setPosTarget] = useState<{ table: Table | null } | null>(null);
     const [floorPlan, setFloorPlan] = useState<TableFloorPlan | null>(null);
 
     const loadedBranchIds = Array.from(new Set(tables.map((table) => table.branchId)));
@@ -388,7 +400,10 @@ export default function Tables() {
         setActiveConsolidation(null);
         setConsolidationLookupError(null);
         setConsolidationReversalError(null);
-        setIsOrdersModalOpen(true);
+        // En pantallas angostas el detalle queda debajo del plano: llevarlo a la vista.
+        if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 1023px)').matches) {
+            window.setTimeout(() => detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+        }
         await Promise.all([
             loadTableOrders(table),
             loadActiveConsolidation(table.id),
@@ -481,8 +496,20 @@ export default function Tables() {
             showWarning('Tu rol puede consultar la mesa, pero no crear ni modificar pedidos.');
             return;
         }
-        setIsOrdersModalOpen(false);
-        setPosTable(table);
+        setPosTarget({ table });
+    };
+
+    const handleOpenTakeout = () => {
+        if (!canOperatePOS) {
+            showWarning('Tu rol no puede crear pedidos.');
+            return;
+        }
+        setPosTarget({ table: null });
+    };
+
+    const changeView = (next: TablesView) => {
+        setView(next);
+        try { localStorage.setItem(TABLES_VIEW_KEY, next); } catch { /* storage unavailable */ }
     };
 
     const refreshOperationalTable = useCallback(async () => {
@@ -851,7 +878,6 @@ export default function Tables() {
             { title: 'Separar mesas' }
         );
         if (!accepted) return;
-        setIsOrdersModalOpen(false);
         setSubmittingGroup(true);
         try {
             await tablesAPI.closeGroup(group.id, { reason: 'Separación manual desde el mapa operativo' }, newIdempotencyKey());
@@ -955,28 +981,104 @@ export default function Tables() {
 
     if (loading) return <div className="tables-loading">Cargando...</div>;
 
+    const areaNames = new Map((floorPlan?.areas ?? []).map((area) => [area.id, area.name]));
+    const zoneOf = (table: Table) => (table.floorAreaId != null ? areaNames.get(table.floorAreaId) : undefined)
+        || table.location?.trim()
+        || 'Salón';
+    const scopedTables = mapBranchId ? tables.filter((table) => table.branchId === mapBranchId) : tables;
+    const zones = Array.from(new Set(scopedTables.map(zoneOf))).sort((a, b) => a.localeCompare(b, 'es'));
+    const activeZone = zoneFilter !== 'ALL' && zones.includes(zoneFilter) ? zoneFilter : 'ALL';
+    const tileTables = scopedTables
+        .filter((table) => activeZone === 'ALL' || zoneOf(table) === activeZone)
+        .sort((a, b) => a.number.localeCompare(b.number, 'es', { numeric: true }));
+    const liveSelectedTable = selectedTable
+        ? tables.find((table) => table.id === selectedTable.id) ?? selectedTable
+        : null;
+    const selectedMeta = liveSelectedTable ? tableMeta?.get(liveSelectedTable.id) : undefined;
+    const viewOptions: { value: TablesView; label: string }[] = [
+        { value: 'tiles', label: 'Mesas' },
+        { value: 'plan', label: 'Plano' },
+        ...(canCreateTable || canEditTable || canDeleteTable ? [{ value: 'list' as const, label: 'Lista' }] : []),
+    ];
+
+    const branchControl = canChooseBranch && branches.length > 1 ? (
+        <div className="table-map-branch-control">
+            <AppSelect<number>
+                aria-label="Sucursal"
+                placeholder="Sucursal"
+                options={branchOptions}
+                value={branchFilter}
+                onChange={setBranchFilter}
+                isClearable={false}
+            />
+        </div>
+    ) : !canChooseBranch ? (
+        <div className="table-map-fixed-branch" aria-label={`Sucursal activa: ${mapBranchName}`}>
+            <MapPin size={16} aria-hidden="true" />
+            <span><small>Sucursal activa</small><strong>{mapBranchName}</strong></span>
+        </div>
+    ) : null;
+
+    const renderTile = (table: Table) => {
+        const state = tableTileState(table);
+        const meta = tableMeta?.get(table.id);
+        const busy = meta !== undefined;
+        const selected = liveSelectedTable?.id === table.id;
+        const slow = (meta?.minutes ?? 0) > 90;
+        const timeLabel = busy
+            ? `${formatNumber(meta.minutes, 0)} min`
+            : state.key === 'RESERVED' ? 'Reservada' : '—';
+        return (
+            <button
+                key={table.id}
+                type="button"
+                className="tables-tile"
+                data-state={state.key}
+                aria-pressed={selected}
+                aria-label={`Mesa ${table.number}, ${state.label}`}
+                onClick={() => void handleViewOrders(table)}
+            >
+                <span className="tables-tile__top">
+                    <strong className="tables-tile__id">{table.number}</strong>
+                    <span className="tables-tile__seats">{formatNumber(table.capacity, 0)} pax</span>
+                </span>
+                <span className="tables-tile__state"><span aria-hidden="true" />{state.label}</span>
+                {table.activeTableGroup && (
+                    <span className="tables-tile__group">
+                        <Link2 size={12} aria-hidden="true" />
+                        {table.activeTableGroup.primaryTableId === table.id ? 'Principal del grupo' : `Unida a ${table.activeTableGroup.primaryTable.number}`}
+                    </span>
+                )}
+                <span className="tables-tile__spacer" />
+                <span className="tables-tile__foot">
+                    <span className={slow ? 'is-slow' : undefined}>{timeLabel}</span>
+                    <span className="tables-tile__amount">
+                        {busy ? (meta.amount === null ? 'N/D' : formatMoney(meta.amount, currencySymbol)) : ''}
+                    </span>
+                </span>
+            </button>
+        );
+    };
+
     return (
-        <div className={`tables-page ${showMap ? 'tables-page--map' : 'tables-page--list'}`}>
+        <div className={`tables-page ${showMap ? (view === 'plan' ? 'tables-page--map' : 'tables-page--ops') : 'tables-page--list'}`}>
             {!showMap && (
                 <PageContent>
                     <PageHeader
                         title="Gestión de mesas"
-                        description="Plano, estado y consumo abierto del salón"
+                        description="Alta, edición y estado administrativo de las mesas"
                         actions={(
                             <>
-                                <ThemeToggle />
+                                <SegmentedControl<TablesView> ariaLabel="Vista de mesas" options={viewOptions} value={view} onChange={changeView} />
                                 {canConsolidate && (
                                     <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
                                 )}
-                                <Button icon={MapPinned} onClick={() => setShowMap(true)}>Plano</Button>
                                 {canCreateTable && (
                                     <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>Nueva mesa</Button>
                                 )}
                             </>
                         )}
                     />
-
-                    <SalonCards branchId={branchFilter} tables={tables} onReviewOrders={() => navigate('/orders')} />
 
                     <div className="tables-filters-row">
                         <SegmentedControl
@@ -1022,55 +1124,138 @@ export default function Tables() {
                 </PageContent>
             )}
 
-            {showMap && !mapBranchId && (
-                <div className="table-map-branch-required">
-                    <MapPinned size={24} />
-                    Selecciona una sucursal para visualizar y editar su plano.
-                </div>
-            )}
-
-            {showMap && mapBranchId && floorPlan && (
-                <TableMap
-                    plan={floorPlan}
-                    statusFilter={statusFilter}
-                    tableMeta={tableMeta}
-                    tableMetaUnavailable={openOrdersFailed && !openOrders}
-                    currencySymbol={currencySymbol}
-                    onStatusFilterChange={setStatusFilter}
-                    canEdit={canEditMap}
-                    saving={savingLayout}
-                    onSelect={handleViewOrders}
-                    onSave={handleSaveLayout}
-                    onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
-                    onReturnToAdministration={canEditMap ? () => navigate('/dashboard') : undefined}
-                    themeControl={(
+            {showMap && (
+                <div className="tables-ops">
+                    <header className="tables-ops__header">
+                        <div className="tables-ops__title">
+                            <h1>Mesas</h1>
+                            <p>{mapBranchName}{activeZone !== 'ALL' ? ` · ${activeZone}` : ''}</p>
+                        </div>
+                        {view === 'tiles' && zones.length > 1 && (
+                            <SegmentedControl
+                                ariaLabel="Zona"
+                                options={[{ value: 'ALL', label: 'Todas' }, ...zones.map((zone) => ({ value: zone, label: zone }))]}
+                                value={activeZone}
+                                onChange={setZoneFilter}
+                            />
+                        )}
+                        <SegmentedControl<TablesView> ariaLabel="Vista de mesas" options={viewOptions} value={view} onChange={changeView} />
+                        {branchControl}
                         <div className="table-map-utility-controls">
                             {canConsolidate && (
-                                <button type="button" onClick={openLegacyReview}>
-                                    <History size={18} /> Históricos
-                                </button>
+                                <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
                             )}
                             <KitchenNotificationBell inline />
                         </div>
-                    )}
-                    insights={<SalonCards branchId={mapBranchId} tables={tables} onReviewOrders={() => navigate('/orders')} />}
-                    branchControl={canChooseBranch && branches.length > 1 ? (
-                        <div className="table-map-branch-control">
-                            <AppSelect<number>
-                                aria-label="Sucursal"
-                                placeholder="Sucursal"
-                                options={branchOptions}
-                                value={branchFilter}
-                                onChange={setBranchFilter}
+                        {canOperatePOS && (
+                            <Button variant="primary" icon={ShoppingBag} onClick={handleOpenTakeout}>Orden para llevar</Button>
+                        )}
+                    </header>
+
+                    <SalonCards branchId={mapBranchId} tables={tables} onReviewOrders={() => navigate('/orders')} />
+
+                    <div className="tables-ops__body">
+                        <section className="tables-ops__floor" aria-label="Plano de mesas">
+                            {!mapBranchId ? (
+                                <div className="table-map-branch-required">
+                                    <MapPinned size={24} />
+                                    Selecciona una sucursal para visualizar y operar sus mesas.
+                                </div>
+                            ) : view === 'tiles' ? (
+                                <>
+                                    <ul className="tables-legend" aria-label="Estados de mesa">
+                                        {TABLE_TILE_LEGEND.map((state) => (
+                                            <li key={state.key} data-state={state.key}><span aria-hidden="true" />{state.label}</li>
+                                        ))}
+                                    </ul>
+                                    {openOrdersFailed && !openOrders && (
+                                        <p className="tables-meta-warning" role="status">Tiempo y consumo por mesa no disponibles (N/D): no se pudieron cargar las órdenes activas.</p>
+                                    )}
+                                    {tileTables.length === 0 ? (
+                                        <EmptyState
+                                            icon={Grid3x3}
+                                            title="No hay mesas en esta zona"
+                                            action={canCreateTable ? <Button onClick={() => handleOpenSidebar()}>Crear mesa</Button> : undefined}
+                                        />
+                                    ) : (
+                                        <div className="tables-tiles">
+                                            {tileTables.map(renderTile)}
+                                        </div>
+                                    )}
+                                </>
+                            ) : floorPlan ? (
+                                <TableMap
+                                    plan={floorPlan}
+                                    statusFilter={statusFilter}
+                                    tableMeta={tableMeta}
+                                    tableMetaUnavailable={openOrdersFailed && !openOrders}
+                                    currencySymbol={currencySymbol}
+                                    onStatusFilterChange={setStatusFilter}
+                                    canEdit={canEditMap}
+                                    saving={savingLayout}
+                                    onSelect={handleViewOrders}
+                                    onSave={handleSaveLayout}
+                                    onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
+                                    branchControl={undefined}
+                                />
+                            ) : (
+                                <p className="tables-meta-warning" role="status">Cargando plano…</p>
+                            )}
+                        </section>
+
+                        <div ref={detailPanelRef} className="tables-ops__detail">
+                            <TableDetailPanel
+                                table={liveSelectedTable}
+                                orders={tableOrders}
+                                zoneLabel={liveSelectedTable ? zoneOf(liveSelectedTable) : undefined}
+                                openMinutes={selectedMeta?.minutes ?? null}
+                                onClose={() => setSelectedTable(null)}
+                                loading={loadingTableOrders}
+                                busyOrderId={busyOrderId}
+                                canIssueInvoice={canIssueInvoice}
+                                canPay={canPay}
+                                canOperatePOS={canOperatePOS}
+                                canTransfer={canTransfer}
+                                canConsolidate={canConsolidate}
+                                canGroup={canGroup}
+                                canVoidLines={canVoidLines}
+                                onVoidLine={(order, itemId) => setVoidLineTarget({ order, itemId })}
+                                activeConsolidation={activeConsolidation}
+                                loadingConsolidation={loadingConsolidation}
+                                consolidationLookupError={consolidationLookupError}
+                                consolidationReversalError={consolidationReversalError}
+                                reversingConsolidation={reversingConsolidation}
+                                groupTotalCapacity={liveSelectedTable?.activeTableGroup
+                                    ? tables.filter((table) => table.activeTableGroupId === liveSelectedTable.activeTableGroupId).reduce((sum, table) => sum + table.capacity, 0)
+                                    : undefined}
+                                onOpenPOS={handleOpenPOS}
+                                onIssueInvoice={(order) => void handleIssueInvoice(order)}
+                                onReversePreInvoice={handleReversePreInvoice}
+                                onPay={(order) => void openPayment(order, 'single')}
+                                onSplit={(order) => void openPayment(order, 'split')}
+                                onTransfer={(table) => {
+                                    setOperationTableId(table.id);
+                                    setOperation('TRANSFER');
+                                }}
+                                onConsolidate={(table) => {
+                                    setOperationTableId(table.id);
+                                    setOperation('CONSOLIDATE');
+                                }}
+                                onGroup={(table) => setGroupTableId(table.id)}
+                                onEditGroup={(table) => setGroupTableId(table.id)}
+                                onUngroup={(table) => void handleCloseGroup(table)}
+                                onRetryConsolidationLookup={() => {
+                                    setConsolidationReversalError(null);
+                                    if (selectedTable) void loadActiveConsolidation(selectedTable.id);
+                                }}
+                                onReverseConsolidation={handleReverseConsolidation}
+                                extraActions={liveSelectedTable && canEditTable ? (
+                                    <Button variant="ghost" icon={Edit2} onClick={() => handleOpenSidebar(liveSelectedTable)}>Editar mesa</Button>
+                                ) : undefined}
                             />
                         </div>
-                    ) : !canChooseBranch ? (
-                        <div className="table-map-fixed-branch" aria-label={`Sucursal activa: ${mapBranchName}`}>
-                            <MapPin size={16} aria-hidden="true" />
-                            <span><small>Sucursal activa</small><strong>{mapBranchName}</strong></span>
-                        </div>
-                    ) : undefined}
-                />
+                    </div>
+                </div>
             )}
 
             <FullScreenModal
@@ -1089,7 +1274,6 @@ export default function Tables() {
                     onMark={markLegacyConsolidation}
                 />
             </FullScreenModal>
-
             <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
@@ -1188,60 +1372,6 @@ export default function Tables() {
                 }}
             />
 
-            {/* Orders Modal */}
-            <TableOrdersModal
-                isOpen={isOrdersModalOpen}
-                onClose={() => setIsOrdersModalOpen(false)}
-                table={selectedTable}
-                orders={tableOrders}
-                loading={loadingTableOrders}
-                busyOrderId={busyOrderId}
-                canIssueInvoice={canIssueInvoice}
-                canPay={canPay}
-                canOperatePOS={canOperatePOS}
-                canTransfer={canTransfer}
-                canConsolidate={canConsolidate}
-                canGroup={canGroup}
-                canVoidLines={canVoidLines}
-                onVoidLine={(order, itemId) => setVoidLineTarget({ order, itemId })}
-                activeConsolidation={activeConsolidation}
-                loadingConsolidation={loadingConsolidation}
-                consolidationLookupError={consolidationLookupError}
-                consolidationReversalError={consolidationReversalError}
-                reversingConsolidation={reversingConsolidation}
-                groupTotalCapacity={selectedTable?.activeTableGroup
-                    ? tables.filter((table) => table.activeTableGroupId === selectedTable.activeTableGroupId).reduce((sum, table) => sum + table.capacity, 0)
-                    : undefined}
-                onOpenPOS={handleOpenPOS}
-                onIssueInvoice={(order) => void handleIssueInvoice(order)}
-                onReversePreInvoice={handleReversePreInvoice}
-                onPay={(order) => void openPayment(order, 'single')}
-                onSplit={(order) => void openPayment(order, 'split')}
-                onTransfer={(table) => {
-                    setIsOrdersModalOpen(false);
-                    setOperationTableId(table.id);
-                    setOperation('TRANSFER');
-                }}
-                onConsolidate={(table) => {
-                    setIsOrdersModalOpen(false);
-                    setOperationTableId(table.id);
-                    setOperation('CONSOLIDATE');
-                }}
-                onGroup={(table) => {
-                    setIsOrdersModalOpen(false);
-                    setGroupTableId(table.id);
-                }}
-                onEditGroup={(table) => {
-                    setIsOrdersModalOpen(false);
-                    setGroupTableId(table.id);
-                }}
-                onUngroup={(table) => void handleCloseGroup(table)}
-                onRetryConsolidationLookup={() => {
-                    setConsolidationReversalError(null);
-                    if (selectedTable) void loadActiveConsolidation(selectedTable.id);
-                }}
-                onReverseConsolidation={handleReverseConsolidation}
-            />
             {paymentOrder && (
                 <PaymentModal
                     isOpen
@@ -1283,13 +1413,20 @@ export default function Tables() {
                 onClose={() => setGroupTableId(null)}
                 onSubmit={handleSaveGroup}
             />
-            {posTable && (
-                <div className="table-pos-workspace" role="dialog" aria-modal="true" aria-label={`Pedido de mesa ${posTable.number}`}>
+            {posTarget && (
+                <div
+                    className="table-pos-workspace"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={posTarget.table ? `Pedido de mesa ${posTarget.table.number}` : 'Orden para llevar'}
+                >
                     <POS
-                        key={posTable.id}
-                        initialTableId={posTable.id}
+                        key={posTarget.table?.id ?? 'takeout'}
+                        initialTableId={posTarget.table?.id}
+                        initialOrderType={posTarget.table ? undefined : 'TAKEOUT'}
+                        branchId={mapBranchId}
                         embedded
-                        onExit={() => setPosTable(null)}
+                        onExit={() => setPosTarget(null)}
                         onOperationalChange={refreshOperationalTable}
                     />
                 </div>
