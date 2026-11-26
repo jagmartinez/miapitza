@@ -3,7 +3,7 @@ import { productionOrdersAPI, productsAPI, warehousesAPI, branchesAPI } from '..
 import {
     AppSelect, Badge, Button, Checkbox, ConfirmDialog, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
     PageContent, PageHeader, SegmentedControl, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
-    type Column, type Opt, type Tone,
+    type Column, type Opt, type Tone, LoadErrorState,
 } from '@/ui';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAuth } from '../hooks/useAuth';
@@ -100,10 +100,12 @@ export default function ProductionOrders() {
     const [cancelling, setCancelling] = useState(false);
 
     const loadOrders = useCallback(async () => {
+        setLoading(true);
         setLoadError(null);
         try {
             const res = await productionOrdersAPI.getAll();
             setOrders(Array.isArray(res.data.data) ? res.data.data : []);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading production orders:', error);
             setOrders([]);
@@ -511,12 +513,7 @@ export default function ProductionOrders() {
                 actions={<Button variant="primary" icon={Plus} onClick={handleOpenCreate} disabled={!canManage}>Nueva producción</Button>}
             />
 
-            {loadError && (
-                <div className={s.banner} role="alert">
-                    <span>{loadError}</span>
-                    <Button size="sm" onClick={() => void loadOrders()}>Reintentar</Button>
-                </div>
-            )}
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadOrders(); }} />}
 
             {(overrun || yieldInfo) && (
                 <div className={s.stats}>

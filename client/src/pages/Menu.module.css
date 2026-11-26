@@ -28,3 +28,5 @@
 .priceRow > :first-child { flex: 1 1 10rem; min-width: 0; }
 .priceRow > :nth-child(2) { flex: 0 1 12rem; min-width: 0; }
 .formActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--ui-space-2); margin-top: var(--ui-space-3); }
+
+.noRecipeBar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); margin-bottom: var(--ui-space-4); }

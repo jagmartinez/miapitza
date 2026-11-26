@@ -3,6 +3,9 @@ import type {
   HrAttendancePolicyPayload,
 } from '../../types/hr-attendance';
 
+/** Phones rarely report a GPS fix better than ~10 m; mirrors the server floor. */
+export const MIN_LOCATION_ACCURACY_M = 10;
+
 function integerInRange(value: number, min: number, max: number): boolean {
   return Number.isInteger(value) && value >= min && value <= max;
 }
@@ -14,8 +17,8 @@ export function validateAttendancePolicy(payload: HrAttendancePolicyPayload): st
   if (!payload.timezone.trim() || payload.timezone.length > 64) {
     return 'La zona horaria es requerida y admite hasta 64 caracteres.';
   }
-  if (!integerInRange(payload.maxLocationAccuracyM, 1, 5000)) {
-    return 'La precisión máxima debe ser un entero entre 1 y 5000 metros.';
+  if (!integerInRange(payload.maxLocationAccuracyM, MIN_LOCATION_ACCURACY_M, 5000)) {
+    return `La precisión máxima debe ser un entero entre ${MIN_LOCATION_ACCURACY_M} y 5000 metros.`;
   }
   if (!integerInRange(payload.earlyCheckInMinutes, 0, 1440)) {
     return 'La anticipación de entrada debe estar entre 0 y 1440 minutos.';

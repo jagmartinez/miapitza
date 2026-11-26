@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import prisma from '../utils/prisma';
 import { isValidTimeZone, getZonedParts, zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
@@ -12,6 +13,8 @@ export class HrScheduleError extends Error {
 
 const SCHEDULE_STATUSES = ['DRAFT', 'PUBLISHED', 'SUPERSEDED', 'CANCELLED'] as const;
 const SWAP_STATUSES = ['PENDING', 'ACCEPTED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
+const DEFAULT_SHIFT_TEMPLATE_COLOR = '#3B82F6';
+const GENERATED_SHIFT_TEMPLATE_CODE_ATTEMPTS = 3;
 
 type ScheduleStatusValue = typeof SCHEDULE_STATUSES[number];
 
@@ -29,6 +32,18 @@ function optionalText(value: unknown, field: string, max = 5000): string | null 
     const normalized = value.trim();
     if (normalized.length > max) throw new HrScheduleError(`${field} excede ${max} caracteres`);
     return normalized || null;
+}
+
+function shiftTemplateColor(value: unknown, fallback = DEFAULT_SHIFT_TEMPLATE_COLOR): string {
+    if (value === undefined) return fallback;
+    if (typeof value !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(value.trim())) {
+        throw new HrScheduleError('color debe usar formato hexadecimal #RRGGBB');
+    }
+    return value.trim().toUpperCase();
+}
+
+function generatedShiftTemplateCode(): string {
+    return `SHIFT_${randomUUID().replace(/-/g, '').slice(0, 24).toUpperCase()}`;
 }
 
 function positiveInt(value: unknown, field: string): number {
@@ -108,6 +123,19 @@ function nonNegativeInt(value: unknown, field: string, fallback = 0): number {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 0) throw new HrScheduleError(`${field} debe ser un entero mayor o igual a cero`);
     return parsed;
+}
+
+function requiredNonNegativeInt(value: unknown, field: string): number {
+    if (value === undefined || value === null || value === '') {
+        throw new HrScheduleError(`${field} es requerido`);
+    }
+    return nonNegativeInt(value, field);
+}
+
+function optionalBoolean(value: unknown, field: string, fallback: boolean): boolean {
+    if (value === undefined) return fallback;
+    if (typeof value !== 'boolean') throw new HrScheduleError(`${field} debe ser booleano`);
+    return value;
 }
 
 function optionalId(value: unknown, field: string): number | null | undefined {
@@ -288,7 +316,11 @@ export class ShiftTemplateService {
     static async list(companyId: number, filters: { branchId?: number; active?: boolean } = {}, scopeBranchId?: number) {
         const branchId = scopeBranchId || filters.branchId;
         const templates = await prisma.shiftTemplate.findMany({
-            where: { companyId, ...(branchId ? { branchId } : {}), ...(filters.active !== undefined ? { active: filters.active } : {}) },
+            where: {
+                companyId,
+                ...(branchId ? { OR: [{ branchId: null }, { branchId }] } : {}),
+                ...(filters.active !== undefined ? { active: filters.active } : {}),
+            },
             include: templateInclude,
             orderBy: [{ active: 'desc' }, { name: 'asc' }],
         });
@@ -297,7 +329,11 @@ export class ShiftTemplateService {
 
     static async getById(id: number, companyId: number, scopeBranchId?: number) {
         const template = await prisma.shiftTemplate.findFirst({
-            where: { id, companyId, ...(scopeBranchId ? { branchId: scopeBranchId } : {}) },
+            where: {
+                id,
+                companyId,
+                ...(scopeBranchId ? { OR: [{ branchId: null }, { branchId: scopeBranchId }] } : {}),
+            },
             include: templateInclude,
         });
         if (!template) throw new HrScheduleError('Plantilla de turno no encontrada', 404);
@@ -305,20 +341,31 @@ export class ShiftTemplateService {
     }
 
     private static async normalize(companyId: number, input: Record<string, unknown>, existing?: {
-        branchId: number; jobPositionId: number | null; startMinute: number; endMinute: number;
-        breakMinutes: number; paidBreak: boolean; name: string; code: string; notes: string | null;
+        branchId: number | null; jobPositionId: number | null; startMinute: number; endMinute: number;
+        breakMinutes: number; paidBreak: boolean; name: string; code: string; color: string;
+        timezone: string | null; notes: string | null;
     }, scopeBranchId?: number) {
-        const branchId = input.branchId !== undefined ? positiveInt(input.branchId, 'branchId') : existing?.branchId;
-        if (!branchId) throw new HrScheduleError('branchId es requerido');
-        assertScopedBranch(branchId, scopeBranchId);
-        const branch = await prisma.branch.findFirst({
-            where: { id: branchId, companyId, status: 'ACTIVE' },
-            select: { id: true, timezone: true },
-        });
-        if (!branch) throw new HrScheduleError('Sucursal activa no encontrada en la empresa', 404);
+        let branchId = input.branchId !== undefined
+            ? optionalId(input.branchId, 'branchId')
+            : existing?.branchId;
+        if (!existing && branchId === undefined) branchId = scopeBranchId ?? null;
+        if (branchId === undefined) branchId = null;
+        if (scopeBranchId) {
+            if (branchId === null) branchId = scopeBranchId;
+            assertScopedBranch(branchId, scopeBranchId);
+        }
+        let timezone: string | null = null;
+        if (branchId !== null) {
+            const branch = await prisma.branch.findFirst({
+                where: { id: branchId, companyId, status: 'ACTIVE' },
+                select: { id: true, timezone: true },
+            });
+            if (!branch) throw new HrScheduleError('Sucursal activa no encontrada en la empresa', 404);
+            timezone = branch.timezone;
+        }
         const jobPositionId = input.jobPositionId !== undefined
             ? optionalId(input.jobPositionId, 'jobPositionId')
-            : existing?.jobPositionId;
+            : existing?.jobPositionId ?? null;
         if (jobPositionId && !await prisma.jobPosition.findFirst({ where: { id: jobPositionId, companyId, active: true }, select: { id: true } })) {
             throw new HrScheduleError('Puesto activo no encontrado en la empresa', 404);
         }
@@ -334,37 +381,140 @@ export class ShiftTemplateService {
         return {
             branchId, jobPositionId,
             name: input.name !== undefined ? requiredText(input.name, 'name', 100) : existing?.name || '',
-            code: input.code !== undefined ? requiredText(input.code, 'code', 30).toUpperCase() : existing?.code || '',
+            code: input.code !== undefined ? requiredText(input.code, 'code', 30).toUpperCase() : existing?.code,
+            color: shiftTemplateColor(input.color, existing?.color),
             startMinute, endMinute, breakMinutes,
-            paidBreak: input.paidBreak !== undefined ? Boolean(input.paidBreak) : existing?.paidBreak || false,
-            timezone: branch.timezone,
+            paidBreak: optionalBoolean(input.paidBreak, 'paidBreak', existing?.paidBreak ?? false),
+            timezone,
             notes: input.notes !== undefined ? optionalText(input.notes, 'notes') : existing?.notes,
         };
     }
 
     static async create(companyId: number, input: Record<string, unknown>, actorUserId: number, scopeBranchId?: number) {
         const data = await this.normalize(companyId, input, undefined, scopeBranchId);
-        const template = await prisma.$transaction(async (tx) => {
-            const created = await tx.shiftTemplate.create({ data: { companyId, ...data } });
-            await AuditLogService.log({
-                companyId, userId: actorUserId, entityType: 'ShiftTemplate', entityId: created.id,
-                action: 'CREATE', details: { code: created.code, branchId: created.branchId },
-            }, tx);
-            return created;
-        });
-        return mapTemplate(template);
+        const active = optionalBoolean(input.active, 'active', true);
+        const explicitCode = data.code;
+        for (let attempt = 1; attempt <= GENERATED_SHIFT_TEMPLATE_CODE_ATTEMPTS; attempt += 1) {
+            const code = explicitCode || generatedShiftTemplateCode();
+            try {
+                const template = await serializableTransaction(async (tx) => {
+                    const created = await tx.shiftTemplate.create({
+                        data: { companyId, ...data, code, active },
+                    });
+                    await AuditLogService.log({
+                        companyId, userId: actorUserId, entityType: 'ShiftTemplate', entityId: created.id,
+                        action: 'CREATE', details: {
+                            code: created.code, branchId: created.branchId, color: created.color, revision: created.revision,
+                            scope: created.branchId === null ? 'COMPANY' : 'BRANCH',
+                        },
+                    }, tx);
+                    return created;
+                });
+                return mapTemplate(template);
+            } catch (error) {
+                if (!isPrismaConflict(error, 'P2002')) throw error;
+                if (explicitCode) throw new HrScheduleError('El código de plantilla ya existe en la empresa', 409);
+                if (attempt === GENERATED_SHIFT_TEMPLATE_CODE_ATTEMPTS) {
+                    throw new HrScheduleError('No fue posible reservar un código interno único para la plantilla', 409);
+                }
+            }
+        }
+        throw new HrScheduleError('No fue posible crear la plantilla', 409);
     }
 
     static async update(id: number, companyId: number, input: Record<string, unknown>, actorUserId: number, scopeBranchId?: number) {
         const existing = await this.getById(id, companyId, scopeBranchId);
+        if (scopeBranchId && existing.branchId === null) {
+            throw new HrScheduleError('Solo un administrador con alcance de empresa puede modificar una plantilla global', 403);
+        }
+        const expectedRevision = requiredNonNegativeInt(input.expectedRevision, 'expectedRevision');
+        const active = optionalBoolean(input.active, 'active', existing.active);
+        const statusOnlyUpdate = input.active !== undefined
+            && Object.keys(input).every((field) => field === 'active' || field === 'expectedRevision');
+        if (statusOnlyUpdate && active === existing.active) {
+            return existing;
+        }
+        if (expectedRevision !== existing.revision) {
+            throw new HrScheduleError('La plantilla fue modificada por otro usuario', 409);
+        }
         const data = await this.normalize(companyId, input, existing, scopeBranchId);
-        const active = input.active !== undefined ? Boolean(input.active) : existing.active;
-        const template = await prisma.$transaction(async (tx) => {
-            const updated = await tx.shiftTemplate.update({ where: { id }, data: { ...data, active } });
+        const template = await serializableTransaction(async (tx) => {
+            const draftUsage = await tx.scheduledShift.findFirst({
+                where: { companyId, shiftTemplateId: id, schedule: { status: 'DRAFT' } },
+                select: { id: true, scheduleId: true },
+            });
+            if (draftUsage) {
+                throw new HrScheduleError(
+                    `La plantilla se usa en la agenda borrador ${draftUsage.scheduleId}; reemplácela antes de editarla`,
+                    409,
+                );
+            }
+            const claimed = await tx.shiftTemplate.updateMany({
+                where: { id, companyId, revision: expectedRevision },
+                data: { ...data, active, revision: expectedRevision + 1 },
+            });
+            if (claimed.count !== 1) throw new HrScheduleError('La plantilla fue modificada por otro usuario', 409);
             await AuditLogService.log({
                 companyId, userId: actorUserId, entityType: 'ShiftTemplate', entityId: id,
-                action: 'UPDATE', details: { fields: Object.keys(input) },
+                action: 'UPDATE', details: {
+                    fields: Object.keys(input).filter((field) => field !== 'expectedRevision'),
+                    fromRevision: expectedRevision,
+                    toRevision: expectedRevision + 1,
+                },
             }, tx);
+            const updated = await tx.shiftTemplate.findFirst({ where: { id, companyId } });
+            if (!updated) throw new HrScheduleError('Plantilla de turno no encontrada', 404);
+            return updated;
+        });
+        return mapTemplate(template);
+    }
+
+    static async remove(
+        id: number,
+        companyId: number,
+        expectedRevisionInput: unknown,
+        actorUserId: number,
+        scopeBranchId?: number,
+    ) {
+        const existing = await this.getById(id, companyId, scopeBranchId);
+        if (scopeBranchId && existing.branchId === null) {
+            throw new HrScheduleError('Solo un administrador con alcance de empresa puede eliminar una plantilla global', 403);
+        }
+        if (!existing.active) return existing;
+        const expectedRevision = requiredNonNegativeInt(expectedRevisionInput, 'expectedRevision');
+        if (expectedRevision !== existing.revision) {
+            throw new HrScheduleError('La plantilla fue modificada por otro usuario', 409);
+        }
+        const template = await serializableTransaction(async (tx) => {
+            const draftUsage = await tx.scheduledShift.findFirst({
+                where: { companyId, shiftTemplateId: id, schedule: { status: 'DRAFT' } },
+                select: { id: true, scheduleId: true },
+            });
+            if (draftUsage) {
+                throw new HrScheduleError(
+                    `La plantilla se usa en la agenda borrador ${draftUsage.scheduleId}; reemplácela antes de eliminarla`,
+                    409,
+                );
+            }
+            const claimed = await tx.shiftTemplate.updateMany({
+                where: { id, companyId, active: true, revision: expectedRevision },
+                data: { active: false, revision: expectedRevision + 1 },
+            });
+            if (claimed.count !== 1) {
+                const current = await tx.shiftTemplate.findFirst({ where: { id, companyId } });
+                if (current && !current.active) return current;
+                throw new HrScheduleError('La plantilla fue modificada por otro usuario', 409);
+            }
+            await AuditLogService.log({
+                companyId, userId: actorUserId, entityType: 'ShiftTemplate', entityId: id,
+                action: 'DELETE', details: {
+                    mode: 'SOFT_DELETE',
+                    fromRevision: expectedRevision,
+                    toRevision: expectedRevision + 1,
+                },
+            }, tx);
+            const updated = await tx.shiftTemplate.findFirst({ where: { id, companyId } });
+            if (!updated) throw new HrScheduleError('Plantilla de turno no encontrada', 404);
             return updated;
         });
         return mapTemplate(template);
@@ -379,7 +529,7 @@ const scheduleInclude = {
             user: { select: { id: true, name: true, username: true, accountType: true, status: true } },
             branch: { select: { id: true, name: true, code: true, timezone: true } },
             jobPosition: { select: { id: true, name: true, code: true } },
-            shiftTemplate: { select: { id: true, name: true, code: true } },
+            shiftTemplate: { select: { id: true, name: true, code: true, color: true } },
             assignmentOverride: {
                 select: {
                     id: true, assignedUserId: true, swapRequestId: true, effectiveAt: true,
@@ -442,6 +592,8 @@ interface NormalizedScheduledShift {
     branchId: number;
     jobPositionId: number | null;
     shiftTemplateId: number | null;
+    templateNameSnapshot: string | null;
+    templateColorSnapshot: string | null;
     startAt: Date;
     endAt: Date;
     timezoneSnapshot: string;
@@ -452,6 +604,87 @@ interface NormalizedScheduledShift {
 }
 
 export class WeeklyScheduleService {
+    static async listLookups(companyId: number, weekStart: string, scopeBranchId?: number) {
+        const week = parseWeekStart(weekStart);
+        const weekEnd = parseDateKey(addDateKey(week.key, 6), 'weekEnd').date;
+        const activeAssignment = {
+            effectiveFrom: { lte: weekEnd },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: week.date } }],
+            ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+        };
+        const operationalBranchAccess = scopeBranchId ? {
+            OR: [
+                { branchId: scopeBranchId },
+                { allowedBranches: { some: { branchId: scopeBranchId } } },
+            ],
+        } : {};
+
+        const [users, branches, positions] = await Promise.all([
+            prisma.user.findMany({
+                where: {
+                    companyId,
+                    status: 'ACTIVE',
+                    accountType: 'INTERNAL',
+                    ...operationalBranchAccess,
+                    employee: {
+                        is: {
+                            status: 'ACTIVE',
+                            branchAssignments: { some: activeAssignment },
+                        },
+                    },
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    username: true,
+                    status: true,
+                    accountType: true,
+                    branchId: true,
+                    branch: { select: { id: true, name: true, code: true, status: true } },
+                    allowedBranches: {
+                        select: {
+                            branch: { select: { id: true, name: true, code: true, status: true } },
+                        },
+                    },
+                    employee: {
+                        select: {
+                            id: true,
+                            employeeCode: true,
+                            status: true,
+                            jobPositionId: true,
+                            branchAssignments: {
+                                where: activeAssignment,
+                                select: {
+                                    branchId: true,
+                                    isPrimary: true,
+                                    effectiveFrom: true,
+                                    effectiveTo: true,
+                                },
+                            },
+                        },
+                    },
+                },
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            }),
+            prisma.branch.findMany({
+                where: {
+                    companyId,
+                    status: 'ACTIVE',
+                    ...(scopeBranchId ? { id: scopeBranchId } : {}),
+                },
+                select: { id: true, name: true, code: true, status: true },
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            }),
+            prisma.jobPosition.findMany({
+                where: { companyId, active: true },
+                select: { id: true, name: true, code: true, active: true, departmentId: true },
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            }),
+        ]);
+
+        return { users, branches, positions };
+    }
+
     static async list(companyId: number, filters: {
         weekStart?: string; status?: string; branchId?: number; userId?: number; jobPositionId?: number;
     } = {}, scopeBranchId?: number) {
@@ -563,13 +796,13 @@ export class WeeklyScheduleService {
         }
         const branchIds = Array.from(new Set(shifts.map((shift) => positiveInt(shift.branchId, 'branchId'))));
         const userIds = Array.from(new Set(shifts.map((shift) => positiveInt(shift.userId, 'userId'))));
-        const positionIds = Array.from(new Set(shifts.map((shift) => optionalId(shift.jobPositionId, 'jobPositionId')).filter((id): id is number => !!id)));
+        const requestedPositionIds = Array.from(new Set(shifts.map((shift) => optionalId(shift.jobPositionId, 'jobPositionId')).filter((id): id is number => !!id)));
         const templateIds = Array.from(new Set(shifts.map((shift) => optionalId(shift.shiftTemplateId, 'shiftTemplateId')).filter((id): id is number => !!id)));
         branchIds.forEach((branchId) => assertScopedBranch(branchId, scopeBranchId));
         const weekEnd = addDateKey(weekStart, 6);
         const weekStartDate = parseDateKey(weekStart, 'weekStart').date;
         const weekEndDate = parseDateKey(weekEnd, 'weekEnd').date;
-        const [branches, users, positions, templates] = await Promise.all([
+        const [branches, users, templates] = await Promise.all([
             prisma.branch.findMany({ where: { companyId, id: { in: branchIds }, status: 'ACTIVE' }, select: { id: true, timezone: true } }),
             prisma.user.findMany({
                 where: {
@@ -582,6 +815,7 @@ export class WeeklyScheduleService {
                     allowedBranches: { select: { branchId: true } },
                     employee: {
                         select: {
+                            jobPositionId: true,
                             branchAssignments: {
                                 where: {
                                     effectiveFrom: { lte: weekEndDate },
@@ -593,9 +827,30 @@ export class WeeklyScheduleService {
                     },
                 },
             }),
-            prisma.jobPosition.findMany({ where: { companyId, id: { in: positionIds }, active: true }, select: { id: true } }),
-            prisma.shiftTemplate.findMany({ where: { companyId, id: { in: templateIds }, active: true }, select: { id: true, branchId: true } }),
+            prisma.shiftTemplate.findMany({
+                where: { companyId, id: { in: templateIds }, active: true },
+                select: {
+                    id: true,
+                    branchId: true,
+                    jobPositionId: true,
+                    name: true,
+                    color: true,
+                    startMinute: true,
+                    endMinute: true,
+                    breakMinutes: true,
+                    paidBreak: true,
+                    timezone: true,
+                },
+            }),
         ]);
+        const positionIds = Array.from(new Set([
+            ...requestedPositionIds,
+            ...templates.map((template) => template.jobPositionId).filter((id): id is number => id !== null),
+        ]));
+        const positions = await prisma.jobPosition.findMany({
+            where: { companyId, id: { in: positionIds }, active: true },
+            select: { id: true },
+        });
         if (branches.length !== branchIds.length) throw new HrScheduleError('Una o más sucursales no son válidas para la empresa', 404);
         if (users.length !== userIds.length) throw new HrScheduleError('Uno o más usuarios no son válidos para la empresa', 404);
         if (positions.length !== positionIds.length) throw new HrScheduleError('Uno o más puestos no son válidos para la empresa', 404);
@@ -611,17 +866,43 @@ export class WeeklyScheduleService {
             if (user.branchId !== branchId && !user.allowedBranches.some((entry) => entry.branchId === branchId)) {
                 throw new HrScheduleError(`El usuario ${userId} no está autorizado para la sucursal ${branchId}`, 409);
             }
-            const jobPositionId = optionalId(shift.jobPositionId, 'jobPositionId') || null;
             const shiftTemplateId = optionalId(shift.shiftTemplateId, 'shiftTemplateId') || null;
-            if (shiftTemplateId && templateMap.get(shiftTemplateId)?.branchId !== branchId) {
+            const template = shiftTemplateId ? templateMap.get(shiftTemplateId) : undefined;
+            if (template && template.branchId !== null && template.branchId !== branchId) {
                 throw new HrScheduleError('La plantilla seleccionada pertenece a otra sucursal');
             }
+            const requestedJobPositionId = optionalId(shift.jobPositionId, 'jobPositionId') || null;
+            if (template?.jobPositionId && requestedJobPositionId && template.jobPositionId !== requestedJobPositionId) {
+                throw new HrScheduleError('La plantilla seleccionada pertenece a otro puesto');
+            }
+            if (template?.jobPositionId && user.employee?.jobPositionId !== template.jobPositionId) {
+                throw new HrScheduleError(`La plantilla seleccionada no corresponde al puesto del empleado ${userId}`, 409);
+            }
+            const jobPositionId = template?.jobPositionId || requestedJobPositionId;
             const hasLocal = shift.date !== undefined || shift.startTime !== undefined || shift.endTime !== undefined;
             const hasInstant = shift.startAt !== undefined || shift.endAt !== undefined;
             if (hasLocal && hasInstant) throw new HrScheduleError('Use date/startTime/endTime o startAt/endAt, no ambos');
             let startAt: Date;
             let endAt: Date;
-            if (hasLocal) {
+            if (template) {
+                if (hasInstant) {
+                    throw new HrScheduleError('Al usar shiftTemplateId envíe date; las horas se derivan de la plantilla');
+                }
+                const dateKey = parseDateKey(shift.date, 'date').key;
+                if (shift.startTime !== undefined && parseTimeMinute(shift.startTime, 'startTime') !== template.startMinute) {
+                    throw new HrScheduleError('startTime no coincide con la plantilla seleccionada');
+                }
+                if (shift.endTime !== undefined && parseTimeMinute(shift.endTime, 'endTime') !== template.endMinute) {
+                    throw new HrScheduleError('endTime no coincide con la plantilla seleccionada');
+                }
+                startAt = localDateTime(dateKey, template.startMinute, branch.timezone);
+                endAt = localDateTime(
+                    dateKey,
+                    template.endMinute,
+                    branch.timezone,
+                    template.endMinute <= template.startMinute ? 1 : 0,
+                );
+            } else if (hasLocal) {
                 const dateKey = parseDateKey(shift.date, 'date').key;
                 const startMinute = parseTimeMinute(shift.startTime, 'startTime');
                 const endMinute = parseTimeMinute(shift.endTime, 'endTime');
@@ -645,14 +926,24 @@ export class WeeklyScheduleService {
                     409,
                 );
             }
-            const breakMinutes = nonNegativeInt(shift.breakMinutes, 'breakMinutes');
+            if (template && shift.breakMinutes !== undefined
+                && nonNegativeInt(shift.breakMinutes, 'breakMinutes') !== template.breakMinutes) {
+                throw new HrScheduleError('breakMinutes no coincide con la plantilla seleccionada');
+            }
+            if (template && shift.paidBreak !== undefined && shift.paidBreak !== template.paidBreak) {
+                throw new HrScheduleError('paidBreak no coincide con la plantilla seleccionada');
+            }
+            const breakMinutes = template?.breakMinutes ?? nonNegativeInt(shift.breakMinutes, 'breakMinutes');
             if (breakMinutes >= durationMinutes) throw new HrScheduleError('El descanso debe ser menor que la duración del turno');
             const status = shift.status || 'SCHEDULED';
             if (status !== 'SCHEDULED' && status !== 'CANCELLED') throw new HrScheduleError('Estado de turno inválido');
             return {
                 companyId, scheduleId, userId, branchId, jobPositionId, shiftTemplateId,
+                templateNameSnapshot: template?.name || null,
+                templateColorSnapshot: template?.color || null,
                 startAt, endAt, timezoneSnapshot: branch.timezone, breakMinutes,
-                paidBreak: shift.paidBreak ?? false, notes: optionalText(shift.notes, 'notes') || null, status,
+                paidBreak: template?.paidBreak ?? shift.paidBreak ?? false,
+                notes: optionalText(shift.notes, 'notes') || null, status,
             };
         });
         assertNoShiftOverlaps(normalized);
@@ -701,19 +992,28 @@ export class WeeklyScheduleService {
         const target = parseWeekStart(targetWeekStart);
         const sourceDate = source.weekStart;
         const dayDelta = Math.round((target.date.getTime() - sourceDate.getTime()) / 86400000);
-        const copiedShifts = await this.normalizeShifts(
+        const sourceShifts = source.shifts.map((shift) => shift as typeof shift & {
+            originalUserId: number;
+            date: string;
+            startTime: string;
+            endTime: string;
+            templateNameSnapshot?: string | null;
+            templateColorSnapshot?: string | null;
+            shiftTemplate?: { name: string; color: string } | null;
+        });
+        const normalizedCopies = await this.normalizeShifts(
             companyId,
             0,
             target.key,
-            source.shifts.map((shift) => {
-                const mapped = shift as typeof shift & {
-                    originalUserId: number; date: string; startTime: string; endTime: string;
-                };
+            sourceShifts.map((mapped) => {
                 return {
                     userId: mapped.originalUserId,
                     branchId: mapped.branchId,
                     jobPositionId: mapped.jobPositionId,
-                    shiftTemplateId: mapped.shiftTemplateId,
+                    // A copied week preserves the effective historical shift as
+                    // a custom snapshot. It must not be reinterpreted through a
+                    // template that may now be edited or inactive.
+                    shiftTemplateId: null,
                     date: addDateKey(mapped.date, dayDelta),
                     startTime: mapped.startTime,
                     endTime: mapped.endTime,
@@ -724,6 +1024,15 @@ export class WeeklyScheduleService {
                 };
             }),
         );
+        const copiedShifts = normalizedCopies.map((shift, index) => ({
+            ...shift,
+            templateNameSnapshot: sourceShifts[index].templateNameSnapshot
+                || sourceShifts[index].shiftTemplate?.name
+                || null,
+            templateColorSnapshot: sourceShifts[index].templateColorSnapshot
+                || sourceShifts[index].shiftTemplate?.color
+                || null,
+        }));
         const [latest, currentPublished] = await Promise.all([
             prisma.weeklySchedule.findFirst({ where: { companyId, weekStart: target.date }, orderBy: { version: 'desc' }, select: { version: true } }),
             prisma.weeklySchedule.findFirst({ where: { companyId, weekStart: target.date, status: 'PUBLISHED' }, select: { id: true } }),
@@ -744,7 +1053,11 @@ export class WeeklyScheduleService {
             }
             await AuditLogService.log({
                 companyId, userId: actorUserId, entityType: 'WeeklySchedule', entityId: draft.id,
-                action: 'CREATE', details: { copiedFrom: sourceId, targetWeekStart: target.key },
+                action: 'CREATE', details: {
+                    copiedFrom: sourceId,
+                    targetWeekStart: target.key,
+                    templateSnapshotsPreserved: copiedShifts.filter((shift) => shift.templateNameSnapshot).length,
+                },
             }, tx);
             return draft;
         });
@@ -951,6 +1264,52 @@ export class WeeklyScheduleService {
             publishedAt: schedule.publishedAt,
             acknowledgedAt: schedule.acknowledgements.find((entry) => entry.userId === userId)?.acknowledgedAt || null,
             shifts: effective.sort((left, right) => left.startAt.getTime() - right.startAt.getTime()),
+        };
+    }
+
+    static async getTeamSchedule(
+        companyId: number,
+        viewerUserId: number,
+        weekStart: string,
+        scopeBranchId?: number,
+    ) {
+        await ensureSchedulableUser(companyId, viewerUserId);
+        const week = parseWeekStart(weekStart);
+        const schedule = await prisma.weeklySchedule.findFirst({
+            where: { companyId, weekStart: week.date, status: 'PUBLISHED' },
+            include: {
+                ...scheduleInclude,
+                shifts: {
+                    ...scheduleInclude.shifts,
+                    where: {
+                        status: 'SCHEDULED',
+                        ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+                    },
+                },
+            },
+        });
+        if (!schedule) return null;
+
+        const mapped = mapSchedule(schedule);
+        const shifts = mapped.shifts
+            .filter((shift) =>
+                shift.status === 'SCHEDULED' &&
+                (!scopeBranchId || shift.branchId === scopeBranchId)
+            )
+            .sort((left, right) => left.startAt.getTime() - right.startAt.getTime());
+        const viewerHasShift = shifts.some((shift) => shift.userId === viewerUserId);
+
+        return {
+            id: schedule.id,
+            weekStart: schedule.weekStart,
+            version: schedule.version,
+            revision: schedule.revision,
+            status: schedule.status,
+            publishedAt: schedule.publishedAt,
+            viewerUserId,
+            viewerHasShift,
+            acknowledgedAt: schedule.acknowledgements.find((entry) => entry.userId === viewerUserId)?.acknowledgedAt || null,
+            shifts,
         };
     }
 }

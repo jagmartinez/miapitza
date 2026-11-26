@@ -1,0 +1,19 @@
+*.sh text eol=lf
+server/prisma/migrations/**/migration.sql text eol=lf
+# These legacy migrations were also registered with CRLF checksums.
+server/prisma/migrations/20260513_add_unit_conversion_system/migration.sql text eol=crlf
+server/prisma/migrations/20260515_add_category_prefix_sales_channel/migration.sql text eol=crlf
+server/prisma/migrations/20260516_add_pedidosya_integration/migration.sql text eol=crlf
+# These eight migrations were first applied in production from the Windows
+# release artifact; keep their registered bytes stable for future audits.
+server/prisma/migrations/20260722_authoritative_session_security/migration.sql text eol=crlf
+server/prisma/migrations/20260722_cash_close_and_atomic_audit_integrity/migration.sql text eol=crlf
+server/prisma/migrations/20260723_distributed_lockout_file_cleanup_outbox/migration.sql text eol=crlf
+server/prisma/migrations/20260723_legacy_table_consolidation_review/migration.sql text eol=crlf
+server/prisma/migrations/20260723_payment_settlement_warehouse/migration.sql text eol=crlf
+server/prisma/migrations/20260723_schema_contract_alignment/migration.sql text eol=crlf
+server/prisma/migrations/20260723_storage_identity_readiness/migration.sql text eol=crlf
+server/prisma/migrations/20260723_table_consolidation_counterflow/migration.sql text eol=crlf
+
+mobile/android/gradlew text eol=lf
+mobile/android/gradlew.bat text eol=crlf

@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { suppliersAPI, settingsAPI } from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { useAuth } from '../hooks/useAuth';
@@ -68,7 +70,7 @@ export default function Suppliers() {
             const res = await suppliersAPI.getPriceHistory(supplier.id);
             setPriceHistory(res.data.data || []);
         } catch (err) {
-            console.error('Error loading price history:', err);
+            notifyError(err, 'No se pudo cargar el historial de precios');
         } finally {
             setPriceHistoryLoading(false);
         }
@@ -78,7 +80,7 @@ export default function Suppliers() {
         loadSuppliers();
         settingsAPI.getAll()
             .then((res) => setSettings(res.data.data || {}))
-            .catch((err) => console.error('Error loading settings:', err));
+            .catch((err) => notifyError(err, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' }));
     }, []);
 
     const loadSuppliers = async () => {
@@ -86,7 +88,7 @@ export default function Suppliers() {
             const res = await suppliersAPI.getAll();
             setSuppliers(res.data.data);
         } catch (error) {
-            console.error('Error loading suppliers:', error);
+            notifyError(error, 'No se pudieron cargar los proveedores');
         } finally {
             setLoading(false);
         }
@@ -135,7 +137,7 @@ export default function Suppliers() {
             loadSuppliers();
         } catch (error) {
             console.error('Error saving supplier:', error);
-            showError('Error al guardar proveedor');
+            showError(getApiErrorMessage(error, 'Error al guardar proveedor'));
         } finally {
             setSaving(false);
         }
@@ -149,7 +151,7 @@ export default function Suppliers() {
             loadSuppliers();
         } catch (error) {
             console.error('Error deleting supplier:', error);
-            showError('Error al eliminar proveedor');
+            showError(getApiErrorMessage(error, 'Error al eliminar proveedor'));
         }
     };
 

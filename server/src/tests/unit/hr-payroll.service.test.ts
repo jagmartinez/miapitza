@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import {
     allowedPayrollActions,
     assertAguinaldoDependencyFresh,
+    assertPayFrequencyConfigured,
     assertPayrollTransitionAllowed,
     assertRuleConfigurationMutable,
     assertRuleMetadataEditable,
@@ -16,8 +17,15 @@ import {
     reconcilePublishedShiftSummaries,
     normalizeFullCoverageSalary,
     ordinaryMinutesExcludingApprovedOvertime,
+    negativeNetByUser,
     paidReversalInput,
     validateLegalConfiguration,
+    payableOrdinaryMinutes,
+    unresolvedCandidateOvertime,
+    holidayForSummary,
+    holidayWorkedPremium,
+    employmentDatesMatchSnapshot,
+    DEFAULT_HOLIDAY_WORKED_MULTIPLIER,
 } from '../../services/hr-payroll.service';
 import {
     calculateStatutoryPayroll,
@@ -215,6 +223,36 @@ describe('HR payroll safety and state machine', () => {
         expect(normalized.statutory.incomeTax.annualPeriods.FORTNIGHTLY).toBe(26);
         expect(() => validateLegalConfiguration(oldV4, { requireCurrentSchema: true })).toThrow('configuración legal validada');
     });
+    it('requires explicit FORTNIGHTLY parameters on the calculation path even though history reads infer them', () => {
+        const oldV4 = {
+            ...legalConfiguration,
+            regular: { ...legalConfiguration.regular, minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', MONTHLY: '9600' } },
+        };
+        expect(() => assertPayFrequencyConfigured(oldV4, 'BIWEEKLY')).not.toThrow();
+        expect(() => assertPayFrequencyConfigured(oldV4, 'FORTNIGHTLY')).toThrow(expect.objectContaining({ code: 'HR_PAYROLL_LEGAL_CONFIGURATION_REQUIRED' }));
+        expect(() => assertPayFrequencyConfigured(legalConfiguration, 'FORTNIGHTLY')).not.toThrow();
+    });
+
+    it('detects a negative net per employee even when the run aggregate is positive', () => {
+        const negative = negativeNetByUser([
+            { userId: 1, type: 'INCOME', _sum: { amount: new Prisma.Decimal('1000') } },
+            { userId: 1, type: 'DEDUCTION', _sum: { amount: new Prisma.Decimal('1080.50') } },
+            { userId: 2, type: 'INCOME', _sum: { amount: new Prisma.Decimal('5000') } },
+            { userId: 2, type: 'DEDUCTION', _sum: { amount: new Prisma.Decimal('100') } },
+        ]);
+        expect(negative).toEqual([{ userId: 1, net: new Prisma.Decimal('-80.5') }]);
+        const service = fs.readFileSync(path.join(__dirname, '../../services/hr-payroll.service.ts'), 'utf8');
+        expect(service).toContain('await syncNegativeNetAnomalies(tx, companyId, runId)');
+        expect(service).not.toContain("if (net.isNegative()) await addAnomaly");
+    });
+
+    it('gives payroll interactive transactions an explicit timeout', () => {
+        const service = fs.readFileSync(path.join(__dirname, '../../services/hr-payroll.service.ts'), 'utf8');
+        expect(service).toContain('const PAYROLL_TRANSACTION_TIMEOUTS = { maxWait: 10_000, timeout: 120_000 }');
+        expect(service).toContain('isolationLevel: Prisma.TransactionIsolationLevel.Serializable, ...PAYROLL_TRANSACTION_TIMEOUTS');
+        expect(service).toContain('revalidateFrozenSources(tx, companyId, id), PAYROLL_TRANSACTION_TIMEOUTS)');
+    });
+
     it('rejects duplicate payment concept codes', () => {
         const ambiguous = {
             ...legalConfiguration,
@@ -283,11 +321,13 @@ describe('HR payroll safety and state machine', () => {
             date: new Date(`${shift.localDate}T00:00:00.000Z`), branchId: 4, scopeKey: 'BRANCH:4',
             scheduledMinutes: 480, ordinaryMinutes: 480, approvedOvertimeMinutes: 0,
         }));
-        expect(reconcilePublishedShiftSummaries(shifts, summaries)).toEqual({
-            expectedScopeCount: 21, incompleteScopes: [], fullScheduledAttendance: true,
+        expect(reconcilePublishedShiftSummaries(shifts, summaries)).toMatchObject({
+            expectedScopeCount: 21, incompleteScopes: [], fullScheduledAttendance: true, unworkedScheduledMinutes: 0, holidayExcusedMinutes: 0,
         });
         const subset = reconcilePublishedShiftSummaries(shifts, summaries.slice(0, 20));
         expect(subset.incompleteScopes).toEqual(['2026-01-21:BRANCH:4']);
+        // The missing day counts its whole published shift as unworked.
+        expect(subset.unworkedScheduledMinutes).toBe(480);
         expect(subset.fullScheduledAttendance).toBe(false);
         const zero = reconcilePublishedShiftSummaries(shifts, [
             { ...summaries[0], scheduledMinutes: 0, ordinaryMinutes: 0 }, ...summaries.slice(1),
@@ -919,5 +959,61 @@ describe('HR payroll persistence and route contract', () => {
         expect(routes).toContain("Cache-Control', 'no-store");
         expect(service).toContain('trace: selfSafe ? []');
         expect(controller).toContain('selfSafe: true');
+    });
+});
+
+describe('HR payroll unapproved overtime, holiday premium and frozen employment dates', () => {
+    const utc = (value: string) => new Date(`${value}T00:00:00.000Z`);
+
+    it('caps paid ordinary minutes at the published schedule so unapproved excess is never paid', () => {
+        expect(payableOrdinaryMinutes({ scheduledMinutes: 480, ordinaryMinutes: 600, approvedOvertimeMinutes: 0 })).toBe(480);
+        expect(payableOrdinaryMinutes({ scheduledMinutes: 480, ordinaryMinutes: 600, approvedOvertimeMinutes: 60 })).toBe(480);
+        expect(payableOrdinaryMinutes({ scheduledMinutes: 480, ordinaryMinutes: 600, approvedOvertimeMinutes: 120 })).toBe(480);
+        expect(payableOrdinaryMinutes({ scheduledMinutes: 480, ordinaryMinutes: 420, approvedOvertimeMinutes: 0 })).toBe(420);
+        expect(payableOrdinaryMinutes({ scheduledMinutes: null, ordinaryMinutes: 300, approvedOvertimeMinutes: 0 })).toBe(300);
+    });
+
+    it('lists per-date candidate overtime that was neither approved nor rejected', () => {
+        const summaries = [
+            { id: 1, date: utc('2026-01-05'), candidateOvertimeMinutes: 90, approvedOvertimeMinutes: 0 },
+            { id: 2, date: utc('2026-01-06'), candidateOvertimeMinutes: 60, approvedOvertimeMinutes: 60 },
+            { id: 3, date: utc('2026-01-07'), candidateOvertimeMinutes: 45, approvedOvertimeMinutes: 0 },
+            { id: 4, date: utc('2026-01-08'), candidateOvertimeMinutes: 0, approvedOvertimeMinutes: 0 },
+        ];
+        expect(unresolvedCandidateOvertime(summaries, new Set([3]))).toEqual([{ date: '2026-01-05', minutes: 90 }]);
+        expect(unresolvedCandidateOvertime(summaries, new Set([1, 3]))).toEqual([]);
+    });
+
+    it('defaults the holiday multiplier to 2 and keeps an explicit value in the validated configuration', () => {
+        expect(validateLegalConfiguration(legalConfiguration).regular.holidayWorkedMultiplier).toBe(DEFAULT_HOLIDAY_WORKED_MULTIPLIER);
+        const explicit = validateLegalConfiguration({ ...legalConfiguration, regular: { ...legalConfiguration.regular, holidayWorkedMultiplier: '2.5' } }, { requireCurrentSchema: true });
+        expect(explicit.regular.holidayWorkedMultiplier).toBe('2.5');
+        expect(() => validateLegalConfiguration({ ...legalConfiguration, regular: { ...legalConfiguration.regular, holidayWorkedMultiplier: '0.5' } }))
+            .toThrow(expect.objectContaining({ code: 'HR_PAYROLL_LEGAL_CONFIGURATION_REQUIRED' }));
+    });
+
+    it('pays a worked national holiday at double through a separate +1x premium scoped by branch', () => {
+        const holidays = [
+            { id: 1, date: utc('2026-09-15'), branchId: null, name: 'Independencia' },
+            { id: 2, date: utc('2026-08-01'), branchId: 9, name: 'Fiesta local' },
+        ];
+        expect(holidayForSummary(holidays, { date: utc('2026-09-15'), branchId: 4 })?.id).toBe(1);
+        expect(holidayForSummary(holidays, { date: utc('2026-08-01'), branchId: 4 })).toBeNull();
+        expect(holidayForSummary(holidays, { date: utc('2026-08-01'), branchId: 9 })?.id).toBe(2);
+        const hourlyRate = new Prisma.Decimal('60').dividedBy(60);
+        // 480 minutes at C$60/h: ordinary C$480 + premium C$480 = double pay.
+        expect(holidayWorkedPremium(hourlyRate, 480, '2').toFixed(2)).toBe('480.00');
+        expect(holidayWorkedPremium(hourlyRate, 480, '1').toFixed(2)).toBe('0.00');
+    });
+
+    it('detects a hire or termination date edit that moves the frozen service window', () => {
+        const snapshot = {
+            coverageFrom: utc('2026-01-01'), coverageTo: utc('2026-01-31'),
+            sourceTrace: { hireDate: '2025-03-01', terminationDate: null, serviceFrom: '2026-01-01', serviceTo: '2026-01-31' },
+        };
+        expect(employmentDatesMatchSnapshot(snapshot, { hireDate: utc('2025-03-01'), terminationDate: null })).toBe(true);
+        expect(employmentDatesMatchSnapshot(snapshot, { hireDate: utc('2025-03-01'), terminationDate: utc('2026-02-10') })).toBe(true);
+        expect(employmentDatesMatchSnapshot(snapshot, { hireDate: utc('2025-03-01'), terminationDate: utc('2026-01-20') })).toBe(false);
+        expect(employmentDatesMatchSnapshot(snapshot, { hireDate: utc('2026-01-10'), terminationDate: null })).toBe(false);
     });
 });

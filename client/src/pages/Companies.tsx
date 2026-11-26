@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { companiesAPI } from '../services/api';
 import ViewToggle from '../components/ViewToggle';
 import { useViewMode } from '../hooks/useViewMode';
@@ -67,7 +69,7 @@ export default function Companies() {
             const response = await companiesAPI.getAll();
             setCompanies(response.data.data);
         } catch (error) {
-            console.error('Error loading companies:', error);
+            notifyError(error, 'No se pudieron cargar las empresas');
         } finally {
             setLoading(false);
         }
@@ -86,7 +88,7 @@ export default function Companies() {
             closeModal();
         } catch (error) {
             console.error('Error saving company:', error);
-            showError('Error al guardar la empresa');
+            showError(getApiErrorMessage(error, 'Error al guardar la empresa'));
         } finally {
             setSaving(false);
         }
@@ -97,7 +99,7 @@ export default function Companies() {
             await companiesAPI.update(company.id, { active: !company.active });
             loadCompanies();
         } catch (error) {
-            console.error('Error updating company status:', error);
+            notifyError(error, 'No se pudo cambiar el estado de la empresa');
         }
     };
 

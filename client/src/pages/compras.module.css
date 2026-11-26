@@ -152,3 +152,8 @@
 .num {
   font-variant-numeric: tabular-nums;
 }
+
+.cellStack { display: flex; flex-direction: column; min-width: 0; }
+
+/* Keep "C$ 12,345.67" on one line when a subtitle wraps on phones. */
+.nowrap { white-space: nowrap; }

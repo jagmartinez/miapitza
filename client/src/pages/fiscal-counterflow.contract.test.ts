@@ -15,10 +15,10 @@ describe('fiscal counterflow UI contracts', () => {
         expect(api).toContain("api.get('/invoices/cancellations', { params })");
     });
 
-    it('captures fiscal customer data before immutable invoice issuance', () => {
+    it('captures fiscal customer data before immutable prefactura issuance', () => {
         const pos = read('./POS.tsx');
         const updateIndex = pos.indexOf('await ordersAPI.updateFiscalCustomer(orderId');
-        const issueIndex = pos.indexOf('await invoicesAPI.issue(orderId)', updateIndex);
+        const issueIndex = pos.indexOf('await invoicesAPI.issuePreInvoice(orderId)', updateIndex);
 
         expect(updateIndex).toBeGreaterThan(-1);
         expect(issueIndex).toBeGreaterThan(updateIndex);
@@ -60,6 +60,11 @@ describe('fiscal counterflow UI contracts', () => {
         expect(orders).toContain("selectedOrder.invoiceFiscalStatus === 'CANCELLED'");
         expect(orders).toContain('downloadCreditNotePdf(order.id)');
         expect(orders).toContain('downloadCancellationPdf(order.id)');
-        expect(orders).toContain('!order.invoiceNumber && canCancel');
+        expect(orders).toContain('!order.invoiceNumber');
+        expect(orders).toContain('!order.preInvoicedAt');
+        expect(orders).toContain('const isWaiterWithoutAdministrativeRole = userRoleNames.includes');
+        expect(orders).toContain('order.items.some((item) => item.sentAt != null)');
+        expect(orders).toContain("order.invoiceNumber ? 'Descargar Factura' : 'Emitir Factura Original'");
+        expect(orders).toContain(': await invoicesAPI.issue(order.id)');
     });
 });

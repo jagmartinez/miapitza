@@ -3,6 +3,10 @@ import prisma from '../utils/prisma';
 import { CategoryService } from './category.service';
 import { UnitConversionService } from './unit-conversion.service';
 
+function normalizeCategoryName(name: string): string {
+    return name.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
 export class ProductImportService {
     static async generateTemplate(companyId: number): Promise<Buffer> {
         await CategoryService.ensureDefaultCategories(companyId);
@@ -116,10 +120,17 @@ export class ProductImportService {
             if (category) requestedCategories.add(category);
         });
 
-        const categoryMap = await CategoryService.ensureImportCategories(
-            companyId,
-            Array.from(requestedCategories)
-        );
+        // Validation is a dry run: it must not create categories. Unknown names
+        // are reported as "se creará" and only created by confirmImport().
+        const existingCategories = requestedCategories.size > 0
+            ? await prisma.category.findMany({ where: { companyId, active: true }, select: { id: true, name: true } })
+            : [];
+        const categoryMap = new Map<string, number>();
+        for (const existingCategory of existingCategories) {
+            categoryMap.set(existingCategory.name.toLowerCase(), existingCategory.id);
+            categoryMap.set(normalizeCategoryName(existingCategory.name), existingCategory.id);
+        }
+        const newCategories = new Set<string>();
 
         const VALID_TYPES = ['INGREDIENT', 'PRODUCT_FOR_SALE', 'BOTH', 'INTERMEDIATE', 'PACKAGING'];
         const VALID_STORAGE = ['PERISHABLE', 'FROZEN', 'NON_PERISHABLE'];
@@ -138,6 +149,7 @@ export class ProductImportService {
             isUpdate: boolean;
             existingProductId: number | null;
             categoryId: number | null;
+            newCategory: boolean;
             errors: string[];
             isValid: boolean;
         };
@@ -197,10 +209,14 @@ export class ProductImportService {
             }
 
             let categoryId: number | null = null;
+            let newCategory = false;
             if (category) {
-                categoryId = CategoryService.resolveCategoryId(categoryMap, category);
+                categoryId = categoryMap.get(category.toLowerCase())
+                    ?? categoryMap.get(normalizeCategoryName(category))
+                    ?? null;
                 if (!categoryId) {
-                    errors.push(`Categoría "${category}" no existe`);
+                    newCategory = true;
+                    newCategories.add(category);
                 }
             }
 
@@ -230,12 +246,110 @@ export class ProductImportService {
                 isUpdate,
                 existingProductId,
                 categoryId,
+                newCategory,
                 errors,
                 isValid,
             });
         });
 
-        return { items, summary };
+        return { items, summary: { ...summary, newCategories: Array.from(newCategories) } };
+    }
+
+    static readonly MAX_CONFIRM_ROWS = 5000;
+
+    private static async resolveConfirmItems(companyId: number, rawItems: unknown[]) {
+        if (!Array.isArray(rawItems) || rawItems.length === 0) throw new Error('No hay productos para importar');
+        if (rawItems.length > this.MAX_CONFIRM_ROWS) {
+            throw new Error(`Máximo ${this.MAX_CONFIRM_ROWS} productos por importación`);
+        }
+        const VALID_TYPES = ['INGREDIENT', 'PRODUCT_FOR_SALE', 'BOTH', 'INTERMEDIATE', 'PACKAGING'];
+        const VALID_STORAGE = ['PERISHABLE', 'FROZEN', 'NON_PERISHABLE'];
+        const text = (value: unknown, max: number, label: string, row: number): string => {
+            if (value === undefined || value === null) return '';
+            if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`Fila ${row}: ${label} inválido`);
+            const normalized = String(value).trim();
+            if (normalized.length > max) throw new Error(`Fila ${row}: ${label} demasiado largo`);
+            return normalized;
+        };
+        const amount = (value: unknown, label: string, row: number): number | null => {
+            if (value === undefined || value === null || value === '') return null;
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`Fila ${row}: ${label} debe ser un número >= 0`);
+            return parsed;
+        };
+
+        const seen = new Set<string>();
+        const normalized = rawItems.map((raw, index) => {
+            const row = index + 1;
+            if (!raw || typeof raw !== 'object') throw new Error(`Fila ${row}: datos inválidos`);
+            const item = raw as Record<string, unknown>;
+            const sku = text(item.sku, 100, 'SKU', row);
+            if (!sku) throw new Error(`Fila ${row}: SKU es requerido`);
+            const key = sku.toLowerCase();
+            if (seen.has(key)) throw new Error(`Fila ${row}: SKU "${sku}" duplicado`);
+            seen.add(key);
+            const type = text(item.type, 30, 'Tipo', row).toUpperCase();
+            if (type && !VALID_TYPES.includes(type)) throw new Error(`Fila ${row}: tipo inválido`);
+            const storageType = text(item.storageType, 30, 'Almacenamiento', row).toUpperCase();
+            if (storageType && !VALID_STORAGE.includes(storageType)) throw new Error(`Fila ${row}: almacenamiento inválido`);
+            const categoryName = text(item.category, 191, 'Categoría', row);
+            const categoryRaw = item.categoryId;
+            const categoryId = categoryRaw === undefined || categoryRaw === null || categoryRaw === ''
+                ? null
+                : Number(categoryRaw);
+            if (categoryId !== null && (!Number.isInteger(categoryId) || categoryId <= 0)) {
+                throw new Error(`Fila ${row}: categoría inválida`);
+            }
+            return {
+                row,
+                sku,
+                name: text(item.name, 191, 'Nombre', row),
+                unit: text(item.unit, 50, 'Unidad', row),
+                minStock: amount(item.minStock, 'Stock Mínimo', row),
+                cost: amount(item.cost, 'Costo', row),
+                price: amount(item.price, 'Precio', row),
+                type,
+                storageType,
+                categoryId,
+                categoryName,
+            };
+        });
+
+        const categoryIds = Array.from(new Set(normalized.map((item) => item.categoryId).filter((id): id is number => id !== null)));
+        if (categoryIds.length > 0) {
+            const owned = await prisma.category.findMany({ where: { id: { in: categoryIds }, companyId }, select: { id: true } });
+            const ownedIds = new Set(owned.map((category) => category.id));
+            const foreign = normalized.find((item) => item.categoryId !== null && !ownedIds.has(item.categoryId));
+            if (foreign) throw new Error(`Fila ${foreign.row}: la categoría no pertenece a la empresa`);
+        }
+
+        // Categories that validation reported as new are created here, at
+        // confirmation time, never during the dry-run validation.
+        const pendingCategoryNames = Array.from(new Set(
+            normalized.filter((item) => item.categoryId === null && item.categoryName).map((item) => item.categoryName)
+        ));
+        if (pendingCategoryNames.length > 0) {
+            const categoryMap = await CategoryService.ensureImportCategories(companyId, pendingCategoryNames);
+            for (const item of normalized) {
+                if (item.categoryId === null && item.categoryName) {
+                    item.categoryId = CategoryService.resolveCategoryId(categoryMap, item.categoryName);
+                }
+            }
+        }
+
+        const existing = await prisma.product.findMany({
+            where: { companyId, sku: { in: normalized.map((item) => item.sku) } },
+            select: { id: true, sku: true },
+        });
+        const existingBySku = new Map(existing.filter((p) => p.sku).map((p) => [p.sku!.toLowerCase(), p.id]));
+
+        return normalized.map((item) => {
+            const existingProductId = existingBySku.get(item.sku.toLowerCase()) ?? null;
+            if (existingProductId === null && (!item.name || !item.unit)) {
+                throw new Error(`Fila ${item.row}: nombre y unidad son requeridos para productos nuevos`);
+            }
+            return { ...item, isUpdate: existingProductId !== null, existingProductId };
+        });
     }
 
     static async confirmImport(companyId: number, items: Array<{
@@ -250,6 +364,7 @@ export class ProductImportService {
         isUpdate: boolean;
         existingProductId?: number | null;
         categoryId?: number | null;
+        category?: string | null;
     }>) {
         let created = 0;
         let updated = 0;
@@ -258,8 +373,13 @@ export class ProductImportService {
         // keeps the legacy 1:1 behavior until configured manually in "Conversiones".
         const autoConfigSkipped: Array<{ productId: number; unit: string; reason: string }> = [];
 
+        // The confirm payload comes from the client. Never trust its
+        // `existingProductId` / `categoryId` / `isUpdate`: re-resolve them inside
+        // the tenant so a forged row cannot overwrite another company's product.
+        const resolvedItems = await this.resolveConfirmItems(companyId, items);
+
         await prisma.$transaction(async (tx) => {
-            for (const item of items) {
+            for (const item of resolvedItems) {
                 let productId: number;
                 let legacyUnit = item.unit;
 

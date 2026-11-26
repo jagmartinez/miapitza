@@ -17,8 +17,10 @@ import { FormSection, FullScreenModal, PageHeader, AppSelect, Button } from '@/u
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
+import PendingBiometricEnrollmentsPanel from '../../components/hr/PendingBiometricEnrollmentsPanel';
 import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
 import {
+  MIN_LOCATION_ACCURACY_M,
   validateAttendanceDevice,
   validateAttendancePolicy,
   validateBiometricRevocation,
@@ -605,7 +607,7 @@ export default function AttendanceSettings() {
                   Precisión máxima GPS (m)
                   <input
                     type="number"
-                    min={1}
+                    min={MIN_LOCATION_ACCURACY_M}
                     max={5000}
                     step={1}
                     value={policy.maxLocationAccuracyM}
@@ -643,6 +645,8 @@ export default function AttendanceSettings() {
                   <input
                     value={policy.biometricConsentVersion}
                     maxLength={64}
+                    readOnly={Boolean(scopeBranchId)}
+                    title={scopeBranchId ? 'El consentimiento es único por empresa; cámbielo en la regla general' : undefined}
                     onChange={(event) =>
                       updatePolicyField('biometricConsentVersion', event.target.value)
                     }
@@ -745,6 +749,8 @@ export default function AttendanceSettings() {
               </div>
             )}
           </section>
+
+          <PendingBiometricEnrollmentsPanel online={online} branchId={scopeBranchId} />
 
           <div className="hr-settings-columns">
             <section className="hr-settings-card hr-provider-card" aria-labelledby="provider-health-title">

@@ -1,0 +1,229 @@
+/* KDS board. Tokens only; landscape tablet; horizontal row of equal-height cards. */
+.kitchen {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.kitchen-bar {
+    flex: none;
+    min-height: 52px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 16px;
+    background: var(--surface);
+    border-bottom: var(--hair) solid var(--line);
+}
+.kitchen-title { font-size: 16px; font-weight: 500; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; }
+.kitchen-queue { font-size: 16px; color: var(--muted); margin-left: -6px; }
+.kitchen-clock { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.kitchen-spacer { flex: 1; }
+/* Connection: neutral dot per mockup; colour only when degraded. */
+.kitchen-conn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.kitchen-conn i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.kitchen-conn.is-online i { background: #6E6F73; }
+.kitchen-conn.is-reconnecting i { background: var(--ready); }
+.kitchen-conn.is-offline i { background: var(--alert); }
+
+/* Muted text link in the header ("Recientes", sound). Padded to a 48dp target. */
+.kitchen-link {
+    min-height: 48px;
+    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 14px;
+}
+
+.kitchen-btn {
+    min-height: 48px;
+    padding: 0 16px;
+    border-radius: var(--radius-m);
+    border: var(--hair) solid var(--line-strong);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-weight: 500;
+}
+
+.kitchen-error {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(201, 107, 102, 0.12);
+    border-bottom: var(--hair) solid var(--alert);
+}
+.kitchen-msg { margin: 0; padding: 32px 16px; text-align: center; color: var(--muted); font-size: 18px; }
+
+.kitchen-row {
+    flex: 0 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+/* One surface, no border, no head band; equal height; button fixed at the foot. */
+.kitchen-card {
+    position: relative;
+    flex: 1 0 260px;
+    max-width: 420px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    background: var(--surface-2);
+    border-radius: var(--radius-l);
+    overflow: hidden;
+}
+/* Ready: thin amber ring (state cue only). */
+.kitchen-card.is-ready::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--ready);
+    pointer-events: none;
+}
+/* Delay: warning = amber top line + amber minutes; urgent = soft red line + red minutes. */
+.kitchen-card.time-warning { box-shadow: inset 0 2px 0 var(--ready); }
+.kitchen-card.time-warning .kitchen-card-min { color: var(--ready); }
+.kitchen-card.time-urgent { box-shadow: inset 0 2px 0 var(--alert); }
+.kitchen-card.time-urgent .kitchen-card-min { color: var(--alert); }
+
+.kitchen-card-head {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+    font-size: 18px;
+}
+.kitchen-card-table { font-size: 20px; font-weight: 500; }
+.kitchen-card-sep { color: var(--muted); }
+.kitchen-card-waiter { color: var(--text); font-size: 18px; }
+.kitchen-card-min { margin-left: auto; color: var(--muted); font-size: 18px; font-variant-numeric: tabular-nums; }
+.kitchen-card-badge { font-size: 12px; padding: 2px 8px; border-radius: var(--radius-s); background: var(--surface-3); color: var(--muted); }
+
+.kitchen-card-body { position: relative; flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.kitchen-card-body.has-more::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: linear-gradient(to bottom, transparent, var(--surface-2)); pointer-events: none; }
+.kitchen-card-more { position: absolute; z-index: 1; left: 0; right: 0; bottom: 4px; text-align: center; font-size: 14px; color: var(--text); pointer-events: none; }
+.kitchen-card-lines { flex: 0 1 auto; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; line-height: 1.5; }
+.kitchen-card-lines li { padding: 2px 0; }
+.kitchen-line-name { font-size: 18px; }
+.kitchen-card-lines li.is-void .kitchen-line-name { text-decoration: line-through; color: var(--muted); }
+.kitchen-line-void { text-decoration: none; display: inline-block; color: var(--alert); font-size: 14px; }
+.kitchen-line-mod { padding-left: 14px; color: var(--muted); font-size: 16px; }
+.kitchen-line-note { color: var(--ready); font-size: 16px; }
+
+.kitchen-card-foot { flex: none; margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+.kitchen-action {
+    width: 100%;
+    min-height: 60px;
+    border: 0;
+    border-radius: var(--radius-m);
+    background: var(--text);
+    color: var(--on-text);
+    font: inherit;
+    font-size: 18px;
+    font-weight: 500;
+}
+.kitchen-action:disabled { background: var(--surface-3); color: var(--muted); }
+.kitchen-noperm { font-size: 13px; color: var(--muted); text-align: center; }
+
+.kitchen-toasts {
+    /* Fixed-height band, always present: the card row never changes height when a toast appears. */
+    flex: none;
+    box-sizing: border-box;
+    position: relative;
+    align-self: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 56px 56px;
+    align-content: start;
+    gap: 6px;
+    height: 134px;
+    padding: 0 16px 12px;
+}
+.kitchen-toast {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    padding: 0 8px 0 16px;
+    border-radius: var(--radius-m);
+    background: var(--surface-2);
+    font-size: 16px;
+}
+.kitchen-toast.is-solo { grid-column: 1 / -1; }
+.kitchen-toast > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kitchen-toast-more {
+    position: absolute;
+    top: -16px;
+    right: 24px;
+    padding: 0 8px;
+    border-radius: var(--radius-s);
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 13px;
+}
+.kitchen-toast.is-failure { grid-column: 1 / -1; grid-row: 2; box-shadow: inset 0 0 0 1px var(--alert); }
+.kitchen-toast button {
+    min-height: 48px;
+    padding: 0 12px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-weight: 500;
+}
+
+/* Own overlay rules: this chunk must not depend on the waiter sheets.css. */
+.kds-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: var(--scrim, rgba(0, 0, 0, 0.55));
+}
+.kds-sheet {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 640px;
+    padding: 16px;
+    background: var(--surface, #151618);
+    color: var(--text, #E8E8E6);
+    border: var(--hair) solid var(--line, #26272A);
+    border-radius: 14px 14px 0 0;
+}
+.kitchen-recent { max-height: 80vh; overflow-y: auto; }
+.kitchen-recent-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.kitchen-recent ul { margin: 0; padding: 0; list-style: none; }
+.kitchen-recent li { display: flex; gap: 14px; padding: 10px 0; border-bottom: var(--hair) solid var(--divider); }
+.kitchen-recent li strong { min-width: 80px; font-weight: 500; }
+.kitchen-recent button { min-height: 48px; padding: 0 12px; border: 0; background: transparent; color: var(--muted); font: inherit; }
+
+.kitchen-exit-text { margin: 0 0 16px; font-size: 20px; }
+.kitchen-exit-actions { display: flex; gap: 12px; justify-content: flex-end; }

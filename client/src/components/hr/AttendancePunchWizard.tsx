@@ -11,7 +11,13 @@ import type {
     HrTodayAttendance,
 } from '../../types/hr-attendance';
 import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from './attendanceClient';
-import { ATTENDANCE_ACTION_LABELS, ATTENDANCE_DECISION_LABELS, checkClass, isChallengeExpired } from './attendanceRules';
+import {
+    ATTENDANCE_ACTION_LABELS,
+    ATTENDANCE_DECISION_LABELS,
+    checkClassForPolicy,
+    isChallengeExpired,
+    presentAttendanceChecks,
+} from './attendanceRules';
 import CameraCapture from './CameraCapture';
 import GeolocationCapture from './GeolocationCapture';
 
@@ -20,6 +26,7 @@ interface AttendancePunchWizardProps {
     today: HrTodayAttendance;
     onCompleted: (result: HrAttendancePunchResult) => void;
     onRequestCorrection?: () => void;
+    onViewSchedule?: () => void;
 }
 
 const ACTION_ICONS: Record<HrAttendanceAction, typeof LogIn> = {
@@ -36,19 +43,7 @@ const ACTION_HELP: Record<HrAttendanceAction, string> = {
     CHECK_OUT: 'Cierra la jornada que ya está abierta.',
 };
 
-const CHECK_LABELS: Record<string, string> = {
-    schedule: 'Horario',
-    geofence: 'Geocerca de la sucursal',
-    locationAccuracy: 'Precisión de ubicación',
-    locationFreshness: 'Vigencia de ubicación',
-    biometric: 'Reconocimiento facial',
-    sequence: 'Secuencia del marcaje',
-    device: 'Dispositivo',
-    branchAuthorization: 'Sucursal asignada',
-    branchStatus: 'Estado de la sucursal',
-};
-
-export default function AttendancePunchWizard({ policy, today, onCompleted, onRequestCorrection }: AttendancePunchWizardProps) {
+export default function AttendancePunchWizard({ policy, today, onCompleted, onRequestCorrection, onViewSchedule }: AttendancePunchWizardProps) {
     const [action, setAction] = useState<HrAttendanceAction | null>(null);
     const [challenge, setChallenge] = useState<HrAttendanceChallenge | null>(null);
     const [faceEvidence, setFaceEvidence] = useState<HrFaceCaptureEvidence | null>(null);
@@ -125,7 +120,17 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
     };
 
     if (result) {
-        const checks = Object.entries(result.checks).filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[1]));
+        const checks = presentAttendanceChecks(result.checks);
+        const issues = checks.filter(({ check }) => check.status === 'FAILED' || check.status === 'REVIEW');
+        const passedCount = checks.filter(({ check }) => check.status === 'PASSED').length;
+        const shownChecks = issues.length > 0 ? issues : checks.filter(({ check }) => check.status === 'PASSED');
+        const blockingCount = issues.filter(({ key, check }) => checkClassForPolicy(key, check, policy) === 'danger').length;
+        const reviewCount = issues.filter(({ key, check }) => checkClassForPolicy(key, check, policy) === 'warning').length;
+        const hasScheduleIssue = issues.some(({ key }) => key === 'schedule');
+        const supportCodes = Array.from(new Set([
+            result.reasonCode,
+            ...issues.map(({ check }) => check.reasonCode),
+        ].filter((code): code is string => Boolean(code))));
         const ResultIcon = result.decision === 'ACCEPTED'
             ? CheckCircle2
             : result.decision === 'REVIEW_REQUIRED'
@@ -133,23 +138,66 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                 : XCircle;
         return (
             <section className={`hr-punch-result ${result.decision.toLowerCase()}`} aria-live="polite">
-                <ResultIcon size={42} aria-hidden="true" />
-                <h2>{ATTENDANCE_DECISION_LABELS[result.decision]}</h2>
-                <p>{result.message}</p>
-                {result.reasonCode && <small>Referencia: <code>{result.reasonCode}</code></small>}
-                {checks.length > 0 && (
+                <div className="hr-punch-result-heading">
+                    <ResultIcon size={38} aria-hidden="true" />
+                    <div>
+                        <h2>{ATTENDANCE_DECISION_LABELS[result.decision]}</h2>
+                        <p>{result.decision === 'REJECTED'
+                            ? blockingCount > 0
+                                ? `${blockingCount} validación${blockingCount === 1 ? '' : 'es'} ${blockingCount === 1 ? 'impidió' : 'impidieron'} registrar el marcaje${reviewCount ? ` y ${reviewCount} novedad${reviewCount === 1 ? '' : 'es'} quedó para revisión` : ''}.`
+                                : result.message
+                            : result.message}</p>
+                    </div>
+                </div>
+                {shownChecks.length > 0 && (
                     <dl className="hr-attendance-checks">
-                        {checks.map(([name, check]) => (
-                            <div key={name} className={checkClass(check)}><dt>{CHECK_LABELS[name] ?? name}</dt><dd>{check.message}</dd></div>
-                        ))}
+                        {shownChecks.map(({ key, label, check, guidance, measurement }) => {
+                            const visualClass = checkClassForPolicy(key, check, policy);
+                            return (
+                                <div key={key} className={visualClass}>
+                                    <dt><span>{label}</span>{visualClass === 'danger' && <small>Bloquea</small>}{visualClass === 'warning' && <small>Revisión</small>}</dt>
+                                    <dd>
+                                        <strong>{check.message}</strong>
+                                        {guidance && <span>{guidance}</span>}
+                                        {measurement && <small>{measurement}</small>}
+                                    </dd>
+                                </div>
+                            );
+                        })}
                     </dl>
                 )}
-                <Button type="button" variant="secondary" onClick={restart}><RefreshCw size={17} /> {result.decision === 'ACCEPTED' ? 'Volver al marcaje' : 'Corregir e intentar de nuevo'}</Button>
+                {issues.length > 0 && passedCount > 0 && (
+                    <p className="hr-checks-passed"><CheckCircle2 size={16} aria-hidden="true" /> {passedCount} control{passedCount === 1 ? '' : 'es'} superado{passedCount === 1 ? '' : 's'}; no requieren atención.</p>
+                )}
+                {supportCodes.length > 0 && (
+                    <details className="hr-result-technical">
+                        <summary>Códigos para soporte</summary>
+                        <code>{supportCodes.join(' · ')}</code>
+                    </details>
+                )}
+                <div className="hr-result-actions">
+                    {hasScheduleIssue && onViewSchedule && (
+                        <Button type="button" variant="ghost" onClick={onViewSchedule}><Clock3 size={17} /> Ver mi horario</Button>
+                    )}
+                    {result.decision === 'REVIEW_REQUIRED' && onRequestCorrection && (
+                        <Button type="button" variant="ghost" onClick={onRequestCorrection}>Ver seguimiento</Button>
+                    )}
+                    <Button type="button" variant={result.decision === 'REJECTED' ? 'primary' : 'secondary'} onClick={restart}>
+                        <RefreshCw size={17} /> {result.decision === 'REJECTED' ? 'Intentar nuevamente' : 'Volver al marcaje'}
+                    </Button>
+                </div>
             </section>
         );
     }
 
     if (!action || !challenge) {
+        const missingAssignment = !today.targetBranch;
+        const missingSchedule = !today.scheduledShift && !policy.allowUnscheduledPunch;
+        const unavailableMessage = missingAssignment
+            ? 'No tienes una asignación RH vigente a una sucursal. Solicita a Recursos Humanos que revise tu adscripción.'
+            : missingSchedule
+                ? 'No tienes un turno publicado aplicable. Cuando se publique tu turno, actualiza esta pantalla para habilitar la entrada.'
+                : 'El servidor no habilita una entrada o salida para el estado actual de tu jornada.';
         return (
             <section className="hr-punch-actions" aria-labelledby="hr-punch-action-title">
                 <div className="hr-panel-heading"><ShieldCheck size={22} aria-hidden="true" /><div><span className="hr-section-kicker">PASO 1 DE 3</span><h2 id="hr-punch-action-title">Confirma qué vas a marcar</h2><p>El servidor habilita únicamente las acciones válidas para tu jornada.</p></div></div>
@@ -180,7 +228,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                         <Clock3 size={22} aria-hidden="true" />
                         <div>
                             <strong>{today.blockingIssue ? 'Debes resolver un marcaje anterior' : 'No hay un marcaje disponible'}</strong>
-                            <p>{today.blockingIssue?.message ?? 'El servidor no habilita una entrada o salida para el estado actual de tu jornada.'}</p>
+                            <p>{today.blockingIssue?.message ?? unavailableMessage}</p>
                             {today.blockingIssue?.occurredAt && (
                                 <small>
                                     Entrada pendiente: <time dateTime={today.blockingIssue.occurredAt}>{new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium', timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.blockingIssue.occurredAt))}</time>
@@ -189,6 +237,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                             )}
                             {today.blockingIssue && <small>No se creó una salida automática ni se abrió una jornada nueva.</small>}
                             {today.blockingIssue && onRequestCorrection && <Button type="button" variant="secondary" size="sm" onClick={onRequestCorrection}>Solicitar corrección</Button>}
+                            {!today.blockingIssue && missingSchedule && onViewSchedule && <Button type="button" variant="secondary" size="sm" onClick={onViewSchedule}>Ver mi horario</Button>}
                         </div>
                     </div>
                 )}
@@ -235,7 +284,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                     intervalMs={challenge.captureIntervalMs}
                 />
             )}
-            {policy.requireGeolocation && <GeolocationCapture maxAccuracyM={policy.maxLocationAccuracyM} onCapture={handleLocationCapture} disabled={submitting} />}
+            {policy.requireGeolocation && <GeolocationCapture maxAccuracyM={today.locationRequirements?.maxAccuracyM ?? policy.maxLocationAccuracyM} onCapture={handleLocationCapture} disabled={submitting} />}
             {error && <div className="hr-attendance-alert danger" role="alert">{error}</div>}
             <div className="hr-confirmation-summary" role="status" aria-live="polite">
                 <span className={biometricReady ? 'complete' : ''}><Fingerprint size={17} aria-hidden="true" /> Rostro {policy.requireBiometric ? (biometricReady ? 'listo' : 'pendiente') : 'no requerido'}</span>

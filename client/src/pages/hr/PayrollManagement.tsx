@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, StatCard, formatMoney, formatNumber, formatPercent, AppSelect, Button } from '@/ui';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Gift, Plus, Receipt, Scale, Search } from 'lucide-react';
+import { DataTable, EmptyState, FullScreenModal, PageHeader, StatCard, formatMoney, formatNumber, formatPercent, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -39,6 +39,7 @@ import './payroll.css';
 import './payroll-operations.css';
 import './admin-tables.css';
 import '../Inventory.css';
+import './layouts/nomina.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
 
@@ -120,7 +121,9 @@ export default function PayrollManagement() {
   const [periodForm, setPeriodForm] = useState<HrPayrollPeriodPayload>(periodDefaults());
   const componentOperationKey = useRef<string | null>(null);
   const transitionOperationKey = useRef<string | null>(null);
-  const autoOpenedRunKey = useRef<string | null>(null);
+  const openedRunKey = useRef<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const runParam = searchParams.get('corrida');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -167,20 +170,41 @@ export default function PayrollManagement() {
     }
   }, [showError]);
 
+  // The run detail is its own view, addressed by ?corrida=KIND-ID so the browser back button returns to the list.
+  const allRuns = useMemo(() => [...regularRuns, ...aguinaldoRuns], [aguinaldoRuns, regularRuns]);
+  const targetRun = useMemo(() => {
+    if (!runParam) return null;
+    const [kind, idText] = runParam.split('-');
+    return allRuns.find((run) => run.kind === kind && run.id === Number(idText)) ?? null;
+  }, [allRuns, runParam]);
+
   useEffect(() => {
-    if (loading || error || workspaceLoading) return;
-    const available = activeKind === 'REGULAR' ? regularRuns : aguinaldoRuns;
-    if (available.length === 0) {
-      if (selected?.kind === activeKind) setSelected(null);
+    if (!runParam) {
+      openedRunKey.current = null;
+      setSelected(null);
       return;
     }
-    if (selected?.kind === activeKind && available.some((run) => run.id === selected.id)) return;
-    const latest = [...available].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0];
-    const autoOpenKey = `${latest.kind}-${latest.id}`;
-    if (autoOpenedRunKey.current === autoOpenKey) return;
-    autoOpenedRunKey.current = autoOpenKey;
-    void openWorkspace(latest);
-  }, [activeKind, aguinaldoRuns, error, loading, openWorkspace, regularRuns, selected, workspaceLoading]);
+    if (loading || error || workspaceLoading || !targetRun) return;
+    if (activeKind !== targetRun.kind) setActiveKind(targetRun.kind);
+    if (openedRunKey.current === runParam) return;
+    openedRunKey.current = runParam;
+    void openWorkspace(targetRun);
+  }, [activeKind, error, loading, openWorkspace, runParam, targetRun, workspaceLoading]);
+
+  const openRun = (run: HrPayrollRun) => {
+    setSearchParams((params) => { params.set('corrida', `${run.kind}-${run.id}`); return params; });
+  };
+  const closeRun = () => {
+    setSearchParams((params) => { params.delete('corrida'); return params; });
+  };
+
+  const previousRun = useMemo(() => {
+    if (!selected) return null;
+    const pool = selected.kind === 'REGULAR' ? regularRuns : aguinaldoRuns;
+    return pool
+      .filter((run) => run.id !== selected.id && run.status !== 'VOID' && run.totals && new Date(run.createdAt) < new Date(selected.createdAt))
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] ?? null;
+  }, [aguinaldoRuns, regularRuns, selected]);
 
   const refreshWorkspace = async (run: HrPayrollRun) => {
     await load();
@@ -224,9 +248,8 @@ export default function PayrollManagement() {
       showSuccess(kind === 'AGUINALDO' ? 'Aguinaldo creado. El siguiente paso es calcularlo.' : 'Corrida creada. El siguiente paso es calcularla.');
       setCreatePanel(null);
       setActiveKind(kind);
-      autoOpenedRunKey.current = `${created.kind}-${created.id}`;
       await load();
-      await openWorkspace(created);
+      openRun(created);
     } catch (mutationError) {
       showError(getPayrollErrorMessage(mutationError, 'No fue posible crear la corrida.'));
     } finally { setSaving(false); }
@@ -352,8 +375,37 @@ export default function PayrollManagement() {
   const activeRules = rules.filter((rule) => rule.status === 'ACTIVE');
   const operationReady = activeRules.length > 0 && (activeKind === 'AGUINALDO' || periods.some((period) => period.status !== 'VOID'));
 
+  const nextPayment = useMemo(() => {
+    const runPayDate = (run: HrPayrollRun) => (run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) ?? null;
+    const openRuns = [...regularRuns, ...aguinaldoRuns].filter((run) => run.status !== 'PAID' && run.status !== 'VOID' && runPayDate(run));
+    const next = openRuns.sort((left, right) => String(runPayDate(left)).localeCompare(String(runPayDate(right))))[0];
+    return next ? { run: next, date: runPayDate(next) } : null;
+  }, [aguinaldoRuns, regularRuns]);
+
   return (
     <div className="page-wrapper inventory-page hr-payroll-page payroll-operations-page hr-admin-catalog-page">
+      {runParam ? (
+        <div className="nm-detail-view" id="payroll-run-detail">
+          <nav className="nm-detail-bar" aria-label="Navegación de corrida">
+            <Button variant="ghost" onClick={closeRun}><ArrowLeft size={16} /> Volver a corridas</Button>
+            <span className="nm-detail-crumb">{(targetRun?.kind ?? selected?.kind) === 'AGUINALDO' ? 'Aguinaldo' : 'Nómina ordinaria'}{targetRun ? ` · ${targetRun.code}` : ''}</span>
+          </nav>
+          <PayrollOnlineNotice online={online} />
+          {loading || workspaceLoading || (targetRun && !selected) ? <LoadingSpinner text="Abriendo la corrida…" /> : selected ? (
+            <>
+              <PayrollRunStepper status={selected.status} />
+              <PayrollOperationWorkspace run={selected} previous={previousRun ? { code: previousRun.code, netPay: previousRun.totals?.netPay } : null} online={online} busy={saving || downloading} onAction={(action) => { transitionOperationKey.current = createPayrollIdempotencyKey(); setTransition({ run: selected, action }); }} onRefresh={() => void openWorkspace(selected)} onAddComponent={() => { componentOperationKey.current = createPayrollIdempotencyKey(); setCreatePanel({ kind: 'component' }); }} onExport={(format) => void exportRun(format)} onDownloadReceipt={(id) => void downloadReceipt(id)} onDownloadReceiptBatch={(ids) => void downloadReceiptBatch(ids)} />
+            </>
+          ) : (
+            <EmptyState
+              icon={Calculator}
+              title="No encontramos esta corrida"
+              description="Puede haber sido filtrada o ya no existe. Vuelve al registro para elegir otra."
+              action={<Button size="sm" variant="secondary" onClick={closeRun}>Volver a corridas</Button>}
+            />
+          )}
+        </div>
+      ) : (<>
       <PageHeader
         title="Nómina y aguinaldo"
         description="Calcula, revisa, aprueba, paga y entrega colillas desde un flujo guiado. Configuración legal: IR, INSS e INATEC."
@@ -370,7 +422,7 @@ export default function PayrollManagement() {
               context={kpis.netDelta
                 ? `${kpis.netDelta.amount >= 0 ? '+' : ''}${runMoney(kpis.netDelta.currency, kpis.netDelta.amount)}${kpis.netDelta.percent == null ? '' : ` (${formatPercent(kpis.netDelta.percent)})`} frente a ${kpis.previous?.code} · ${kpis.latest.code}`
                 : `${kpis.latest.code} · sin corrida anterior comparable`}
-              action={{ label: 'Abrir corrida', onClick: () => void openWorkspace(kpis.latest!) }}
+              action={{ label: 'Abrir corrida', onClick: () => openRun(kpis.latest!) }}
             />
           )}
           {kpis.latest?.totals && (
@@ -388,7 +440,15 @@ export default function PayrollManagement() {
               label="Incidencias bloqueantes"
               value={formatNumber(kpis.blocking.count, 0)}
               context={`En ${kpis.blocking.runs.length} corrida(s) sin pagar; impiden aprobarlas.`}
-              action={{ label: 'Resolver', onClick: () => void openWorkspace(kpis.blocking.runs[0]) }}
+              action={{ label: 'Resolver', onClick: () => openRun(kpis.blocking.runs[0]) }}
+            />
+          )}
+          {nextPayment && (
+            <StatCard
+              label="Próximo pago"
+              value={formatDate(nextPayment.date)}
+              context={`${nextPayment.run.code} · ${STATUS_LABELS[nextPayment.run.status]}`}
+              action={{ label: 'Abrir corrida', onClick: () => openRun(nextPayment.run) }}
             />
           )}
         </section>
@@ -403,8 +463,8 @@ export default function PayrollManagement() {
       </div>
 
       {!operationReady && !loading && (
-        <div className="payroll-operation-alert" role="status">
-          <AlertTriangle size={20} />
+        <div className="nm-alert is-warning" role="status">
+          <AlertTriangle size={20} aria-hidden="true" />
           <span>{activeRules.length === 0 ? 'Para crear corridas necesitas una regla legal activa.' : 'Primero crea el periodo que deseas pagar.'}</span>
           {activeRules.length === 0
             ? <Button size="sm" variant="secondary" onClick={() => rules.length ? navigate(`/rh/nomina/configuracion-legal?ruleId=${rules[0].id}`) : setCreatePanel({ kind: 'rule' })}>{rules.length ? 'Configurar regla' : 'Crear regla base'}</Button>
@@ -448,7 +508,7 @@ export default function PayrollManagement() {
               pagination={{ mode: 'client' }}
               resetKey={`${activeKind}|${searchQuery}|${status}`}
               minWidth="64rem"
-              rowTone={(run) => (selected?.id === run.id && selected.kind === run.kind ? 'primary' : undefined)}
+              onRowClick={openRun}
               empty={<div className="payroll-operation-empty-list"><strong>No hay corridas que coincidan con los filtros.</strong><span>{runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}</span>{runs.length === 0 && <Button variant="primary" size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button>}</div>}
               columns={[
                 { key: 'code', header: 'Corrida', width: '1.4fr', render: (run) => <><strong>{run.code}</strong><small>Creada {formatDate(run.createdAt)}</small></> },
@@ -468,7 +528,7 @@ export default function PayrollManagement() {
                     const isSelected = selected?.id === run.id && selected.kind === run.kind;
                     return (
                       <div className="payroll-run-actions table-actions">
-                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void openWorkspace(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`}><Eye size={16} /></Button>
+                        <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openRun(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`}><Eye size={16} /></Button>
                         <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`}><FileSpreadsheet size={16} /></Button>
                         <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`}><Download size={16} /></Button>
                       </div>
@@ -479,18 +539,9 @@ export default function PayrollManagement() {
             />
           </section>
 
-          {(workspaceLoading || selected) && (
-            <div className="payroll-operation-detail-area">
-              {workspaceLoading ? <LoadingSpinner text="Abriendo la corrida…" /> : selected ? (
-                <>
-                  <PayrollRunStepper status={selected.status} />
-                  <PayrollOperationWorkspace run={selected} online={online} busy={saving || downloading} onAction={(action) => { transitionOperationKey.current = createPayrollIdempotencyKey(); setTransition({ run: selected, action }); }} onRefresh={() => void openWorkspace(selected)} onAddComponent={() => { componentOperationKey.current = createPayrollIdempotencyKey(); setCreatePanel({ kind: 'component' }); }} onExport={(format) => void exportRun(format)} onDownloadReceipt={(id) => void downloadReceipt(id)} onDownloadReceiptBatch={(ids) => void downloadReceiptBatch(ids)} />
-                </>
-              ) : null}
-            </div>
-          )}
         </>
       )}
+      </>)}
 
       <FullScreenModal
         isOpen={Boolean(createPanel)}

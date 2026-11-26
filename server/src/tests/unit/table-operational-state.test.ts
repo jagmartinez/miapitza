@@ -5,6 +5,7 @@ const order = (overrides: Partial<Parameters<typeof deriveTableOperationalState>
     status: 'OPEN' as const,
     financialStatus: 'UNPAID' as const,
     invoiceNumber: null,
+    preInvoicedAt: null,
     items: [{ status: 'PENDING' as const }],
     ...overrides
 });
@@ -14,6 +15,11 @@ describe('table operational map state', () => {
         expect(deriveTableOperationalState('OCCUPIED', [])).toBe('ATTENTION');
         expect(deriveTableOperationalState('OUT_OF_SERVICE', [])).toBe('DISABLED');
         expect(deriveTableOperationalState('RESERVED', [])).toBe('RESERVED');
+    });
+
+    it('distinguishes an intentionally joined table from an unexplained occupied table', () => {
+        expect(deriveTableOperationalState('OCCUPIED', [], true)).toBe('JOINED');
+        expect(deriveTableOperationalState('OCCUPIED', [], false)).toBe('ATTENTION');
     });
 
     it('distinguishes kitchen progression including partial readiness', () => {
@@ -26,6 +32,9 @@ describe('table operational map state', () => {
     });
 
     it('prioritizes invoice and payment state over kitchen state', () => {
+        expect(deriveTableOperationalState('OCCUPIED', [order({
+            preInvoicedAt: new Date('2026-07-29T12:00:00.000Z'),
+        })])).toBe('INVOICED');
         expect(deriveTableOperationalState('OCCUPIED', [order({ invoiceNumber: 'F-1' })])).toBe('INVOICED');
         expect(deriveTableOperationalState('OCCUPIED', [order({ financialStatus: 'PARTIAL' })])).toBe('PARTIAL_PAYMENT');
         expect(deriveTableOperationalState('OCCUPIED', [order({ financialStatus: 'PAID' })])).toBe('PAID');

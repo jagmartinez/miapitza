@@ -58,3 +58,17 @@
 .messages { display: flex; flex-direction: column; gap: var(--ui-space-2); }
 .message { margin: 0; font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
 .message[role='alert'] { color: var(--ui-danger); }
+
+.originCell { display: flex; flex-direction: column; min-width: 0; }
+.originCell small { color: var(--ui-text-muted); }
+
+/* Narrow phones: the subtotal moves to its own aligned row. */
+@media (max-width: 560px) {
+    .denomRow {
+        grid-template-columns: minmax(3.5rem, 0.8fr) minmax(4.5rem, 1fr);
+        grid-template-areas: "value input" "subtotal subtotal";
+    }
+    .denomRow > :nth-child(1) { grid-area: value; }
+    .denomRow > :nth-child(2) { grid-area: input; min-width: 0; }
+    .denomRow > :nth-child(3) { grid-area: subtotal; }
+}

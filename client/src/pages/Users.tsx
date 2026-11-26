@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
 import ViewToggle from '../components/ViewToggle';
 import { useViewMode } from '../hooks/useViewMode';
@@ -23,8 +23,11 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
+import { createLatestRequestGuard } from '../utils/latestRequest';
 import './Users.css';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, PageHeader, type Column } from '@/ui';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, LoadErrorState, PageHeader, type Column } from '@/ui';
+import { getApiErrorMessage } from '../utils/apiError';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
     return payload as unknown as Record<string, unknown>;
@@ -42,6 +45,9 @@ export default function Users() {
     const [companies, setCompanies] = useState<Company[]>([]);
     const [availableRoles, setAvailableRoles] = useState<{ id: number; name: string }[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const lastRequestedCompanyId = useRef<string | undefined>(undefined);
+    const loadRequestGuard = useRef(createLatestRequestGuard());
 
     // Filter States
     const [searchQuery, setSearchQuery] = useState('');
@@ -90,25 +96,32 @@ export default function Users() {
     ];
 
     const loadData = useCallback(async (companyId?: string, isInitial = false) => {
+        const requestId = loadRequestGuard.current.begin();
         try {
+            lastRequestedCompanyId.current = companyId;
             if (isInitial) setLoading(true);
             const [usersRes, branchesRes, rolesRes] = await Promise.all([
                 usersAPI.getAll(isSuperAdmin ? { companyId } : undefined),
                 branchesAPI.getAll(isSuperAdmin ? { companyId } : undefined),
                 rolesAPI.getAll(isSuperAdmin ? { companyId } : undefined)
             ]);
+            if (!loadRequestGuard.current.isCurrent(requestId)) return;
             setUsers(usersRes.data.data);
             setBranches(branchesRes.data.data);
             setAvailableRoles(rolesRes.data.data || []);
 
             if (isSuperAdmin && companies.length === 0) {
                 const compRes = await companiesAPI.getAll();
+                if (!loadRequestGuard.current.isCurrent(requestId)) return;
                 setCompanies(compRes.data.data);
             }
+            setLoadError(null);
         } catch (error) {
+            if (!loadRequestGuard.current.isCurrent(requestId)) return;
             console.error('Error loading data:', error);
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar los usuarios y sus catálogos (la consulta y las acciones quedan bloqueadas hasta reintentar)'));
         } finally {
-            if (isInitial) setLoading(false);
+            if (loadRequestGuard.current.isCurrent(requestId)) setLoading(false);
         }
     }, [companies.length, isSuperAdmin]);
 
@@ -329,7 +342,7 @@ export default function Users() {
         return colors[roleName] || '#6B7280';
     };
 
-    if (loading) return <div className="users-loading">Cargando usuarios...</div>;
+    if (loading && users.length === 0) return <div className="users-loading">Cargando usuarios...</div>;
 
     return (
         <div className="users-page">
@@ -338,7 +351,7 @@ export default function Users() {
                 actions={
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button variant="primary" onClick={() => handleOpenSidebar()}>
+                        <Button variant="primary" onClick={() => handleOpenSidebar()} disabled={Boolean(loadError)}>
                             <Plus size={20} />
                             Nuevo Usuario
                         </Button>
@@ -346,14 +359,22 @@ export default function Users() {
                 }
             />
 
+            {loadError && (
+                <LoadErrorState
+                    message={loadError}
+                    onRetry={() => { void loadData(lastRequestedCompanyId.current, true); }}
+                />
+            )}
+
             {/* Filters */}
-            <div className="users-filters">
+            {!loadError && <div className="users-filters">
                 {/* Search */}
                 <div className="search-container">
                     <input
                         type="text"
                         className="search-input"
                         placeholder="Buscar por nombre, usuario o email..."
+                        aria-label="Buscar usuarios"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -367,10 +388,10 @@ export default function Users() {
                 <div className="filter-group-container">
                     <AppSelect isClearable={false} options={statusOptions} value={statusFilter} onChange={(v) => { if (v) setStatusFilter(String(v)); }} placeholder="Estado" />
                 </div>
-            </div>
+            </div>}
 
             {/* Table view */}
-            {viewMode === 'table' && filteredUsers.length > 0 && (
+            {!loadError && viewMode === 'table' && filteredUsers.length > 0 && (
                 <DataTable<User>
                     ariaLabel="Listado de usuarios"
                     rows={filteredUsers}
@@ -454,14 +475,14 @@ export default function Users() {
             )}
 
             {/* Users Grid */}
-            {viewMode === 'cards' && filteredUsers.length > 0 && (
+            {!loadError && viewMode === 'cards' && filteredUsers.length > 0 && (
                 <div className="users-grid">
                     {filteredUsers.map(user => {
                         const userAllRoles = user.userRoles
                             ? user.userRoles.map(ur => ur.role.name)
                             : [user.role?.name || ''];
                         return (
-                        <div key={user.id} className="user-card" onClick={() => handleOpenSidebar(user)}>
+                        <div key={user.id} className="user-card" role="button" tabIndex={0} aria-label={`Editar usuario ${user.name}`} onClick={() => handleOpenSidebar(user)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(user))}>
                             {/* Role Badges */}
                             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', position: 'absolute', top: '12px', right: '12px', zIndex: 1 }}>
                                 {userAllRoles.map((rn, i) => (
@@ -535,7 +556,7 @@ export default function Users() {
                 </div>
             )}
 
-            {filteredUsers.length === 0 && (
+            {!loadError && filteredUsers.length === 0 && (
                 <div className="users-empty">
                     <UsersIcon size={64} />
                     <h3>No se encontraron usuarios</h3>

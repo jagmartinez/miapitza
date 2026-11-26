@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { resolveRecipeUnit } from '../utils/recipe-unit';
 import { effectiveUnitCost } from '../utils/product-cost';
 import { ProductionRecipeService } from './production-recipe.service';
 import { UnitConversionService } from './unit-conversion.service';
@@ -34,7 +35,7 @@ export class RecipeScalingService {
             where: { menuItemId: recipe.menuItemId },
             include: {
                 product: {
-                    select: { name: true, unit: true, cost: true, currentAverageCost: true }
+                    select: { name: true, unit: true, cost: true, currentAverageCost: true, baseUnit: { select: { abbreviation: true } } }
                 },
                 unitOfMeasure: { select: { abbreviation: true } }
             }
@@ -48,7 +49,7 @@ export class RecipeScalingService {
         // (recipe.unit -> recipe.unitId abbreviation -> product.unit) and value it
         // with the weighted average first and catalog reference as fallback.
         const scaledIngredients = await Promise.all(recipes.map(async (r) => {
-            const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
+            const recipeUnit = resolveRecipeUnit(r, r.product);
             const scaledQty = Number(r.quantity) * scaleFactor;
 
             try {
@@ -57,13 +58,16 @@ export class RecipeScalingService {
                 // and detects circular dependencies instead of displaying a false 0.
                 const unitCost = await ProductionRecipeService.resolveProductUnitCost(r.productId, companyId);
                 const conv = await UnitConversionService.convert(r.productId, companyId, scaledQty, recipeUnit);
-                const totalCost = Math.round(unitCost * conv.baseQuantity * 100) / 100;
+                // D12: keep the per-ingredient cost unrounded; only the totals
+                // are rounded to cents (rounding each line first drifts the sum).
+                const totalCost = unitCost * conv.baseQuantity;
                 return {
                     productId: r.productId,
                     productName: r.product.name,
-                    unit: r.product.unit,
+                    // Quantities below are in the RECIPE unit, not product.unit.
+                    unit: recipeUnit,
                     baseQuantity: Number(r.quantity),
-                    scaledQuantity: Math.round(scaledQty * 1000) / 1000,
+                    scaledQuantity: Math.round(scaledQty * 1_000_000) / 1_000_000,
                     unitCost,
                     totalCost
                 };
@@ -117,7 +121,7 @@ export class RecipeScalingService {
         const recipes = await prisma.recipe.findMany({
             where: { menuItemId },
             include: {
-                product: { select: { name: true, unit: true, cost: true, currentAverageCost: true } },
+                product: { select: { name: true, unit: true, cost: true, currentAverageCost: true, baseUnit: { select: { abbreviation: true } } } },
                 unitOfMeasure: { select: { abbreviation: true } }
             }
         });
@@ -130,7 +134,7 @@ export class RecipeScalingService {
         // (g/ml/unidad, etc.). Raw recipe quantities cannot be added: 1 kg + 500 g
         // is 1500 g, while mass + volume/count is not a meaningful total at all.
         const normalizedIngredients = await Promise.all(recipes.map(async (r) => {
-            const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
+            const recipeUnit = resolveRecipeUnit(r, r.product);
             try {
                 const [conv, unitCost] = await Promise.all([
                     UnitConversionService.convert(r.productId, companyId, Number(r.quantity), recipeUnit),

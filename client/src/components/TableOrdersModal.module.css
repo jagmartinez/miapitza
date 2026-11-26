@@ -130,3 +130,100 @@
     display: none;
   }
 }
+
+.summary dt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-1);
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-3);
+  min-width: 0;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+}
+
+.banner[data-block] {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.banner > div,
+.banner > span {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner p {
+  margin: 0;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+
+.banner small,
+.banner span {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+
+.bannerHead {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-3);
+}
+
+.bannerError {
+  border-color: var(--ui-danger);
+  background: var(--ui-danger-soft);
+}
+
+.reversalForm {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--ui-space-3);
+}
+
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-8) var(--ui-space-4);
+  color: var(--ui-text-muted);
+  text-align: center;
+}
+
+.spin {
+  animation: tableOrdersSpin 1s linear infinite;
+}
+
+@keyframes tableOrdersSpin {
+  to { transform: rotate(360deg); }
+}
+
+.voidedName {
+  color: var(--ui-text-muted);
+  text-decoration: line-through;
+}
+
+.voidBadge {
+  color: var(--ui-danger);
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+}
+
+.invoiceSelector {
+  min-width: min(100%, 16rem);
+  flex: 1 1 16rem;
+}

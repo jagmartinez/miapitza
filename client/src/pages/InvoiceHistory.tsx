@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { Download, CreditCard, RotateCcw } from 'lucide-react';
 import {
     AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, Input, NumberInput,
@@ -14,6 +16,10 @@ import { canReversePayment, canCancelInvoice, canIssueCreditNote } from '../util
 import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import styles from './compras.module.css';
+import { readServerPagination } from '../utils/serverPagination';
+import { useDebounce } from '../utils/useDebounce';
+
+const PAGE_SIZE = 20;
 
 interface Invoice {
     id: number;
@@ -45,18 +51,18 @@ const monthStartStr = () => {
     return formatLocalDateInput(new Date(d.getFullYear(), d.getMonth(), 1));
 };
 
-function dateRangeForFilter(filter: string): { invoicedStartDate?: string; invoicedEndDate?: string } {
+function dateRangeForFilter(filter: string): { startDate?: string; endDate?: string } {
     const today = todayStr();
     switch (filter) {
         case 'today':
-            return { invoicedStartDate: today, invoicedEndDate: today };
+            return { startDate: today, endDate: today };
         case 'week': {
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
-            return { invoicedStartDate: formatLocalDateInput(weekAgo), invoicedEndDate: today };
+            return { startDate: formatLocalDateInput(weekAgo), endDate: today };
         }
         case 'month':
-            return { invoicedStartDate: monthStartStr(), invoicedEndDate: today };
+            return { startDate: monthStartStr(), endDate: today };
         default:
             return {};
     }
@@ -71,8 +77,14 @@ export default function InvoiceHistory() {
     const [error, setError] = useState<string | null>(null);
     const [dateFilter, setDateFilter] = useState('month');
     const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearch = useDebounce(searchTerm.trim(), 350);
+    const [pageAmount, setPageAmount] = useState(0);
+    const [aggregateAmount, setAggregateAmount] = useState<number | null>(null);
     const [settings, setSettings] = useState<CurrencySettings>({});
     const symbol = settings.currency_symbol || 'C$';
+    const [page, setPage] = useState(1);
+    const [totalInvoices, setTotalInvoices] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
     const [payments, setPayments] = useState<Payment[]>([]);
     const [paymentsLoading, setPaymentsLoading] = useState(false);
@@ -100,22 +112,38 @@ export default function InvoiceHistory() {
             const res = await settingsAPI.getAll();
             setSettings(res.data.data);
         } catch (err) {
-            console.error('Error loading settings:', err);
+            notifyError(err, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' });
         }
     }, []);
 
-    const loadInvoices = useCallback(async (showLoader = true) => {
+    // Full-page loader only until the first response: later searches/page changes
+    // refresh in place so the search box keeps focus while the user types.
+    const hasLoadedInvoicesRef = useRef(false);
+    const loadInvoicesRequestRef = useRef(0);
+    const loadInvoices = useCallback(async (requestLoader = true) => {
+        const requestId = ++loadInvoicesRequestRef.current;
+        const showLoader = requestLoader && !hasLoadedInvoicesRef.current;
         try {
             if (showLoader) setLoading(true);
             setError(null);
             const range = dateRangeForFilter(dateFilter);
-            const response = await ordersAPI.getAll({
-                invoicedOnly: true,
-                limit: 200,
+            // Server-side pagination + search: totals come from the server so the
+            // header reflects the whole filtered set, not just the visible page.
+            const response = await invoicesAPI.list({
+                page,
+                limit: PAGE_SIZE,
+                ...(debouncedSearch ? { search: debouncedSearch } : {}),
                 ...range,
             });
 
+            // A late response for an older search/page must not overwrite newer results.
+            if (requestId !== loadInvoicesRequestRef.current) return;
+            hasLoadedInvoicesRef.current = true;
             const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+            const pagination = readServerPagination(response.data, rows.length, PAGE_SIZE, page);
+            setTotalInvoices(pagination.total);
+            setTotalPages(pagination.totalPages);
+            if (page > pagination.totalPages) setPage(pagination.totalPages);
             const invoiceData = rows
                 .filter((order: Order) => Boolean(order.invoiceNumber))
                 .map((order: Order) => ({
@@ -137,14 +165,23 @@ export default function InvoiceHistory() {
                 }));
 
             setInvoices(invoiceData);
+            const totals = response.data?.totals as { pageTotal?: number; aggregateNetTotal?: number; aggregateTotal?: number } | undefined;
+            setPageAmount(Number(totals?.pageTotal ?? invoiceData.reduce((sum: number, inv: Invoice) => sum + inv.total, 0)) || 0);
+            const aggregate = totals?.aggregateNetTotal ?? totals?.aggregateTotal;
+            setAggregateAmount(aggregate === undefined ? null : Number(aggregate) || 0);
         } catch (err) {
+            if (requestId !== loadInvoicesRequestRef.current) return;
             console.error('Error loading invoices:', err);
-            setError('No se pudieron cargar las facturas. Intente de nuevo.');
+            setError(getApiErrorMessage(err, 'No se pudieron cargar las facturas'));
             setInvoices([]);
+            setTotalInvoices(0);
+            setTotalPages(1);
+            setPageAmount(0);
+            setAggregateAmount(null);
         } finally {
-            if (showLoader) setLoading(false);
+            if (showLoader && requestId === loadInvoicesRequestRef.current) setLoading(false);
         }
-    }, [dateFilter]);
+    }, [dateFilter, page, debouncedSearch]);
 
     useEffect(() => {
         void loadSettings();
@@ -153,6 +190,10 @@ export default function InvoiceHistory() {
     useEffect(() => {
         void loadInvoices();
     }, [loadInvoices]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [dateFilter, debouncedSearch]);
 
     const downloadPdf = async (orderId: number, invoiceNumber: string) => {
         try {
@@ -169,7 +210,7 @@ export default function InvoiceHistory() {
             await loadInvoices(false);
         } catch (err) {
             console.error('Error downloading invoice PDF:', err);
-            setError('No se pudo descargar el PDF de la factura.');
+            setError(getApiErrorMessage(err, 'No se pudo descargar el PDF de la factura.'));
         }
     };
 
@@ -361,17 +402,8 @@ export default function InvoiceHistory() {
         }
     };
 
-
-    const filteredInvoices = invoices.filter((invoice) => {
-        const q = searchTerm.toLowerCase();
-        return (
-            invoice.invoiceNumber.toLowerCase().includes(q) ||
-            invoice.customerName?.toLowerCase().includes(q) ||
-            invoice.waiterName.toLowerCase().includes(q)
-        );
-    });
-
-    const totalAmount = filteredInvoices.reduce((sum, inv) => sum + Number(inv.total), 0);
+    // Search (invoice number / customer / NIT) runs server-side across all pages.
+    const filteredInvoices = invoices;
 
     const fiscalLabel = (invoice: Invoice) => (
         invoice.fiscalStatus === 'CREDITED'
@@ -459,7 +491,17 @@ export default function InvoiceHistory() {
                 title="Historial de Facturas"
                 description={loading || error
                     ? undefined
-                    : `${filteredInvoices.length} facturas • Total: ${formatMoney(totalAmount, symbol)}`}
+                    : (
+                        <>
+                            {totalInvoices} facturas
+                            {aggregateAmount !== null && (
+                                <> • Total del período: <span className={styles.nowrap}>{formatMoney(aggregateAmount, symbol)}</span></>
+                            )}
+                            {(aggregateAmount === null || totalPages > 1) && (
+                                <> • Total en esta página: <span className={styles.nowrap}>{formatMoney(pageAmount, symbol)}</span></>
+                            )}
+                        </>
+                    )}
             />
 
             {error && (
@@ -477,7 +519,9 @@ export default function InvoiceHistory() {
                 rows={filteredInvoices}
                 rowKey={(invoice) => invoice.id}
                 loading={loading}
-                resetKey={`${dateFilter}|${searchTerm}`}
+                resetKey={`${dateFilter}|${debouncedSearch}`}
+                pagination={{ mode: 'server', page, pageSize: PAGE_SIZE, total: totalInvoices, onChange: (nextPage) => setPage(nextPage) }}
+                pageSizeOptions={[PAGE_SIZE]}
                 empty={error
                     ? 'No disponible: las facturas no se pudieron cargar.'
                     : 'No se encontraron facturas pagadas en el período seleccionado. Prueba ampliar el filtro a «Este Mes» o «Todas».'}
@@ -495,7 +539,8 @@ export default function InvoiceHistory() {
                                 <Input
                                     id="invoice-search"
                                     type="search"
-                                    placeholder="Buscar por número, cliente o mesero..."
+                                    aria-label="Buscar facturas por número, cliente o NIT"
+                                    placeholder="Buscar por número, cliente o NIT..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />

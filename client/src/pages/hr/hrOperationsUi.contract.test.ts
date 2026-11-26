@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 const attendanceReview = read('./AttendanceReview.tsx');
+const consoleCss = read('../../components/hr/layout/hr-console.css');
 const attendanceManagement = read('./AttendanceManagement.tsx');
 const leaveManagement = read('./LeaveManagement.tsx');
 const benefitsManagement = read('./BenefitsManagement.tsx');
@@ -13,6 +14,8 @@ const myPayroll = read('./MyPayroll.tsx');
 const myWorkforce = read('./MyWorkforce.tsx');
 const adminCss = read('./admin-tables.css');
 const attendanceCss = read('./attendance.css');
+const punchWizard = read('../../components/hr/AttendancePunchWizard.tsx');
+const geolocationCapture = read('../../components/hr/GeolocationCapture.tsx');
 
 const adminOperationalPages = [
   attendanceReview,
@@ -33,6 +36,8 @@ describe('RH operational UI contract', () => {
     adminOperationalPages.forEach((source) => expect(source).toContain('hr-operation-page'));
     selfServicePages.forEach((source) => expect(source).toContain('my-hr-page'));
     expect(adminCss).toContain('.hr-operation-page .hr-operation-toolbar');
+    // Filter bars get their (box-less) look from the canonical RH layout.
+    expect(consoleCss).toContain('.page-wrapper.hr-ws-page.hr-console .hr-ws-toolbar.hr-ws-toolbar');
     expect(adminCss).toContain("[role='tabpanel']:focus-visible");
     expect(adminCss).not.toMatch(/(^|\n)\s*(body|:root)\s*\{/);
   });
@@ -88,6 +93,15 @@ describe('RH operational UI contract', () => {
     expect(attendanceCss).toContain('@media (max-width: 1080px)');
     expect(attendanceCss).toContain('.hr-time-clock-action-panel { order: -1; }');
     expect(attendanceCss).toContain('.hr-time-clock-page > .hr-time-clock-workspace { order: 1; }');
+  });
+
+  it('prevents a guaranteed GPS rejection and keeps internal snapshots out of the result UI', () => {
+    expect(timeClock).toContain('today?.locationRequirements?.maxAccuracyM');
+    expect(punchWizard).toContain('today.locationRequirements?.maxAccuracyM');
+    expect(geolocationCapture).toContain('onCapture(evidence.accuracyM <= maxAccuracyM ? evidence : null)');
+    expect(punchWizard).toContain('presentAttendanceChecks(result.checks)');
+    expect(punchWizard).not.toContain('Object.entries(result.checks)');
+    expect(attendanceCss).toContain('.hr-result-technical');
   });
 
   it('keeps react-select and grouped money in financial self-service views', () => {

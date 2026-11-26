@@ -9,6 +9,38 @@ interface DenomCountRow {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ReportData = any;
 
+const CASH_MOVEMENT_CATEGORY_LABELS: Record<string, string> = {
+    POS_SALE: 'Venta POS',
+    CATERING_SALE: 'Cobro Catering',
+    POS_PAYMENT_REVERSAL: 'Reverso de pago POS',
+    CATERING_PAYMENT_REVERSAL: 'Reverso de pago Catering',
+    CREDIT_NOTE_REFUND: 'Reembolso por nota de crédito',
+    MANUAL_INCOME: 'Entrada manual',
+    MANUAL_OUTFLOW: 'Salida manual',
+    UNCLASSIFIED_INCOME: 'Entrada no clasificada',
+    UNCLASSIFIED_OUTFLOW: 'Salida no clasificada'
+};
+
+export const getMovementCategoryLabel = (movement: CashMovement): string =>
+    movement.category
+        ? (CASH_MOVEMENT_CATEGORY_LABELS[movement.category] || 'Movimiento no clasificado')
+        : 'Movimiento no clasificado';
+
+export const getMovementPaymentOrigin = (movement: CashMovement): string =>
+    movement.paymentMethod?.name || 'Movimiento no clasificado';
+
+export const getMovementAuditLabel = (movement: CashMovement): string => {
+    const typeLabel = movement.paymentMethod?.type
+        ? ({
+            CASH: 'Efectivo',
+            CARD: 'Tarjeta',
+            BANK_TRANSFER: 'Transferencia bancaria',
+            OTHER: 'Otro método'
+        }[movement.paymentMethod.type])
+        : null;
+    return [getMovementCategoryLabel(movement), typeLabel].filter(Boolean).join(' · ');
+};
+
 const formatCurrency = (value: number): string =>
     value.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -77,17 +109,21 @@ export function buildCashShiftReportHtml({ shift, amounts, movements, counts, sy
                                 <div>
                                     <div class="section-title">Resumen de Totales</div>
                                      <div class="amount-item"><span>Monto Inicial:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.startAmount)}</span></div>
-                                     <div class="amount-item"><span>Ventas (Efectivo):</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(salesCash || 0))}</span></div>
-                                     <div class="amount-item"><span>Otros Ingresos:</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(amounts.totalIn)}</span></div>
-                                     <div class="amount-item"><span>Gastos / Retiros:</span> <span style="color: #dc3545;">- ${safeCurrencySymbol} ${formatCurrency(amounts.totalOut)}</span></div>
-                                     <div class="amount-item grand-total"><span>Monto Esperado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.expectedEndAmount)}</span></div>
+                                     <div class="amount-item"><span>Ventas netas en efectivo (POS + Catering):</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(amounts.totalSalesCash ?? salesCash ?? 0))}</span></div>
+                                     <div class="amount-item"><span>Otros ingresos de caja:</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(amounts.otherIncome || 0))}</span></div>
+                                     <div class="amount-item"><span>Gastos / Retiros:</span> <span style="color: #dc3545;">- ${safeCurrencySymbol} ${formatCurrency(Number(amounts.otherOutflows || 0))}</span></div>
+                                     <div class="amount-item grand-total"><span>Monto Esperado:</span> <span>${amounts.expectedEndAmount === undefined ? 'Oculto hasta cerrar' : `${safeCurrencySymbol} ${formatCurrency(amounts.expectedEndAmount)}`}</span></div>
+                                     <p style="font-size: 11px; color: #666; margin-top: 12px;">
+                                         Otros ingresos son únicamente entradas manuales o no asociadas a una venta.
+                                         No incluyen cobros POS/Catering. Las ventas netas descuentan reversos y notas de crédito.
+                                     </p>
                                     
                                     <div class="section-title">Resultados del Arqueo</div>
                                      <div class="amount-item"><span>Monto Contado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.actualEndAmount || 0)}</span></div>
-                                    <div class="amount-item" style="font-weight: 700; color: ${amounts.difference >= 0 ? '#28a745' : '#dc3545'};">
+                                    ${amounts.expectedEndAmount === undefined ? '' : `<div class="amount-item" style="font-weight: 700; color: ${amounts.difference >= 0 ? '#28a745' : '#dc3545'};">
                                         <span>Diferencia:</span> 
                                          <span>${safeCurrencySymbol} ${formatCurrency(amounts.difference || 0)}</span>
-                                    </div>
+                                    </div>`}
                                 </div>
 
                                 <div>
@@ -133,6 +169,7 @@ export function buildCashShiftReportHtml({ shift, amounts, movements, counts, sy
                                         <th>Hora</th>
                                         <th>Tipo</th>
                                         <th>Referencia</th>
+                                        <th>Forma de pago / origen</th>
                                         <th>Descripción</th>
                                         <th class="text-right">Monto</th>
                                     </tr>
@@ -143,13 +180,17 @@ export function buildCashShiftReportHtml({ shift, amounts, movements, counts, sy
                                             <td>${escapeHtml(new Date(m.createdAt).toLocaleTimeString())}</td>
                                             <td><span class="badge ${m.type === 'IN' ? 'badge-in' : 'badge-out'}">${m.type === 'IN' ? 'INGRESO' : 'EGRESO'}</span></td>
                                             <td>${escapeHtml(m.documentNumber || m.reference || '-')}</td>
+                                            <td>
+                                                ${escapeHtml(getMovementPaymentOrigin(m))}
+                                                <br><small>${escapeHtml(getMovementAuditLabel(m))}</small>
+                                            </td>
                                             <td>${escapeHtml(m.description)} ${m.supplier ? `(${escapeHtml(m.supplier.name)})` : ''}</td>
                                             <td class="text-right" style="color: ${m.type === 'IN' ? '#28a745' : '#dc3545'};">
                                                  ${m.type === 'IN' ? '+' : '-'}${safeCurrencySymbol} ${formatCurrency(Number(m.amount))}
                                             </td>
                                         </tr>
                                     `).join('')}
-                                    ${(movements.in.length === 0 && movements.out.length === 0) ? '<tr><td colspan="5" style="text-align: center;">No se registraron movimientos adicionales</td></tr>' : ''}
+                                    ${(movements.in.length === 0 && movements.out.length === 0) ? '<tr><td colspan="6" style="text-align: center;">No se registraron movimientos adicionales</td></tr>' : ''}
                                 </tbody>
                             </table>
 

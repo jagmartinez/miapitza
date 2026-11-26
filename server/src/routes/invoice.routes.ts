@@ -12,11 +12,17 @@ const canViewInvoice = requirePermission('invoices.view', 'SUPERADMIN', 'ADMIN',
 const canCancelInvoice = requirePermission('invoices.cancel', 'SUPERADMIN', 'ADMIN');
 const canIssueCreditNote = requirePermission('invoices.credit', 'SUPERADMIN', 'ADMIN');
 
+// A pre-invoice freezes the payable account but never consumes a fiscal number.
+router.post('/:id/preinvoice', canIssueInvoice, InvoiceController.issuePreInvoice);
+router.post('/:id/preinvoice/reverse', canIssueInvoice, InvoiceController.reversePreInvoice);
+
 // Issuance is intentionally a POST: it consumes a fiscal sequence and captures
-// an immutable rendering snapshot. Idempotent retries return that same snapshot.
+// an immutable rendering snapshot after full payment. Idempotent retries return
+// that same snapshot.
 router.post('/:id/issue', canIssueInvoice, InvoiceController.issueInvoice);
 
 // Static report path must precede the parameterized invoice reads.
+router.get('/', canViewInvoice, InvoiceController.listInvoices);
 router.get('/credit-notes', canViewInvoice, InvoiceController.listCreditNotes);
 router.get('/credit-notes/:creditNoteId', canViewInvoice, InvoiceController.getCreditNoteById);
 router.get('/credit-notes/:creditNoteId/pdf', canViewInvoice, InvoiceController.getCreditNotePDFById);

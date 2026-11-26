@@ -22,7 +22,7 @@
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true,
         "baseUrl": ".",
-        "types": ["vitest/globals", "@testing-library/jest-dom"],
+        "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
         "paths": {
             "@/ui": ["src/ui/index.ts"],
             "@/ui/*": ["src/ui/*"]

@@ -1,6 +1,6 @@
 import { Button } from '@/ui';
 import { CalendarDays, Download, FileText, UserRound } from 'lucide-react';
-import { formatHrMoney } from '../../utils/hrFormat';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import type { HrPayrollComponent, HrPayrollReceiptDetail } from '../../types/hr-payroll';
 import PayrollStatusPill from './PayrollStatusPill';
 

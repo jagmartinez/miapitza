@@ -16,6 +16,15 @@ export interface CostConversionResult extends ConversionResult {
     originalCost: number;
 }
 
+export interface AllowedUnit {
+    unitId: number;
+    abbreviation: string;
+    name: string;
+    conversionFactor: number;
+    isBase: boolean;
+    isDefault: boolean;
+}
+
 export class UnitConversionService {
     private static positiveFactor(value: unknown, context: string): number {
         const factor = Number(value);
@@ -123,7 +132,7 @@ export class UnitConversionService {
         return String(raw || '').trim().toLowerCase().replace(/[.\s_-]+/g, '');
     }
 
-    private static normalizeLegacyAbbreviation(raw: string): string {
+    static normalizeLegacyAbbreviation(raw: string): string {
         const abbr = this.sanitizeLegacyUnit(raw);
         const aliasMap: Record<string, string> = {
             // Common legacy aliases
@@ -175,7 +184,71 @@ export class UnitConversionService {
         return aliasMap[abbr] || abbr;
     }
 
-    private static buildLegacyUnitCandidates(legacyUnit: string): string[] {
+    /**
+     * Match a requested unit against configured abbreviations (D3). A raw
+     * (case-insensitive) match always wins; otherwise both sides are normalised
+     * through the legacy alias map (cja -> caja, lt -> l, ...). A normalised
+     * match is accepted only when it is unambiguous, so an alias can never
+     * silently resolve to a different configured unit.
+     */
+    static matchUnitAbbreviation<T>(
+        requested: string,
+        candidates: T[],
+        abbreviationOf: (candidate: T) => string
+    ): T | undefined {
+        const raw = String(requested || '').trim().toLowerCase();
+        if (!raw) return undefined;
+        const exact = candidates.filter((candidate) =>
+            String(abbreviationOf(candidate) || '').trim().toLowerCase() === raw);
+        if (exact.length > 0) return exact[0];
+        const normalized = this.normalizeLegacyAbbreviation(raw);
+        const aliased = candidates.filter((candidate) =>
+            this.normalizeLegacyAbbreviation(abbreviationOf(candidate)) === normalized);
+        return aliased.length === 1 ? aliased[0] : undefined;
+    }
+
+    /** Company-unit lookup keys for a requested unit: raw abbreviation, then its normalised alias. */
+    static companyUnitLookupKeys(requested: string): string[] {
+        const raw = String(requested || '').trim().toLowerCase();
+        return [...new Set([raw, this.normalizeLegacyAbbreviation(raw)].filter(Boolean))];
+    }
+
+    /**
+     * Pure company-unit resolution shared by convert() and preloaded readers
+     * (POS availability): first ACTIVE unit over the raw-then-normalised keys,
+     * otherwise the first one found (so callers can report it as inactive).
+     */
+    static pickCompanyUnit<T extends { active: boolean }>(
+        requested: string,
+        lookup: (abbreviation: string) => T | null | undefined
+    ): T | null {
+        let firstFound: T | null = null;
+        for (const abbreviation of this.companyUnitLookupKeys(requested)) {
+            const unit = lookup(abbreviation) ?? null;
+            if (unit?.active) return unit;
+            firstFound = firstFound ?? unit;
+        }
+        return firstFound;
+    }
+
+    /** Company unit lookup by the raw abbreviation first, then its normalised alias. */
+    private static async findCompanyUnitByAbbreviation(
+        db: Tx | typeof prisma,
+        companyId: number,
+        requested: string
+    ) {
+        const found = new Map<string, Awaited<ReturnType<typeof db.unitOfMeasure.findUnique>>>();
+        for (const abbreviation of this.companyUnitLookupKeys(requested)) {
+            const unit = await db.unitOfMeasure.findUnique({
+                where: { companyId_abbreviation: { companyId, abbreviation } }
+            });
+            found.set(abbreviation, unit);
+            if (unit?.active) break;
+        }
+        return this.pickCompanyUnit(requested, (abbreviation) => found.get(abbreviation));
+    }
+
+    static buildLegacyUnitCandidates(legacyUnit: string): string[] {
         const raw = String(legacyUnit || '').trim().toLowerCase();
         if (!raw) return [];
 
@@ -293,8 +366,7 @@ export class UnitConversionService {
                 );
             }
 
-            const requestedAbbr = this.normalizeLegacyAbbreviation(unitAbbreviation);
-            if (requestedAbbr === inferredBase.abbreviation.toLowerCase()) {
+            if (this.matchUnitAbbreviation(unitAbbreviation, [inferredBase], (unit) => unit.abbreviation)) {
                 return {
                     baseQuantity: quantity,
                     conversionFactor: 1,
@@ -304,14 +376,7 @@ export class UnitConversionService {
                 };
             }
 
-            const dynamicUnit = await db.unitOfMeasure.findUnique({
-                where: {
-                    companyId_abbreviation: {
-                        companyId,
-                        abbreviation: requestedAbbr
-                    }
-                }
-            });
+            const dynamicUnit = await this.findCompanyUnitByAbbreviation(db, companyId, unitAbbreviation);
 
             if (!dynamicUnit || !dynamicUnit.active || dynamicUnit.measurementType !== inferredBase.measurementType) {
                 throw new Error(
@@ -350,8 +415,15 @@ export class UnitConversionService {
             };
         }
 
-        const abbr = this.normalizeLegacyAbbreviation(unitAbbreviation);
-        if (abbr === baseUnit.abbreviation.toLowerCase()) {
+        // Raw match first, then normalised aliases on BOTH sides (base unit and
+        // configured ProductUnit abbreviations), rejecting ambiguous aliases.
+        type UnitCandidate = { abbreviation: string; productUnit: (typeof product.allowedUnits)[number] | null };
+        const unitCandidates: UnitCandidate[] = [
+            { abbreviation: baseUnit.abbreviation, productUnit: null },
+            ...product.allowedUnits.map((pu) => ({ abbreviation: pu.unit.abbreviation, productUnit: pu }))
+        ];
+        const matchedUnit = this.matchUnitAbbreviation(unitAbbreviation, unitCandidates, (c) => c.abbreviation);
+        if (matchedUnit && !matchedUnit.productUnit) {
             return {
                 baseQuantity: quantity,
                 conversionFactor: 1,
@@ -361,21 +433,12 @@ export class UnitConversionService {
             };
         }
 
-        const productUnit = product.allowedUnits.find(
-            pu => pu.unit.abbreviation.toLowerCase() === abbr
-        );
+        const productUnit = matchedUnit?.productUnit ?? undefined;
 
         if (!productUnit) {
             // Dynamic fallback: allow any active unit from the same measurement type
             // even if it was not explicitly configured in product.allowedUnits.
-            const dynamicUnit = await db.unitOfMeasure.findUnique({
-                where: {
-                    companyId_abbreviation: {
-                        companyId,
-                        abbreviation: abbr
-                    }
-                }
-            });
+            const dynamicUnit = await this.findCompanyUnitByAbbreviation(db, companyId, unitAbbreviation);
 
             if (!dynamicUnit || !dynamicUnit.active) {
                 const allowed = product.allowedUnits.map(pu => pu.unit.abbreviation).join(', ');
@@ -473,30 +536,77 @@ export class UnitConversionService {
         };
     }
 
+    private static allowedUnitsInclude(companyId: number) {
+        return {
+            baseUnit: true,
+            allowedUnits: {
+                where: {
+                    companyId,
+                    active: true,
+                    unit: { companyId, active: true }
+                },
+                include: { unit: true },
+                orderBy: { isDefault: 'desc' as const }
+            }
+        };
+    }
+
     /**
      * Get all allowed units for a product, including its base unit.
      */
     static async getAllowedUnits(productId: number, companyId: number) {
         const product = await prisma.product.findFirst({
             where: { id: productId, companyId },
-            include: {
-                baseUnit: true,
-                allowedUnits: {
-                    where: {
-                        companyId,
-                        active: true,
-                        unit: { companyId, active: true }
-                    },
-                    include: { unit: true },
-                    orderBy: { isDefault: 'desc' }
-                }
-            }
+            include: this.allowedUnitsInclude(companyId)
         });
 
         if (!product) {
             throw new Error('Producto no encontrado');
         }
 
+        return this.buildAllowedUnits(product, companyId, prisma);
+    }
+
+    /**
+     * Allowed units of many products with a single product query plus one
+     * catalog query (same rule as getAllowedUnits, without N lookups).
+     */
+    static async getAllowedUnitsForProducts(productIds: number[], companyId: number, db: Tx | typeof prisma = prisma) {
+        const result = new Map<number, AllowedUnit[]>();
+        if (productIds.length === 0) return result;
+        const [products, catalog] = await Promise.all([
+            db.product.findMany({
+                where: { id: { in: productIds }, companyId },
+                include: this.allowedUnitsInclude(companyId)
+            }),
+            db.unitOfMeasure.findMany({ where: { companyId, active: true }, orderBy: { name: 'asc' } }),
+        ]);
+        for (const product of products) {
+            try {
+                result.set(product.id, await this.buildAllowedUnits(product, companyId, db, catalog));
+            } catch {
+                // A misconfigured product must not block the whole sheet: offer only its own legacy unit (1:1).
+                result.set(product.id, [{
+                    unitId: 0, abbreviation: product.unit, name: product.unit,
+                    conversionFactor: 1, isBase: true, isDefault: true
+                }]);
+            }
+        }
+        return result;
+    }
+
+    private static async buildAllowedUnits(
+        product: Prisma.ProductGetPayload<{ include: ReturnType<typeof UnitConversionService.allowedUnitsInclude> }>,
+        companyId: number,
+        db: Tx | typeof prisma,
+        catalog?: Array<Prisma.UnitOfMeasureGetPayload<object>>
+    ): Promise<AllowedUnit[]> {
+        const compatibleWith = async (measurementType: string) => catalog
+            ? catalog.filter((u) => u.measurementType === measurementType)
+            : db.unitOfMeasure.findMany({
+                where: { companyId, active: true, measurementType: measurementType as never },
+                orderBy: { name: 'asc' }
+            });
         let baseUnit = product.baseUnit;
         if (baseUnit && (
             (baseUnit.companyId != null && baseUnit.companyId !== companyId) ||
@@ -505,13 +615,13 @@ export class UnitConversionService {
             throw new Error(`La unidad base configurada para "${product.name}" no está activa o pertenece a otra empresa.`);
         }
         if (!baseUnit && product.baseUnitId) {
-            baseUnit = await prisma.unitOfMeasure.findFirst({
+            baseUnit = await db.unitOfMeasure.findFirst({
                 where: { id: product.baseUnitId, companyId, active: true }
             });
         }
 
         if (!baseUnit) {
-            const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, prisma);
+            const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, db);
 
             if (!inferredBase) {
                 return [{
@@ -539,14 +649,7 @@ export class UnitConversionService {
                 }];
             }
 
-            const compatibleUnits = await prisma.unitOfMeasure.findMany({
-                where: {
-                    companyId,
-                    active: true,
-                    measurementType: inferredBase.measurementType
-                },
-                orderBy: { name: 'asc' }
-            });
+            const compatibleUnits = await compatibleWith(inferredBase.measurementType);
 
             return compatibleUnits.map((u) => ({
                 unitId: u.id,
@@ -587,14 +690,7 @@ export class UnitConversionService {
         // so recipe/inventory selectors are not limited to manually configured rows.
         const compatibleUnits = baseUnit.measurementType === 'PACKAGE'
             ? []
-            : await prisma.unitOfMeasure.findMany({
-                where: {
-                    companyId,
-                    active: true,
-                    measurementType: baseUnit.measurementType
-                },
-                orderBy: { name: 'asc' }
-            });
+            : await compatibleWith(baseUnit.measurementType);
 
         const existingAbbr = new Set(units.map(u => u.abbreviation.toLowerCase()));
         for (const u of compatibleUnits) {

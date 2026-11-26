@@ -24,6 +24,7 @@ import { newIdempotencyKey } from '../utils/idempotency';
 import {
     centsToMoney,
     canUsePaymentMethodInMixed,
+    calculateAutomaticPaymentRemainder,
     formatMoneyAmount,
     formatMoneyInput,
     hasUniqueNormalizedPayerNames,
@@ -34,6 +35,11 @@ import {
     summarizePaymentAllocation,
 } from '../utils/payment';
 import { AppSelect } from '@/ui';
+import {
+    renderInvoiceHtml,
+    renderInvoiceLoadingHtml,
+    type PrintableInvoiceSnapshot,
+} from '../utils/invoicePrint';
 import './PaymentModal.css';
 
 type PaymentMode = 'single' | 'mixed' | 'split';
@@ -60,6 +66,14 @@ interface SplitLeg extends PaymentLeg {
 
 interface ApiEnvelope {
     _offline?: boolean;
+    fiscalInvoice?: PrintableInvoiceSnapshot | null;
+    fiscalInvoiceError?: string | null;
+}
+
+interface PaymentCompletion {
+    status: 'confirmed' | 'queued';
+    fiscalInvoice?: PrintableInvoiceSnapshot | null;
+    fiscalInvoiceError?: string | null;
 }
 
 interface PaymentModalProps {
@@ -68,7 +82,12 @@ interface PaymentModalProps {
     orderTotal: number;
     orderId: number | null;
     order?: Order | null;
-    onPaymentSuccess: (data?: { offlineQueued?: boolean }) => void;
+    onPaymentSuccess: (data?: {
+        offlineQueued?: boolean;
+        fiscalInvoice?: PrintableInvoiceSnapshot | null;
+        fiscalInvoiceError?: string | null;
+        invoicePrinted?: boolean;
+    }) => void;
     currencySymbol?: string;
     hasUsableCashShift?: boolean;
     initialMode?: 'single' | 'split';
@@ -97,6 +116,42 @@ function methodIcon(type?: PaymentMethodType) {
     if (type === 'CASH') return Banknote;
     if (type === 'CARD') return CreditCard;
     return Smartphone;
+}
+
+function reserveInvoiceWindow(orderId: number): Window | null {
+    const invoiceWindow = window.open('', '_blank');
+    if (!invoiceWindow) return null;
+    try {
+        invoiceWindow.document.write(renderInvoiceLoadingHtml(orderId));
+        invoiceWindow.document.close();
+        return invoiceWindow;
+    } catch {
+        invoiceWindow.close();
+        return null;
+    }
+}
+
+function presentFiscalInvoice(
+    invoiceWindow: Window | null,
+    completion: PaymentCompletion,
+): boolean {
+    if (!completion.fiscalInvoice || !invoiceWindow || invoiceWindow.closed) {
+        if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
+        return false;
+    }
+    try {
+        invoiceWindow.document.open();
+        invoiceWindow.document.write(renderInvoiceHtml(completion.fiscalInvoice));
+        invoiceWindow.document.close();
+        invoiceWindow.focus();
+        window.setTimeout(() => {
+            if (!invoiceWindow.closed) invoiceWindow.print();
+        }, 250);
+        return true;
+    } catch {
+        if (!invoiceWindow.closed) invoiceWindow.close();
+        return false;
+    }
 }
 
 export default function PaymentModal({
@@ -189,6 +244,8 @@ export default function PaymentModal({
     useEffect(() => {
         if (!isOpen) return;
         let cancelled = false;
+        setMethods([]);
+        setSingleMethodId(null);
         setMethodsLoading(true);
         setMethodsError('');
         paymentsAPI.getPaymentMethods()
@@ -200,7 +257,11 @@ export default function PaymentModal({
                 if (active.length === 0) setMethodsError('No hay métodos de pago activos configurados.');
             })
             .catch((requestError: unknown) => {
-                if (!cancelled) setMethodsError(apiErrorMessage(requestError, 'No se pudieron cargar los métodos de pago.'));
+                if (!cancelled) {
+                    setMethods([]);
+                    setSingleMethodId(null);
+                    setMethodsError(apiErrorMessage(requestError, 'No se pudieron cargar los métodos de pago.'));
+                }
             })
             .finally(() => {
                 if (!cancelled) setMethodsLoading(false);
@@ -270,6 +331,30 @@ export default function PaymentModal({
         return selected.map((option, index) => createLeg(option.value, amounts[index]));
     }, [balance, mixedMethodOptions]);
 
+    const rebalanceMixedLegs = useCallback((legs: PaymentLeg[]) => {
+        if (legs.length < 2) return legs;
+        const lastIndex = legs.length - 1;
+        const last = legs[lastIndex];
+        const previousAmount = parseMoneyInput(last.amount);
+        const previousReceived = parseMoneyInput(last.received);
+        const remainder = calculateAutomaticPaymentRemainder(
+            balance,
+            legs.slice(0, lastIndex).map((leg) => parseMoneyInput(leg.amount)),
+        ).amount;
+        const formatted = formatMoneyInput(remainder.toFixed(2));
+        const preserveTendered = isCash(last.paymentMethodId)
+            && previousReceived !== null
+            && previousAmount !== null
+            && moneyToCents(previousReceived) !== moneyToCents(previousAmount);
+        return legs.map((leg, index) => index === lastIndex
+            ? {
+                ...leg,
+                amount: formatted,
+                received: preserveTendered ? leg.received : formatted,
+            }
+            : leg);
+    }, [balance, isCash]);
+
     const buildSplitLegs = useCallback((count: number, previous: SplitLeg[] = []) => {
         const amounts = splitTotalEvenly(balance, count);
         const defaultMethodId = usableMethodOptions[0]?.value ?? null;
@@ -287,6 +372,11 @@ export default function PaymentModal({
             };
         });
     }, [balance, usableMethodOptions]);
+
+    useEffect(() => {
+        if (mode !== 'mixed') return;
+        setMixedLegs((current) => current.length >= 2 ? rebalanceMixedLegs(current) : current);
+    }, [mode, rebalanceMixedLegs]);
 
     useEffect(() => {
         if (mode === 'mixed' && mixedLegs.length === 0 && mixedMethodOptions.length >= 2) {
@@ -312,6 +402,10 @@ export default function PaymentModal({
 
     const mixedAmounts = mixedLegs.map((leg) => parseField(leg.amount));
     const mixedAllocation = summarizePaymentAllocation(balance, mixedAmounts);
+    const mixedLeadingRemainder = calculateAutomaticPaymentRemainder(
+        balance,
+        mixedAmounts.slice(0, -1),
+    );
     const mixedMethodIds = mixedLegs.map((leg) => leg.paymentMethodId).filter((id): id is number => id !== null);
     const mixedMethodsUnique = new Set(mixedMethodIds).size === mixedMethodIds.length;
     const mixedCashValid = mixedLegs.every((leg) => {
@@ -476,7 +570,7 @@ export default function PaymentModal({
         leg: PaymentLeg,
         idempotencyKey: string,
         payerName?: string,
-    ): Promise<'confirmed' | 'queued'> => {
+    ): Promise<PaymentCompletion> => {
         if (!orderId || !leg.paymentMethodId) throw new Error('La orden o el método de pago no están disponibles.');
         const amount = parseField(leg.amount);
         if (amount === null || amount <= 0) throw new Error('El monto del pago es inválido.');
@@ -490,7 +584,12 @@ export default function PaymentModal({
             operationType: 'CREATE_PAYMENT',
             entityTempId: `payment-${orderId}-${leg.id}`,
         }, idempotencyKey);
-        return (response.data as ApiEnvelope)._offline ? 'queued' : 'confirmed';
+        const envelope = response.data as ApiEnvelope;
+        return {
+            status: envelope._offline ? 'queued' : 'confirmed',
+            fiscalInvoice: envelope.fiscalInvoice,
+            fiscalInvoiceError: envelope.fiscalInvoiceError,
+        };
     };
 
     const handleSinglePayment = async () => {
@@ -502,19 +601,28 @@ export default function PaymentModal({
         setLoading(true);
         setError('');
         setNotice('');
+        const invoiceWindow = reserveInvoiceWindow(orderId);
         try {
             const result = await submitPayment({
                 ...createLeg(singleMethodId, balance),
                 reference: singleReference,
             }, singleKeyRef.current);
-            if (result === 'queued') {
+            if (result.status === 'queued') {
+                if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
                 setQueuedPayment(true);
                 setNotice('Sin conexión: el pago quedó en cola. La orden permanecerá abierta hasta su confirmación.');
                 return;
             }
-            onPaymentSuccess({ offlineQueued: false });
+            const invoicePrinted = presentFiscalInvoice(invoiceWindow, result);
+            onPaymentSuccess({
+                offlineQueued: false,
+                fiscalInvoice: result.fiscalInvoice,
+                fiscalInvoiceError: result.fiscalInvoiceError,
+                invoicePrinted,
+            });
             onClose();
         } catch (requestError: unknown) {
+            if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
             setError(apiErrorMessage(requestError, 'No se pudo procesar el pago.'));
         } finally {
             setLoading(false);
@@ -523,19 +631,24 @@ export default function PaymentModal({
 
     const handleMixedPayment = async () => {
         if (!mixedValid) return setError('Distribuye el saldo exacto entre 2 o 3 métodos distintos.');
+        if (!orderId) return setError('La orden no está disponible para el cobro.');
         setLoading(true);
         setError('');
         setNotice('');
         setMixedAttempted(true);
         const succeeded = [...mixedSucceeded];
+        const invoiceWindow = reserveInvoiceWindow(orderId);
         try {
-            for (const leg of mixedLegs) {
-                if (succeeded.includes(leg.id)) continue;
+            const pendingLegs = mixedLegs.filter((leg) => !succeeded.includes(leg.id));
+            let finalResult: PaymentCompletion | null = null;
+            for (const leg of pendingLegs) {
                 const result = await submitPayment(
                     leg,
                     mixedKeysRef.current[leg.id] ||= newIdempotencyKey(),
                 );
-                if (result === 'queued') {
+                finalResult = result;
+                if (result.status === 'queued') {
+                    if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
                     setQueuedPayment(true);
                     setMixedSucceeded(succeeded);
                     setNotice('Un tramo del pago mixto quedó en cola sin conexión. No se procesarán más tramos hasta confirmar la sincronización.');
@@ -544,9 +657,19 @@ export default function PaymentModal({
                 succeeded.push(leg.id);
                 setMixedSucceeded([...succeeded]);
             }
-            onPaymentSuccess({ offlineQueued: false });
+            const invoicePrinted = presentFiscalInvoice(
+                invoiceWindow,
+                finalResult ?? { status: 'confirmed' },
+            );
+            onPaymentSuccess({
+                offlineQueued: false,
+                fiscalInvoice: finalResult?.fiscalInvoice,
+                fiscalInvoiceError: finalResult?.fiscalInvoiceError,
+                invoicePrinted,
+            });
             onClose();
         } catch (requestError: unknown) {
+            if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
             setMixedSucceeded(succeeded);
             setError(`${apiErrorMessage(requestError, 'Falló un tramo del pago mixto.')} Los tramos confirmados no se repetirán; vuelve a confirmar para reintentar solo los pendientes.`);
         } finally {
@@ -556,6 +679,7 @@ export default function PaymentModal({
 
     const handleSplitPayment = async () => {
         if (!itemAssignmentsComplete) return setError('Asigna todas las unidades y al menos una a cada comensal.');
+        if (!orderId) return setError('La orden no está disponible para el cobro.');
         const effective = splitAttempted ? splitLegs : await rebuildSplitPreview();
         if (!effective) return;
         if (!splitLegsArePayable(effective)) return setError('Revisa métodos, importes y efectivo recibido; la suma debe coincidir exactamente con el saldo.');
@@ -564,15 +688,19 @@ export default function PaymentModal({
         setNotice('');
         setSplitAttempted(true);
         const succeeded = [...splitSucceeded];
+        const invoiceWindow = reserveInvoiceWindow(orderId);
         try {
-            for (const leg of effective) {
-                if (succeeded.includes(leg.id)) continue;
+            const pendingLegs = effective.filter((leg) => !succeeded.includes(leg.id));
+            let finalResult: PaymentCompletion | null = null;
+            for (const leg of pendingLegs) {
                 const result = await submitPayment(
                     leg,
                     splitKeysRef.current[leg.id] ||= newIdempotencyKey(),
                     normalizePayerName(leg.payerName),
                 );
-                if (result === 'queued') {
+                finalResult = result;
+                if (result.status === 'queued') {
+                    if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
                     setQueuedPayment(true);
                     setSplitSucceeded(succeeded);
                     setNotice(`El pago de ${leg.payerName} quedó en cola sin conexión. La cuenta sigue abierta.`);
@@ -581,9 +709,19 @@ export default function PaymentModal({
                 succeeded.push(leg.id);
                 setSplitSucceeded([...succeeded]);
             }
-            onPaymentSuccess({ offlineQueued: false });
+            const invoicePrinted = presentFiscalInvoice(
+                invoiceWindow,
+                finalResult ?? { status: 'confirmed' },
+            );
+            onPaymentSuccess({
+                offlineQueued: false,
+                fiscalInvoice: finalResult?.fiscalInvoice,
+                fiscalInvoiceError: finalResult?.fiscalInvoiceError,
+                invoicePrinted,
+            });
             onClose();
         } catch (requestError: unknown) {
+            if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
             setSplitSucceeded(succeeded);
             setError(`${apiErrorMessage(requestError, 'Falló un pago de la cuenta dividida.')} Los pagos confirmados no se repetirán.`);
         } finally {
@@ -592,7 +730,9 @@ export default function PaymentModal({
     };
 
     const updateMixedLeg = (id: string, patch: Partial<PaymentLeg>) => {
-        setMixedLegs((current) => current.map((leg) => leg.id === id ? { ...leg, ...patch } : leg));
+        setMixedLegs((current) => rebalanceMixedLegs(
+            current.map((leg) => leg.id === id ? { ...leg, ...patch } : leg)
+        ));
     };
     const updateSplitLeg = (id: string, patch: Partial<SplitLeg>) => {
         if (patch.payerName !== undefined) lastItemPreviewSignatureRef.current = '';
@@ -717,7 +857,6 @@ export default function PaymentModal({
 
                     {methodsLoading && <div className="payment-state">Cargando métodos de pago…</div>}
                     {methodsError && <div className="payment-alert error" role="alert">{methodsError}</div>}
-
                     {!methodsLoading && !methodsError && mode === 'single' && (
                         <div className="payment-panel single-panel">
                             <div className="payment-section-heading">
@@ -752,7 +891,33 @@ export default function PaymentModal({
                                 <div className="payment-heading-tools">
                                     {!mixedAttempted && mixedLegs.length < 3 && mixedMethodOptions.length > mixedLegs.length && <button type="button" className="payment-add-leg" onClick={() => {
                                         const nextMethod = mixedMethodOptions.find((option) => !mixedMethodIds.includes(option.value));
-                                        if (nextMethod) setMixedLegs((current) => [...current, createLeg(nextMethod.value, 0)]);
+                                        if (nextMethod) {
+                                            setMixedLegs((current) => {
+                                                const previousLast = current[current.length - 1];
+                                                const previousAmount = parseMoneyInput(previousLast?.amount ?? '') ?? 0;
+                                                const previousReceived = parseMoneyInput(previousLast?.received ?? '');
+                                                const preserveTendered = Boolean(
+                                                    previousLast
+                                                    && isCash(previousLast.paymentMethodId)
+                                                    && previousReceived !== null
+                                                    && moneyToCents(previousReceived) !== moneyToCents(previousAmount)
+                                                );
+                                                const divided = splitTotalEvenly(previousAmount, 2);
+                                                const expanded = current.map((leg, index) => index === current.length - 1
+                                                    ? {
+                                                        ...leg,
+                                                        amount: formatMoneyInput((divided[0] ?? 0).toFixed(2)),
+                                                        received: preserveTendered
+                                                            ? leg.received
+                                                            : formatMoneyInput((divided[0] ?? 0).toFixed(2)),
+                                                    }
+                                                    : leg);
+                                                return rebalanceMixedLegs([
+                                                    ...expanded,
+                                                    createLeg(nextMethod.value, divided[1] ?? 0),
+                                                ]);
+                                            });
+                                        }
                                     }}><Plus size={17} /> Agregar método</button>}
                                     <AllocationStatus summary={mixedAllocation} currencySymbol={currencySymbol} valid={mixedValid} compact />
                                 </div>
@@ -766,24 +931,41 @@ export default function PaymentModal({
                                             const cash = isCash(leg.paymentMethodId);
                                             const amount = parseField(leg.amount) ?? 0;
                                             const received = parseField(leg.received) ?? 0;
+                                            const automaticRemainder = index === mixedLegs.length - 1;
                                             const options = mixedMethodOptions.filter((option) => option.value === leg.paymentMethodId || !mixedMethodIds.includes(option.value));
                                             return (
                                                 <article className={`payment-leg ${mixedSucceeded.includes(leg.id) ? 'completed' : ''}`} key={leg.id}>
                                                     <div className="payment-leg-title"><span>Tramo {index + 1}</span>{mixedSucceeded.includes(leg.id) && <b>Confirmado</b>}</div>
                                                     <div className="payment-leg-grid">
                                                         <label className="payment-field"><span>Método</span>{renderMethodSelect(`mixed-method-${leg.id}`, leg.paymentMethodId, options, (value) => updateMixedLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), mixedAttempted)}</label>
-                                                        {renderMoneyInput(`mixed-amount-${leg.id}`, leg.amount, (value) => updateMixedLeg(leg.id, { amount: value, received: cash && parseField(leg.received) === parseField(leg.amount) ? value : leg.received }), mixedAttempted)}
+                                                        {renderMoneyInput(
+                                                            `mixed-amount-${leg.id}`,
+                                                            leg.amount,
+                                                            (value) => updateMixedLeg(leg.id, {
+                                                                amount: value,
+                                                                received: cash && parseField(leg.received) === parseField(leg.amount)
+                                                                    ? value
+                                                                    : leg.received,
+                                                            }),
+                                                            mixedAttempted || automaticRemainder,
+                                                            automaticRemainder ? 'Diferencia automática' : 'Monto',
+                                                        )}
                                                         {cash ? renderMoneyInput(`mixed-received-${leg.id}`, leg.received, (value) => updateMixedLeg(leg.id, { received: value }), mixedAttempted, 'Efectivo recibido') : (
                                                             <label className="payment-field" htmlFor={`mixed-reference-${leg.id}`}><span>Referencia <em>opcional</em></span><input id={`mixed-reference-${leg.id}`} value={leg.reference} onChange={(event) => updateMixedLeg(leg.id, { reference: event.target.value })} disabled={mixedAttempted} maxLength={191} placeholder="Voucher o transferencia" /></label>
                                                         )}
                                                     </div>
                                                     {cash && <div className="leg-change">Cambio de este tramo: <b>{displayMoney(Math.max(0, received - amount))}</b></div>}
-                                                    {mixedLegs.length > 2 && !mixedAttempted && <button type="button" className="leg-remove" onClick={() => setMixedLegs((current) => current.filter((item) => item.id !== leg.id))}><Trash2 size={16} /> Eliminar tramo</button>}
+                                                    {mixedLegs.length > 2 && !mixedAttempted && <button type="button" className="leg-remove" onClick={() => setMixedLegs((current) => rebalanceMixedLegs(current.filter((item) => item.id !== leg.id)))}><Trash2 size={16} /> Eliminar tramo</button>}
                                                 </article>
                                             );
                                         })}
                                     </div>
                                     {!mixedMethodsUnique && <div className="payment-alert error">Cada tramo debe usar un método distinto.</div>}
+                                    {mixedLeadingRemainder.excess > 0 && (
+                                        <div className="payment-alert error">
+                                            Los tramos anteriores exceden el saldo por {displayMoney(mixedLeadingRemainder.excess)}. Si el excedente es efectivo, regístralo en “Efectivo recibido” para mostrar el cambio, no como monto aplicado.
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -924,7 +1106,7 @@ export default function PaymentModal({
                     {!hasUsableCashShift && methods.some((method) => isCashPaymentMethodType(method.type)) && <div className="payment-cash-note"><Banknote size={16} /> Efectivo oculto: no hay turno vigente en la sucursal.</div>}
                     <div className="payment-footer-actions">
                         <button type="button" className="secondary" onClick={close} disabled={busy}>Cancelar</button>
-                        <button type="button" className="primary" onClick={() => void (mode === 'single' ? handleSinglePayment() : mode === 'mixed' ? handleMixedPayment() : handleSplitPayment())} disabled={busy || queuedPayment || Boolean(balanceError) || balance <= 0 || (mode === 'single' && (!singleMethodId || (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)))) || (mode === 'mixed' && !mixedValid) || (mode === 'split' && !splitValid)}>
+                        <button type="button" className="primary" onClick={() => void (mode === 'single' ? handleSinglePayment() : mode === 'mixed' ? handleMixedPayment() : handleSplitPayment())} disabled={busy || queuedPayment || Boolean(methodsError) || Boolean(balanceError) || balance <= 0 || (mode === 'single' && (!singleMethodId || (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)))) || (mode === 'mixed' && !mixedValid) || (mode === 'split' && !splitValid)}>
                             {loading ? 'Procesando…' : previewLoading ? 'Calculando…' : mode === 'single' ? 'Confirmar pago' : mode === 'mixed' ? `Confirmar ${mixedLegs.length} tramos` : `Confirmar ${splitLegs.length} pagos`}
                         </button>
                     </div>

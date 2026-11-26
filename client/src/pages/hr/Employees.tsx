@@ -13,7 +13,7 @@ import {
     UsersRound,
     WalletCards,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, Pagination, type Column, Button } from '@/ui';
+import { DataTable, FullScreenModal, PageHeader, Pagination, StatCard, type Column, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ViewToggle from '../../components/ViewToggle';
 import EmployeeForm from '../../components/hr/EmployeeForm';
@@ -33,7 +33,7 @@ import type {
     HrUserSummary,
 } from '../../types/hr';
 import { useDebounce } from '../../utils/useDebounce';
-import { formatHrMoney } from '../../utils/hrFormat';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import './hr.css';
 
 type Option = { value: string; label: string };
@@ -112,6 +112,7 @@ export default function Employees() {
     const [costCenterId, setCostCenterId] = useState('');
     const [branchId, setBranchId] = useState('');
     const [page, setPage] = useState(1);
+    const [preview, setPreview] = useState<HrEmployee | null>(null);
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
     const [editorOpen, setEditorOpen] = useState(false);
@@ -228,6 +229,11 @@ export default function Employees() {
             showError(getHrErrorMessage(statusError, 'No fue posible desactivar el empleado.'));
         }
     };
+
+    const pageStats = useMemo(() => ({
+        withoutCompensation: employees.filter((employee) => employee.compensation !== undefined && !currentCompensation(employee)).length,
+        withoutUser: employees.filter((employee) => !employee.user).length,
+    }), [employees]);
 
     const clearFilters = () => {
         setSearch('');
@@ -371,12 +377,24 @@ export default function Employees() {
                 </div>
             )}
 
+            {!loading && !error && (pageStats.withoutCompensation > 0 || pageStats.withoutUser > 0) && (
+                <section className="hr-kpi-row" aria-label="Brechas del expediente en esta página">
+                    {pageStats.withoutCompensation > 0 && (
+                        <StatCard tone="danger" label="Sin compensación vigente" value={String(pageStats.withoutCompensation)} context="En esta página · requieren versión salarial." />
+                    )}
+                    {pageStats.withoutUser > 0 && (
+                        <StatCard tone="warning" label="Sin usuario vinculado" value={String(pageStats.withoutUser)} context="En esta página · sin acceso al sistema." />
+                    )}
+                </section>
+            )}
+
             {!loading && !error && employees.length > 0 && viewMode === 'table' && (
                 <DataTable<HrEmployee>
                     rows={employees}
                     rowKey={(employee) => employee.id}
                     columns={columns}
                     ariaLabel="Personal"
+                    onRowClick={setPreview}
                     pagination={{ mode: 'server', page, pageSize: 25, total: totalItems, onChange: (nextPage) => setPage(nextPage) }}
                     pageSizeOptions={[25]}
                     minWidth="72rem"
@@ -428,6 +446,38 @@ export default function Employees() {
             {!loading && !error && viewMode === 'cards' && totalPages > 1 && (
                 <Pagination page={page} pageSize={25} total={totalItems} pageSizeOptions={[25]} hidePageSize onChange={(nextPage) => setPage(nextPage)} />
             )}
+
+            <FullScreenModal
+                isOpen={Boolean(preview)}
+                onClose={() => setPreview(null)}
+                title={preview?.legalName ?? 'Expediente'}
+            >
+                {preview && (() => {
+                    const compensation = currentCompensation(preview);
+                    return (
+                        <div className="hr-pe-preview">
+                            <div className="hr-pe-preview-head">
+                                <HrStatusPill status={preview.status} />
+                                <span>{preview.jobPosition?.name ?? 'Sin puesto'} · {preview.department?.name ?? 'Sin departamento'}</span>
+                            </div>
+                            <dl className="hr-pe-preview-grid">
+                                <div><dt>Código</dt><dd>{preview.employeeCode}</dd></div>
+                                <div><dt>Ingreso</dt><dd>{displayDate(preview.hireDate)}</dd></div>
+                                <div><dt>Identificación</dt><dd>{identificationText(preview)}</dd></div>
+                                <div><dt>Sucursal principal</dt><dd>{primaryBranch(preview)?.name ?? 'Sin asignar'}</dd></div>
+                                <div><dt>Usuario</dt><dd>{preview.user ? `@${preview.user.username}` : 'Sin usuario vinculado'}</dd></div>
+                                <div><dt>Compensación vigente</dt><dd>{preview.compensation === undefined ? 'Acceso restringido' : compensation ? formatHrMoney(compensation.currency, compensation.amount) : 'Sin compensación vigente'}</dd></div>
+                                <div><dt>Correo laboral</dt><dd>{preview.workEmail || '—'}</dd></div>
+                                <div><dt>Teléfono</dt><dd>{preview.phone || '—'}</dd></div>
+                            </dl>
+                            <div className="hr-pe-preview-actions">
+                                <Button variant="primary" onClick={() => navigate(`/rh/personal/${preview.id}`)}><Eye size={16} /> Abrir expediente completo</Button>
+                                <Button variant="secondary" onClick={() => { const target = preview; setPreview(null); void openEdit(target); }}><Edit2 size={16} /> Editar</Button>
+                            </div>
+                        </div>
+                    );
+                })()}
+            </FullScreenModal>
 
             <FullScreenModal
         isOpen={editorOpen}

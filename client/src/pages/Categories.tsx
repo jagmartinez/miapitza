@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { notifyError } from '../services/notify';
 import { categoriesAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -59,7 +60,7 @@ export default function Categories() {
             const res = await categoriesAPI.getAll();
             setCategories(res.data.data);
         } catch (error) {
-            console.error('Error loading categories:', error);
+            notifyError(error, 'No se pudieron cargar las categorías');
         } finally {
             setLoading(false);
         }

@@ -16,11 +16,13 @@ describe('PaymentModal contract', () => {
     it('keeps each mixed or split leg idempotent and retries only pending legs', () => {
         expect(source).toContain('mixedKeysRef.current[leg.id] ||= newIdempotencyKey()');
         expect(source).toContain('splitKeysRef.current[leg.id] ||= newIdempotencyKey()');
-        expect(source).toContain('if (succeeded.includes(leg.id)) continue');
+        expect(source).toContain("filter((leg) => !succeeded.includes(leg.id))");
     });
 
     it('requires exact cent allocation and only renders change for cash legs', () => {
         expect(source).toContain('summarizePaymentAllocation(balance');
+        expect(source).toContain('calculateAutomaticPaymentRemainder(');
+        expect(source).toContain("'Diferencia automática'");
         expect(source).toContain('&& mixedAllocation.exact');
         expect(source).toContain('!previewAllocation.exact');
         expect(source).toContain("{cash && <div className=\"leg-change\"");
@@ -58,5 +60,15 @@ describe('PaymentModal contract', () => {
         expect(styles).toContain('min-height: 46px');
         expect(source).toContain('scrollAreaRef.current?.scrollTo({ top: 0 })');
         expect(source).not.toContain('payment-footer-mode');
+    });
+
+    it('keeps payment financial-only and contains no delivery or warehouse coupling', () => {
+        expect(source).not.toContain('settleReadyTableOnPayment');
+        expect(source).not.toContain('settlementWarehouse');
+        expect(source).not.toContain('warehousesAPI');
+        expect(source).not.toContain('warehouseId');
+        expect(source).not.toContain('entregará la orden');
+        expect(source).toContain('busy || queuedPayment');
+        expect(source).toContain('Boolean(methodsError)');
     });
 });

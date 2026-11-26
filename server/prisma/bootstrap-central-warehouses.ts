@@ -26,7 +26,8 @@ export async function bootstrapCentralWarehouses(prisma: PrismaClient) {
     const companies = await prisma.company.findMany({
         select: {
             id: true,
-            name: true
+            name: true,
+            costingMethod: true
         },
         orderBy: {
             id: 'asc'
@@ -70,7 +71,9 @@ export async function bootstrapCentralWarehouses(prisma: PrismaClient) {
                 branchId: null,
                 type: 'CENTRAL',
                 name: 'Bodega Central',
-                code
+                code,
+                // Warehouse copy of the company costing method (engine source).
+                costingMethod: company.costingMethod
             }
         });
 

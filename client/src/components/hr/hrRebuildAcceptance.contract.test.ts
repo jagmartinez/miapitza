@@ -41,13 +41,14 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
     expect(benefits).not.toContain('Selecciona un registro');
   });
 
-  it('presenta nómina como registro operativo, autoabre una corrida y entrega reportes y colillas', () => {
+  it('presenta nómina como registro operativo, abre cada corrida en su propia vista y entrega reportes y colillas', () => {
     expect(payroll).toContain('<DataTable<HrPayrollRun>');
     expect(payroll).toContain("header: 'Acciones'");
     expect(payroll).toContain('Buscar código o periodo');
     expect(payroll).toContain('filteredRuns');
-    expect(payroll).toContain('autoOpenedRunKey');
-    expect(payroll).toContain('void openWorkspace(latest)');
+    expect(payroll).toContain("params.set('corrida'");
+    expect(payroll).toContain('Volver a corridas');
+    expect(payroll).not.toContain('autoOpenedRunKey');
     expect(payroll).toContain("exportSpecificRun(run, 'xlsx')");
     expect(payroll).toContain('downloadRunReceiptBatch(run)');
     expect(payroll).toMatch(/Intl\.DateTimeFormat\('es-NI'|toLocaleDateString\('es-NI'/);
@@ -73,7 +74,8 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
   it('no oculta registros por el límite de una página del servidor y conserva semántica accesible', () => {
     [attendance, leave, payroll].forEach((source) => {
       expect(source).toContain('collectAllPages');
-      expect(source).toContain('aria-controls=');
+      // <HrTabs> renders aria-controls for each tab, so either form keeps tabs wired to their panels.
+      expect(source).toMatch(/aria-controls=|<HrTabs/);
       expect(source).toContain('role="tabpanel"');
       expect(source).toContain('columns={[');
     });

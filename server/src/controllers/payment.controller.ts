@@ -4,6 +4,7 @@ import { OrderService } from '../services/order.service';
 import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 import prisma from '../utils/prisma';
 import { WebSocketService } from '../services/websocket.service';
+import { InvoiceService } from '../services/invoice.service';
 
 export class PaymentController {
     static async getPaymentMethods(req: Request, res: Response, next: NextFunction) {
@@ -76,15 +77,38 @@ export class PaymentController {
                 { ...req.body, idempotencyKey },
                 req.user!.userId
             );
-            const order = await OrderService.getById(payment.orderId, companyId);
+            let order = await OrderService.getById(payment.orderId, companyId);
+            let fiscalInvoice = null;
+            let fiscalInvoiceError: string | null = null;
+            if (order.financialStatus === 'PAID') {
+                try {
+                    fiscalInvoice = await InvoiceService.generateInvoice(
+                        order.id,
+                        companyId,
+                        req.user!.userId,
+                    );
+                    order = await OrderService.getById(payment.orderId, companyId);
+                } catch (invoiceError) {
+                    // The payment is already an idempotent financial fact. Return
+                    // that success and expose the recoverable fiscal failure so
+                    // the client never tells the cashier the charge failed.
+                    fiscalInvoiceError = invoiceError instanceof Error
+                        ? invoiceError.message
+                        : 'No se pudo emitir la factura fiscal';
+                }
+            }
             WebSocketService.broadcastOrderUpdate(order.id, 'PAYMENT_UPDATED', order, {
                 companyId,
                 branchId: order.branchId
             });
             res.status(201).json({
                 success: true,
-                message: 'Pago procesado exitosamente',
-                data: payment
+                message: fiscalInvoiceError
+                    ? 'Pago procesado; la factura fiscal requiere reintento'
+                    : 'Pago procesado exitosamente',
+                data: payment,
+                fiscalInvoice,
+                fiscalInvoiceError,
             });
         } catch (error) {
             if (error instanceof BranchScopeError) return next(error);

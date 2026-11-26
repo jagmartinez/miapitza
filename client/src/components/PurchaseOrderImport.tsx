@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { purchaseOrdersAPI, suppliersAPI, branchesAPI } from '../services/api';
 import {
     AppSelect, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, Input, Textarea, formatMoney, formatNumber,
@@ -89,8 +91,8 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
                 setSelectedBranch(branchesRes.data.data[0].id);
             }
         } catch (error) {
-            console.error('Error loading initial data for import:', error);
             setError('No se pudieron cargar proveedores y sucursales; cierra y vuelve a abrir la carga masiva para reintentar.');
+            notifyError(error, 'No se pudieron cargar proveedores y sucursales para importar');
         }
     };
 
@@ -104,8 +106,8 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
             document.body.appendChild(link);
             link.click();
             link.remove();
-        } catch {
-            setError('Error al descargar la plantilla');
+        } catch (err) {
+            setError(getApiErrorMessage(err, 'Error al descargar la plantilla'));
         }
     };
 

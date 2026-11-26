@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
 import { useParams, useNavigate } from 'react-router-dom';
 import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, menuBrandsAPI, productionReportsAPI } from '../services/api';
 import {
@@ -1064,8 +1065,8 @@ function ReportViewer({ reportId }: { reportId: string }) {
             const res = await exportReportData(reportId, params);
             if (!res) return;
             downloadBlob(res.data, `reporte_${reportId}_${todayStr()}.xlsx`);
-        } catch {
-            setError('Error al exportar el reporte');
+        } catch (err) {
+            setError(getApiErrorMessage(err, 'Error al exportar el reporte'));
         } finally {
             setExporting(false);
         }

@@ -1,6 +1,6 @@
 import { AppSelect, Button } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
-import { formatHrMoney } from '../../utils/hrFormat';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useState } from 'react';
 import { Download, FileLock2, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import LoadingSpinner from '../LoadingSpinner';

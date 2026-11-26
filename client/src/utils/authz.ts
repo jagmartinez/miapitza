@@ -17,7 +17,7 @@ export const getUserRoleNames = (user?: User | null): string[] => {
         return [];
     }
 
-    if (Array.isArray(user.roles) && user.roles.length > 0) {
+    if (Array.isArray(user.roles)) {
         const rolesFromArray = user.roles
             .map((role) => {
                 if (typeof role === 'string') {
@@ -29,9 +29,7 @@ export const getUserRoleNames = (user?: User | null): string[] => {
                 return '';
             })
             .filter(Boolean);
-        if (rolesFromArray.length > 0) {
-            return rolesFromArray;
-        }
+        return rolesFromArray;
     }
 
     if (Array.isArray(user.userRoles) && user.userRoles.length > 0) {
@@ -83,6 +81,10 @@ export const canSendOrderToKitchen = (user: User | null | undefined): boolean =>
 export const canCancelOrder = (user: User | null | undefined): boolean =>
     hasPermission(user, 'orders.cancel', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO]);
 
+/** POST /orders/:id/complete */
+export const canDeliverOrder = (user: User | null | undefined): boolean =>
+    hasPermission(user, 'orders.deliver', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.CAJERO]);
+
 /** POST /payments (registrar cobro) */
 export const canCreatePayment = (user: User | null | undefined): boolean =>
     hasPermission(user, 'payments.process', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CAJERO]);
@@ -103,12 +105,16 @@ export const canIssueCreditNote = (user: User | null | undefined): boolean =>
 export const canOperateKitchenLineItems = (user: User | null | undefined): boolean =>
     hasPermission(user, 'kds.manage', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.COCINA, ROLES.CHEF]);
 
+/** POST /orders/:id/items/:itemId/void (supervisor: anula una línea ya comandada y registra merma) */
+export const canVoidKitchenLine = (user: User | null | undefined): boolean =>
+    hasPermission(user, 'orders.items.void', [ROLES.SUPERADMIN, ROLES.ADMIN]);
+
 /** PATCH /orders/:id/status. Kitchen-only roles must finish line items instead. */
 export const canUpdateWholeOrderStatus = (user: User | null | undefined): boolean =>
     hasPermission(user, 'orders.edit', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.CAJERO]);
 
 export const getPrimaryRoleName = (user?: User | null): string => {
-    return getUserRoleNames(user)[0] || user?.role?.name || '';
+    return getUserRoleNames(user)[0] || '';
 };
 
 export const getRoleColor = (roleName?: string | null): string => {

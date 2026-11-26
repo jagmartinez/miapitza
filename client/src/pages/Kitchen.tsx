@@ -7,7 +7,9 @@ import { initializeSound, playNotificationSound } from '../utils/sound';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
-import { getUserAccentColor, canOperateKitchenLineItems, getUserRoleNames } from '../utils/authz';
+import { getUserAccentColor, canOperateKitchenLineItems, canVoidKitchenLine, getUserRoleNames } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
+import { isVoidableOrderLine, isVoidedOrderLine, orderLineVoidBlocker } from '../utils/orderLineVoid';
 import { useAppToast } from '../context/ToastContext';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
@@ -17,6 +19,8 @@ import { ThemeContext } from '../context/theme-context';
 import EmptyState from '../components/EmptyState';
 import type { Order, OrderItem } from '../types';
 import { getKdsTimeClass, getKdsWaitMinutes, getKitchenReceivedAt, summarizeKds } from '../utils/kdsTiming';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 
 function axiosMsg(err: unknown, fallback: string): string {
     if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -39,12 +43,16 @@ const kitchenItemStatusLabel: Record<OrderItem['status'], string> = {
     DONE: 'Listo',
 };
 
+const kitchenOrderKey = (order: Order) => `${order.id}:${order.kitchenBatchId ?? 'legacy'}`;
+
 export default function Kitchen({ displayMode = false }: { displayMode?: boolean }) {
     const { user } = useAuth();
     const navigate = useNavigate();
     const { error: showError, warning: showWarning, success } = useAppToast();
     const { confirm } = useConfirmDialog();
     const canKitchenLineOps = canOperateKitchenLineItems(user);
+    const canVoidLines = canVoidKitchenLine(user);
+    const [voidTarget, setVoidTarget] = useState<{ order: Order; itemId: number } | null>(null);
     const canReturnToAdministration = getUserRoleNames(user).some((role) => ['SUPERADMIN', 'ADMIN', 'CHEF'].includes(role));
     const pageRef = useRef<HTMLDivElement>(null);
 
@@ -58,11 +66,12 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     const [showProblemModal, setShowProblemModal] = useState(false);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [problemDescription, setProblemDescription] = useState('');
-    const [detailOrderId, setDetailOrderId] = useState<number | null>(null);
+    const [detailOrderKey, setDetailOrderKey] = useState<string | null>(null);
     const [showHistory, setShowHistory] = useState(false);
     const [timingConfig, setTimingConfig] = useState<{ warningMinutes: number; urgentMinutes: number } | null>(null);
     const [, setClockTick] = useState(0);
     const previousOrderCount = useRef(0);
+    const loadOrdersRequestRef = useRef(0);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
 
@@ -103,10 +112,13 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     };
 
     const loadOrders = useCallback(async () => {
+        const requestId = ++loadOrdersRequestRef.current;
         try {
             const response = showHistory
                 ? await ordersAPI.getKitchenHistory({ limit: 200 })
                 : await ordersAPI.getKitchenQueue();
+            // Ignore late responses (e.g. queue vs history toggle) superseded by a newer load.
+            if (requestId !== loadOrdersRequestRef.current) return;
             const kitchenOrders = showHistory
                 ? response.data.data
                 : response.data.data.filter((o: Order) =>
@@ -121,10 +133,11 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             setOrders(kitchenOrders);
             setLoadError(null);
         } catch (error: unknown) {
+            if (requestId !== loadOrdersRequestRef.current) return;
             console.error('Error loading orders:', error);
             setLoadError(axiosMsg(error, 'No se pudo cargar la cola de cocina. Revisa la conexión o tus permisos.'));
         } finally {
-            setLoading(false);
+            if (requestId === loadOrdersRequestRef.current) setLoading(false);
         }
     }, [showHistory, soundEnabled]);
 
@@ -132,11 +145,22 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
         loadOrders();
         ordersAPI.getKitchenConfig()
             .then((response) => setTimingConfig(response.data.data))
-            .catch((error) => console.error('Error loading KDS timing config:', error));
+            .catch((error) => {
+                console.error('Error loading KDS timing config:', error);
+                notifyError(error, 'No se pudo cargar la configuración de tiempos del KDS (se usan los tiempos por defecto)', { type: 'warning' });
+            });
         initializeWebSocket();
 
         const unsubscribe = subscribeWebSocket((message) => {
             if (!message?.type) {
+                return;
+            }
+
+            // Waiter-app edits of unsent lines never reach the kitchen queue.
+            if (
+                message.type === WS_EVENTS.ORDER_UPDATE &&
+                (message.payload?.status === 'ITEMS_CHANGED' || message.payload?.status === 'GUESTS_CHANGED')
+            ) {
                 return;
             }
 
@@ -159,51 +183,48 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
         };
     }, [loadOrders]);
 
-    const handleMarkReady = async (orderId: number) => {
+    const handleMarkReady = async (order: Order) => {
         if (!canKitchenLineOps) {
             showWarning('Tu rol no puede marcar órdenes listas.');
             return;
         }
-        if (!(await confirm('¿Marcar toda la orden como lista?', { variant: 'warning' }))) {
+        if (!(await confirm(`¿Marcar la tanda ${order.kitchenBatchSequence ?? ''} como lista?`, { variant: 'warning' }))) {
             return;
         }
         try {
-            await ordersAPI.markKitchenReady(orderId);
-            const order = orders.find(o => o.id === orderId);
-            if (order) {
-                printOrderTicket(order);
-            }
+            await ordersAPI.markKitchenReady(order.id, order.kitchenBatchId);
+            printOrderTicket(order);
             loadOrders();
         } catch (error) {
             console.error('Error updating order:', error);
-            showError('Error al actualizar orden');
+            showError(getApiErrorMessage(error, 'Error al actualizar orden'));
         }
     };
 
-    const handleStartOrder = async (orderId: number) => {
+    const handleStartOrder = async (order: Order) => {
         if (!canKitchenLineOps) {
             showWarning('Tu rol no puede iniciar la preparación.');
             return;
         }
         try {
-            await ordersAPI.startKitchenPreparation(orderId);
+            await ordersAPI.startKitchenPreparation(order.id, order.kitchenBatchId);
             await loadOrders();
         } catch (error: unknown) {
             showError(axiosMsg(error, 'No se pudo iniciar la preparación'));
         }
     };
 
-    const handleReleaseOrder = async (orderId: number) => {
+    const handleReleaseOrder = async (order: Order) => {
         if (!canKitchenLineOps) {
             showWarning('Tu rol no puede liberar órdenes del KDS.');
             return;
         }
         if (!(await confirm('¿Liberar esta orden de la cola activa? Permanecerá en el historial.', { variant: 'warning' }))) return;
         try {
-            await ordersAPI.releaseKitchenOrder(orderId);
-            setDetailOrderId(null);
+            await ordersAPI.releaseKitchenOrder(order.id, order.kitchenBatchId);
+            setDetailOrderKey(null);
             await loadOrders();
-            success(`Orden #${orderId} liberada del KDS`);
+            success(`Tanda ${order.kitchenBatchSequence ?? ''} de la orden #${order.id} liberada del KDS`);
         } catch (error: unknown) {
             showError(axiosMsg(error, 'No se pudo liberar la orden'));
         }
@@ -229,8 +250,12 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
         }
         try {
             const res = await ordersAPI.finishItem(orderId, itemId);
-            if (res.data.data?.allDone) {
-                const order = orders.find(o => o.id === orderId);
+            const finished = res.data.data;
+            if (finished?.allDone) {
+                // Print the batch that was just finished, not the first card of the order.
+                const order = orders.find(o => o.id === orderId && finished.kitchenBatchId != null && o.kitchenBatchId === finished.kitchenBatchId)
+                    ?? orders.find(o => o.id === orderId && o.items?.some((item) => item.id === itemId))
+                    ?? (finished.order as Order | undefined);
                 if (order) printOrderTicket(order);
             }
             loadOrders();
@@ -272,7 +297,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 <p><strong>Hora:</strong> ${e(new Date().toLocaleTimeString('es-ES'))}</p>
                 <div class="divider"></div>
                 <h3>Items:</h3>
-                ${order.items?.map((item: OrderItem) => `
+                ${order.items?.filter((item: OrderItem) => !isVoidedOrderLine(item)).map((item: OrderItem) => `
                     <div class="item">
                         <span>${e(item.quantity)}x ${e(item.menuItem?.name)}</span>
                     </div>
@@ -355,12 +380,12 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             if (debouncedTableFilter && order.table?.number?.toString() !== debouncedTableFilter) return false;
 
             // Date filter (only apply when statusFilter is 'all')
-            if (statusFilter === 'all' && !isWithinDateRange(order.createdAt)) return false;
+            if (statusFilter === 'all' && !isWithinDateRange(getKitchenReceivedAt(order))) return false;
 
             return true;
         })
         .sort((a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            new Date(getKitchenReceivedAt(a)).getTime() - new Date(getKitchenReceivedAt(b)).getTime()
         );
 
     const renderCard = (order: Order) => {
@@ -372,7 +397,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
 
                     return (
                         <article
-                            key={order.id}
+                            key={kitchenOrderKey(order)}
                             className={`kitchen-card-new ${order.kitchenReleasedAt ? 'order-released' : order.status === 'READY' ? 'order-ready' : timeClass}`}
                             style={{ borderTop: `4px solid ${waiterAccent}` }}
                         >
@@ -394,7 +419,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                 aria-label={!showHistory && order.status === 'SENT_TO_KITCHEN'
                                     ? `Iniciar preparación de la orden ${order.id}, mesa ${order.table?.number || 'sin mesa'}`
                                     : `Ver detalle de la orden ${order.id}, mesa ${order.table?.number || 'sin mesa'}`}
-                                onClick={() => setDetailOrderId(order.id)}
+                                onClick={() => setDetailOrderKey(kitchenOrderKey(order))}
                             >
                                 <div className="kitchen-card-top-row">
                                     <div className="table-number-new">Mesa {order.table?.number || 'N/A'}</div>
@@ -416,7 +441,9 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                     )}
                                 </div>
                                 <div className="order-meta-new">
-                                    <span className="order-id-kitchen">Orden #{order.id}</span>
+                                    <span className="order-id-kitchen">
+                                        Orden #{order.id} · Tanda {order.kitchenBatchSequence ?? '—'}
+                                    </span>
                                     <span className="order-time-kitchen">
                                         • Recibida: {new Date(getKitchenReceivedAt(order)).toLocaleTimeString('es-ES', {
                                             hour: '2-digit',
@@ -462,6 +489,14 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                     <div className="kds-visible-items-heading"><ListOrdered size={15} /><span>Preparación</span><b>{order.items?.length || 0}</b></div>
                                     {order.items?.map((item) => {
                                         const awaitingSend = !item.sentAt && item.status === 'PENDING';
+                                        if (isVoidedOrderLine(item)) {
+                                            return (
+                                                <div key={item.id} className="kds-visible-item status-voided order-line-voided" title={item.voidReason || undefined}>
+                                                    <div><strong className="order-line-voided-name">{item.voidedQuantity}× {item.menuItem?.name || 'Producto'}</strong></div>
+                                                    <small className="order-line-void-badge">Anulado</small>
+                                                </div>
+                                            );
+                                        }
                                         return (
                                             <div key={item.id} className={`kds-visible-item status-${item.status.toLowerCase()}`}>
                                                 <div><strong>{item.quantity}× {item.menuItem?.name || 'Producto'}</strong>{item.notes && <span>{item.notes}</span>}</div>
@@ -479,8 +514,8 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                 ) : order.status === 'READY' ? (
                                     canKitchenLineOps ? <button
                                         className="action-btn-new release"
-                                        onClick={() => void handleReleaseOrder(order.id)}
-                                        title="Confirmar liberación de la orden"
+                                        onClick={() => void handleReleaseOrder(order)}
+                                        title="Confirmar liberación de la tanda"
                                     >
                                         <CheckCheck size={24} />
                                         <span>Liberar orden</span>
@@ -499,7 +534,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                         )}
                                         {canKitchenLineOps && order.status === 'SENT_TO_KITCHEN' && <button
                                             className="action-btn-new start"
-                                            onClick={() => void handleStartOrder(order.id)}
+                                            onClick={() => void handleStartOrder(order)}
                                             title="Primer toque: iniciar preparación"
                                         >
                                             <Play size={22} />
@@ -507,8 +542,8 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                         </button>}
                                         {canKitchenLineOps && order.status === 'IN_PREPARATION' && <button
                                             className="action-btn-new"
-                                            onClick={() => void handleMarkReady(order.id)}
-                                            title="Marcar toda la orden como lista"
+                                            onClick={() => void handleMarkReady(order)}
+                                            title="Marcar toda la tanda como lista"
                                         >
                                             <CheckCircle size={20} />
                                             <span>Todo Listo</span>
@@ -595,6 +630,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                             id="table-filter"
                             type="text"
                             className="table-filter-input"
+                            aria-label="Filtrar por número de mesa"
                             placeholder="Mesa #"
                             value={tableFilter}
                             onChange={(e) => setTableFilter(e.target.value)}
@@ -637,8 +673,8 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             )}
 
             {/* Order Detail Modal */}
-            {detailOrderId !== null && (() => {
-                const detailOrder = orders.find(o => o.id === detailOrderId);
+            {detailOrderKey !== null && (() => {
+                const detailOrder = orders.find(o => kitchenOrderKey(o) === detailOrderKey);
                 if (!detailOrder) return null;
                 const detailWaitTime = getWaitTime(detailOrder);
                 const detailTimeline = getOrderTimeline(detailOrder);
@@ -646,18 +682,18 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 return (
                     <FullScreenModal
                         isOpen={true}
-                        onClose={() => setDetailOrderId(null)}
+                        onClose={() => setDetailOrderKey(null)}
                         title={`Orden #${detailOrder.id} — Mesa ${detailOrder.table?.number || 'N/A'}`}
                         footer={!detailOrder.kitchenReleasedAt ? (
                             <div className="kitchen-detail-footer">
                                 {canKitchenLineOps && (
-                                    <Button variant="ghost" className="btn-danger-ghost" onClick={() => { setDetailOrderId(null); handleReportProblem(detailOrder.id); }}>
+                                    <Button variant="ghost" className="btn-danger-ghost" onClick={() => { setDetailOrderKey(null); handleReportProblem(detailOrder.id); }}>
                                         <AlertTriangle size={16} /> Reportar problema
                                     </Button>
                                 )}
                                 <div className="kitchen-detail-footer-primary">
-                                    {canKitchenLineOps && detailOrder.status === 'IN_PREPARATION' && <Button variant="primary" onClick={() => { void handleMarkReady(detailOrder.id); setDetailOrderId(null); }}><CheckCircle size={16} /> Marcar todo listo</Button>}
-                                    {canKitchenLineOps && detailOrder.status === 'READY' && <Button variant="primary" onClick={() => void handleReleaseOrder(detailOrder.id)}><Check size={18} /> Liberar del KDS</Button>}
+                                    {canKitchenLineOps && detailOrder.status === 'IN_PREPARATION' && <Button variant="primary" onClick={() => { void handleMarkReady(detailOrder); setDetailOrderKey(null); }}><CheckCircle size={16} /> Marcar todo listo</Button>}
+                                    {canKitchenLineOps && detailOrder.status === 'READY' && <Button variant="primary" onClick={() => void handleReleaseOrder(detailOrder)}><Check size={18} /> Liberar del KDS</Button>}
                                 </div>
                             </div>
                         ) : undefined}
@@ -666,7 +702,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                             <div className="kitchen-detail-hero">
                                 <div className="kitchen-detail-identity">
                                     <span className="kitchen-detail-eyebrow">Comanda de cocina</span>
-                                    <div className="kitchen-detail-table-row"><div className="kitchen-detail-icon"><ChefHat size={26} /></div><div><h3>Mesa {detailOrder.table?.number || 'N/A'}</h3><p>Orden #{detailOrder.id} · {detailOrder.items?.length || 0} productos</p></div></div>
+                                    <div className="kitchen-detail-table-row"><div className="kitchen-detail-icon"><ChefHat size={26} /></div><div><h3>Mesa {detailOrder.table?.number || 'N/A'}</h3><p>Orden #{detailOrder.id} · Tanda {detailOrder.kitchenBatchSequence ?? '—'} · {detailOrder.items?.length || 0} productos</p></div></div>
                                     {detailOrder.user && (
                                         <span className="kitchen-waiter-chip" style={{ backgroundColor: `${detailWaiterAccent}25`, color: detailWaiterAccent, borderColor: detailWaiterAccent }}>
                                             <span className="kitchen-waiter-dot" style={{ backgroundColor: detailWaiterAccent }} />{detailOrder.user.name}
@@ -720,6 +756,18 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                     const prepTime = getItemTimeDiff(item.startedAt);
                                     const awaitingSend = !item.sentAt && item.status === 'PENDING';
                                     const itemStatusClass = item.status === 'DONE' ? 'item-done' : item.status === 'IN_PROGRESS' ? 'item-progress' : 'item-pending';
+                                    if (isVoidedOrderLine(item)) {
+                                        return (
+                                            <div key={item.id} className="kitchen-item item-done order-line-voided">
+                                                <span className="item-qty-kitchen">{item.voidedQuantity}×</span>
+                                                <span className="item-name-kitchen">
+                                                    <strong className="order-line-voided-name">{item.menuItem?.name || 'Producto'}</strong>
+                                                    {item.voidReason && <small className="item-note-kitchen">Motivo: {item.voidReason}</small>}
+                                                </span>
+                                                <span className="order-line-void-badge">Anulado</span>
+                                            </div>
+                                        );
+                                    }
                                     return (
                                         <div key={item.id || item.menuItemId} className={`kitchen-item ${itemStatusClass}`}>
                                             <span className="item-qty-kitchen">{item.quantity}×</span>
@@ -728,6 +776,16 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                                 {item.notes && <small className="item-note-kitchen">{item.notes}</small>}
                                             </span>
                                             <span className={`kitchen-item-state status-${item.status.toLowerCase()}`}>{awaitingSend ? 'Pendiente de envío' : kitchenItemStatusLabel[item.status]}{item.status === 'IN_PROGRESS' && prepTime !== null ? ` · ${prepTime} min` : ''}</span>
+                                            {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(detailOrder) && (
+                                                <button
+                                                    type="button"
+                                                    className="order-line-void-btn"
+                                                    onClick={() => setVoidTarget({ order: detailOrder, itemId: item.id })}
+                                                    title="Anular línea y registrar merma"
+                                                >
+                                                    Anular
+                                                </button>
+                                            )}
                                             {detailOrder.status !== 'READY' && (
                                                 <>
                                                     {canKitchenLineOps && item.status === 'PENDING' && !awaitingSend && (
@@ -761,6 +819,14 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                     </FullScreenModal>
                 );
             })()}
+
+            <KitchenLineVoidModal
+                isOpen={voidTarget !== null}
+                order={voidTarget?.order ?? null}
+                initialItemId={voidTarget?.itemId ?? null}
+                onClose={() => setVoidTarget(null)}
+                onVoided={() => { void loadOrders(); }}
+            />
 
             <FullScreenModal
                 size="compact"

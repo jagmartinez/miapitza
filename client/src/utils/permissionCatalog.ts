@@ -24,6 +24,7 @@ const ACTIONS: Record<string, { label: string; description: string }> = {
     deliver: { label: 'Entregar', description: 'marcar productos u órdenes como entregados' },
     publish: { label: 'Publicar', description: 'publicar información para que entre en vigencia' },
     review: { label: 'Revisar', description: 'revisar y resolver incidencias' },
+    void: { label: 'Anular líneas de', description: 'anular líneas ya enviadas a cocina registrando su merma' },
     self: { label: 'Acceso propio', description: 'consultar o gestionar únicamente la información propia' },
 };
 

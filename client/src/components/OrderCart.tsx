@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Plus, Minus, Trash2, Tag } from 'lucide-react';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { promotionsAPI } from '../services/api';
-import { AppSelect, formatNumber } from '@/ui';
+import { AppSelect } from '@/ui';
 import type { MenuItem } from '../types';
+import { describePromotionSchedule, describePromotionValue, type PromotionRulesView } from '../utils/promotionRules';
 import './OrderCart.css';
 
 interface SelectedModifier {
@@ -34,7 +35,9 @@ interface OrderCartProps {
     onTipToggle?: (enabled: boolean) => void;
     enablePromotions?: boolean;
     onApplyPromotion?: (code: string) => void;
-    currencySymbol?: string;
+    /** Branch of the order: only promotions valid there (and inside their happy hour) are listed. */
+    promotionBranchId?: number | null;
+    formatMoney: (amount: unknown) => string;
 }
 
 export default function OrderCart({
@@ -49,7 +52,8 @@ export default function OrderCart({
     onTipToggle,
     enablePromotions,
     onApplyPromotion,
-    currencySymbol = '$'
+    promotionBranchId,
+    formatMoney,
 }: OrderCartProps) {
     const { confirm } = useConfirmDialog();
 
@@ -71,7 +75,12 @@ export default function OrderCart({
                 <span className="item-count">{cart.length} items</span>
             </div>
 
-            <div className="cart-items-list">
+            <div
+                className="cart-items-list"
+                role="region"
+                aria-label="Productos de la orden"
+                tabIndex={0}
+            >
                 {cart.length === 0 ? (
                     <div className="empty-cart-message">
                         <p>Sin productos</p>
@@ -82,7 +91,7 @@ export default function OrderCart({
                         <div key={item.lineId} className="cart-item-compact">
                             <div className="item-info">
                                 <div className="item-name-compact">{item.menuItem.name}</div>
-                                <div className="item-price-compact">{currencySymbol}{formatNumber(Number(item.price))}</div>
+                                <div className="item-price-compact">{formatMoney(Number(item.price))}</div>
                                 {item.modifiers.length > 0 && (
                                     <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                         {item.modifiers.map(mod => (
@@ -98,7 +107,7 @@ export default function OrderCart({
                                             >
                                                 <span>+ {mod.name}</span>
                                                 {Number(mod.price) > 0 && (
-                                                    <span>{currencySymbol}{formatNumber(Number(mod.price))}</span>
+                                                    <span>{formatMoney(Number(mod.price))}</span>
                                                 )}
                                             </li>
                                         ))}
@@ -127,7 +136,7 @@ export default function OrderCart({
                                 </button>
                             </div>
                             <div className="item-total-compact">
-                                {currencySymbol}{formatNumber((Number(item.price) * item.quantity))}
+                                {formatMoney(Number(item.price) * item.quantity)}
                             </div>
                         </div>
                     ))
@@ -150,24 +159,25 @@ export default function OrderCart({
                 {enablePromotions && (
                     <PromotionSelector
                         onApply={onApplyPromotion}
-                        currencySymbol={currencySymbol}
+                        branchId={promotionBranchId}
+                        formatMoney={formatMoney}
                     />
                 )}
 
                 <div className="totals-section">
                     <div className="total-line">
                         <span>Subtotal:</span>
-                        <span>{currencySymbol}{formatNumber(subtotal)}</span>
+                        <span>{formatMoney(subtotal)}</span>
                     </div>
                     {discount > 0 && (
                         <div className="total-line discount-line">
                             <span>Descuento ({discount}%):</span>
-                            <span>-{currencySymbol}{formatNumber(discountAmount)}</span>
+                            <span>-{formatMoney(discountAmount)}</span>
                         </div>
                     )}
                     <div className="total-line">
                         <span>IVA ({taxRate}%):</span>
-                        <span>{currencySymbol}{formatNumber(tax)}</span>
+                        <span>{formatMoney(tax)}</span>
                     </div>
                     {tipRate > 0 && onTipToggle && (
                         <div className="total-line tip-line">
@@ -180,12 +190,12 @@ export default function OrderCart({
                                 />
                                 <span>Propina ({tipRate}%):</span>
                             </label>
-                            <span>{currencySymbol}{formatNumber(tipAmount)}</span>
+                            <span>{formatMoney(tipAmount)}</span>
                         </div>
                     )}
                     <div className="total-line total-final">
                         <span>TOTAL:</span>
-                        <span>{currencySymbol}{formatNumber(total)}</span>
+                        <span>{formatMoney(total)}</span>
                     </div>
                 </div>
             </div>
@@ -193,16 +203,19 @@ export default function OrderCart({
     );
 }
 
-interface PromotionListEntry {
+interface PromotionListEntry extends PromotionRulesView {
     id: number;
     code: string;
     name: string;
-    type: string;
-    value: number;
 }
 
-/** Inline promotion selector with active promos dropdown */
-function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code: string) => void; currencySymbol?: string }) {
+function promotionOptionLabel(p: PromotionListEntry, formatMoney: (amount: unknown) => string): string {
+    const schedule = describePromotionSchedule(p);
+    return `${p.code} — ${p.name} (${describePromotionValue(p, formatMoney)}${schedule ? ` · ${schedule}` : ''})`;
+}
+
+/** Inline promotion selector with active promos dropdown (only those valid for the order's branch, right now). */
+function PromotionSelector({ onApply, formatMoney, branchId }: { onApply?: (code: string) => void; formatMoney: (amount: unknown) => string; branchId?: number | null }) {
     const [promos, setPromos] = useState<PromotionListEntry[]>([]);
     const [selected, setSelected] = useState('');
     const [manualCode, setManualCode] = useState('');
@@ -214,7 +227,7 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
         let cancelled = false;
         setLoading(true);
         setLoadError(false);
-        promotionsAPI.getAll(true).then(res => {
+        promotionsAPI.getAll(true, { branchId, availableNow: true }).then(res => {
             if (cancelled) return;
             setPromos(res.data.data || []);
         }).catch(() => {
@@ -224,12 +237,12 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
             if (!cancelled) setLoading(false);
         });
         return () => { cancelled = true; };
-    }, []);
+    }, [branchId]);
 
     const promoOptions = [
         ...promos.map((p) => ({
             value: p.code,
-            label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})`,
+            label: promotionOptionLabel(p, formatMoney),
         })),
         // Keep a selected code visible even when it is no longer in the promotions list.
         ...(selected && !promos.some((p) => p.code === selected) ? [{ value: selected, label: selected }] : []),

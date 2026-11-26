@@ -1,4 +1,4 @@
-import { DataTable, PageHeader, FullScreenModal, AppSelect, Button } from '@/ui';
+import { DataTable, PageHeader, FullScreenModal, StatCard, AppSelect, Button } from '@/ui';
 import { useCallback, useEffect, useState } from 'react';
 import {
   BadgeDollarSign,
@@ -399,6 +399,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
     }));
 
   if (loading) return <LoadingSpinner />;
+  const activePolicy = policies.find((row) => row.status === 'ACTIVE');
+  const draftSettlements = settlements.filter((row) => row.status === 'DRAFT').length;
   return (
     <div className={`benefits-governance-page${embedded ? ' is-embedded' : ''}`}>
       {!embedded && (
@@ -411,6 +413,16 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             </Button>
           }
       />
+      )}
+      {!embedded && (!activePolicy || draftSettlements > 0) && (
+        <section className="hr-kpi-row" aria-label="Indicadores de liquidaciones y políticas">
+          {!activePolicy && (
+            <StatCard tone="danger" label="Política activa" value="—" context="Sin versión publicada de viáticos y préstamos." action={{ label: 'Ver políticas', onClick: () => setTab('POLICIES') }} />
+          )}
+          {draftSettlements > 0 && (
+            <StatCard tone="warning" label="Borradores en página" value={String(draftSettlements)} context="Liquidaciones sin enviar." action={{ label: 'Ver liquidaciones', onClick: () => setTab('SETTLEMENTS') }} />
+          )}
+        </section>
       )}
       <nav className="governance-tabs" aria-label="Secciones" role="tablist">
         <button

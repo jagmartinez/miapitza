@@ -91,7 +91,7 @@ describe('CashShift (migrado al design system)', () => {
     it('usa PageHeader, tarjetas con contexto y DataTable paginada de 25 filas', async () => {
         setup();
         expect(await screen.findByRole('heading', { level: 1, name: 'Turno #7' })).toHaveClass('ui-pageheader__title');
-        expect(screen.getByRole('region', { name: 'Ventas en efectivo' })).toHaveClass('ui-statcard');
+        expect(screen.getByRole('region', { name: 'Ventas netas efectivo' })).toHaveClass('ui-statcard');
         const table = screen.getByRole('table', { name: 'Movimientos del turno' });
         // 1 encabezado + 25 filas
         expect(within(table).getAllByRole('row')).toHaveLength(26);
@@ -122,7 +122,7 @@ describe('CashShift (migrado al design system)', () => {
         await userEvent.type(within(dlg).getByLabelText(/^Descripción/), 'Compra de hielo');
         await userEvent.click(within(dlg).getByRole('button', { name: 'Registrar Retiro' }));
         await waitFor(() => expect(mocks.addMovement).toHaveBeenCalledTimes(1));
-        expect(mocks.addMovement).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'OUT', amount: 150.25, description: 'Compra de hielo' }));
+        expect(mocks.addMovement).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'OUT', amount: 150.25, description: 'Compra de hielo' }), expect.any(String));
         const payload = mocks.addMovement.mock.calls[0][1];
         expect(payload.supplierId).toBeUndefined();
     });
@@ -167,8 +167,8 @@ describe('CashShift (migrado al design system)', () => {
         setup();
         await userEvent.click(await screen.findByRole('button', { name: /Cerrar turno/i }));
         const dlg = await screen.findByRole('dialog', { name: 'Cierre de Turno' });
-        await userEvent.type(within(dlg).getByLabelText('Billetes C$ 1000 cantidad'), '2');
-        await userEvent.type(within(dlg).getByLabelText('Monedas C$ 0.5 cantidad'), '3');
+        await userEvent.type(within(dlg).getByLabelText('Cantidad de billetes de C$ 1000'), '2');
+        await userEvent.type(within(dlg).getByLabelText('Cantidad de monedas de C$ 0.5'), '3');
         await userEvent.click(within(dlg).getByRole('button', { name: 'Validar arqueo' }));
         await waitFor(() => expect(mocks.previewClose).toHaveBeenCalledTimes(1));
         expect(mocks.previewClose.mock.calls[0][1]).toMatchObject({ endAmount: 2001.5 });

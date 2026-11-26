@@ -120,43 +120,70 @@ function addCalendarDays(parts: Pick<ZonedParts, 'year' | 'month' | 'day'>, days
     };
 }
 
+function dateKeyOf(parts: Pick<ZonedParts, 'year' | 'month' | 'day'>): number {
+    return parts.year * 10000 + parts.month * 100 + parts.day;
+}
+
+/**
+ * First instant of a local calendar day. Usually local 00:00:00, but in zones
+ * whose DST transition happens at midnight (America/Santiago, America/Havana,
+ * Asia/Beirut...) 00:00 never occurs; the day then starts at the transition
+ * instant (e.g. 01:00 local), found by binary search over the UTC timeline.
+ */
+export function zonedStartOfDay(parts: Pick<ZonedParts, 'year' | 'month' | 'day'>, timeZone: string): Date {
+    try {
+        return zonedDateTimeToUtc({ year: parts.year, month: parts.month, day: parts.day, hour: 0, minute: 0, second: 0 }, timeZone);
+    } catch (error) {
+        if (!(error instanceof RangeError)) throw error;
+    }
+    const target = dateKeyOf(parts);
+    const utcMidnight = Date.UTC(parts.year, parts.month - 1, parts.day);
+    // UTC offsets lie within [-12h, +14h]: at `low` the local date is still
+    // before the target day and at `high` it has already reached it.
+    let low = utcMidnight - 15 * 60 * 60 * 1000;
+    let high = utcMidnight + 13 * 60 * 60 * 1000;
+    while (high - low > 1) {
+        const mid = Math.floor((low + high) / 2);
+        if (dateKeyOf(getZonedParts(new Date(mid), timeZone)) >= target) high = mid;
+        else low = mid;
+    }
+    return new Date(high);
+}
+
+/** Exclusive end of a local calendar day: the first instant of the next local day. */
+function zonedStartOfNextDay(parts: Pick<ZonedParts, 'year' | 'month' | 'day'>, timeZone: string): Date {
+    return zonedStartOfDay(addCalendarDays(parts, 1), timeZone);
+}
+
 export function getZonedDayBounds(timeZone: string, instant: Date = new Date()) {
     const local = getZonedParts(instant, timeZone);
-    const start = zonedDateTimeToUtc({ ...local, hour: 0, minute: 0, second: 0 }, timeZone);
-    const nextDay = addCalendarDays(local, 1);
-    const endExclusive = zonedDateTimeToUtc({ ...nextDay, hour: 0, minute: 0, second: 0 }, timeZone);
+    const start = zonedStartOfDay(local, timeZone);
+    const endExclusive = zonedStartOfNextDay(local, timeZone);
     return { start, endExclusive, endInclusive: new Date(endExclusive.getTime() - 1) };
 }
 
 export function getZonedDaysBounds(timeZone: string, days: number, instant: Date = new Date()) {
     if (!Number.isInteger(days) || days < 1) throw new Error('El rango debe contener al menos un día');
     const local = getZonedParts(instant, timeZone);
-    const start = zonedDateTimeToUtc({ ...local, hour: 0, minute: 0, second: 0 }, timeZone);
-    const afterRange = addCalendarDays(local, days);
-    const endExclusive = zonedDateTimeToUtc({ ...afterRange, hour: 0, minute: 0, second: 0 }, timeZone);
+    const start = zonedStartOfDay(local, timeZone);
+    const endExclusive = zonedStartOfDay(addCalendarDays(local, days), timeZone);
     return { start, endExclusive, endInclusive: new Date(endExclusive.getTime() - 1) };
 }
 
 export function getZonedDayStartOffset(timeZone: string, dayOffset: number, instant: Date = new Date()): Date {
     if (!Number.isInteger(dayOffset)) throw new Error('El desplazamiento de días debe ser entero');
     const local = getZonedParts(instant, timeZone);
-    const target = addCalendarDays(local, dayOffset);
-    return zonedDateTimeToUtc({ ...target, hour: 0, minute: 0, second: 0 }, timeZone);
+    return zonedStartOfDay(addCalendarDays(local, dayOffset), timeZone);
 }
 
 export function getZonedMonthBounds(timeZone: string, instant: Date = new Date()) {
     const local = getZonedParts(instant, timeZone);
-    const start = zonedDateTimeToUtc({
-        year: local.year, month: local.month, day: 1, hour: 0, minute: 0, second: 0
-    }, timeZone);
+    const start = zonedStartOfDay({ year: local.year, month: local.month, day: 1 }, timeZone);
     const nextMonth = new Date(Date.UTC(local.year, local.month, 1));
-    const endExclusive = zonedDateTimeToUtc({
+    const endExclusive = zonedStartOfDay({
         year: nextMonth.getUTCFullYear(),
         month: nextMonth.getUTCMonth() + 1,
-        day: 1,
-        hour: 0,
-        minute: 0,
-        second: 0
+        day: 1
     }, timeZone);
     return { start, endExclusive, endInclusive: new Date(endExclusive.getTime() - 1) };
 }
@@ -164,15 +191,13 @@ export function getZonedMonthBounds(timeZone: string, instant: Date = new Date()
 export function parseZonedDateStart(value: string, timeZone: string): Date {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(value);
     const [year, month, day] = value.split('-').map(Number);
-    return zonedDateTimeToUtc({ year, month, day, hour: 0, minute: 0, second: 0 }, timeZone);
+    return zonedStartOfDay({ year, month, day }, timeZone);
 }
 
 export function parseZonedDateEnd(value: string, timeZone: string): Date {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(value);
     const [year, month, day] = value.split('-').map(Number);
-    const nextDay = addCalendarDays({ year, month, day }, 1);
-    const endExclusive = zonedDateTimeToUtc({ ...nextDay, hour: 0, minute: 0, second: 0 }, timeZone);
-    return new Date(endExclusive.getTime() - 1);
+    return new Date(zonedStartOfNextDay({ year, month, day }, timeZone).getTime() - 1);
 }
 
 export function zonedDateKey(date: Date, timeZone: string): string {

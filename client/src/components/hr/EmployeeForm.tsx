@@ -49,6 +49,8 @@ interface FormState {
     notes: string;
     hireDate: string;
     employmentType: string;
+    /** ISO weekdays (1 = lunes .. 7 = domingo); empty = legal default (domingo). */
+    weeklyRestDays: number[];
     departmentId: string;
     jobPositionId: string;
     costCenterId: string;
@@ -60,6 +62,15 @@ interface FormState {
     compensationCurrency: string;
     compensationReason: string;
 }
+
+/** ISO weekdays, matching Employee.weeklyRestDays on the server. */
+const REST_DAY_OPTIONS = [
+    { value: 1, label: 'Lun' }, { value: 2, label: 'Mar' }, { value: 3, label: 'Mié' }, { value: 4, label: 'Jue' },
+    { value: 5, label: 'Vie' }, { value: 6, label: 'Sáb' }, { value: 7, label: 'Dom' },
+] as const;
+
+/** Weekly rest days allowed per employee (Art. 64 CT séptimo día; at most a two-day rest). */
+const MAX_WEEKLY_REST_DAYS = 2;
 
 const EMPTY_FORM: FormState = {
     userId: '',
@@ -79,6 +90,7 @@ const EMPTY_FORM: FormState = {
     notes: '',
     hireDate: '',
     employmentType: '',
+    weeklyRestDays: [],
     departmentId: '',
     jobPositionId: '',
     costCenterId: '',
@@ -116,6 +128,7 @@ function initialState(employee: HrEmployee | null): FormState {
         notes: employee.notes ?? '',
         hireDate: employee.hireDate?.slice(0, 10) ?? '',
         employmentType: employee.employmentType ?? '',
+        weeklyRestDays: employee.weeklyRestDays ?? [],
         departmentId: employee.departmentId ? String(employee.departmentId) : '',
         jobPositionId: employee.jobPositionId ? String(employee.jobPositionId) : '',
         costCenterId: employee.costCenterId ? String(employee.costCenterId) : '',
@@ -193,6 +206,11 @@ export default function EmployeeForm({
             setValidationError('El código y el nombre legal son obligatorios.');
             return;
         }
+        if (form.weeklyRestDays.length > MAX_WEEKLY_REST_DAYS) {
+            setActiveTab('relationship');
+            setValidationError('Selecciona uno o dos días de descanso semanal.');
+            return;
+        }
         if (!form.hireDate) {
             setActiveTab('relationship');
             setValidationError('La fecha de ingreso es obligatoria.');
@@ -237,6 +255,7 @@ export default function EmployeeForm({
             notes: nullable(form.notes),
             hireDate: form.hireDate,
             employmentType: nullable(form.employmentType),
+            weeklyRestDays: form.weeklyRestDays.length ? [...form.weeklyRestDays].sort((a, b) => a - b) : null,
             departmentId: form.departmentId ? Number(form.departmentId) : null,
             jobPositionId: form.jobPositionId ? Number(form.jobPositionId) : null,
             costCenterId: form.costCenterId ? Number(form.costCenterId) : null,
@@ -374,6 +393,32 @@ export default function EmployeeForm({
                                         isClearable
                                     />
                                 </div>
+                            </div>
+                            <div className="modal-input-group">
+                                <span id="hr-employee-rest-days-label">Día(s) de descanso semanal</span>
+                                <div className="hr-branch-picker" role="group" aria-labelledby="hr-employee-rest-days-label">
+                                    {REST_DAY_OPTIONS.map((day) => {
+                                        const checked = form.weeklyRestDays.includes(day.value);
+                                        const blocked = !checked && form.weeklyRestDays.length >= MAX_WEEKLY_REST_DAYS;
+                                        return (
+                                            <label key={day.value} className={`hr-branch-option ${checked ? 'selected' : ''}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checked}
+                                                    disabled={blocked}
+                                                    onChange={() => update('weeklyRestDays', checked
+                                                        ? form.weeklyRestDays.filter((value) => value !== day.value)
+                                                        : [...form.weeklyRestDays, day.value])}
+                                                />
+                                                <span>{day.label}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                <p className="hr-form-help">
+                                    Séptimo día (Art. 64 CT). Las horas trabajadas en el descanso se pagan con el recargo configurado en la regla de nómina (doble por defecto). Máximo dos días.
+                                    {form.weeklyRestDays.length === 0 ? ' Sin selección se aplica el domingo y la nómina lo marca para revisión.' : ''}
+                                </p>
                             </div>
                             <Select<Option>
                                 variant="modal"

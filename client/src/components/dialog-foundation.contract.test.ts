@@ -40,6 +40,17 @@ describe('shared dialog foundation', () => {
     expect(payment).not.toContain('ref={dialogRef}\n                className={`payment-dialog');
   });
 
+  it('associates select validation errors with the accessible combobox', () => {
+    // components/Select se reemplazó por AppSelect + Field de @/ui: Field publica el error con role="alert"
+    // y lo enlaza por aria-describedby; AppSelect lo marca inválido y lo asocia con aria-errormessage.
+    const source = read('../ui/forms/AppSelect.tsx');
+    const field = read('../ui/forms/Field.tsx');
+    expect(source).toContain("const errorId = invalid ? props['aria-describedby']?.split(' ')[0] : undefined");
+    expect(source).toContain("'aria-invalid': invalid || undefined");
+    expect(source).toContain("'aria-errormessage': errorId");
+    expect(field).toContain('<p className="ui-field__error" id={errorId} role="alert">');
+  });
+
   it('uses the same flat operational surfaces across shared and specialized dialogs', () => {
     const tokens = read('../index.css');
     const payment = read('./PaymentModal.css');

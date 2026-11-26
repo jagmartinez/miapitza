@@ -1,0 +1,356 @@
+/*
+ * Mi RH — autoservicio (gestión, horario, marcaje, recibos, beneficios).
+ * Builds on the RH workspace kit (hr-workspace.css); every rule is scoped to
+ * .ss-page / .ss-nav so admin RH screens are never affected.
+ */
+
+/* ---------- Page rhythm (overrides legacy .my-hr-page spacing) ---------- */
+.ss-page.my-hr-page {
+  gap: 1rem;
+  max-width: 1480px;
+}
+
+.ss-page > :is(.hr-online-notice, .hr-payroll-online, .hr-benefits-online),
+.ss-page .hr-schedule-alert {
+  margin: 0;
+}
+
+/* ---------- Self-service navigation (pill links) ---------- */
+.ss-nav.my-hr-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .4rem;
+  width: auto;
+}
+
+.ss-page > .ss-nav.my-hr-nav {
+  justify-content: space-between;
+}
+
+.ss-nav.my-hr-nav a.ss-nav__pill {
+  display: inline-flex;
+  width: auto;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  padding: 0 .9rem;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font-size: .8rem;
+  font-weight: 750;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.ss-nav.my-hr-nav a.ss-nav__pill svg:nth-child(2) { color: var(--ui-primary); }
+
+.ss-nav.my-hr-nav a.ss-nav__pill:hover {
+  border-color: color-mix(in srgb, var(--ui-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-primary) 8%, var(--ui-surface));
+}
+
+.ss-nav.my-hr-nav a.my-hr-nav__punch.ss-nav__pill {
+  display: inline-flex !important;
+  border-color: color-mix(in srgb, var(--ui-primary) 55%, transparent) !important;
+  background: var(--ui-primary) !important;
+  color: #fff !important;
+}
+
+.ss-nav.my-hr-nav a.my-hr-nav__punch.ss-nav__pill svg { color: inherit; }
+
+.ss-nav.my-hr-nav a.my-hr-nav__punch.ss-nav__pill:hover {
+  background: color-mix(in srgb, var(--ui-primary) 86%, #000) !important;
+}
+
+/* ---------- Shared bits ---------- */
+.ss-empty {
+  display: grid;
+  justify-items: center;
+  gap: .5rem;
+  padding: 1.75rem 1rem;
+  color: var(--hr-ws-text-2, var(--ui-text-muted));
+  text-align: center;
+}
+
+.ss-empty > svg { color: var(--ui-primary); opacity: .75; }
+.ss-empty p { margin: 0; max-width: 46ch; }
+.ss-empty h2 { margin: 0; font-size: 1rem; color: var(--ui-text); }
+
+.ss-inline-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+  padding: .7rem .9rem;
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 45%, var(--ui-border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--ui-warning) 9%, var(--ui-surface));
+  font-size: .85rem;
+}
+
+.ss-inline-alert > svg { flex: 0 0 auto; color: var(--ui-warning); }
+.ss-inline-alert > span { flex: 1 1 260px; min-width: 0; }
+
+.ss-page .hr-ws-section .state-placeholder { margin: 0; border: 0; box-shadow: none; }
+
+.ss-meta {
+  color: var(--hr-ws-text-2, var(--ui-text-muted));
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+/* Lists rendered inside kit sections lose their legacy card chrome */
+.ss-page .hr-ws-section .hr-record-list { margin: 0; }
+.ss-page .hr-ws-section .hr-empty { margin: 0; }
+
+/* ---------- Tabs bar built by hand (MyWorkforce keeps explicit ids) ---------- */
+.ss-page .hr-ws-tabs button small { line-height: 1.5; }
+
+/* ---------- Mi gestión laboral ---------- */
+.ss-workforce .ss-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.ss-workforce .hr-summary-grid { margin: 0; }
+
+.ss-workforce .hr-ws-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.ss-workforce .hr-workforce-anchor { scroll-margin-top: 1rem; }
+
+/* ---------- Horario del equipo ---------- */
+.ss-schedule .ss-week-nav {
+  align-items: center;
+}
+
+.ss-schedule .ss-week-label {
+  display: grid;
+  flex: 1 1 220px;
+  gap: 2px;
+  min-width: 0;
+  text-align: center;
+}
+
+.ss-schedule .ss-week-label span {
+  color: var(--hr-ws-text-2);
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.ss-schedule .ss-week-label strong {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ss-versions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: .6rem;
+}
+
+.ss-versions > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .7rem .85rem;
+  border: 1px solid var(--hr-ws-border);
+  border-radius: .8rem;
+  background: var(--ui-bg);
+}
+
+.ss-versions > div > div { display: flex; align-items: center; gap: .5rem; font-weight: 700; }
+
+.ss-versions .hr-acknowledged {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  color: var(--ui-success);
+  font-size: .82rem;
+  font-weight: 750;
+}
+
+.ss-versions .hr-schedule-personal-state {
+  color: var(--hr-ws-text-2);
+  font-size: .8rem;
+}
+
+.ss-schedule .hr-schedule-help {
+  margin: .75rem 0 0;
+  color: var(--hr-ws-text-2);
+  font-size: .8rem;
+}
+
+.ss-schedule .hr-schedule-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .5rem;
+}
+
+/* ---------- Marcaje ---------- */
+.ss-clock .hr-time-clock-workspace {
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr);
+  gap: 1rem;
+}
+
+.ss-clock .hr-time-clock-action-panel > :is(.hr-punch-actions, .hr-punch-evidence, .hr-punch-result, .hr-biometric-required) {
+  border: 1px solid color-mix(in srgb, var(--ui-primary) 30%, var(--ui-border));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md, var(--shadow-sm));
+}
+
+.ss-clock .hr-punch-action {
+  min-height: 84px;
+  font-size: 1.05rem;
+}
+
+.ss-clock .ss-clock-time {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .4rem;
+  margin: 0 0 .75rem;
+  color: var(--hr-ws-text-2);
+  font-size: .82rem;
+}
+
+.ss-clock .ss-clock-time time {
+  color: var(--ui-text);
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ss-clock .hr-policy-chips { margin: 0 0 .75rem; }
+.ss-clock .hr-shift-summary { margin: 0 0 1rem; }
+
+.ss-punch-timeline {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ss-punch-timeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .6rem;
+  padding: .55rem 0 .55rem .1rem;
+  border-bottom: 1px dashed var(--hr-ws-border);
+}
+
+.ss-punch-timeline li:last-child { border-bottom: 0; }
+.ss-punch-timeline li > svg { color: var(--ui-success); }
+.ss-punch-timeline li > span { font-weight: 700; }
+.ss-punch-timeline time { font-variant-numeric: tabular-nums; font-weight: 800; }
+
+/* ---------- Recibos ---------- */
+.ss-payroll .hr-ws-hero-aside .my-hr-summary-grid {
+  grid-template-columns: 1fr;
+  gap: .5rem;
+}
+
+.ss-payroll .hr-ws-hero-aside .my-hr-summary-grid > article {
+  min-height: 0;
+  padding: .6rem .75rem;
+  background: var(--ui-bg);
+}
+
+.ss-payroll .ss-receipt-list.hr-my-receipt-list {
+  display: grid;
+  gap: .5rem;
+  margin: 0;
+}
+
+.ss-payroll .ss-receipt-list.hr-my-receipt-list button.selected {
+  border-color: color-mix(in srgb, var(--ui-primary) 55%, transparent);
+  background: color-mix(in srgb, var(--ui-primary) 9%, var(--ui-bg));
+}
+
+.ss-payroll .hr-ws-split-aside .hr-ws-section-body > * { margin: 0; }
+
+/* ---------- Beneficios ---------- */
+.ss-benefits .ss-benefits-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.ss-benefits .ss-benefits-body.has-detail {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+}
+
+.ss-benefits .my-benefits-register {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ss-benefits .hr-benefits-workspace {
+  position: sticky;
+  top: 1rem;
+  margin: 0;
+  border: 1px solid var(--hr-ws-border);
+  border-radius: var(--hr-ws-radius);
+  background: var(--hr-ws-panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.ss-benefits .my-benefits-table-wrap { overflow-x: auto; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+  .ss-benefits .ss-benefits-body.has-detail { grid-template-columns: minmax(0, 1fr); }
+  .ss-benefits .hr-benefits-workspace { position: static; }
+  .ss-clock .hr-time-clock-workspace { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .ss-workforce .ss-two-col { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .ss-page > .ss-nav.my-hr-nav { display: flex; }
+  .ss-nav.my-hr-nav a.ss-nav__pill { flex: 1 1 auto; min-height: 44px; }
+
+  /* Marcaje: the punch action comes first and is thumb-sized. */
+  .ss-clock .hr-ws-hero { padding: .8rem .9rem; }
+  .ss-clock .hr-ws-hero-text p { display: none; }
+  .ss-clock .hr-ws-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .4rem;
+    padding-top: .6rem;
+  }
+  .ss-clock .hr-ws-facts > div { padding: .5rem .6rem; }
+  .ss-clock .hr-ws-facts dd { font-size: .9rem; }
+  .ss-clock .hr-ws-facts small { display: none; }
+  .ss-clock .hr-punch-action { min-height: 96px; font-size: 1.15rem; }
+  .ss-clock .hr-wizard-actions .ui-button { min-height: 52px; font-size: 1rem; }
+}
+
+@media (max-width: 680px) {
+  .ss-schedule .ss-week-nav > .ui-button { flex: 1 1 auto; }
+  .ss-schedule .ss-week-label { order: -1; flex-basis: 100%; }
+  .ss-payroll .hr-ws-hero-aside .my-hr-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

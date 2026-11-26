@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI, invoicesAPI, cashShiftsAPI, warehousesAPI } from '../services/api';
-import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canOperateKitchenLineItems } from '../utils/authz';
+import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canDeliverOrder, canOperateKitchenLineItems, canVoidKitchenLine, getUserRoleNames, hasPermission } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
+import { isVoidableOrderLine, isVoidedOrderLine, orderLineVoidBlocker } from '../utils/orderLineVoid';
 import { useDebounce } from '../utils/useDebounce';
 import PaymentModal from '../components/PaymentModal';
 import {
@@ -19,7 +21,14 @@ import { hasUsableCashShift } from '../utils/paymentAccess';
 import { getOrderStatusLabel } from '../utils/orderStatus';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
+import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
+import { readServerPagination } from '../utils/serverPagination';
+import { preferredSaleWarehouseId } from '../utils/saleWarehouse';
 import './Orders.css';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
+
+const ORDERS_PAGE_SIZE = 50;
 
 interface ActiveShiftStatus {
     hasActiveShift: boolean;
@@ -30,17 +39,26 @@ interface ActiveShiftStatus {
 export default function Orders() {
     const { user } = useAuth();
     const { formatMoney, symbol: currencySymbol } = useCurrency();
-    const { error: showError, warning: showWarning } = useAppToast();
+    const { success, error: showError, warning: showWarning } = useAppToast();
     const canSendKitchen = canSendOrderToKitchen(user);
     const canManageKitchen = canOperateKitchenLineItems(user);
     const canCancel = canCancelOrder(user);
     const canPayOrder = canCreatePayment(user);
+    const canDeliver = canDeliverOrder(user);
+    const canIssueInvoice = hasPermission(user, 'invoices.issue', ['SUPERADMIN', 'ADMIN', 'CAJERO']);
+    const canVoidLines = canVoidKitchenLine(user);
+    const userRoleNames = getUserRoleNames(user);
+    const isWaiterWithoutAdministrativeRole = userRoleNames.includes('MESERO')
+        && !userRoleNames.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(false);
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [page, setPage] = useState(1);
+    const [totalOrders, setTotalOrders] = useState(0);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [voidLineItemId, setVoidLineItemId] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<'info' | 'items'>('info');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -69,8 +87,12 @@ export default function Orders() {
     const [deliveryWarehouseId, setDeliveryWarehouseId] = useState<number | null>(null);
     const [deliveryWarehouses, setDeliveryWarehouses] = useState<Warehouse[]>([]);
     const [loadingWarehouses, setLoadingWarehouses] = useState(false);
+    const [completingDelivery, setCompletingDelivery] = useState(false);
+    const deliveryAttemptGateRef = useRef(new DeliveryAttemptGate());
+    const loadOrdersRequestRef = useRef(0);
 
     const loadOrders = useCallback(async () => {
+        const requestId = ++loadOrdersRequestRef.current;
         try {
             const now = new Date();
             let startDate: string;
@@ -102,17 +124,38 @@ export default function Orders() {
 
             const response = await ordersAPI.getAll({
                 startDate,
-                endDate
+                endDate,
+                // Status filtering happens on the server so totals/pages describe the filtered set.
+                ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+                // Text search runs server-side so pagination/totals describe the matches.
+                ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+                page,
+                limit: ORDERS_PAGE_SIZE,
             });
-            setOrders(response.data.data);
+            // A late response for an older date range must not overwrite newer results.
+            if (requestId !== loadOrdersRequestRef.current) return true;
+            const rows: Order[] = Array.isArray(response.data?.data) ? response.data.data : [];
+            const pagination = readServerPagination(response.data, rows.length, ORDERS_PAGE_SIZE, page);
+            setOrders(rows);
+            setTotalOrders(pagination.total);
+            // A refresh can shrink the result set (e.g. orders cancelled elsewhere); clamp to the last page.
+            if (page > pagination.totalPages) setPage(pagination.totalPages);
             setLoadError(false);
+            return true;
         } catch (error) {
+            if (requestId !== loadOrdersRequestRef.current) return true;
             console.error('Error loading orders:', error);
             setLoadError(true);
+            return false;
         } finally {
-            setLoading(false);
+            if (requestId === loadOrdersRequestRef.current) setLoading(false);
         }
-    }, [customEndDate, customStartDate, dateRange]);
+    }, [customEndDate, customStartDate, dateRange, debouncedSearch, page, statusFilter]);
+
+    // Any filter change restarts from the first page.
+    useEffect(() => {
+        setPage(1);
+    }, [statusFilter, dateRange, customStartDate, customEndDate, debouncedSearch]);
 
     const loadShiftStatus = useCallback(async () => {
         try {
@@ -176,37 +219,66 @@ export default function Orders() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error updating order status:', error);
-            showError('Error al actualizar el estado de la orden');
+            showError(getApiErrorMessage(error, 'Error al actualizar el estado de la orden'));
         }
     };
 
     const handlePaymentClick = async (order: Order) => {
-        if (!canPayOrder) {
-            showWarning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+        if (!canPayOrder || !canIssueInvoice) {
+            showWarning('Tu rol necesita permisos de cobro y facturación. Pide apoyo a un cajero o administrador.');
             return;
         }
         setPreparingPaymentOrderId(order.id);
         try {
-            // Keep the same fiscal invariant as POS and the table command center:
-            // an official invoice must exist before PaymentModal can collect.
-            await invoicesAPI.issue(order.id);
-            const refreshed = await ordersAPI.getById(order.id);
-            setPaymentOrder(refreshed.data.data as Order);
+            let payableOrder = order;
+            if (!order.preInvoicedAt && !order.invoiceNumber) {
+                const preInvoiceResponse = await invoicesAPI.issuePreInvoice(order.id);
+                if (!preInvoiceResponse.data?.data?.invoiceNumber) {
+                    throw new Error('La prefactura no devolvió una referencia imprimible.');
+                }
+                payableOrder = {
+                    ...order,
+                    preInvoicedAt: preInvoiceResponse.data.data.date,
+                };
+            }
+
+            try {
+                const refreshed = await ordersAPI.getById(order.id);
+                payableOrder = refreshed.data.data as Order;
+            } catch (refreshError) {
+                console.error('Pre-invoice issued but order refresh failed:', refreshError);
+                notifyError(refreshError, 'La prefactura fue emitida, pero el detalle no pudo actualizarse (el cobro usará la última información disponible)', { type: 'warning' });
+            }
+
+            await loadOrders();
+            setPaymentOrder(payableOrder);
             setShowPaymentModal(true);
+            success('Prefactura confirmada. La orden está lista para cobrar.');
         } catch (error: unknown) {
             const message = typeof error === 'object' && error !== null && 'response' in error
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
-            showError(message || 'No se pudo emitir la factura antes del cobro.');
+            showError(message || 'No se pudo emitir la prefactura antes del cobro.');
         } finally {
             setPreparingPaymentOrderId(null);
         }
     };
 
-    const handlePaymentComplete = () => {
+    const handlePaymentComplete = (result?: {
+        fiscalInvoice?: { invoiceNumber: string } | null;
+        fiscalInvoiceError?: string | null;
+        invoicePrinted?: boolean;
+    }) => {
         setShowPaymentModal(false);
         setPaymentOrder(null);
         loadOrders();
+        if (result?.fiscalInvoiceError) {
+            showWarning(`El pago fue confirmado, pero la factura fiscal debe reintentarse: ${result.fiscalInvoiceError}`);
+        } else if (result?.fiscalInvoice && !result.invoicePrinted) {
+            showWarning('Pago y factura fiscal confirmados. Usa Descargar Factura porque el navegador bloqueó la impresión.');
+        } else if (result?.fiscalInvoice) {
+            success(`Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.`);
+        }
         // Close sidebar if the paid order was the one open
         if (selectedOrder && paymentOrder && selectedOrder.id === paymentOrder.id) {
             setIsSidebarOpen(false);
@@ -235,9 +307,9 @@ export default function Orders() {
             try {
                 const warehouses = await loadBranchWarehouses(order.branchId);
                 setCancelWarehouses(warehouses);
-                if (warehouses.length === 1) setCancelWarehouseId(warehouses[0].id);
-            } catch {
-                showError('No se pudieron cargar las bodegas de la sucursal.');
+                setCancelWarehouseId(preferredSaleWarehouseId(warehouses));
+            } catch (error) {
+                showError(getApiErrorMessage(error, 'No se pudieron cargar las bodegas de la sucursal'));
             } finally {
                 setLoadingWarehouses(false);
             }
@@ -264,14 +336,18 @@ export default function Orders() {
             setCancelWarehouseId(null);
         } catch (error) {
             console.error('Error cancelling order:', error);
-            showError('Error al cancelar la orden');
+            showError(getApiErrorMessage(error, 'Error al cancelar la orden'));
         }
     };
 
     const handleReprintInvoice = async (order: Order) => {
         try {
-            const invoice = await invoicesAPI.getData(order.id);
+            const needsIssuance = !order.invoiceNumber;
+            const invoice = order.invoiceNumber
+                ? await invoicesAPI.getData(order.id)
+                : await invoicesAPI.issue(order.id);
             const invoiceNumber = invoice.data.data.invoiceNumber as string;
+            if (needsIssuance) await loadOrders();
             const pdf = await invoicesAPI.downloadPdf(order.id);
             const url = URL.createObjectURL(new Blob([pdf.data], { type: 'application/pdf' }));
             const link = document.createElement('a');
@@ -301,8 +377,8 @@ export default function Orders() {
             link.download = `${fileName}.pdf`;
             link.click();
             URL.revokeObjectURL(url);
-        } catch {
-            showError('No se pudo descargar el contraflujo fiscal.');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'No se pudo descargar el contraflujo fiscal'));
         }
     };
 
@@ -315,9 +391,10 @@ export default function Orders() {
         try {
             const warehouses = await loadBranchWarehouses(order.branchId);
             setDeliveryWarehouses(warehouses);
-            if (warehouses.length === 1) setDeliveryWarehouseId(warehouses[0].id);
-        } catch {
-            showError('No se pudieron cargar las bodegas de la sucursal.');
+            // Branch default sale warehouse first, else the only one.
+            setDeliveryWarehouseId(preferredSaleWarehouseId(warehouses));
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'No se pudieron cargar las bodegas de la sucursal'));
         } finally {
             setLoadingWarehouses(false);
         }
@@ -328,17 +405,33 @@ export default function Orders() {
             showWarning('Selecciona la bodega de la que se descontará el inventario.');
             return;
         }
-        try {
-            await ordersAPI.complete(deliveryOrder.id, deliveryWarehouseId);
-            await loadOrders();
-            setIsSidebarOpen(false);
-            setShowDeliveryModal(false);
-            setDeliveryOrder(null);
-            setDeliveryWarehouseId(null);
-        } catch (error) {
-            console.error('Error completing delivery:', error);
-            showError('No se pudo entregar la orden ni descontar el inventario.');
-        }
+
+        const orderId = deliveryOrder.id;
+        const warehouseId = deliveryWarehouseId;
+        await deliveryAttemptGateRef.current.execute({
+            request: () => ordersAPI.complete(orderId, warehouseId),
+            onSuccess: async () => {
+                const refreshed = await loadOrders();
+                setIsSidebarOpen(false);
+                setShowDeliveryModal(false);
+                setDeliveryOrder(null);
+                setDeliveryWarehouseId(null);
+                success(`Orden #${orderId} entregada. El inventario fue descontado de la bodega seleccionada.`);
+                if (!refreshed) {
+                    throw new Error('La entrega se aplicó, pero la lista de órdenes no pudo actualizarse.');
+                }
+            },
+            onError: (message, error) => {
+                console.error('Error completing delivery:', error);
+                showError(message);
+            },
+            onSuccessError: (error) => {
+                console.error('Delivery completed but order refresh failed:', error);
+                showError('La orden fue entregada, pero no se pudo actualizar la lista. Recarga la página.');
+            },
+            onPendingChange: setCompletingDelivery,
+            fallbackMessage: 'No se pudo entregar la orden ni descontar el inventario.',
+        });
     };
 
     const getStatusText = (status: string) => {
@@ -382,7 +475,7 @@ export default function Orders() {
             );
         }
 
-        if (order.status === 'READY' && (order.financialStatus === 'PAID' || Math.round(Number(order.total) * 100) === 0)) {
+        if (canDeliver && order.status === 'READY' && (order.financialStatus === 'PAID' || Math.round(Number(order.total) * 100) === 0)) {
             buttons.push(
                 <Button key="delivered" variant="primary" onClick={() => void openDeliveryModal(order)}>
                     <Package size={16} /> Entregar
@@ -390,7 +483,12 @@ export default function Orders() {
             );
         }
 
-        if (order.status !== 'CANCELLED' && order.financialStatus !== 'PAID' && canPayOrder) {
+        if (
+            order.status !== 'CANCELLED'
+            && order.financialStatus !== 'PAID'
+            && canPayOrder
+            && canIssueInvoice
+        ) {
             buttons.push(
                 <Button
                     key="pay"
@@ -398,12 +496,20 @@ export default function Orders() {
                     disabled={preparingPaymentOrderId === order.id}
                     onClick={() => void handlePaymentClick(order)}
                 >
-                    <CreditCard size={16} /> {preparingPaymentOrderId === order.id ? 'Facturando…' : 'Cobrar'}
+                    <CreditCard size={16} /> {preparingPaymentOrderId === order.id ? 'Preparando…' : 'Cobrar'}
                 </Button>
             );
         }
 
-        if (order.financialStatus === 'UNPAID' && order.status !== 'CANCELLED' && !order.invoiceNumber && canCancel) {
+        const wasSentToKitchen = order.items.some((item) => item.sentAt != null);
+        if (
+            order.financialStatus === 'UNPAID'
+            && order.status !== 'CANCELLED'
+            && !order.invoiceNumber
+            && !order.preInvoicedAt
+            && canCancel
+            && !(isWaiterWithoutAdministrativeRole && wasSentToKitchen)
+        ) {
             buttons.push(
                 <Button key="cancel" variant="danger" onClick={() => void openCancelModal(order)}>
                     <XCircle size={16} /> Cancelar
@@ -411,10 +517,17 @@ export default function Orders() {
             );
         }
 
-        if (order.invoiceNumber) {
+        if (
+            order.invoiceNumber
+            || (
+                canIssueInvoice
+                && order.financialStatus === 'PAID'
+                && Boolean(order.preInvoicedAt)
+            )
+        ) {
             buttons.push(
                 <Button key="reprint" variant="secondary" onClick={() => void handleReprintInvoice(order)}>
-                    <Printer size={16} /> Descargar Factura
+                    <Printer size={16} /> {order.invoiceNumber ? 'Descargar Factura' : 'Emitir Factura Original'}
                 </Button>
             );
         }
@@ -436,17 +549,9 @@ export default function Orders() {
         return buttons;
     };
 
-    const filteredOrders = orders.filter(o => {
-        const matchStatus = statusFilter === 'all'
-            || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter);
-        const searchLower = debouncedSearch.toLowerCase();
-        const matchSearch = !debouncedSearch || String(o.id).includes(searchLower) ||
-            o.customerName?.toLowerCase().includes(searchLower) ||
-            o.user?.name.toLowerCase().includes(searchLower) ||
-            (o.table && String(o.table.number).includes(debouncedSearch));
-
-        return matchStatus && matchSearch;
-    });
+    // Text search is applied by the server (`search` param) across every page.
+    const filteredOrders = orders.filter(o => statusFilter === 'all'
+        || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter));
 
     const statusOptions: { value: string; label: string }[] = [
         { value: 'all', label: 'Todas' },
@@ -498,8 +603,8 @@ export default function Orders() {
                 </div>
                 <div className="orders-filters__field">
                     <Input
-                        aria-label="Buscar orden"
-                        placeholder="Buscar por #, mesa, mesero..."
+                        aria-label="Buscar órdenes por número, mesa, mesero, cliente o factura"
+                        placeholder="Buscar por #, mesa, mesero o cliente..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -527,6 +632,8 @@ export default function Orders() {
                 rowKey={(o) => o.id}
                 loading={loading}
                 resetKey={`${statusFilter}|${debouncedSearch}|${dateRange}`}
+                pagination={{ mode: 'server', page, pageSize: ORDERS_PAGE_SIZE, total: totalOrders, onChange: (nextPage) => setPage(nextPage) }}
+                pageSizeOptions={[ORDERS_PAGE_SIZE]}
                 onRowClick={handleViewDetails}
                 empty={<EmptyState title="Sin órdenes" description="No hay órdenes con los filtros seleccionados." />}
             />
@@ -651,7 +758,16 @@ export default function Orders() {
                                 <div className="tab-pane animate-fade-in">
                                     {/* Items */}
                                     <div className="detail-items">
-                                        {selectedOrder.items?.map((item) => (
+                                        {selectedOrder.items?.map((item) => isVoidedOrderLine(item) ? (
+                                            <div key={item.id} className="detail-item-row order-line-voided" title={item.voidReason || undefined}>
+                                                <span className="item-qty">{item.voidedQuantity}x</span>
+                                                <div className="item-info">
+                                                    <div className="item-name order-line-voided-name">{item.menuItem?.name || 'Item eliminado'}</div>
+                                                    {item.voidReason && <div className="item-notes">Anulado: {item.voidReason}</div>}
+                                                </div>
+                                                <span className="order-line-void-badge">Anulado</span>
+                                            </div>
+                                        ) : (
                                             <div key={item.id || item.menuItemId} className="detail-item-row">
                                                 <span className="item-qty">{item.quantity}x</span>
                                                 <div className="item-info">
@@ -659,6 +775,16 @@ export default function Orders() {
                                                     {item.notes && <div className="item-notes">{item.notes}</div>}
                                                 </div>
                                                 <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
+                                                {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(selectedOrder) && (
+                                                    <button
+                                                        type="button"
+                                                        className="order-line-void-btn"
+                                                        onClick={() => setVoidLineItemId(item.id)}
+                                                        title="Anular línea y registrar merma"
+                                                    >
+                                                        Anular
+                                                    </button>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -673,6 +799,17 @@ export default function Orders() {
                     </div>
                 )}
             </FullScreenModal>
+
+            <KitchenLineVoidModal
+                isOpen={voidLineItemId !== null}
+                order={selectedOrder}
+                initialItemId={voidLineItemId}
+                onClose={() => setVoidLineItemId(null)}
+                onVoided={(updated) => {
+                    if (updated) setSelectedOrder((current) => (current && current.id === updated.id ? { ...current, ...updated } : current));
+                    void loadOrders();
+                }}
+            />
 
             {/* Payment Modal */}
             {
@@ -692,22 +829,28 @@ export default function Orders() {
 
             <FullScreenModal
                 isOpen={showDeliveryModal}
-                onClose={() => { setShowDeliveryModal(false); setDeliveryOrder(null); setDeliveryWarehouseId(null); }}
+                onClose={() => {
+                    if (completingDelivery) return;
+                    setShowDeliveryModal(false);
+                    setDeliveryOrder(null);
+                    setDeliveryWarehouseId(null);
+                }}
                 title={`Entregar orden #${deliveryOrder?.id ?? ''}`}
                 footer={({ requestClose }) => (
                     <>
-                        <Button variant="secondary" onClick={requestClose}>Volver</Button>
+                        <Button variant="secondary" onClick={requestClose} disabled={completingDelivery}>Volver</Button>
                         <Button
                             variant="primary"
                             onClick={() => void handleCompleteDelivery()}
-                            disabled={!deliveryWarehouseId || loadingWarehouses}
+                            disabled={!deliveryWarehouseId || loadingWarehouses || completingDelivery}
+                            loading={completingDelivery}
                         >
-                            Confirmar entrega
+                            {completingDelivery ? 'Entregando…' : 'Confirmar Entrega'}
                         </Button>
                     </>
                 )}
             >
-                <FormSection title="Bodega de descuento" description="Selecciona la bodega de la sucursal de la que se descontará el inventario.">
+                <FormSection title="Bodega de descuento" description="La orden seguirá visible como pendiente hasta confirmar la entrega. Selecciona la bodega de la sucursal: al entregar se descontará allí el inventario.">
                     <Field label="Bodega" htmlFor="delivery-warehouse" required>
                         <AppSelect<number>
                             inputId="delivery-warehouse"

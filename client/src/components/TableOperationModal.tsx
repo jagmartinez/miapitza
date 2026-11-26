@@ -3,7 +3,7 @@ import { AppSelect, Button, Field, FullScreenModal, Textarea } from '@/ui';
 import { ordersAPI } from '../services/api';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import type { Order, Table } from '../types';
-import { Search } from 'lucide-react';
+import { ArrowRight, Merge, Search } from 'lucide-react';
 import './TableOperationModal.css';
 
 type Operation = 'TRANSFER' | 'CONSOLIDATE';
@@ -46,7 +46,12 @@ export default function TableOperationModal({
         const initialTable = initialTableId ? tables.find((table) => table.id === initialTableId) : undefined;
         setSourceTableId(operation === 'TRANSFER' && initialTable?.status === 'OCCUPIED' ? String(initialTable.id) : '');
         setDestinationTableId(operation === 'CONSOLIDATE' && initialTable && ['AVAILABLE', 'OCCUPIED'].includes(initialTable.status) ? String(initialTable.id) : '');
-        setSourceTableIds([]);
+        setSourceTableIds(operation === 'CONSOLIDATE' && initialTable?.activeTableGroupId
+            ? tables.filter((table) => table.id !== initialTable.id
+                && table.activeTableGroupId === initialTable.activeTableGroupId
+                && table.status === 'OCCUPIED'
+                && (table.activeOrderCount ?? 1) > 0).map((table) => table.id)
+            : []);
         setOrderId('');
         setTransferMode('FULL');
         setTransferQuantities({});
@@ -84,13 +89,25 @@ export default function TableOperationModal({
     }, [operation, sourceTableId]);
 
     const eligibleSources = useMemo(() => tables.filter((table) => table.status === 'OCCUPIED'), [tables]);
+    const selectedTransferSource = tables.find((table) => table.id === Number(sourceTableId));
+    const selectedConsolidationDestination = tables.find((table) => table.id === Number(destinationTableId));
     const eligibleDestinations = useMemo(
-        () => tables.filter((table) => table.status === 'AVAILABLE' || table.status === 'OCCUPIED'),
-        [tables]
+        () => tables.filter((table) => {
+            if (table.status !== 'AVAILABLE' && table.status !== 'OCCUPIED') return false;
+            if (operation !== 'TRANSFER' || !selectedTransferSource) return true;
+            return (table.activeTableGroupId ?? null) === (selectedTransferSource.activeTableGroupId ?? null);
+        }),
+        [operation, selectedTransferSource, tables]
     );
     const selectedOrder = useMemo(
         () => orders.find((order) => order.id === Number(orderId)),
         [orderId, orders]
+    );
+    // The backend only splits lines that have not been sent to kitchen (a sent
+    // line belongs to a KDS batch); voided rows (quantity 0) are history.
+    const transferableItems = useMemo(
+        () => (selectedOrder?.items || []).filter((item) => !item.kitchenBatchId && Number(item.quantity) > 0),
+        [selectedOrder]
     );
     const transferSlices = useMemo(() => Object.entries(transferQuantities)
         .filter(([, quantity]) => quantity > 0)
@@ -110,8 +127,11 @@ export default function TableOperationModal({
         label: `Orden #${order.id} · ${order.items?.length || 0} productos`
     })), [orders]);
     const consolidationSources = useMemo(
-        () => eligibleSources.filter((table) => table.id !== Number(destinationTableId)),
-        [destinationTableId, eligibleSources]
+        () => eligibleSources.filter((table) => table.id !== Number(destinationTableId)
+            && (table.activeOrderCount ?? 1) > 0
+            && (!selectedConsolidationDestination
+                || (table.activeTableGroupId ?? null) === (selectedConsolidationDestination.activeTableGroupId ?? null))),
+        [destinationTableId, eligibleSources, selectedConsolidationDestination]
     );
     const visibleConsolidationSources = useMemo(() => {
         const query = sourceSearch.trim().toLocaleLowerCase('es');
@@ -151,7 +171,7 @@ export default function TableOperationModal({
             title={operation === 'TRANSFER' ? 'Cambiar consumo de mesa' : 'Consolidar cuentas de mesas'}
             subtitle={operation === 'TRANSFER'
                 ? 'El traslado completo conserva productos, notas, modificadores y estado de cocina.'
-                : 'Las órdenes origen se absorben en una cuenta principal y las mesas secundarias se liberan atómicamente.'}
+                : 'Las órdenes origen se absorben en una cuenta principal. Si las mesas están unidas físicamente, seguirán ocupadas hasta separarlas o cerrar la operación.'}
             dirty={Boolean(sourceTableId || destinationTableId || sourceTableIds.length || reason.trim()) && !submitting}
             footer={({ requestClose }) => (
                 <>
@@ -167,6 +187,13 @@ export default function TableOperationModal({
                     <span className="active">1</span>
                     <div><strong>{operation === 'TRANSFER' ? 'Define el traslado' : 'Elige la cuenta principal'}</strong><small>{operation === 'TRANSFER' ? 'Selecciona origen, destino y alcance.' : 'Después marca las mesas que se unirán.'}</small></div>
                 </div>
+                {operation === 'TRANSFER' && sourceTableId && destinationTableId && (
+                    <div className={`table-transfer-route mode-${transferMode.toLowerCase()}`} aria-label="Vista previa del cambio de mesa">
+                        <div><small>Origen</small><strong>Mesa {tables.find((table) => table.id === Number(sourceTableId))?.number}</strong><span>{transferMode === 'FULL' ? 'Se libera al completar' : 'Conserva el consumo restante'}</span></div>
+                        <span><ArrowRight size={22} /></span>
+                        <div><small>Destino</small><strong>Mesa {tables.find((table) => table.id === Number(destinationTableId))?.number}</strong><span>{transferMode === 'FULL' ? 'Recibe toda la orden' : 'Recibe solo lo seleccionado'}</span></div>
+                    </div>
+                )}
                 {operation === 'TRANSFER' && (
                     <Field label="Mesa origen" htmlFor="operation-source">
                         <AppSelect<string>
@@ -196,6 +223,11 @@ export default function TableOperationModal({
                         }}
                     />
                 </Field>
+                {operation === 'TRANSFER' && sourceTableId && destinationOptions.length === 0 && (
+                    <div className="table-operation-empty" role="status">
+                        No hay otra mesa compatible disponible como destino.
+                    </div>
+                )}
 
                 {operation === 'TRANSFER' && (
                     <Field label="Orden a trasladar" htmlFor="operation-order" error={ordersError || undefined}>
@@ -228,7 +260,7 @@ export default function TableOperationModal({
                         </div>
                         {transferMode === 'PARTIAL' && (
                             <div className="table-operation-items">
-                                {selectedOrder.items.map((item) => {
+                                {transferableItems.map((item) => {
                                     const quantity = transferQuantities[item.id] ?? 0;
                                     return (
                                         <label key={item.id}>
@@ -248,7 +280,7 @@ export default function TableOperationModal({
                                         </label>
                                     );
                                 })}
-                                {selectedOrder.items.length === 0 && <p role="alert">La orden no tiene productos trasladables.</p>}
+                                {transferableItems.length === 0 && <p role="alert">La orden no tiene productos trasladables: los ya enviados a cocina se trasladan moviendo la orden completa.</p>}
                             </div>
                         )}
                     </fieldset>
@@ -287,6 +319,12 @@ export default function TableOperationModal({
                                 <div className="table-operation-empty">No hay mesas ocupadas que coincidan con la búsqueda.</div>
                             )}
                         </div>
+                        {sourceTableIds.length > 0 && (
+                            <div className="table-consolidation-preview">
+                                <Merge size={18} />
+                                <span><strong>{sourceTableIds.length + 1} cuentas → mesa principal</strong><small>Los productos y totales quedarán en una sola orden.</small></span>
+                            </div>
+                        )}
                     </fieldset>
                 )}
 

@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { notifyError } from '../services/notify';
 import { useNavigate } from 'react-router-dom';
 import { warehousesAPI, reportsAPI, settingsAPI, productsAPI } from '../services/api';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
+import { kardexUrlFilters } from '../utils/kardexLink';
 import { FileText, Download, Calendar, Filter, ArrowLeft } from 'lucide-react';
 import './Kardex.css';
 import { AppSelect, Button, Field, DataTable, PageHeader, formatNumber, type Column } from '@/ui';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface WarehouseRow {
     id: number;
@@ -111,7 +114,7 @@ export default function Kardex() {
             const res = await settingsAPI.getAll();
             setSettings(res.data.data || {});
         } catch (error) {
-            console.error('Error loading settings:', error);
+            notifyError(error, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' });
         }
     }, []);
 
@@ -121,7 +124,7 @@ export default function Kardex() {
             const rows = (res.data?.data ?? res.data ?? []) as ProductRow[];
             setProducts(Array.isArray(rows) ? rows : []);
         } catch (error) {
-            console.error('Error loading products:', error);
+            notifyError(error, 'No se pudieron cargar los productos');
         }
     }, []);
 
@@ -130,7 +133,7 @@ export default function Kardex() {
             const res = await warehousesAPI.getAll();
             setWarehouses(res.data.data || []);
         } catch (error) {
-            console.error('Error loading warehouses:', error);
+            notifyError(error, 'No se pudieron cargar las bodegas');
         }
     }, []);
 
@@ -153,8 +156,7 @@ export default function Kardex() {
             const res = await reportsAPI.getKardex(params);
             setKardexData(res.data);
         } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : 'Error al cargar kardex';
-            showErrorRef.current(msg);
+            showErrorRef.current(getApiErrorMessage(error, 'Error al cargar kardex'));
         } finally {
             setLoading(false);
         }
@@ -165,12 +167,13 @@ export default function Kardex() {
         void loadProducts();
         void loadSettings();
 
-        const params = new URLSearchParams(window.location.search);
-        const productId = params.get('productId');
-        if (productId) {
+        const fromUrl = kardexUrlFilters(window.location.search);
+        if (fromUrl.productId) {
             urlHadProductIdRef.current = true;
-            setSelectedProduct(parseInt(productId, 10));
+            setSelectedProduct(fromUrl.productId);
         }
+        if (fromUrl.warehouseId) setSelectedWarehouse(fromUrl.warehouseId);
+        if (fromUrl.dateFrom) setDateFrom(fromUrl.dateFrom);
     }, [loadWarehouses, loadProducts, loadSettings]);
 
     // When entering without an explicit productId in the URL, preselect the
@@ -234,7 +237,7 @@ export default function Kardex() {
 
             showSuccess('Kardex exportado correctamente');
         } catch (error: unknown) {
-            showError(error instanceof Error ? error.message : 'Error al exportar');
+            showError(getApiErrorMessage(error, 'Error al exportar el kardex'));
         }
     };
 

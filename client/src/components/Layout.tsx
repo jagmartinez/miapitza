@@ -4,10 +4,11 @@ import { LogOut } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
 import { ConfirmProvider } from '../context/ConfirmContext';
-import { ToastProvider } from '../context/ToastContext';
+import { ErrorBoundary } from './ErrorBoundary';
 import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import NetworkStatus from './NetworkStatus';
+import MobileBottomNav from './MobileBottomNav';
 import SyncStatus from './SyncStatus';
 import '../components/SyncStatus.css';
 import { AppShell, IconButton, Topbar } from '@/ui';
@@ -35,7 +36,7 @@ export default function Layout() {
     const currentItem = currentGroup?.items.find((i) => i.id === activeNavId(nav, location.pathname));
 
     const handleLogout = () => {
-        logout();
+        void logout();
         navigate('/login');
     };
 
@@ -47,15 +48,16 @@ export default function Layout() {
         });
     };
 
+    const logoutButton = <IconButton icon={LogOut} label={t('common.logout')} onClick={handleLogout} />;
+
     return (
         <ConfirmProvider>
-        <ToastProvider>
             <AppShell
                 nav={nav}
                 collapsed={collapsed}
                 onToggleCollapsed={toggleCollapsed}
                 bare={isTableWorkspace}
-                footer={<IconButton icon={LogOut} label={t('common.logout')} onClick={handleLogout} />}
+                footer={logoutButton}
                 topbar={
                     <Topbar
                         nav={nav}
@@ -72,10 +74,13 @@ export default function Layout() {
                     />
                 }
             >
-                <Outlet />
+                {/* A crashing page keeps the shell (menu, sync, toasts) usable; navigating resets it. */}
+                <ErrorBoundary variant="page" resetKey={location.pathname}>
+                    <Outlet />
+                </ErrorBoundary>
                 <SyncStatus />
             </AppShell>
-        </ToastProvider>
+            <MobileBottomNav nav={nav} footer={logoutButton} />
         </ConfirmProvider>
     );
 }

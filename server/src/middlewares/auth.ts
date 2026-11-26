@@ -25,11 +25,18 @@ declare global {
     }
 }
 
+// Express routes are case-insensitive and tolerate trailing slashes: match likewise.
+const PIN_SETUP_PATH = /^\/+api\/+auth\/+me\/+pin\/*$/i;
+
 export const auth = async (
     req: Request,
     res: Response,
     next: NextFunction
 ) => {
+    if (req.authContextValidated === true && req.user) {
+        return next();
+    }
+
     let token: string | null;
     try {
         token = extractAuthToken(req);
@@ -174,6 +181,16 @@ export const auth = async (
                     >= expiryDays * 24 * 60 * 60 * 1000;
             }
         }
+        // Sessions opened from a registered tablet authenticate with device token
+        // (+ PIN), not the password, so the password gate does not apply to them.
+        // Setting a PIN stays gated even there.
+        if (passwordChangeRequired && !PIN_SETUP_PATH.test(req.originalUrl.split('?')[0])) {
+            // Fail closed: if the lookup throws or finds nothing, the gate stays.
+            const sessionDevice = await SessionService.deviceOf(token).catch(() => null);
+            if (SessionService.isDeviceTag(sessionDevice)) {
+                passwordChangeRequired = false;
+            }
+        }
         if (passwordChangeRequired && !passwordChangeAllowedPaths.has(req.originalUrl.split('?')[0])) {
             return res.status(403).json({
                 success: false,
@@ -182,6 +199,7 @@ export const auth = async (
             });
         }
 
+        req.authContextValidated = true;
         return next();
     } catch (error) {
         // Database/session/settings failures must not masquerade as invalid JWTs.
@@ -189,7 +207,7 @@ export const auth = async (
     }
 };
 
-function extractAuthToken(req: Request): string | null {
+export function extractAuthToken(req: Request): string | null {
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
         return authHeader.slice(7);
@@ -328,6 +346,6 @@ export const requirePermission = (permission: string, ...fallbackRoles: string[]
             // Authorization lookup failures must fail closed.
         }
 
-        return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+        return res.status(403).json({ success: false, code: 'FORBIDDEN', message: 'No tienes permiso para realizar esta acción' });
     };
 };

@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
     warehousesAPI: { getAll: vi.fn() },
     unitsAPI: { getProductUnits: vi.fn() },
     ordersAPI: { getAll: vi.fn(), getById: vi.fn() },
-    invoicesAPI: {},
+    invoicesAPI: { list: vi.fn() },
     settingsAPI: { getAll: vi.fn() },
     paymentsAPI: { getByOrderId: vi.fn() },
     api: { get: vi.fn(), post: vi.fn() },
@@ -104,6 +104,13 @@ beforeEach(() => {
     mocks.unitsAPI.getProductUnits.mockReturnValue(ok([]));
     mocks.settingsAPI.getAll.mockReturnValue(ok({ currency_symbol: 'C$' }));
     mocks.ordersAPI.getAll.mockReturnValue(ok([
+        {
+            id: 7, invoiceNumber: 'F-0007', invoicedAt: isoDay(-1), createdAt: isoDay(-1), total: 1234.5, status: 'DELIVERED',
+            financialStatus: 'PAID', branchId: 1, invoiceFiscalStatus: 'ISSUED', user: { name: 'Mesero' },
+            payments: [{ status: 'ACTIVE', paymentMethod: { name: 'Efectivo', type: 'CASH' } }],
+        },
+    ]));
+    mocks.invoicesAPI.list.mockReturnValue(ok([
         {
             id: 7, invoiceNumber: 'F-0007', invoicedAt: isoDay(-1), createdAt: isoDay(-1), total: 1234.5, status: 'DELIVERED',
             financialStatus: 'PAID', branchId: 1, invoiceFiscalStatus: 'ISSUED', user: { name: 'Mesero' },
@@ -249,7 +256,7 @@ describe('Compras: InvoiceHistory', () => {
     });
 
     it('avisa con reintento si no pudo cargar las facturas', async () => {
-        mocks.ordersAPI.getAll.mockReturnValueOnce(Promise.reject(new Error('boom')));
+        mocks.invoicesAPI.list.mockReturnValueOnce(Promise.reject(new Error('boom')));
         renderInRouter(<InvoiceHistory />);
         expect(await screen.findByRole('alert')).toHaveTextContent(/No se pudieron cargar las facturas/);
         expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();

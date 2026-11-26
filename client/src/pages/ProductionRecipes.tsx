@@ -3,7 +3,7 @@ import { productionRecipesAPI, productsAPI, unitsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
     PageContent, PageHeader, SegmentedControl, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
-    type Column, type Opt, type Tone,
+    type Column, type Opt, type Tone, LoadErrorState,
 } from '@/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -22,6 +22,7 @@ import {
 import s from './Production.module.css';
 import './Inventory.css';
 import './ProductionRecipes.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface ComponentRow {
     key: string;
@@ -155,6 +156,7 @@ export default function ProductionRecipes() {
     }, [isSidebarOpen, productId, yieldQuantity, yieldUnitId, rows]);
 
     const loadAll = async () => {
+        setLoading(true);
         setLoadError(null);
         try {
             const [recipesRes, productsRes, unitsRes] = await Promise.all([
@@ -165,6 +167,7 @@ export default function ProductionRecipes() {
             setRecipes(Array.isArray(recipesRes.data.data) ? recipesRes.data.data : []);
             setProducts(Array.isArray(productsRes.data.data) ? productsRes.data.data : []);
             setUnits(Array.isArray(unitsRes.data.data) ? unitsRes.data.data : []);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading production recipes:', error);
             setRecipes([]);
@@ -178,8 +181,10 @@ export default function ProductionRecipes() {
         try {
             const res = await productionRecipesAPI.getAll();
             setRecipes(Array.isArray(res.data.data) ? res.data.data : []);
+            setLoadError(null);
         } catch (error) {
             console.error('Error reloading production recipes:', error);
+            setLoadError(getApiErrorMessage(error, 'No se pudo actualizar el listado de recetas (se conserva la última información disponible)'));
         }
     };
 
@@ -728,12 +733,7 @@ export default function ProductionRecipes() {
                 actions={<Button variant="primary" icon={Plus} onClick={handleOpenCreate} disabled={!canManage}>Nueva receta</Button>}
             />
 
-            {loadError && (
-                <div className={s.banner} role="alert">
-                    <span>{loadError}</span>
-                    <Button size="sm" onClick={() => void loadAll()}>Reintentar</Button>
-                </div>
-            )}
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadAll(); }} />}
 
             {(risingCount > 0 || noCostCount > 0) && (
                 <div className={s.stats}>

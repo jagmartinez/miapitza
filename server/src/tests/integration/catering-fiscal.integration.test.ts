@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import bcrypt from 'bcryptjs';
+import request from 'supertest';
+import app from '../../app';
 import prisma from '../../utils/prisma';
 import { CateringService } from '../../services/catering.service';
 import { CateringFiscalService } from '../../services/catering-fiscal.service';
@@ -15,6 +18,8 @@ describe('Catering fiscal document and full counterflow (integration)', () => {
     let paymentMethodId = 0;
     let cashPaymentMethodId = 0;
     let cashRegisterId = 0;
+    let username = '';
+    const password = 'CateringContract123!';
 
     beforeAll(async () => {
         const company = await prisma.company.create({ data: {
@@ -26,14 +31,15 @@ describe('Catering fiscal document and full counterflow (integration)', () => {
         const branch = await prisma.branch.create({ data: { companyId, name: `Fiscal branch ${suffix}`, code: `CF-${suffix}` } });
         branchId = branch.id;
         const role = await prisma.role.create({ data: { companyId, name: `CF_ROLE_${suffix}` } });
+        username = `cf_${suffix}`;
         const user = await prisma.user.create({ data: {
             companyId,
             branchId,
             roleId: role.id,
             name: 'Catering Fiscal',
             email: `catering-fiscal-${suffix}@test.local`,
-            username: `cf_${suffix}`,
-            password: 'test',
+            username,
+            password: await bcrypt.hash(password, 10),
             mustChangePassword: false,
             status: 'ACTIVE'
         } });
@@ -91,6 +97,9 @@ describe('Catering fiscal document and full counterflow (integration)', () => {
             { companyId, name: `${companyId}_credit_note_series`, value: `CNC${companyId}` },
             { companyId, name: `${companyId}_tax_rate`, value: '15' },
             { companyId, name: `${companyId}_currency_symbol`, value: 'C$' },
+            { companyId, name: `${companyId}_address`, value: 'Managua, Nicaragua' },
+            { companyId, name: `${companyId}_phone`, value: '2222-2222' },
+            { companyId, name: `${companyId}_email`, value: 'contratos@example.test' },
             { companyId, name: `${companyId}_fiscal_tax_id_length`, value: '14' },
             { companyId, name: `${companyId}_fiscal_tax_id_charset`, value: 'DIGITS' }
         ] });
@@ -132,6 +141,7 @@ describe('Catering fiscal document and full counterflow (integration)', () => {
         await prisma.invoiceSequence.deleteMany({ where: { companyId } });
         await prisma.creditNoteSequence.deleteMany({ where: { companyId } });
         await prisma.setting.deleteMany({ where: { companyId } });
+        await prisma.userSession.deleteMany({ where: { userId } });
         await prisma.user.deleteMany({ where: { companyId } });
         await prisma.role.deleteMany({ where: { companyId } });
         await prisma.category.deleteMany({ where: { companyId } });
@@ -156,6 +166,59 @@ describe('Catering fiscal document and full counterflow (integration)', () => {
         });
         return { event, payment };
     }
+
+    it('serves an authenticated PDF from authoritative persisted data and fails closed when incomplete', async () => {
+        const login = await request(app)
+            .post('/api/auth/login')
+            .send({ username, password })
+            .expect(200);
+        const token = login.body.data.token as string;
+        const clauses = {
+            manifiestan: 'Ambas partes manifiestan su capacidad para contratar.',
+            objetoContrato: 'Prestación del servicio descrito.',
+            duracionServicio: 'Durante la fecha y horario acordados.',
+            gastosServicio: 'Los gastos incluidos constan en el detalle.',
+            demoraPago: 'La mora se regirá por el acuerdo firmado.',
+            obligacionesProveedor: 'Entregar el servicio acordado.',
+            obligacionesCliente: 'Pagar y facilitar el acceso acordado.',
+        };
+        const event = await CateringService.createEvent(companyId, userId, {
+            branchId,
+            customerName: 'Cliente contrato completo',
+            customerPhone: '8888-8888',
+            customerTaxId: '0010101000001A',
+            title: 'Contrato HTTP',
+            date: new Date(Date.now() + 86_400_000),
+            peopleCount: 20,
+            menuItems: [{ menuItemId, quantity: 1, unitPrice: 100 }],
+            clauses,
+        });
+
+        const response = await request(app)
+            .get(`/api/catering/${event.id}/contract`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        expect(response.headers['content-type']).toMatch(/^application\/pdf/);
+        expect(response.headers['cache-control']).toBe('private, no-store');
+        expect(response.headers['content-disposition']).toContain(`EVT-${String(event.id).padStart(5, '0')}`);
+        expect(Buffer.isBuffer(response.body)).toBe(true);
+        expect((response.body as Buffer).subarray(0, 4).toString('ascii')).toBe('%PDF');
+
+        const incomplete = await CateringService.createEvent(companyId, userId, {
+            branchId,
+            customerName: 'Cliente sin contrato legal',
+            customerPhone: '8888-9999',
+            title: 'Contrato incompleto',
+            date: new Date(Date.now() + 172_800_000),
+            peopleCount: 10,
+            menuItems: [{ menuItemId, quantity: 1, unitPrice: 100 }],
+        });
+        const rejected = await request(app)
+            .get(`/api/catering/${incomplete.id}/contract`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(409);
+        expect(rejected.body.message).toMatch(/cláusula|identificación fiscal/i);
+    });
 
     it('freezes an immutable idempotent invoice and fully credits payment without repricing', async () => {
         const { event, payment } = await createPaidEvent('invoice');

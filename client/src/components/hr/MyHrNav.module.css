@@ -1,6 +1,7 @@
 .nav {
   display: flex;
   justify-content: flex-end;
+  gap: 0.45rem;
   min-width: 0;
 }
 
@@ -33,6 +34,26 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 480px) {
-  .link { width: 100%; justify-content: center; }
+/* El atajo de marcaje solo aparece en móvil. */
+.punch { display: none; }
+
+@media (max-width: 768px) {
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    width: 100%;
+  }
+  .link { width: 100%; min-height: 44px; justify-content: center; }
+  .punch {
+    display: inline-flex;
+    border-color: color-mix(in srgb, var(--ui-primary) 42%, var(--ui-border));
+    background: color-mix(in srgb, var(--ui-primary) 10%, var(--ui-surface));
+    color: var(--ui-primary);
+  }
 }
+
+@media (max-width: 390px) {
+  .link { padding-inline: 0.45rem; font-size: 0.72rem; }
+  .link svg:nth-child(2) { display: none; }
+}
+

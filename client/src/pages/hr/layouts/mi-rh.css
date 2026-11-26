@@ -1,0 +1,161 @@
+/* Mi RH landing — composed on the RH workspace kit (hr-workspace.css). */
+.mi-rh-page .mi-rh-greeting {
+  color: var(--ui-text);
+  font-weight: 700;
+}
+
+.mi-rh-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .28rem .6rem;
+  border: 1px solid var(--hr-ws-border);
+  border-radius: 999px;
+  background: var(--ui-bg);
+  color: var(--hr-ws-text-2);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.mi-rh-badge.is-accent {
+  border-color: color-mix(in srgb, var(--ui-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
+  color: var(--ui-primary);
+  font-size: .66rem;
+  letter-spacing: .06em;
+}
+
+.mi-rh-profile-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .3rem;
+  min-height: 40px;
+  padding: 0 .85rem;
+  border: 1px solid var(--hr-ws-border);
+  border-radius: .7rem;
+  background: var(--ui-bg);
+  color: var(--ui-primary);
+  font-size: .82rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mi-rh-profile-link:hover {
+  border-color: color-mix(in srgb, var(--ui-primary) 45%, transparent);
+  background: var(--hr-ws-muted);
+}
+
+.mi-rh-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+}
+
+.mi-rh-warning > span {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/* Tiles: buttons reset + text hierarchy */
+.mi-rh-page .hr-ws-tile {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mi-rh-page .hr-ws-tile:focus-visible,
+.mi-rh-profile-link:focus-visible {
+  outline: 2px solid var(--ui-primary);
+  outline-offset: 2px;
+}
+
+.mi-rh-page .hr-ws-tile > svg:first-child {
+  flex: 0 0 auto;
+  margin-top: .1rem;
+  color: var(--ui-primary);
+}
+
+.mi-rh-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.mi-rh-page .mi-rh-stat-body,
+.mi-rh-page .mi-rh-action-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.mi-rh-page .mi-rh-stat-body .mi-rh-stat-label {
+  margin: 0;
+  color: var(--hr-ws-text-2);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.mi-rh-page .mi-rh-stat strong {
+  margin-top: .2rem;
+  color: var(--ui-text);
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.mi-rh-page .hr-ws-tile small {
+  display: block;
+  margin-top: .2rem;
+  color: var(--hr-ws-text-2);
+  font-size: .76rem;
+  line-height: 1.4;
+}
+
+.mi-rh-action {
+  align-items: center;
+}
+
+.mi-rh-page .mi-rh-action-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  place-items: center;
+  border-radius: .7rem;
+  background: color-mix(in srgb, var(--ui-primary) 12%, transparent);
+  color: var(--ui-primary);
+}
+
+.mi-rh-action strong {
+  color: var(--ui-text);
+}
+
+.mi-rh-action-chevron {
+  flex: 0 0 auto;
+  color: var(--hr-ws-text-2);
+  transition: transform 120ms ease, color 120ms ease;
+}
+
+.mi-rh-action:hover .mi-rh-action-chevron {
+  color: var(--ui-primary);
+  transform: translateX(2px);
+}
+
+@media (max-width: 680px) {
+  .mi-rh-summary-grid,
+  .mi-rh-action-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mi-rh-action-chevron { transition: none; }
+}

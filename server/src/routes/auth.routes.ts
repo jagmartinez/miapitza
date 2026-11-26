@@ -34,8 +34,31 @@ router.post('/login',
     AuthController.login
 );
 
+// Shared service tablets (X-Device-Token header, no cookies: exempt from CSRF).
+router.get('/device-roster', AuthController.deviceRoster);
+router.post('/pin-login',
+    validate({
+        body: {
+            userId: { type: 'number', required: true, min: 1 },
+            pin: { type: 'string', required: true, max: 6 },
+        },
+    }),
+    AuthController.pinLogin
+);
+
+// Fixed kitchen tablet: the X-Device-Token header alone, no body.
+router.post('/device-login', AuthController.deviceLogin);
+
+// Set/replace the caller's own quick-login PIN
+router.put('/me/pin',
+    authMiddleware,
+    validate({ body: { pin: { type: 'string', required: true, max: 6 } } }),
+    AuthController.setMyPin
+);
+
 // Verify current session (used by client on app load)
 router.get('/me', authMiddleware, AuthController.me);
+router.get('/me/discount-limit', authMiddleware, AuthController.myDiscountLimit);
 
 // Change password (any authenticated user)
 router.post('/change-password',

@@ -125,6 +125,7 @@ describe('Business Intelligence metric contracts', () => {
             refunds: [],
             lines: [{
                 quantity: 3,
+                grossSubtotal: 30,
                 subtotal: 30,
                 orderItem: { menuItemId: 10 }
             }]

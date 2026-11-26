@@ -29,6 +29,13 @@ export interface HrUserSummary {
         id: number;
         employeeCode: string;
         status: HrEmploymentStatus;
+        jobPositionId?: number | null;
+        branchAssignments?: Array<{
+            branchId: number;
+            isPrimary?: boolean;
+            effectiveFrom?: string | null;
+            effectiveTo?: string | null;
+        }>;
     } | null;
     branchId?: number | null;
     branch?: HrNamedEntity | null;
@@ -107,6 +114,8 @@ export interface HrEmployee {
     legalName: string;
     preferredName?: string | null;
     employmentType?: string | null;
+    /** Weekly rest day(s), ISO weekdays 1 = lunes .. 7 = domingo; null = legal default (domingo). */
+    weeklyRestDays?: number[] | null;
     documentType?: string | null;
     documentNumber?: string | null;
     socialSecurityNumber?: string | null;
@@ -178,6 +187,12 @@ export interface HrOrganizationCatalogs {
     };
 }
 
+export interface HrScheduleLookups {
+    positions: HrNamedEntity[];
+    branches: HrNamedEntity[];
+    users: HrUserSummary[];
+}
+
 export interface HrEmployeePayload {
     /** Required when creating; immutable and omitted when editing an employee. */
     userId?: number;
@@ -185,6 +200,8 @@ export interface HrEmployeePayload {
     legalName: string;
     preferredName?: string | null;
     employmentType?: string | null;
+    /** Weekly rest day(s), ISO weekdays 1 = lunes .. 7 = domingo; null = legal default (domingo). */
+    weeklyRestDays?: number[] | null;
     documentType?: string | null;
     documentNumber?: string | null;
     socialSecurityNumber?: string | null;

@@ -106,16 +106,108 @@ describe('operational UX contracts', () => {
         expect(source).toContain('<PageContent>');
     });
 
+    it('the kitchen ignores waiter ITEMS_CHANGED / GUESTS_CHANGED order updates (M7)', () => {
+        const kitchen = read('./Kitchen.tsx');
+        const guard = kitchen.indexOf("message.payload?.status === 'ITEMS_CHANGED'");
+        expect(guard).toBeGreaterThan(-1);
+        expect(kitchen).toContain("message.payload?.status === 'GUESTS_CHANGED'");
+        // The guard returns before the refetch branch that handles ORDER_UPDATE.
+        expect(guard).toBeLessThan(kitchen.indexOf('message.type === WS_EVENTS.ORDER_SENT_TO_KITCHEN'));
+    });
+
     it('uses the dedicated kitchen and explicit-warehouse delivery boundaries', () => {
         const orders = read('./Orders.tsx');
         const pos = read('./POS.tsx');
 
         expect(orders).toContain('ordersAPI.markKitchenReady(orderId)');
         expect(orders).toContain('canManageKitchen &&');
-        expect(pos).toContain('ordersAPI.complete(activeTableOrder.id, operationalWarehouseId)');
-        expect(pos).toContain('ordersAPI.cancel(activeTableOrder.id, pendingCancelReason, operationalWarehouseId)');
+        expect(orders).toContain('ordersAPI.complete(orderId, warehouseId)');
+        expect(pos).not.toContain('ordersAPI.complete(');
+        expect(pos).toContain('ordersAPI.cancel(orderId, cancelReason, warehouseId)');
         expect(pos).not.toContain("ordersAPI.updateStatus(activeTableOrder.id, 'DELIVERED')");
         expect(pos.match(/ordersAPI\.updatePricing\(orderId/g)).toHaveLength(2);
         expect(pos).toContain('La orden no se enviará a cocina hasta sincronizar el precio.');
+    });
+
+    it('wires delivery attempts through the executable gate and preserves explicit feedback', () => {
+        const orders = read('./Orders.tsx');
+        const pos = read('./POS.tsx');
+
+        expect(orders).toContain('deliveryAttemptGateRef.current.execute');
+        expect(orders).toContain("showError(message)");
+        expect(orders).toContain("completingDelivery ? 'Entregando…' : 'Confirmar Entrega'");
+        expect(orders).toContain('La orden fue entregada, pero no se pudo actualizar la lista.');
+        expect(pos).not.toContain('handleMarkDelivered');
+        expect(pos).not.toContain("setWarehouseAction('DELIVER')");
+        expect(pos).not.toContain('>Entregar</button>');
+        expect(pos).not.toContain('syncOrderContext(activeTableOrder.id)');
+    });
+
+    it('keeps an invoiced table account attached until the backend confirms full payment', () => {
+        const pos = read('./POS.tsx');
+        const paymentFlow = pos.slice(
+            pos.indexOf('const handlePayment = async () => {'),
+            pos.indexOf('handlePaymentRef.current = handlePayment;'),
+        );
+        const postInvoiceFlow = paymentFlow.slice(paymentFlow.indexOf('let payableOrder = paymentSnapshot'));
+        const paymentCompleteFlow = pos.slice(
+            pos.indexOf('const handlePaymentComplete = async'),
+            pos.indexOf('const handleCancelActiveOrder = useCallback'),
+        );
+
+        expect(pos).toContain('findTableAccountForTable(response.data.data as Order[], table.id)');
+        expect(pos).toContain('if (!isEligibleForPosOrderBucket(refreshedOrder))');
+        expect(postInvoiceFlow).toContain('setPaymentOrder(payableOrder)');
+        expect(postInvoiceFlow).toContain('setActiveTableOrder(payableOrder)');
+        expect(postInvoiceFlow).toContain('clearDraftCart');
+        expect(postInvoiceFlow).not.toContain('releaseAfterConfirmedInvoice(');
+        expect(postInvoiceFlow).not.toContain('clearTableContext');
+        expect(postInvoiceFlow).not.toContain('syncOrderContext(orderId)');
+        expect(paymentCompleteFlow).toContain('clearTableContext');
+        expect(pos).toContain('orderId={paymentOrder?.id ?? null}');
+        expect(pos).toContain('order={paymentOrder}');
+        expect(paymentFlow.indexOf('ordersAPI.updateFiscalCustomer(orderId')).toBeLessThan(
+            paymentFlow.indexOf('invoicesAPI.issuePreInvoice(orderId)'),
+        );
+    });
+
+    it('never presents a post-confirmation refresh failure as a failed payment', () => {
+        const pos = read('./POS.tsx');
+        const paymentCompleteFlow = pos.slice(
+            pos.indexOf('const handlePaymentComplete = async'),
+            pos.indexOf('const handleCancelActiveOrder = useCallback'),
+        );
+
+        expect(paymentCompleteFlow).toContain('const refreshed = await loadData(false)');
+        expect(paymentCompleteFlow).toContain('El pago fue confirmado, pero el POS no pudo actualizarse.');
+        expect(paymentCompleteFlow).toContain('El pago fue confirmado, pero el mapa operativo no pudo actualizarse.');
+        expect(paymentCompleteFlow).not.toContain("showError('Error al procesar el pago.')");
+    });
+
+    it('communicates the delivery handoff and exposes it only with orders.deliver', () => {
+        const orders = read('./Orders.tsx');
+        const pos = read('./POS.tsx');
+        const tables = read('./Tables.tsx');
+        const kitchen = read('./Kitchen.tsx');
+
+        expect(pos).toContain('Pago confirmado y factura ${paymentData.fiscalInvoice.invoiceNumber} emitida.');
+        expect(pos).not.toContain('settleReadyTableOnPayment');
+        expect(orders).toContain("const canDeliver = canDeliverOrder(user)");
+        expect(orders).toContain("if (canDeliver && order.status === 'READY'");
+        expect(orders).toContain('Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.');
+        expect(orders).toContain('await loadOrders();');
+        expect(orders).toContain('La orden seguirá visible como pendiente hasta confirmar la entrega.');
+        expect(orders).toContain('al entregar se descontará allí el inventario.');
+        expect(orders).toContain('El inventario fue descontado de la bodega seleccionada.');
+        expect(orders).not.toContain('settleReadyTableOnPayment');
+        expect(orders).toContain('setOrders(rows)');
+        expect(kitchen).toContain('ordersAPI.getKitchenQueue()');
+        expect(tables).toContain('Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.');
+        expect(tables).toContain('await refreshOperationalTable();');
+        expect(tables).toContain('Las cuentas fueron consolidadas en la mesa principal');
+        expect(tables).toContain('Emite la factura para continuar al cobro.');
+        expect(tables).not.toContain('Cuentas consolidadas. ${buildInvoiceStatusMessage({');
+        expect(tables).not.toContain('settleReadyTableOnPayment');
+        expect(tables).toContain('doesOrderRemainVisibleAtTable(order)');
     });
 });

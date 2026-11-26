@@ -42,6 +42,21 @@
     border-left: 1px solid var(--ui-border);
 }
 
+.catering-contract-status {
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    background: var(--ui-surface);
+    color: var(--ui-text-muted);
+    font-weight: 600;
+}
+
+.catering-contract-status.error {
+    border-color: var(--ui-danger);
+    color: var(--ui-danger);
+}
+
 /* Filters Row - Modern Pills with Stats */
 .catering-filters {
     display: flex;
@@ -1429,3 +1444,11 @@
     .catering-event-modal-content > .modal-tabs .modal-tab { flex: 0 0 auto; }
     .catering-event-section .modal-form-row { grid-template-columns: 1fr; }
 }
+
+/* Finish preview: source warehouse per ingredient (branch routing). */
+.catering-finish-preview { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.catering-finish-preview small { color: var(--ui-text-muted); }
+.catering-finish-preview-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.catering-finish-preview-table th,
+.catering-finish-preview-table td { padding: 4px 6px; border-bottom: 1px solid var(--ui-border); text-align: left; }
+.catering-finish-preview-table tr.is-short td { color: var(--ui-danger); }

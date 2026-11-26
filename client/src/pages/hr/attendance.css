@@ -531,39 +531,101 @@
 .hr-punch-result {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: var(--ui-space-2);
-    text-align: center;
+    gap: var(--spacing-md);
 }
 
-.hr-punch-result.accepted > svg { color: var(--ui-success); }
-.hr-punch-result.rejected > svg { color: var(--ui-danger); }
+.hr-punch-result-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+}
+
+.hr-punch-result-heading > svg { flex: 0 0 auto; }
+.hr-punch-result.accepted .hr-punch-result-heading > svg { color: var(--ui-success); }
+.hr-punch-result.review_required .hr-punch-result-heading > svg { color: var(--ui-warning); }
+.hr-punch-result.rejected .hr-punch-result-heading > svg { color: var(--ui-danger); }
 
 .hr-punch-result h2,
 .hr-punch-result p { margin: 0; }
 .hr-punch-result p { color: var(--ui-text-muted); }
+.hr-punch-result-heading h2 { font-size: var(--font-size-xl); }
+.hr-punch-result-heading p { margin-top: .2rem; line-height: 1.45; }
 
 .hr-attendance-checks {
     display: grid;
     width: 100%;
-    gap: var(--ui-space-1);
+    gap: var(--spacing-sm);
+    margin: 0;
 }
 
 .hr-attendance-checks > div {
     display: grid;
-    grid-template-columns: minmax(100px, .4fr) 1fr;
-    gap: var(--ui-space-2);
-    padding: var(--ui-space-2);
-    border-left: 3px solid var(--ui-border);
-    background: var(--ui-surface-2);
+    grid-template-columns: minmax(150px, .42fr) 1fr;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    border: 1px solid var(--ui-border);
+    border-left: 3px solid var(--ui-text-muted);
+    border-radius: var(--radius-md);
+    background: var(--ui-bg);
     text-align: left;
 }
 
 .hr-attendance-checks .ok { border-color: var(--ui-success); }
 .hr-attendance-checks .warning { border-color: var(--ui-warning); }
 .hr-attendance-checks .danger { border-color: var(--ui-danger); }
-.hr-attendance-checks dt { font-weight: 700; text-transform: capitalize; }
-.hr-attendance-checks dd { margin: 0; color: var(--ui-text-muted); }
+.hr-attendance-checks dt {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+    font-weight: 750;
+}
+.hr-attendance-checks dt small {
+    padding: 2px 6px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, currentColor 12%, transparent);
+    color: var(--ui-text-muted);
+    font-size: .65rem;
+    font-weight: 800;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+}
+.hr-attendance-checks .danger dt small { color: var(--ui-danger); }
+.hr-attendance-checks .warning dt small { color: var(--ui-warning); }
+.hr-attendance-checks dd {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    margin: 0;
+    color: var(--ui-text-muted);
+    line-height: 1.4;
+}
+.hr-attendance-checks dd strong { color: var(--ui-text); font-size: var(--font-size-sm); }
+.hr-attendance-checks dd span { font-size: var(--font-size-sm); }
+.hr-attendance-checks dd small { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+
+.hr-checks-passed {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: var(--ui-success) !important;
+    font-size: var(--font-size-sm);
+}
+
+.hr-result-technical {
+    width: 100%;
+    color: var(--ui-text-muted);
+    font-size: var(--font-size-xs);
+}
+.hr-result-technical summary { width: fit-content; cursor: pointer; font-weight: 700; }
+.hr-result-technical code { display: block; margin-top: var(--spacing-xs); overflow-wrap: anywhere; }
+
+.hr-result-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    width: 100%;
+}
 
 .hr-biometric-required {
     display: flex;
@@ -650,10 +712,31 @@
 
 @media (max-width: 480px) {
     .hr-today-summary,
-.hr-punch-actions,
-.hr-punch-evidence,
-.hr-punch-result,
-.hr-biometric-required,
-.hr-biometric-status { padding: var(--ui-space-3); }
-    .hr-attendance-checks > div { grid-template-columns: 1fr; }
+    .hr-punch-actions,
+    .hr-punch-evidence,
+    .hr-punch-result,
+    .hr-biometric-required,
+    .hr-biometric-status,
+    .hr-biometric-notice,
+    .hr-enrollment-panel { padding: var(--spacing-md); }
+    .hr-attendance-event-main { flex-direction: column; }
+    .hr-punch-result { gap: var(--spacing-sm); }
+    .hr-punch-result-heading > svg { width: 30px; height: 30px; }
+    .hr-punch-result-heading h2 { font-size: var(--font-size-lg); }
+    .hr-attendance-checks { gap: var(--spacing-xs); }
+    .hr-attendance-checks > div { grid-template-columns: 1fr; padding: var(--spacing-sm); }
+    .hr-result-actions { align-items: stretch; flex-direction: column; }
+    .hr-result-actions .ui-button { width: 100%; }
+    .hr-camera-capture,
+    .hr-location-capture { padding: var(--spacing-sm); }
+    .hr-camera-guide { padding: var(--spacing-sm); }
+    .hr-camera-guide__heading strong { font-size: 0.95rem; }
+    .hr-camera-guide__heading span { font-size: 0.75rem; }
+    .hr-attendance-blocking .ui-button { width: 100%; }
+}
+
+.hr-attendance-server-time {
+    margin: 0;
+    color: var(--ui-text-muted);
+    font-size: var(--ui-text-sm);
 }

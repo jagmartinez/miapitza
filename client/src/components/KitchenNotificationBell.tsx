@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { Bell, Check, CheckCheck, X } from 'lucide-react';
 import { kitchenNotificationsAPI } from '../services/api';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
@@ -18,7 +20,7 @@ export default function KitchenNotificationBell({ inline = false }: { inline?: b
             const response = await kitchenNotificationsAPI.getAll();
             setNotifications(response.data.data);
         } catch (error) {
-            console.error('Error loading kitchen notifications:', error);
+            notifyError(error, 'No se pudieron cargar los avisos de cocina', { type: 'warning' });
         }
     }, []);
 
@@ -46,8 +48,8 @@ export default function KitchenNotificationBell({ inline = false }: { inline?: b
         try {
             await Promise.all(pending.map((notification) => kitchenNotificationsAPI.markSeen(notification.id)));
             await load();
-        } catch {
-            showError('No se pudieron marcar los avisos como vistos.');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'No se pudieron marcar los avisos como vistos.'));
         }
     };
 
@@ -56,8 +58,8 @@ export default function KitchenNotificationBell({ inline = false }: { inline?: b
         try {
             await kitchenNotificationsAPI.markAttended(id);
             setNotifications((current) => current.filter((notification) => notification.id !== id));
-        } catch {
-            showError('No se pudo marcar el aviso como atendido.');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'No se pudo marcar el aviso como atendido.'));
         } finally {
             setAttendingIds((current) => {
                 const next = new Set(current);

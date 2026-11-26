@@ -197,6 +197,7 @@ type ProductRow = {
     storageType: StorageType | null;
     active: boolean;
     cost: Prisma.Decimal;
+    referenceCostKnown?: boolean;
     currentAverageCost: Prisma.Decimal;
     lastPurchaseCost: Prisma.Decimal;
     stocks: Array<{ quantity: Prisma.Decimal }>;
@@ -346,8 +347,14 @@ function sameMoney(left: number, right: number): boolean {
     return Math.abs(left - right) <= 0.005;
 }
 
+// Product.cost is a per-base-unit reference cost stored as DECIMAL(18,6):
+// per-gram/per-ml costs (0.004) must not be rounded to cents.
 function roundCost(value: number): number {
-    return Number(value.toFixed(2));
+    return Number(value.toFixed(6));
+}
+
+function sameCost(left: number, right: number): boolean {
+    return Math.abs(left - right) <= 0.0000005;
 }
 
 function parseNullableString(value: unknown, path: string, issues: CatalogCostIssue[]): string | null {
@@ -811,6 +818,7 @@ export class CatalogCostImportService {
                     storageType: true,
                     active: true,
                     cost: true,
+                    referenceCostKnown: true,
                     currentAverageCost: true,
                     lastPurchaseCost: true,
                     stocks: { select: { quantity: true } },
@@ -872,7 +880,7 @@ export class CatalogCostImportService {
                     'ERROR',
                     'COST_PRECISION_LOSS',
                     `${path}.source.evaluatedPrice`,
-                    `El costo ${exactCost} no cabe con precisión útil en Product.cost DECIMAL(10,2).`,
+                    `El costo ${exactCost} no cabe con precisión útil en Product.cost DECIMAL(18,6).`,
                     { exactCost, roundedCost: newReferenceCost }
                 ));
                 continue;
@@ -949,7 +957,7 @@ export class CatalogCostImportService {
 
             let action: CatalogCostActionKind;
             if (!product) action = 'CREATE';
-            else if (!sameMoney(Number(product.cost), newReferenceCost) || ensureBaseProductUnit) action = 'UPDATE';
+            else if (!sameCost(Number(product.cost), newReferenceCost) || !product.referenceCostKnown || ensureBaseProductUnit) action = 'UPDATE';
             else action = 'UNCHANGED';
 
             report.actions.push({
@@ -1004,6 +1012,8 @@ export class CatalogCostImportService {
                         baseUnitId: action.baseUnitId,
                         minStock: 0,
                         cost: action.newReferenceCost,
+                        // A reviewed catalog cost is an explicit reference value.
+                        referenceCostKnown: true,
                         currentAverageCost: 0,
                         lastPurchaseCost: 0,
                         type: action.productType,
@@ -1016,7 +1026,7 @@ export class CatalogCostImportService {
             } else if (action.action === 'UPDATE' && productId) {
                 await tx.product.update({
                     where: { id: productId },
-                    data: { cost: action.newReferenceCost }
+                    data: { cost: action.newReferenceCost, referenceCostKnown: true }
                 });
             }
             if (!productId) throw new Error(`No se pudo determinar productId para ${action.sku}.`);

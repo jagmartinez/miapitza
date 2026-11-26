@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 
 import prisma from '../../utils/prisma';
+import { AuditLogService } from '../../services/audit-log.service';
 import { InventoryMovementService } from '../../services/inventory-movement.service';
 import { WasteReportService } from '../../services/waste-report.service';
 
@@ -83,6 +84,31 @@ describe('Inventory immutable reversal certification (integration)', () => {
         });
         return Number(row?.quantity ?? 0);
     }
+
+    it('rolls back movement, stock and cost history when the transactional audit fails', async () => {
+        const item = await product('AUDIT-ROLLBACK');
+        const audit = jest.spyOn(AuditLogService, 'log')
+            .mockRejectedValueOnce(new Error('forced audit failure'));
+
+        await expect(InventoryMovementService.create(companyId, {
+            warehouseId: warehouseAId,
+            productId: item.id,
+            userId,
+            type: 'IN',
+            quantity: 3,
+            unitCost: 5,
+            reason: 'Audit rollback fixture'
+        })).rejects.toThrow('forced audit failure');
+        audit.mockRestore();
+
+        expect(await stock(warehouseAId, item.id)).toBe(0);
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, productId: item.id }
+        })).toBe(0);
+        expect(await prisma.productCostHistory.count({
+            where: { companyId, productId: item.id }
+        })).toBe(0);
+    });
 
     it('reverses MANUAL OUT after a later receipt and reconciles WA value chronologically', async () => {
         const item = await product('MANUAL-OUT');

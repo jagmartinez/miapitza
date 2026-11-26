@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     calculateTipAmount,
     calculateTotalWithTip,
+    calculateAutomaticPaymentRemainder,
     canUsePaymentMethodInMixed,
     formatMoneyInput,
     formatMoneyAmount,
@@ -56,6 +57,21 @@ describe('payment utils', () => {
         expect(summarizePaymentAllocation(10.05, [5.02, 5.02])).toMatchObject({
             differenceCents: 1,
             exact: false,
+        });
+    });
+
+    it('assigns the exact mixed-payment difference to the final method', () => {
+        expect(calculateAutomaticPaymentRemainder(200, [150])).toEqual({
+            amount: 50,
+            excess: 0,
+        });
+        expect(calculateAutomaticPaymentRemainder(200, [50, 125.55])).toEqual({
+            amount: 24.45,
+            excess: 0,
+        });
+        expect(calculateAutomaticPaymentRemainder(200, [225])).toEqual({
+            amount: 0,
+            excess: 25,
         });
     });
 

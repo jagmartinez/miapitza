@@ -19,7 +19,7 @@ import type { User as AppUser } from '../types';
 import { workforceClient } from '../components/hr/workforceClient';
 import { selectVacationBalance } from '../components/hr/vacationBalance';
 import type { HrMyWorkforce } from '../types/hr-workforce';
-import { formatHrNumber } from '../utils/hrFormat';
+import { formatHrNumber } from '../utils/hrDisplay';
 import { SecurityTab, type PasswordInfoState, type RolePermissionRow } from './profile/SecurityTab';
 import { NotificationsTab, PreferencesTab } from './profile/PreferencesTab';
 import { useUserPreferencesState } from './profile/usePreferencesState';

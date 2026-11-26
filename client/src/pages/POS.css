@@ -1,9 +1,13 @@
 /* ===== NEW POS DESIGN ===== */
 
 .pos-container-new {
+    --pos-scrollbar-size: 6px;
+    --pos-scrollbar-thumb: var(--ui-border);
+    --pos-scrollbar-thumb-hover: var(--ui-text-muted);
     display: flex;
     flex-direction: column;
     height: calc(100vh - 48px);
+    min-height: 0;
     background: var(--ui-bg);
     max-width: 1700px;
     margin: 0 auto;
@@ -19,6 +23,7 @@
     /*background: var(--ui-surface);*/
     border-bottom: 2px solid var(--ui-border);
     align-items: center;
+    flex-shrink: 0;
     z-index: 10;
 }
 
@@ -182,6 +187,7 @@
     gap: var(--spacing-lg);
     padding: var(--spacing-lg);
     flex: 1;
+    min-height: 0;
     overflow: hidden;
 }
 
@@ -373,7 +379,21 @@
 
 /* Cart Area */
 .cart-area {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow: hidden;
+}
+
+.cart-area > .order-cart {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+.cart-area > .header-action-btn,
+.cart-area > .pos-active-order-summary {
+    flex-shrink: 0;
 }
 
 .pos-load-error {
@@ -478,26 +498,37 @@
 }
 
 /* Custom Scrollbars */
+.category-sidebar,
+.product-area,
+.cart-items-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--pos-scrollbar-thumb) transparent;
+}
+
 .category-sidebar::-webkit-scrollbar,
-.product-area::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+.product-area::-webkit-scrollbar,
+.cart-items-list::-webkit-scrollbar {
+    width: var(--pos-scrollbar-size);
+    height: var(--pos-scrollbar-size);
 }
 
 .category-sidebar::-webkit-scrollbar-track,
-.product-area::-webkit-scrollbar-track {
+.product-area::-webkit-scrollbar-track,
+.cart-items-list::-webkit-scrollbar-track {
     background: transparent;
 }
 
 .category-sidebar::-webkit-scrollbar-thumb,
-.product-area::-webkit-scrollbar-thumb {
-    background: var(--ui-border);
+.product-area::-webkit-scrollbar-thumb,
+.cart-items-list::-webkit-scrollbar-thumb {
+    background: var(--pos-scrollbar-thumb);
     border-radius: 10px;
 }
 
 .category-sidebar::-webkit-scrollbar-thumb:hover,
-.product-area::-webkit-scrollbar-thumb:hover {
-    background: var(--ui-text-muted);
+.product-area::-webkit-scrollbar-thumb:hover,
+.cart-items-list::-webkit-scrollbar-thumb:hover {
+    background: var(--pos-scrollbar-thumb-hover);
 }
 
 /* Responsive */
@@ -874,6 +905,12 @@
 
 .pos-fiscal-grid textarea { min-height: 86px; resize: vertical; }
 .pos-fiscal-span-full { grid-column: 1 / -1; }
+.pos-fiscal-error {
+    margin: var(--ui-space-4) 0 0;
+    color: var(--ui-danger);
+    font-size: var(--ui-text-sm);
+    font-weight: 600;
+}
 
 .pos-dialog-icon {
     display: grid;
@@ -1052,4 +1089,40 @@
     z-index: 2;
     max-width: calc(100% - var(--ui-space-4));
     pointer-events: none;
+}
+
+/* Informational stock badge (selling stays allowed). */
+.pos-stock-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.4;
+    pointer-events: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.pos-stock-badge--out {
+    /* #dc2626 keeps white text >= 4.5:1 (the --color-danger token is lighter). */
+    background: #dc2626;
+    color: #fff;
+}
+
+.pos-stock-badge--low {
+    background: var(--ui-warning);
+    color: #1f2937;
+}
+
+/* Reserve the badge row so it never covers the product name on compact tablet cards. */
+.product-card-new.has-stock-badge .product-info-overlay {
+    padding-top: calc(var(--ui-space-4) + 18px);
+}
+
+.product-card-new:focus-visible {
+    outline: 3px solid var(--ui-primary);
+    outline-offset: 2px;
 }

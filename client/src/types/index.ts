@@ -66,6 +66,67 @@ export interface LoginResponse {
   };
 }
 
+export interface TableGroupSummary {
+  id: number;
+  primaryTableId: number;
+  memberTableIds: number[];
+  status: 'ACTIVE' | 'CLOSED';
+  createdAt: string;
+  primaryTable: { id: number; number: string };
+}
+
+export interface ActiveTableConsolidation {
+  id: number;
+  branchId: number;
+  primaryOrderId: number;
+  destinationTableId: number;
+  status: 'ACTIVE';
+  version: number;
+  reason?: string | null;
+  createdAt: string;
+  affectedOrderIds: number[];
+  originalTableIds: number[];
+}
+
+export interface LegacyTableConsolidationReview {
+  id: number;
+  revision: number;
+  evidenceHash: string;
+  classification: string;
+  outcome: string;
+  note: string;
+  resolutionKey: string;
+  reviewedById: number;
+  reviewedAt: string;
+  evidenceChangedAfterReview: boolean;
+}
+
+export interface LegacyTableConsolidationCandidate {
+  candidateKey: string;
+  evidenceHash: string;
+  classification: 'NOT_REVERSIBLE' | 'AMBIGUOUS';
+  reversible: false;
+  branchId: number | null;
+  primaryOrderId: number | null;
+  absorbedOrderIds: number[];
+  auditLogId: number | null;
+  reasons: string[];
+  reviewHistoryCount: number;
+  currentEvidenceReviewed: boolean;
+  review: LegacyTableConsolidationReview | null;
+}
+
+export interface LegacyTableConsolidationInventory {
+  summary: {
+    reversible: 0;
+    notReversible: number;
+    ambiguous: number;
+    reviewed: number;
+    evidenceChangedAfterReview: number;
+  };
+  candidates: LegacyTableConsolidationCandidate[];
+}
+
 export interface Table {
   id: number;
   number: string;
@@ -73,6 +134,9 @@ export interface Table {
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE';
   location?: string;
   floorAreaId?: number | null;
+  activeTableGroupId?: number | null;
+  activeTableGroup?: TableGroupSummary | null;
+  activeOrderCount?: number;
   mapX?: number;
   mapY?: number;
   mapWidth?: number;
@@ -82,7 +146,7 @@ export interface Table {
   mapShape?: 'RECTANGLE' | 'SQUARE' | 'ROUND';
   layoutUpdatedAt?: string;
   operationalState?: 'AVAILABLE' | 'RESERVED' | 'DISABLED' | 'OPEN_ORDER' | 'WAITING_KITCHEN'
-    | 'PREPARING' | 'PARTIALLY_READY' | 'READY' | 'INVOICED' | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION';
+    | 'PREPARING' | 'PARTIALLY_READY' | 'READY' | 'INVOICED' | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION' | 'JOINED';
   branchId: number;
   branch?: {
     id: number;
@@ -224,6 +288,8 @@ export interface Order {
   tipAmount?: number;
   status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
   financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
+  /** RESTAURANT, PEDIDOSYA, ... (channel orders have their own cancel flow). */
+  salesChannel?: string;
   customerName?: string;
   customerTaxId?: string;
   customerTaxIdType?: string;
@@ -232,6 +298,7 @@ export interface Order {
   customerPhone?: string;
   invoiceNumber?: string;
   invoicedAt?: string;
+  preInvoicedAt?: string;
   invoiceFiscalStatus?: 'NOT_ISSUED' | 'ISSUED' | 'PARTIALLY_CREDITED' | 'CREDITED' | 'CANCELLED';
   fiscalCreditNote?: { id: number; number: string; status: 'ISSUED'; issuedAt: string } | null;
   fiscalInvoiceCancellation?: { id: number; cancelledAt: string; reason: string } | null;
@@ -243,6 +310,10 @@ export interface Order {
   kitchenReleasedById?: number | null;
   kitchenStartedBy?: { id: number; name: string } | null;
   kitchenReleasedBy?: { id: number; name: string } | null;
+  kitchenBatchId?: number;
+  kitchenBatchSequence?: number;
+  kitchenBatchStatus?: 'PENDING' | 'IN_PREPARATION' | 'READY' | 'RELEASED';
+  kitchenBatchSentAt?: string;
   cancelledById?: number;
   cancelledBy?: { id: number; name: string };
   cancelReason?: string;
@@ -258,6 +329,7 @@ export interface Order {
 export interface OrderItem {
   id: number;
   orderId: number;
+  kitchenBatchId?: number | null;
   menuItemId: number;
   menuItem: MenuItem;
   quantity: number;
@@ -268,6 +340,16 @@ export interface OrderItem {
   sentAt?: string;
   startedAt?: string;
   finishedAt?: string;
+  /** Kitchen void: a voided row keeps quantity 0 and records what was wasted. */
+  voidedQuantity?: number;
+  voidedAt?: string | null;
+  voidedById?: number | null;
+  voidReason?: string | null;
+  voidedFromItemId?: number | null;
+  voidWasteReference?: string | null;
+  /** Part of the order discount attributed to this line by a per-item / combo / happy-hour promotion. */
+  promotionDiscount?: number | string;
+  modifiers?: Array<{ id?: number; name?: string; price: number | string }>;
 }
 
 export interface Payment {
@@ -509,6 +591,10 @@ export interface Branch {
   timezone?: string | null;
   attendanceEnabled?: boolean;
   geofenceVersion?: number;
+  /** Sale warehouse for auto-delivery / POS availability (BRANCH warehouse of this branch). */
+  defaultSaleWarehouseId?: number | null;
+  /** BRANCH warehouses of the branch (candidates for the default sale warehouse). */
+  warehouses?: Array<{ id: number; name: string; code?: string; type?: 'CENTRAL' | 'BRANCH' }>;
   _count?: {
     users: number;
     tables: number;
@@ -533,8 +619,12 @@ export interface PurchaseOrder {
   branchId: number;
   supplierId: number;
   date: string;
-  status: 'DRAFT' | 'ISSUED' | 'RECEIVED' | 'CANCELLED';
+  status: 'DRAFT' | 'ISSUED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
   total: number;
+  /** Value of the goods received so far (payable for partial receipts). */
+  receivedTotal?: number;
+  receivingClosedAt?: string | null;
+  receivingCloseReason?: string | null;
   notes?: string;
   invoiceNumber?: string;
   invoicePdf?: string;
@@ -580,6 +670,8 @@ export interface PurchaseOrderItem {
   conversionFactor?: number;
   baseQuantity?: number;
   baseCost?: number;
+  /** Quantity received so far, in the purchase unit. */
+  receivedQuantity?: number;
 }
 
 export interface CashRegister {
@@ -644,6 +736,23 @@ export interface CashMovement {
   supplier?: {
     id: number;
     name: string;
+  };
+  category?:
+    | 'POS_SALE'
+    | 'CATERING_SALE'
+    | 'POS_PAYMENT_REVERSAL'
+    | 'CATERING_PAYMENT_REVERSAL'
+    | 'CREDIT_NOTE_REFUND'
+    | 'MANUAL_INCOME'
+    | 'MANUAL_OUTFLOW'
+    | 'UNCLASSIFIED_INCOME'
+    | 'UNCLASSIFIED_OUTFLOW';
+  paymentMethod?: {
+    id: number | null;
+    name: string;
+    type: PaymentMethodType | null;
+    source: 'PAYMENT' | 'CATERING_PAYMENT' | 'MANUAL_CASH_MOVEMENT' | 'UNRESOLVED_REFERENCE';
+    nameSource: 'CURRENT_PAYMENT_METHOD_CATALOG' | 'NOT_APPLICABLE';
   };
 }
 

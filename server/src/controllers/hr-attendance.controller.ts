@@ -137,9 +137,18 @@ export class HrAttendanceController {
                 companyId: req.user!.companyId, userId: req.user!.userId,
                 challengeId: String(req.body.challengeId || ''), challengeToken: req.body.challengeToken,
                 consentAccepted: req.body.consentAccepted === 'true' || req.body.consentAccepted === true,
-                consentVersion: String(req.body.consentVersion || ''), evidence, branchId: req.user!.branchId,
+                consentVersion: String(req.body.consentVersion || ''), evidence,
+                // Same policy resolution as GET /attendance/policy (what the UI shows
+                // and consents to); a raw active branch made company-wide admins
+                // fail with CONSENT_VERSION_MISMATCH against a branch policy.
+                branchId: branchScope(req),
             });
-            res.status(201).json({ success: true, data, message: 'Perfil biométrico enrolado' });
+            res.status(201).json({
+                success: true, data,
+                message: data.status === 'PENDING'
+                    ? 'Registro facial pendiente de aprobación de RRHH'
+                    : 'Perfil biométrico enrolado',
+            });
         } catch (error) { handleError(error, res, next); }
     }
 
@@ -155,9 +164,40 @@ export class HrAttendanceController {
             const targetUserId = Number(req.params.userId);
             const data = await BiometricService.revoke(
                 req.user!.companyId, targetUserId, undefined,
-                { actorUserId: req.user!.userId, reason: String(req.body.reason || 'OWNER_REVOKED') },
+                {
+                    actorUserId: req.user!.userId, reason: String(req.body.reason || 'OWNER_REVOKED'),
+                    purgeReason: 'OWNER_REVOKED',
+                    // Owner revocation withdraws HR approval: the next enrollment
+                    // is a "first" enrollment again and waits for approval.
+                    requireReapproval: true,
+                },
             );
             res.json({ success: true, data, message: 'Perfil biométrico revocado y purga programada' });
+        } catch (error) { handleError(error, res, next); }
+    }
+
+    static async listPendingEnrollments(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await BiometricService.listPendingEnrollments(req.user!.companyId, branchScope(req, queryId(req.query.branchId)));
+            res.json({ success: true, data });
+        } catch (error) { handleError(error, res, next); }
+    }
+
+    static async approveEnrollment(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await BiometricService.approveEnrollment(
+                req.user!.companyId, Number(req.params.userId), req.user!.userId, branchScope(req),
+            );
+            res.json({ success: true, data, message: 'Registro facial aprobado; el empleado ya puede marcar' });
+        } catch (error) { handleError(error, res, next); }
+    }
+
+    static async rejectEnrollment(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await BiometricService.rejectEnrollment(
+                req.user!.companyId, Number(req.params.userId), req.user!.userId, req.body.reason, branchScope(req),
+            );
+            res.json({ success: true, data, message: 'Registro facial rechazado y purga programada' });
         } catch (error) { handleError(error, res, next); }
     }
 

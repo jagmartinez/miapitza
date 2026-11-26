@@ -42,7 +42,7 @@ const employeeFields = [
     'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship',
     'hireDate', 'employmentType', 'departmentId', 'jobPositionId', 'costCenterId',
     'supervisorEmployeeId', 'notes', 'branchIds', 'primaryBranchId',
-    'initialCompensation',
+    'initialCompensation', 'weeklyRestDays',
 ] as const;
 
 const employeeBodySchema = {
@@ -72,6 +72,8 @@ const employeeBodySchema = {
     notes: { type: 'string' as const, max: 5000 },
     branchIds: { type: 'array' as const, max: 100 },
     primaryBranchId: { type: 'number' as const, integer: true, min: 1 },
+    // ISO weekdays 1 = lunes .. 7 = domingo (Art. 64 CT); the service rejects duplicates.
+    weeklyRestDays: { type: 'array' as const, min: 1, max: 6, items: { type: 'number' as const, integer: true, min: 1, max: 7 } },
 };
 
 router.use(authMiddleware);
@@ -284,7 +286,7 @@ router.post('/branches',
         latitude: { type: 'number', required: true, min: -90, max: 90 },
         longitude: { type: 'number', required: true, min: -180, max: 180 },
         geofenceRadiusM: { type: 'number', required: true, integer: true, min: 10, max: 10000 },
-        maxLocationAccuracyM: { type: 'number', required: true, integer: true, min: 1, max: 5000 },
+        maxLocationAccuracyM: { type: 'number', required: true, integer: true, min: 10, max: 5000 },
         timezone: { type: 'string', max: 64 },
         attendanceEnabled: { type: 'boolean' },
         status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
@@ -316,7 +318,7 @@ router.put('/branches/:id/geofence',
             latitude: { type: 'number', min: -90, max: 90 },
             longitude: { type: 'number', min: -180, max: 180 },
             geofenceRadiusM: { type: 'number', integer: true, min: 10, max: 10000 },
-            maxLocationAccuracyM: { type: 'number', integer: true, min: 1, max: 5000 },
+            maxLocationAccuracyM: { type: 'number', integer: true, min: 10, max: 5000 },
             timezone: { type: 'string', max: 64 },
             attendanceEnabled: { type: 'boolean' },
             expectedVersion: { type: 'number', integer: true, min: 0 },

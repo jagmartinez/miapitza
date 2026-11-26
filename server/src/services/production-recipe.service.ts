@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { resolveRecipeUnit } from '../utils/recipe-unit';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { AuditLogService } from './audit-log.service';
@@ -306,8 +307,9 @@ export class ProductionRecipeService {
         let batchCost = 0;
         try {
             for (const c of recipe.components) {
-                const unitAbbr = c.unitOfMeasure?.abbreviation || c.unit ||
-                    c.componentProduct.baseUnit?.abbreviation || c.componentProduct.unit;
+                // Shared priority with sales/credit notes: line unit, line FK,
+                // product base unit, legacy product unit.
+                const unitAbbr = resolveRecipeUnit(c, c.componentProduct);
                 const conv = await UnitConversionService.convert(
                     c.componentProductId,
                     companyId,

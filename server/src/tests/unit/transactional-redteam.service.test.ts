@@ -56,7 +56,36 @@ describe('transactional red-team regressions', () => {
         expect(tx.orderItem.create).not.toHaveBeenCalled();
     });
 
+    it('rejects changing order lines after the immutable prefactura exists', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9,
+                    companyId: 1,
+                    branchId: 2,
+                    status: 'READY',
+                    invoiceNumber: null,
+                    preInvoicedAt: new Date('2026-07-29T12:00:00.000Z'),
+                    payments: [],
+                })),
+            },
+            menuItem: { findFirst: jest.fn() },
+            orderItem: { create: jest.fn() },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(OrderService.addItem(9, 1, { menuItemId: 4, quantity: 1 }))
+            .rejects.toThrow(/prefactura.*factura emitida/i);
+        expect(tx.menuItem.findFirst).not.toHaveBeenCalled();
+        expect(tx.orderItem.create).not.toHaveBeenCalled();
+    });
+
     it('does not post cash into a shift closed concurrently', async () => {
+        // Lock-order preflight (Table -> Order) runs before the transaction.
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
         const shiftLookup = jest.fn(async (): Promise<{ id: number; cashRegisterId: number; startDate: Date } | null> => null);
         shiftLookup
             .mockResolvedValueOnce({ id: 5, cashRegisterId: 3, startDate: new Date() })
@@ -91,6 +120,8 @@ describe('transactional red-team regressions', () => {
     });
 
     it('does not infer cash behavior from a misleading display name', async () => {
+        // Lock-order preflight (Table -> Order) runs before the transaction.
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
@@ -119,6 +150,8 @@ describe('transactional red-team regressions', () => {
     });
 
     it('revalidates an active tenant payment method under the order transaction lock', async () => {
+        // Lock-order preflight (Table -> Order) runs before the transaction.
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
@@ -239,6 +272,7 @@ describe('transactional red-team regressions', () => {
     it('reverses multiple consumptions at their weighted outstanding value', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
+            stock: { aggregate: jest.fn(async () => ({ _sum: { quantity: 0 } })) },
             inventoryMovement: {
                 findMany: jest.fn(async () => [
                     { warehouseId: 2, productId: 8, type: 'OUT', quantity: 1, unitCost: 10 },
@@ -272,6 +306,7 @@ describe('transactional red-team regressions', () => {
         const acquiredAt = '2026-01-02T03:04:05.000Z';
         const tx = {
             $queryRaw: jest.fn(async () => []),
+            stock: { aggregate: jest.fn(async () => ({ _sum: { quantity: 0 } })) },
             inventoryMovement: {
                 findMany: jest.fn(async () => [{
                     warehouseId: 2,

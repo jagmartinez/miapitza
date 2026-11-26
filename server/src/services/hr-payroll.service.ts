@@ -6,6 +6,7 @@ import autoTable from 'jspdf-autotable';
 import prisma from '../utils/prisma';
 import { scheduledWorkMinutes } from '../utils/hr-shift-minutes';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
+import { isoWeekdayOfDateKey, isValidWeeklyRestDays, normalizeWeeklyRestDays } from '../utils/hr-rest-days';
 import { AuditLogService } from './audit-log.service';
 import { commitBenefitDeductions, projectBenefitDeductions, reverseBenefitDeductions } from './hr-benefits.service';
 import {
@@ -98,11 +99,26 @@ export type LegalConfiguration = {
     regular: {
         minuteDivisors: Record<'WEEKLY' | 'BIWEEKLY' | 'FORTNIGHTLY' | 'MONTHLY', string>;
         overtimeMultiplier: string;
+        /** Total multiplier for ordinary hours worked on a paid national holiday (Código del Trabajo: pago doble). */
+        holidayWorkedMultiplier?: string;
+        /**
+         * Total multiplier for ordinary hours worked on the employee's weekly rest day
+         * (séptimo día, Código del Trabajo Art. 64: pago doble). Never stacks with the
+         * holiday multiplier: a rest day that is also a paid holiday earns the higher one.
+         */
+        restDayWorkedMultiplier?: string;
         paidLeaveUnitMinutes: Record<'DAYS' | 'HOURS' | 'MINUTES', string>;
     };
     fxRates?: Record<string, { rate: string; version: string; sourceReference: string }>;
     aguinaldo: {
-        method: 'HISTORICAL_PAID_COMPONENTS';
+        /**
+         * HISTORICAL_PAID_COMPONENTS: eligible paid income over lookbackDays / incomeDivisor.
+         * HIGHEST_MONTH_LAST_6_MONTHS: highest calendar month of eligible paid income within the
+         * last baseMonths (default 6) months up to the cutoff (incomeDivisor is not used).
+         * Both apply prorationMode over lookbackDays.
+         */
+        method: 'HISTORICAL_PAID_COMPONENTS' | 'HIGHEST_MONTH_LAST_6_MONTHS';
+        baseMonths?: number;
         lookbackDays: number;
         incomeDivisor: string;
         prorationMode: 'NONE' | 'SERVICE_DAYS_RATIO';
@@ -274,7 +290,8 @@ export function validateLegalConfiguration(value: unknown, options: { requireCur
         !positiveDecimalText(config.regular?.paidLeaveUnitMinutes?.DAYS) ||
         !positiveDecimalText(config.regular?.paidLeaveUnitMinutes?.HOURS) ||
         !positiveDecimalText(config.regular?.paidLeaveUnitMinutes?.MINUTES) ||
-        config.aguinaldo?.method !== 'HISTORICAL_PAID_COMPONENTS' ||
+        !AGUINALDO_METHODS.includes(String(config.aguinaldo?.method)) ||
+        (config.aguinaldo?.baseMonths !== undefined && (!Number.isInteger(config.aguinaldo.baseMonths) || config.aguinaldo.baseMonths < 1 || config.aguinaldo.baseMonths > 12)) ||
         !positiveDecimalText(config.aguinaldo?.incomeDivisor) ||
         !['NONE', 'SERVICE_DAYS_RATIO'].includes(String(config.aguinaldo?.prorationMode)) ||
         !Array.isArray(config.aguinaldo?.eligibleSources) || config.aguinaldo!.eligibleSources.length === 0 ||
@@ -291,7 +308,76 @@ export function validateLegalConfiguration(value: unknown, options: { requireCur
             'HR_PAYROLL_LEGAL_CONFIGURATION_REQUIRED',
         );
     }
-    return config as LegalConfiguration;
+    const holidayWorkedMultiplier = config.regular!.holidayWorkedMultiplier;
+    if (holidayWorkedMultiplier !== undefined && (!positiveDecimalText(holidayWorkedMultiplier) || new Prisma.Decimal(holidayWorkedMultiplier).lessThan(1))) {
+        throw new HrPayrollError('El multiplicador de feriado trabajado debe ser decimal mayor o igual a 1', 409, 'HR_PAYROLL_LEGAL_CONFIGURATION_REQUIRED');
+    }
+    const restDayWorkedMultiplier = config.regular!.restDayWorkedMultiplier;
+    if (restDayWorkedMultiplier !== undefined && (!positiveDecimalText(restDayWorkedMultiplier) || new Prisma.Decimal(restDayWorkedMultiplier).lessThan(1))) {
+        throw new HrPayrollError('El multiplicador de día de descanso trabajado debe ser decimal mayor o igual a 1', 409, 'HR_PAYROLL_LEGAL_CONFIGURATION_REQUIRED');
+    }
+    // Defaults are materialized so a newly uploaded revision stores (and hashes) the
+    // effective value; frozen revisions without them read the same legal default.
+    return {
+        ...config,
+        regular: {
+            ...config.regular!,
+            holidayWorkedMultiplier: holidayWorkedMultiplier ?? DEFAULT_HOLIDAY_WORKED_MULTIPLIER,
+            restDayWorkedMultiplier: restDayWorkedMultiplier ?? DEFAULT_REST_DAY_WORKED_MULTIPLIER,
+        },
+    } as LegalConfiguration;
+}
+
+export const AGUINALDO_HIGHEST_MONTH_METHOD = 'HIGHEST_MONTH_LAST_6_MONTHS' as const;
+const AGUINALDO_METHODS: string[] = ['HISTORICAL_PAID_COMPONENTS', AGUINALDO_HIGHEST_MONTH_METHOD];
+export const DEFAULT_AGUINALDO_BASE_MONTHS = 6;
+
+/** First day (UTC) of the month baseMonths-1 months before the cutoff month: cutoff 2026-11-30, 6 -> 2026-06-01. */
+export function aguinaldoBaseWindowStart(cutoff: Date, baseMonths: number): Date {
+    return new Date(Date.UTC(cutoff.getUTCFullYear(), cutoff.getUTCMonth() - (baseMonths - 1), 1));
+}
+
+export type AguinaldoMonthlyIncome = { periodTo: Date; amount: Prisma.Decimal };
+
+/**
+ * Highest calendar month of eligible paid income; each paid period counts in the month its
+ * coverage ends (capped at the cutoff). Two biweekly C$6,000 payrolls in June and C$6,500 +
+ * C$6,000 in July give July C$12,500.
+ */
+export function highestMonthlyIncome(items: AguinaldoMonthlyIncome[]): { month: string | null; amount: Prisma.Decimal } {
+    const byMonth = new Map<string, Prisma.Decimal>();
+    for (const item of items) {
+        const month = dateKey(item.periodTo).slice(0, 7);
+        byMonth.set(month, (byMonth.get(month) ?? new Prisma.Decimal(0)).plus(item.amount));
+    }
+    let best: { month: string | null; amount: Prisma.Decimal } = { month: null, amount: new Prisma.Decimal(0) };
+    for (const [month, amount] of [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+        if (amount.greaterThan(best.amount)) best = { month, amount };
+    }
+    return best;
+}
+
+export const DEFAULT_HOLIDAY_WORKED_MULTIPLIER = '2';
+/** Premium (+multiplier-1) for ordinary hours worked on a paid national holiday. */
+export const HOLIDAY_WORKED_CONCEPT = 'FERIADO_TRABAJADO';
+export const DEFAULT_REST_DAY_WORKED_MULTIPLIER = '2';
+/** Premium (+multiplier-1) for ordinary hours worked on the employee's weekly rest day. */
+export const REST_DAY_WORKED_CONCEPT = 'DESCANSO_TRABAJADO';
+/** Legal default rest day when the employee has none configured (CT Art. 64: "generalmente el domingo"). */
+export const DEFAULT_WEEKLY_REST_DAYS: readonly number[] = [7];
+
+/**
+ * Business names the rule editor (and the demo seed) store in aguinaldo.eligibleSources
+ * mapped to the PayrollComponent.source values the calculation writes. Before this map
+ * the default ['ORDINARY', 'OVERTIME', 'PAID_LEAVE'] matched only OVERTIME, so the
+ * thirteenth month was computed on overtime alone (e.g. 12 x C$12,000 salary + C$600
+ * overtime gave C$600/12 = C$50 instead of C$144,600/12 = C$12,050).
+ */
+const AGUINALDO_SOURCE_ALIASES: Record<string, string> = { ORDINARY: 'RULE', PAID_LEAVE: 'LEAVE' };
+
+export function aguinaldoComponentSources(eligibleSources: string[]): string[] {
+    return [...new Set(eligibleSources.map(source => source.trim()).filter(Boolean).flatMap(source =>
+        AGUINALDO_SOURCE_ALIASES[source] ? [source, AGUINALDO_SOURCE_ALIASES[source]] : [source]))];
 }
 
 function configurationSummary(config: LegalConfiguration, hash: string): string {
@@ -431,10 +517,14 @@ async function loadRun(companyId: number, id: number, kind: PayrollRunKind, db: 
     return presentRun({ ...run, blockingAnomalyCount });
 }
 
+// Payroll calculation/revalidation/publication iterate every employee inside one transaction;
+// Prisma's 5s default interactive timeout (P2028) is too short for a few dozen employees.
+const PAYROLL_TRANSACTION_TIMEOUTS = { maxWait: 10_000, timeout: 120_000 } as const;
+
 async function serializable<T>(callback: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-            return await prisma.$transaction(callback, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+            return await prisma.$transaction(callback, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, ...PAYROLL_TRANSACTION_TIMEOUTS });
         } catch (error) {
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034' && attempt < 2) continue;
             throw error;
@@ -857,6 +947,50 @@ async function addAnomaly(tx: Prisma.TransactionClient, data: { companyId: numbe
     await tx.payrollAnomaly.create({ data: { ...data, severity, blocking: severity === 'BLOCKING' } });
 }
 
+export function negativeNetByUser(rows: Array<{ userId: number; type: string; _sum: { amount: Prisma.Decimal.Value | null } }>): Array<{ userId: number; net: Prisma.Decimal }> {
+    const nets = new Map<number, Prisma.Decimal>();
+    for (const row of rows) {
+        const amount = new Prisma.Decimal(row._sum.amount ?? 0);
+        const current = nets.get(row.userId) ?? new Prisma.Decimal(0);
+        nets.set(row.userId, row.type === 'INCOME' ? current.plus(amount) : current.minus(amount));
+    }
+    return [...nets].map(([userId, net]) => ({ userId, net: money(net) })).filter(item => item.net.isNegative());
+}
+
+async function negativeNetUsers(tx: Prisma.TransactionClient, companyId: number, runId: number) {
+    const rows = await tx.payrollComponent.groupBy({ by: ['userId', 'type'], where: { companyId, runId }, _sum: { amount: true } });
+    return negativeNetByUser(rows);
+}
+
+/** Rewrites the per-employee NEGATIVE_NET_PAY anomalies (statutory deductions are added after benefit capping). */
+async function syncNegativeNetAnomalies(tx: Prisma.TransactionClient, companyId: number, runId: number) {
+    await tx.payrollAnomaly.deleteMany({ where: { companyId, runId, code: 'NEGATIVE_NET_PAY', resolvedAt: null } });
+    const negative = await negativeNetUsers(tx, companyId, runId);
+    if (!negative.length) return;
+    const snapshots = await tx.payrollSnapshotLine.findMany({ where: { companyId, runId, userId: { in: negative.map(item => item.userId) } }, select: { userId: true, employeeId: true } });
+    for (const item of negative) await addAnomaly(tx, {
+        companyId, runId, userId: item.userId, employeeId: snapshots.find(snapshot => snapshot.userId === item.userId)?.employeeId,
+        code: 'NEGATIVE_NET_PAY', message: `El neto del colaborador es negativo (${item.net.toFixed(2)}); ajuste deducciones o componentes y recalcule`,
+    });
+}
+
+/** FORTNIGHTLY parameters may be inferred only to read frozen history; a calculation must have them explicitly. */
+export function assertPayFrequencyConfigured(rawConfiguration: unknown, payFrequency: string | null | undefined): void {
+    if (payFrequency !== 'FORTNIGHTLY') return;
+    const raw = rawConfiguration as {
+        regular?: { minuteDivisors?: Record<string, unknown> };
+        statutory?: { inss?: { annualPeriods?: Record<string, unknown> }; incomeTax?: { annualPeriods?: Record<string, unknown> } };
+    } | null;
+    if (raw?.regular?.minuteDivisors?.FORTNIGHTLY === undefined || raw?.statutory?.inss?.annualPeriods?.FORTNIGHTLY === undefined ||
+        raw?.statutory?.incomeTax?.annualPeriods?.FORTNIGHTLY === undefined) {
+        throw new HrPayrollError(
+            'La configuración legal no parametriza explícitamente la frecuencia FORTNIGHTLY (divisor de minutos y períodos anuales INSS/IR); cargue y valide una revisión que la incluya antes de calcular',
+            409,
+            'HR_PAYROLL_LEGAL_CONFIGURATION_REQUIRED',
+        );
+    }
+}
+
 function dateDays(from: Date, to: Date): number { return Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1; }
 function maxDate(a: Date, b: Date): Date { return a > b ? a : b; }
 function minDate(a: Date, b: Date): Date { return a < b ? a : b; }
@@ -895,8 +1029,111 @@ export function compensationMinuteRate(item: { compensationType: string; amount:
     return item.compensationType === 'HOURLY' ? item.amount.dividedBy(60) : item.amount.dividedBy(config.regular.minuteDivisors[item.payFrequency]);
 }
 
+/** CT ordinary day: 8 hours. */
+export const LEGAL_ORDINARY_DAILY_MINUTES = 480;
+
+/**
+ * Legal per-minute wage for overtime and worked holiday / rest-day premiums. HOURLY: the hourly
+ * amount / 60. SALARY: CT daily wage (salary / 30 for monthly) / 480 min, so overtime at the 2x
+ * multiplier pays monthly salary / 120 per hour (C$12,000 -> C$100/h) and a full worked holiday
+ * earns one extra daily wage, regardless of the configured minute divisor.
+ */
+export function legalMinuteRate(item: { compensationType: string; amount: Prisma.Decimal; payFrequency: keyof typeof SALARY_FREQUENCY_CALENDAR_DAYS }): Prisma.Decimal {
+    return item.compensationType === 'HOURLY'
+        ? item.amount.dividedBy(60)
+        : salaryDailyWage(item.amount, item.payFrequency).dividedBy(LEGAL_ORDINARY_DAILY_MINUTES);
+}
+
 export function ordinaryMinutesExcludingApprovedOvertime(input: { ordinaryMinutes: number; approvedOvertimeMinutes: number }): number {
     return Math.max(0, input.ordinaryMinutes - input.approvedOvertimeMinutes);
+}
+
+/**
+ * Ordinary minutes payable at 1x for a day: worked minutes minus approved overtime, capped at
+ * the published schedule. Unapproved excess (candidate overtime) is never paid as ordinary time.
+ */
+export function payableOrdinaryMinutes(input: { scheduledMinutes: number | null; ordinaryMinutes: number; approvedOvertimeMinutes: number }): number {
+    const ordinary = ordinaryMinutesExcludingApprovedOvertime(input);
+    return input.scheduledMinutes === null ? ordinary : Math.min(ordinary, Math.max(0, input.scheduledMinutes));
+}
+
+/** Days whose candidate overtime exceeds the approved minutes and was never approved or rejected. */
+export function unresolvedCandidateOvertime(
+    summaries: Array<{ id: number; date: Date; candidateOvertimeMinutes: number; approvedOvertimeMinutes: number }>,
+    decidedSummaryIds: ReadonlySet<number>,
+): Array<{ date: string; minutes: number }> {
+    return summaries
+        .filter(summary => summary.candidateOvertimeMinutes > summary.approvedOvertimeMinutes && !decidedSummaryIds.has(summary.id))
+        .map(summary => ({ date: dateKey(summary.date), minutes: summary.candidateOvertimeMinutes - summary.approvedOvertimeMinutes }));
+}
+
+export type PayrollHolidayEvidence = { id: number; date: Date; branchId: number | null; name: string };
+
+/** A paid, active holiday applies to a daily summary when it is company-wide or scoped to the summary branch. */
+export function holidayForSummary(holidays: PayrollHolidayEvidence[], summary: { date: Date; branchId: number | null }): PayrollHolidayEvidence | null {
+    const key = dateKey(summary.date);
+    return holidays.find(holiday => dateKey(holiday.date) === key && (holiday.branchId === null || holiday.branchId === summary.branchId)) ?? null;
+}
+
+/** Premium on top of the ordinary 1x pay: payable minutes x rate x (multiplier - 1). */
+export function holidayWorkedPremium(minuteRate: Prisma.Decimal, payableMinutes: number, multiplier: string): Prisma.Decimal {
+    const extra = Prisma.Decimal.max(0, new Prisma.Decimal(multiplier).minus(1));
+    return minuteRate.times(Math.max(0, payableMinutes)).times(extra);
+}
+
+export type WeeklyRestDaySource = 'EMPLOYEE' | 'LEGAL_DEFAULT';
+
+/** Employee rest days, or the legal default (Sunday) when unset or unreadable. */
+export function effectiveWeeklyRestDays(value: unknown): { days: number[]; source: WeeklyRestDaySource } {
+    return isValidWeeklyRestDays(value)
+        ? { days: normalizeWeeklyRestDays(value), source: 'EMPLOYEE' }
+        : { days: [...DEFAULT_WEEKLY_REST_DAYS], source: 'LEGAL_DEFAULT' };
+}
+
+export function isWeeklyRestDay(date: Date, restDays: readonly number[]): boolean {
+    return restDays.includes(isoWeekdayOfDateKey(date));
+}
+
+/**
+ * Premium for ordinary minutes worked on a protected day. A day that is both a paid
+ * holiday and the weekly rest day earns ONE premium, the higher multiplier (ties go to
+ * the holiday): the Código del Trabajo grants "pago doble" for each, never quadruple.
+ * Example at C$1/min, 480 min, holiday 2x and rest day 2x: premium C$480 (not C$960).
+ */
+export function protectedDayPremium(input: {
+    minuteRate: Prisma.Decimal;
+    payableMinutes: number;
+    holiday: boolean;
+    restDay: boolean;
+    holidayMultiplier: string;
+    restDayMultiplier: string;
+}): { kind: 'HOLIDAY' | 'REST_DAY' | null; multiplier: string | null; premium: Prisma.Decimal } {
+    if (!input.holiday && !input.restDay) return { kind: null, multiplier: null, premium: new Prisma.Decimal(0) };
+    const kind = input.holiday && (!input.restDay || new Prisma.Decimal(input.holidayMultiplier).greaterThanOrEqualTo(input.restDayMultiplier))
+        ? 'HOLIDAY' as const : 'REST_DAY' as const;
+    const multiplier = kind === 'HOLIDAY' ? input.holidayMultiplier : input.restDayMultiplier;
+    return { kind, multiplier, premium: holidayWorkedPremium(input.minuteRate, input.payableMinutes, multiplier) };
+}
+
+function holidayFingerprint(holidays: PayrollHolidayEvidence[]) {
+    return hashPayload(holidays.map(holiday => ({ id: holiday.id, date: dateKey(holiday.date), branchId: holiday.branchId })));
+}
+
+async function payrollHolidays(tx: Prisma.TransactionClient, companyId: number, from: Date, to: Date): Promise<PayrollHolidayEvidence[]> {
+    return tx.holiday.findMany({
+        where: { companyId, active: true, paid: true, date: { gte: from, lte: to }, calendar: { active: true } },
+        select: { id: true, date: true, branchId: true, name: true },
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+}
+
+function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
+    const result = new Map<K, T[]>();
+    for (const item of items) {
+        const group = result.get(key(item));
+        if (group) group.push(item); else result.set(key(item), [item]);
+    }
+    return result;
 }
 
 export function normalizeFullCoverageSalary(input: {
@@ -949,15 +1186,20 @@ type AttendanceCoverageSummary = {
     approvedOvertimeMinutes: number;
 };
 
+/** Published working time of one local date (all branches), excluding scopes on a paid holiday. */
+export type PublishedShiftDay = { date: string; scheduledMinutes: number; unworkedMinutes: number };
+
 export function reconcilePublishedShiftSummaries(
     shifts: EffectivePublishedShiftEvidence[],
     summaries: AttendanceCoverageSummary[],
+    holidays: PayrollHolidayEvidence[] = [],
 ) {
-    const expectedByScope = new Map<string, number>();
+    const expectedByScope = new Map<string, { date: string; branchId: number; minutes: number }>();
     for (const shift of shifts) {
         const expectedMinutes = scheduledWorkMinutes(shift);
         const key = `${shift.localDate}:BRANCH:${shift.branchId}`;
-        expectedByScope.set(key, (expectedByScope.get(key) ?? 0) + expectedMinutes);
+        const current = expectedByScope.get(key);
+        expectedByScope.set(key, { date: shift.localDate, branchId: shift.branchId, minutes: (current?.minutes ?? 0) + expectedMinutes });
     }
     const summaryByScope = new Map(summaries.map(summary => [
         `${dateKey(summary.date)}:${summary.scopeKey}`,
@@ -965,39 +1207,220 @@ export function reconcilePublishedShiftSummaries(
     ]));
     const incompleteScopes: string[] = [];
     let fullyAttended = expectedByScope.size > 0;
-    for (const [key, expectedMinutes] of expectedByScope) {
+    let unworkedScheduledMinutes = 0;
+    let holidayExcusedMinutes = 0;
+    const days = new Map<string, PublishedShiftDay>();
+    const publishedDates = new Set<string>();
+    for (const [key, scope] of expectedByScope) {
+        const expectedMinutes = scope.minutes;
         const summary = summaryByScope.get(key);
         const sourceComplete = expectedMinutes > 0 && summary?.branchId !== null &&
             summary?.scheduledMinutes === expectedMinutes;
         if (!sourceComplete) incompleteScopes.push(key);
-        if (!sourceComplete || ordinaryMinutesExcludingApprovedOvertime(summary!) < expectedMinutes) fullyAttended = false;
+        const worked = summary ? ordinaryMinutesExcludingApprovedOvertime(summary) : 0;
+        const unworked = Math.max(0, expectedMinutes - worked);
+        if (!sourceComplete || worked < expectedMinutes) fullyAttended = false;
+        if (expectedMinutes <= 0) continue;
+        publishedDates.add(scope.date);
+        // A published shift on a paid holiday (company-wide or for the shift branch) is never deducted.
+        if (holidayForSummary(holidays, { date: new Date(`${scope.date}T00:00:00.000Z`), branchId: scope.branchId })) {
+            holidayExcusedMinutes += unworked;
+            continue;
+        }
+        unworkedScheduledMinutes += unworked;
+        const day = days.get(scope.date) ?? { date: scope.date, scheduledMinutes: 0, unworkedMinutes: 0 };
+        day.scheduledMinutes += expectedMinutes;
+        day.unworkedMinutes += unworked;
+        days.set(scope.date, day);
     }
     return {
         expectedScopeCount: expectedByScope.size,
         incompleteScopes,
+        /** Published-shift minutes not worked (absences, late arrivals, early departures), holidays excluded. */
+        unworkedScheduledMinutes,
+        /** Unworked published minutes excused because the scope falls on a paid holiday. */
+        holidayExcusedMinutes,
+        /** Per-date published minutes (holiday scopes excluded), sorted by date. */
+        scheduledDays: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)),
+        /** Dates with at least one published shift (holidays included). */
+        publishedDates: [...publishedDates].sort(),
         fullScheduledAttendance: fullyAttended && incompleteScopes.length === 0,
     };
+}
+
+/** Calendar days a fixed salary of each frequency pays (CT: the monthly salary covers 30 days). */
+export const SALARY_FREQUENCY_CALENDAR_DAYS = { WEEKLY: 7, BIWEEKLY: 14, FORTNIGHTLY: 15, MONTHLY: 30 } as const;
+
+/**
+ * CT daily wage of a fixed salary: monthly-equivalent salary / 30, i.e. the salary divided by
+ * the calendar days its frequency pays (WEEKLY 7, BIWEEKLY 14, FORTNIGHTLY 15, MONTHLY 30).
+ * Independent of the configured minute divisor, which legacy configurations set to 9600
+ * (20 days x 8 h) and would deduct salary/20 per absent day.
+ */
+export function salaryDailyWage(amount: Prisma.Decimal, payFrequency: keyof typeof SALARY_FREQUENCY_CALENDAR_DAYS): Prisma.Decimal {
+    return amount.dividedBy(SALARY_FREQUENCY_CALENDAR_DAYS[payFrequency]);
+}
+
+export type SalaryPaidLeaveCoverage = {
+    from: string;
+    to: string;
+    requestedAmount: Prisma.Decimal.Value;
+    unit: 'DAYS' | 'HOURS' | 'MINUTES';
+    unitMinutes: Prisma.Decimal.Value;
+};
+
+/**
+ * Absence deduction of a fixed salary: per published working date (paid holidays excluded),
+ * dailyWage x min(1, unworked / scheduled). Approved paid leave restores with the same
+ * formula: a DAYS leave covers one whole published date per day requested (even when the
+ * shift is longer than the DAYS unit); HOURS/MINUTES leave covers its minutes of that date.
+ * Example: MONTHLY C$12,000 => C$400/day; one 600-min shift absent => C$400 deducted, and a
+ * one-day paid leave on that date restores C$400.
+ */
+export function salaryAbsenceDeduction(input: {
+    dailyWage: Prisma.Decimal;
+    scheduledDays: PublishedShiftDay[];
+    paidLeaves?: SalaryPaidLeaveCoverage[];
+}): { deduction: Prisma.Decimal; paidLeaveRestore: Prisma.Decimal } {
+    const days = input.scheduledDays
+        .filter(day => day.scheduledMinutes > 0)
+        .map(day => ({ ...day, unworkedLeft: Math.min(day.scheduledMinutes, Math.max(0, day.unworkedMinutes)) }));
+    let deduction = new Prisma.Decimal(0);
+    for (const day of days) {
+        deduction = deduction.plus(input.dailyWage.times(Prisma.Decimal.min(1, new Prisma.Decimal(day.unworkedLeft).dividedBy(day.scheduledMinutes))));
+    }
+    let restore = new Prisma.Decimal(0);
+    const leaves = [...(input.paidLeaves ?? [])].sort((a, b) => a.from.localeCompare(b.from));
+    for (const leave of leaves) {
+        let remainingDays = new Prisma.Decimal(leave.requestedAmount);
+        let remainingMinutes = new Prisma.Decimal(leave.requestedAmount).times(leave.unitMinutes);
+        for (const day of days) {
+            if (day.date < leave.from || day.date > leave.to || day.unworkedLeft <= 0) continue;
+            let covered: Prisma.Decimal;
+            if (leave.unit === 'DAYS') {
+                if (remainingDays.lessThanOrEqualTo(0)) break;
+                const take = Prisma.Decimal.min(1, remainingDays);
+                remainingDays = remainingDays.minus(take);
+                covered = Prisma.Decimal.min(day.unworkedLeft, take.times(day.scheduledMinutes));
+            } else {
+                if (remainingMinutes.lessThanOrEqualTo(0)) break;
+                covered = Prisma.Decimal.min(day.unworkedLeft, remainingMinutes);
+                remainingMinutes = remainingMinutes.minus(covered);
+            }
+            day.unworkedLeft = new Prisma.Decimal(day.unworkedLeft).minus(covered).toNumber();
+            restore = restore.plus(input.dailyWage.times(covered.dividedBy(day.scheduledMinutes)));
+        }
+    }
+    return { deduction, paidLeaveRestore: Prisma.Decimal.min(deduction, restore) };
+}
+
+/**
+ * Ordinary earnings of a fixed salary by deduction: the salary owed for the service window
+ * minus the CT daily-wage absence deduction (salaryAbsenceDeduction), never below zero.
+ */
+export function salaryEarningsByDeduction(input: {
+    entitledAmount: Prisma.Decimal;
+    absenceDeduction: Prisma.Decimal;
+}): Prisma.Decimal {
+    return money(Prisma.Decimal.max(0, input.entitledAmount.minus(Prisma.Decimal.max(0, input.absenceDeduction))));
+}
+
+/**
+ * Working days the published schedule should cover in the service window: calendar days minus
+ * weekly rest days minus paid holidays. Covered days are published dates (any weekday) plus
+ * working dates under an approved leave. A shortfall means the schedule covers only part of
+ * the window and paying the salary "by deduction" would pay unscheduled days in full.
+ */
+export function publishedScheduleShortfall(input: {
+    serviceFrom: Date;
+    serviceTo: Date;
+    restDays: readonly number[];
+    holidayDates: ReadonlySet<string>;
+    publishedDates: ReadonlySet<string>;
+    leaveIntervals?: Array<{ from: Date; to: Date }>;
+}): { expectedWorkingDays: number; coveredWorkingDays: number; missingWorkingDays: number } {
+    const fromKey = dateKey(input.serviceFrom);
+    const toKey = dateKey(input.serviceTo);
+    // A shift published on a rest day (swapped rest) counts; one on a paid holiday does not offset a working day.
+    const covered = new Set([...input.publishedDates].filter(date => date >= fromKey && date <= toKey && !input.holidayDates.has(date)));
+    let expectedWorkingDays = 0;
+    for (let time = input.serviceFrom.getTime(); time <= input.serviceTo.getTime(); time += 86_400_000) {
+        const date = new Date(time);
+        const key = dateKey(date);
+        if (isWeeklyRestDay(date, input.restDays) || input.holidayDates.has(key)) continue;
+        expectedWorkingDays += 1;
+        if ((input.leaveIntervals ?? []).some(leave => leave.from.getTime() <= time && leave.to.getTime() >= time)) covered.add(key);
+    }
+    const coveredWorkingDays = covered.size;
+    return { expectedWorkingDays, coveredWorkingDays, missingWorkingDays: Math.max(0, expectedWorkingDays - coveredWorkingDays) };
+}
+
+/** One run-level warning for every employee whose séptimo día used the legal default (Sunday). */
+export function restDayDefaultAppliedMessage(employees: Array<{ id: number; name: string }>): string {
+    return `${employees.length} colaborador(es) sin día de descanso configurado: ${employees.map(item => `${item.name} (#${item.id})`).join(', ')}; ` +
+        'se pagó el recargo de séptimo día sobre el domingo (Art. 64 CT). Configure su descanso real y recalcule si no corresponde';
+}
+
+/** Non-manual income components whose concept is missing (or inactive) in the frozen catalog. */
+export function unconfiguredIncomeComponentCodes(
+    components: Array<{ code: string; type: string; source: string }>,
+    statutory: LegalConfiguration['statutory'],
+): string[] {
+    return [...new Set(components
+        .filter(component => component.type === 'INCOME' && component.source !== 'MANUAL' && component.source !== 'STATUTORY')
+        .filter(component => !paymentConceptDefinition(statutory, component.code))
+        .map(component => component.code))];
+}
+
+/** Fixed salary owed for a partial service window, by calendar-day ratio. */
+export function proratedSalary(contractualAmount: Prisma.Decimal, serviceDays: number, periodDays: number): Prisma.Decimal {
+    if (periodDays <= 0) return new Prisma.Decimal(0);
+    return money(contractualAmount.times(Math.min(periodDays, Math.max(0, serviceDays))).dividedBy(periodDays));
+}
+
+/** Days whose approved overtime exceeds CT Art. 58 limits (3 h/day; 9 h per ISO week). */
+export function overtimeLegalLimitBreaches(
+    summaries: Array<{ date: Date; approvedOvertimeMinutes: number }>,
+    limits: { dailyMinutes: number; weeklyMinutes: number } = { dailyMinutes: 180, weeklyMinutes: 540 },
+): string[] {
+    const byDate = new Map<string, number>();
+    for (const summary of summaries) byDate.set(dateKey(summary.date), (byDate.get(dateKey(summary.date)) ?? 0) + summary.approvedOvertimeMinutes);
+    const breaches: string[] = [];
+    const byWeek = new Map<string, number>();
+    for (const [key, minutes] of byDate) {
+        if (minutes > limits.dailyMinutes) breaches.push(`${key} (${minutes} min/día)`);
+        const date = new Date(`${key}T00:00:00.000Z`);
+        const monday = new Date(date.getTime() - (isoWeekdayOfDateKey(date) - 1) * 86_400_000);
+        byWeek.set(dateKey(monday), (byWeek.get(dateKey(monday)) ?? 0) + minutes);
+    }
+    for (const [monday, minutes] of byWeek) if (minutes > limits.weeklyMinutes) breaches.push(`semana del ${monday} (${minutes} min/semana)`);
+    return breaches.sort();
 }
 
 function publishedShiftFingerprint(shifts: EffectivePublishedShiftEvidence[]) {
     return hashPayload(shifts);
 }
 
-async function effectivePublishedShiftEvidence(
+/** Batched form: one query for every subject; each subject keeps its own [from, to] local-date window. */
+async function effectivePublishedShiftEvidenceForUsers(
     tx: Prisma.TransactionClient,
-    input: { companyId: number; userId: number; from: Date; to: Date },
-): Promise<EffectivePublishedShiftEvidence[]> {
-    const broadFrom = new Date(input.from.getTime() - 2 * 86_400_000);
-    const broadTo = new Date(input.to.getTime() + 2 * 86_400_000);
+    companyId: number,
+    subjects: Array<{ userId: number; from: Date; to: Date }>,
+): Promise<Map<number, EffectivePublishedShiftEvidence[]>> {
+    const result = new Map<number, EffectivePublishedShiftEvidence[]>();
+    if (!subjects.length) return result;
+    const userIds = [...new Set(subjects.map(subject => subject.userId))];
+    const broadFrom = new Date(Math.min(...subjects.map(subject => subject.from.getTime())) - 2 * 86_400_000);
+    const broadTo = new Date(Math.max(...subjects.map(subject => subject.to.getTime())) + 2 * 86_400_000);
     const shifts = await tx.scheduledShift.findMany({
         where: {
-            companyId: input.companyId,
+            companyId,
             status: 'SCHEDULED',
             schedule: { status: 'PUBLISHED' },
             startAt: { gte: broadFrom, lt: broadTo },
             OR: [
-                { userId: input.userId, assignmentOverride: null },
-                { assignmentOverride: { assignedUserId: input.userId } },
+                { userId: { in: userIds }, assignmentOverride: null },
+                { assignmentOverride: { assignedUserId: { in: userIds } } },
             ],
         },
         select: {
@@ -1009,31 +1432,32 @@ async function effectivePublishedShiftEvidence(
         },
         orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
     });
-    const fromKey = dateKey(input.from);
-    const toKey = dateKey(input.to);
-    return shifts.map(shift => {
-        const effectiveUserId = shift.assignmentOverride?.assignedUserId ?? shift.userId;
-        const localDate = zonedDateKey(shift.startAt, shift.branch.timezone);
-        return {
-            scheduleId: shift.schedule.id,
-            scheduleRevision: shift.schedule.revision,
-            scheduleStatus: shift.schedule.status,
-            shiftId: shift.id,
-            startAt: shift.startAt.toISOString(),
-            endAt: shift.endAt.toISOString(),
-            breakMinutes: shift.breakMinutes,
-            paidBreak: shift.paidBreak,
-            branchId: shift.branchId,
-            timezoneSnapshot: shift.timezoneSnapshot,
-            branchTimezone: shift.branch.timezone,
-            localDate,
-            originalUserId: shift.userId,
-            effectiveUserId,
-            overrideId: shift.assignmentOverride?.id ?? null,
-            overrideEffectiveAt: shift.assignmentOverride?.effectiveAt.toISOString() ?? null,
-        };
-    }).filter(shift => shift.effectiveUserId === input.userId && shift.localDate >= fromKey && shift.localDate <= toKey)
-        .sort((a, b) => a.startAt.localeCompare(b.startAt) || a.shiftId - b.shiftId);
+    const evidence = shifts.map(shift => ({
+        scheduleId: shift.schedule.id,
+        scheduleRevision: shift.schedule.revision,
+        scheduleStatus: shift.schedule.status,
+        shiftId: shift.id,
+        startAt: shift.startAt.toISOString(),
+        endAt: shift.endAt.toISOString(),
+        breakMinutes: shift.breakMinutes,
+        paidBreak: shift.paidBreak,
+        branchId: shift.branchId,
+        timezoneSnapshot: shift.timezoneSnapshot,
+        branchTimezone: shift.branch.timezone,
+        localDate: zonedDateKey(shift.startAt, shift.branch.timezone),
+        originalUserId: shift.userId,
+        effectiveUserId: shift.assignmentOverride?.assignedUserId ?? shift.userId,
+        overrideId: shift.assignmentOverride?.id ?? null,
+        overrideEffectiveAt: shift.assignmentOverride?.effectiveAt.toISOString() ?? null,
+    }));
+    for (const subject of subjects) {
+        const fromKey = dateKey(subject.from);
+        const toKey = dateKey(subject.to);
+        result.set(subject.userId, evidence
+            .filter(shift => shift.effectiveUserId === subject.userId && shift.localDate >= fromKey && shift.localDate <= toKey)
+            .sort((a, b) => a.startAt.localeCompare(b.startAt) || a.shiftId - b.shiftId));
+    }
+    return result;
 }
 
 function statutoryFlags(code: string, config: LegalConfiguration) {
@@ -1256,13 +1680,21 @@ async function applyStatutoryForUser(tx: Prisma.TransactionClient, input: {
 }) {
     await tx.payrollComponent.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, source: 'STATUTORY' } });
     await tx.payrollAnomaly.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, code: { in: ['UNCLASSIFIED_MANUAL_INCOME', 'UNCONFIGURED_PAYMENT_CONCEPT', 'MISSING_STATUTORY_PAY_FREQUENCY', 'INSS_MINIMUM_BASE_APPLIED', 'INCOMPLETE_PRIOR_STATUTORY_HISTORY', 'IR_CREDIT_PENDING_SETTLEMENT'] }, resolvedAt: null } });
+    const incomeComponents = await tx.payrollComponent.findMany({ where: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, type: 'INCOME', source: { not: 'STATUTORY' }, reversal: null,
+    }, orderBy: { id: 'asc' } });
+    // Automatic components (DESCANSO_TRABAJADO, FERIADO_TRABAJADO, ...) without a frozen concept carry no
+    // INSS/INATEC/IR flags: keep the anomaly blocking so they are never silently left out of the bases.
+    const unconfiguredCodes = unconfiguredIncomeComponentCodes(incomeComponents, input.config.statutory);
+    if (unconfiguredCodes.length) await addAnomaly(tx, {
+        companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId,
+        code: 'UNCONFIGURED_PAYMENT_CONCEPT',
+        message: `Los conceptos automáticos ${unconfiguredCodes.join(', ')} no existen o están inactivos en el catálogo de pagos V4 congelado; agréguelos al catálogo, valide la configuración y recalcule`,
+    });
     if (!['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'].includes(String(input.snapshot.payFrequency))) {
         await addAnomaly(tx, { companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId, code: 'MISSING_STATUTORY_PAY_FREQUENCY', message: 'No existe frecuencia de pago congelada para el cálculo estatutario' });
         return;
     }
-    const incomeComponents = await tx.payrollComponent.findMany({ where: {
-        companyId: input.companyId, runId: input.runId, userId: input.userId, type: 'INCOME', source: { not: 'STATUTORY' }, reversal: null,
-    }, orderBy: { id: 'asc' } });
     const manualComponents = await tx.payrollComponent.findMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, source: 'MANUAL', reversal: null }, orderBy: { id: 'asc' } });
     const unclassified = manualComponents.filter(component => {
         const concept = paymentConceptDefinition(input.config.statutory, component.code);
@@ -1420,12 +1852,42 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
     if (!employees.length) await addAnomaly(tx, { companyId, runId, code: 'NO_ELIGIBLE_SUBJECTS', message: 'No existen sujetos elegibles para la cobertura' });
     if (selectedEmployees?.length) for (const employeeId of selectedEmployees.filter(id => !employees.some(employee => employee.id === id))) await addAnomaly(tx, { companyId, runId, employeeId, code: 'OMITTED_SELECTED_SUBJECT', message: 'El sujeto seleccionado quedó fuera por fecha de alta/baja o elegibilidad' });
     const dependencyRevisions: Array<{ id: number; revision: number }> = [];
+    // Per-run batched reads; every subject keeps the same per-service-window filters in memory.
+    const serviceWindows = new Map(employees.map(employee => [employee.id, {
+        serviceFrom: maxDate(coverageFrom, employee.hireDate),
+        serviceTo: employee.terminationDate ? minDate(cutoff, employee.terminationDate) : cutoff,
+    }]));
+    const employeeIds = employees.map(employee => employee.id);
+    const userIds = employees.map(employee => employee.userId);
+    const [allContracts, allCompensations, allSummaries, allLeaves, holidays] = await Promise.all([
+        tx.employmentContract.findMany({ where: { companyId, employeeId: { in: employeeIds }, startDate: { lte: cutoff }, OR: [{ endDate: null }, { endDate: { gte: coverageFrom } }], status: { in: ['ACTIVE', 'EXPIRED', 'TERMINATED'] } }, orderBy: [{ startDate: 'asc' }, { id: 'asc' }] }),
+        tx.compensationHistory.findMany({ where: { companyId, employeeId: { in: employeeIds }, effectiveFrom: { lte: cutoff }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: coverageFrom } }] }, orderBy: [{ effectiveFrom: 'asc' }, { id: 'asc' }] }),
+        kind === 'REGULAR' ? tx.attendanceDailySummary.findMany({ where: { companyId, userId: { in: userIds }, periodId: attendancePeriod!.id }, select: { id: true, userId: true, date: true, branchId: true, scopeKey: true, scheduledMinutes: true, ordinaryMinutes: true, candidateOvertimeMinutes: true, approvedOvertimeMinutes: true, sourceRevision: true }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }) : Promise.resolve([]),
+        kind === 'REGULAR' ? tx.leaveRequest.findMany({ where: { companyId, userId: { in: userIds }, status: 'APPROVED', startDate: { lte: cutoff }, endDate: { gte: coverageFrom } }, include: { leaveType: { select: { paid: true, code: true } } }, orderBy: { id: 'asc' } }) : Promise.resolve([]),
+        kind === 'REGULAR' ? payrollHolidays(tx, companyId, coverageFrom, cutoff) : Promise.resolve([] as PayrollHolidayEvidence[]),
+    ]);
+    const contractsByEmployee = groupBy(allContracts, item => item.employeeId);
+    const compensationsByEmployee = groupBy(allCompensations, item => item.employeeId);
+    const summariesByUser = groupBy(allSummaries, item => item.userId);
+    const leavesByUser = groupBy(allLeaves, item => item.userId);
+    const decidedOvertimeSummaryIds = new Set(allSummaries.length ? (await tx.overtimeRequest.findMany({
+        where: { companyId, dailySummaryId: { in: allSummaries.map(item => item.id) }, status: { in: ['APPROVED', 'REJECTED'] } },
+        select: { dailySummaryId: true },
+    })).map(item => item.dailySummaryId!) : []);
+    const shiftEvidenceByUser = kind === 'REGULAR'
+        ? await effectivePublishedShiftEvidenceForUsers(tx, companyId, employees.map(employee => ({ userId: employee.userId, from: serviceWindows.get(employee.id)!.serviceFrom, to: serviceWindows.get(employee.id)!.serviceTo })))
+        : new Map<number, EffectivePublishedShiftEvidence[]>();
+    const holidayMultiplier = config.regular.holidayWorkedMultiplier ?? DEFAULT_HOLIDAY_WORKED_MULTIPLIER;
+    const restDayMultiplier = config.regular.restDayWorkedMultiplier ?? DEFAULT_REST_DAY_WORKED_MULTIPLIER;
+    const holidaysFingerprint = holidayFingerprint(holidays);
+    const restDayDefaultEmployees: Array<{ id: number; name: string }> = [];
     for (const employee of employees) {
         const duplicate = await reserveCoverage(tx, { companyId, runId, userId: employee.userId, kind, from: coverageFrom, to: cutoff });
         if (duplicate) { await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'DUPLICATE_COVERAGE', message: `Cobertura reclamada por corrida ${duplicate.runId}` }); continue; }
-        const serviceFrom = maxDate(coverageFrom, employee.hireDate); const serviceTo = employee.terminationDate ? minDate(cutoff, employee.terminationDate) : cutoff;
-        const contracts = await tx.employmentContract.findMany({ where: { companyId, employeeId: employee.id, startDate: { lte: serviceTo }, OR: [{ endDate: null }, { endDate: { gte: serviceFrom } }], status: { in: ['ACTIVE', 'EXPIRED', 'TERMINATED'] } }, orderBy: { startDate: 'asc' } });
-        const compensations = await tx.compensationHistory.findMany({ where: { companyId, employeeId: employee.id, effectiveFrom: { lte: serviceTo }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: serviceFrom } }] }, orderBy: { effectiveFrom: 'asc' } });
+        const { serviceFrom, serviceTo } = serviceWindows.get(employee.id)!;
+        const contracts = (contractsByEmployee.get(employee.id) ?? []).filter(item => item.startDate <= serviceTo && (item.endDate === null || item.endDate >= serviceFrom));
+        const compensations = (compensationsByEmployee.get(employee.id) ?? []).filter(item => item.effectiveFrom <= serviceTo && (item.effectiveTo === null || item.effectiveTo >= serviceFrom));
+        for (const compensation of compensations) assertPayFrequencyConfigured(configurationRevision.configuration, compensation.payFrequency);
         if (!contracts.length) await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'MISSING_CONTRACT', message: 'No existe contrato durante la cobertura' });
         if (!compensations.length) await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'MISSING_COMPENSATION_SEGMENT', message: 'No existe historial de compensación durante la cobertura' });
         if (kind === 'REGULAR' && new Set(compensations.map(item => `${item.compensationType}:${item.amount.toFixed(2)}:${item.payFrequency}`)).size > 1) await addAnomaly(tx, {
@@ -1440,15 +1902,13 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
             item.currency === compensations[0].currency && item.payFrequency === compensations[0].payFrequency
         );
         const hasFullServiceCoverage = serviceFrom.getTime() === coverageFrom.getTime() && serviceTo.getTime() === cutoff.getTime();
-        const summaries = kind === 'REGULAR' ? await tx.attendanceDailySummary.findMany({ where: { companyId, userId: employee.userId, periodId: attendancePeriod!.id }, select: { id: true, date: true, branchId: true, scopeKey: true, scheduledMinutes: true, ordinaryMinutes: true, approvedOvertimeMinutes: true, sourceRevision: true }, orderBy: { date: 'asc' } }) : [];
+        const summaries = summariesByUser.get(employee.userId) ?? [];
         const summaryRevisions = summaries.map(item => ({ id: item.id, revision: item.sourceRevision })); dependencyRevisions.push(...summaryRevisions);
-        const leaves = kind === 'REGULAR' ? await tx.leaveRequest.findMany({ where: { companyId, userId: employee.userId, status: 'APPROVED', startDate: { lte: cutoff }, endDate: { gte: coverageFrom } }, include: { leaveType: { select: { paid: true, code: true } } } }) : [];
+        const leaves = leavesByUser.get(employee.userId) ?? [];
         const paidLeaveCoverage = leaves.filter(item => item.leaveType.paid).sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
         const fullyCoveredByPaidLeave = paidLeaveCoverage.length > 0 && !intervalHasGap(paidLeaveCoverage, serviceFrom, serviceTo, item => item.startDate, item => item.endDate);
-        const publishedShiftEvidence = kind === 'REGULAR' ? await effectivePublishedShiftEvidence(tx, {
-            companyId, userId: employee.userId, from: serviceFrom, to: serviceTo,
-        }) : [];
-        const publishedShiftCoverage = reconcilePublishedShiftSummaries(publishedShiftEvidence, summaries);
+        const publishedShiftEvidence = shiftEvidenceByUser.get(employee.userId) ?? [];
+        const publishedShiftCoverage = reconcilePublishedShiftSummaries(publishedShiftEvidence, summaries, holidays);
         const missingPublishedShiftEvidence = stableSalary && hasFullServiceCoverage && !fullyCoveredByPaidLeave &&
             publishedShiftCoverage.expectedScopeCount === 0;
         if (kind === 'REGULAR' && (publishedShiftCoverage.incompleteScopes.length > 0 || missingPublishedShiftEvidence)) await addAnomaly(tx, {
@@ -1463,32 +1923,105 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
             code: 'MISSING_ATTENDANCE_SUMMARIES',
             message: 'El colaborador no tiene resúmenes diarios ni una ausencia pagada que cubra todo el período; no se permite una planilla fiscal en cero sin evidencia',
         });
+        const unresolvedOvertime = kind === 'REGULAR' ? unresolvedCandidateOvertime(summaries, decidedOvertimeSummaryIds) : [];
+        if (unresolvedOvertime.length) await addAnomaly(tx, {
+            companyId, runId, employeeId: employee.id, userId: employee.userId,
+            code: 'UNRESOLVED_CANDIDATE_OVERTIME',
+            message: `Tiempo trabajado sobre el turno publicado sin aprobar ni rechazar: ${unresolvedOvertime.map(item => `${item.date} (${item.minutes} min)`).join(', ')}; reabra el período de asistencia, decida las horas extra y recalcule`,
+        });
         const crossing = leaves.find(item => item.startDate < coverageFrom || item.endDate > cutoff);
         if (crossing) await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'CROSS_BOUNDARY_LEAVE', message: `Ausencia ${crossing.id} cruza la cobertura; requiere prorrateo autorizado` });
-        let ordinary = new Prisma.Decimal(0); let overtime = new Prisma.Decimal(0); let paidLeave = new Prisma.Decimal(0);
+        let ordinary = new Prisma.Decimal(0); let overtime = new Prisma.Decimal(0); let paidLeave = new Prisma.Decimal(0); let holidayPremium = new Prisma.Decimal(0); let restDayPremium = new Prisma.Decimal(0);
+        const restDays = effectiveWeeklyRestDays(employee.weeklyRestDays);
+        let absenceTrace: { deduction: string; paidLeaveRestore: string } | null = null;
+        let aguinaldoBaseTrace: JsonObject | null = null;
         const compensationSegments: JsonObject[] = []; const historicalSegments: JsonObject[] = [];
         if (kind === 'REGULAR' && !crossing) {
+            const overtimeBreaches = overtimeLegalLimitBreaches(summaries);
+            if (overtimeBreaches.length) await addAnomaly(tx, {
+                companyId, runId, employeeId: employee.id, userId: employee.userId,
+                code: 'OVERTIME_LEGAL_LIMIT_EXCEEDED', severity: 'WARNING',
+                message: `Horas extra aprobadas sobre el límite del Art. 58 CT (3 h diarias / 9 h semanales): ${overtimeBreaches.join(', ')}; se pagan, pero documente la causa excepcional`,
+            });
             for (const summary of summaries) {
                 const segment = compensations.find(item => item.effectiveFrom <= summary.date && (!item.effectiveTo || item.effectiveTo >= summary.date));
                 if (!segment) { await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'COMPENSATION_GAP', message: `Falta compensación para ${dateKey(summary.date)}` }); continue; }
                 try {
-                    const base = convertCurrency(compensationMinuteRate(segment, config).times(ordinaryMinutesExcludingApprovedOvertime(summary)), segment.currency, config);
-                    const extra = convertCurrency(compensationMinuteRate(segment, config).times(summary.approvedOvertimeMinutes).times(config.regular.overtimeMultiplier), segment.currency, config);
+                    const minuteRate = compensationMinuteRate(segment, config);
+                    const payableMinutes = payableOrdinaryMinutes(summary);
+                    const base = convertCurrency(minuteRate.times(payableMinutes), segment.currency, config);
+                    // Overtime and protected-day premiums use the CT hourly wage (daily wage / 8 h),
+                    // not the configured divisor: overtime at 2x on a monthly salary = salary / 120 per hour.
+                    const premiumMinuteRate = legalMinuteRate(segment);
+                    const extra = convertCurrency(premiumMinuteRate.times(summary.approvedOvertimeMinutes).times(config.regular.overtimeMultiplier), segment.currency, config);
+                    const holiday = holidayForSummary(holidays, summary);
+                    const restDay = isWeeklyRestDay(summary.date, restDays.days);
+                    const protectedDay = protectedDayPremium({ minuteRate: premiumMinuteRate, payableMinutes: Math.min(payableMinutes, LEGAL_ORDINARY_DAILY_MINUTES), holiday: Boolean(holiday), restDay, holidayMultiplier, restDayMultiplier });
+                    const premium = protectedDay.kind ? convertCurrency(protectedDay.premium, segment.currency, config).amount : new Prisma.Decimal(0);
                     ordinary = ordinary.plus(base.amount); overtime = overtime.plus(extra.amount);
-                    compensationSegments.push({ id: segment.id, date: dateKey(summary.date), compensationType: segment.compensationType, payFrequency: segment.payFrequency, amount: segment.amount.toString(), currency: segment.currency, ordinaryMinutes: summary.ordinaryMinutes, overtimeMinutes: summary.approvedOvertimeMinutes, fx: base.trace });
+                    if (protectedDay.kind === 'HOLIDAY') holidayPremium = holidayPremium.plus(premium);
+                    if (protectedDay.kind === 'REST_DAY') restDayPremium = restDayPremium.plus(premium);
+                    compensationSegments.push({
+                        id: segment.id, date: dateKey(summary.date), compensationType: segment.compensationType, payFrequency: segment.payFrequency, amount: segment.amount.toString(), currency: segment.currency,
+                        ordinaryMinutes: summary.ordinaryMinutes, scheduledMinutes: summary.scheduledMinutes, payableOrdinaryMinutes: payableMinutes, overtimeMinutes: summary.approvedOvertimeMinutes,
+                        holidayId: holiday?.id ?? null, holidayPremium: protectedDay.kind === 'HOLIDAY' ? premium.toString() : null,
+                        restDay, restDayPremium: protectedDay.kind === 'REST_DAY' ? premium.toString() : null,
+                        protectedDayPremiumKind: protectedDay.kind, fx: base.trace,
+                    });
                 } catch (error) { await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'CURRENCY_WITHOUT_VERSIONED_FX', message: error instanceof Error ? error.message : 'Moneda sin FX versionado' }); }
+            }
+            if (restDays.source === 'LEGAL_DEFAULT' && money(restDayPremium).greaterThan(0)) {
+                restDayDefaultEmployees.push({ id: employee.id, name: employee.user.name || employee.user.username });
             }
             for (const leave of leaves.filter(item => item.leaveType.paid)) {
                 const segment = compensations.find(item => item.effectiveFrom <= leave.startDate && (!item.effectiveTo || item.effectiveTo >= leave.startDate)); if (!segment) continue;
                 try { paidLeave = paidLeave.plus(convertCurrency(compensationMinuteRate(segment, config).times(leave.requestedAmount).times(config.regular.paidLeaveUnitMinutes[leave.balanceUnit]), segment.currency, config).amount); }
                 catch (error) { await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'CURRENCY_WITHOUT_VERSIONED_FX', message: error instanceof Error ? error.message : 'Moneda sin FX versionado' }); }
             }
-            if (stableSalary && hasFullServiceCoverage) {
+            // Fixed salaries are paid by deduction whenever published shifts give the expected
+            // minutes: the salary owed for the service window (prorated by calendar days for a
+            // partial window) minus unworked scheduled minutes. Without published shifts a
+            // partial window keeps the worked-minutes valuation (and full coverage is flagged).
+            const salaryByDeduction = stableSalary && publishedShiftCoverage.expectedScopeCount > 0;
+            if (salaryByDeduction && !fullyCoveredByPaidLeave) {
+                const employeeBranches = new Set<number | null>([employee.user.branchId ?? null, ...publishedShiftEvidence.map(shift => shift.branchId)]);
+                const scheduleShortfall = publishedScheduleShortfall({
+                    serviceFrom, serviceTo, restDays: restDays.days,
+                    holidayDates: new Set(holidays.filter(holiday => holiday.branchId === null || employeeBranches.has(holiday.branchId)).map(holiday => dateKey(holiday.date))),
+                    publishedDates: new Set(publishedShiftCoverage.publishedDates),
+                    leaveIntervals: leaves.map(leave => ({ from: leave.startDate, to: leave.endDate })),
+                });
+                if (scheduleShortfall.missingWorkingDays > 0) await addAnomaly(tx, {
+                    companyId, runId, employeeId: employee.id, userId: employee.userId,
+                    code: 'INCOMPLETE_PUBLISHED_SCHEDULE',
+                    message: `El horario publicado cubre ${scheduleShortfall.coveredWorkingDays} de ${scheduleShortfall.expectedWorkingDays} día(s) laborables esperados entre ${dateKey(serviceFrom)} y ${dateKey(serviceTo)} (días de servicio menos descansos semanales y feriados pagados); faltan ${scheduleShortfall.missingWorkingDays}. Publique los turnos faltantes o registre las ausencias y recalcule antes de pagar el salario fijo`,
+                });
+            }
+            if (stableSalary && (hasFullServiceCoverage || salaryByDeduction)) {
                 try {
                     const contractualAmount = convertCurrency(compensations[0].amount, compensations[0].currency, config).amount;
+                    const entitledAmount = hasFullServiceCoverage
+                        ? contractualAmount
+                        : proratedSalary(contractualAmount, dateDays(serviceFrom, serviceTo), dateDays(coverageFrom, cutoff));
+                    let ordinaryEarnings = ordinary;
+                    if (salaryByDeduction) {
+                        const absence = salaryAbsenceDeduction({
+                            dailyWage: salaryDailyWage(contractualAmount, compensations[0].payFrequency),
+                            scheduledDays: publishedShiftCoverage.scheduledDays,
+                            paidLeaves: leaves.filter(item => item.leaveType.paid).map(item => ({
+                                from: dateKey(item.startDate), to: dateKey(item.endDate),
+                                requestedAmount: item.requestedAmount, unit: item.balanceUnit,
+                                unitMinutes: config.regular.paidLeaveUnitMinutes[item.balanceUnit],
+                            })),
+                        });
+                        ordinaryEarnings = salaryEarningsByDeduction({ entitledAmount, absenceDeduction: absence.deduction });
+                        // Paid leave restores exactly what its published dates deducted.
+                        paidLeave = money(absence.paidLeaveRestore);
+                        absenceTrace = { deduction: money(absence.deduction).toString(), paidLeaveRestore: money(absence.paidLeaveRestore).toString() };
+                    }
                     const normalized = normalizeFullCoverageSalary({
-                        contractualAmount,
-                        ordinaryEarnings: ordinary,
+                        contractualAmount: entitledAmount,
+                        ordinaryEarnings,
                         paidLeaveEarnings: paidLeave,
                         fullScheduledAttendance: publishedShiftCoverage.fullScheduledAttendance,
                         fullyCoveredByPaidLeave,
@@ -1505,15 +2038,19 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
             }
         }
         if (kind === 'AGUINALDO') {
+            const highestMonth = config.aguinaldo.method === AGUINALDO_HIGHEST_MONTH_METHOD;
+            const historyFrom = highestMonth ? aguinaldoBaseWindowStart(cutoff, config.aguinaldo.baseMonths ?? DEFAULT_AGUINALDO_BASE_MONTHS) : coverageFrom;
             const history = await tx.payrollComponent.findMany({ where: {
-                companyId, userId: employee.userId, type: 'INCOME', source: { in: config.aguinaldo.eligibleSources }, reversal: null,
-                run: { kind: 'REGULAR', status: 'PAID', reversals: { none: {} }, period: { dateTo: { gte: coverageFrom }, dateFrom: { lte: cutoff } } },
+                companyId, userId: employee.userId, type: 'INCOME', source: { in: aguinaldoComponentSources(config.aguinaldo.eligibleSources) }, reversal: null,
+                run: { kind: 'REGULAR', status: 'PAID', reversals: { none: {} }, period: { dateTo: { gte: historyFrom }, dateFrom: { lte: cutoff } } },
                 receipt: { status: 'PUBLISHED' },
             }, include: { receipt: true, run: { include: { period: true, reversals: { select: { id: true } } } } }, orderBy: { createdAt: 'asc' } });
             let eligibleIncome = new Prisma.Decimal(0);
+            const monthlyIncome: AguinaldoMonthlyIncome[] = [];
             for (const item of history) try {
                 if (!item.receipt || item.receipt.runId !== item.runId || item.receipt.userId !== item.userId) throw new HrPayrollError('El componente histórico no tiene un recibo publicado consistente', 409, 'HR_PAYROLL_AGUINALDO_SOURCE_STALE');
                 const fx = convertCurrency(item.amount, item.run.currency, config); eligibleIncome = eligibleIncome.plus(fx.amount);
+                monthlyIncome.push({ periodTo: minDate(item.run.period!.dateTo, cutoff), amount: fx.amount });
                 await tx.payrollAguinaldoSourceDependency.create({ data: {
                     companyId, targetRunId: runId, calculationRevision, sourceRunId: item.runId, sourceComponentId: item.id, sourceReceiptId: item.receipt.id,
                     capturedRunRevision: item.run.revision, capturedRunStatus: item.run.status, capturedRunCurrency: item.run.currency,
@@ -1524,7 +2061,13 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
             } catch (error) { await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: error instanceof HrPayrollError ? error.code : 'CURRENCY_WITHOUT_VERSIONED_FX', message: error instanceof Error ? error.message : 'Fuente histórica inválida' }); }
             if (!history.length) await addAnomaly(tx, { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'MISSING_AGUINALDO_HISTORY', message: 'No existe histórico real pagado elegible' });
             const serviceDays = Math.max(0, dateDays(serviceFrom, serviceTo)); const ratio = config.aguinaldo.prorationMode === 'SERVICE_DAYS_RATIO' ? Prisma.Decimal.min(1, new Prisma.Decimal(serviceDays).dividedBy(config.aguinaldo.lookbackDays)) : new Prisma.Decimal(1);
-            ordinary = money(eligibleIncome.dividedBy(config.aguinaldo.incomeDivisor).times(ratio));
+            if (highestMonth) {
+                const base = highestMonthlyIncome(monthlyIncome);
+                aguinaldoBaseTrace = { method: AGUINALDO_HIGHEST_MONTH_METHOD, windowFrom: dateKey(historyFrom), month: base.month, amount: money(base.amount).toString(), ratio: ratio.toString() };
+                ordinary = money(base.amount.times(ratio));
+            } else {
+                ordinary = money(eligibleIncome.dividedBy(config.aguinaldo.incomeDivisor).times(ratio));
+            }
         }
         const ordinaryMinutes = summaries.reduce((sum, item) => sum + item.ordinaryMinutes, 0); const approvedOvertimeMinutes = summaries.reduce((sum, item) => sum + item.approvedOvertimeMinutes, 0);
         await tx.payrollSnapshotLine.create({ data: {
@@ -1543,6 +2086,19 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
                 approvedLeaves: leaves.map(item => ({ id: item.id, from: dateKey(item.startDate), to: dateKey(item.endDate), paid: item.leaveType.paid, amount: item.requestedAmount.toString(), unit: item.balanceUnit })),
                 publishedShiftEvidence,
                 publishedShiftFingerprint: publishedShiftFingerprint(publishedShiftEvidence),
+                ...(kind === 'REGULAR' ? {
+                    holidayWorkedMultiplier: holidayMultiplier,
+                    holidayFingerprint: holidaysFingerprint,
+                    holidaysWorked: compensationSegments.filter(item => item.holidayId !== null).map(item => ({ date: item.date, holidayId: item.holidayId, minutes: item.payableOrdinaryMinutes, premiumKind: item.protectedDayPremiumKind })) as Prisma.InputJsonValue,
+                    restDayWorkedMultiplier: restDayMultiplier,
+                    weeklyRestDays: restDays.days,
+                    weeklyRestDaysSource: restDays.source,
+                    restDaysWorked: compensationSegments.filter(item => item.restDay === true).map(item => ({ date: item.date, minutes: item.payableOrdinaryMinutes, premiumKind: item.protectedDayPremiumKind })) as Prisma.InputJsonValue,
+                    unworkedScheduledMinutes: publishedShiftCoverage.unworkedScheduledMinutes,
+                    holidayExcusedMinutes: publishedShiftCoverage.holidayExcusedMinutes,
+                    salaryAbsence: absenceTrace,
+                } : {}),
+                ...(aguinaldoBaseTrace ? { aguinaldoBase: aguinaldoBaseTrace as Prisma.InputJsonValue } : {}),
                 frozen: true,
             },
         } });
@@ -1555,10 +2111,16 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
         const ordinaryName = kind === 'AGUINALDO' ? 'Aguinaldo histórico parametrizado' : paymentConceptDefinition(config.statutory, ordinaryCode)?.name ?? ordinaryCode;
         const overtimeName = paymentConceptDefinition(config.statutory, 'HORAS_EXTRA_APROBADAS')?.name ?? 'HORAS_EXTRA_APROBADAS';
         const paidLeaveName = paymentConceptDefinition(config.statutory, 'PERMISO_PAGADO_APROBADO')?.name ?? 'PERMISO_PAGADO_APROBADO';
+        const holidayFlags = statutoryFlags(HOLIDAY_WORKED_CONCEPT, config);
+        const holidayName = paymentConceptDefinition(config.statutory, HOLIDAY_WORKED_CONCEPT)?.name ?? HOLIDAY_WORKED_CONCEPT;
+        const restDayFlags = statutoryFlags(REST_DAY_WORKED_CONCEPT, config);
+        const restDayName = paymentConceptDefinition(config.statutory, REST_DAY_WORKED_CONCEPT)?.name ?? REST_DAY_WORKED_CONCEPT;
         if (kind === 'REGULAR') for (const [code, amount] of [
             [ordinaryCode, ordinary],
             ['HORAS_EXTRA_APROBADAS', overtime],
             ['PERMISO_PAGADO_APROBADO', paidLeave],
+            [HOLIDAY_WORKED_CONCEPT, holidayPremium],
+            [REST_DAY_WORKED_CONCEPT, restDayPremium],
         ] as const) if (amount.greaterThan(0) && !paymentConceptDefinition(config.statutory, code)) await addAnomaly(tx, {
             companyId, runId, employeeId: employee.id, userId: employee.userId,
             code: 'UNCONFIGURED_PAYMENT_CONCEPT', message: `El concepto automático ${code} no existe en el catálogo de pagos V4 congelado`,
@@ -1566,8 +2128,15 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
         if (ordinary.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: ordinaryCode, name: ordinaryName, type: 'INCOME', source: 'RULE', amount: money(ordinary), ...ordinaryFlags, traceReference: `snapshot:user:${employee.userId};config:${configurationRevision.id}` } });
         if (overtime.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'HORAS_EXTRA_APROBADAS', name: overtimeName, type: 'INCOME', source: 'OVERTIME', amount: money(overtime), ...overtimeFlags, traceReference: `snapshot:user:${employee.userId}` } });
         if (paidLeave.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'PERMISO_PAGADO_APROBADO', name: paidLeaveName, type: 'INCOME', source: 'LEAVE', amount: money(paidLeave), ...paidLeaveFlags, traceReference: `snapshot:user:${employee.userId}` } });
+        if (money(holidayPremium).greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: HOLIDAY_WORKED_CONCEPT, name: holidayName, type: 'INCOME', source: 'HOLIDAY', amount: money(holidayPremium), ...holidayFlags, traceReference: `snapshot:user:${employee.userId};holidayMultiplier:${holidayMultiplier}` } });
+        if (money(restDayPremium).greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: REST_DAY_WORKED_CONCEPT, name: restDayName, type: 'INCOME', source: 'REST_DAY', amount: money(restDayPremium), ...restDayFlags, traceReference: `snapshot:user:${employee.userId};restDayMultiplier:${restDayMultiplier};restDays:${restDays.days.join(',')}` } });
         if (kind === 'REGULAR') await projectBenefitDeductions(tx, { companyId, runId, userId: employee.userId, currency: config.currency, cutoff });
     }
+    if (kind === 'REGULAR' && restDayDefaultEmployees.length) await addAnomaly(tx, {
+        companyId, runId,
+        code: 'REST_DAY_DEFAULT_APPLIED', severity: 'WARNING',
+        message: restDayDefaultAppliedMessage(restDayDefaultEmployees),
+    });
     let employerContributions = new Prisma.Decimal(0);
     if (kind === 'REGULAR') {
         const employerHeadcount = await employerHeadcountAt(tx, companyId, run.period!.dateFrom, run.period!.dateTo);
@@ -1606,10 +2175,30 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
     const invalidManuals = await tx.payrollComponent.findMany({ where: { companyId, runId, source: 'MANUAL', userId: { notIn: [...snapshotUsers] } }, select: { id: true, userId: true } });
     for (const component of invalidManuals) await addAnomaly(tx, { companyId, runId, userId: component.userId, code: 'MANUAL_COMPONENT_OUTSIDE_SNAPSHOT', message: `El componente manual ${component.id} pertenece a un sujeto fuera del snapshot` });
     const aggregate = await tx.payrollComponent.groupBy({ by: ['type'], where: { companyId, runId }, _sum: { amount: true } }); const gross = money(aggregate.find(item => item.type === 'INCOME')?._sum.amount ?? 0); const deductions = money(aggregate.find(item => item.type === 'DEDUCTION')?._sum.amount ?? 0); const net = money(gross.minus(deductions));
-    if (net.isNegative()) await addAnomaly(tx, { companyId, runId, code: 'NEGATIVE_NET_PAY', message: 'El neto no puede ser negativo' });
+    await syncNegativeNetAnomalies(tx, companyId, runId);
     const revision = calculationRevision;
     await tx.payrollRun.update({ where: { id: runId }, data: { status: 'CALCULATED', revision, calculationRevision: revision, configurationRevisionId: configurationRevision.id, currency: config.currency, grossIncome: gross, totalDeductions: deductions, employerContributions, netPay: net, employeeCount: snapshotUsers.size, calculatedById: actorId, calculatedAt: new Date(), lastReason: reason } });
     await trace(tx, { companyId, runId, event: run.status === 'DRAFT' ? 'CALCULATE' : 'RECALCULATE', actorId, reason, fromStatus: run.status, toStatus: 'CALCULATED', revision, metadata: { configurationRevisionId: configurationRevision.id, configurationHash: configurationRevision.configurationHash } });
+}
+
+/** Snapshots freeze the service window derived from hireDate/terminationDate; a later edit that moves it is stale. */
+export function employmentDatesMatchSnapshot(
+    snapshot: { sourceTrace: Record<string, unknown>; coverageFrom: Date; coverageTo: Date },
+    employee: { hireDate: Date; terminationDate: Date | null },
+): boolean {
+    const trace = snapshot.sourceTrace;
+    if (typeof trace.serviceFrom !== 'string' || typeof trace.serviceTo !== 'string') return true;
+    const serviceFrom = maxDate(snapshot.coverageFrom, employee.hireDate);
+    const serviceTo = employee.terminationDate ? minDate(snapshot.coverageTo, employee.terminationDate) : snapshot.coverageTo;
+    return trace.serviceFrom === dateKey(serviceFrom) && trace.serviceTo === dateKey(serviceTo);
+}
+
+/** Snapshots calculated before rest-day premiums carry no weeklyRestDays and are not re-evaluated. */
+export function weeklyRestDaysMatchSnapshot(sourceTrace: Record<string, unknown>, currentWeeklyRestDays: unknown): boolean {
+    if (!Array.isArray(sourceTrace.weeklyRestDays)) return true;
+    const current = effectiveWeeklyRestDays(currentWeeklyRestDays);
+    // Only the effective days decide the premium; confirming the default explicitly is not stale.
+    return stable(current.days) === stable(sourceTrace.weeklyRestDays);
 }
 
 async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: number, runId: number) {
@@ -1654,6 +2243,7 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
     if (run.kind === 'REGULAR') {
         if (!run.period || !run.calculationRevision) throw new HrPayrollError('La corrida regular no conserva período o revisión de cálculo', 409, 'HR_PAYROLL_SOURCE_STALE');
         assertRegularFiscalPeriod(run.period);
+        const frozenWindows: Array<{ snapshot: typeof run.snapshots[number]; frozenEvidence: EffectivePublishedShiftEvidence[]; frozenFingerprint: string; serviceFrom: Date; serviceTo: Date; holidayFingerprint: string | null }> = [];
         for (const snapshot of run.snapshots) {
             const sourceTrace = snapshot.sourceTrace && typeof snapshot.sourceTrace === 'object' && !Array.isArray(snapshot.sourceTrace)
                 ? snapshot.sourceTrace as Record<string, unknown> : {};
@@ -1669,16 +2259,28 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
                 publishedShiftFingerprint(frozenEvidence) !== frozenFingerprint) {
                 throw new HrPayrollError('El snapshot no conserva una huella íntegra de turnos publicados efectivos', 409, 'HR_PAYROLL_SCHEDULE_SOURCE_STALE');
             }
-            const currentEvidence = await effectivePublishedShiftEvidence(tx, {
-                companyId, userId: snapshot.userId, from: serviceFrom, to: serviceTo,
+            frozenWindows.push({
+                snapshot, frozenEvidence, frozenFingerprint, serviceFrom, serviceTo,
+                holidayFingerprint: typeof sourceTrace.holidayFingerprint === 'string' ? sourceTrace.holidayFingerprint : null,
             });
-            if (publishedShiftFingerprint(currentEvidence) !== frozenFingerprint) {
+        }
+        const currentEvidenceByUser = await effectivePublishedShiftEvidenceForUsers(tx, companyId, frozenWindows.map(item => ({ userId: item.snapshot.userId, from: item.serviceFrom, to: item.serviceTo })));
+        for (const item of frozenWindows) {
+            if (publishedShiftFingerprint(currentEvidenceByUser.get(item.snapshot.userId) ?? []) !== item.frozenFingerprint) {
                 throw new HrPayrollError('Los turnos publicados, su horario o su asignación efectiva cambiaron después del cálculo; recalcule', 409, 'HR_PAYROLL_SCHEDULE_SOURCE_STALE');
+            }
+        }
+        // Snapshots calculated before holiday premiums carry no fingerprint and are not re-evaluated.
+        if (frozenWindows.some(item => item.holidayFingerprint !== null)) {
+            const currentHolidays = holidayFingerprint(await payrollHolidays(tx, companyId, run.period.dateFrom, run.period.dateTo));
+            if (frozenWindows.some(item => item.holidayFingerprint !== null && item.holidayFingerprint !== currentHolidays)) {
+                throw new HrPayrollError('El calendario de feriados pagados cambió después del cálculo; recalcule', 409, 'HR_PAYROLL_HOLIDAY_SOURCE_STALE');
             }
         }
         const currentStatutory = run.statutoryCalculations.filter(item => item.calculationRevision === run.calculationRevision);
         if (currentStatutory.length !== run.snapshots.length) throw new HrPayrollError('La traza estatutaria no coincide con el snapshot de colaboradores', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
         const currentHeadcount = await employerHeadcountAt(tx, companyId, run.period.dateFrom, run.period.dateTo);
+        const liveComponentsByUser = groupBy(await tx.payrollComponent.findMany({ where: { companyId, runId, reversal: null } }), item => item.userId);
         for (const calculation of currentStatutory) {
             if (calculation.configurationRevisionId !== run.configurationRevisionId || calculation.companyTaxRegime !== frozenConfig.statutory.companyTaxRegime.code || calculation.employerHeadcount !== currentHeadcount) {
                 throw new HrPayrollError('La configuración o el universo patronal cambió después del cálculo', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
@@ -1706,8 +2308,9 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
             if (prior.priorPayFrequencies.some(value => value !== snapshot.payFrequency) || prior.priorAnnualPeriods.some(value => value !== annualPeriods)) {
                 throw new HrPayrollError('La frecuencia fiscal cambió dentro del año; la corrida no es reproducible', 409, 'HR_PAYROLL_FISCAL_FREQUENCY_CHANGED');
             }
-            const currentIncome = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: calculation.userId, type: 'INCOME', source: { not: 'STATUTORY' }, reversal: null } });
-            const currentTaxDeductions = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: calculation.userId, type: 'DEDUCTION', source: { not: 'STATUTORY' }, incomeTaxDeductible: true, reversal: null } });
+            const liveComponents = liveComponentsByUser.get(calculation.userId) ?? [];
+            const currentIncome = liveComponents.filter(component => component.type === 'INCOME' && component.source !== 'STATUTORY');
+            const currentTaxDeductions = liveComponents.filter(component => component.type === 'DEDUCTION' && component.source !== 'STATUTORY' && component.incomeTaxDeductible === true);
             if (currentIncome.some(component => {
                 const concept = paymentConceptDefinition(frozenConfig.statutory, component.code);
                 const flags = statutoryFlags(component.code, frozenConfig);
@@ -1773,7 +2376,7 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
                 calculation.elapsedPeriods === recomputed.elapsedPeriods && calculation.elapsedFiscalMonths === recomputed.elapsedFiscalMonths &&
                 calculation.annualPeriods === recomputed.annualPeriods;
             if (!traceMatches) throw new HrPayrollError('La traza estatutaria ya no reproduce sus bases y parámetros congelados', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
-            const statutoryComponents = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: calculation.userId, source: 'STATUTORY', reversal: null } });
+            const statutoryComponents = liveComponents.filter(component => component.source === 'STATUTORY');
             const componentAmount = (code: string, type: 'INCOME' | 'DEDUCTION') => money(statutoryComponents.filter(component => component.code === code && component.type === type).reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
             if (!componentAmount('INSS_LABORAL', 'DEDUCTION').equals(recomputed.employeeInss) || !componentAmount('IR_LABORAL', 'DEDUCTION').equals(recomputed.currentIncomeTaxWithholding) || !componentAmount('IR_LABORAL_DEVOLUCION', 'INCOME').equals(recomputed.incomeTaxRefund)) {
                 throw new HrPayrollError('Las deducciones estatutarias no coinciden con su traza reproducible', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
@@ -1782,12 +2385,26 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
         const contributions = await tx.payrollEmployerContribution.aggregate({ where: { companyId, runId, calculationRevision: run.calculationRevision }, _sum: { amount: true } });
         if (!money(contributions._sum.amount ?? 0).equals(run.employerContributions)) throw new HrPayrollError('Los aportes patronales no reconcilian con la corrida', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
     }
+    const frozenEmployees = await tx.employee.findMany({ where: { companyId, id: { in: run.snapshots.map(item => item.employeeId) } }, select: { id: true, hireDate: true, terminationDate: true, weeklyRestDays: true } });
+    for (const snapshot of run.snapshots) {
+        const sourceTrace = snapshot.sourceTrace && typeof snapshot.sourceTrace === 'object' && !Array.isArray(snapshot.sourceTrace)
+            ? snapshot.sourceTrace as Record<string, unknown> : {};
+        const employee = frozenEmployees.find(item => item.id === snapshot.employeeId);
+        if (!employee || !employmentDatesMatchSnapshot({ sourceTrace, coverageFrom: snapshot.coverageFrom, coverageTo: snapshot.coverageTo }, employee)) {
+            throw new HrPayrollError('La fecha de ingreso o terminación del colaborador cambió después del cálculo; recalcule', 409, 'HR_PAYROLL_EMPLOYMENT_DATES_STALE');
+        }
+        if (run.kind === 'REGULAR' && !weeklyRestDaysMatchSnapshot(sourceTrace, employee.weeklyRestDays)) {
+            throw new HrPayrollError('El día de descanso semanal del colaborador cambió después del cálculo; recalcule', 409, 'HR_PAYROLL_REST_DAY_SOURCE_STALE');
+        }
+    }
     const activeClaims = await tx.payrollCoverageClaim.count({ where: { companyId, runId, release: null } });
     if (activeClaims !== run.snapshots.length) throw new HrPayrollError('Las exclusiones de cobertura no coinciden con el snapshot', 409, 'HR_PAYROLL_COVERAGE_STALE');
     const snapshotUsers = new Set(run.snapshots.map(item => item.userId));
     const invalidManual = await tx.payrollComponent.findFirst({ where: { companyId, runId, source: 'MANUAL', userId: { notIn: [...snapshotUsers] } } });
     if (invalidManual) throw new HrPayrollError('Existe un componente manual para un sujeto fuera del snapshot', 409, 'HR_PAYROLL_COMPONENT_SUBJECT_INVALID');
     if (run.netPay.isNegative()) throw new HrPayrollError('El neto de la corrida es negativo', 409, 'HR_PAYROLL_NEGATIVE_NET');
+    const negativeUsers = await negativeNetUsers(tx, companyId, runId);
+    if (negativeUsers.length) throw new HrPayrollError(`El neto individual es negativo para ${negativeUsers.length} colaborador(es); ajuste y recalcule`, 409, 'HR_PAYROLL_NEGATIVE_NET');
 }
 
 async function assertNotLiveAguinaldoSource(tx: Prisma.TransactionClient, companyId: number, sourceRunId: number) {
@@ -1928,7 +2545,7 @@ export class PayrollRunService {
         let frozenSourcesFresh = true;
         let frozenSourceDetail = 'Fuentes congeladas vigentes';
         try {
-            await prisma.$transaction(async tx => revalidateFrozenSources(tx, companyId, id));
+            await prisma.$transaction(async tx => revalidateFrozenSources(tx, companyId, id), PAYROLL_TRANSACTION_TIMEOUTS);
         } catch (error) {
             frozenSourcesFresh = false;
             frozenSourceDetail = error instanceof Error ? error.message : 'No fue posible revalidar las fuentes';
@@ -2113,8 +2730,9 @@ export class PayrollRunService {
 
     private static async publishReceipts(tx: Prisma.TransactionClient, companyId: number, runId: number, now: Date) {
         const run = await tx.payrollRun.findUniqueOrThrow({ where: { id: runId }, include: { period: true, snapshots: true } });
+        const componentsByUser = groupBy(await tx.payrollComponent.findMany({ where: { companyId, runId } }), item => item.userId);
         for (const line of run.snapshots) {
-            const components = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: line.userId } });
+            const components = componentsByUser.get(line.userId) ?? [];
             const gross = money(components.filter(item => item.type === 'INCOME').reduce((sum, item) => sum.plus(item.amount), new Prisma.Decimal(0)));
             const deductions = money(components.filter(item => item.type === 'DEDUCTION').reduce((sum, item) => sum.plus(item.amount), new Prisma.Decimal(0)));
             const receipt = await tx.payrollReceipt.upsert({ where: { runId_userId: { runId, userId: line.userId } }, create: {
@@ -2243,6 +2861,7 @@ export class PayrollRunService {
                 const config = legalConfig;
                 const employerHeadcount = await employerHeadcountAt(tx, companyId, run.period.dateFrom, run.period.dateTo);
                 const allSnapshots = await tx.payrollSnapshotLine.findMany({ where: { companyId, runId }, orderBy: { userId: 'asc' } });
+                for (const frozen of allSnapshots) assertPayFrequencyConfigured(run.configurationRevision.configuration, frozen.payFrequency);
                 for (const frozen of allSnapshots) await applyStatutoryForUser(tx, {
                     companyId, runId, userId: frozen.userId, employeeId: frozen.employeeId, calculationRevision: revision,
                     employerHeadcount, configurationRevisionId: run.configurationRevision.id,
@@ -2255,8 +2874,7 @@ export class PayrollRunService {
             const gross = money(aggregate.find(item => item.type === 'INCOME')?._sum.amount ?? 0);
             const deductions = money(aggregate.find(item => item.type === 'DEDUCTION')?._sum.amount ?? 0);
             const net = money(gross.minus(deductions));
-            await tx.payrollAnomaly.deleteMany({ where: { companyId, runId, userId, code: 'NEGATIVE_NET_PAY', resolvedAt: null } });
-            if (net.isNegative()) await addAnomaly(tx, { companyId, runId, userId, code: 'NEGATIVE_NET_PAY', message: 'El componente deja un neto negativo; ajuste y recalcule' });
+            await syncNegativeNetAnomalies(tx, companyId, runId);
             const updated = await tx.payrollRun.updateMany({ where: { id: runId, companyId, revision: run.revision, status: 'CALCULATED' }, data: {
                 grossIncome: gross, totalDeductions: deductions, employerContributions, netPay: net, revision, calculationRevision: revision,
             } });

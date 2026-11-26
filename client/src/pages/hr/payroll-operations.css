@@ -455,3 +455,89 @@
   .payroll-operation-actions, .payroll-operation-reporting > div:last-of-type { justify-content: stretch; }
   .payroll-operation-actions button, .payroll-operation-reporting button { flex: 1 1 100%; }
 }
+
+/* ===================================================================
+   Payroll v2: amounts first, compact identity, sticky progress.
+   =================================================================== */
+.payroll-operations-page .payroll-operation-switcher {
+  padding: .35rem .45rem;
+}
+
+.payroll-operations-page .payroll-run-register-header {
+  padding-block: .85rem;
+}
+
+/* Long run lists scroll inside the card instead of pushing the detail away */
+.payroll-operations-page .payroll-run-table-wrap {
+  max-height: 340px;
+  overflow: auto;
+}
+
+.payroll-operations-page .payroll-run-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--ui-surface);
+}
+
+/* `clip` keeps the rounded card without becoming a scroll container,
+   so the stepper below can stick while the employee list scrolls. */
+.payroll-operations-page .payroll-operation-workspace {
+  overflow: clip;
+}
+
+.payroll-operations-page .payroll-operation-header {
+  align-items: center;
+  padding: .95rem 1.2rem;
+}
+
+.payroll-operations-page .payroll-operation-title-row h2 {
+  font-size: clamp(1.05rem, .9rem + .55vw, 1.35rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.payroll-operations-page .payroll-operation-header p {
+  font-size: .84rem;
+}
+
+.payroll-operations-page .payroll-operation-workspace > .payroll-operation-totals {
+  padding: .9rem 1.2rem;
+  border-bottom: 1px solid var(--payroll-border);
+}
+
+.payroll-operations-page .payroll-operation-totals .net {
+  border-color: color-mix(in srgb, var(--payroll-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--payroll-accent) 12%, var(--ui-surface));
+}
+
+.payroll-operations-page .payroll-operation-totals .net dd {
+  color: var(--payroll-accent);
+}
+
+.payroll-operations-page .payroll-operation-stepper {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding-block: .65rem;
+  background: var(--ui-surface);
+}
+
+.payroll-operations-page .payroll-operation-stepper small {
+  font-size: .7rem;
+}
+
+.payroll-operations-page .payroll-operation-next-action {
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .payroll-operations-page .payroll-operation-stepper {
+    position: static;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .payroll-operations-page .payroll-operation-stepper small {
+    display: none;
+  }
+}

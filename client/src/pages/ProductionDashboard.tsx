@@ -15,6 +15,7 @@ import { Building2, Package, RefreshCw, Users } from 'lucide-react';
 import { DonutChart, ParetoBars, TrendChart } from '@/ui/charts';
 import { toPareto } from './dashboardCharts';
 import s from './Production.module.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface Kpis {
     total: number; draft: number; pending: number; inProgress: number; finished: number; cancelled: number;
@@ -77,11 +78,7 @@ const monthStartStr = () => {
 };
 
 function apiErrorMessage(error: unknown): string {
-    if (typeof error === 'object' && error !== null && 'response' in error) {
-        const m = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
-        if (typeof m === 'string' && m) return m;
-    }
-    return error instanceof Error ? error.message : 'Error al cargar el panel';
+    return getApiErrorMessage(error);
 }
 
 /** Comparación contra el período anterior como texto de contexto; null si no hay base comparable. */

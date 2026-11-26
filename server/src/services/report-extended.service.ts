@@ -1,8 +1,11 @@
 import type { Prisma } from '@prisma/client';
+import { resolveRecipeUnit } from '../utils/recipe-unit';
 import prisma from '../utils/prisma';
+import { purchaseLineReceived, purchaseOrderReceivedValue, RECEIVED_PURCHASE_STATUSES } from '../utils/purchase-received';
 import { UnitConversionService } from './unit-conversion.service';
 import { effectiveUnitCost } from '../utils/product-cost';
 import { SettingService } from './setting.service';
+import { COLLECTED_PAYMENT_WHERE } from './report.service';
 import {
     getZonedMonthBounds,
     parseZonedDateStart,
@@ -15,7 +18,15 @@ import {
 type RecipeLine = {
     quantity: Prisma.Decimal | number | string;
     unit?: string | null;
-    product: { id: number; name: string; unit: string; currentAverageCost?: unknown; cost?: unknown };
+    unitOfMeasure?: { abbreviation: string } | null;
+    product: {
+        id: number;
+        name: string;
+        unit: string;
+        currentAverageCost?: unknown;
+        cost?: unknown;
+        baseUnit?: { abbreviation: string } | null;
+    };
 };
 
 type OrderItemWithRecipes = {
@@ -94,9 +105,11 @@ export class ReportExtendedService {
     private static async recipeQuantityInBase(companyId: number, recipe: {
         quantity: Prisma.Decimal | number | string;
         unit?: string | null;
-        product: { id: number; name: string; unit: string };
+        unitOfMeasure?: { abbreviation: string } | null;
+        product: { id: number; name: string; unit: string; baseUnit?: { abbreviation: string } | null };
     }): Promise<number> {
-        const recipeUnit = recipe.unit || recipe.product.unit;
+        // Same unit priority as the sales deduction (shared helper).
+        const recipeUnit = resolveRecipeUnit(recipe, recipe.product);
         try {
             return (await UnitConversionService.convert(
                 recipe.product.id, companyId, Number(recipe.quantity), recipeUnit
@@ -196,7 +209,7 @@ export class ReportExtendedService {
             if (!inWindow) continue;
             const value = movement.totalCost == null ? null : Number(movement.totalCost);
             if (value == null || !Number.isFinite(value) || value < 0) {
-                throw new Error(`El movimiento ORD ${movement.id} no tiene costo histÃ³rico Ã­ntegro; requiere remediaciÃ³n antes de reportar`);
+                throw new Error(`El movimiento ORD ${movement.id} no tiene costo histórico íntegro; requiere remediación antes de reportar`);
             }
             const signed = movement.type === 'OUT' ? value : -value;
             periodByOrderId.set(orderId, (periodByOrderId.get(orderId) || 0) + signed);
@@ -263,7 +276,7 @@ export class ReportExtendedService {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
         const [orders, timeZone] = await Promise.all([
             prisma.purchaseOrder.findMany({
-                where: { ...poWhere, status: 'RECEIVED' },
+                where: { ...poWhere, status: { in: [...RECEIVED_PURCHASE_STATUSES] } },
                 include: {
                     supplier: { select: { name: true } },
                     items: {
@@ -279,7 +292,7 @@ export class ReportExtendedService {
         for (const po of orders) {
             const day = zonedDateKey(po.date, timeZone);
             if (!byDay[day]) byDay[day] = { date: day, totalAmount: 0, orderCount: 0, itemCount: 0 };
-            byDay[day].totalAmount += Number(po.total);
+            byDay[day].totalAmount += purchaseOrderReceivedValue(po);
             byDay[day].orderCount += 1;
             byDay[day].itemCount += po.items.length;
         }
@@ -305,8 +318,8 @@ export class ReportExtendedService {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
         const [orders, timeZone] = await Promise.all([
             prisma.purchaseOrder.findMany({
-                where: { ...poWhere, status: 'RECEIVED' },
-                select: { date: true, total: true },
+                where: { ...poWhere, status: { in: [...RECEIVED_PURCHASE_STATUSES] } },
+                select: { date: true, total: true, status: true, receivedTotal: true },
                 orderBy: { date: 'asc' }
             }),
             SettingService.getTimezone(companyId)
@@ -316,7 +329,7 @@ export class ReportExtendedService {
         for (const po of orders) {
             const m = zonedMonthKey(po.date, timeZone);
             if (!byMonth[m]) byMonth[m] = { month: m, totalAmount: 0, orderCount: 0 };
-            byMonth[m].totalAmount += Number(po.total);
+            byMonth[m].totalAmount += purchaseOrderReceivedValue(po);
             byMonth[m].orderCount += 1;
         }
 
@@ -337,7 +350,7 @@ export class ReportExtendedService {
     }) {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
         const orders = await prisma.purchaseOrder.findMany({
-            where: { ...poWhere, status: 'RECEIVED' },
+            where: { ...poWhere, status: { in: [...RECEIVED_PURCHASE_STATUSES] } },
             include: {
                 supplier: { select: { id: true, name: true } },
                 items: {
@@ -359,9 +372,11 @@ export class ReportExtendedService {
         for (const po of orders) {
             for (const item of po.items) {
                 if (filters?.categoryId && item.product.categoryId !== filters.categoryId) continue;
+                const received = purchaseLineReceived(item);
+                if (!(received.fraction > 0)) continue;
                 if (item.baseCost == null || item.baseQuantity == null) {
                     excludedLegacyLines += 1;
-                    excludedLegacyAmount += Number(item.subtotal);
+                    excludedLegacyAmount += received.value;
                     continue;
                 }
                 const productKey = `${item.product.id}|${item.product.name}|${item.product.sku || ''}|${item.product.category?.name || ''}`;
@@ -373,7 +388,7 @@ export class ReportExtendedService {
                 // Compare supplier prices per BASE unit so purchases in different
                 // purchase units are ranked consistently.
                 const unitCost = Number(item.baseCost);
-                const qty = Number(item.baseQuantity);
+                const qty = Number(received.baseQuantity);
                 const entry = matrix[productKey][supplierKey];
                 entry.minCost = Math.min(entry.minCost, unitCost);
                 entry.maxCost = Math.max(entry.maxCost, unitCost);
@@ -429,7 +444,7 @@ export class ReportExtendedService {
     }) {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
         const orders = await prisma.purchaseOrder.findMany({
-            where: { ...poWhere, status: 'RECEIVED' },
+            where: { ...poWhere, status: { in: [...RECEIVED_PURCHASE_STATUSES] } },
             include: {
                 items: {
                     include: {
@@ -454,7 +469,9 @@ export class ReportExtendedService {
 
         for (const po of orders) {
             for (const item of po.items) {
-                const subtotal = Number(item.subtotal);
+                const received = purchaseLineReceived(item);
+                if (!(received.fraction > 0)) continue;
+                const subtotal = received.value;
                 totalSpent += subtotal;
                 if (item.baseQuantity == null || item.baseCost == null) {
                     excludedLegacyLines += 1;
@@ -472,7 +489,7 @@ export class ReportExtendedService {
                 }
                 // Accumulate volume in BASE units; subtotal is the unit-independent
                 // monetary total, so avgUnitCost ends up expressed per base unit.
-                productMap[item.productId].totalQuantity += Number(item.baseQuantity);
+                productMap[item.productId].totalQuantity += Number(received.baseQuantity);
                 productMap[item.productId].totalCost += subtotal;
                 normalizedSpent += subtotal;
                 productMap[item.productId].orderCount += 1;
@@ -507,7 +524,7 @@ export class ReportExtendedService {
     }) {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
         const orders = await prisma.purchaseOrder.findMany({
-            where: { ...poWhere, status: 'RECEIVED' },
+            where: { ...poWhere, status: { in: [...RECEIVED_PURCHASE_STATUSES] } },
             include: { supplier: { select: { id: true, name: true } } }
         });
 
@@ -519,7 +536,7 @@ export class ReportExtendedService {
             if (!supplierMap[po.supplierId]) {
                 supplierMap[po.supplierId] = { supplierName: po.supplier.name, totalAmount: 0, orderCount: 0 };
             }
-            supplierMap[po.supplierId].totalAmount += Number(po.total);
+            supplierMap[po.supplierId].totalAmount += purchaseOrderReceivedValue(po);
             supplierMap[po.supplierId].orderCount += 1;
         }
 
@@ -739,7 +756,7 @@ export class ReportExtendedService {
         }
         for (const credit of credits) {
             for (const line of credit.lines) {
-                const brandName = line.orderItem.menuItem.brand?.name || 'Sin Marca (ComÃºn)';
+                const brandName = line.orderItem.menuItem.brand?.name || 'Sin Marca (Común)';
                 if (!brandMap[brandName]) brandMap[brandName] = { brandName, totalSales: 0, itemCount: 0, unitsSold: 0 };
                 brandMap[brandName].totalSales -= Number(line.grossSubtotal);
                 brandMap[brandName].unitsSold -= line.quantity;
@@ -878,7 +895,9 @@ export class ReportExtendedService {
                     // Preserve the immutable gross receipt and subtract fiscal
                     // refunds below. A final note reverses the original payment,
                     // so filtering only ACTIVE rows would publish a negative-only result.
-                    payments: { include: { paymentMethod: { select: { name: true } } } }
+                    // Ordinary (non-fiscal) reversals are excluded: reverse +
+                    // re-collect would otherwise count the order twice.
+                    payments: { where: COLLECTED_PAYMENT_WHERE, include: { paymentMethod: { select: { name: true } } } }
                 }
             }),
             this.loadFiscalCredits(companyId, filters)
@@ -1013,7 +1032,8 @@ export class ReportExtendedService {
                                     select: {
                                         quantity: true,
                                         unit: true,
-                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
+                                        unitOfMeasure: { select: { abbreviation: true } },
+                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true, baseUnit: { select: { abbreviation: true } } } }
                                     }
                                 }
                             }
@@ -1194,7 +1214,8 @@ export class ReportExtendedService {
                                     select: {
                                         quantity: true,
                                         unit: true,
-                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
+                                        unitOfMeasure: { select: { abbreviation: true } },
+                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true, baseUnit: { select: { abbreviation: true } } } }
                                     }
                                 }
                             }
@@ -1226,7 +1247,8 @@ export class ReportExtendedService {
                                         select: {
                                             quantity: true,
                                             unit: true,
-                                            product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
+                                            unitOfMeasure: { select: { abbreviation: true } },
+                                            product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true, baseUnit: { select: { abbreviation: true } } } }
                                         }
                                     }
                                 }
@@ -1251,7 +1273,7 @@ export class ReportExtendedService {
             for (const line of credit.lines) {
                 const catName = line.orderItem.menuItem?.category?.name || UNCATEGORIZED_CATEGORY;
                 if (!catMap[catName]) catMap[catName] = { categoryName: catName, revenue: 0, cogs: 0 };
-                catMap[catName].revenue -= Number(line.subtotal);
+                catMap[catName].revenue -= Number(line.grossSubtotal);
             }
         }
 
@@ -1317,7 +1339,8 @@ export class ReportExtendedService {
                                     select: {
                                         quantity: true,
                                         unit: true,
-                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
+                                        unitOfMeasure: { select: { abbreviation: true } },
+                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true, baseUnit: { select: { abbreviation: true } } } }
                                     }
                                 }
                             }
@@ -1349,7 +1372,8 @@ export class ReportExtendedService {
                                         select: {
                                             quantity: true,
                                             unit: true,
-                                            product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
+                                            unitOfMeasure: { select: { abbreviation: true } },
+                                            product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true, baseUnit: { select: { abbreviation: true } } } }
                                         }
                                     }
                                 }
@@ -1396,7 +1420,7 @@ export class ReportExtendedService {
                 if (!menuItem) continue;
                 if (selectedCategoryIds && (!menuItem.categoryId || !selectedCategoryIds.has(menuItem.categoryId))) continue;
                 const product = ensureProduct(line.orderItem.menuItemId, menuItem.name, menuItem.category?.name || null);
-                product.revenue -= Number(line.subtotal);
+                product.revenue -= Number(line.grossSubtotal);
                 product.unitsSold -= line.quantity;
             }
         }

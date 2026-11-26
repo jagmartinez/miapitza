@@ -67,7 +67,7 @@ router.get('/attendance/policy', selfAttendance, validate({ query: {
 router.put('/attendance/policy', ownerManage, allowHrBodyFields(policyFields), validate({ body: {
     branchId: { type: 'number', integer: true, min: 1 }, timezone: { type: 'string', max: 64 },
     requireBiometric: { type: 'boolean' }, requireLiveness: { type: 'boolean' }, requireGeolocation: { type: 'boolean' },
-    maxLocationAccuracyM: { type: 'number', integer: true, min: 1, max: 5000 },
+    maxLocationAccuracyM: { type: 'number', integer: true, min: 10, max: 5000 },
     earlyCheckInMinutes: { type: 'number', integer: true, min: 0, max: 1440 },
     lateCheckInToleranceM: { type: 'number', integer: true, min: 0, max: 1440 },
     earlyCheckOutToleranceM: { type: 'number', integer: true, min: 0, max: 1440 },
@@ -100,6 +100,17 @@ router.post('/biometrics/users/:userId/revoke', biometricManage,
         userId: { type: 'number', required: true, integer: true, min: 1 },
     }, body: { reason: { type: 'string', required: true, min: 3, max: 500 } } }),
     HrAttendanceController.revokeUserBiometrics);
+router.get('/biometrics/enrollments/pending', biometricManage, validate({ query: {
+    branchId: { type: 'number', integer: true, min: 1 },
+} }), HrAttendanceController.listPendingEnrollments);
+router.post('/biometrics/users/:userId/approve', biometricManage, allowHrBodyFields([]), validate({ params: {
+    userId: { type: 'number', required: true, integer: true, min: 1 },
+} }), HrAttendanceController.approveEnrollment);
+router.post('/biometrics/users/:userId/reject', biometricManage,
+    allowHrBodyFields(['reason']), validate({ params: {
+        userId: { type: 'number', required: true, integer: true, min: 1 },
+    }, body: { reason: { type: 'string', required: true, min: 3, max: 500 } } }),
+    HrAttendanceController.rejectEnrollment);
 router.post('/biometrics/maintenance/run', biometricManage, allowHrBodyFields([]), HrAttendanceController.runBiometricMaintenance);
 router.get('/biometrics/provider/health', biometricManage, HrAttendanceController.biometricProviderHealth);
 

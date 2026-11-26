@@ -60,3 +60,167 @@
     gap: var(--ui-space-4);
   }
 }
+
+/* ===================================================================
+   RH visual system v2 — one rhythm for every RH screen.
+   Higher specificity than page sheets on purpose: page CSS keeps its
+   layout, this layer only harmonises spacing, type, tabs and tables.
+   =================================================================== */
+.page-wrapper[class*='hr-'] {
+  --hr-gap: var(--spacing-lg);
+  --hr-radius: var(--radius-xl);
+  --hr-muted-text: var(--ui-text-muted);
+  --hr-row-hover: color-mix(in srgb, var(--dialog-accent) 6%, transparent);
+  max-width: 1480px;
+  gap: var(--hr-gap);
+}
+
+/* Compact, consistent page header */
+.page-wrapper[class*='hr-'] > .page-header-bar {
+  align-items: flex-end;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.page-wrapper[class*='hr-'] > .page-header-bar h1 {
+  font-size: clamp(1.35rem, 1.05rem + 0.8vw, 1.7rem);
+  letter-spacing: -0.01em;
+}
+
+.page-wrapper[class*='hr-'] > .page-header-bar h1 svg {
+  width: 24px;
+  height: 24px;
+}
+
+.page-wrapper[class*='hr-'] > .page-header-bar .header-subtitle {
+  max-width: 78ch;
+  font-size: 0.88rem;
+  color: var(--hr-muted-text);
+}
+
+.page-wrapper[class*='hr-'] > .page-header-bar .page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+/* Tabs and segmented controls wrap instead of showing a scrollbar */
+.page-wrapper[class*='hr-'] :is(
+  .hr-admin-tab-toolbar,
+  .governance-tabs,
+  .hr-benefits-tabs,
+  .my-hr-tabs,
+  .hr-employee-tabs,
+  .payroll-operation-tabs
+) {
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  scrollbar-width: none;
+  row-gap: 6px;
+}
+
+/* Section titles inside cards */
+.page-wrapper[class*='hr-'] :is(section, .pr-table-card) > header h2,
+.page-wrapper[class*='hr-'] :is(.payroll-operation-section-heading, .payroll-operation-reporting) h3 {
+  font-size: 1.05rem;
+  letter-spacing: -0.005em;
+}
+
+.page-wrapper[class*='hr-'] :is(section, .pr-table-card) > header p {
+  font-size: 0.84rem;
+  color: var(--hr-muted-text);
+}
+
+/* Data tables: same header as the shared .catalog-table (components/CatalogView.css) */
+.page-wrapper[class*='hr-'] :is(.hr-admin-table, .payroll-run-table, .inventory-table) thead th {
+  background: var(--ui-bg);
+  color: var(--ui-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.page-wrapper[class*='hr-'] :is(.hr-admin-table, .payroll-run-table) :is(td, tbody th) {
+  padding-block: 11px;
+  vertical-align: middle;
+}
+
+.page-wrapper[class*='hr-'] :is(.hr-admin-table, .payroll-run-table) tbody tr {
+  transition: background-color 120ms ease;
+}
+
+.page-wrapper[class*='hr-'] :is(.hr-admin-table, .payroll-run-table) tbody tr:hover {
+  background: var(--ui-bg);
+}
+
+.page-wrapper[class*='hr-'] :is(td, dd, .hr-amount-cell, .payroll-operation-totals) {
+  font-variant-numeric: tabular-nums;
+}
+
+.page-wrapper[class*='hr-'] :is(td, tbody th) small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.74rem;
+  color: var(--hr-muted-text);
+}
+
+/* KPI strips share one look */
+.page-wrapper[class*='hr-'] :is(.payroll-operation-totals, .hr-receipt-totals, .hr-legal-readonly-kpis) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacing-sm);
+  margin: 0;
+}
+
+.page-wrapper[class*='hr-'] :is(.payroll-operation-totals, .hr-receipt-totals, .hr-legal-readonly-kpis) > div {
+  padding: 12px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-lg);
+  background: var(--hr-panel-muted);
+}
+
+.page-wrapper[class*='hr-'] :is(.payroll-operation-totals, .hr-receipt-totals, .hr-legal-readonly-kpis) dt {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hr-muted-text);
+}
+
+.page-wrapper[class*='hr-'] :is(.payroll-operation-totals, .hr-receipt-totals, .hr-legal-readonly-kpis) dd {
+  margin: 4px 0 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+/* Disclosure sections (audit, traces) read as quiet secondary content */
+.page-wrapper[class*='hr-'] details > summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.page-wrapper[class*='hr-'] details > summary:focus-visible {
+  outline: 2px solid var(--dialog-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+/* Form labels use small caps, but the controls nested inside a label must
+   keep the regular input typography (selects showed "SELECCIONAR…" in caps). */
+.page-wrapper[class*='hr-'] label :is(input, select, textarea, .hr-react-select, .react-select__control),
+.page-wrapper[class*='hr-'] label :is(.hr-react-select, .react-select__control) * {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: .875rem;
+  font-weight: 500;
+}
+
+.page-wrapper[class*='hr-'] label :is(.react-select__single-value, .react-select__input-container) {
+  color: var(--ui-text);
+}
+
+.page-wrapper[class*='hr-'] label .react-select__placeholder {
+  color: var(--ui-text-muted);
+}

@@ -30,9 +30,15 @@ function runNode(script: string, args: string[], env: NodeJS.ProcessEnv) {
 }
 
 async function main() {
-  dotenv.config({ path: path.join(rootDirectory, '.env.test'), override: true });
-  const sourceUrl = process.env.DATABASE_URL;
-  if (!sourceUrl) throw new Error('DATABASE_URL is required in .env.test');
+  const explicitSourceUrl = process.env.INTEGRATION_SOURCE_DATABASE_URL?.trim();
+  dotenv.config({
+    path: path.join(rootDirectory, '.env.test'),
+    override: !explicitSourceUrl,
+  });
+  const sourceUrl = explicitSourceUrl || process.env.DATABASE_URL;
+  if (!sourceUrl) {
+    throw new Error('DATABASE_URL is required in .env.test or INTEGRATION_SOURCE_DATABASE_URL');
+  }
 
   const parsed = new URL(sourceUrl);
   const sourceDatabase = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
@@ -40,8 +46,8 @@ async function main() {
     throw new Error(`Refusing integration tests outside a database ending in _test (received ${sourceDatabase || 'empty'})`);
   }
 
-  const stem = sourceDatabase.replace(/_test$/, '').slice(0, 30);
-  const disposableDatabase = `${stem}_it_${process.pid}_${Date.now()}_test`;
+  const stem = sourceDatabase.replace(/_test$/, '').slice(0, 20);
+  const disposableDatabase = `${stem}_it_${process.pid}_${Date.now()}_restore_test`;
   if (!/^[A-Za-z0-9_]+_test$/.test(disposableDatabase) || disposableDatabase.length > 64) {
     throw new Error('Unsafe disposable integration database name');
   }
@@ -91,6 +97,14 @@ async function main() {
       runNode(prismaCli, ['migrate', 'resolve', '--applied', migration], migratedEnv);
     }
     runNode(prismaCli, ['migrate', 'deploy'], migratedEnv);
+
+    const tsNodeCli = require.resolve('ts-node/dist/bin.js');
+    runNode(tsNodeCli, [
+      '--transpile-only',
+      path.join(rootDirectory, 'scripts/verify-restored-database.ts'),
+      '--target-database',
+      disposableDatabase,
+    ], migratedEnv);
 
     const jestCli = require.resolve('jest/bin/jest');
     runNode(jestCli, ['--config', 'jest.integration.config.cjs', '--runInBand', ...process.argv.slice(2)], migratedEnv);

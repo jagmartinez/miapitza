@@ -46,3 +46,10 @@ th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); tex
 
 /* Densidad compacta (preferencia del usuario). */
 :root[data-density='compact'] .ui-cell { padding-top: var(--ui-space-1); padding-bottom: var(--ui-space-1); }
+/* Tarjetas en teléfono (stackOnMobile): cada celda lleva la etiqueta de su columna. */
+.ui-table--stacked thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ui-table--stacked tbody tr, .ui-table--stacked tfoot tr { display: flex; flex-direction: column; align-items: stretch; gap: var(--ui-space-1); padding: var(--ui-space-3) var(--ui-space-4); }
+.ui-table--stacked td { display: flex; justify-content: space-between; align-items: center; gap: var(--ui-space-3); min-width: 0; padding: 0; text-align: right; overflow-wrap: anywhere; }
+.ui-table--stacked td[data-label]::before { content: attr(data-label); flex: none; max-width: 50%; color: var(--ui-text-muted); font-size: var(--ui-text-sm); font-weight: 500; text-align: left; }
+.ui-table--stacked td:not([data-label]) { justify-content: flex-end; }
+.ui-table--stacked .ui-table__empty td { justify-content: center; text-align: center; }

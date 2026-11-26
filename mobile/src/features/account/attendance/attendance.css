@@ -1,0 +1,15 @@
+.att-screen { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.att-camera { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+[hidden] { display: none; }
+.att-video { width: 100%; max-width: 320px; aspect-ratio: 1; object-fit: cover; border-radius: 50%; background: #000; transform: scaleX(-1); }
+.att-instruction { margin: 0; font-size: 24px; font-weight: 700; text-align: center; }
+.att-result { padding: 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.att-result h2 { margin: 0 0 6px; font-size: 18px; }
+.att-result[data-tone='ok'] { border-color: #3fb27f; }
+.att-result[data-tone='review'] { border-color: var(--ready); color: var(--ready); }
+.att-result[data-tone='rejected'] { border-color: var(--alert); }
+.att-result ul { margin: 8px 0 0; padding-left: 18px; font-size: 14px; color: var(--muted); }
+.att-error { color: var(--alert); }
+.att-consent { display: flex; align-items: center; gap: 10px; min-height: 48px; }
+.att-consent input { width: 24px; height: 24px; }
+.att-notice { white-space: pre-wrap; font-size: 14px; color: var(--muted); }

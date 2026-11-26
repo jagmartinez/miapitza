@@ -13,9 +13,13 @@ const selfSchedule = requirePermission('hr.schedule.self', ...Object.values(ROLE
 const idParam = { id: { type: 'number' as const, required: true, integer: true, min: 1 } };
 const weekRule = { type: 'string' as const, required: true, pattern: /^\d{4}-\d{2}-\d{2}$/ };
 
-const templateFields = [
+const templateCreateFields = [
     'branchId', 'jobPositionId', 'name', 'code', 'startTime', 'endTime',
-    'breakMinutes', 'paidBreak', 'notes', 'active',
+    'breakMinutes', 'paidBreak', 'notes', 'active', 'color',
+] as const;
+const templateUpdateFields = [
+    ...templateCreateFields,
+    'expectedRevision',
 ] as const;
 const templateBody = {
     branchId: { type: 'number' as const, integer: true, min: 1 },
@@ -28,22 +32,30 @@ const templateBody = {
     paidBreak: { type: 'boolean' as const },
     notes: { type: 'string' as const, max: 5000 },
     active: { type: 'boolean' as const },
+    color: { type: 'string' as const, pattern: /^#[0-9A-Fa-f]{6}$/ },
+    expectedRevision: { type: 'number' as const, integer: true, min: 0 },
 };
 
 router.get('/shift-templates', ownerRead, validate({ query: {
     branchId: { type: 'number', integer: true, min: 1 }, active: { type: 'boolean' },
 } }), HrScheduleController.listTemplates);
 router.get('/shift-templates/:id', ownerRead, validate({ params: idParam }), HrScheduleController.getTemplate);
-router.post('/shift-templates', ownerManage, allowHrBodyFields(templateFields), validate({ body: {
+router.post('/shift-templates', ownerManage, allowHrBodyFields(templateCreateFields), validate({ body: {
     ...templateBody,
-    branchId: { ...templateBody.branchId, required: true },
-    name: { ...templateBody.name, required: true }, code: { ...templateBody.code, required: true },
+    name: { ...templateBody.name, required: true },
     startTime: { ...templateBody.startTime, required: true }, endTime: { ...templateBody.endTime, required: true },
 } }), HrScheduleController.createTemplate);
-router.put('/shift-templates/:id', ownerManage, allowHrBodyFields(templateFields), validate({ params: idParam, body: templateBody }), HrScheduleController.updateTemplate);
-router.patch('/shift-templates/:id/status', ownerManage, allowHrBodyFields(['active']), validate({ params: idParam, body: {
-    active: { type: 'boolean', required: true },
+router.put('/shift-templates/:id', ownerManage, allowHrBodyFields(templateUpdateFields), validate({ params: idParam, body: {
+    ...templateBody,
+    expectedRevision: { ...templateBody.expectedRevision, required: true },
 } }), HrScheduleController.updateTemplate);
+router.patch('/shift-templates/:id/status', ownerManage, allowHrBodyFields(['active', 'expectedRevision']), validate({ params: idParam, body: {
+    active: { type: 'boolean', required: true },
+    expectedRevision: { type: 'number', required: true, integer: true, min: 0 },
+} }), HrScheduleController.updateTemplate);
+router.delete('/shift-templates/:id', ownerManage, validate({ params: idParam, query: {
+    expectedRevision: { type: 'number', required: true, integer: true, min: 0 },
+} }), HrScheduleController.deleteTemplate);
 
 router.get('/schedules', ownerRead, validate({ query: {
     weekStart: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/ },
@@ -51,6 +63,9 @@ router.get('/schedules', ownerRead, validate({ query: {
     branchId: { type: 'number', integer: true, min: 1 }, userId: { type: 'number', integer: true, min: 1 },
     jobPositionId: { type: 'number', integer: true, min: 1 },
 } }), HrScheduleController.listSchedules);
+router.get('/schedules/lookups', ownerRead, validate({ query: {
+    weekStart: weekRule,
+} }), HrScheduleController.scheduleLookups);
 router.get('/schedules/:id', ownerRead, validate({ params: idParam }), HrScheduleController.getSchedule);
 router.post('/schedules', ownerManage, allowHrBodyFields(['weekStart', 'notes', 'shifts']), validate({ body: {
     weekStart: weekRule, notes: { type: 'string', max: 5000 }, shifts: { type: 'array', max: 500 },
@@ -77,6 +92,7 @@ router.post('/schedules/:id/cancel', ownerPublish, allowHrBodyFields(['expectedR
 } }), HrScheduleController.cancelSchedule);
 router.post('/schedules/:id/acknowledge', selfSchedule, allowHrBodyFields([]), validate({ params: idParam }), HrScheduleController.acknowledge);
 router.get('/me/schedule', selfSchedule, validate({ query: { weekStart: weekRule } }), HrScheduleController.mySchedule);
+router.get('/team/schedule', selfSchedule, validate({ query: { weekStart: weekRule } }), HrScheduleController.teamSchedule);
 
 router.get('/swaps', ownerRead, validate({ query: {
     status: { type: 'string', enum: ['PENDING', 'ACCEPTED', 'APPROVED', 'REJECTED', 'CANCELLED'] },

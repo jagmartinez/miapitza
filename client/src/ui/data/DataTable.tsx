@@ -41,6 +41,8 @@ export interface DataTableProps<T> {
   onRowClick?(row: T): void;
   rowTone?(row: T): Tone | undefined;
   minWidth?: string;
+  /** En teléfonos (< 768 px) cada fila se muestra como tarjeta con la etiqueta de su columna. */
+  stackOnMobile?: boolean;
 }
 
 const NUMERIC: ColumnType[] = ['number', 'money', 'qty', 'percent'];
@@ -109,6 +111,7 @@ export function DataTable<T>({
   onRowClick,
   rowTone,
   minWidth = '48rem',
+  stackOnMobile = false,
 }: DataTableProps<T>) {
   const belowLg = useMediaMatch('(max-width: 1023px)');
   const belowMd = useMediaMatch('(max-width: 767px)');
@@ -130,7 +133,9 @@ export function DataTable<T>({
           },
         };
 
-  const gridStyle = { gridTemplateColumns: columnTemplate(columns as Column<unknown>[]) };
+  const stacked = stackOnMobile && belowMd;
+  const gridStyle = stacked ? undefined : { gridTemplateColumns: columnTemplate(columns as Column<unknown>[]) };
+  const labelOf = (c: Column<T>) => (stacked && typeof c.header === 'string' ? c.header : undefined);
   const hasTotals = columns.some((c) => c.total);
 
   const activate = (row: T, e: MouseEvent | KeyboardEvent) => {
@@ -142,7 +147,12 @@ export function DataTable<T>({
     <div className="ui-datatable">
       {toolbar}
       <div className="ui-datatable__scroll">
-        <table className="ui-table" aria-label={ariaLabel} aria-busy={loading ? 'true' : undefined} style={{ minWidth }}>
+        <table
+          className={stacked ? 'ui-table ui-table--stacked' : 'ui-table'}
+          aria-label={ariaLabel}
+          aria-busy={loading ? 'true' : undefined}
+          style={stacked ? undefined : { minWidth }}
+        >
           <thead>
             <tr style={gridStyle}>
               {columns.map((c) => (
@@ -157,7 +167,7 @@ export function DataTable<T>({
               Array.from({ length: 5 }, (_, i) => (
                 <tr key={`sk${i}`} style={gridStyle}>
                   {columns.map((c) => (
-                    <td key={c.key} className={cellClass(c)}>
+                    <td key={c.key} className={cellClass(c)} data-label={labelOf(c)}>
                       <Skeleton height={14} />
                     </td>
                   ))}
@@ -187,7 +197,7 @@ export function DataTable<T>({
                     }
                   >
                     {columns.map((c) => (
-                      <td key={c.key} className={cellClass(c)}>
+                      <td key={c.key} className={cellClass(c)} data-label={labelOf(c)}>
                         {formatCell(c, row)}
                       </td>
                     ))}
@@ -200,7 +210,7 @@ export function DataTable<T>({
             <tfoot>
               <tr style={gridStyle}>
                 {columns.map((c, i) => (
-                  <td key={c.key} className={cellClass(c)}>
+                  <td key={c.key} className={cellClass(c)} data-label={c.total ? labelOf(c) : undefined}>
                     {c.total
                       ? formatNumber(
                           visible.reduce((s, r) => s + coerceMoneyAmount(raw(c, r)), 0),

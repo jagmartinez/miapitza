@@ -1,0 +1,491 @@
+/* Long ticket: virtualized list, expanded row, Enviado box, ready card and the full ticket. */
+.ticket-head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ticket-head-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+/* Icon-only buttons in the ticket: borderless grey 48dp tile. */
+.ticket-head .icon-btn {
+    width: 48px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    color: var(--muted-2);
+}
+
+.vlist {
+    flex: 1;
+    min-height: 140px;
+    overflow-y: auto;
+}
+
+.vlist-inner {
+    position: relative;
+}
+
+.vlist-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.vlist .ticket-section {
+    height: 32px;
+    box-sizing: border-box;
+}
+
+.trow {
+    height: 100%;
+    box-sizing: border-box;
+    border-bottom: var(--hair) solid var(--divider);
+    display: flex;
+    flex-direction: column;
+}
+
+.trow[data-highlighted='true'] {
+    background: var(--surface-2);
+}
+
+/* Expanded row: a filled grey box with the stepper and the Nota / Quitar links. */
+.trow-open {
+    margin: 0 8px;
+    border-bottom-color: transparent;
+    background: var(--surface-2);
+    border-radius: 10px;
+}
+
+.trow-face {
+    flex: none;
+    height: 56px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    width: 100%;
+    text-align: left;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    font-size: 15px;
+}
+
+.trow-edit {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 10px 14px;
+}
+
+/* One outlined segment: minus | n | plus with hairline dividers. */
+.stepper-big {
+    margin-right: auto;
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-m);
+    overflow: hidden;
+}
+
+.stepper-btn {
+    min-width: 48px;
+    min-height: 48px;
+    padding: 0;
+    font-size: 20px;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+}
+
+.stepper-btn:disabled {
+    opacity: 0.4;
+}
+
+.stepper-n {
+    min-width: 44px;
+    display: grid;
+    place-items: center;
+    font-size: 16px;
+    font-weight: 500;
+    border-left: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+    font-variant-numeric: tabular-nums;
+}
+
+.row-link {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    font-size: 13px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+}
+
+.row-link:disabled {
+    opacity: 0.4;
+}
+
+/* Enviado: one filled grey box, a header line and a row per state (dot, label, chevron). */
+.sent-card {
+    width: calc(100% - 28px);
+    margin: 8px 14px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 4px 12px;
+    text-align: left;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 0;
+    border-radius: 10px;
+    font-size: 14px;
+}
+
+.sent-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 40px;
+}
+
+.sent-ver {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+}
+
+.sent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    box-sizing: border-box;
+    border-top: var(--hair) solid var(--line);
+    color: var(--muted);
+}
+
+.sent-line {
+    flex: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+}
+
+.sent-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text);
+}
+
+.sent-row[data-state='ready'] .sent-dot,
+.sent-dot[data-state='ready'] {
+    background: var(--ready);
+}
+
+.sent-row[data-state='delivered'] .sent-dot {
+    background: var(--faint);
+}
+
+.sent-row[data-state='delivered'] .sent-line {
+    color: var(--muted);
+}
+
+.ready-card {
+    margin: 8px 12px 0;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border: 1px solid var(--ready);
+    border-radius: 10px;
+}
+
+.ready-card-title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.ready-card-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 132px;
+    overflow-y: auto;
+}
+
+.ready-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 48px;
+}
+
+.ready-card-name {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* The one white pill in the ticket besides "Enviar a cocina". */
+.ready-deliver {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 92px;
+    min-height: 48px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--on-text);
+    background: var(--text);
+    border: 0;
+    border-radius: var(--radius-m);
+}
+
+.ready-deliver:disabled {
+    opacity: 0.4;
+}
+
+.ready-card-all {
+    min-height: 48px;
+    font-size: 14px;
+}
+
+/* Full ticket (landscape): header bar, filters left, grouped list right */
+.full {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+}
+
+.full-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 12px;
+    min-height: 56px;
+    box-sizing: border-box;
+    border-bottom: var(--hair) solid var(--line);
+}
+
+.full-total {
+    font-size: 20px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.full-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+}
+
+.full-side {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-right: var(--hair) solid var(--line);
+}
+
+.full-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Filter rows: 14px, active = solid white fill. */
+.filter-btn {
+    min-height: 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 14px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-m);
+}
+
+.filter-btn[aria-pressed='true'] {
+    color: var(--on-text);
+    background: var(--text);
+    font-weight: 500;
+}
+
+.filter-btn .sent-dot {
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.filter-count {
+    font-variant-numeric: tabular-nums;
+}
+
+.full-main {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.full-main .ticket-section {
+    padding-left: 16px;
+    padding-right: 16px;
+}
+
+.frow-sum {
+    font-variant-numeric: tabular-nums;
+}
+
+.frow {
+    height: 100%;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) 150px 90px 110px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: var(--hair) solid var(--divider);
+}
+
+.frow-state {
+    justify-self: end;
+    padding: 2px 8px;
+    font-size: 12px;
+    color: var(--muted-2);
+    background: var(--surface-2);
+    border-radius: var(--radius-s);
+    white-space: nowrap;
+}
+
+.frow[data-state='new'] .frow-state {
+    padding: 0;
+    background: transparent;
+    color: var(--muted);
+}
+
+.frow[data-state='ready'] .frow-state {
+    color: var(--ready);
+    background: var(--ready-bg);
+}
+
+.frow[data-state='delivered'] .qty-badge,
+.frow[data-state='delivered'] .row-name,
+.frow[data-state='delivered'] .row-price {
+    color: var(--muted);
+}
+
+.frow .row-price {
+    min-width: 0;
+}
+
+.deliver-btn {
+    width: 100%;
+    min-width: 0;
+    padding: 0 8px;
+}
+
+.full-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 8px 16px;
+    border-top: var(--hair) solid var(--line);
+}
+
+.full-foot .btn {
+    min-height: 48px;
+    padding: 0 22px;
+    font-size: 14px;
+}
+
+.ticket-unsent {
+    align-self: flex-end;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Subtotal, discount (with its reason chip), IVA and tip above the total: muted and small, subordinate to the Total. */
+.ticket-pricing {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.ticket-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.ticket-chip {
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 1px 8px;
+    font-size: 11px;
+    border-radius: var(--radius-s);
+    background: var(--surface-2);
+    color: var(--muted-2);
+}
+
+/* Short landscape screens: the list keeps its minimum height and the ticket panel scrolls instead. */
+@media (max-height: 480px) {
+    .ticket-head {
+        padding: 4px 14px;
+    }
+
+    .ticket-foot {
+        position: sticky;
+        bottom: 0;
+        background: var(--surface);
+        gap: 6px;
+        padding: 6px 14px 8px;
+    }
+
+    .ticket-total strong {
+        font-size: 18px;
+    }
+
+    .ticket-send {
+        min-height: 48px;
+        font-size: 15px;
+    }
+}
+
+.full-bar .grow,
+.full-side .grow {
+    flex: 1;
+}

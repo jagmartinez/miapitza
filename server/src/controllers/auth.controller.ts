@@ -1,7 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../services/auth.service';
+import { createHash } from 'node:crypto';
+import { AuthService, DeviceAuthError } from '../services/auth.service';
+import { PinService, PinError } from '../services/pin.service';
 import { SessionService } from '../services/session.service';
 import { TwoFactorService } from '../services/twoFactor.service';
+import { AuditLogService } from '../services/audit-log.service';
+import { getManualDiscountLimit } from '../services/discount-authorization.service';
+import prisma from '../utils/prisma';
+import {
+    isPlatformOperator,
+    parseCompanyIdInput,
+    resolveActingCompanyId,
+    TenantScopeError,
+} from '../utils/tenant-scope';
 
 export class AuthController {
     private static extractToken(req: Request): string {
@@ -25,14 +36,28 @@ export class AuthController {
     }
 
     static async me(req: Request, res: Response, next: NextFunction) {
+        const user = req.user;
+        if (!user) return next({ statusCode: 401, message: 'Sesión inválida' });
         try {
-            // req.user is set by auth middleware — return fresh user data
+            // req.user is set by auth middleware. PIN status is a DB read: its failure is not an auth failure.
+            const { hasPin, canUsePin } = await PinService.pinStatus(user.userId);
             res.json({
                 success: true,
-                data: req.user
+                data: { ...user, hasPin, canUsePin }
             });
-        } catch {
-            next({ statusCode: 401, message: 'Sesión inválida' });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /** GET /auth/me/discount-limit -- the caller's own manual-discount limit (% of subtotal). */
+    static async myDiscountLimit(req: Request, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) return next({ statusCode: 401, message: 'No autenticado' });
+            const limitPercent = await getManualDiscountLimit(req.user);
+            res.json({ success: true, data: { limitPercent } });
+        } catch (error) {
+            next(error);
         }
     }
 
@@ -59,12 +84,16 @@ export class AuthController {
             if (!roleId || typeof roleId !== 'number') {
                 return next({ statusCode: 400, message: 'roleId válido requerido' });
             }
-            const isSuperAdmin = requestUser.roles?.includes('SUPERADMIN') || requestUser.role === 'SUPERADMIN';
-            const resolvedCompanyId = isSuperAdmin ? companyId : requestUser.companyId;
+            const requestedCompanyId = parseCompanyIdInput(companyId);
+            const resolvedCompanyId = await resolveActingCompanyId(
+                requestUser,
+                requestedCompanyId,
+                { requireActiveTarget: true },
+            );
             if (!resolvedCompanyId || typeof resolvedCompanyId !== 'number') {
                 return next({ statusCode: 400, message: 'companyId válido requerido' });
             }
-            const actingRoles = requestUser.roles || [requestUser.role];
+            const canAssignGlobalRoles = isPlatformOperator(requestUser);
             // Only pass allowed fields — prevent mass assignment
             const user = await AuthService.register({
                 name,
@@ -74,14 +103,16 @@ export class AuthController {
                 roleId,
                 branchId,
                 companyId: resolvedCompanyId
-            }, actingRoles);
+            }, canAssignGlobalRoles);
             res.status(201).json({
                 success: true,
                 message: 'Usuario registrado exitosamente',
                 data: user
             });
         } catch (error) {
-            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+            next(error instanceof TenantScopeError
+                ? error
+                : { statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
 
@@ -117,6 +148,20 @@ export class AuthController {
             res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
+            const attemptedUsername = typeof req.body?.username === 'string'
+                ? req.body.username.trim().toLocaleLowerCase('en-US')
+                : '';
+            console.warn('[AUTH] Login rejected', {
+                usernameHash: attemptedUsername
+                    ? createHash('sha256').update(attemptedUsername).digest('hex').slice(0, 16)
+                    : null,
+                ipAddress: req.ip || null,
+                reason: msg.includes('JWT_SECRET')
+                    ? 'CONFIGURATION'
+                    : /prisma|ECONNREFUSED|P1001|P1017|can.t reach database/i.test(msg)
+                        ? 'DATABASE_UNAVAILABLE'
+                        : 'AUTHENTICATION_FAILED',
+            });
             if (msg.includes('JWT_SECRET')) {
                 // Missing server configuration is not a client auth failure.
                 return next({ statusCode: 503, message: 'Servicio no disponible: configuración del servidor incompleta' });
@@ -128,6 +173,99 @@ export class AuthController {
                 });
             }
             next({ statusCode: 401, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
+    private static deviceTokenOf(req: Request): string {
+        const header = req.headers['x-device-token'];
+        return typeof header === 'string' ? header : '';
+    }
+
+    /** Shared failure mapping for device/PIN endpoints. Never logs tokens or PINs. */
+    private static handleDeviceAuthError(label: string, error: unknown, req: Request, next: NextFunction) {
+        const msg = error instanceof Error ? error.message : String(error);
+        const dbDown = /prisma|ECONNREFUSED|P1001|P1017|can.t reach database/i.test(msg);
+        console.warn(`[AUTH] ${label} rejected`, {
+            ipAddress: req.ip || null,
+            reason: msg.includes('JWT_SECRET')
+                ? 'CONFIGURATION'
+                : dbDown ? 'DATABASE_UNAVAILABLE' : 'AUTHENTICATION_FAILED',
+        });
+        if (msg.includes('JWT_SECRET')) {
+            return next({ statusCode: 503, message: 'Servicio no disponible: configuración del servidor incompleta' });
+        }
+        if (dbDown) {
+            return next({ statusCode: 503, message: 'No se pudo conectar a la base de datos.' });
+        }
+        // Every authentication failure is the same generic 401.
+        return next({ statusCode: 401, message: 'Credenciales inválidas' });
+    }
+
+    static async deviceRoster(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { roster, branch } = await AuthService.deviceRosterWithBranch(AuthController.deviceTokenOf(req));
+            // `data` stays the bare array (older apps); `branch` is additive.
+            res.json({ success: true, data: roster, branch });
+        } catch (error) {
+            AuthController.handleDeviceAuthError('Device roster', error, req, next);
+        }
+    }
+
+    static async pinLogin(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId, pin } = req.body;
+            if (!Number.isInteger(userId) || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) {
+                return next({ statusCode: 401, message: 'Credenciales inválidas' });
+            }
+            const result = await AuthService.pinLogin({
+                deviceToken: AuthController.deviceTokenOf(req),
+                userId,
+                pin,
+                ip: req.ip || (req.headers['x-forwarded-for'] as string) || '',
+                userAgent: req.headers['user-agent'] || '',
+            });
+            res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
+        } catch (error) {
+            AuthController.handleDeviceAuthError('PIN login', error, req, next);
+        }
+    }
+
+    static async deviceLogin(req: Request, res: Response, next: NextFunction) {
+        try {
+            const result = await AuthService.deviceLogin({
+                deviceToken: AuthController.deviceTokenOf(req),
+                ip: req.ip || (req.headers['x-forwarded-for'] as string) || '',
+                userAgent: req.headers['user-agent'] || '',
+            });
+            res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
+        } catch (error) {
+            if (error instanceof DeviceAuthError) {
+                console.warn('[AUTH] Device login rejected', { ipAddress: req.ip || null, reason: error.code });
+                return next({ statusCode: error.statusCode, code: error.code, message: error.message });
+            }
+            const bag = error as { name?: unknown; code?: unknown } | null;
+            const isPrisma = (typeof bag?.name === 'string' && bag.name.startsWith('PrismaClient'))
+                || (typeof bag?.code === 'string' && /^P\d{4}$/.test(bag.code));
+            if (isPrisma) return next(error);
+            AuthController.handleDeviceAuthError('Device login', error, req, next);
+        }
+    }
+
+    static async setMyPin(req: Request, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) return next({ statusCode: 401, message: 'No autenticado' });
+            await PinService.setPin(
+                req.user.userId,
+                req.body?.pin,
+                req.body?.currentPassword,
+                req.ip || (req.headers['x-forwarded-for'] as string) || '',
+            );
+            res.json({ success: true, message: 'PIN actualizado' });
+        } catch (error) {
+            if (error instanceof PinError) {
+                return next({ statusCode: error.statusCode, message: error.message });
+            }
+            next(error);
         }
     }
 
@@ -154,7 +292,17 @@ export class AuthController {
         try {
             const token = AuthController.extractToken(req);
             if (token) {
-                await SessionService.revokeByToken(token);
+                await prisma.$transaction(async (tx) => {
+                    await SessionService.revokeByToken(token, tx);
+                    await AuditLogService.log({
+                        companyId: req.user!.companyId,
+                        userId: req.user!.userId,
+                        entityType: 'UserSession',
+                        entityId: req.user!.userId,
+                        action: 'LOGOUT',
+                        details: { currentSession: true },
+                    }, tx);
+                });
             }
             res.clearCookie('auth_token', { path: '/' });
             res.json({ success: true, message: 'Sesión cerrada' });

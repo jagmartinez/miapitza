@@ -18,6 +18,7 @@ const purchase = {
         {
             productId: 10,
             quantity: 2,
+            receivedQuantity: 2,
             cost: 10,
             baseQuantity: 10,
             baseCost: 2,
@@ -30,6 +31,7 @@ const purchase = {
         {
             productId: 11,
             quantity: 3,
+            receivedQuantity: 3,
             cost: 10,
             baseQuantity: null,
             baseCost: null,
@@ -100,5 +102,26 @@ describe('purchase reporting UOM integrity', () => {
             excludedLegacyLines: 1,
             excludedLegacyAmount: 30,
         }));
+    });
+
+    it('counts only the received share of a partially received line', async () => {
+        const partial = {
+            ...purchase,
+            status: 'PARTIALLY_RECEIVED',
+            items: [{ ...purchase.items[0], receivedQuantity: 1 }, { ...purchase.items[1], receivedQuantity: 0 }]
+        };
+        jest.spyOn(prisma.purchaseOrder, 'findMany').mockResolvedValue([partial] as never);
+        jest.spyOn(prisma.order, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.inventoryMovement, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.fiscalCreditNote, 'findMany').mockResolvedValue([] as never);
+
+        const report = await ReportService.getCostReport(1);
+        const most = await ReportExtendedService.getMostPurchasedProducts(1);
+
+        // 1 of 2 kg arrived: 10 money, 5 base units; the unreceived line is out.
+        expect(report.summary).toEqual(expect.objectContaining({ totalPurchaseCost: 10, excludedLegacyPurchaseLines: 0 }));
+        expect(report.byProduct[0]).toEqual(expect.objectContaining({ totalQuantity: 5, totalCost: 10 }));
+        expect(most.summary.totalSpent).toBe(10);
+        expect(most.items[0]).toEqual(expect.objectContaining({ totalQuantity: 5 }));
     });
 });

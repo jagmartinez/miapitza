@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse } from '../types';
 import './Inventory.css';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, PageHeader, type Column, formatNumber } from '@/ui';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, LoadErrorState, PageHeader, type Column, formatNumber } from '@/ui';
+import { getApiErrorMessage } from '../utils/apiError';
 
 function axiosMessage(err: unknown, fallback: string): string {
     if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -55,6 +56,7 @@ export default function Warehouses() {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [warehouseTypeFilter, setWarehouseTypeFilter] = useState<'ALL' | 'CENTRAL' | 'BRANCH'>('ALL');
     const { viewMode, setViewMode } = useViewMode('warehouses');
 
@@ -85,6 +87,7 @@ export default function Warehouses() {
     useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
+        setLoading(true);
         try {
             const [whRes, brRes, prRes] = await Promise.all([
                 warehousesAPI.getAll(),
@@ -94,8 +97,10 @@ export default function Warehouses() {
             setWarehouses(whRes.data.data);
             setBranches(brRes.data.data);
             setProducts(prRes.data.data || []);
+            setLoadError(null);
         } catch (e) {
             console.error(e);
+            setLoadError(getApiErrorMessage(e, 'No se pudieron cargar las bodegas y sus catálogos (no se asumirá que el inventario está vacío)'));
         } finally {
             setLoading(false);
         }
@@ -146,8 +151,8 @@ export default function Warehouses() {
             setStock(res.data.data || []);
             setSelectedWarehouse(wh);
             setShowStock(true);
-        } catch {
-            showError('Error al cargar stock');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'Error al cargar stock'));
         }
     };
 
@@ -212,8 +217,8 @@ export default function Warehouses() {
             const res = await inventoryMovementsAPI.getAll({ type: 'TRANSFER' });
             setTransferHistory(res.data.data || []);
             setShowHistory(true);
-        } catch {
-            showError('Error al cargar historial');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'Error al cargar historial de transferencias'));
         }
     };
 
@@ -258,6 +263,7 @@ export default function Warehouses() {
     return (
         <div className="inventory-page">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />}
 
             <PageHeader
                 title="Gestión de Bodegas"

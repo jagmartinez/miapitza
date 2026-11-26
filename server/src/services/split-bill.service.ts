@@ -65,13 +65,13 @@ export class SplitBillService {
     /**
      * Split order evenly among N people
      */
-    static async splitEvenly(orderId: number, companyId: number, numberOfPeople: number) {
+    static async splitEvenly(orderId: number, companyId: number, numberOfPeople: number, branchId?: number) {
         if (!Number.isInteger(numberOfPeople) || numberOfPeople < 1) {
             throw new Error('Number of people must be at least 1');
         }
 
         const order = await prisma.order.findFirst({
-            where: { id: orderId, companyId },
+            where: { id: orderId, companyId, ...(branchId !== undefined ? { branchId } : {}) },
             include: {
                 items: {
                     include: { menuItem: true, modifiers: true }
@@ -123,12 +123,16 @@ export class SplitBillService {
     static async splitByItems(
         orderId: number,
         companyId: number,
-        itemAssignments: SplitBillItemAssignment[]
+        itemAssignments: SplitBillItemAssignment[],
+        branchId?: number
     ) {
         const order = await prisma.order.findFirst({
-            where: { id: orderId, companyId },
+            where: { id: orderId, companyId, ...(branchId !== undefined ? { branchId } : {}) },
             include: {
                 items: {
+                    // Kitchen-voided rows (quantity 0) are not billable and
+                    // must not be required in the assignment.
+                    where: { quantity: { gt: 0 } },
                     include: { menuItem: true, modifiers: true }
                 },
                 payments: { where: { status: 'ACTIVE' }, select: { amount: true, payerName: true } }
@@ -233,6 +237,9 @@ export class SplitBillService {
         }>> = normalizedAssignments.map(() => []);
         const personSubtotalCents = normalizedAssignments.map(() => 0);
         const personQuantityWeights = normalizedAssignments.map(() => 0);
+        // Promotion discount attributed to specific lines (per-item, combo,
+        // happy hour) follows the units of that line to whoever takes them.
+        const personAttributedDiscountCents = normalizedAssignments.map(() => 0);
 
         for (const orderItem of order.items) {
             const allocations = normalizedAssignments.flatMap((assignment, assignmentIndex) => {
@@ -243,8 +250,13 @@ export class SplitBillService {
                 Math.round(Number(orderItem.subtotal) * 100),
                 allocations.map((allocation) => allocation.quantity)
             );
+            const lineDiscountShares = this.distributeCents(
+                Math.round(Number(orderItem.promotionDiscount || 0) * 100) || 0,
+                allocations.map((allocation) => allocation.quantity)
+            );
             allocations.forEach((allocation, allocationIndex) => {
                 const subtotalCents = subtotalShares[allocationIndex];
+                personAttributedDiscountCents[allocation.assignmentIndex] += lineDiscountShares[allocationIndex];
                 personSubtotalCents[allocation.assignmentIndex] += subtotalCents;
                 personQuantityWeights[allocation.assignmentIndex] += allocation.quantity;
                 personItems[allocation.assignmentIndex].push({
@@ -264,9 +276,26 @@ export class SplitBillService {
         const monetaryWeights = personSubtotalCents.some((weight) => weight > 0)
             ? personSubtotalCents
             : personQuantityWeights;
-        const discountShares = this.distributeCents(discountCents, monetaryWeights);
-        const taxShares = this.distributeCents(taxCents, monetaryWeights);
-        const tipShares = this.distributeCents(tipCents, monetaryWeights);
+        const attributedCents = personAttributedDiscountCents.reduce((sum, value) => sum + value, 0);
+        const useAttribution = attributedCents > 0 && attributedCents <= discountCents;
+        let discountShares: number[];
+        let fiscalWeights = monetaryWeights;
+        if (useAttribution) {
+            // Attributed part stays with its lines; any unattributed remainder
+            // and tax/tip follow each person's net (post-discount) subtotal,
+            // the same basis fiscal credit notes use.
+            const remainderShares = this.distributeCents(
+                discountCents - attributedCents,
+                personSubtotalCents.map((subtotal, index) => Math.max(0, subtotal - personAttributedDiscountCents[index]))
+            );
+            discountShares = personAttributedDiscountCents.map((value, index) => value + remainderShares[index]);
+            const netWeights = personSubtotalCents.map((subtotal, index) => Math.max(0, subtotal - discountShares[index]));
+            if (netWeights.some((weight) => weight > 0)) fiscalWeights = netWeights;
+        } else {
+            discountShares = this.distributeCents(discountCents, monetaryWeights);
+        }
+        const taxShares = this.distributeCents(taxCents, fiscalWeights);
+        const tipShares = this.distributeCents(tipCents, fiscalWeights);
         const componentTotals = personSubtotalCents.map((subtotal, index) =>
             subtotal - discountShares[index] + taxShares[index] + tipShares[index]
         );
@@ -382,9 +411,9 @@ export class SplitBillService {
     static async splitByAmount(orderId: number, companyId: number, customSplits: {
         personName: string;
         amount: number;
-    }[]) {
+    }[], branchId?: number) {
         const order = await prisma.order.findFirst({
-            where: { id: orderId, companyId },
+            where: { id: orderId, companyId, ...(branchId !== undefined ? { branchId } : {}) },
             include: { payments: { where: { status: 'ACTIVE' }, select: { amount: true } } }
         });
 

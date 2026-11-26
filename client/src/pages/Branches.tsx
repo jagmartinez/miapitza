@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { branchesAPI, hrAPI, type BranchGeofencePayload } from '../services/api';
 import ViewToggle from '../components/ViewToggle';
+import BranchWarehouseRoutes from '../components/BranchWarehouseRoutes';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store, AlertTriangle, LocateFixed } from 'lucide-react';
 import type { Branch } from '../types';
@@ -8,6 +9,9 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
+import { MIN_LOCATION_ACCURACY_M } from '../components/hr/attendanceSettingsRules';
 import './Branches.css';
 import { AppSelect, Button, DataTable, Field, FullScreenModal, type Column, PageHeader } from '@/ui';
 
@@ -24,6 +28,8 @@ interface BranchFormData {
     timezone: string;
     attendanceEnabled: boolean;
     geofenceVersion?: number;
+    /** Default sale warehouse (auto-delivery / POS availability); null = automatic. */
+    defaultSaleWarehouseId: number | null;
 }
 
 const resolvedBrowserTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -36,10 +42,11 @@ const emptyBranchForm = (timezone = resolvedBrowserTimezone()): BranchFormData =
     status: 'ACTIVE',
     latitude: '',
     longitude: '',
-    geofenceRadiusM: '',
-    maxLocationAccuracyM: '',
+    geofenceRadiusM: '100',
+    maxLocationAccuracyM: '30',
     timezone,
     attendanceEnabled: false,
+    defaultSaleWarehouseId: null,
 });
 
 export default function Branches() {
@@ -73,7 +80,7 @@ export default function Branches() {
 
         } catch (error) {
             console.error('Error loading data:', error);
-            setLoadError('No fue posible cargar las sucursales.');
+            setLoadError(getApiErrorMessage(error, 'No fue posible cargar las sucursales'));
         } finally {
             setLoading(false);
         }
@@ -124,8 +131,8 @@ export default function Branches() {
             setActiveTab('ubicacion');
             return;
         }
-        if (latitude !== null && (maxLocationAccuracyM === null || !Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < 1 || maxLocationAccuracyM > 5000)) {
-            showError('Define una precisión GPS máxima entera entre 1 y 5000 metros.');
+        if (latitude !== null && (maxLocationAccuracyM === null || !Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < MIN_LOCATION_ACCURACY_M || maxLocationAccuracyM > 5000)) {
+            showError(`Define una precisión GPS máxima entera entre ${MIN_LOCATION_ACCURACY_M} y 5000 metros. Los teléfonos rara vez garantizan menos de ${MIN_LOCATION_ACCURACY_M} m.`);
             setActiveTab('ubicacion');
             return;
         }
@@ -159,6 +166,9 @@ export default function Branches() {
             ...(formData.geofenceVersion !== undefined ? { expectedVersion: formData.geofenceVersion } : {}),
         };
 
+        const defaultSaleWarehouseChanged = !!editingBranch
+            && (editingBranch.defaultSaleWarehouseId ?? null) !== formData.defaultSaleWarehouseId;
+
         setSaving(true);
         try {
             let savedBranch = editingBranch;
@@ -173,8 +183,14 @@ export default function Branches() {
                         status: branchPayload.status,
                     });
                     savedBranch = editingBranch;
+                    if (defaultSaleWarehouseChanged) {
+                        await branchesAPI.update(editingBranch.id, { defaultSaleWarehouseId: formData.defaultSaleWarehouseId });
+                    }
                 } else {
-                    const response = await branchesAPI.update(editingBranch.id, branchPayload);
+                    const response = await branchesAPI.update(editingBranch.id, {
+                        ...branchPayload,
+                        ...(defaultSaleWarehouseChanged ? { defaultSaleWarehouseId: formData.defaultSaleWarehouseId } : {}),
+                    });
                     savedBranch = response.data.data as Branch;
                 }
             } else {
@@ -210,7 +226,7 @@ export default function Branches() {
             await loadData();
         } catch (error) {
             console.error('Error deleting branch:', error);
-            showError('Error al desactivar la sucursal');
+            showError(getApiErrorMessage(error, 'Error al desactivar la sucursal'));
         }
     };
 
@@ -234,6 +250,7 @@ export default function Branches() {
                 timezone: branch.timezone || user?.timezone || resolvedBrowserTimezone(),
                 attendanceEnabled: branch.attendanceEnabled ?? false,
                 geofenceVersion: branch.geofenceVersion,
+                defaultSaleWarehouseId: branch.defaultSaleWarehouseId ?? null,
             });
         } else {
             setEditingBranch(null);
@@ -260,7 +277,7 @@ export default function Branches() {
                 }
             } catch (error) {
                 console.error('Error loading branch geofence:', error);
-                showWarning('No se pudo actualizar la geocerca desde el servidor; se muestran los datos disponibles de la sucursal.');
+                notifyError(error, 'No se pudo actualizar la geocerca desde el servidor (se muestran los datos disponibles de la sucursal)', { type: 'warning' });
             } finally {
                 setGeofenceLoading(false);
             }
@@ -633,6 +650,46 @@ export default function Branches() {
                                             }); }} />
 </Field>
                                     )}
+
+                                    {editingBranch && (() => {
+                                        const saleWarehouses = (editingBranch.warehouses ?? [])
+                                            .filter((warehouse) => !warehouse.type || warehouse.type === 'BRANCH');
+                                        const automatic = { value: 0, label: 'Automática (única bodega de sucursal)' };
+                                        const options = [
+                                            automatic,
+                                            ...saleWarehouses.map((warehouse) => ({
+                                                value: warehouse.id,
+                                                label: warehouse.code ? `${warehouse.name} (${warehouse.code})` : warehouse.name,
+                                            })),
+                                        ];
+                                        return (
+                                            <div className="modal-input-group">
+                                                <Field label="Bodega de venta predeterminada" htmlFor="branch-default-sale-warehouse">
+                                                    <AppSelect
+                                                        isClearable={false}
+                                                        inputId="branch-default-sale-warehouse"
+                                                        options={options}
+                                                        value={formData.defaultSaleWarehouseId ?? 0}
+                                                        onChange={(v) => setFormData({
+                                                            ...formData,
+                                                            defaultSaleWarehouseId: v !== null && Number(v) > 0 ? Number(v) : null,
+                                                        })}
+                                                    />
+                                                </Field>
+                                                <small style={{ color: 'var(--ui-text-muted)' }}>
+                                                    Se usa para la entrega automática y la disponibilidad del POS. Con varias bodegas y sin predeterminada, la entrega requiere elegir bodega.
+                                                </small>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {editingBranch && (
+                                        <BranchWarehouseRoutes
+                                            branchId={editingBranch.id}
+                                            warehouses={editingBranch.warehouses ?? []}
+                                            canEdit={hasAnyRole(user, ['SUPERADMIN', 'ADMIN'])}
+                                        />
+                                    )}
                                 </div>
                             )}
 
@@ -757,11 +814,11 @@ export default function Branches() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-max-accuracy">Precisión GPS máxima (m)</label>
+                                            <label className="modal-input-label" htmlFor="branch-max-accuracy">Margen máximo de error GPS (m)</label>
                                             <input
                                                 id="branch-max-accuracy"
                                                 type="number"
-                                                min="1"
+                                                min={MIN_LOCATION_ACCURACY_M}
                                                 max="5000"
                                                 step="1"
                                                 className="modal-standard-input"
@@ -772,6 +829,19 @@ export default function Branches() {
                                             />
                                         </div>
                                     </div>
+
+                                    {formData.attendanceEnabled && Number(formData.maxLocationAccuracyM) < 20 && (
+                                        <div className="branch-geofence-warning" role="status">
+                                            <AlertTriangle size={17} aria-hidden="true" />
+                                            <span><strong>Configuración GPS estricta.</strong> Los teléfonos normalmente no garantizan menos de 10–15 m. Usa 20–30 m como punto de partida y valida en el local.</span>
+                                        </div>
+                                    )}
+                                    {formData.attendanceEnabled && Number(formData.geofenceRadiusM) < 50 && (
+                                        <div className="branch-geofence-warning" role="status">
+                                            <AlertTriangle size={17} aria-hidden="true" />
+                                            <span><strong>Geocerca muy pequeña.</strong> Un radio menor de 50 m puede rechazar personal dentro del local por deriva GPS. El valor inicial recomendado es 100 m.</span>
+                                        </div>
+                                    )}
 
                                     <div className="modal-input-group">
                                         <label className="modal-input-label" htmlFor="branch-timezone">Zona horaria IANA</label>

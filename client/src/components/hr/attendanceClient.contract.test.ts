@@ -20,6 +20,9 @@ describe('Phase 3 attendance API contract', () => {
     expect(source).toContain('`${HR_BASE}/biometrics/users/${userId}/revoke`');
     expect(source).toContain('`${HR_BASE}/biometrics/maintenance/run`');
     expect(source).toContain('`${HR_BASE}/biometrics/provider/health`');
+    expect(source).toContain('`${HR_BASE}/biometrics/enrollments/pending`');
+    expect(source).toContain('`${HR_BASE}/biometrics/users/${userId}/approve`');
+    expect(source).toContain('`${HR_BASE}/biometrics/users/${userId}/reject`');
   });
 
   it('sends evidence as multipart and requires idempotency headers', () => {
@@ -48,6 +51,7 @@ describe('Phase 3 attendance API contract', () => {
     const captureSources = [
       './CameraCapture.tsx',
       './AttendancePunchWizard.tsx',
+      './attendanceRules.ts',
       '../../pages/hr/Biometrics.tsx',
     ]
       .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))

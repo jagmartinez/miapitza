@@ -14,11 +14,13 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  TrendingUp,
   UserRound,
   UsersRound,
   X,
 } from 'lucide-react';
 import { DataTable, FullScreenModal, formatMoney, formatPercent, Button } from '@/ui';
+import { HrSection, HrSplit } from './layout/HrWorkspace';
 import type {
   HrPayrollAction,
   HrPayrollComponent,
@@ -44,6 +46,10 @@ const ACTION_HELP: Partial<Record<HrPayrollAction, string>> = {
   APPROVE: 'Confirma los importes que serán pagados a los empleados.',
   MARK_PAID: 'Registra el pago y publica las colillas para cada empleado.',
 };
+
+function oneDecimal(value: number): string {
+  return value.toFixed(1);
+}
 
 function moneyNumber(value?: string | null): number | null {
   if (value == null || value.trim() === '') return null;
@@ -110,6 +116,8 @@ interface PayrollOperationWorkspaceProps {
   onExport: (format: 'csv' | 'xlsx') => void;
   onDownloadReceipt: (receiptId: number) => void;
   onDownloadReceiptBatch: (receiptIds: number[]) => void;
+  /** Previous comparable run (same kind, not voided) used for the net-pay variance indicator. */
+  previous?: { code: string; netPay?: string | null } | null;
 }
 
 export default function PayrollOperationWorkspace({
@@ -122,6 +130,7 @@ export default function PayrollOperationWorkspace({
   onExport,
   onDownloadReceipt,
   onDownloadReceiptBatch,
+  previous,
 }: PayrollOperationWorkspaceProps) {
   const [query, setQuery] = useState('');
   const [onlyIncidents, setOnlyIncidents] = useState(false);
@@ -163,6 +172,33 @@ export default function PayrollOperationWorkspace({
       receipt,
     };
   }), [run]);
+
+  const indicators = useMemo(() => {
+    const headcount = run.totals?.employeeCount ?? run.snapshot.length;
+    const gross = moneyNumber(run.totals?.grossIncome);
+    const net = moneyNumber(run.totals?.netPay);
+    const deductions = moneyNumber(run.totals?.totalDeductions);
+    const employer = moneyNumber(run.totals?.employerContributions) ?? 0;
+    const previousNet = moneyNumber(previous?.netPay);
+    let inssWithheld = 0;
+    let incomeTax = 0;
+    let overtimeMinutes = 0;
+    for (const row of rows) {
+      inssWithheld += row.inss ?? 0;
+      incomeTax += row.incomeTax ?? 0;
+      overtimeMinutes += row.overtimeMinutes ?? 0;
+    }
+    return {
+      headcount,
+      avgNet: net !== null && headcount > 0 ? net / headcount : null,
+      companyCost: gross !== null ? gross + employer : null,
+      deductionRate: gross && deductions !== null ? (deductions / gross) * 100 : null,
+      variance: net !== null && previousNet ? ((net - previousNet) / previousNet) * 100 : null,
+      inss: inssWithheld,
+      incomeTax,
+      overtimeHours: overtimeMinutes / 60,
+    };
+  }, [previous?.netPay, rows, run.snapshot.length, run.totals]);
 
   const filteredRows = rows.filter((row) => {
     const matchesQuery = row.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
@@ -209,156 +245,183 @@ export default function PayrollOperationWorkspace({
     </div>
   );
 
-  return (
-    <section className="payroll-operation-workspace" aria-live="polite">
-      <header className="payroll-operation-header">
-        <div>
-          <span className="payroll-operation-eyebrow">{run.kind === 'AGUINALDO' ? 'Aguinaldo' : 'Nómina ordinaria'}</span>
-          <div className="payroll-operation-title-row">
-            <h2>{run.code}</h2>
-            <PayrollStatusPill status={run.status} />
-          </div>
-          <p>
-            {run.kind === 'AGUINALDO'
-              ? `Año ${run.year ?? '—'} · corte ${formatDate(run.cutoffDate)} · cálculo basado en ingresos históricos elegibles.`
-              : `${run.period?.code ?? `Periodo #${run.periodId ?? '—'}`} · ${formatDate(run.period?.dateFrom)} al ${formatDate(run.period?.dateTo)} · pago ${formatDate(run.period?.payDate)}.`}
-          </p>
-        </div>
-        <Button size="sm" variant="ghost" onClick={onRefresh} disabled={busy} aria-label="Actualizar corrida">
-          <RefreshCw size={16} /> Actualizar
-        </Button>
-      </header>
+  const kindLabel = run.kind === 'AGUINALDO' ? 'Aguinaldo' : 'Nómina ordinaria';
+  const nextTitle = primaryAction ? ACTION_LABELS[primaryAction] : run.status === 'PAID' ? 'Pago completado' : 'No hay acciones disponibles';
+  const nextHelp = run.blockingAnomalyCount > 0
+    ? `${run.blockingAnomalyCount} incidencia(s) bloqueante(s) deben resolverse antes de continuar.`
+    : run.status === 'PAID'
+      ? 'Las colillas ya están publicadas y puedes descargarlas individualmente o todas juntas.'
+      : primaryAction ? ACTION_HELP[primaryAction] : 'Actualiza la corrida para consultar su estado más reciente.';
 
-      {run.status === 'VOID' && (
-        <div className="payroll-operation-alert danger" role="alert">
-          <AlertTriangle size={20} /> Esta corrida fue anulada. Se conserva únicamente para consulta y auditoría.
-        </div>
-      )}
-
-      <div className="payroll-operation-next-action">
-        <div>
-          <span className="payroll-operation-eyebrow">Qué sigue</span>
-          <strong>{primaryAction ? ACTION_LABELS[primaryAction] : run.status === 'PAID' ? 'Pago completado' : 'No hay acciones disponibles'}</strong>
-          <span>
-            {run.blockingAnomalyCount > 0
-              ? `${run.blockingAnomalyCount} incidencia(s) bloqueante(s) deben resolverse antes de continuar.`
-              : run.status === 'PAID'
-                ? 'Las colillas ya están publicadas y puedes descargarlas individualmente o todas juntas.'
-                : primaryAction ? ACTION_HELP[primaryAction] : 'Actualiza la corrida para consultar su estado más reciente.'}
-          </span>
-        </div>
-        <div className="payroll-operation-actions">
-          {primaryAction && <Button variant="primary" onClick={() => onAction(primaryAction)} disabled={!online || busy}>{ACTION_LABELS[primaryAction]}</Button>}
-          {run.allowedActions.filter((action) => action !== 'VOID' && action !== primaryAction).map((action) => <Button key={action} size="sm" variant="secondary" onClick={() => onAction(action)} disabled={!online || busy}>{ACTION_LABELS[action]}</Button>)}
-          {run.allowedActions.includes('VOID') && (
-            <Button size="sm" variant="ghost" onClick={() => onAction('VOID')} disabled={!online || busy}>Anular</Button>
-          )}
-        </div>
+  const employeesSection = run.snapshot.length === 0 ? (
+    <HrSection className="nm-employees" eyebrow="Resultados" title="Pago por colaborador">
+      <div className="nm-empty">
+        <span className="nm-empty-icon" aria-hidden="true"><UsersRound size={30} /></span>
+        <h3>Aún no hay resultados por colaborador</h3>
+        <p>Calcula la corrida para congelar asistencia, horas extra, permisos, préstamos y conceptos aplicables.</p>
+        {run.allowedActions.includes('CALCULATE') && <Button variant="primary" onClick={() => onAction('CALCULATE')} disabled={!online}>Calcular ahora</Button>}
       </div>
-
-      <dl className="payroll-operation-totals" aria-label="Resumen total de la nómina">
-        <div><dt>Colaboradores</dt><dd>{run.totals?.employeeCount ?? run.snapshot.length}</dd></div>
-        <div><dt>Ingresos brutos</dt><dd>{formatRunTotal(currency, run.totals?.grossIncome)}</dd></div>
-        <div><dt>Deducciones</dt><dd>{formatRunTotal(currency, run.totals?.totalDeductions)}</dd></div>
-        <div><dt>Aportes patronales</dt><dd>{formatRunTotal(currency, run.totals?.employerContributions)}</dd></div>
-        <div className="net"><dt>Neto a pagar</dt><dd>{formatRunTotal(currency, run.totals?.netPay)}</dd></div>
-      </dl>
-
-      <section className="payroll-operation-reporting" aria-labelledby="payroll-deliverables-title">
-        <div>
-          <h3 id="payroll-deliverables-title">Reportes y colillas</h3>
-          <p>El reporte resume toda la nómina. Las colillas muestran el detalle individual entregado a cada empleado.</p>
-        </div>
-        <div>
-          <Button size="sm" variant="secondary" onClick={() => onExport('xlsx')} disabled={!online || busy || run.snapshot.length === 0}><FileSpreadsheet size={15} /> Descargar reporte Excel</Button>
-          <Button size="sm" variant="ghost" onClick={() => onExport('csv')} disabled={!online || busy || run.snapshot.length === 0}>Exportar CSV</Button>
-          <Button variant="primary" size="sm" onClick={() => onDownloadReceiptBatch(receiptIds)} disabled={!online || busy || receiptIds.length === 0}><Download size={15} /> Descargar todas las colillas ({receiptIds.length})</Button>
-        </div>
-        {run.status !== 'PAID' && <p className="payroll-operation-report-note"><Info size={15} /> Las colillas estarán disponibles cuando registres el pago.</p>}
-      </section>
-
-      {run.snapshot.length === 0 ? (
-        <div className="payroll-operation-empty">
-          <UsersRound size={38} />
-          <h3>Aún no hay resultados por colaborador</h3>
-          <p>Calcula la corrida para congelar asistencia, horas extra, permisos, préstamos y conceptos aplicables.</p>
-          {run.allowedActions.includes('CALCULATE') && <Button variant="primary" onClick={() => onAction('CALCULATE')} disabled={!online}>Calcular ahora</Button>}
-        </div>
-      ) : (
-        <section className="payroll-operation-employees" aria-labelledby="payroll-employees-title">
-          <div className="payroll-operation-section-heading">
-            <div><h3 id="payroll-employees-title">Pago por colaborador</h3><p>Abre una fila para revisar el detalle de ingresos, deducciones, horas extra e incidencias.</p></div>
-            {run.status === 'CALCULATED' && <Button size="sm" variant="secondary" onClick={onAddComponent} disabled={!online || busy}><Plus size={15} /> Agregar ingreso o deducción</Button>}
+    </HrSection>
+  ) : (
+    <HrSection
+      flush
+      className="nm-employees"
+      aria-labelledby="payroll-employees-title"
+      eyebrow="Resultados"
+      title={<span id="payroll-employees-title">Pago por colaborador</span>}
+      description="Abre una fila para revisar el detalle de ingresos, deducciones, horas extra e incidencias."
+      actions={run.status === 'CALCULATED' && <Button size="sm" variant="secondary" onClick={onAddComponent} disabled={!online || busy}><Plus size={15} /> Agregar ingreso o deducción</Button>}
+    >
+      <div className="nm-employee-tools">
+        <div className="nm-employee-search">
+          <label htmlFor="payroll-employee-search">Buscar colaborador</label>
+          <div className="payroll-operation-search-control">
+            <Search size={17} aria-hidden="true" />
+            <input
+              id="payroll-employee-search"
+              type="search"
+              placeholder="Nombre del colaborador"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              autoComplete="off"
+            />
+            {query && <button type="button" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15} /></button>}
           </div>
-          <div className="payroll-operation-table-tools">
-            <div className="payroll-operation-employee-search">
-              <label htmlFor="payroll-employee-search">Buscar colaborador</label>
-              <div className="payroll-operation-search-control">
-                <Search size={17} aria-hidden="true" />
-                <input
-                  id="payroll-employee-search"
-                  type="search"
-                  placeholder="Nombre del colaborador"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  autoComplete="off"
-                />
-                {query && <button type="button" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15} /></button>}
+        </div>
+        <label className="nm-check"><input type="checkbox" checked={onlyIncidents} onChange={(event) => setOnlyIncidents(event.target.checked)} /> Solo con incidencias</label>
+        <small className="nm-employee-count" aria-live="polite">{filteredRows.length} de {rows.length} colaborador(es)</small>
+      </div>
+        <DataTable<PayrollRow>
+          ariaLabel="Pago por colaborador"
+          rows={filteredRows}
+          rowKey={(row) => row.userId}
+          pagination={{ mode: 'client' }}
+          resetKey={`${query}|${onlyIncidents}`}
+          minWidth="60rem"
+          rowTone={(row) => (row.anomalies.some((item) => item.blocking) ? 'danger' : undefined)}
+          empty="No hay colaboradores que coincidan con los filtros."
+          columns={[
+            { key: 'name', header: 'Colaborador', width: '1.6fr', render: (row) => <><strong>{row.name}</strong><small>{row.branch ?? `ID ${row.userId}`}</small></> },
+            { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.gross, render: (row) => formatEmployeeMoney(currency, row.gross) },
+            { key: 'inss', header: 'INSS laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.inss, render: (row) => formatEmployeeMoney(currency, row.inss) },
+            { key: 'ir', header: 'IR laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.incomeTax, render: (row) => formatEmployeeMoney(currency, row.incomeTax) },
+            { key: 'deductions', header: 'Deducciones', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.deductions, render: (row) => formatEmployeeMoney(currency, row.deductions) },
+            { key: 'net', header: 'Neto', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.net, render: (row) => <strong>{formatEmployeeMoney(currency, row.net)}</strong> },
+            { key: 'incidents', header: 'Incidencias', width: '1fr', render: (row) => (row.anomalies.length ? <span className="payroll-operation-incident">{row.anomalies.length}</span> : <span className="payroll-operation-ok"><Check size={14} /> Sin incidencias</span>) },
+            {
+              key: 'actions',
+              header: 'Acciones',
+              width: '9rem',
+              type: 'actions',
+              render: (row) => (
+                <div className="payroll-employee-actions">
+                  <Button className="payroll-operation-detail-trigger" size="sm" variant="ghost" aria-haspopup="dialog" aria-controls={`payroll-employee-detail-${row.userId}`} aria-label={`Ver detalle de ${row.name}`} onClick={() => setExpandedUserId(row.userId)}>Detalle <ChevronDown size={15} /></Button>
+                  {row.receipt && <Button size="sm" variant="ghost" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy} title={`Descargar colilla de ${row.name}`}><Download size={14} /><span className="sr-only">Descargar colilla de {row.name}</span></Button>}
+                </div>
+              ),
+            },
+          ]}
+        />
+        <FullScreenModal
+          isOpen={Boolean(detailRow)}
+          onClose={() => setExpandedUserId(null)}
+          title={detailRow ? `Detalle de pago: ${detailRow.name}` : 'Detalle de pago'}
+        >
+          {detailRow && renderDetail(detailRow)}
+        </FullScreenModal>
+    </HrSection>
+  );
+
+  return (
+    <div className="nm-run" aria-live="polite">
+      <HrSection
+        className="nm-run-overview"
+        eyebrow={kindLabel}
+        title={<><span className="nm-run-code">{run.code}</span><PayrollStatusPill status={run.status} /></>}
+        description={run.kind === 'AGUINALDO'
+          ? `Año ${run.year ?? '—'} · corte ${formatDate(run.cutoffDate)} · cálculo basado en ingresos históricos elegibles.`
+          : `${run.period?.code ?? `Periodo #${run.periodId ?? '—'}`} · ${formatDate(run.period?.dateFrom)} al ${formatDate(run.period?.dateTo)} · pago ${formatDate(run.period?.payDate)}.`}
+        actions={<Button size="sm" variant="ghost" onClick={onRefresh} disabled={busy} aria-label="Actualizar corrida"><RefreshCw size={16} /> Actualizar</Button>}
+      >
+        <div className="nm-indicators" aria-label="Indicadores de la corrida">
+          <article className="nm-indicator is-primary">
+            <span className="nm-indicator-icon" aria-hidden="true"><CircleDollarSign size={20} /></span>
+            <span className="nm-indicator-label">Neto a pagar</span>
+            <strong className="nm-indicator-value">{formatRunTotal(currency, run.totals?.netPay)}</strong>
+            <small>{indicators.avgNet === null ? 'Promedio pendiente de cálculo' : `Promedio ${moneyOrND(currency, indicators.avgNet)} por colaborador · ${indicators.headcount} en planilla`}</small>
+          </article>
+          <article className="nm-indicator">
+            <span className="nm-indicator-icon" aria-hidden="true"><Receipt size={20} /></span>
+            <span className="nm-indicator-label">Costo total para la empresa</span>
+            <strong className="nm-indicator-value">{indicators.companyCost === null ? 'Pendiente de cálculo' : moneyOrND(currency, indicators.companyCost)}</strong>
+            <small>Bruto {formatRunTotal(currency, run.totals?.grossIncome)} + aportes patronales {formatRunTotal(currency, run.totals?.employerContributions)}</small>
+          </article>
+          <article className="nm-indicator">
+            <span className="nm-indicator-icon" aria-hidden="true"><ShieldCheck size={20} /></span>
+            <span className="nm-indicator-label">Retenciones al colaborador</span>
+            <strong className="nm-indicator-value">{formatRunTotal(currency, run.totals?.totalDeductions)}</strong>
+            <small>INSS {moneyOrND(currency, indicators.inss)} · IR {moneyOrND(currency, indicators.incomeTax)}{indicators.deductionRate !== null ? ` · ${oneDecimal(indicators.deductionRate)} % del bruto` : ''}</small>
+          </article>
+          <article className={`nm-indicator${indicators.variance === null ? '' : indicators.variance > 0 ? ' is-up' : indicators.variance < 0 ? ' is-down' : ''}`}>
+            <span className="nm-indicator-icon" aria-hidden="true"><TrendingUp size={20} /></span>
+            <span className="nm-indicator-label">Variación vs. corrida anterior</span>
+            <strong className="nm-indicator-value">{indicators.variance === null ? '—' : `${indicators.variance > 0 ? '+' : ''}${oneDecimal(indicators.variance)} %`}</strong>
+            <small>{previous ? `${previous.code}: neto ${formatRunTotal(currency, previous.netPay)}` : 'No hay una corrida anterior para comparar'}{indicators.overtimeHours > 0 ? ` · ${oneDecimal(indicators.overtimeHours)} h extra aprobadas` : ''}</small>
+          </article>
+        </div>
+
+        {run.status === 'VOID' && (
+          <div className="nm-alert is-danger" role="alert">
+            <AlertTriangle size={20} aria-hidden="true" /><span>Esta corrida fue anulada. Se conserva únicamente para consulta y auditoría.</span>
+          </div>
+        )}
+      </HrSection>
+
+      <HrSplit
+        main={(
+          <>
+            {employeesSection}
+            <details className="nm-audit">
+              <summary><span className="nm-audit-title"><strong>Información técnica y auditoría</strong><small>Úsala sólo para soporte, conciliación o revisión de cambios.</small></span><ChevronDown size={16} aria-hidden="true" /></summary>
+              <div className="nm-audit-grid">
+                <div><strong>Quién hizo cada paso</strong><span>Calculó: {run.calculatedBy?.name ?? 'Pendiente'}</span><span>Aprobó: {run.approvedBy?.name ?? 'Pendiente'}</span><span>Registró el pago: {run.paidBy?.name ?? 'Pendiente'}</span></div>
+                <div><strong>Versiones usadas para el cálculo</strong><span>Regla legal #{run.ruleVersionId}</span><span>Configuración #{run.configurationRevisionId ?? 'pendiente'}</span><span>Revisión de esta corrida: {run.revision}</span></div>
               </div>
-              <small aria-live="polite">{filteredRows.length} de {rows.length} colaborador(es)</small>
-            </div>
-            <label className="payroll-operation-check"><input type="checkbox" checked={onlyIncidents} onChange={(event) => setOnlyIncidents(event.target.checked)} /> Solo con incidencias</label>
-          </div>
-          <DataTable<PayrollRow>
-            ariaLabel="Pago por colaborador"
-            rows={filteredRows}
-            rowKey={(row) => row.userId}
-            pagination={{ mode: 'client' }}
-            resetKey={`${query}|${onlyIncidents}`}
-            minWidth="60rem"
-            rowTone={(row) => (row.anomalies.some((item) => item.blocking) ? 'danger' : undefined)}
-            empty="No hay colaboradores que coincidan con los filtros."
-            columns={[
-              { key: 'name', header: 'Colaborador', width: '1.6fr', render: (row) => <><strong>{row.name}</strong><small>{row.branch ?? `ID ${row.userId}`}</small></> },
-              { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.gross, render: (row) => formatEmployeeMoney(currency, row.gross) },
-              { key: 'inss', header: 'INSS laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.inss, render: (row) => formatEmployeeMoney(currency, row.inss) },
-              { key: 'ir', header: 'IR laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.incomeTax, render: (row) => formatEmployeeMoney(currency, row.incomeTax) },
-              { key: 'deductions', header: 'Deducciones', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.deductions, render: (row) => formatEmployeeMoney(currency, row.deductions) },
-              { key: 'net', header: 'Neto', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.net, render: (row) => <strong>{formatEmployeeMoney(currency, row.net)}</strong> },
-              { key: 'incidents', header: 'Incidencias', width: '1fr', render: (row) => (row.anomalies.length ? <span className="payroll-operation-incident">{row.anomalies.length}</span> : <span className="payroll-operation-ok"><Check size={14} /> Sin incidencias</span>) },
-              {
-                key: 'actions',
-                header: 'Acciones',
-                width: '9rem',
-                type: 'actions',
-                render: (row) => (
-                  <div className="payroll-employee-actions">
-                    <Button className="payroll-operation-detail-trigger" size="sm" variant="ghost" aria-haspopup="dialog" aria-controls={`payroll-employee-detail-${row.userId}`} aria-label={`Ver detalle de ${row.name}`} onClick={() => setExpandedUserId(row.userId)}>Detalle <ChevronDown size={15} /></Button>
-                    {row.receipt && <Button size="sm" variant="ghost" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy} title={`Descargar colilla de ${row.name}`}><Download size={14} /><span className="sr-only">Descargar colilla de {row.name}</span></Button>}
-                  </div>
-                ),
-              },
-            ]}
-          />
-          <FullScreenModal
-            isOpen={Boolean(detailRow)}
-            onClose={() => setExpandedUserId(null)}
-            title={detailRow ? `Detalle de pago: ${detailRow.name}` : 'Detalle de pago'}
-          >
-            {detailRow && renderDetail(detailRow)}
-          </FullScreenModal>
-        </section>
-      )}
+              <details className="nm-audit-reconciliation"><summary>Ver conciliación técnica de importes</summary><PayrollReconciliationPanel key={`${run.kind}-${run.id}-${run.revision}`} run={run} /></details>
+            </details>
+          </>
+        )}
+        aside={(
+          <>
+            <HrSection className={`nm-next${run.blockingAnomalyCount > 0 ? ' is-blocked' : ''}`} eyebrow="Qué sigue" title={nextTitle} description={nextHelp}>
+              <div className="nm-next-actions">
+                {primaryAction && <Button onClick={() => onAction(primaryAction)} disabled={!online || busy}>{ACTION_LABELS[primaryAction]}</Button>}
+                {run.allowedActions.filter((action) => action !== 'VOID' && action !== primaryAction).map((action) => <Button key={action} size="sm" variant="secondary" onClick={() => onAction(action)} disabled={!online || busy}>{ACTION_LABELS[action]}</Button>)}
+                {run.allowedActions.includes('VOID') && (
+                  <Button size="sm" variant="ghost" onClick={() => onAction('VOID')} disabled={!online || busy}>Anular</Button>
+                )}
+                {run.allowedActions.length === 0 && <span className="nm-next-done"><Check size={15} aria-hidden="true" /> Sin acciones pendientes</span>}
+              </div>
+            </HrSection>
 
-      <details className="payroll-operation-audit">
-        <summary><span>Información técnica y auditoría</span><small>Úsala sólo para soporte, conciliación o revisión de cambios.</small></summary>
-        <div className="payroll-operation-audit-grid">
-          <div><strong>Quién hizo cada paso</strong><span>Calculó: {run.calculatedBy?.name ?? 'Pendiente'}</span><span>Aprobó: {run.approvedBy?.name ?? 'Pendiente'}</span><span>Registró el pago: {run.paidBy?.name ?? 'Pendiente'}</span></div>
-          <div><strong>Versiones usadas para el cálculo</strong><span>Regla legal #{run.ruleVersionId}</span><span>Configuración #{run.configurationRevisionId ?? 'pendiente'}</span><span>Revisión de esta corrida: {run.revision}</span></div>
-        </div>
-        <details className="payroll-operation-reconciliation"><summary>Ver conciliación técnica de importes</summary><PayrollReconciliationPanel key={`${run.kind}-${run.id}-${run.revision}`} run={run} /></details>
-      </details>
-    </section>
+            <HrSection
+              className="nm-deliverables"
+              aria-labelledby="payroll-deliverables-title"
+              eyebrow="Entregables"
+              title={<span id="payroll-deliverables-title">Reportes y colillas</span>}
+              description="El reporte resume toda la nómina. Las colillas muestran el detalle individual entregado a cada empleado."
+            >
+              <div className="nm-deliverable-list">
+                <Button size="sm" variant="secondary" onClick={() => onExport('xlsx')} disabled={!online || busy || run.snapshot.length === 0}><FileSpreadsheet size={15} /> Descargar reporte Excel</Button>
+                <Button size="sm" variant="ghost" onClick={() => onExport('csv')} disabled={!online || busy || run.snapshot.length === 0}>Exportar CSV</Button>
+                <Button size="sm" onClick={() => onDownloadReceiptBatch(receiptIds)} disabled={!online || busy || receiptIds.length === 0}><Download size={15} /> Descargar todas las colillas ({receiptIds.length})</Button>
+              </div>
+              {run.status !== 'PAID' && <p className="nm-note"><Info size={15} aria-hidden="true" /> Las colillas estarán disponibles cuando registres el pago.</p>}
+            </HrSection>
+          </>
+        )}
+      />
+    </div>
   );
 }
 

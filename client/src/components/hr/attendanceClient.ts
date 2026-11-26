@@ -18,6 +18,7 @@ import type {
   HrBiometricMaintenanceResult,
   HrBiometricProviderHealth,
   HrBiometricProfile,
+  HrPendingBiometricEnrollment,
   HrAttendanceSettingsLookups,
   HrTodayAttendance,
 } from '../../types/hr-attendance';
@@ -253,6 +254,25 @@ export const attendanceClient = {
     return unwrap(response.data);
   },
 
+  async getPendingBiometricEnrollments(branchId?: number): Promise<HrPendingBiometricEnrollment[]> {
+    const response = await api.get(`${HR_BASE}/biometrics/enrollments/pending`, {
+      ...(branchId ? { params: { branchId } } : {}),
+      skipOfflineCache: true,
+    });
+    const data = unwrap<unknown>(response.data);
+    return Array.isArray(data) ? (data as HrPendingBiometricEnrollment[]) : [];
+  },
+
+  async approveBiometricEnrollment(userId: number): Promise<HrBiometricProfile> {
+    const response = await api.post(`${HR_BASE}/biometrics/users/${userId}/approve`, {});
+    return unwrap(response.data);
+  },
+
+  async rejectBiometricEnrollment(userId: number, reason: string): Promise<HrBiometricProfile> {
+    const response = await api.post(`${HR_BASE}/biometrics/users/${userId}/reject`, { reason });
+    return unwrap(response.data);
+  },
+
   async runBiometricMaintenance(): Promise<HrBiometricMaintenanceResult> {
     const response = await api.post(`${HR_BASE}/biometrics/maintenance/run`, {});
     return unwrap(response.data);
@@ -273,7 +293,13 @@ export const attendanceClient = {
 };
 
 export function getAttendanceErrorMessage(error: unknown, fallback: string): string {
-  if (!error || typeof error !== 'object' || !('response' in error)) return fallback;
+  if (!error || typeof error !== 'object') return fallback;
+  if (!('response' in error) || !(error as { response?: unknown }).response) {
+    // Attendance and biometric requests are never queued offline; tell the
+    // worker to reconnect instead of showing a generic server failure.
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    return offline ? 'Sin conexión a internet. Conéctate y vuelve a intentarlo; el marcaje no queda en cola.' : fallback;
+  }
   const data = (error as { response?: { data?: { message?: string; error?: string } } }).response
     ?.data;
   return data?.message || data?.error || fallback;

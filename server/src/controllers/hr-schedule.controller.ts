@@ -49,6 +49,17 @@ function handleError(error: unknown, res: Response, next: NextFunction): void {
 }
 
 export class HrScheduleController {
+    static async scheduleLookups(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await WeeklyScheduleService.listLookups(
+                req.user!.companyId,
+                String(req.query.weekStart),
+                branchScope(req),
+            );
+            res.json({ success: true, data });
+        } catch (error) { handleError(error, res, next); }
+    }
+
     static async listTemplates(req: Request, res: Response, next: NextFunction) {
         try {
             const data = await ShiftTemplateService.list(req.user!.companyId, {
@@ -68,7 +79,13 @@ export class HrScheduleController {
 
     static async createTemplate(req: Request, res: Response, next: NextFunction) {
         try {
-            const data = await ShiftTemplateService.create(req.user!.companyId, req.body, req.user!.userId, branchScope(req, Number(req.body.branchId)));
+            const requestedBranchId = queryId(req.body.branchId);
+            const data = await ShiftTemplateService.create(
+                req.user!.companyId,
+                req.body,
+                req.user!.userId,
+                branchScope(req, requestedBranchId),
+            );
             res.status(201).json({ success: true, data, message: 'Plantilla de turno creada' });
         } catch (error) { handleError(error, res, next); }
     }
@@ -77,6 +94,19 @@ export class HrScheduleController {
         try {
             const data = await ShiftTemplateService.update(Number(req.params.id), req.user!.companyId, req.body, req.user!.userId, branchScope(req));
             res.json({ success: true, data, message: 'Plantilla de turno actualizada' });
+        } catch (error) { handleError(error, res, next); }
+    }
+
+    static async deleteTemplate(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await ShiftTemplateService.remove(
+                Number(req.params.id),
+                req.user!.companyId,
+                req.query.expectedRevision,
+                req.user!.userId,
+                branchScope(req),
+            );
+            res.json({ success: true, data, message: 'Plantilla de turno desactivada' });
         } catch (error) { handleError(error, res, next); }
     }
 
@@ -148,6 +178,25 @@ export class HrScheduleController {
         try {
             const data = await WeeklyScheduleService.getMySchedule(req.user!.companyId, req.user!.userId, String(req.query.weekStart));
             res.json({ success: true, data });
+        } catch (error) { handleError(error, res, next); }
+    }
+
+    static async teamSchedule(req: Request, res: Response, next: NextFunction) {
+        try {
+            const schedule = await WeeklyScheduleService.getTeamSchedule(
+                req.user!.companyId,
+                req.user!.userId,
+                String(req.query.weekStart),
+                branchScope(req),
+            );
+            res.json({
+                success: true,
+                data: {
+                    schedules: schedule ? [schedule] : [],
+                    conflicts: [],
+                    holidays: [],
+                },
+            });
         } catch (error) { handleError(error, res, next); }
     }
 

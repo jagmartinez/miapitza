@@ -1,8 +1,10 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { cashShiftsAPI, cashArqueoAPI, suppliersAPI } from '../services/api';
-import { buildCashShiftReportHtml } from './cashShiftReport';
+import { buildCashShiftReportHtml, getMovementAuditLabel, getMovementCategoryLabel, getMovementPaymentOrigin } from './cashShiftReport';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, Input,
     PageContent, PageHeader, SegmentedControl, StatCard, StatusBadge, TableToolbar, Textarea,
@@ -17,6 +19,7 @@ import { DEFAULT_EXCHANGE_RATE } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import styles from './CashShift.module.css';
+import { getIdempotentAttempt, isAmbiguousMutationFailure, type IdempotentAttempt } from '../utils/idempotency';
 
 interface DenomCountRow {
     denomination: number;
@@ -27,6 +30,11 @@ interface ShiftSummaryState {
     expectedAmount?: number;
     totalIn?: number;
     totalOut?: number;
+    totalSalesCash?: number;
+    grossSalesCash?: number;
+    cashRefunds?: number;
+    otherIncome?: number;
+    otherOutflows?: number;
     [key: string]: unknown;
 }
 
@@ -39,6 +47,8 @@ interface ArqueoDetailsState {
 }
 
 interface ClosePreviewState {
+    /** Always present; the server omits expected/difference for blind cashiers. */
+    status?: 'CUADRADO' | 'SOBRANTE' | 'FALTANTE';
     difference?: number;
     tolerance?: number;
     requiresNote?: boolean;
@@ -135,6 +145,12 @@ export default function CashShiftPage() {
     const [closeNotes, setCloseNotes] = useState('');
     const [closePreview, setClosePreview] = useState<ClosePreviewState | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
+    // In-flight guards: refs block same-tick double submits, state disables the buttons.
+    const [submittingMovement, setSubmittingMovement] = useState(false);
+    const [closingShift, setClosingShift] = useState(false);
+    const submittingMovementRef = useRef(false);
+    const movementAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const closingShiftRef = useRef(false);
 
     const canForceClose = hasAnyRole(user, ['ADMIN', 'SUPERADMIN']);
     /** Same backend constraint as supplier POST from cash context */
@@ -166,6 +182,10 @@ export default function CashShiftPage() {
     }, [summary?.expectedAmount, totalCounted]);
 
     const effectiveDifference = closePreview?.difference ?? closeDifference;
+    // Blind cashiers never receive the numeric difference: classify by status.
+    const closeStatusLabel = closePreview?.status === 'SOBRANTE' ? 'Sobrante'
+        : closePreview?.status === 'FALTANTE' ? 'Faltante' : 'Cuadrado';
+    const closeDiffPositive = isBlindCashier ? closePreview?.status !== 'FALTANTE' : effectiveDifference >= 0;
     const closeTolerance = Number(closePreview?.tolerance ?? 1);
 
     const buildClosePayload = () => ({
@@ -200,7 +220,7 @@ export default function CashShiftPage() {
             setLoadError(null);
         } catch (error: unknown) {
             console.error('[CASH-SHIFT-PAGE] Error loading shift data:', error);
-            const message = error instanceof Error ? error.message : 'Error';
+            const message = getApiErrorMessage(error, 'Error');
             setLoadError(message);
             showError(`Error cargando datos del turno: ${message}`);
         } finally {
@@ -235,6 +255,8 @@ export default function CashShiftPage() {
             filtered = filtered.filter(m =>
                 m.description?.toLowerCase().includes(query) ||
                 m.reference?.toLowerCase().includes(query) ||
+                getMovementPaymentOrigin(m).toLowerCase().includes(query) ||
+                getMovementCategoryLabel(m).toLowerCase().includes(query) ||
                 m.amount.toString().includes(query)
             );
         }
@@ -248,6 +270,9 @@ export default function CashShiftPage() {
 
     const handleAddMovement = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submittingMovementRef.current) return;
+        submittingMovementRef.current = true;
+        setSubmittingMovement(true);
         try {
             const payload: {
                 type: 'IN' | 'OUT';
@@ -278,7 +303,15 @@ export default function CashShiftPage() {
                 payload.supplierId = Number(movementForm.supplierId);
             }
 
-            await cashShiftsAPI.addMovement(Number(id), payload);
+            // One key per logical movement: a retry of the same form after a
+            // timeout reuses it; any edit to the payload yields a new key.
+            const attempt = getIdempotentAttempt(
+                movementAttemptRef.current,
+                JSON.stringify({ shiftId: Number(id), ...payload }),
+            );
+            movementAttemptRef.current = attempt;
+            await cashShiftsAPI.addMovement(Number(id), payload, attempt.key);
+            movementAttemptRef.current = null;
             setIsMovementSidebarOpen(false);
             setMovementForm({
                 amount: '',
@@ -290,8 +323,12 @@ export default function CashShiftPage() {
             });
             loadData();
         } catch (error) {
+            if (!isAmbiguousMutationFailure(error)) movementAttemptRef.current = null;
             console.error('Error adding movement:', error);
-            showError('Error al registrar movimiento');
+            showError(getApiErrorMessage(error, 'Error al registrar movimiento'));
+        } finally {
+            submittingMovementRef.current = false;
+            setSubmittingMovement(false);
         }
     };
 
@@ -311,6 +348,9 @@ export default function CashShiftPage() {
 
     const handleCloseShift = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (closingShiftRef.current) return;
+        closingShiftRef.current = true;
+        setClosingShift(true);
         try {
             const preview = closePreview || (await cashArqueoAPI.previewClose(Number(id), buildClosePayload())).data.data;
             setClosePreview(preview);
@@ -340,6 +380,9 @@ export default function CashShiftPage() {
         } catch (error: unknown) {
             console.error('Error closing shift:', error);
             showError('Error al cerrar turno: ' + errMsg(error, 'Error'));
+        } finally {
+            closingShiftRef.current = false;
+            setClosingShift(false);
         }
     };
 
@@ -365,7 +408,7 @@ export default function CashShiftPage() {
             printWindow.document.close();
         } catch (error) {
             console.error('Error printing report:', error);
-            showError('Error al generar el reporte');
+            showError(getApiErrorMessage(error, 'Error al generar el reporte'));
         }
     };
 
@@ -386,7 +429,7 @@ export default function CashShiftPage() {
                 const res = await suppliersAPI.getAll({ active: true });
                 setSuppliers(res.data.data);
             } catch (error) {
-                console.error('Error loading suppliers:', error);
+                notifyError(error, 'No se pudieron cargar los proveedores', { type: 'warning' });
             }
         }
 
@@ -407,6 +450,15 @@ export default function CashShiftPage() {
             render: m => <Badge tone={m.type === 'IN' ? 'success' : 'danger'}>{m.type === 'IN' ? 'Ingreso' : 'Egreso'}</Badge>
         },
         { key: 'document', header: 'Documento', width: '1.2fr', render: m => m.documentNumber || '-' },
+        {
+            key: 'origin', header: 'Forma de pago / origen', width: '1.6fr',
+            render: m => (
+                <span className={styles.originCell}>
+                    <span>{getMovementPaymentOrigin(m)}</span>
+                    <small>{getMovementAuditLabel(m)}</small>
+                </span>
+            )
+        },
         { key: 'description', header: 'Descripción', width: '2fr', render: m => m.description || '-' },
         { key: 'supplier', header: 'Proveedor', width: '1.5fr', render: m => m.supplier?.name || '-' },
         {
@@ -444,16 +496,22 @@ export default function CashShiftPage() {
     const refunds = summary?.cashRefunds as number | undefined;
     const hasBreakdown = typeof grossSales === 'number' && typeof refunds === 'number';
     const money = (value: unknown) => (value == null || value === '' || !Number.isFinite(Number(value)) ? 'N/D' : formatMoney(Number(value)));
-    const otherIn = hasBreakdown && summary?.totalIn != null ? Number(summary.totalIn) - grossSales : summary?.totalIn;
-    const otherOut = hasBreakdown && summary?.totalOut != null ? Number(summary.totalOut) - refunds : summary?.totalOut;
+    // Server-side classification wins: "otros ingresos" are manual entries only (never POS/Catering collections).
+    const otherIn = typeof summary?.otherIncome === 'number'
+        ? summary.otherIncome
+        : hasBreakdown && summary?.totalIn != null ? Number(summary.totalIn) - grossSales : summary?.totalIn;
+    const otherOut = typeof summary?.otherOutflows === 'number'
+        ? summary.otherOutflows
+        : hasBreakdown && summary?.totalOut != null ? Number(summary.totalOut) - refunds : summary?.totalOut;
     const movementCount = shift.movements?.length || 0;
-    const closedExpected = isBlindCashier ? 'Oculto hasta validar' : money(summary?.expectedAmount);
+    const closedExpected = money(summary?.expectedAmount);
     const arqueoBills = arqueoDetails?.counts?.bills ?? [];
     const arqueoCoins = arqueoDetails?.counts?.coins ?? [];
     const billsTotal = Object.entries(billsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0);
     const coinsTotal = Object.entries(coinsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0);
     const closeSubmitLabel = closePreview?.exceedsTolerance && canForceClose ? 'Forzar cierre' : 'Cerrar turno';
     const closeSubmitDisabled =
+        closingShift ||
         !closePreview ||
         (!!closePreview.requiresNote && !closeNotes.trim()) ||
         (!!closePreview.exceedsTolerance && (!canForceClose || !closeNotes.trim()));
@@ -465,7 +523,8 @@ export default function CashShiftPage() {
         counts: Record<number, number>,
         setCounts: (next: Record<number, number>) => void,
         prefix: string,
-        format: (value: number) => string
+        format: (value: number) => string,
+        quantityLabel: (den: number) => string
     ) => (
         <div className={styles.denomList} role="group" aria-label={label}>
             {denominations.map(den => (
@@ -475,7 +534,7 @@ export default function CashShiftPage() {
                         type="number"
                         min={0}
                         inputMode="numeric"
-                        aria-label={`${label} ${prefix} ${den} cantidad`}
+                        aria-label={quantityLabel(den)}
                         value={counts[den] || ''}
                         onChange={(e) => setCounts({ ...counts, [den]: parseInt(e.target.value) || 0 })}
                         placeholder="0"
@@ -530,22 +589,22 @@ export default function CashShiftPage() {
                     context={`Apertura ${new Date(shift.startDate).toLocaleString()}`}
                 />
                 <StatCard
-                    label="Ventas en efectivo"
+                    label="Ventas netas efectivo"
                     tone="success"
                     value={money(summary?.totalSalesCash)}
                     context={hasBreakdown ? `Bruto ${formatMoney(grossSales)} menos reembolsos ${formatMoney(refunds)}` : 'Neto de reembolsos en efectivo'}
                 />
                 <StatCard
-                    label="Otros ingresos"
+                    label="Otros ingresos de caja"
                     tone="primary"
                     value={money(otherIn)}
-                    context={hasBreakdown ? 'Ingresos manuales de caja' : 'Incluye ventas en efectivo'}
+                    context={hasBreakdown || typeof summary?.otherIncome === 'number' ? 'Entradas manuales o no asociadas a ventas; no incluyen cobros POS ni Catering' : 'Incluye ventas en efectivo'}
                 />
                 <StatCard
                     label="Gastos y retiros"
                     tone="danger"
                     value={money(otherOut)}
-                    context={hasBreakdown ? 'Egresos manuales de caja' : 'Incluye reembolsos en efectivo'}
+                    context={hasBreakdown || typeof summary?.otherOutflows === 'number' ? 'Únicamente las demás salidas; los reembolsos ya descuentan de ventas netas' : 'Incluye reembolsos en efectivo'}
                 />
                 {!isBlindCashier && (
                     <StatCard
@@ -655,7 +714,7 @@ export default function CashShiftPage() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button type="submit" form="cash-movement-form" variant="primary">
+                        <Button type="submit" form="cash-movement-form" variant="primary" disabled={submittingMovement} loading={submittingMovement}>
                             {movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
                         </Button>
                     </>
@@ -759,13 +818,17 @@ export default function CashShiftPage() {
                             <dl className={styles.dl}>
                                 <div>
                                     <dt>Esperado</dt>
-                                    <dd>{isBlindCashier && !closePreview ? 'Oculto' : money(closePreview?.expectedAmount ?? summary?.expectedAmount)}</dd>
+                                    <dd>{isBlindCashier ? 'Oculto' : money(closePreview?.expectedAmount ?? summary?.expectedAmount)}</dd>
                                 </div>
                                 <div><dt>Contado</dt><dd>{formatMoney(totalCounted)}</dd></div>
                                 <div>
                                     <dt>Diferencia</dt>
-                                    <dd className={closePreview ? (effectiveDifference >= 0 ? styles.amountIn : styles.amountOut) : undefined}>
-                                        {closePreview ? `${effectiveDifference >= 0 ? '+' : ''}${formatMoney(effectiveDifference)}` : 'Pendiente validar'}
+                                    <dd className={closePreview ? (closeDiffPositive ? styles.amountIn : styles.amountOut) : undefined}>
+                                        {!closePreview
+                                            ? 'Pendiente validar'
+                                            : isBlindCashier
+                                                ? closeStatusLabel
+                                                : `${effectiveDifference >= 0 ? '+' : ''}${formatMoney(effectiveDifference)}`}
                                     </dd>
                                 </div>
                             </dl>
@@ -808,10 +871,10 @@ export default function CashShiftPage() {
                     {arqueoTab === 'NIO' ? (
                         <>
                             <FormSection title={`Billetes · ${formatMoney(billsTotal)}`}>
-                                {renderDenominations('bill', 'Billetes', BILL_DENOMINATIONS, billsCount, setBillsCount, symbol, formatMoney)}
+                                {renderDenominations('bill', 'Billetes', BILL_DENOMINATIONS, billsCount, setBillsCount, symbol, formatMoney, (den) => `Cantidad de billetes de ${symbol} ${den}`)}
                             </FormSection>
                             <FormSection title={`Monedas · ${formatMoney(coinsTotal)}`}>
-                                {renderDenominations('coin', 'Monedas', COIN_DENOMINATIONS, coinsCount, setCoinsCount, symbol, formatMoney)}
+                                {renderDenominations('coin', 'Monedas', COIN_DENOMINATIONS, coinsCount, setCoinsCount, symbol, formatMoney, (den) => `Cantidad de monedas de ${symbol} ${den}`)}
                             </FormSection>
                         </>
                     ) : (
@@ -830,7 +893,7 @@ export default function CashShiftPage() {
                                 </Field>
                             </FormSection>
                             <FormSection title={`Billetes USD · $ ${formatCurrency(totalUSD)}`}>
-                                {renderDenominations('usd', 'Billetes USD', USD_BILL_DENOMINATIONS, usdBillsCount, setUsdBillsCount, '$', (v) => `$ ${formatCurrency(v)}`)}
+                                {renderDenominations('usd', 'Billetes USD', USD_BILL_DENOMINATIONS, usdBillsCount, setUsdBillsCount, '$', (v) => `$ ${formatCurrency(v)}`, (den) => `Cantidad de billetes USD de ${den}`)}
                                 {totalUSD > 0 && (
                                     <dl className={styles.dl}>
                                         <div><dt>Total USD</dt><dd>$ {formatCurrency(totalUSD)}</dd></div>
@@ -884,7 +947,7 @@ export default function CashShiftPage() {
                             setIsNewSupplierModalOpen(false);
                         } catch (error) {
                             console.error('Error creating supplier:', error);
-                            showError('Error al crear proveedor');
+                            showError(getApiErrorMessage(error, 'Error al crear proveedor'));
                         }
                     }}
                 >

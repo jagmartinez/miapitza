@@ -3,7 +3,7 @@ import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, ChevronLeft, Chevro
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal,
     IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, Textarea,
-    type Column, type Opt, type Tone,
+    type Column, type Opt, type Tone, LoadErrorState,
 } from '@/ui';
 import SalonCards from '../components/SalonCards';
 import { branchesAPI, reservationsAPI } from '../services/api';
@@ -14,6 +14,7 @@ import { useAppToast } from '../context/ToastContext';
 import type { Branch } from '../types';
 import { formatLocalDateInput } from '../utils/dateInput';
 import './Reservations.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface Reservation {
     id: number;
@@ -74,23 +75,23 @@ export default function Reservations() {
     const [activeTab, setActiveTab] = useState<'cliente' | 'reserva' | 'notas'>('cliente');
     const [saving, setSaving] = useState(false);
     const [formDirty, setFormDirty] = useState(false);
-    const [loadError, setLoadError] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [branches, setBranches] = useState<Branch[]>([]);
 
 
     const loadReservations = useCallback(async () => {
         try {
+            setLoading(true);
             const response = await reservationsAPI.getAll();
             setReservations(response.data.data);
-            setLoadError(false);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading reservations:', error);
-            setLoadError(true);
-            showError('No se pudieron cargar las reservaciones.');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar las reservaciones (se conserva la última información disponible hasta reintentar)'));
         } finally {
             setLoading(false);
         }
-    }, [showError]);
+    }, []);
 
     useEffect(() => {
         loadReservations();
@@ -107,8 +108,8 @@ export default function Reservations() {
                     setFormData((current) => ({ ...current, branchId: String(rows[0].id) }));
                 }
             })
-            .catch(() => {
-                if (!cancelled) showError('No se pudieron cargar las sucursales para reservar.');
+            .catch((error) => {
+                if (!cancelled) showError(getApiErrorMessage(error, 'No se pudieron cargar las sucursales para reservar'));
             });
         return () => { cancelled = true; };
     }, [showError, user?.branchId]);
@@ -177,11 +178,7 @@ export default function Reservations() {
             loadReservations();
         } catch (error: unknown) {
             console.error('Error updating status:', error);
-            const apiMsg = typeof error === 'object' && error !== null && 'response' in error
-                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
-                : undefined;
-            const errorMessage = apiMsg || (error instanceof Error ? error.message : '') || 'Error al actualizar el estado';
-            showError(errorMessage);
+            showError(getApiErrorMessage(error, 'Error al actualizar el estado'));
         }
     };
 
@@ -256,13 +253,8 @@ export default function Reservations() {
             success(editingReservation ? 'Reservación actualizada' : 'Reservación creada');
         } catch (error: unknown) {
             console.error('Error saving reservation:', error);
-            const resp = typeof error === 'object' && error !== null && 'response' in error
-                ? (error as { response?: { data?: { message?: string; errors?: Array<{ field: string; message: string }> } } }).response?.data
-                : undefined;
-            const detail = resp?.errors?.map(e => `${e.field}: ${e.message}`).join('\n');
-            const apiMsg = resp?.message;
-            const baseMsg = apiMsg || (error instanceof Error ? error.message : '') || 'Error al guardar la reservación';
-            showError(detail ? `${baseMsg}\n\n${detail}` : baseMsg);
+            // getApiErrorMessage already appends field-level validation details.
+            showError(getApiErrorMessage(error, 'Error al guardar la reservación'));
         } finally {
             setSaving(false);
         }
@@ -449,14 +441,11 @@ export default function Reservations() {
             setIsSidebarOpen(false);
         } catch (err) {
             console.error('Error updating status:', err);
-            const apiMsg = typeof err === 'object' && err !== null && 'response' in err
-                ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-                : undefined;
-            showError(apiMsg || 'Error al actualizar el estado');
+            showError(getApiErrorMessage(err, 'Error al actualizar el estado'));
         }
     };
 
-    if (loading) {
+    if (loading && reservations.length === 0) {
         return <div className="reservations-loading">Cargando reservaciones...</div>;
     }
 
@@ -551,14 +540,9 @@ export default function Reservations() {
 
             <SalonCards only="reservation" />
 
-            {loadError && (
-                <div className="reservations-warning" role="alert">
-                    <span>No se pudieron cargar las reservaciones. Los datos mostrados pueden estar desactualizados.</span>
-                    <Button size="sm" onClick={() => void loadReservations()}>Reintentar</Button>
-                </div>
-            )}
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadReservations(); }} />}
 
-            {viewMode !== 'calendar' && (
+            {!loadError && viewMode !== 'calendar' && (
                 <div className="reservations-filters">
                     <SegmentedControl ariaLabel="Estado de la reservación" options={statusSegments} value={filterStatus} onChange={setFilterStatus} />
                     <div className="reservations-search">
@@ -573,7 +557,7 @@ export default function Reservations() {
             )}
 
             {/* Calendar View */}
-            {viewMode === 'calendar' && (
+            {!loadError && viewMode === 'calendar' && (
                 <div className="calendar-container">
                     {/* Calendar Header */}
                     <div className="calendar-header">
@@ -757,7 +741,7 @@ export default function Reservations() {
                 </div>
             )}
 
-            {viewMode === 'table' && (
+            {!loadError && viewMode === 'table' && (
                 <DataTable
                     ariaLabel="Reservaciones"
                     columns={columns}

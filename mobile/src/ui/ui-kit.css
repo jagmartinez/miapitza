@@ -1,0 +1,73 @@
+/* Generic, theme-token-only primitives shared by feature screens. Touch targets >= 48 dp. */
+.ui-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: 48px 1fr auto;
+    align-items: center;
+    min-height: 56px;
+    padding: 0 8px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+}
+.ui-header-back {
+    width: 48px;
+    height: 48px;
+    background: none;
+    border: 0;
+    color: var(--text);
+    font-size: 28px;
+}
+.ui-header-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ui-header-right { min-width: 48px; text-align: right; }
+
+.ui-card {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px;
+    text-align: left;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font: inherit;
+}
+.ui-card-tap { min-height: 48px; }
+.ui-card-tap:disabled { opacity: 0.5; }
+.ui-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ui-card-title { font-size: 16px; font-weight: 600; }
+.ui-card-body { margin-top: 6px; font-size: 14px; color: var(--muted); }
+
+.ui-badge { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ui-badge-pending { color: var(--ready); }
+.ui-badge-rejected { color: var(--alert); }
+
+.ui-toasts {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+.ui-toast {
+    padding: 12px 14px;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+.ui-toast-error { border-color: var(--alert); color: var(--alert); }

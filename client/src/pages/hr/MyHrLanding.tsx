@@ -25,7 +25,7 @@ import type { HrLoan, HrTravelRequest } from '../../types/hr-benefits';
 import type { HrPayrollReceiptSummary } from '../../types/hr-payroll';
 import type { HrScheduleShift } from '../../types/hr-schedule';
 import type { HrMyWorkforce } from '../../types/hr-workforce';
-import { formatHrMoney, formatHrNumber } from '../../utils/hrFormat';
+import { formatHrMoney, formatHrNumber } from '../../utils/hrDisplay';
 import './hr.css';
 import styles from './SelfService.module.css';
 
@@ -125,6 +125,14 @@ export default function MyHrLanding() {
     ].filter((item) => PENDING_WORKFLOW.has(item.status)).length;
   }, [summary.workforce]);
 
+  const approvedOvertimeMinutes = useMemo(() => {
+    const workforce = summary.workforce;
+    if (!workforce) return null;
+    return workforce.overtimeRequests
+      .filter((item) => item.status === 'APPROVED')
+      .reduce((total, item) => total + (item.approvedMinutes ?? 0), 0);
+  }, [summary.workforce]);
+
   const vacation = selectVacationBalance(summary.workforce?.vacationBalances);
   const activeBenefits = [...summary.travel, ...summary.loans].filter((item) => ACTIVE_BENEFIT.has(item.status)).length;
 
@@ -184,7 +192,7 @@ export default function MyHrLanding() {
             <StatCard
               label="Solicitudes abiertas"
               value={pendingRequests === null || pendingRequests === undefined ? 'N/D' : formatNumber(pendingRequests, 0)}
-              context={vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()} disponibles` : 'Vacaciones, permisos y horas extra'}
+              context={`${vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()} disponibles` : 'Vacaciones, permisos y horas extra'}${approvedOvertimeMinutes ? ` · ${formatHrNumber(approvedOvertimeMinutes)} min extra aprobados hoy` : ''}`}
               tone={pendingRequests ? 'warning' : 'neutral'}
               action={{ label: 'Ver solicitudes', to: '/rh/mi-portal/gestion' }}
             />

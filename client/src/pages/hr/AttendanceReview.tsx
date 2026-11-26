@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DataTable, FullScreenModal, PageHeader, Button } from '@/ui';
+import { DataTable, FullScreenModal, PageHeader, StatCard, Button } from '@/ui';
 import type { SingleValue } from '../../components/hr/HrOptionSelect';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Eye, Plus, RefreshCw, XCircle } from 'lucide-react';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -187,6 +187,18 @@ export default function AttendanceReview() {
                     <AlertTriangle size={18} aria-hidden="true" /><span>{lookupsError}</span>
                     <Button size="sm" variant="ghost" onClick={() => void loadLookups()}><RefreshCw size={15} /> Reintentar catálogos</Button>
                 </div>
+            )}
+
+            {!loading && !error && events.some((item) => item.decision === 'REVIEW_REQUIRED' && !item.reviewedAt) && (
+                <section className="hr-kpi-row" aria-label="Indicadores de revisión">
+                    <StatCard
+                        tone="warning"
+                        label="Por revisar (página)"
+                        value={String(events.filter((item) => item.decision === 'REVIEW_REQUIRED' && !item.reviewedAt).length)}
+                        context="Requieren decisión con razón."
+                        action={decision === 'REVIEW_REQUIRED' ? undefined : { label: 'Filtrar por revisar', onClick: () => setDecision('REVIEW_REQUIRED') }}
+                    />
+                </section>
             )}
 
             <div className="hr-filters hr-attendance-filters">

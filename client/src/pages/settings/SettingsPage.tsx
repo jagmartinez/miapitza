@@ -12,7 +12,9 @@ import { branchesAPI } from '../../services/api';
 import { payrollClient } from '../../components/hr/payrollClient';
 import type { HrPayrollRuleVersion } from '../../types/hr-payroll';
 import { useAppToast } from '../../context/ToastContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 import { useSettingsDraft } from './useSettingsDraft';
+import { BackupPanel, LogoField, SalesChannelsPanel } from './SettingsExtras';
 import './settings-page.css';
 
 /** Sección solo de lectura: las tasas legales viven en la versión legal de nómina, no en el registro. */
@@ -72,8 +74,8 @@ export default function SettingsPage() {
         setActiveSection(registry.sections[0]?.id ?? '');
         const list = (branchRes.data?.data ?? []) as { id: number; name: string }[];
         setBranches(list.map((b) => ({ id: b.id, name: b.name })));
-      } catch {
-        if (alive) setLoadError('No fue posible cargar la configuración.');
+      } catch (err) {
+        if (alive) setLoadError(getApiErrorMessage(err, 'No fue posible cargar la configuración'));
       }
     })();
     void loadHistory();
@@ -88,7 +90,7 @@ export default function SettingsPage() {
     setLoading(true);
     fetchResolved(branchId)
       .then((r) => { if (alive) { setResolved(r.values); setVersion(r.version); setLoadError(null); } })
-      .catch(() => { if (alive) setLoadError('No fue posible cargar la configuración.'); })
+      .catch((err) => { if (alive) setLoadError(getApiErrorMessage(err, 'No fue posible recuperar la configuración vigente (el guardado queda bloqueado para proteger los valores existentes)')); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [branchId]);
@@ -134,6 +136,10 @@ export default function SettingsPage() {
   };
 
   const onSave = async () => {
+    if (loadError) {
+      toast.error('Recarga la configuración vigente antes de guardar cambios.');
+      return;
+    }
     setSaving(true);
     try {
       const result = await saveResolved(branchId, version, changes());
@@ -146,7 +152,7 @@ export default function SettingsPage() {
       const e = err as { response?: { status?: number; data?: { message?: string; errors?: Record<string, string> } } };
       if (e.response?.status === 409) toast.error('Otro usuario guardó cambios; recarga para continuar');
       else if (e.response?.status === 400) toast.error(e.response.data?.message ?? 'Hay valores inválidos en la configuración');
-      else toast.error('No fue posible guardar la configuración');
+      else toast.error(getApiErrorMessage(err, 'No fue posible guardar la configuración'));
     } finally {
       setSaving(false);
     }
@@ -222,6 +228,9 @@ export default function SettingsPage() {
               {s.note ? <p className="settings-page__note">{s.note}</p> : null}
               {defsFor(s.id).map((d) => {
                 const r = resolved[d.key];
+                if (d.key === 'logoUrl') {
+                  return <LogoField key={d.key} value={draft[d.key] ?? ''} dirty={dirtyKeys.includes(d.key)} onChange={(v) => set(d.key, v)} />;
+                }
                 return (
                   <SettingsRow
                     key={d.key}
@@ -237,6 +246,8 @@ export default function SettingsPage() {
                   />
                 );
               })}
+              {!searching && s.id === 'canales' && branchId == null ? <SalesChannelsPanel /> : null}
+              {!searching && s.id === 'seguridad' ? <BackupPanel /> : null}
             </section>
           ))}
 

@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { notifyError } from '../services/notify';
 import { useNavigate } from 'react-router-dom';
 import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
 import api from '../services/api';
@@ -6,7 +7,7 @@ import {
     AppSelect, Badge, Button, Checkbox, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal,
     IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea,
     formatMoney, formatNumber,
-    type Column,
+    type Column, LoadErrorState,
 } from '@/ui';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import PurchaseOrderImport from '../components/PurchaseOrderImport';
@@ -14,15 +15,48 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, FileDown, FileText, DollarSign, Undo2, Pencil } from 'lucide-react';
+import { Plus, Eye, Zap, X, FileDown, FileText, DollarSign, Undo2, Pencil, PackageCheck } from 'lucide-react';
 import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
+import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
+import { PURCHASE_ORDER_STATUS_LABELS, purchaseOrderDateVisibility, purchaseOrderPayable } from '../utils/purchaseOrderReceipt';
+import { getApiErrorMessage } from '../utils/apiError';
 import { BANK_OPTIONS } from '../constants/purchaseOrderOptions';
 import type { AutoPurchaseSuggestion, Branch, PurchaseOrder, PurchaseOrderPayment, Supplier } from '../types';
 import styles from './compras.module.css';
 import './purchase-legacy.css';
 
-type PoSuggestionRow = AutoPurchaseSuggestion & { unit?: string };
+type PoSuggestionRow = AutoPurchaseSuggestion & {
+    unit?: string;
+    purchaseUnit?: string;
+    purchaseQuantity?: number;
+    purchaseUnitCost?: number;
+};
+
+// The suggestion line is expressed in the product's default purchase unit and
+// its unit cost is sent unrounded (a per-gram cost like 0.004 must not become
+// 0.00). Without a purchase unit, cost is omitted and derived by the server.
+function toAutoPurchaseLine(suggestion: PoSuggestionRow) {
+    const purchaseQuantity = Number(suggestion.purchaseQuantity);
+    const usePurchaseUnit = Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && !!suggestion.purchaseUnit;
+    const purchaseUnitCost = Number(suggestion.purchaseUnitCost);
+    return {
+        productId: suggestion.productId,
+        quantity: usePurchaseUnit ? purchaseQuantity : Number(suggestion.suggestedQuantity),
+        ...(usePurchaseUnit ? { unit: suggestion.purchaseUnit } : {}),
+        ...(usePurchaseUnit && Number.isFinite(purchaseUnitCost) && purchaseUnitCost >= 0
+            ? { cost: purchaseUnitCost }
+            : {}),
+    };
+}
+
+function formatSuggestionQuantity(suggestion: PoSuggestionRow) {
+    const purchaseQuantity = Number(suggestion.purchaseQuantity);
+    if (Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && suggestion.purchaseUnit) {
+        return `${Number(purchaseQuantity.toFixed(3))} ${suggestion.purchaseUnit}`;
+    }
+    return `${Number(Number(suggestion.suggestedQuantity).toFixed(3))}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
+}
 
 interface PoSuggestionsData {
     summary: {
@@ -42,12 +76,13 @@ function errMsg(error: unknown, fallback: string): string {
     return fallback;
 }
 
-const STATUS_LABEL: Record<string, string> = { DRAFT: 'Borrador', ISSUED: 'Emitida', RECEIVED: 'Recibida', CANCELLED: 'Cancelada' };
-const STATUS_TONE = { DRAFT: 'neutral', ISSUED: 'primary', RECEIVED: 'success', CANCELLED: 'danger' } as const;
+const STATUS_LABEL = PURCHASE_ORDER_STATUS_LABELS;
+const STATUS_TONE = { DRAFT: 'neutral', ISSUED: 'primary', PARTIALLY_RECEIVED: 'warning', RECEIVED: 'success', CANCELLED: 'danger' } as const;
 const STATUS_OPTIONS = [
     { value: 'all', label: 'Todas' },
     { value: 'DRAFT', label: 'Borrador' },
     { value: 'ISSUED', label: 'Emitida' },
+    { value: 'PARTIALLY_RECEIVED', label: PURCHASE_ORDER_STATUS_LABELS.PARTIALLY_RECEIVED },
     { value: 'RECEIVED', label: 'Recibida' },
     { value: 'CANCELLED', label: 'Cancelada' },
 ];
@@ -87,6 +122,10 @@ export default function PurchaseOrders() {
     const [reversalPaymentId, setReversalPaymentId] = useState<number | null>(null);
     const [reversalReason, setReversalReason] = useState('');
     const [reversingPayment, setReversingPayment] = useState(false);
+    const reverseReceiptAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const closeRemainingAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const addPaymentAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const reversePaymentAttemptRef = useRef<IdempotentAttempt | null>(null);
 
     // Default to last month
     const [startDate, setStartDate] = useState(() => {
@@ -106,18 +145,19 @@ export default function PurchaseOrders() {
             const response = await api.get('/settings');
             setSettings(response.data.data || {});
         } catch (error) {
-            console.error('Error loading settings:', error);
+            notifyError(error, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' });
         }
     };
 
     const loadOrders = async () => {
+        setLoading(true);
         try {
             const res = await purchaseOrdersAPI.getAll();
             setOrders(Array.isArray(res.data.data) ? res.data.data : []);
             setOrdersLoadError(null);
         } catch (error) {
             console.error('Error loading purchase orders:', error);
-            setOrdersLoadError('No se pudieron cargar las órdenes de compra; la lista puede estar incompleta o desactualizada.');
+            setOrdersLoadError(getApiErrorMessage(error, 'No se pudieron cargar las órdenes de compra (la lista puede estar incompleta o desactualizada)'));
         } finally {
             setLoading(false);
         }
@@ -197,13 +237,7 @@ export default function PurchaseOrders() {
             const response = await autoPurchaseOrdersAPI.createFromSuggestions({
                 branchId: Number(autoPurchaseForm.branchId),
                 supplierId: Number(autoPurchaseForm.supplierId),
-                items: selectedSuggestions.map((suggestion) => ({
-                    productId: suggestion.productId,
-                    quantity: Number(suggestion.suggestedQuantity),
-                    cost: suggestion.suggestedQuantity > 0
-                        ? Number(((Number(suggestion.estimatedCost) || 0) / suggestion.suggestedQuantity).toFixed(2))
-                        : 0,
-                })),
+                items: selectedSuggestions.map(toAutoPurchaseLine),
             });
             showSuccess('Borrador de orden de compra creado correctamente.');
             setShowSuggestionsSidebar(false);
@@ -228,17 +262,9 @@ export default function PurchaseOrders() {
             order.supplier?.name.toLowerCase().includes(searchLower) ||
             (order.invoiceNumber && order.invoiceNumber.toLowerCase().includes(searchLower));
 
-        // Date range filter (compare local YYYY-MM-DD strings to avoid timezone issues)
-        let matchesDate = true;
-        if (startDate || endDate) {
-            const od = new Date(order.date);
-            const orderDateStr = od.getFullYear() + '-' +
-                String(od.getMonth() + 1).padStart(2, '0') + '-' +
-                String(od.getDate()).padStart(2, '0');
-
-            if (startDate && orderDateStr < startDate) matchesDate = false;
-            if (endDate && orderDateStr > endDate) matchesDate = false;
-        }
+        // Date range (local YYYY-MM-DD). Partially received orders with a pending
+        // balance stay visible outside the range; see purchaseOrderDateVisibility.
+        const matchesDate = purchaseOrderDateVisibility(order, { startDate, endDate, statusFilter }).visible;
 
         return matchesStatus && matchesSearch && matchesDate;
     });
@@ -289,7 +315,8 @@ export default function PurchaseOrders() {
         setPaymentTab('register');
         setReversalPaymentId(null);
         setReversalReason('');
-        const balance = Number(order.total) - Number(order.paidAmount || 0);
+        // Partially received CREDIT orders owe only what arrived (server caps there).
+        const balance = purchaseOrderPayable(order) - Number(order.paidAmount || 0);
         setPaymentForm({
             amount: balance > 0 ? balance.toFixed(2) : '',
             date: formatLocalDateInput(),
@@ -301,16 +328,16 @@ export default function PurchaseOrders() {
         try {
             const res = await purchaseOrdersAPI.getPayments(order.id);
             setPaymentHistory(Array.isArray(res.data.data) ? res.data.data : []);
-        } catch {
+        } catch (error) {
             setPaymentHistory(order.payments || []);
-            showWarning('No se pudo actualizar el historial de pagos; se muestra la última información disponible.');
+            notifyError(error, 'No se pudo actualizar el historial de pagos (se muestra la última información disponible)', { type: 'warning' });
         } finally {
             setLoadingPaymentHistory(false);
         }
     };
 
     const handleReverseReceipt = async (order: PurchaseOrder) => {
-        if (!canDeletePurchaseOrders || order.status !== 'RECEIVED') return;
+        if (!canDeletePurchaseOrders || (order.status !== 'RECEIVED' && order.status !== 'PARTIALLY_RECEIVED')) return;
         const reason = window.prompt('Motivo obligatorio del reverso de recepción:')?.trim();
         if (!reason) return;
         const accepted = await confirm(
@@ -319,11 +346,36 @@ export default function PurchaseOrders() {
         );
         if (!accepted) return;
         try {
-            await purchaseOrdersAPI.reverseReceipt(order.id, reason);
+            const attempt = getIdempotentAttempt(reverseReceiptAttemptRef.current, `reverse-receipt:${order.id}:${reason}`);
+            reverseReceiptAttemptRef.current = attempt;
+            await purchaseOrdersAPI.reverseReceipt(order.id, reason, attempt.key);
+            reverseReceiptAttemptRef.current = null;
             showSuccess('Recepción revertida correctamente');
             loadOrders();
         } catch (error: unknown) {
             showError(errMsg(error, 'No se pudo revertir la recepción'));
+        }
+    };
+
+    /** "Cerrar saldo": finish a partially received order without receiving the rest. */
+    const handleCloseRemaining = async (order: PurchaseOrder) => {
+        if (!canManagePurchaseOrders || order.status !== 'PARTIALLY_RECEIVED') return;
+        const reason = window.prompt('Motivo obligatorio para cerrar el saldo pendiente:')?.trim();
+        if (!reason) return;
+        const accepted = await confirm(
+            `¿Cerrar el saldo de la orden #${order.id}? Lo pendiente se abandona sin afectar inventario y el total de la orden pasa a ${money(Number(order.receivedTotal || 0))} (valor recibido).`,
+            { title: 'Confirmar cierre de saldo' }
+        );
+        if (!accepted) return;
+        try {
+            const attempt = getIdempotentAttempt(closeRemainingAttemptRef.current, `close-remaining:${order.id}:${reason}`);
+            closeRemainingAttemptRef.current = attempt;
+            await purchaseOrdersAPI.closeRemaining(order.id, reason, attempt.key);
+            closeRemainingAttemptRef.current = null;
+            showSuccess('Saldo cerrado. La orden queda como recibida.');
+            loadOrders();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo cerrar el saldo de la orden'));
         }
     };
 
@@ -347,31 +399,44 @@ export default function PurchaseOrders() {
         if (!paymentModalOrder) return;
         const amount = parseFloat(paymentForm.amount);
         if (!amount || amount <= 0) { showError('El monto debe ser mayor a 0'); return; }
+        if (amount > purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0) + 0.005) {
+            showError('El monto no puede superar el saldo pendiente');
+            return;
+        }
+        const paymentData = {
+            amount,
+            date: paymentForm.date,
+            bank: paymentForm.bank || undefined,
+            referenceNumber: paymentForm.referenceNumber || undefined,
+            observations: paymentForm.observations || undefined
+        };
+        const fingerprint = `add-payment:${paymentModalOrder.id}:${JSON.stringify(paymentData)}`;
+        const attempt = getIdempotentAttempt(addPaymentAttemptRef.current, fingerprint);
+        addPaymentAttemptRef.current = attempt;
         setSavingPayment(true);
         try {
-            await purchaseOrdersAPI.addPayment(paymentModalOrder.id, {
-                amount,
-                date: paymentForm.date,
-                bank: paymentForm.bank || undefined,
-                referenceNumber: paymentForm.referenceNumber || undefined,
-                observations: paymentForm.observations || undefined
-            });
+            await purchaseOrdersAPI.addPayment(paymentModalOrder.id, paymentData, attempt.key);
+            addPaymentAttemptRef.current = null;
             showSuccess('Pago registrado correctamente.');
-            const [paymentsRes, orderRes] = await Promise.all([
-                purchaseOrdersAPI.getPayments(paymentModalOrder.id),
-                purchaseOrdersAPI.getById(paymentModalOrder.id),
-            ]);
-            const updatedOrder = orderRes.data.data as PurchaseOrder;
-            setPaymentModalOrder(updatedOrder);
-            setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
-            const balance = Number(updatedOrder.total) - Number(updatedOrder.paidAmount || 0);
-            setPaymentForm((prev) => ({
-                ...prev,
-                amount: balance > 0 ? balance.toFixed(2) : '',
-                bank: '',
-                referenceNumber: '',
-                observations: '',
-            }));
+            try {
+                const [paymentsRes, orderRes] = await Promise.all([
+                    purchaseOrdersAPI.getPayments(paymentModalOrder.id),
+                    purchaseOrdersAPI.getById(paymentModalOrder.id),
+                ]);
+                const updatedOrder = orderRes.data.data as PurchaseOrder;
+                setPaymentModalOrder(updatedOrder);
+                setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+                const balance = purchaseOrderPayable(updatedOrder) - Number(updatedOrder.paidAmount || 0);
+                setPaymentForm((prev) => ({
+                    ...prev,
+                    amount: balance > 0 ? balance.toFixed(2) : '',
+                    bank: '',
+                    referenceNumber: '',
+                    observations: '',
+                }));
+            } catch (error) {
+                notifyError(error, 'El pago fue registrado, pero no se pudo actualizar el detalle (recarga antes de registrar otro abono)', { type: 'warning' });
+            }
             loadOrders();
         } catch (error: unknown) {
             showError(errMsg(error, 'Error al registrar pago'));
@@ -395,13 +460,23 @@ export default function PurchaseOrders() {
 
         setReversingPayment(true);
         try {
-            await purchaseOrdersAPI.reversePayment(paymentModalOrder.id, payment.id, reason);
-            const [paymentsRes, orderRes] = await Promise.all([
-                purchaseOrdersAPI.getPayments(paymentModalOrder.id),
-                purchaseOrdersAPI.getById(paymentModalOrder.id),
-            ]);
-            setPaymentModalOrder(orderRes.data.data as PurchaseOrder);
-            setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+            const attempt = getIdempotentAttempt(
+                reversePaymentAttemptRef.current,
+                `reverse-payment:${paymentModalOrder.id}:${payment.id}:${reason}`,
+            );
+            reversePaymentAttemptRef.current = attempt;
+            await purchaseOrdersAPI.reversePayment(paymentModalOrder.id, payment.id, reason, attempt.key);
+            reversePaymentAttemptRef.current = null;
+            try {
+                const [paymentsRes, orderRes] = await Promise.all([
+                    purchaseOrdersAPI.getPayments(paymentModalOrder.id),
+                    purchaseOrdersAPI.getById(paymentModalOrder.id),
+                ]);
+                setPaymentModalOrder(orderRes.data.data as PurchaseOrder);
+                setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+            } catch (error) {
+                notifyError(error, 'El reverso fue aplicado, pero no se pudo actualizar el historial (recarga la orden para conciliarlo)', { type: 'warning' });
+            }
             setReversalPaymentId(null);
             setReversalReason('');
             showSuccess('Pago revertido correctamente');
@@ -426,14 +501,14 @@ export default function PurchaseOrders() {
     const money = (value: unknown) => formatMoney(value, symbol);
 
     const pendingPaymentOrders = orders.filter(o =>
-        o.status === 'RECEIVED' && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
+        (o.status === 'RECEIVED' || o.status === 'PARTIALLY_RECEIVED') && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
     );
     const overduePayments = pendingPaymentOrders.filter(o => {
         const days = getDaysRemaining(o.paymentDueDate);
         return days !== null && days < 0;
     });
     const payableBalance = pendingPaymentOrders.reduce(
-        (sum, o) => sum + Math.max(0, (Number(o.total) || 0) - (Number(o.paidAmount) || 0)), 0);
+        (sum, o) => sum + Math.max(0, purchaseOrderPayable(o) - (Number(o.paidAmount) || 0)), 0);
     const mostOverdueOrder = [...overduePayments].sort(
         (a, b) => (getDaysRemaining(a.paymentDueDate) ?? 0) - (getDaysRemaining(b.paymentDueDate) ?? 0))[0]
         ?? pendingPaymentOrders[0];
@@ -446,7 +521,10 @@ export default function PurchaseOrders() {
     });
 
     const renderPaymentCell = (order: PurchaseOrder) => {
-        if (order.invoiceType !== 'CREDIT') return <Badge tone="success">Pagado</Badge>;
+        // CASH is paid on delivery: nothing is settled before a receipt.
+        if (order.invoiceType !== 'CREDIT') {
+            return order.paymentStatus === 'PAID' ? <Badge tone="success">Pagado</Badge> : <Badge tone="neutral">Contra entrega</Badge>;
+        }
         const days = order.paymentStatus !== 'PAID' && order.paymentDueDate ? getDaysRemaining(order.paymentDueDate) : null;
         const tone = order.paymentStatus === 'PAID' ? 'success' : order.paymentStatus === 'PARTIAL' ? 'warning' : 'neutral';
         return (
@@ -470,17 +548,34 @@ export default function PurchaseOrders() {
             key: 'invoiceType', header: 'Tipo', width: '0.8fr', hideBelow: 'lg',
             render: (o) => <Badge tone={o.invoiceType === 'CREDIT' ? 'warning' : 'neutral'}>{o.invoiceType === 'CREDIT' ? 'Crédito' : 'Contado'}</Badge>,
         },
-        { key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (o) => Number(o.total) || 0 },
+        {
+            key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (o) => Number(o.total) || 0,
+            render: (o) => (o.status === 'PARTIALLY_RECEIVED' ? (
+                <span className={styles.cellStack}>
+                    <span>{formatNumber(Number(o.total) || 0)}</span>
+                    <span className={styles.muted}>Recibido {money(Number(o.receivedTotal) || 0)}</span>
+                </span>
+            ) : formatNumber(Number(o.total) || 0)),
+        },
         { key: 'payment', header: 'Pago', width: '1.4fr', hideBelow: 'lg', render: renderPaymentCell },
         {
             key: 'status', header: 'Estado', width: '0.9fr',
-            render: (o) => <Badge tone={STATUS_TONE[o.status] ?? 'neutral'} dot>{STATUS_LABEL[o.status] ?? o.status}</Badge>,
+            render: (o) => (
+                <span className={styles.cellStack}>
+                    <Badge tone={STATUS_TONE[o.status] ?? 'neutral'} dot>{STATUS_LABEL[o.status] ?? o.status}</Badge>
+                    {purchaseOrderDateVisibility(o, { startDate, endDate, statusFilter }).outOfRange && (
+                        <span className={styles.muted} title="Fuera del rango de fechas: se muestra porque tiene saldo pendiente de recibir">
+                            Saldo pendiente · fuera del rango
+                        </span>
+                    )}
+                </span>
+            ),
         },
         {
             key: 'actions', header: 'Acciones', width: '10rem', type: 'actions',
             render: (order) => (
                 <span className={styles.rowActions}>
-                    {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && order.status === 'RECEIVED' && (
+                    {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
                         <IconButton
                             icon={DollarSign} size="sm"
                             label={order.paymentStatus === 'PAID' ? 'Ver historial de abonos' : 'Registrar pago / abono'}
@@ -489,9 +584,16 @@ export default function PurchaseOrders() {
                     )}
                     {canManagePurchaseOrders && (
                         <IconButton
-                            icon={order.status === 'RECEIVED' ? Eye : Pencil} size="sm"
-                            label={order.status === 'RECEIVED' ? 'Ver detalles' : 'Editar'}
+                            icon={order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED' ? Eye : Pencil} size="sm"
+                            label={order.status === 'RECEIVED' ? 'Ver detalles' : order.status === 'PARTIALLY_RECEIVED' ? 'Ver / recibir saldo' : 'Editar'}
                             onClick={() => handleOpenForm(order.id)}
+                        />
+                    )}
+                    {canManagePurchaseOrders && order.status === 'PARTIALLY_RECEIVED' && (
+                        <IconButton
+                            icon={PackageCheck} size="sm"
+                            label={`Cerrar saldo de la orden ${order.id} (abandonar lo pendiente)`}
+                            onClick={() => void handleCloseRemaining(order)}
                         />
                     )}
                     {order.invoicePdf && (
@@ -500,7 +602,7 @@ export default function PurchaseOrders() {
                     {canDeletePurchaseOrders && order.status === 'DRAFT' && (
                         <IconButton icon={X} size="sm" label="Eliminar borrador" onClick={() => void handleDeleteOrder(order.id)} />
                     )}
-                    {canDeletePurchaseOrders && order.status === 'RECEIVED' && (
+                    {canDeletePurchaseOrders && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
                         <IconButton icon={Undo2} size="sm" label="Revertir recepción" onClick={() => void handleReverseReceipt(order)} />
                     )}
                 </span>
@@ -528,13 +630,13 @@ export default function PurchaseOrders() {
         },
         { key: 'current', header: 'Actual', width: '1fr', type: 'qty', hideBelow: 'md', render: (s) => `${formatNumber(s.currentStock || 0)} ${s.unit || ''}`.trim() },
         { key: 'min', header: 'Mín', width: '1fr', type: 'qty', hideBelow: 'lg', render: (s) => `${formatNumber(s.minStock || 0)} ${s.unit || ''}`.trim() },
-        { key: 'suggested', header: 'Sugerido', width: '1fr', type: 'qty', render: (s) => `${formatNumber(s.suggestedQuantity)} ${s.unit || ''}`.trim() },
+        { key: 'suggested', header: 'Sugerido', width: '1fr', type: 'qty', render: (s) => formatSuggestionQuantity(s) },
         { key: 'cost', header: `Estimado (${symbol})`, width: '1fr', type: 'money', accessor: (s) => Number(s.estimatedCost) || 0 },
     ];
 
     if (loading) return <div role="status">Cargando órdenes de compra...</div>;
 
-    const balance = paymentModalOrder ? Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0) : 0;
+    const balance = paymentModalOrder ? purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0) : 0;
     const paymentFormAmount = paymentForm.amount === '' ? null : Number(paymentForm.amount);
 
     return (
@@ -557,14 +659,7 @@ export default function PurchaseOrders() {
                 )}
             />
 
-            {ordersLoadError && (
-                <div className={styles.alert} role="alert">
-                    <span className={styles.inline}>
-                        {ordersLoadError}
-                        <Button size="sm" onClick={() => { void loadOrders(); }}>Reintentar</Button>
-                    </span>
-                </div>
-            )}
+            {ordersLoadError && <LoadErrorState message={ordersLoadError} onRetry={() => { void loadOrders(); }} />}
 
             {(orders.length > 0 || !ordersLoadError) && (
                 <div className={styles.kpiGrid}>
@@ -765,6 +860,9 @@ export default function PurchaseOrders() {
                                 <FormSection step={1} title="Resumen de la factura">
                                     <div className={styles.summary}>
                                         <div className={styles.summaryRow}><span>Total factura</span><strong>{money(Number(paymentModalOrder.total))}</strong></div>
+                                        {paymentModalOrder.status === 'PARTIALLY_RECEIVED' && (
+                                            <div className={styles.summaryRow}><span>Valor recibido (exigible)</span><strong>{money(Number(paymentModalOrder.receivedTotal || 0))}</strong></div>
+                                        )}
                                         <div className={styles.summaryRow}><span>Abonado</span><strong>{money(Number(paymentModalOrder.paidAmount || 0))}</strong></div>
                                         <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>Saldo pendiente</span><strong>{money(balance)}</strong></div>
                                         {paymentModalOrder.paymentDueDate && (

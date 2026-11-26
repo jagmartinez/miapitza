@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
+import { notifyError } from '../services/notify';
 import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
@@ -13,12 +14,16 @@ import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product, Branch, Wareh
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { BANK_OPTIONS, INVOICE_TYPE_OPTIONS } from '../constants/purchaseOrderOptions';
+import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
+import { preferredSaleWarehouseId } from '../utils/saleWarehouse';
+import { apiErrorMessage as errorMessage, formatQty, PURCHASE_ORDER_STATUS_LABELS, remainingQuantity } from '../utils/purchaseOrderReceipt';
+import { getApiErrorMessage } from '../utils/apiError';
 import styles from './compras.module.css';
 
 type PoTab = 'data' | 'receive' | 'attachments' | 'history';
 
-const STATUS_LABEL: Record<string, string> = { DRAFT: 'Borrador', ISSUED: 'Emitida', RECEIVED: 'Recibida', CANCELLED: 'Cancelada' };
-const STATUS_TONE = { DRAFT: 'neutral', ISSUED: 'primary', RECEIVED: 'success', CANCELLED: 'danger' } as const;
+const STATUS_LABEL = PURCHASE_ORDER_STATUS_LABELS;
+const STATUS_TONE = { DRAFT: 'neutral', ISSUED: 'primary', PARTIALLY_RECEIVED: 'warning', RECEIVED: 'success', CANCELLED: 'danger' } as const;
 
 type LineRow = {
     key: string | number;
@@ -28,6 +33,8 @@ type LineRow = {
     unit: string;
     quantity: number;
     cost: number;
+    received: number;
+    pending: number;
 };
 
 interface NewOrderLineDraft {
@@ -47,6 +54,13 @@ interface PurchaseOrderFormProps {
 export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: PurchaseOrderFormProps) {
     const { symbol } = useCurrency();
     const money = (value: unknown) => formatMoney(value, symbol);
+    // Unit costs of base-unit lines (per g/ml) can be below one cent; show up
+    // to 6 decimals instead of collapsing them to 0.00.
+    const formatPurchaseUnitCost = (value: number) => (
+        Number.isFinite(value) && value !== 0 && Math.abs(value) < 1
+            ? `${symbol} ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6, useGrouping: false })}`
+            : money(value)
+    );
     const { id: paramId } = useParams();
     const navigate = useNavigate();
     const { confirm } = useConfirmDialog();
@@ -90,9 +104,13 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
     const [itemUnits, setItemUnits] = useState<ProductAllowedUnit[]>([]);
     const [importing, setImporting] = useState(false);
     const importInputRef = useRef<HTMLInputElement>(null);
+    const receiveAttemptRef = useRef<IdempotentAttempt | null>(null);
 
     // Receive Modal
     const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
+    // Per-line "recibir ahora" quantities (purchase unit), keyed by item id.
+    const [receiveQuantities, setReceiveQuantities] = useState<Record<number, string>>({});
+    const [receiving, setReceiving] = useState(false);
     const [saving, setSaving] = useState(false);
 
     const loadDependencies = useCallback(async () => {
@@ -140,7 +158,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             });
             setInvoiceFile(null);
         } catch (error) {
-            console.error('Error loading order:', error);
+            notifyError(error, 'No se pudo abrir la orden de compra');
             navigate('/purchase-orders');
         } finally {
             setLoading(false);
@@ -220,7 +238,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 setItemUnits([]);
             } catch (error) {
                 console.error('Error adding item:', error);
-                showError('Error al agregar ítem');
+                showError(getApiErrorMessage(error, 'Error al agregar ítem'));
             }
         }
     };
@@ -235,7 +253,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 loadOrder(Number(effectiveId));
             } catch (error) {
                 console.error('Error removing item:', error);
-                showError('Error al eliminar ítem');
+                showError(getApiErrorMessage(error, 'Error al eliminar ítem'));
             }
         }
     };
@@ -256,7 +274,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error('Error downloading template:', error);
-            showError('No se pudo descargar la plantilla');
+            showError(getApiErrorMessage(error, 'No se pudo descargar la plantilla'));
         }
     };
 
@@ -274,7 +292,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error('Error downloading invoice:', error);
-            showError('No se pudo descargar la factura adjunta');
+            showError(getApiErrorMessage(error, 'No se pudo descargar la factura adjunta'));
         }
     };
 
@@ -339,7 +357,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             );
         } catch (error) {
             console.error('Error importing items:', error);
-            showError('Error al importar el archivo. Verifique que use la plantilla correcta.');
+            showError(getApiErrorMessage(error, 'Error al importar el archivo. Verifique que use la plantilla correcta.'));
         } finally {
             setImporting(false);
         }
@@ -403,7 +421,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             }
         } catch (error) {
             console.error('Error saving order:', error);
-            showError('Error al guardar orden');
+            showError(getApiErrorMessage(error, 'Error al guardar orden'));
         } finally {
             setSaving(false);
         }
@@ -416,8 +434,28 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             loadOrder(Number(effectiveId));
         } catch (error) {
             console.error('Error updating status:', error);
-            showError('Error al actualizar estado');
+            showError(getApiErrorMessage(error, 'Error al actualizar estado'));
         }
+    };
+
+    const openReceiveModal = () => {
+        const prefill: Record<number, string> = {};
+        for (const item of order?.items || []) {
+            const remaining = remainingQuantity(item);
+            if (remaining > 0) prefill[item.id] = String(remaining);
+        }
+        setReceiveQuantities(prefill);
+        // Preselect a destination (still editable): the order's own warehouse when the
+        // API sends one, else the branch's default sale warehouse / its only warehouse.
+        if (!selectedWarehouseId) {
+            const orderWarehouseId = (order as { warehouseId?: number | null } | null)?.warehouseId;
+            const branchWarehouses = warehouses.filter((warehouse) => warehouse.branchId === order?.branchId);
+            const preselected = (orderWarehouseId && warehouses.some((warehouse) => warehouse.id === orderWarehouseId))
+                ? orderWarehouseId
+                : preferredSaleWarehouseId(branchWarehouses) ?? (warehouses.length === 1 ? warehouses[0].id : null);
+            if (preselected) setSelectedWarehouseId(String(preselected));
+        }
+        setActiveTab('receive');
     };
 
     const handleReceive = async () => {
@@ -425,18 +463,50 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             showWarning('Seleccione un almacén');
             return;
         }
+        const lines: Array<{ itemId: number; quantity: number }> = [];
+        for (const item of order?.items || []) {
+            const raw = (receiveQuantities[item.id] ?? '').trim();
+            if (!raw) continue;
+            const quantity = Number(raw);
+            const remaining = remainingQuantity(item);
+            if (!Number.isFinite(quantity) || quantity < 0) {
+                showWarning(`Cantidad inválida para ${item.product?.name ?? 'el artículo'}`);
+                return;
+            }
+            if (quantity === 0) continue;
+            if (quantity > remaining + 1e-9) {
+                showWarning(`${item.product?.name ?? 'El artículo'}: no puede recibir más que el saldo pendiente (${formatQty(remaining)})`);
+                return;
+            }
+            lines.push({ itemId: item.id, quantity });
+        }
+        if (lines.length === 0) {
+            showWarning('Indique al menos una cantidad a recibir');
+            return;
+        }
+        setReceiving(true);
         try {
-            await purchaseOrdersAPI.receive(Number(effectiveId), Number(selectedWarehouseId));
+            const fingerprint = `receive:${effectiveId}:${selectedWarehouseId}:${JSON.stringify(lines)}`;
+            const attempt = getIdempotentAttempt(receiveAttemptRef.current, fingerprint);
+            receiveAttemptRef.current = attempt;
+            const res = await purchaseOrdersAPI.receive(Number(effectiveId), Number(selectedWarehouseId), attempt.key, lines);
+            receiveAttemptRef.current = null;
+            setActiveTab('data');
             loadOrder(Number(effectiveId));
-            success('Orden recibida e inventario actualizado');
+            success(res.data?.data?.status === 'PARTIALLY_RECEIVED'
+                ? 'Recepción parcial registrada e inventario actualizado'
+                : 'Orden recibida e inventario actualizado');
         } catch (error) {
             console.error('Error receiving order:', error);
-            showError('Error al recibir orden');
+            showError(errorMessage(error, 'Error al recibir orden'));
+        } finally {
+            setReceiving(false);
         }
     };
 
 
     const isDraft = isNew || order?.status === 'DRAFT';
+    const showReceiptColumns = !isNew && !!order && order.status !== 'DRAFT';
     const close = onClose ?? (() => navigate('/purchase-orders'));
 
     const lineSource: Array<PurchaseOrderItem | NewOrderLineDraft> = isNew ? newItems : (order?.items ?? []);
@@ -448,6 +518,8 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         unit: ('purchaseUnit' in item && item.purchaseUnit) ? item.purchaseUnit : (item.product?.unit ?? ''),
         quantity: Number(item.quantity),
         cost: Number(item.cost),
+        received: 'receivedQuantity' in item ? Number(item.receivedQuantity ?? 0) : 0,
+        pending: 'id' in item ? remainingQuantity(item) : 0,
     }));
     const subtotal = isNew
         ? newItems.reduce((sum, item) => sum + (item.quantity * item.cost), 0)
@@ -479,6 +551,10 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 )
                 : formatNumber(r.quantity)),
         },
+        ...(showReceiptColumns ? [
+            { key: 'received', header: 'Recibido', width: '1fr', type: 'qty' as const, render: (r: LineRow) => formatQty(r.received) },
+            { key: 'pending', header: 'Pendiente', width: '1fr', type: 'qty' as const, render: (r: LineRow) => formatQty(r.pending) },
+        ] : []),
         {
             key: 'cost', header: `Costo (${symbol})`, width: '1fr', type: 'money',
             render: (r) => (isNew
@@ -487,10 +563,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                         aria-label={`Costo de ${r.name}`}
                         value={r.cost}
                         min={0}
+                        decimals={6}
                         onChange={(v) => setNewItemField(r.index, 'cost', v)}
                     />
                 )
-                : formatNumber(r.cost)),
+                : formatPurchaseUnitCost(r.cost)),
         },
         { key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (r) => r.quantity * r.cost },
         ...(isDraft ? [{
@@ -499,6 +576,37 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 <IconButton icon={Trash2} size="sm" label={`Quitar ${r.name}`} onClick={() => void handleRemoveItem(r.removeKey)} />
             ),
         }] : []),
+    ];
+
+    const receiveColumns: Column<PurchaseOrderItem>[] = [
+        {
+            key: 'product', header: 'Producto', width: '2fr',
+            render: (item) => (
+                <span>
+                    {item.product?.name}
+                    <span className={styles.muted}> · {item.purchaseUnit || item.product?.unit || ''}</span>
+                </span>
+            ),
+        },
+        { key: 'ordered', header: 'Pedido', width: '1fr', type: 'qty', render: (item) => formatQty(Number(item.quantity)) },
+        { key: 'received', header: 'Recibido', width: '1fr', type: 'qty', render: (item) => formatQty(Number(item.receivedQuantity ?? 0)) },
+        { key: 'pending', header: 'Pendiente', width: '1fr', type: 'qty', render: (item) => formatQty(remainingQuantity(item)) },
+        {
+            key: 'now', header: 'Recibir ahora', width: '1.4fr', type: 'qty',
+            render: (item) => (
+                <NumberInput
+                    aria-label={`Recibir ahora ${item.product?.name ?? ''}`}
+                    min={0}
+                    decimals={6}
+                    disabled={remainingQuantity(item) <= 0}
+                    value={receiveQuantities[item.id] === undefined || receiveQuantities[item.id] === '' ? null : Number(receiveQuantities[item.id])}
+                    onChange={(v) => setReceiveQuantities((previous) => ({
+                        ...previous,
+                        [item.id]: v === null ? '' : String(v),
+                    }))}
+                />
+            ),
+        },
     ];
 
     const dirty = isNew
@@ -544,8 +652,8 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                     <p className={styles.muted}>La orden no maneja descuento ni IVA; el total es la suma de las líneas.</p>
                 </div>
             )}
-            footerStart={!isNew && order?.status === 'ISSUED' ? (
-                <Button icon={Package} onClick={() => setActiveTab('receive')}>Recibir</Button>
+            footerStart={!isNew && (order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED') ? (
+                <Button icon={Package} onClick={openReceiveModal}>{order?.status === 'PARTIALLY_RECEIVED' ? 'Recibir saldo' : 'Recibir'}</Button>
             ) : undefined}
             footer={({ requestClose }) => (
                 <>
@@ -728,6 +836,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                                     id="po-item-cost"
                                                     value={itemForm.cost}
                                                     min={0}
+                                                    decimals={6}
                                                     prefix={symbol}
                                                     onChange={(v) => setItemForm({ ...itemForm, cost: v ?? 0 })}
                                                 />
@@ -753,10 +862,10 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
 
                     {activeTab === 'receive' && (
                         <FormSection title="Recepción de inventario">
-                            {order?.status === 'ISSUED' ? (
+                            {order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED' ? (
                                 <>
                                     <p className={styles.muted}>
-                                        Esta acción ingresará los ítems de la orden al inventario físico. Asegúrese de contar los productos antes de confirmar.
+                                        Esta acción ingresará al inventario físico las cantidades indicadas por línea. Asegúrese de contar los productos antes de confirmar.
                                     </p>
                                     <Field label="Almacén de destino" htmlFor="po-warehouse" required>
                                         <AppSelect
@@ -767,8 +876,18 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                             placeholder="Seleccione Almacén"
                                         />
                                     </Field>
+                                    <p className={styles.muted}>
+                                        Ajuste &quot;Recibir ahora&quot; si llegó menos de lo pedido. El saldo queda pendiente para otra
+                                        recepción o puede cerrarse desde el listado con &quot;Cerrar saldo&quot;.
+                                    </p>
+                                    <DataTable<PurchaseOrderItem>
+                                        ariaLabel="Cantidades a recibir"
+                                        columns={receiveColumns}
+                                        rows={order?.items ?? []}
+                                        rowKey={(item) => item.id}
+                                    />
                                     <div>
-                                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId}>
+                                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId || receiving} loading={receiving}>
                                             Confirmar Recepción
                                         </Button>
                                     </div>

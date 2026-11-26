@@ -1389,3 +1389,14 @@
     flex: 0 0 auto;
     color: var(--ui-primary);
 }
+
+/* Inventory cards carry up to six actions: size columns to their labels (the
+   icon-only delete stays narrow) so "Kardex"/"Ajustar"/"Conversiones" are not cut. */
+.inventory-card-actions-new {
+    grid-auto-columns: auto;
+}
+
+.inventory-card-actions-new .action-btn-new {
+    padding: 10px 3px;
+    letter-spacing: 0;
+}

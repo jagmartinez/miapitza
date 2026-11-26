@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { notifyError } from '../services/notify';
 import { unitsAPI } from '../services/api';
 import type { ProductAllowedUnit } from '../types';
 
@@ -15,8 +16,9 @@ export function useProductUnits(productId: number | null) {
         try {
             const res = await unitsAPI.getProductUnits(productId);
             setUnits(res.data.data || []);
-        } catch {
+        } catch (error) {
             setUnits([]);
+            notifyError(error, 'No se pudieron cargar las unidades del producto', { type: 'warning' });
         } finally {
             setLoading(false);
         }

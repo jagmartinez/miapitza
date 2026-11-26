@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { formatHrMoney } from '../../utils/hrFormat';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import {
   AlertTriangle,
   Banknote,
@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
+import { DataTable, FullScreenModal, PageHeader, StatCard, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
@@ -136,6 +136,18 @@ function dateLabel(value?: string | null): string {
 
 function money(currency: string, amount?: string | null): string {
   return formatHrMoney(currency, amount);
+}
+
+/** Totals already-loaded amounts per currency (no server call, display only). */
+function sumByCurrency(rows: Array<{ currency: string; amount?: string | null }>): string {
+  const totals = new Map<string, number>();
+  rows.forEach(({ currency, amount }) => {
+    const numeric = Number(amount ?? 0);
+    const key = currency?.trim().toUpperCase() || 'NIO';
+    totals.set(key, (totals.get(key) ?? 0) + (Number.isFinite(numeric) ? numeric : 0));
+  });
+  if (totals.size === 0) return money('NIO', '0');
+  return [...totals.entries()].map(([currency, total]) => money(currency, total.toFixed(2))).join(' · ');
 }
 
 export default function BenefitsManagement() {
@@ -419,6 +431,10 @@ export default function BenefitsManagement() {
     );
   }
 
+  const travelInProgress = travel.filter((item) => ['SUBMITTED', 'APPROVED', 'ADVANCED', 'IN_SETTLEMENT'].includes(item.status));
+  const openLoans = loans.filter((item) => ['DISBURSED', 'ACTIVE'].includes(item.status));
+  const pendingActions = [...travel, ...loans, ...deductions].filter((item) => item.allowedActions.length > 0).length;
+
   return (
     <div className="page-wrapper inventory-page hr-benefits-page hr-admin-catalog-page hr-operation-page">
       <PageHeader
@@ -438,6 +454,28 @@ export default function BenefitsManagement() {
         }
       />
       <BenefitsOnlineNotice online={online} />
+      {(travelInProgress.length > 0 || openLoans.length > 0 || pendingActions > 0) && (
+        <section className="hr-kpi-row" aria-label="Indicadores de beneficios">
+          {pendingActions > 0 && (
+            <StatCard tone="danger" label="Por atender" value={String(pendingActions)} context="Registros con una acción disponible." />
+          )}
+          {travelInProgress.length > 0 && (
+            <StatCard
+              tone="warning"
+              label="Viáticos en curso"
+              value={String(travelInProgress.length)}
+              context={sumByCurrency(travelInProgress.map((item) => ({ currency: item.currency, amount: item.approvedAmount ?? item.requestedAmount })))}
+            />
+          )}
+          {openLoans.length > 0 && (
+            <StatCard
+              label="Saldo de préstamos"
+              value={sumByCurrency(openLoans.map((item) => ({ currency: item.currency, amount: item.outstandingBalance })))}
+              context={`${openLoans.length} préstamo${openLoans.length === 1 ? '' : 's'} vigente${openLoans.length === 1 ? '' : 's'}`}
+            />
+          )}
+        </section>
+      )}
       <div className="hr-benefits-toolbar inventory-filters-row hr-operation-toolbar">
         <div
           className="hr-benefits-tabs inventory-status-filters"

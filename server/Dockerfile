@@ -12,7 +12,7 @@ ENV NODE_ENV=production
 ENV STORAGE_DIR=/app/storage
 RUN npm prune --omit=dev
 RUN chmod +x docker-entrypoint.sh
-RUN mkdir -p /app/storage/uploads/invoices /app/storage/backups
+RUN mkdir -p /app/storage/uploads/invoices /app/storage/uploads/hr-documents /app/storage/backups /app/storage/.readiness
 # Run as the unprivileged `node` user (built into the base image) instead of root.
 RUN chown -R node:node /app
 EXPOSE 3000

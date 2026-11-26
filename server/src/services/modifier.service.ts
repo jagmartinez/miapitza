@@ -1,6 +1,7 @@
-import type { Prisma } from '@prisma/client';
+import type { ModifierInventoryEffect, Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
+import { normalizeRecipeQuantity } from '../utils/recipe-unit';
 
 export class ModifierService {
     // Modifier Groups CRUD
@@ -119,11 +120,8 @@ export class ModifierService {
             if (data.consumeQuantity === null) {
                 link.consumeQuantity = null;
             } else {
-                const qty = Number(data.consumeQuantity);
-                if (!Number.isFinite(qty) || qty <= 0) {
-                    throw new Error('La cantidad a consumir debe ser mayor a 0');
-                }
-                link.consumeQuantity = qty;
+                // Validate the value as stored (scale 6), not the raw input.
+                link.consumeQuantity = normalizeRecipeQuantity(data.consumeQuantity, 'La cantidad a consumir');
             }
         }
 
@@ -144,14 +142,32 @@ export class ModifierService {
         return link;
     }
 
+    private static normalizeInventoryEffect(raw: unknown): ModifierInventoryEffect | undefined {
+        if (raw === undefined || raw === null || raw === '') return undefined;
+        if (raw === 'ADD' || raw === 'REMOVE') return raw;
+        throw new Error('El efecto de inventario del modificador debe ser ADD o REMOVE');
+    }
+
     private static async assertCompleteInventoryLink(companyId: number, link: {
         productId: number | null;
         consumeQuantity: number | null;
         unitId: number | null;
+        inventoryEffect?: ModifierInventoryEffect;
     }) {
         if (link.productId === null) {
             if (link.consumeQuantity !== null || link.unitId !== null) {
                 throw new Error('Una cantidad o unidad de consumo requiere un producto vinculado');
+            }
+            if (link.inventoryEffect === 'REMOVE') {
+                throw new Error('Un modificador "Sin ingrediente" requiere el producto de la receta que se quita');
+            }
+            return;
+        }
+        // REMOVE ("sin X"): no quantity means "drop the whole recipe line"; a
+        // quantity reduces it (clamped at 0 when the order is consumed).
+        if (link.inventoryEffect === 'REMOVE' && link.consumeQuantity === null) {
+            if (link.unitId !== null) {
+                throw new Error('Una unidad de consumo requiere una cantidad a quitar');
             }
             return;
         }
@@ -175,6 +191,7 @@ export class ModifierService {
         productId?: number | null;
         consumeQuantity?: number | null;
         unitId?: number | null;
+        inventoryEffect?: ModifierInventoryEffect;
     }) {
         // Verify group belongs to company
         const group = await this.getById(groupId, companyId);
@@ -189,11 +206,13 @@ export class ModifierService {
         const name = data.name?.trim();
         if (!name) throw new Error('El nombre del modificador es requerido');
 
+        const inventoryEffect = this.normalizeInventoryEffect(data.inventoryEffect) ?? 'ADD';
         const link = await this.resolveInventoryLink(companyId, data);
         await this.assertCompleteInventoryLink(companyId, {
             productId: link.productId ?? null,
             consumeQuantity: link.consumeQuantity ?? null,
-            unitId: link.unitId ?? null
+            unitId: link.unitId ?? null,
+            inventoryEffect
         });
 
         // API contract keeps `extraPrice`; the Prisma model field is `price`.
@@ -202,6 +221,7 @@ export class ModifierService {
                 name,
                 price,
                 modifierGroupId: groupId,
+                inventoryEffect,
                 ...link
             }
         });
@@ -214,6 +234,7 @@ export class ModifierService {
         productId?: number | null;
         consumeQuantity?: number | null;
         unitId?: number | null;
+        inventoryEffect?: ModifierInventoryEffect;
     }) {
         if (data.extraPrice !== undefined && (Number(data.extraPrice) < 0 || !Number.isFinite(Number(data.extraPrice)))) {
             throw new Error('El precio extra debe ser mayor o igual a 0');
@@ -230,6 +251,8 @@ export class ModifierService {
             updateData.price = Number(extraPrice);
         }
 
+        const inventoryEffect = this.normalizeInventoryEffect(data.inventoryEffect);
+        if (inventoryEffect !== undefined) updateData.inventoryEffect = inventoryEffect;
         const link = await this.resolveInventoryLink(companyId, { productId, consumeQuantity, unitId });
         Object.assign(updateData, link);
 
@@ -244,7 +267,8 @@ export class ModifierService {
             const nextLink = {
                 productId: link.productId !== undefined ? link.productId : modifier.productId,
                 consumeQuantity: link.consumeQuantity !== undefined ? link.consumeQuantity : modifier.consumeQuantity == null ? null : Number(modifier.consumeQuantity),
-                unitId: link.unitId !== undefined ? link.unitId : modifier.unitId
+                unitId: link.unitId !== undefined ? link.unitId : modifier.unitId,
+                inventoryEffect: inventoryEffect ?? modifier.inventoryEffect
             };
             if (productId === null) {
                 if ((consumeQuantity !== undefined && consumeQuantity !== null) || (unitId !== undefined && unitId !== null)) {
@@ -268,6 +292,13 @@ export class ModifierService {
             });
             if (!modifier || modifier.modifierGroup.companyId !== companyId) {
                 throw new Error('Modificador no encontrado');
+            }
+            // Sold modifiers are referenced by OrderItemModifier history (FK
+            // Restrict). Deactivate instead so sales/reports keep their link and
+            // order entry stops offering it (orders only accept active modifiers).
+            const used = await tx.orderItemModifier.findFirst({ where: { modifierId: id }, select: { id: true } });
+            if (used) {
+                return await tx.modifier.update({ where: { id }, data: { active: false } });
             }
             return await tx.modifier.delete({ where: { id } });
         });

@@ -104,8 +104,13 @@ async function ensureBranchWarehouse(companyId: number, branchId: number) {
 
     if (DRY_RUN) return { id: -1, name: 'DRY', branchId, companyId };
 
+    // Warehouse copy of the company costing method (inventory engine source).
+    const company = await prisma.company.findUnique({ where: { id: companyId }, select: { costingMethod: true } });
     wh = await prisma.warehouse.create({
-        data: { companyId, branchId, name: 'Bodega Demo Ciclo', code: `DEMO-${branchId}` },
+        data: {
+            companyId, branchId, name: 'Bodega Demo Ciclo', code: `DEMO-${branchId}`,
+            costingMethod: company?.costingMethod ?? 'WEIGHTED_AVERAGE',
+        },
     });
     step('Setup', `Almacén creado para sucursal ${branchId}`, { warehouseId: wh.id });
     return wh;
@@ -292,7 +297,7 @@ async function runFullSaleWithKitchen(
         })),
     });
 
-    const invoice = await InvoiceService.generateInvoice(saleOrder.id, companyId);
+    const invoice = await InvoiceService.generateInvoice(saleOrder.id, companyId, userId);
     step('Factura', 'Número fiscal asignado', {
         orderId: saleOrder.id,
         invoiceNumber: invoice.invoiceNumber,

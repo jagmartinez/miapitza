@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { formatHrMoney } from '../../utils/hrFormat';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import {
   AlertTriangle,
   Banknote,
@@ -320,6 +320,7 @@ export default function MyBenefits() {
               <span className="my-benefits-register-count">{items.length} registro{items.length === 1 ? '' : 's'}</span>
             </header>
             <DataTable<HrTravelRequest | HrLoan | HrDeduction>
+              stackOnMobile
               ariaLabel={tab === 'TRAVEL' ? 'Mis viáticos' : tab === 'LOAN' ? 'Mis préstamos' : 'Mis deducciones'}
               rows={items as Array<HrTravelRequest | HrLoan | HrDeduction>}
               rowKey={(item) => `${tab}-${item.id}`}
@@ -511,6 +512,7 @@ export default function MyBenefits() {
                     </div>
                     <h3>Gastos reportados</h3>
                     <DataTable
+                      stackOnMobile
                       ariaLabel="Gastos reportados"
                       rows={selected.item.expenses ?? []}
                       rowKey={(expense) => expense.id}
@@ -535,6 +537,7 @@ export default function MyBenefits() {
                     </div>
                     <h3>Calendario</h3>
                     <DataTable
+                      stackOnMobile
                       ariaLabel="Calendario de cuotas"
                       rows={selected.item.schedule ?? []}
                       rowKey={(installment) => installment.id}

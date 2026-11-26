@@ -1,0 +1,656 @@
+/* Caja screens. Tokens only; amounts on one line with tabular figures; landscape, no overflow at 1280x800 / 1024x600. */
+.cash {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.cash-back {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-m);
+}
+
+.cash-back:disabled {
+    opacity: 0.4;
+}
+
+.cash-bar {
+    flex: none;
+    box-sizing: border-box;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 12px;
+    border-bottom: var(--hair) solid var(--line);
+}
+
+.cash-title {
+    font-size: 16px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.cash-offline {
+    margin-left: auto;
+    color: var(--alert);
+    font-size: 14px;
+}
+
+.cash-notice {
+    flex: none;
+    margin: 0;
+    padding: 8px 16px;
+}
+
+.cash-num {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cash-h {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.cash-open-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: 16px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.cash-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.cash-registers {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cash-register {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: 64px;
+    text-align: left;
+}
+
+.cash-register:disabled {
+    opacity: 0.45;
+}
+
+.cash-amount {
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 1.1;
+}
+
+.cash-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.cash-chips .btn {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cash .pay-keys .btn {
+    min-height: 52px;
+}
+
+.cash-foot {
+    flex: none;
+    padding: 8px 16px;
+    border-top: var(--hair) solid var(--line);
+}
+
+.cash-main {
+    width: 100%;
+    min-height: 48px;
+    font-size: 15px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.cash-count {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 12px;
+}
+
+.cash-denoms {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.cash-denom-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.cash-denom {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: 48px;
+    padding: 6px 10px;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-m);
+}
+
+.cash-denom[aria-pressed='true'] {
+    border-color: var(--text);
+}
+
+.cash-count-side {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.grow {
+    flex: 1;
+}
+
+.cash-head {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cash-warn {
+    color: var(--ready);
+}
+
+.cash-active-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr);
+    gap: 16px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.cash-left {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.cash-cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.cash-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border-radius: 10px;
+}
+
+.cash-card > .muted:first-child {
+    font-size: 11px;
+}
+
+.cash-card > .muted:last-child {
+    font-size: 12px;
+}
+
+.cash-card-amount {
+    font-size: 17px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.cash-moves {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cash-move {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border-radius: 8px;
+}
+
+.cash-move-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cash-out {
+    color: var(--alert);
+}
+
+.cash-right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    background: var(--surface-2);
+    border-radius: 10px;
+    align-self: start;
+}
+
+.cash-lines {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cash-lines > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.cash-lines dt {
+    color: var(--muted);
+}
+
+.cash-lines dd {
+    margin: 0;
+}
+
+.cash-expected {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 12px;
+    border-top: var(--hair) solid var(--line);
+}
+
+.cash-expected strong {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.cash-blind {
+    margin: 0;
+    padding-top: 12px;
+    border-top: var(--hair) solid var(--line);
+}
+
+.cash-sheet {
+    max-width: 900px;
+}
+
+.cash-sheet-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+}
+
+.cash-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.cash-sheet-actions {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+}
+
+.cash-sheet-actions .cash-main {
+    width: auto;
+    min-height: 56px;
+    font-size: 18px;
+}
+
+@media (max-height: 640px) {
+    .cash-amount {
+        font-size: 34px;
+    }
+    .cash .pay-keys .btn {
+        min-height: 44px;
+    }
+}
+
+/* Count / close screen: Córdobas | Dólares + keypad | panel. */
+.cash-count-body {
+    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(280px, 340px);
+    gap: 12px;
+    padding: 12px;
+}
+
+.cash-count-mid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.cash-dcol {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.cash-dlist {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cash-dgroup {
+    font-size: 12px;
+}
+
+.cash-drow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1.2fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 2px 6px;
+    text-align: left;
+    font-size: 14px;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+}
+
+/* Count cell: grey chip; the active one gets a 1px white outline (mockup .cnt). */
+.cash-cnt {
+    display: grid;
+    place-items: center;
+    min-height: 32px;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+}
+
+.cash-cnt[data-zero='true'] {
+    color: var(--muted);
+}
+
+.cash-drow[aria-pressed='true'] .cash-cnt,
+.cash-denom[aria-pressed='true'] .cash-cnt {
+    border-color: var(--text);
+}
+
+.cash-dsub {
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cash-dfoot {
+    margin-top: auto;
+    padding: 8px 10px;
+    background: var(--surface-2);
+    border-radius: var(--radius-m);
+}
+
+.cash-count-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px;
+    border-left: var(--hair) solid var(--line);
+}
+
+.cash-total {
+    padding-top: 7px;
+    border-top: var(--hair) solid var(--line);
+}
+
+.cash-total dd {
+    font-size: 17px;
+    font-weight: 500;
+}
+
+.cash-result {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.cash-notes {
+    box-sizing: border-box;
+    width: 100%;
+    resize: none;
+    padding: 8px;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+}
+
+.cash-count-foot {
+    flex: none;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: var(--hair) solid var(--line);
+}
+
+.cash-count-foot .btn {
+    min-height: 48px;
+    min-width: 0;
+    padding: 0 16px;
+    white-space: nowrap;
+}
+
+/* "TC 36.50 C$ por US$" chip: grey fill, the number is the (read-only) input. */
+.cash-rate {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 0 6px 0 12px;
+    font-size: 13px;
+    background: var(--surface-2);
+    border-radius: var(--radius-m);
+}
+
+.cash-rate input {
+    box-sizing: border-box;
+    width: 72px;
+    min-height: 36px;
+    padding: 0 8px;
+    text-align: right;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+    font: inherit;
+    font-weight: 500;
+}
+
+.cash-rate input[data-selected='true'] {
+    border-color: var(--text);
+}
+
+@media (max-height: 640px) {
+    .cash-count-body {
+        gap: 8px;
+        padding: 8px;
+    }
+    .cash-drow {
+        min-height: 26px;
+        font-size: 14px;
+        padding: 0 8px;
+    }
+    .cash-count-mid .pay-keys .btn {
+        min-height: 40px;
+    }
+    .cash-count-foot {
+        padding: 4px 8px;
+    }
+    .cash-count-foot .btn {
+        min-height: 40px;
+    }
+}
+
+/* Close report and history */
+.cash-head {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cash-tag {
+    flex: none;
+    padding: 3px 10px;
+    font-size: 12px;
+    border-radius: var(--radius-s);
+    background: var(--surface-2);
+    color: var(--muted-2);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cash-tag-warn {
+    color: var(--ready);
+    background: var(--ready-bg);
+}
+
+.cash-tag-bad {
+    color: var(--alert);
+}
+
+.cash-report-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.cash-report-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.cash-report-cards .cash-right {
+    align-self: stretch;
+}
+
+.cash-line-strong {
+    padding-top: 8px;
+    border-top: var(--hair) solid var(--line);
+    font-weight: 500;
+}
+
+.cash-note {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.cash-denoms-cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.cash-report-foot {
+    display: flex;
+    gap: 12px;
+}
+
+.cash-report-foot .btn {
+    min-height: 48px;
+    white-space: nowrap;
+}
+
+.cash-report-foot .cash-main {
+    width: auto;
+    flex: 1;
+}
+
+.cash-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.cash-history-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    text-align: left;
+}
+
+.cash-history-row > span:first-child {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}

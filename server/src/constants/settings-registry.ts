@@ -49,12 +49,17 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     D({ key: 'restaurant_name', type: 'string', default: 'Mi Restaurante', group: 'organizacion', section: 'empresa', label: 'Nombre comercial', description: 'Aparece en tickets y facturas.', min: 1, max: 120 }),
     D({ key: 'ruc', type: 'string', default: '', group: 'organizacion', section: 'empresa', label: 'RUC', description: 'Identificación fiscal de la empresa.', max: 40 }),
     D({ key: 'timezone', type: 'string', default: 'America/Managua', group: 'organizacion', section: 'empresa', label: 'Zona horaria', description: 'Define el cierre de día y los reportes.', min: 1, max: 64 }),
+    D({ key: 'address', type: 'string', default: '', group: 'organizacion', section: 'empresa', label: 'Dirección', description: 'Dirección del negocio en tickets y facturas.', max: 191 }),
+    D({ key: 'phone', type: 'string', default: '', group: 'organizacion', section: 'empresa', label: 'Teléfono', description: 'Teléfono de contacto en tickets y facturas.', max: 40 }),
+    D({ key: 'email', type: 'string', default: '', group: 'organizacion', section: 'empresa', label: 'Correo', description: 'Correo de contacto en tickets y facturas.', max: 120 }),
+    D({ key: 'logoUrl', type: 'string', default: '', group: 'organizacion', section: 'empresa', label: 'Logo', description: 'Imagen impresa en el encabezado del ticket.', max: 191 }),
     D({ key: 'currency_symbol', type: 'string', default: 'C$', group: 'organizacion', section: 'empresa', label: 'Símbolo de moneda', description: 'Se antepone a los importes.', min: 1, max: 5 }),
     // Facturación
     D({ key: 'tax_rate', type: 'number', default: '15', group: 'ventas', section: 'facturacion', label: 'Impuesto (IVA)', description: 'Tasa aplicada a las ventas.', min: 0, max: 100, suffix: '%' }),
     D({ key: 'invoicePrefix', type: 'string', default: 'F', group: 'ventas', section: 'facturacion', label: 'Prefijo de factura', description: 'Prefijo de la numeración de facturas.', max: 10 }),
     D({ key: 'credit_note_series', type: 'string', default: 'NC', group: 'ventas', section: 'facturacion', label: 'Serie de nota de crédito', description: 'Prefijo de la numeración de notas de crédito.', max: 10 }),
     D({ key: 'invoiceFooter', type: 'string', default: '', group: 'ventas', section: 'facturacion', label: 'Pie del comprobante', description: 'Texto al final de tickets y facturas.', max: 191 }),
+    D({ key: 'invoiceTerms', type: 'string', default: '', group: 'ventas', section: 'facturacion', label: 'Términos y condiciones', description: 'Condiciones de venta impresas en la factura.', max: 191 }),
     D({ key: 'fiscal_tax_id_length', type: 'integer', default: '14', group: 'ventas', section: 'facturacion', label: 'Longitud del identificador fiscal', description: 'Caracteres esperados en la cédula o RUC del cliente.', min: 1, max: 40 }),
     D({ key: 'fiscal_jurisdiction', type: 'string', default: '', group: 'ventas', section: 'facturacion', label: 'Jurisdicción fiscal', description: 'Código definido por la empresa. Sin él, notas de crédito y anulaciones quedan bloqueadas.', max: 32 }),
     D({ key: 'fiscal_tax_id_charset', type: 'enum', default: '', group: 'ventas', section: 'facturacion', label: 'Caracteres del identificador fiscal', description: 'Tipo de caracteres permitidos en RUC/NIT.', options: [{ value: 'DIGITS', label: 'Solo dígitos' }, { value: 'ALPHANUMERIC', label: 'Alfanumérico y guion' }] }),
@@ -63,6 +68,7 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     D({ key: 'tipRate', type: 'number', default: '0', group: 'ventas', section: 'propinas', label: 'Porcentaje de propina', description: 'Porcentaje sobre el subtotal.', min: 0, max: 100, suffix: '%', branchable: true }),
     D({ key: 'pos.priceIncludesTax', type: 'boolean', default: 'true', group: 'ventas', section: 'propinas', label: 'Precios incluyen impuesto', description: 'Los precios del menú ya traen el impuesto.' }),
     D({ key: 'pos.cashRounding', type: 'enum', default: 'none', group: 'ventas', section: 'propinas', label: 'Redondeo en efectivo', description: 'Redondeo del total pagado en efectivo.', options: [{ value: 'none', label: 'Sin redondeo' }, { value: '0.50', label: 'A 0.50' }, { value: '1.00', label: 'A 1.00' }] }),
+    D({ key: 'enablePromotions', type: 'boolean', default: 'false', group: 'ventas', section: 'propinas', label: 'Sistema de promociones', description: 'Aplica las promociones vigentes en el POS.' }),
     // Canales
     D({ key: 'channel.pedidosYaCommissionPct', type: 'number', default: '18', group: 'ventas', section: 'canales', label: 'Comisión PedidosYa', description: 'Comisión retenida por la plataforma.', min: 0, max: 100, suffix: '%' }),
     // Caja
@@ -70,6 +76,7 @@ export const SETTINGS_REGISTRY: readonly SettingDef[] = [
     D({ key: 'cash.forcedDropAbove', type: 'number', default: '30000', group: 'operacion', section: 'caja', label: 'Retiro forzado desde', description: 'Efectivo en caja que obliga a hacer un retiro.', min: 0, prefix: 'C$', branchable: true }),
     D({ key: 'cash.closeWithDifferenceNeedsSupervisor', type: 'boolean', default: 'true', group: 'operacion', section: 'caja', label: 'Cierre con diferencia requiere supervisor', description: 'Exige autorización si el arqueo no cuadra.' }),
     D({ key: 'cash_reconciliation_tolerance', type: 'number', default: '1', group: 'operacion', section: 'caja', label: 'Tolerancia de arqueo', description: 'Diferencia aceptada sin autorización.', min: 0, prefix: 'C$', branchable: true }),
+    D({ key: 'exchange_rate_usd', type: 'number', default: '36.5', group: 'operacion', section: 'caja', label: 'Tipo de cambio US$', description: 'Córdobas por dólar para cobros y cierres de caja en dólares.', min: 0.0001, prefix: 'C$' }),
     // Inventario
     D({ key: 'inventory.sellWithoutStock', type: 'enum', default: 'warn', group: 'operacion', section: 'inventario', label: 'Venta sin existencias', description: 'Qué hace el POS cuando no hay stock.', options: [{ value: 'block', label: 'Bloquear' }, { value: 'warn', label: 'Advertir' }, { value: 'allow', label: 'Permitir' }] }),
     D({ key: 'inventory.wasteTolerancePct', type: 'number', default: '3', group: 'operacion', section: 'inventario', label: 'Tolerancia de merma', description: 'Merma aceptada antes de alertar.', min: 0, max: 100, suffix: '%', branchable: true }),

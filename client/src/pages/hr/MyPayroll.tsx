@@ -1,4 +1,4 @@
-import { formatHrMoney } from '../../utils/hrFormat';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FileText, Gift, RefreshCw } from 'lucide-react';
 import { AppSelect, Button, DataTable, EmptyState, Field, Input, LoadErrorState, PageHeader, type Column } from '@/ui';
@@ -163,6 +163,7 @@ export default function MyPayroll() {
       ) : (
         <div className={selected || detailLoading ? styles.layout : undefined}>
           <DataTable<HrPayrollReceiptSummary>
+            stackOnMobile
             ariaLabel="Recibos publicados"
             columns={columns}
             rows={receipts}

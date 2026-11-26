@@ -6,9 +6,10 @@ import { AuditLogService } from '../../services/audit-log.service';
 import { InventoryEngineService } from '../../services/inventory-engine.service';
 import { CostingService } from '../../services/costing.service';
 import { UnitConversionService } from '../../services/unit-conversion.service';
+import { fileCleanupService } from '../../services/file-cleanup.service';
 
 describe('PurchaseOrderService accounting invariants', () => {
-    it('defaults an omitted invoice type to a fully settled cash purchase', async () => {
+    it('defaults an omitted invoice type to a cash purchase that owes nothing before receipt', async () => {
         jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 2 } as never);
         jest.spyOn(prisma.supplier, 'findFirst').mockResolvedValue({ id: 3 } as never);
         jest.spyOn(prisma.product, 'findMany').mockResolvedValue([{ id: 4 }] as never);
@@ -53,8 +54,9 @@ describe('PurchaseOrderService accounting invariants', () => {
 
         expect(createdOrderData.invoiceType).toBe('CASH');
         expect(createdOrderData.total).toBe(20.25);
-        expect(createdOrderData.paymentStatus).toBe('PAID');
-        expect(createdOrderData.paidAmount).toBe(20.25);
+        // CASH is paid on delivery: PENDING/0 until a receipt settles it.
+        expect(createdOrderData.paymentStatus).toBe('PENDING');
+        expect(createdOrderData.paidAmount).toBe(0);
         expect(conversion).toHaveBeenCalledWith(4, 1, 2, 'kg', 10.125, tx as never);
         expect(createdItemData).toEqual(expect.objectContaining({
             purchaseUnit: 'kg', conversionFactor: 1, baseQuantity: 2, baseCost: 10.125
@@ -154,6 +156,84 @@ describe('PurchaseOrderService accounting invariants', () => {
         }]);
     });
 
+    it('queues a replaced invoice atomically and dispatches only after commit', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            purchaseOrder: {
+                findFirst: jest.fn(async () => ({
+                    id: 10,
+                    status: 'DRAFT',
+                    invoiceType: 'CREDIT',
+                    total: 50,
+                    invoicePdf: '/uploads/invoices/invoice-100-200.pdf',
+                })),
+                update: jest.fn(async () => ({ id: 10 })),
+            },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never,
+        );
+        const confirm = jest.spyOn(fileCleanupService, 'cancelReservation').mockResolvedValue();
+        const enqueue = jest.spyOn(fileCleanupService, 'requestDeletion').mockResolvedValue();
+        const dispatch = jest.spyOn(fileCleanupService, 'processByStorageKey').mockResolvedValue(true);
+
+        await PurchaseOrderService.update(10, 1, {
+            invoicePdf: '/uploads/invoices/invoice-100-201.pdf',
+        });
+
+        expect(confirm).toHaveBeenCalledWith(
+            tx as never,
+            1,
+            'INVOICE',
+            'invoice-100-201.pdf',
+        );
+        expect(enqueue).toHaveBeenCalledWith(
+            tx as never,
+            1,
+            'INVOICE',
+            'invoice-100-200.pdf',
+            'PURCHASE_ORDER_INVOICE_REPLACED',
+        );
+        expect(dispatch.mock.invocationCallOrder[0]).toBeGreaterThan(
+            tx.purchaseOrder.update.mock.invocationCallOrder[0],
+        );
+    });
+
+    it('commits invoice cleanup intent together with deleting a draft order', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            purchaseOrder: {
+                findFirst: jest.fn(async () => ({
+                    id: 10,
+                    status: 'DRAFT',
+                    invoicePdf: '/uploads/invoices/invoice-100-200.pdf',
+                })),
+                delete: jest.fn(async () => ({ id: 10 })),
+            },
+            purchaseOrderItem: {
+                deleteMany: jest.fn(async () => ({ count: 1 })),
+            },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never,
+        );
+        const enqueue = jest.spyOn(fileCleanupService, 'requestDeletion').mockResolvedValue();
+        const dispatch = jest.spyOn(fileCleanupService, 'processByStorageKey').mockResolvedValue(true);
+
+        await PurchaseOrderService.delete(10, 1);
+
+        expect(enqueue).toHaveBeenCalledWith(
+            tx as never,
+            1,
+            'INVOICE',
+            'invoice-100-200.pdf',
+            'PURCHASE_ORDER_DELETED',
+        );
+        expect(dispatch.mock.invocationCallOrder[0]).toBeGreaterThan(
+            tx.purchaseOrder.delete.mock.invocationCallOrder[0],
+        );
+    });
+
     it('reverses a payment immutably and recomputes the credit balance from active rows', async () => {
         const paymentUpdates: Array<Record<string, unknown>> = [];
         const orderUpdates: Array<Record<string, unknown>> = [];
@@ -190,6 +270,10 @@ describe('PurchaseOrderService accounting invariants', () => {
         }));
         expect(orderUpdates).toEqual([{ paidAmount: 25, paymentStatus: 'PARTIAL' }]);
         expect(result).toEqual(expect.objectContaining({ paidAmount: 25, paymentStatus: 'PARTIAL' }));
+        expect(AuditLogService.log).toHaveBeenCalledWith(
+            expect.objectContaining({ entityType: 'PurchaseOrderPayment', entityId: 5 }),
+            tx as never
+        );
     });
 
     it('reverses an untouched receipt through the original source layers and cost ledger', async () => {
@@ -209,6 +293,9 @@ describe('PurchaseOrderService accounting invariants', () => {
                 })
             },
             purchaseOrderPayment: { count: jest.fn(async () => 0) },
+            purchaseOrderItem: { updateMany: jest.fn(async () => ({ count: 2 })) },
+            purchaseOrderReceipt: { updateMany: jest.fn(async () => ({ count: 0 })) },
+            inventoryMovement: { findMany: jest.fn(async () => []) },
             inventoryBatch: {
                 findMany: jest.fn(async () => [
                     { warehouseId: 4, productId: 7, originalQty: 2 },
@@ -235,7 +322,41 @@ describe('PurchaseOrderService accounting invariants', () => {
             consumeSourceRef: 'PO-10', valueFromConsumedLayers: true
         }));
         expect(costSpy).toHaveBeenCalledWith(tx as never, [31, 32], 1);
-        expect(orderUpdates).toEqual([{ status: 'CANCELLED', paidAmount: 0, paymentStatus: 'PENDING' }]);
+        expect(orderUpdates).toEqual([{ status: 'CANCELLED', paidAmount: 0, paymentStatus: 'PENDING', receivedTotal: 0 }]);
+        expect(AuditLogService.log).toHaveBeenCalledWith(
+            expect.objectContaining({ entityType: 'PurchaseOrder', entityId: 10 }),
+            tx as never
+        );
+    });
+
+    it('propagates a payment-reversal audit failure from the same transaction', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            user: { findFirst: jest.fn(async () => ({ id: 9 })) },
+            purchaseOrder: {
+                findFirst: jest.fn(async () => ({
+                    id: 10,
+                    invoiceType: 'CREDIT',
+                    status: 'RECEIVED',
+                    total: 100
+                })),
+                update: jest.fn(async () => ({}))
+            },
+            purchaseOrderPayment: {
+                findFirst: jest.fn(async () => ({ id: 5, status: 'ACTIVE', amount: 40 })),
+                update: jest.fn(async () => ({ id: 5, amount: 40 })),
+                aggregate: jest.fn(async () => ({ _sum: { amount: 0 } }))
+            }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        jest.spyOn(AuditLogService, 'log').mockRejectedValue(new Error('audit unavailable'));
+
+        await expect(PurchaseOrderService.reversePayment(10, 5, 1, 9, 'Duplicado'))
+            .rejects.toThrow('audit unavailable');
+
+        expect(AuditLogService.log).toHaveBeenCalledWith(expect.any(Object), tx as never);
     });
 
     it('blocks receipt reversal until every payment has been reversed', async () => {

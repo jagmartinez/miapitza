@@ -37,9 +37,11 @@ import advancedFeaturesRoutes from './routes/advanced-features.routes';
 import cateringRoutes from './routes/catering.routes';
 import categoryRoutes from './routes/category.routes';
 import menuBrandRoutes from './routes/menu-brand.routes';
-import { errorHandler } from './middlewares/errorHandler';
-import { idempotency } from './middlewares/idempotency';
+import { apiNotFoundHandler, errorHandler } from './middlewares/errorHandler';
+import { idempotency, preAuthenticateIdempotentRequest } from './middlewares/idempotency';
 import { csrfProtection } from './middlewares/csrf';
+import { createDeviceAuthLimiter, createSessionAuthLimiter, isDeviceAuthPath, isLenientSessionPath } from './middlewares/device-rate-limit';
+import { createApiRateLimiter, parseTrustProxy } from './middlewares/api-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger';
 import invoiceRoutes from './routes/invoice.routes';
@@ -64,8 +66,9 @@ app.get('/health', (_req, res) => {
     res.status(200).type('text/plain').send('ok');
 });
 
-// Trust proxy for correct IP detection behind reverse proxy
-app.set('trust proxy', 1);
+// Trust proxy for correct IP detection behind reverse proxy. TRUST_PROXY accepts
+// a hop count, true/false or a subnet list; default is one hop.
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 
 // Middleware
 app.use(helmet({
@@ -87,6 +90,10 @@ app.use(cors({
     credentials: true,
     exposedHeaders: ['X-CSRF-Token'],
 }));
+
+// Generous global per-IP ceiling for the whole API, applied before body
+// parsing. Health checks, websocket upgrades and HMAC webhooks are exempt.
+app.use('/api', createApiRateLimiter());
 app.use(express.json({
     limit: '1mb',
     verify: (req, _res, buf) => {
@@ -99,6 +106,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use('/api', csrfProtection);
 
 // Idempotency — deduplicates POST/PUT/PATCH with X-Idempotency-Key header
+app.use('/api', preAuthenticateIdempotentRequest);
 app.use('/api', idempotency);
 
 // Protect uploads with authentication — require valid JWT to access uploaded files
@@ -162,7 +170,7 @@ app.use('/api/docs', swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 app.param('id', (req, res, next, value) => {
     const parsed = parseInt(value, 10);
     if (isNaN(parsed) || parsed <= 0) {
-        return res.status(400).json({ success: false, message: 'Invalid ID: must be a positive integer' });
+        return res.status(400).json({ success: false, code: 'INVALID_ID', message: 'ID inválido: debe ser un número entero positivo' });
     }
     next();
 });
@@ -174,20 +182,30 @@ const isProd = process.env.NODE_ENV === 'production';
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: isProd ? 20 : 1000,
-    message: { success: false, message: 'Too many attempts, please try again later' },
+    message: { success: false, code: 'RATE_LIMITED', message: 'Demasiados intentos. Espera unos minutos e intenta de nuevo.' },
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    // Device-token routes have their own per-device limiter below.
+    skip: (req) => isDeviceAuthPath(req.path) || isLenientSessionPath(req.path),
 });
+// Tablets share the restaurant NAT IP: limit per device token, with room for shift changes.
+const deviceAuthLimiter = createDeviceAuthLimiter(isProd ? 120 : 2000);
+const deviceAuthOnly: express.RequestHandler = (req, res, next) =>
+    isDeviceAuthPath(req.path) ? deviceAuthLimiter(req, res, next) : next();
+// Logout / session check / session list: per session token, not the shared login bucket.
+const sessionAuthLimiter = createSessionAuthLimiter(isProd ? 600 : 5000);
+const sessionAuthOnly: express.RequestHandler = (req, res, next) =>
+    isLenientSessionPath(req.path) ? sessionAuthLimiter(req, res, next) : next();
 const webhookLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: isProd ? 120 : 2000,
-    message: { success: false, message: 'Too many webhook requests, please try again later' },
+    message: { success: false, code: 'RATE_LIMITED', message: 'Demasiadas solicitudes de webhook. Intenta de nuevo más tarde.' },
     standardHeaders: true,
     legacyHeaders: false
 });
 
 // Routes
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', deviceAuthOnly, sessionAuthOnly, authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/tables', tableRoutes);
@@ -244,6 +262,9 @@ app.get('/api/health', (req: Request, res: Response) => {
         timestamp: new Date().toISOString()
     });
 });
+
+// Unknown API routes answer JSON so clients can show a readable message.
+app.use('/api', apiNotFoundHandler);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

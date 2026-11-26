@@ -1,0 +1,57 @@
+/* Offline indicator chip and the pending list. Tokens only. */
+.sync-chip {
+    min-height: 32px;
+    padding: 4px 12px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 12px;
+}
+
+.sync-chip[data-failed='true'] {
+    border-color: var(--alert);
+    color: var(--alert);
+}
+
+.queue-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.queue-item[data-status='failed'] {
+    border-color: var(--alert);
+}
+
+.queue-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.queue-error {
+    color: var(--alert);
+    font-size: 13px;
+}
+
+.queue-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}

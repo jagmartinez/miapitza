@@ -12,11 +12,23 @@ const timeClock = read('../../pages/hr/TimeClock.tsx');
 const biometrics = read('../../pages/hr/Biometrics.tsx');
 const profile = read('../../pages/Profile.tsx');
 const navigation = read('./MyHrNav.tsx');
+const punchWizard = read('./AttendancePunchWizard.tsx');
 const layout = read('../Layout.tsx') + read('../../navigation/navConfig.ts') + read('../../ui/layout/Topbar.tsx');
 const selfServiceCss = read('../../pages/hr/self-service.css');
+const navigationCss = read('./MyHrNav.module.css');
+const dataTable = read('../../ui/data/DataTable.tsx');
+const dataTableCss = read('../../ui/data/data.css');
 
 describe('employee self-service UX contract', () => {
-  it('uses Profile cards as the launcher and only a back link inside each destination', () => {
+  it('turns wide self-service tables and receipt rows into mobile-native layouts', () => {
+    expect(benefits.match(/stackOnMobile/g)?.length).toBe(3);
+    expect(payroll).toContain('stackOnMobile');
+    expect(dataTable).toContain('data-label={labelOf(c)}');
+    expect(dataTableCss).toContain('content: attr(data-label)');
+    expect(selfServiceCss).toContain('scroll-snap-type: x proximity');
+  });
+
+  it('uses Profile cards as the launcher and adds a compact mobile punch shortcut', () => {
     [schedule, workforce, payroll, benefits, timeClock, biometrics].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
       expect(source).toContain('my-hr-page');
@@ -25,10 +37,22 @@ describe('employee self-service UX contract', () => {
     });
     expect(profile).not.toContain('<MyHrNav />');
     expect(navigation).toContain('to="/profile?tab=hr"');
+    expect(navigation).toContain('to="/rh/marcaje"');
+    expect(navigation).toContain('Marcar ahora');
     expect(navigation).toContain('Mis accesos de RH');
     expect(navigation).not.toContain("const ITEMS");
-    expect(navigation).toContain('aria-label="Volver a Mis accesos de RH"');
+    expect(navigation).toContain('aria-label="Navegación de Mi RH"');
     expect(selfServiceCss).toContain('.my-hr-summary-grid');
+    expect(navigationCss).toContain('.punch');
+    expect(navigationCss).toContain('@media (max-width: 768px)');
+  });
+
+  it('explains why a punch is unavailable and links the next safe action', () => {
+    expect(punchWizard).toContain('No tienes un turno publicado aplicable');
+    expect(punchWizard).toContain('No tienes una asignación RH vigente');
+    expect(punchWizard).toContain('Ver mi horario');
+    expect(timeClock).toContain('onViewSchedule={() => navigate');
+    expect(biometrics).toContain('Ir a marcar ahora');
   });
 
   it('builds the portal summary from scoped server resources and tolerates partial failures', () => {

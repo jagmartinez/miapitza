@@ -184,14 +184,15 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
         });
     };
 
-    it('annuls an unpaid pre-delivery invoice and preserves its original fiscal number idempotently', async () => {
+    it('keeps an unpaid prefactura non-fiscal and refuses a fiscal cancellation', async () => {
         const order = await createOrder();
 
-        const issued = await request(app).post(`/api/invoices/${order.id}/issue`)
+        const issued = await request(app).post(`/api/invoices/${order.id}/preinvoice`)
             .set('Authorization', `Bearer ${token}`);
         expect(issued.status).toBe(201);
         expect(issued.body.data.customerRuc).toBe('00112233445566');
-        const invoiceNumber = issued.body.data.invoiceNumber as string;
+        expect(issued.body.data.invoiceNumber).toBe(`PREF-ORD-${order.id}`);
+        expect(await prisma.invoiceSequence.count({ where: { companyId } })).toBe(0);
 
         const beforeRead = await request(app).get(`/api/invoices/${order.id}/cancellation`)
             .set('Authorization', `Bearer ${token}`);
@@ -201,33 +202,26 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
         const body = { idempotencyKey: `cancel-fiscal-${order.id}`, reason: 'Error detectado antes de entregar' };
         const cancelled = await request(app).post(`/api/invoices/${order.id}/cancel`)
             .set('Authorization', `Bearer ${token}`).send(body);
-        expect(cancelled.status).toBe(201);
-        expect(cancelled.body.data.originalInvoiceNumber).toBe(invoiceNumber);
-
-        const retried = await request(app).post(`/api/invoices/${order.id}/cancel`)
-            .set('Authorization', `Bearer ${token}`).send(body);
-        expect(retried.status).toBe(201);
-        expect(retried.body.data.cancelledAt).toBe(cancelled.body.data.cancelledAt);
-        expect(await prisma.fiscalInvoiceCancellation.count({ where: { orderId: order.id } })).toBe(1);
+        expect(cancelled.status).toBe(409);
+        expect(await prisma.fiscalInvoiceCancellation.count({ where: { orderId: order.id } })).toBe(0);
 
         const persisted = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
         expect(persisted).toEqual(expect.objectContaining({
-            status: 'CANCELLED',
+            status: 'OPEN',
             financialStatus: 'UNPAID',
-            invoiceNumber,
-            invoiceFiscalStatus: 'CANCELLED',
+            invoiceNumber: null,
+            invoiceFiscalStatus: 'NOT_ISSUED',
         }));
+        expect(persisted.preInvoicedAt).not.toBeNull();
         const original = await request(app).get(`/api/invoices/${order.id}`)
             .set('Authorization', `Bearer ${token}`);
-        expect(original.status).toBe(200);
-        expect(original.body.data.invoiceNumber).toBe(invoiceNumber);
+        expect(original.status).toBe(409);
     });
 
     it('credits a delivered paid sale and reconciles cash plus exact stock return once', async () => {
         const order = await createOrder();
-        const issued = await request(app).post(`/api/invoices/${order.id}/issue`)
+        await request(app).post(`/api/invoices/${order.id}/preinvoice`)
             .set('Authorization', `Bearer ${token}`);
-        expect(issued.status).toBe(201);
 
         const payment = await prisma.payment.create({
             data: {
@@ -247,6 +241,9 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
             where: { id: order.id },
             data: { status: 'DELIVERED', financialStatus: 'PAID', deliveredAt: new Date(), closedAt: new Date() },
         });
+        const issued = await request(app).post(`/api/invoices/${order.id}/issue`)
+            .set('Authorization', `Bearer ${token}`);
+        expect(issued.status).toBe(201);
         await prisma.$transaction(async (tx) => {
             await InventoryEngineService.applyMovement(tx, {
                 type: 'IN', companyId, warehouseId, productId, userId,
@@ -306,7 +303,7 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
     it('issues two quantity-based partial notes without over-refunding money or stock and serializes retries', async () => {
         const order = await createOrder(2);
         const orderItem = await prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
-        await request(app).post(`/api/invoices/${order.id}/issue`)
+        await request(app).post(`/api/invoices/${order.id}/preinvoice`)
             .set('Authorization', `Bearer ${token}`).expect(201);
 
         const payment = await prisma.payment.create({
@@ -322,6 +319,8 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
             where: { id: order.id },
             data: { status: 'DELIVERED', financialStatus: 'PAID', deliveredAt: new Date(), closedAt: new Date() },
         });
+        await request(app).post(`/api/invoices/${order.id}/issue`)
+            .set('Authorization', `Bearer ${token}`).expect(201);
         await prisma.$transaction((tx) => InventoryEngineService.applyMovement(tx, {
             type: 'OUT', companyId, warehouseId, productId, userId,
             quantity: 2, reason: 'Consumo físico parcial', reference: `ORD-${order.id}`,

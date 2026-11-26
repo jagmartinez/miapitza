@@ -1,7 +1,8 @@
-import { formatHrNumber } from '../../utils/hrFormat';
+import { formatHrNumber } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  CalendarDays,
   ListChecks,
   Eye,
   Pencil,
@@ -11,9 +12,10 @@ import {
   RefreshCw,
   SlidersHorizontal,
 } from 'lucide-react';
-import { DataTable, FullScreenModal, PageHeader, AppSelect, Button } from '@/ui';
+import { DataTable, FullScreenModal, PageHeader, StatCard, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import LeaveCalendarGrid from '../../components/hr/LeaveCalendarGrid';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import LeaveRequestForm from '../../components/hr/LeaveRequestForm';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -42,6 +44,8 @@ import './workforce.css';
 import './admin-tables.css';
 import './hr-admin-operations.css';
 import '../Inventory.css';
+
+const LOW_BALANCE_DAYS = 2;
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
   departments: [],
@@ -117,6 +121,9 @@ export default function LeaveManagement() {
   });
   const [activeTable, setActiveTable] = useState<LeaveTable>('REQUESTS');
   const [focusedRequestId, setFocusedRequestId] = useState<number | null>(null);
+  // The Calendario tab can be read as a list or as an employee × day grid.
+  const [calendarView, setCalendarView] = useState<'grid' | 'list'>('grid');
+  const showCalendarGrid = activeTable === 'CALENDAR' && calendarView === 'grid';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -287,6 +294,12 @@ export default function LeaveManagement() {
     setActionReason('');
   };
 
+  const pendingCount = requests.filter((item) => item.status === 'PENDING').length;
+  const draftCount = requests.filter((item) => item.status === 'DRAFT').length;
+  const lowBalanceCount = new Set(
+    balances.filter((balance) => balance.unit === 'DAYS' && Number(balance.available) <= LOW_BALANCE_DAYS).map((balance) => balance.userId)
+  ).size;
+
   return (
     <div className="page-wrapper inventory-page hr-workforce-page hr-leave-management-page hr-admin-catalog-page hr-operation-page">
       <PageHeader
@@ -307,6 +320,28 @@ export default function LeaveManagement() {
         }
       />
       <OnlineOnlyNotice online={online} />
+      {!loading && !error && (pendingCount > 0 || lowBalanceCount > 0) && (
+        <section className="hr-kpi-row" aria-label="Indicadores de permisos y vacaciones">
+          {pendingCount > 0 && (
+            <StatCard
+              tone="warning"
+              label="Solicitudes pendientes"
+              value={String(pendingCount)}
+              context={draftCount > 0 ? `${draftCount} borrador${draftCount === 1 ? '' : 'es'} sin enviar` : 'Esperan revisión'}
+              action={{ label: 'Revisar solicitudes', onClick: () => setActiveTable('REQUESTS') }}
+            />
+          )}
+          {lowBalanceCount > 0 && (
+            <StatCard
+              tone="danger"
+              label="Saldo bajo"
+              value={String(lowBalanceCount)}
+              context={`Colaboradores con ≤ ${LOW_BALANCE_DAYS} días disponibles`}
+              action={{ label: 'Ver saldos', onClick: () => setActiveTable('BALANCES') }}
+            />
+          )}
+        </section>
+      )}
       <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros de permisos y vacaciones">
         {!loading && !error && <div className="filters-toolbar hr-admin-tab-toolbar" role="tablist" aria-label="Bandejas de permisos y vacaciones">
           {([
@@ -319,6 +354,16 @@ export default function LeaveManagement() {
             <button key={value} type="button" role="tab" id={`leave-tab-${value.toLowerCase()}`} aria-controls={`leave-panel-${value.toLowerCase()}`} aria-selected={activeTable === value} onClick={() => setActiveTable(value)}>{label} <span>{count}</span></button>
           ))}
         </div>}
+        {!loading && !error && activeTable === 'CALENDAR' && (
+          <div className="leave-calendar-view-toggle" role="group" aria-label="Vista del calendario">
+            <button type="button" className={calendarView === 'grid' ? 'active' : ''} aria-pressed={calendarView === 'grid'} onClick={() => setCalendarView('grid')} title="Ver como calendario">
+              <CalendarDays size={16} /> Calendario
+            </button>
+            <button type="button" className={calendarView === 'list' ? 'active' : ''} aria-pressed={calendarView === 'list'} onClick={() => setCalendarView('list')} title="Ver como lista">
+              <ListChecks size={16} /> Lista
+            </button>
+          </div>
+        )}
         <label>
           Desde
           <input
@@ -364,7 +409,17 @@ export default function LeaveManagement() {
           </Button>
         </div>
       )}
-      {!loading && !error && (
+      {!loading && !error && showCalendarGrid && (
+        <section className="pr-table-card" id={`leave-panel-${activeTable.toLowerCase()}`} role="tabpanel" aria-labelledby={`leave-tab-${activeTable.toLowerCase()}`}>
+          <LeaveCalendarGrid
+            entries={calendar}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onOpenRequest={(leaveRequestId) => { setFocusedRequestId(leaveRequestId); setActiveTable('REQUESTS'); }}
+          />
+        </section>
+      )}
+      {!loading && !error && !showCalendarGrid && (
         <section className="pr-table-card" aria-label="Administración de permisos y vacaciones">
           <div className="hr-admin-table-wrap" role="tabpanel" id={`leave-panel-${activeTable.toLowerCase()}`} aria-labelledby={`leave-tab-${activeTable.toLowerCase()}`} tabIndex={0}>
             {activeTable === 'REQUESTS' && (

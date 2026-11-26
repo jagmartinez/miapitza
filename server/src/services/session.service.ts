@@ -1,5 +1,9 @@
 import crypto from 'crypto';
+import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+
+/** Prefix of `UserSession.device` for sessions opened from an operational device. */
+export const OP_DEVICE_TAG_PREFIX = 'op-device:';
 
 function hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
@@ -16,18 +20,32 @@ function parseDevice(ua: string): string {
 
 export class SessionService {
     /** Create a session record after login */
-    static async create(userId: number, token: string, ip?: string, userAgent?: string) {
+    static async create(
+        userId: number,
+        token: string,
+        ip?: string,
+        userAgent?: string,
+        idleTimeoutMinutes = 30,
+        db: SessionClient = prisma,
+        deviceTag?: string,
+    ) {
         // Keep session lifetime aligned with the JWT expiry (8h) issued in AuthService.login.
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + 8);
+        const normalizedIdleTimeout = Number.isInteger(idleTimeoutMinutes)
+            ? Math.min(Math.max(idleTimeoutMinutes, 1), 24 * 60)
+            : 30;
 
-        return prisma.userSession.create({
+        return db.userSession.create({
             data: {
                 userId,
                 tokenHash: hashToken(token),
                 ipAddress: ip || null,
                 userAgent: userAgent || null,
-                device: parseDevice(userAgent || ''),
+                // An operational-device tag lets revoking the device revoke its sessions.
+                device: deviceTag ?? parseDevice(userAgent || ''),
+                lastActivityAt: new Date(),
+                idleTimeoutMinutes: normalizedIdleTimeout,
                 expiresAt,
             },
         });
@@ -37,10 +55,23 @@ export class SessionService {
     static async listActive(userId: number) {
         const sessions = await prisma.userSession.findMany({
             where: { userId, revoked: false, expiresAt: { gt: new Date() } },
-            select: { id: true, device: true, ipAddress: true, createdAt: true, tokenHash: true },
+            select: {
+                id: true,
+                device: true,
+                ipAddress: true,
+                createdAt: true,
+                tokenHash: true,
+                lastActivityAt: true,
+                idleTimeoutMinutes: true,
+            },
             orderBy: { createdAt: 'desc' },
         });
-        return sessions;
+        const now = Date.now();
+        return sessions
+            .filter((session) => (
+                new Date(session.lastActivityAt).getTime() + session.idleTimeoutMinutes * 60_000 > now
+            ))
+            .map(({ lastActivityAt: _lastActivityAt, idleTimeoutMinutes: _idleTimeoutMinutes, ...session }) => session);
     }
 
     /** Revoke a specific session */
@@ -61,31 +92,92 @@ export class SessionService {
     }
 
     /** Revoke every active session for a user (e.g. after a password change) */
-    static async revokeAll(userId: number) {
-        return prisma.userSession.updateMany({
+    static async revokeAll(userId: number, db: SessionClient = prisma) {
+        return db.userSession.updateMany({
             where: { userId, revoked: false },
             data: { revoked: true },
         });
     }
 
+    /** Device tag (`op-device:<id>`) or user-agent label of the session owning this token. */
+    static async deviceOf(token: string, db: SessionClient = prisma): Promise<string | null> {
+        const session = await db.userSession.findUnique({
+            where: { tokenHash: hashToken(token) },
+            select: { device: true },
+        });
+        return session?.device ?? null;
+    }
+
+    /** True for the `op-device:<id>` tag of sessions opened from a registered tablet. */
+    static isDeviceTag(device: string | null | undefined): boolean {
+        return typeof device === 'string' && device.startsWith(OP_DEVICE_TAG_PREFIX);
+    }
+
+    /** Same as `deviceOf`, for callers that only hold the stored token hash (WebSocket). */
+    static async deviceOfHash(tokenHash: string, db: SessionClient = prisma): Promise<string | null> {
+        const session = await db.userSession.findUnique({
+            where: { tokenHash },
+            select: { device: true },
+        });
+        return session?.device ?? null;
+    }
+
+    /** Token hashes of the still-active sessions tagged with an operational-device tag. */
+    static async activeHashesByDevice(tag: string, db: SessionClient = prisma): Promise<string[]> {
+        const rows = await db.userSession.findMany({
+            where: { device: tag, revoked: false },
+            select: { tokenHash: true },
+        });
+        return rows.map((row) => row.tokenHash);
+    }
+
+    /** Revoke every active session tagged with an operational-device tag (e.g. `op-device:7`). */
+    static async revokeByDevice(tag: string, db: SessionClient = prisma): Promise<number> {
+        const result = await db.userSession.updateMany({
+            where: { device: tag, revoked: false },
+            data: { revoked: true },
+        });
+        return result.count;
+    }
+
     /** Revoke the session identified by a raw token (e.g. on logout) */
-    static async revokeByToken(token: string) {
-        return prisma.userSession.updateMany({
+    static async revokeByToken(token: string, db: SessionClient = prisma) {
+        return db.userSession.updateMany({
             where: { tokenHash: hashToken(token), revoked: false },
             data: { revoked: true },
         });
     }
 
     /** Check if a token's session is still valid (not revoked) */
-    static async isValid(token: string): Promise<boolean> {
-        return this.isHashValid(hashToken(token));
+    static async isValid(token: string, options: SessionValidationOptions = {}): Promise<boolean> {
+        return this.isHashValid(hashToken(token), options);
     }
 
     /** Validate a previously hashed token without retaining the bearer token in memory. */
-    static async isHashValid(tokenHash: string): Promise<boolean> {
+    static async isHashValid(
+        tokenHash: string,
+        options: SessionValidationOptions = {},
+    ): Promise<boolean> {
         const session = await prisma.userSession.findUnique({ where: { tokenHash } });
         if (!session) return false; // Reject tokens without a tracked session
-        return !session.revoked && new Date(session.expiresAt) > new Date();
+        const now = new Date();
+        const idleDeadline = new Date(session.lastActivityAt).getTime()
+            + session.idleTimeoutMinutes * 60_000;
+        if (session.revoked || new Date(session.expiresAt) <= now || idleDeadline <= now.getTime()) {
+            return false;
+        }
+        if (options.touch !== false) {
+            const updated = await prisma.userSession.updateMany({
+                where: {
+                    id: session.id,
+                    revoked: false,
+                    expiresAt: { gt: now },
+                },
+                data: { lastActivityAt: now },
+            });
+            return updated.count === 1;
+        }
+        return true;
     }
 
     /** Purge all expired or revoked sessions from the database */
@@ -103,4 +195,11 @@ export class SessionService {
 
     /** Get current session hash for marking "current" in the list */
     static hashToken = hashToken;
+}
+
+type SessionClient = Pick<Prisma.TransactionClient, 'userSession'>;
+
+interface SessionValidationOptions {
+    /** HTTP activity extends idle expiry; background WebSocket probes must not. */
+    touch?: boolean;
 }

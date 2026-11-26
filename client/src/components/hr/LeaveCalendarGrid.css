@@ -1,0 +1,163 @@
+.leave-calendar-grid-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.leave-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 0.82rem;
+  color: var(--ui-text-muted);
+}
+
+.leave-calendar-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.leave-calendar-legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.leave-calendar-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ui-text-muted);
+}
+
+/* The grid itself may be wider than the card on small screens; only the
+   grid scrolls, never the page. */
+.leave-calendar-scroll {
+  overflow-x: auto;
+}
+
+.leave-calendar-grid {
+  display: grid;
+  min-width: max-content;
+  width: 100%;
+  font-size: 0.8rem;
+  border-top: 1px solid var(--ui-border);
+  border-left: 1px solid var(--ui-border);
+}
+
+/* Rows and row groups only carry ARIA semantics; their cells sit on the parent grid. */
+.leave-calendar-rowgroup,
+.leave-calendar-row {
+  display: contents;
+}
+
+.leave-calendar-grid [role='columnheader'],
+.leave-calendar-grid [role='rowheader'],
+.leave-calendar-grid [role='cell'] {
+  display: grid;
+  place-items: center;
+  min-height: 30px;
+  min-width: 26px;
+  border-right: 1px solid var(--ui-border);
+  border-bottom: 1px solid var(--ui-border);
+  text-align: center;
+}
+
+.leave-calendar-head {
+  background: var(--ui-surface-2);
+  font-weight: 600;
+}
+
+.leave-calendar-day span {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--ui-text-muted);
+}
+
+.leave-calendar-day strong {
+  display: block;
+}
+
+.leave-calendar-grid .leave-calendar-month {
+  justify-items: start;
+  padding-left: 4px;
+  font-size: 0.72rem;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.leave-calendar-month.is-start {
+  border-left: 2px solid var(--ui-primary);
+}
+
+.leave-calendar-grid .leave-calendar-name {
+  justify-items: start;
+  padding: 0 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--ui-surface);
+}
+
+.leave-calendar-grid .leave-calendar-head.leave-calendar-name {
+  background: var(--ui-surface-2);
+}
+
+.leave-calendar-grid [role='rowheader'].leave-calendar-name {
+  display: block;
+  line-height: 30px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.leave-calendar-grid .leave-calendar-total {
+  background: var(--ui-surface-2);
+}
+
+.leave-calendar-grid .leave-calendar-empty {
+  display: block;
+}
+
+.leave-calendar-grid .is-sunday {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.leave-calendar-grid .is-saturday {
+  background: rgba(148, 163, 184, 0.07);
+}
+
+.leave-calendar-cell.has-leave {
+  background: color-mix(in srgb, var(--leave-color) 32%, transparent);
+}
+
+.leave-calendar-cell button,
+.leave-calendar-cell span {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.leave-calendar-cell span {
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+.leave-calendar-cell button:hover {
+  background: color-mix(in srgb, var(--leave-color) 55%, transparent);
+}
+
+.leave-calendar-cell button:focus-visible {
+  outline: 2px solid var(--ui-primary);
+  outline-offset: -2px;
+}

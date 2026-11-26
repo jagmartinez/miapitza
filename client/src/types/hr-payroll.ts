@@ -68,10 +68,16 @@ export interface HrPayrollLegalConfiguration {
   regular: {
     minuteDivisors: { WEEKLY: string; BIWEEKLY: string; FORTNIGHTLY: string; MONTHLY: string };
     overtimeMultiplier: string;
+    /** Total multiplier for a worked paid holiday; the server defaults it to 2. */
+    holidayWorkedMultiplier?: string;
+    /** Total multiplier for a worked weekly rest day (Art. 64 CT); the server defaults it to 2. */
+    restDayWorkedMultiplier?: string;
     paidLeaveUnitMinutes: { DAYS: string; HOURS: string; MINUTES: string };
   };
   aguinaldo: {
-    method: 'HISTORICAL_PAID_COMPONENTS';
+    /** HIGHEST_MONTH_LAST_6_MONTHS: highest month of eligible paid income in the last baseMonths months. */
+    method: 'HISTORICAL_PAID_COMPONENTS' | 'HIGHEST_MONTH_LAST_6_MONTHS';
+    baseMonths?: number;
     lookbackDays: number;
     incomeDivisor: string;
     prorationMode: 'NONE' | 'SERVICE_DAYS_RATIO';

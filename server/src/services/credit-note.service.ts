@@ -5,9 +5,13 @@ import autoTable from 'jspdf-autotable';
 import prisma from '../utils/prisma';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { deserializeInvoiceSnapshot, type InvoiceData } from './invoice.service';
-import { InventoryConsumptionService } from './inventory-consumption.service';
+import { createRecipeRemovalApplier, InventoryConsumptionService, isRemovalModifier } from './inventory-consumption.service';
 import { DEFAULT_COMPANY_SETTINGS, validateConfiguredFiscalTaxId } from './setting.service';
 import { UnitConversionService } from './unit-conversion.service';
+import { reconcileTableGroupForTable } from './table-group.service';
+import { allocateDiscountWithAttribution, returnPromotionUsageForOrder } from './promotion.service';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
+import { OrderService } from './order.service';
 
 export interface CreditNoteIssueInput {
     idempotencyKey?: unknown;
@@ -96,26 +100,26 @@ const cents = (value: number) => Math.round(value * 100);
 const money = (value: number) => value / 100;
 
 function requiredString(value: unknown, field: string): string {
-    if (typeof value !== 'string' || !value.trim()) throw new Error(`Credit note snapshot is invalid: ${field}`);
+    if (typeof value !== 'string' || !value.trim()) throw new Error(`La instantánea de la nota de crédito no es válida: ${field}`);
     return value;
 }
 
 function positiveInteger(value: unknown, field: string): number {
     const number = Number(value);
-    if (!Number.isInteger(number) || number <= 0) throw new Error(`Credit note snapshot is invalid: ${field}`);
+    if (!Number.isInteger(number) || number <= 0) throw new Error(`La instantánea de la nota de crédito no es válida: ${field}`);
     return number;
 }
 
 function finiteMoney(value: unknown, field: string): number {
     const number = Number(value);
-    if (!Number.isFinite(number) || number < 0) throw new Error(`Credit note snapshot is invalid: ${field}`);
+    if (!Number.isFinite(number) || number < 0) throw new Error(`La instantánea de la nota de crédito no es válida: ${field}`);
     return number;
 }
 
 function allocateCents(total: number, weights: number[], tieBreakers: number[]): number[] {
     if (total === 0) return weights.map(() => 0);
     const denominator = weights.reduce((sum, weight) => sum + weight, 0);
-    if (denominator <= 0) throw new Error('Invoice snapshot totals cannot be allocated');
+    if (denominator <= 0) throw new Error('Los totales de la factura no se pueden distribuir');
     const exact = weights.map((weight) => total * weight / denominator);
     const result = exact.map(Math.floor);
     const remainder = total - result.reduce((sum, value) => sum + value, 0);
@@ -139,19 +143,19 @@ function serializeSnapshot(data: CreditNoteData): Prisma.InputJsonValue {
 }
 
 export function deserializeCreditNoteSnapshot(snapshot: Prisma.JsonValue): CreditNoteData {
-    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('Credit note snapshot is invalid');
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('La instantánea de la nota de crédito no es válida');
     const raw = snapshot as Record<string, Prisma.JsonValue>;
     const issuedAt = new Date(requiredString(raw.issuedAt, 'issuedAt'));
-    if (Number.isNaN(issuedAt.getTime())) throw new Error('Credit note snapshot is invalid: issuedAt');
+    if (Number.isNaN(issuedAt.getTime())) throw new Error('La instantánea de la nota de crédito no es válida: fecha de emisión');
     const disposition = requiredString(raw.inventoryDisposition, 'inventoryDisposition');
     if (!['NOT_CONSUMED', 'NOT_RETURNED', 'RETURNED_TO_ORIGINAL_STOCK'].includes(disposition)) {
-        throw new Error('Credit note snapshot is invalid: inventoryDisposition');
+        throw new Error('La instantánea de la nota de crédito no es válida: tratamiento de inventario');
     }
-    if (!Array.isArray(raw.refunds)) throw new Error('Credit note snapshot is invalid: refunds');
+    if (!Array.isArray(raw.refunds)) throw new Error('La instantánea de la nota de crédito no es válida: reembolsos');
     const originalInvoice = deserializeInvoiceSnapshot(raw.originalInvoice);
     const parsedLines = Array.isArray(raw.lines)
         ? raw.lines.map((entry, index) => {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`Credit note snapshot is invalid: lines[${index}]`);
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`La instantánea de la nota de crédito no es válida: lines[${index}]`);
             const line = entry as Record<string, Prisma.JsonValue>;
             return {
                 orderItemId: line.orderItemId == null ? undefined : positiveInteger(line.orderItemId, `lines[${index}].orderItemId`),
@@ -204,14 +208,14 @@ export function deserializeCreditNoteSnapshot(snapshot: Prisma.JsonValue): Credi
         isFinal: raw.isFinal == null ? true : raw.isFinal === true,
         creditedTotal: raw.creditedTotal == null ? total : finiteMoney(raw.creditedTotal, 'creditedTotal'),
         refunds: raw.refunds.map((entry, index) => {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`Credit note snapshot is invalid: refunds[${index}]`);
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`La instantánea de la nota de crédito no es válida: refunds[${index}]`);
             const refund = entry as Record<string, Prisma.JsonValue>;
             const methodType = requiredString(refund.methodType, `refunds[${index}].methodType`);
             if (!['CASH', 'CARD', 'BANK_TRANSFER', 'OTHER'].includes(methodType)) {
-                throw new Error(`Credit note snapshot is invalid: refunds[${index}].methodType`);
+                throw new Error(`La instantánea de la nota de crédito no es válida: refunds[${index}].methodType`);
             }
             const amount = finiteMoney(refund.amount, `refunds[${index}].amount`);
-            if (amount <= 0) throw new Error(`Credit note snapshot is invalid: refunds[${index}].amount`);
+            if (amount <= 0) throw new Error(`La instantánea de la nota de crédito no es válida: refunds[${index}].amount`);
             return {
                 paymentId: positiveInteger(refund.paymentId, `refunds[${index}].paymentId`),
                 methodType: methodType as PaymentMethodType,
@@ -222,10 +226,10 @@ export function deserializeCreditNoteSnapshot(snapshot: Prisma.JsonValue): Credi
         originalInvoice
     };
     if (data.status !== 'ISSUED' || data.originalInvoice.invoiceNumber !== data.originalInvoiceNumber) {
-        throw new Error('Credit note snapshot does not match its original invoice');
+        throw new Error('La nota de crédito no corresponde a su factura original');
     }
     if (cents(data.subtotal + data.tax + data.tipAmount) !== cents(data.total)) {
-        throw new Error('Credit note snapshot totals do not reconcile');
+        throw new Error('Los totales de la nota de crédito no concilian');
     }
     return data;
 }
@@ -273,21 +277,30 @@ export class CreditNoteService {
         return { idempotencyKey, reason, inventoryAction: input.inventoryAction, wasteWarehouseId, externalRefunds, lines, requestHash };
     }
 
-    private static buildInvoiceAllocations(originalInvoice: InvoiceData, orderItems: Array<{ id: number; quantity: number; price: Prisma.Decimal; subtotal: Prisma.Decimal }>): InvoiceLineAllocation[] {
-        if (originalInvoice.items.length !== orderItems.length) throw new Error('Invoice snapshot lines do not match the immutable order');
+    private static buildInvoiceAllocations(originalInvoice: InvoiceData, allOrderItems: Array<{ id: number; quantity: number; price: Prisma.Decimal; subtotal: Prisma.Decimal }>): InvoiceLineAllocation[] {
         const invoiceById = new Map(originalInvoice.items.filter((item) => item.orderItemId).map((item) => [item.orderItemId!, item]));
+        // Kitchen-voided rows (quantity 0) stay on the order but newer invoices
+        // do not list them; legacy invoices that did list them keep matching.
+        const orderItems = allOrderItems.filter((item) => Number(item.quantity) !== 0
+            || (invoiceById.size > 0 ? invoiceById.has(item.id) : originalInvoice.items.length === allOrderItems.length));
+        if (originalInvoice.items.length !== orderItems.length) throw new Error('Las líneas de la factura no coinciden con la orden inmutable');
         const matched = orderItems.map((orderItem, index) => {
             const invoiceItem = invoiceById.size > 0 ? invoiceById.get(orderItem.id) : originalInvoice.items[index];
             if (!invoiceItem || invoiceItem.quantity !== orderItem.quantity || cents(invoiceItem.price) !== cents(Number(orderItem.price)) || cents(invoiceItem.subtotal) !== cents(Number(orderItem.subtotal))) {
-                throw new Error('Invoice snapshot lines do not match the immutable order');
+                throw new Error('Las líneas de la factura no coinciden con la orden inmutable');
             }
             return { orderItemId: orderItem.id, item: invoiceItem };
         });
-        if (new Set(matched.map((line) => line.orderItemId)).size !== matched.length) throw new Error('Invoice snapshot lines are ambiguous');
+        if (new Set(matched.map((line) => line.orderItemId)).size !== matched.length) throw new Error('Las líneas de la factura son ambiguas');
         const gross = matched.map(({ item }) => cents(item.subtotal));
-        if (gross.reduce((sum, value) => sum + value, 0) !== cents(originalInvoice.grossSubtotal)) throw new Error('Invoice snapshot gross subtotal does not reconcile');
+        if (gross.reduce((sum, value) => sum + value, 0) !== cents(originalInvoice.grossSubtotal)) throw new Error('El subtotal bruto de la factura no concilia');
         const ids = matched.map(({ orderItemId }) => orderItemId);
-        const discount = allocateCents(cents(originalInvoice.discount), gross, ids);
+        // Per-item / combo / happy-hour promotions attributed their discount to
+        // specific lines: a credit note for such a line returns exactly that
+        // amount. Legacy order-level discounts keep the proportional split.
+        const attributed = matched.map(({ item }) => cents(item.discount ?? 0));
+        const discount = allocateDiscountWithAttribution(cents(originalInvoice.discount), gross, attributed, ids)
+            ?? allocateCents(cents(originalInvoice.discount), gross, ids);
         const net = gross.map((value, index) => value - discount[index]);
         const tax = allocateCents(cents(originalInvoice.tax), net.some((value) => value > 0) ? net : gross, ids);
         const tip = allocateCents(cents(originalInvoice.tipAmount), net.some((value) => value > 0) ? net : gross, ids);
@@ -310,33 +323,78 @@ export class CreditNoteService {
         companyId: number,
         selected: Array<{ orderItemId: number; quantity: number }>,
         orderItems: CreditOrderItem[]
-    ): Promise<Array<{ productId: number; quantity: number }>> {
+    ): Promise<Array<{ productId: number; quantity: number; warehouseId?: number }>> {
         const requested = new Map(selected.map((line) => [line.orderItemId, line.quantity]));
         const quantities = new Map<number, number>();
+        // Snapshot lines that recorded their (routed) warehouse return there.
+        const routed = new Map<string, { productId: number; warehouseId: number; quantity: number }>();
+        // Prefer the base quantities frozen when the sale was consumed: the
+        // recipe or a modifier link may have changed since. Lines without a
+        // snapshot (legacy orders) fall back to the current recipe.
+        const orderId = orderItems.find((item) => requested.has(item.id))?.orderId;
+        const snapshot = orderId
+            ? await InventoryConsumptionService.getConsumptionSnapshot(tx, companyId, orderId)
+            : null;
+        const snapshotByItem = new Map((snapshot?.items ?? []).map((entry) => [entry.orderItemId, entry]));
+        // Legacy fallback must honour "sin X" removals exactly like consumption.
+        const removals = await InventoryConsumptionService.resolveRecipeRemovals(
+            tx,
+            companyId,
+            orderItems
+                .filter((item) => requested.has(item.id) && !snapshotByItem.has(item.id))
+                .flatMap((item) => item.modifiers.map((selected) => ({ orderItemId: item.id, modifier: selected.modifier })))
+        );
+        const applyRemoval = createRecipeRemovalApplier();
         for (const item of orderItems) {
             const returnedQuantity = requested.get(item.id);
             if (!returnedQuantity) continue;
+            const frozen = snapshotByItem.get(item.id);
+            if (frozen) {
+                for (const product of frozen.products) {
+                    const portion = Number(product.quantity) * returnedQuantity / Number(frozen.itemQuantity);
+                    if (!(portion > 0)) continue;
+                    const consumedFrom = Number(product.warehouseId);
+                    if (Number.isInteger(consumedFrom) && consumedFrom > 0) {
+                        const key = `${product.productId}|${consumedFrom}`;
+                        const current = routed.get(key) ?? { productId: product.productId, warehouseId: consumedFrom, quantity: 0 };
+                        current.quantity += portion;
+                        routed.set(key, current);
+                    } else {
+                        quantities.set(product.productId, (quantities.get(product.productId) || 0) + portion);
+                    }
+                }
+                continue;
+            }
             for (const recipe of item.menuItem.recipes) {
                 const recipeUnit = recipe.unit || recipe.unitOfMeasure?.abbreviation || recipe.product.baseUnit?.abbreviation || recipe.product.unit;
                 const converted = await UnitConversionService.convert(recipe.productId, companyId, Number(recipe.quantity), recipeUnit, tx);
-                quantities.set(recipe.productId, (quantities.get(recipe.productId) || 0) + converted.baseQuantity * returnedQuantity);
+                const perUnit = applyRemoval(`${item.id}:${recipe.productId}`, converted.baseQuantity, removals.get(item.id)?.get(recipe.productId));
+                if (perUnit > 0) quantities.set(recipe.productId, (quantities.get(recipe.productId) || 0) + perUnit * returnedQuantity);
             }
             for (const selectedModifier of item.modifiers) {
                 const modifier = selectedModifier.modifier;
+                if (isRemovalModifier(modifier)) continue;
                 if (!modifier.productId || !modifier.product || !(Number(modifier.consumeQuantity) > 0)) continue;
                 const unit = modifier.unit?.abbreviation || modifier.product.unit;
                 const converted = await UnitConversionService.convert(modifier.productId, companyId, Number(modifier.consumeQuantity), unit, tx);
                 quantities.set(modifier.productId, (quantities.get(modifier.productId) || 0) + converted.baseQuantity * returnedQuantity);
             }
         }
-        return [...quantities.entries()].map(([productId, quantity]) => ({ productId, quantity }));
+        return [
+            ...[...routed.values()].map(({ productId, warehouseId, quantity }) => ({ productId, quantity, warehouseId })),
+            ...[...quantities.entries()].map(([productId, quantity]) => ({ productId, quantity }))
+        ];
     }
 
     static async issue(orderId: number, companyId: number, userId: number, input: CreditNoteIssueInput) {
         if (!Number.isInteger(orderId) || orderId <= 0) throw new Error('Orden inválida');
         const normalized = this.normalizeInput(input);
-        return prisma.$transaction(async (tx) => {
-            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+        return transactionWithP2034Retry(async (tx) => {
+            // Shared Table -> Order lock order: a final note reconciles the
+            // table group below, so the table must be locked first.
+            // Shared helper: preflight read outside tx so the first tx statement is a lock
+            // (a plain read would freeze the REPEATABLE READ snapshot before the locks).
+            await OrderService.lockTableThenOrder(tx, companyId, orderId);
             const order = await tx.order.findFirst({
                 where: { id: orderId, companyId },
                 include: {
@@ -350,9 +408,9 @@ export class CreditNoteService {
                     }
                 }
             });
-            if (!order) throw new Error('Order not found or unauthorized');
+            if (!order) throw new Error('Orden no encontrada o no autorizada');
             const actor = await tx.user.findFirst({ where: { id: userId, companyId, status: 'ACTIVE' }, select: { id: true, name: true } });
-            if (!actor) throw new Error('Invalid user for this company');
+            if (!actor) throw new Error('Usuario no válido para esta empresa');
 
             const existingByKey = await tx.fiscalCreditNote.findUnique({ where: { companyId_idempotencyKey: { companyId, idempotencyKey: normalized.idempotencyKey } } });
             if (existingByKey) {
@@ -367,8 +425,13 @@ export class CreditNoteService {
             }
             if (normalized.wasteWarehouseId !== undefined) throw new Error('Una nota de crédito post-entrega no acepta bodega de merma');
             const originalInvoice = deserializeInvoiceSnapshot(order.invoiceSnapshot);
-            if (originalInvoice.orderId !== order.id || originalInvoice.invoiceNumber !== order.invoiceNumber) throw new Error('Invoice snapshot does not match its order');
-            const originalPaymentCents = order.payments.reduce((sum, payment) => sum + cents(Number(payment.amount)), 0);
+            if (originalInvoice.orderId !== order.id || originalInvoice.invoiceNumber !== order.invoiceNumber) throw new Error('La factura no corresponde a su orden');
+            // A tender reversed by PaymentService.delete (REVERSED without any
+            // fiscal refund allocation) was replaced by another payment and is
+            // not part of the invoice settlement. Payments reversed by earlier
+            // credit notes keep their allocations and still back the invoice.
+            const settlementPayments = order.payments.filter((payment) => payment.status === 'ACTIVE' || payment.fiscalCreditNoteRefunds.length > 0);
+            const originalPaymentCents = settlementPayments.reduce((sum, payment) => sum + cents(Number(payment.amount)), 0);
             if (originalPaymentCents !== cents(originalInvoice.total)) throw new Error('Los pagos originales no concilian con la factura; requiere remediación antes de acreditar');
 
             const allocations = this.buildInvoiceAllocations(originalInvoice, order.items);
@@ -427,7 +490,7 @@ export class CreditNoteService {
             if (originalInvoice.customerRuc) validateConfiguredFiscalTaxId(originalInvoice.customerRuc, taxSettings, 'La identificación tributaria del cliente');
 
             const referenceMap = new Map(normalized.externalRefunds.map((entry) => [entry.paymentId, entry.reference]));
-            if ([...referenceMap.keys()].some((paymentId) => !order.payments.some((payment) => payment.id === paymentId && payment.methodType !== 'CASH'))) {
+            if ([...referenceMap.keys()].some((paymentId) => !settlementPayments.some((payment) => payment.id === paymentId && payment.methodType !== 'CASH'))) {
                 throw new Error('Se recibió una referencia para un pago que no pertenece a la factura o es efectivo');
             }
             await tx.creditNoteSequence.upsert({ where: { companyId_series: { companyId, series } }, update: {}, create: { companyId, series, lastNumber: 0 } });
@@ -435,7 +498,7 @@ export class CreditNoteService {
             const number = `${series}-${sequence.lastNumber.toString().padStart(8, '0')}`;
             let remainingRefundCents = totalCents;
             const refunds: CreditNoteData['refunds'] = [];
-            for (const payment of order.payments) {
+            for (const payment of settlementPayments) {
                 if (remainingRefundCents <= 0) break;
                 const alreadyRefunded = payment.fiscalCreditNoteRefunds.reduce((sum, refund) => sum + cents(Number(refund.amount)), 0);
                 const available = cents(Number(payment.amount)) - alreadyRefunded;
@@ -475,7 +538,7 @@ export class CreditNoteService {
             });
 
             for (const refund of refunds.filter((entry) => entry.methodType === 'CASH')) {
-                const payment = order.payments.find((candidate) => candidate.id === refund.paymentId)!;
+                const payment = settlementPayments.find((candidate) => candidate.id === refund.paymentId)!;
                 const inbound = await tx.cashMovement.findMany({
                     where: { reference: `PAY-${payment.id}` },
                     select: { type: true, amount: true, shift: { select: { companyId: true, cashRegister: { select: { branchId: true } } } } }
@@ -510,11 +573,11 @@ export class CreditNoteService {
                         sourceType: 'ADJUSTMENT', reversalOrigin: `FISCAL_CREDIT_NOTE:${creditNote.id}`,
                         quantities: await this.returnedInventoryQuantities(tx, companyId, selected, order.items)
                     });
-                const inventoryBearing = order.items.filter((item) => selectedMap.has(item.id)).some((item) => item.menuItem.recipes.length > 0 || item.modifiers.some((modifier) => modifier.modifier.productId));
+                const inventoryBearing = order.items.filter((item) => selectedMap.has(item.id)).some((item) => item.menuItem.recipes.length > 0 || item.modifiers.some((modifier) => modifier.modifier.productId && !isRemovalModifier(modifier.modifier)));
                 if (inventoryBearing && !physical.reversed) throw new Error('La orden entregada no tiene consumo íntegro que pueda devolverse; requiere remediación de inventario');
             }
 
-            for (const payment of order.payments) {
+            for (const payment of settlementPayments) {
                 const previous = payment.fiscalCreditNoteRefunds.reduce((sum, refund) => sum + cents(Number(refund.amount)), 0);
                 const current = refunds.filter((refund) => refund.paymentId === payment.id).reduce((sum, refund) => sum + cents(refund.amount), 0);
                 const refunded = previous + current;
@@ -531,8 +594,13 @@ export class CreditNoteService {
             }
 
             if (isFinal && order.discountCode) {
-                const promotion = await tx.promotion.findFirst({ where: { companyId, code: order.discountCode.toUpperCase() }, select: { id: true, usageCount: true } });
-                if (promotion && promotion.usageCount > 0) await tx.promotion.update({ where: { id: promotion.id }, data: { usageCount: { decrement: 1 } } });
+                // Exactly-once return: a prefactura reservation is released via
+                // its marker pair (so no later path can release it again);
+                // an unreserved settlement claim is decremented.
+                await returnPromotionUsageForOrder(tx, {
+                    companyId, orderId: order.id, discountCode: order.discountCode,
+                    userId: actor.id, reason: `Nota de crédito final ${number}`
+                });
             }
             await tx.order.update({
                 where: { id: order.id },
@@ -545,8 +613,9 @@ export class CreditNoteService {
                 } : { financialStatus: 'PAID', invoiceFiscalStatus: 'PARTIALLY_CREDITED' }
             });
             if (isFinal && order.tableId) {
-                const active = await tx.order.count({ where: { companyId, tableId: order.tableId, id: { not: order.id }, status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } } });
-                if (active === 0) await tx.table.update({ where: { id: order.tableId }, data: { status: 'AVAILABLE' } });
+                await reconcileTableGroupForTable(
+                    tx, companyId, order.tableId, actor.id, `Nota de crédito final ${number}`
+                );
             }
             await tx.auditLog.create({ data: {
                 companyId, userId: actor.id, entityType: 'FiscalCreditNote', entityId: creditNote.id, action: 'ISSUE',
@@ -559,22 +628,22 @@ export class CreditNoteService {
 
     static async getByOrder(orderId: number, companyId: number): Promise<CreditNoteData> {
         const creditNote = await prisma.fiscalCreditNote.findFirst({ where: { orderId, companyId }, orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }], select: { orderId: true, number: true, snapshot: true } });
-        if (!creditNote) throw new Error('Credit note not issued');
+        if (!creditNote) throw new Error('La nota de crédito no ha sido emitida');
         const snapshot = deserializeCreditNoteSnapshot(creditNote.snapshot);
-        if (snapshot.orderId !== creditNote.orderId || snapshot.creditNoteNumber !== creditNote.number) throw new Error('Credit note snapshot does not match its document');
+        if (snapshot.orderId !== creditNote.orderId || snapshot.creditNoteNumber !== creditNote.number) throw new Error('La nota de crédito no corresponde a su documento');
         return snapshot;
     }
 
     static async getById(creditNoteId: number, companyId: number): Promise<{ branchId: number; data: CreditNoteData }> {
-        if (!Number.isInteger(creditNoteId) || creditNoteId <= 0) throw new Error('Credit note not issued');
+        if (!Number.isInteger(creditNoteId) || creditNoteId <= 0) throw new Error('La nota de crédito no ha sido emitida');
         const creditNote = await prisma.fiscalCreditNote.findFirst({
             where: { id: creditNoteId, companyId },
             select: { orderId: true, branchId: true, number: true, snapshot: true }
         });
-        if (!creditNote) throw new Error('Credit note not issued');
+        if (!creditNote) throw new Error('La nota de crédito no ha sido emitida');
         const data = deserializeCreditNoteSnapshot(creditNote.snapshot);
         if (data.orderId !== creditNote.orderId || data.creditNoteNumber !== creditNote.number) {
-            throw new Error('Credit note snapshot does not match its document');
+            throw new Error('La nota de crédito no corresponde a su documento');
         }
         return { branchId: creditNote.branchId, data };
     }

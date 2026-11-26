@@ -8,8 +8,34 @@ import { generateApiKey } from '../utils/apiKeyGenerator';
 import hrRoutes from './hr.routes';
 import biRoutes from './bi.routes';
 import posRoutes from './pos.routes';
+import operationalDeviceRoutes from './operational-device.routes';
+import surveyRoutes from './survey.routes';
+import inventoryCountRoutes from './inventory-count.routes';
+import { createFaceVerificationProvider } from '../services/hr-face-provider';
+import { checkStorageReadiness } from '../services/storage-identity.service';
 
 const v1 = Router();
+type ReadinessCheck = {
+    status: 'ok' | 'error';
+    latencyMs?: number;
+    required?: boolean;
+    mode?: string;
+    verified?: boolean;
+    identityHash?: string;
+    provider?: string;
+    model?: string;
+    version?: string;
+};
+
+let biometricRequirementCache: { required: boolean; expiresAt: number } | null = null;
+let storageReadinessCache: { check: ReadinessCheck; expiresAt: number } | null = null;
+let storageReadinessInFlight: Promise<ReadinessCheck> | null = null;
+
+export function resetOperationalReadinessCache(): void {
+    biometricRequirementCache = null;
+    storageReadinessCache = null;
+    storageReadinessInFlight = null;
+}
 
 function readinessDatabaseTimeoutMs(): number {
     const raw = process.env.READINESS_DB_TIMEOUT_MS;
@@ -37,24 +63,150 @@ async function checkDatabaseReadiness(): Promise<void> {
     }
 }
 
+function readinessBiometricTimeoutMs(): number {
+    const raw = process.env.READINESS_BIOMETRIC_TIMEOUT_MS;
+    if (raw === undefined || raw.trim() === '') return 2_000;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 100 || value > 10_000) {
+        throw new Error('READINESS_BIOMETRIC_TIMEOUT_MS debe estar entre 100 y 10000');
+    }
+    return value;
+}
+
+function readinessStorageTimeoutMs(): number {
+    const raw = process.env.READINESS_STORAGE_TIMEOUT_MS;
+    if (raw === undefined || raw.trim() === '') return 2_000;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 100 || value > 10_000) {
+        throw new Error('READINESS_STORAGE_TIMEOUT_MS debe estar entre 100 y 10000');
+    }
+    return value;
+}
+
+async function biometricAttendanceIsRequired(): Promise<boolean> {
+    const now = Date.now();
+    if (biometricRequirementCache && biometricRequirementCache.expiresAt > now) {
+        return biometricRequirementCache.required;
+    }
+    const count = await prisma.attendancePolicy.count({
+        where: {
+            active: true,
+            requireBiometric: true,
+            company: { active: true },
+            OR: [
+                {
+                    branch: {
+                        is: {
+                            attendanceEnabled: true,
+                            status: 'ACTIVE',
+                        },
+                    },
+                },
+                {
+                    branchId: null,
+                    company: {
+                        branches: {
+                            some: {
+                                attendanceEnabled: true,
+                                status: 'ACTIVE',
+                            },
+                        },
+                    },
+                },
+            ],
+        },
+    });
+    const required = count > 0;
+    biometricRequirementCache = { required, expiresAt: now + 5_000 };
+    return required;
+}
+
+async function checkBiometricReadiness(): Promise<ReadinessCheck> {
+    const started = Date.now();
+    const required = await biometricAttendanceIsRequired();
+    if (!required) return { status: 'ok', latencyMs: Date.now() - started, required: false };
+
+    const provider = createFaceVerificationProvider(process.env);
+    if (!provider.healthCheck) return { status: 'error', latencyMs: Date.now() - started, required: true };
+    const timeoutMs = readinessBiometricTimeoutMs();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const health = await Promise.race([
+            provider.healthCheck(),
+            new Promise<never>((_resolve, reject) => {
+                timer = setTimeout(() => reject(new Error('Biometric readiness timeout')), timeoutMs);
+                timer.unref?.();
+            }),
+        ]);
+        return {
+            status: health.status === 'AVAILABLE' ? 'ok' : 'error',
+            latencyMs: Date.now() - started,
+            required: true,
+            provider: health.provider,
+            model: health.model,
+            version: health.version,
+        };
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+async function checkFilesystemReadiness(): Promise<ReadinessCheck> {
+    const now = Date.now();
+    if (storageReadinessCache && storageReadinessCache.expiresAt > now) {
+        return storageReadinessCache.check;
+    }
+    if (!storageReadinessInFlight) {
+        const started = Date.now();
+        const probe = checkStorageReadiness().then(result => {
+            const check: ReadinessCheck = {
+                status: 'ok',
+                latencyMs: Date.now() - started,
+                required: process.env.NODE_ENV === 'production',
+                mode: result.mode,
+                verified: result.identityVerified,
+                identityHash: result.identityHash,
+            };
+            storageReadinessCache = { check, expiresAt: Date.now() + 5_000 };
+            return check;
+        });
+        storageReadinessInFlight = probe;
+        const clearProbe = () => {
+            if (storageReadinessInFlight === probe) storageReadinessInFlight = null;
+        };
+        void probe.then(clearProbe, clearProbe);
+    }
+
+    const probe = storageReadinessInFlight;
+    const timeoutMs = readinessStorageTimeoutMs();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            probe,
+            new Promise<never>((_resolve, reject) => {
+                timer = setTimeout(() => reject(new Error('Storage readiness timeout')), timeoutMs);
+                timer.unref?.();
+            }),
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 // ── Global rate limiter for v1 ──
 const globalLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 120,
-    message: { success: false, message: 'Too many requests, please try again later' },
+    message: { success: false, code: 'RATE_LIMITED', message: 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.' },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
-        const apiKey = req.headers['x-api-key'];
-        if (typeof apiKey === 'string') return `apikey:${apiKey.slice(0, 8)}`;
-        return req.ip || 'unknown';
-    },
-    validate: { keyGeneratorIpFallback: false }
+    // Key by client IP only (library default, IPv6-subnet aware). Unverified
+    // client headers such as x-api-key must not select the bucket.
 });
 
 // ── Extended health endpoint ──
 v1.get('/health', async (_req: Request, res: Response) => {
-    const checks: Record<string, { status: string; latencyMs?: number }> = {};
+    const checks: Record<string, ReadinessCheck> = {};
 
     const dbStart = Date.now();
     try {
@@ -64,10 +216,38 @@ v1.get('/health', async (_req: Request, res: Response) => {
         checks.database = { status: 'error', latencyMs: Date.now() - dbStart };
     }
 
+    if (checks.database.status === 'ok') {
+        try {
+            checks.storage = await checkFilesystemReadiness();
+        } catch {
+            checks.storage = {
+                status: 'error',
+                required: process.env.NODE_ENV === 'production',
+            };
+        }
+    } else {
+        // Shared storage identity is reconciled through MySQL. Do not issue a
+        // second database query after the authoritative DB probe already failed.
+        checks.storage = {
+            status: 'error',
+            required: process.env.NODE_ENV === 'production',
+        };
+    }
+
     checks.websocket = {
         status: WebSocketService.isInitialized() ? 'ok' : 'error',
         latencyMs: 0
     };
+
+    if (checks.database.status === 'ok') {
+        try {
+            checks.biometric = await checkBiometricReadiness();
+        } catch {
+            checks.biometric = { status: 'error' };
+        }
+    } else {
+        checks.biometric = { status: 'error' };
+    }
 
     const wsClients = WebSocketService.getClientCount();
     const allOk = Object.values(checks).every(c => c.status === 'ok');
@@ -91,6 +271,9 @@ v1.use(globalLimiter);
 v1.use('/hr', hrRoutes);
 v1.use('/bi', biRoutes);
 v1.use('/pos', posRoutes);
+v1.use('/operational-devices', operationalDeviceRoutes);
+v1.use('/surveys', surveyRoutes);
+v1.use('/inventory-counts', inventoryCountRoutes);
 
 // ── API info endpoint ──
 v1.get('/', (_req: Request, res: Response) => {

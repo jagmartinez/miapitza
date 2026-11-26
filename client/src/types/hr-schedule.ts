@@ -30,10 +30,13 @@ export interface HrScheduleShift extends HrScheduleShiftInput {
     startAt?: string;
     endAt?: string;
     timezoneSnapshot?: string;
+    templateNameSnapshot?: string | null;
+    templateColorSnapshot?: string | null;
     crossesMidnight?: boolean;
     user?: HrUserSummary | null;
     branch?: HrNamedEntity | null;
     jobPosition?: HrNamedEntity | null;
+    shiftTemplate?: Pick<HrShiftTemplate, 'id' | 'name' | 'code' | 'color'> | null;
 }
 
 export interface HrScheduleAcknowledgement {
@@ -57,6 +60,8 @@ export interface HrWeeklySchedule {
     cancelledAt?: string | null;
     publishedById?: number | null;
     acknowledgedAt?: string | null;
+    viewerUserId?: number;
+    viewerHasShift?: boolean;
     acknowledgements?: HrScheduleAcknowledgement[];
     createdAt?: string;
     updatedAt?: string;
@@ -112,14 +117,38 @@ export interface HrSchedulePublishPayload {
 
 export interface HrShiftTemplate {
     id: number;
+    revision: number;
     name: string;
     code?: string | null;
-    branchId?: number | null;
+    branchId: number | null;
     jobPositionId?: number | null;
     startTime: string;
     endTime: string;
     breakMinutes?: number;
+    paidBreak?: boolean;
+    notes?: string | null;
+    color: string;
     active?: boolean;
+    crossesMidnight?: boolean;
+    branch?: HrNamedEntity | null;
+    jobPosition?: HrNamedEntity | null;
+}
+
+export interface HrShiftTemplateCreatePayload {
+    branchId?: number | null;
+    jobPositionId?: number | null;
+    name: string;
+    code?: string;
+    startTime: string;
+    endTime: string;
+    breakMinutes: number;
+    paidBreak?: boolean;
+    notes?: string | null;
+    color: string;
+}
+
+export interface HrShiftTemplateUpdatePayload extends HrShiftTemplateCreatePayload {
+    expectedRevision: number;
 }
 
 export interface HrHoliday {

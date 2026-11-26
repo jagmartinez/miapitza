@@ -1,45 +1,85 @@
-import { Component, ReactNode } from 'react';
-import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { RefreshCw, AlertTriangle, Home } from 'lucide-react';
 import { Button } from '@/ui';
+import { describeApiError } from '../utils/apiError';
+import { markErrorHandled } from '../services/notify';
 import './ErrorBoundary.css';
 
 interface Props {
     children: ReactNode;
+    /** Changing this value (e.g. the route path) clears a previous crash. */
+    resetKey?: unknown;
+    /** `app` fills the viewport; `page` stays inside the layout shell. */
+    variant?: 'app' | 'page';
 }
 
 interface State {
-    hasError: boolean;
-    error?: Error;
+    error: Error | null;
+    resetKey?: unknown;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-    state: State = { hasError: false };
+export const ERROR_BOUNDARY_TITLE = 'Algo salió mal en esta pantalla';
 
-    static getDerivedStateFromError(error: Error): State {
-        return { hasError: true, error };
+export class ErrorBoundary extends Component<Props, State> {
+    state: State = { error: null, resetKey: this.props.resetKey };
+
+    static getDerivedStateFromError(error: Error): Partial<State> {
+        return { error };
     }
 
-    componentDidCatch(error: Error, info: React.ErrorInfo) {
+    static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
+        if (props.resetKey !== state.resetKey) {
+            return { resetKey: props.resetKey, error: null };
+        }
+        return null;
+    }
+
+    componentDidCatch(error: Error, info: ErrorInfo) {
+        // The fallback already tells the user; keep global handlers from toasting it too.
+        markErrorHandled(error);
         console.error('ErrorBoundary caught:', error, info.componentStack);
     }
 
+    retry = () => {
+        this.setState({ error: null });
+    };
+
     render() {
-        if (this.state.hasError) {
-            return (
-                <main className="error-boundary" role="alert">
-                    <AlertTriangle size={40} aria-hidden="true" className="error-boundary__icon" />
-                    <h1 className="error-boundary__title">Algo salió mal</h1>
-                    <p className="error-boundary__text">
-                        Ha ocurrido un error inesperado. Por favor recarga la página.
-                    </p>
-                    <div className="error-boundary__actions">
-                        <Button variant="primary" icon={RefreshCw} onClick={() => window.location.reload()}>
-                            Recargar página
+        const { error } = this.state;
+        if (!error) return this.props.children;
+
+        const described = describeApiError(error);
+        const isChunkLoad = described.kind === 'chunkLoad';
+        const variant = this.props.variant ?? 'app';
+        const detail = isChunkLoad
+            ? described.message
+            : 'Ocurrió un error inesperado. Puedes reintentar; si el problema continúa, recarga la página o vuelve al inicio. Tus datos guardados no se perdieron.';
+
+        return (
+            <main className={`error-boundary error-boundary--${variant}`} role="alert" aria-live="assertive" data-testid="error-boundary">
+                <AlertTriangle size={40} aria-hidden="true" className="error-boundary__icon" />
+                <h1 className="error-boundary__title">{ERROR_BOUNDARY_TITLE}</h1>
+                <p className="error-boundary__text">{detail}</p>
+                <div className="error-boundary__actions">
+                    {!isChunkLoad && (
+                        <Button variant="primary" icon={RefreshCw} onClick={this.retry}>
+                            Reintentar
                         </Button>
-                    </div>
-                </main>
-            );
-        }
-        return this.props.children;
+                    )}
+                    <Button variant={isChunkLoad ? 'primary' : 'secondary'} icon={isChunkLoad ? RefreshCw : undefined} onClick={() => window.location.reload()}>
+                        Recargar página
+                    </Button>
+                    <Button variant="secondary" icon={Home} onClick={() => window.location.assign('/dashboard')}>
+                        Ir al inicio
+                    </Button>
+                </div>
+                {import.meta.env?.DEV && (
+                    <details className="error-boundary__details">
+                        <summary>Detalle técnico</summary>
+                        <pre>{error.stack || error.message}</pre>
+                    </details>
+                )}
+            </main>
+        );
     }
 }

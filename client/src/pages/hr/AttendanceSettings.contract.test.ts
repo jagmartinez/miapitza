@@ -28,6 +28,23 @@ describe('Owner attendance settings safety contract', () => {
     expect(source).toContain('la versión anterior se conserva en el historial');
   });
 
+  it('lets HR approve or reject first facial enrollments with a mandatory reason', () => {
+    const panel = readFileSync(
+      new URL('../../components/hr/PendingBiometricEnrollmentsPanel.tsx', import.meta.url),
+      'utf8'
+    );
+    expect(source).toContain('<PendingBiometricEnrollmentsPanel online={online} branchId={scopeBranchId} />');
+    expect(panel).toContain('attendanceClient.getPendingBiometricEnrollments(branchId)');
+    expect(panel).toContain('attendanceClient.approveBiometricEnrollment(item.userId)');
+    expect(panel).toContain('attendanceClient.rejectBiometricEnrollment(item.userId, rejectReason.trim())');
+    expect(panel).toContain('validateBiometricRevocation(item.userId, rejectReason)');
+    expect(panel).toContain('Aprobar');
+    expect(panel).toContain('Rechazar');
+    expect(panel).toContain('Motivo del rechazo (obligatorio)');
+    expect(panel).not.toContain('templateRef');
+    expect(panel).not.toContain('localStorage');
+  });
+
   it('keeps device credential sidebars on the canonical RH modal contract', () => {
     expect(source.match(/<HrModalFormShell/g)).toHaveLength(2);
     expect(source).toContain('hr-attendance-sensitive-modal');

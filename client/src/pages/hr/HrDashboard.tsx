@@ -109,6 +109,13 @@ export default function HrDashboard() {
                             context={runsInProcess == null ? 'El estado de las corridas no está disponible.' : `Borrador, revisión o listas para pago (${asNumber(data.payroll.approvedRuns)} listas para pago).`}
                             action={runsInProcess ? { label: 'Abrir nómina', onClick: () => navigate('/rh/nomina') } : undefined}
                         />
+                        <StatCard
+                            label="Sucursales con asistencia"
+                            tone={data.branches.total > 0 && data.branches.attendanceEnabled < data.branches.total ? 'warning' : 'success'}
+                            value={`${asNumber(data.branches.attendanceEnabled)} / ${asNumber(data.branches.total)}`}
+                            context="Sucursales habilitadas para marcaje."
+                            action={data.branches.total > 0 && data.branches.attendanceEnabled < data.branches.total ? { label: 'Configurar', onClick: () => navigate('/rh/asistencia/configuracion') } : undefined}
+                        />
                     </section>
 
                     <div className={styles.workgrid}>

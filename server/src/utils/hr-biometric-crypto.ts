@@ -17,6 +17,21 @@ export function encryptBiometricTemplate(plainText: string, env: NodeJS.ProcessE
     return `v1.${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
 }
 
+/**
+ * False when the stored template cannot be decrypted with the current key
+ * (key rotated or data copied from another environment): the employee must
+ * re-enroll. A missing/invalid key is a configuration outage, not the
+ * employee's problem, so it counts as readable and surfaces as unavailable.
+ */
+export function isBiometricTemplateReadable(value: string, env: NodeJS.ProcessEnv = process.env): boolean {
+    try {
+        decryptBiometricTemplate(value, env);
+        return true;
+    } catch (error) {
+        return error instanceof FaceProviderUnavailableError;
+    }
+}
+
 export function decryptBiometricTemplate(value: string, env: NodeJS.ProcessEnv = process.env): string {
     const [version, ivValue, tagValue, encryptedValue] = value.split('.');
     if (version !== 'v1' || !ivValue || !tagValue || !encryptedValue) throw new Error('Plantilla biométrica cifrada inválida');
