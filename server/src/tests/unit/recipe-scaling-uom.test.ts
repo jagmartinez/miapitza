@@ -90,3 +90,29 @@ describe('RecipeScalingService UOM failures', () => {
             .rejects.toThrow(/mediciones heterogéneas/i);
     });
 });
+
+describe('RecipeScalingService.scaleRecipe rounding and unit labels (D12)', () => {
+    afterEach(() => { jest.restoreAllMocks(); });
+
+    it('rounds only the totals and labels quantities with the recipe unit', async () => {
+        jest.spyOn(prisma.recipe, 'findFirst').mockResolvedValue({
+            id: 1, menuItemId: 8, productId: 4, menuItem: { name: 'Pan' },
+            product: { name: 'Sal', unit: 'kg', cost: 1 }
+        } as never);
+        // Three lines of 0.004 each: per-line cent rounding would give 0.00 total.
+        jest.spyOn(prisma.recipe, 'findMany').mockResolvedValue([1, 2, 3].map((id) => ({
+            id, menuItemId: 8, productId: id, quantity: 2, unit: 'g', unitOfMeasure: null,
+            product: { name: `Sal ${id}`, unit: 'kg', cost: 0.002, currentAverageCost: 0.002 }
+        })) as never);
+        jest.spyOn(ProductionRecipeService, 'resolveProductUnitCost').mockResolvedValue(0.002);
+        jest.spyOn(UnitConversionService, 'convert').mockResolvedValue({
+            originalQuantity: 2, originalUnit: 'g', baseQuantity: 2, baseUnit: 'g', conversionFactor: 1
+        });
+
+        const result = await RecipeScalingService.scaleRecipe(1, 2, 1);
+
+        expect(result.ingredients[0].unit).toBe('g');
+        expect(result.ingredients[0].totalCost).toBeCloseTo(0.004, 12);
+        expect(result.totalCost).toBe(0.01);
+    });
+});

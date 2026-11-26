@@ -11,8 +11,8 @@
   display: flex;
   gap: 8px;
   padding: 6px;
-  background: var(--bg-secondary, #162238);
-  border: 1px solid var(--border-color, #31415a);
+  background: var(--ui-surface-2);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
 }
 .governance-tabs button {
@@ -23,13 +23,13 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--text-secondary, #9db1cc);
+  color: var(--ui-text-muted);
   font-weight: 700;
   cursor: pointer;
 }
 .governance-tabs button.active {
-  background: #2563eb;
-  color: #fff;
+  background: var(--ui-primary);
+  color: var(--ui-primary-fg);
 }
 .governance-toolbar {
   display: flex;
@@ -43,7 +43,7 @@
 }
 .governance-toolbar p {
   margin: 5px 0 0;
-  color: var(--text-secondary, #9db1cc);
+  color: var(--ui-text-muted);
 }
 .governance-toolbar-actions {
   display: flex;
@@ -55,7 +55,7 @@
   display: grid;
   gap: 4px;
   min-width: 180px;
-  color: var(--text-secondary, #9db1cc);
+  color: var(--ui-text-muted);
   font-size: 0.78rem;
   font-weight: 650;
 }
@@ -63,16 +63,16 @@
   min-width: min(280px, 100%);
   min-height: 40px;
   padding: 9px 11px;
-  color: var(--text-primary, #fff);
-  background: var(--bg-primary, #0d1729);
-  border: 1px solid var(--border-color, #34455e);
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: 6px;
 }
 .governance-form,
 .governance-table-wrap {
   padding: 18px;
-  background: var(--bg-secondary, #1d2a3e);
-  border: 1px solid var(--border-color, #34455e);
+  background: var(--ui-surface-2);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
 }
 .governance-grid {
@@ -85,7 +85,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  color: var(--text-secondary, #a6b7ce);
+  color: var(--ui-text-muted);
   font-size: 0.84rem;
   font-weight: 650;
 }
@@ -94,9 +94,9 @@
 .governance-form textarea {
   min-height: 40px;
   padding: 9px 11px;
-  color: var(--text-primary, #fff);
-  background: var(--bg-primary, #0d1729);
-  border: 1px solid var(--border-color, #34455e);
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: 6px;
 }
 .governance-sidebar-form {
@@ -117,7 +117,7 @@
 }
 .governance-help {
   margin: 0 0 12px;
-  color: var(--text-secondary, #9db1cc);
+  color: var(--ui-text-muted);
 }
 .governance-form textarea {
   min-height: 74px;
@@ -141,7 +141,7 @@
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-color, #34455e);
+  border-top: 1px solid var(--ui-border);
 }
 .governance-blocker,
 .governance-warning {
@@ -150,12 +150,12 @@
   border-radius: 6px;
 }
 .governance-blocker {
-  background: #431d25;
-  color: #fecaca;
+  background: var(--ui-danger-soft);
+  color: var(--ui-danger);
 }
 .governance-warning {
-  background: #413510;
-  color: #fde68a;
+  background: var(--ui-warning-soft);
+  color: var(--ui-warning);
 }
 .governance-table-wrap {
   overflow: auto;
@@ -178,39 +178,39 @@
 .preview-panel td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid var(--border-color, #34455e);
+  border-bottom: 1px solid var(--ui-border);
   vertical-align: top;
 }
 .governance-table-wrap th,
 .governance-form th,
 .preview-panel th {
-  color: var(--text-secondary, #9db1cc);
+  color: var(--ui-text-muted);
   font-size: 0.76rem;
   text-transform: uppercase;
 }
 .governance-table-wrap small {
   display: block;
   margin-top: 4px;
-  color: var(--text-secondary, #9db1cc);
+  color: var(--ui-text-muted);
 }
 .governance-status {
   display: inline-flex;
   padding: 4px 9px;
   border-radius: 999px;
-  background: #334155;
+  background: var(--ui-surface-2);
   font-size: 0.76rem;
   font-weight: 750;
 }
 .governance-status.active,
 .governance-status.approved,
 .governance-status.paid {
-  background: #123f35;
-  color: #6ee7b7;
+  background: var(--ui-success-soft);
+  color: var(--ui-success);
 }
 .governance-status.rejected,
 .governance-status.void {
-  background: #4b2028;
-  color: #fca5a5;
+  background: var(--ui-danger-soft);
+  color: var(--ui-danger);
 }
 .row-actions {
   display: flex;
@@ -228,7 +228,7 @@
   justify-content: space-between;
   gap: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-color, #34455e);
+  border-bottom: 1px solid var(--ui-border);
 }
 .governance-detail-head > div {
   display: grid;
@@ -236,7 +236,7 @@
 }
 .governance-detail-head span,
 .governance-detail small {
-  color: var(--text-secondary, #9db1cc);
+  color: var(--ui-text-muted);
 }
 .governance-detail table {
   width: 100%;
@@ -245,7 +245,7 @@
 .governance-detail th,
 .governance-detail td {
   padding: 10px;
-  border-bottom: 1px solid var(--border-color, #34455e);
+  border-bottom: 1px solid var(--ui-border);
   text-align: left;
   vertical-align: top;
 }
@@ -254,15 +254,15 @@
   justify-content: space-between;
   gap: 16px;
   padding: 14px;
-  border: 1px solid #34d399;
+  border: 1px solid var(--ui-success);
   border-radius: 8px;
-  background: color-mix(in srgb, #10b981 12%, transparent);
+  background: color-mix(in srgb, var(--ui-success) 12%, transparent);
 }
 .governance-action-form {
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--border-color, #34455e);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
 }
 .governance-action-form label,
@@ -274,16 +274,16 @@
 .governance-action-form textarea {
   min-height: 40px;
   padding: 9px 11px;
-  color: var(--text-primary, #fff);
-  background: var(--bg-primary, #0d1729);
-  border: 1px solid var(--border-color, #34455e);
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: 6px;
 }
 .governance-tabs button:focus-visible,
 .governance-toolbar-actions input:focus-visible,
 .governance-form input:focus-visible,
 .governance-form textarea:focus-visible {
-  outline: 2px solid var(--color-primary, #3b82f6);
+  outline: 2px solid var(--ui-primary);
   outline-offset: 2px;
 }
 @media (max-width: 800px) {

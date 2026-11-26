@@ -1,28 +1,62 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { notifyError } from '../services/notify';
 import { useNavigate } from 'react-router-dom';
 import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
 import api from '../services/api';
-import Button from '../components/Button';
-import Pagination from '../components/Pagination';
-import Sidebar from '../components/Sidebar';
-import Select from '../components/Select';
-import Input from '../components/Input';
+import {
+    AppSelect, Badge, Button, Checkbox, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal,
+    IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea,
+    formatMoney, formatNumber,
+    type Column, LoadErrorState,
+} from '@/ui';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import PurchaseOrderImport from '../components/PurchaseOrderImport';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, History, Undo2 } from 'lucide-react';
-import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { Plus, Eye, Zap, X, FileDown, FileText, DollarSign, Undo2, Pencil, PackageCheck } from 'lucide-react';
+import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import { BANK_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
-import type { SingleValue } from 'react-select';
+import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
+import { PURCHASE_ORDER_STATUS_LABELS, purchaseOrderDateVisibility, purchaseOrderPayable } from '../utils/purchaseOrderReceipt';
+import { getApiErrorMessage } from '../utils/apiError';
+import { BANK_OPTIONS } from '../constants/purchaseOrderOptions';
 import type { AutoPurchaseSuggestion, Branch, PurchaseOrder, PurchaseOrderPayment, Supplier } from '../types';
-import './Inventory.css';
-import './PurchaseOrders.css';
+import styles from './compras.module.css';
+import './purchase-legacy.css';
 
-type PoSuggestionRow = AutoPurchaseSuggestion & { unit?: string };
+type PoSuggestionRow = AutoPurchaseSuggestion & {
+    unit?: string;
+    purchaseUnit?: string;
+    purchaseQuantity?: number;
+    purchaseUnitCost?: number;
+};
+
+// The suggestion line is expressed in the product's default purchase unit and
+// its unit cost is sent unrounded (a per-gram cost like 0.004 must not become
+// 0.00). Without a purchase unit, cost is omitted and derived by the server.
+function toAutoPurchaseLine(suggestion: PoSuggestionRow) {
+    const purchaseQuantity = Number(suggestion.purchaseQuantity);
+    const usePurchaseUnit = Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && !!suggestion.purchaseUnit;
+    const purchaseUnitCost = Number(suggestion.purchaseUnitCost);
+    return {
+        productId: suggestion.productId,
+        quantity: usePurchaseUnit ? purchaseQuantity : Number(suggestion.suggestedQuantity),
+        ...(usePurchaseUnit ? { unit: suggestion.purchaseUnit } : {}),
+        ...(usePurchaseUnit && Number.isFinite(purchaseUnitCost) && purchaseUnitCost >= 0
+            ? { cost: purchaseUnitCost }
+            : {}),
+    };
+}
+
+function formatSuggestionQuantity(suggestion: PoSuggestionRow) {
+    const purchaseQuantity = Number(suggestion.purchaseQuantity);
+    if (Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && suggestion.purchaseUnit) {
+        return `${Number(purchaseQuantity.toFixed(3))} ${suggestion.purchaseUnit}`;
+    }
+    return `${Number(Number(suggestion.suggestedQuantity).toFixed(3))}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
+}
 
 interface PoSuggestionsData {
     summary: {
@@ -42,6 +76,17 @@ function errMsg(error: unknown, fallback: string): string {
     return fallback;
 }
 
+const STATUS_LABEL = PURCHASE_ORDER_STATUS_LABELS;
+const STATUS_TONE = { DRAFT: 'neutral', ISSUED: 'primary', PARTIALLY_RECEIVED: 'warning', RECEIVED: 'success', CANCELLED: 'danger' } as const;
+const STATUS_OPTIONS = [
+    { value: 'all', label: 'Todas' },
+    { value: 'DRAFT', label: 'Borrador' },
+    { value: 'ISSUED', label: 'Emitida' },
+    { value: 'PARTIALLY_RECEIVED', label: PURCHASE_ORDER_STATUS_LABELS.PARTIALLY_RECEIVED },
+    { value: 'RECEIVED', label: 'Recibida' },
+    { value: 'CANCELLED', label: 'Cancelada' },
+];
+
 export default function PurchaseOrders() {
     const { user } = useAuth();
     const { confirm } = useConfirmDialog();
@@ -52,6 +97,7 @@ export default function PurchaseOrders() {
     const navigate = useNavigate();
     const [orders, setOrders] = useState<PurchaseOrder[]>([]);
     const [loading, setLoading] = useState(true);
+    const [ordersLoadError, setOrdersLoadError] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [showSuggestionsSidebar, setShowSuggestionsSidebar] = useState(false);
@@ -76,9 +122,10 @@ export default function PurchaseOrders() {
     const [reversalPaymentId, setReversalPaymentId] = useState<number | null>(null);
     const [reversalReason, setReversalReason] = useState('');
     const [reversingPayment, setReversingPayment] = useState(false);
-    // Pagination and Filters state
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    const reverseReceiptAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const closeRemainingAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const addPaymentAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const reversePaymentAttemptRef = useRef<IdempotentAttempt | null>(null);
 
     // Default to last month
     const [startDate, setStartDate] = useState(() => {
@@ -98,17 +145,19 @@ export default function PurchaseOrders() {
             const response = await api.get('/settings');
             setSettings(response.data.data || {});
         } catch (error) {
-            console.error('Error loading settings:', error);
+            notifyError(error, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' });
         }
     };
 
     const loadOrders = async () => {
+        setLoading(true);
         try {
             const res = await purchaseOrdersAPI.getAll();
             setOrders(Array.isArray(res.data.data) ? res.data.data : []);
+            setOrdersLoadError(null);
         } catch (error) {
             console.error('Error loading purchase orders:', error);
-            setOrders([]);
+            setOrdersLoadError(getApiErrorMessage(error, 'No se pudieron cargar las órdenes de compra (la lista puede estar incompleta o desactualizada)'));
         } finally {
             setLoading(false);
         }
@@ -188,13 +237,7 @@ export default function PurchaseOrders() {
             const response = await autoPurchaseOrdersAPI.createFromSuggestions({
                 branchId: Number(autoPurchaseForm.branchId),
                 supplierId: Number(autoPurchaseForm.supplierId),
-                items: selectedSuggestions.map((suggestion) => ({
-                    productId: suggestion.productId,
-                    quantity: Number(suggestion.suggestedQuantity),
-                    cost: suggestion.suggestedQuantity > 0
-                        ? Number(((Number(suggestion.estimatedCost) || 0) / suggestion.suggestedQuantity).toFixed(2))
-                        : 0,
-                })),
+                items: selectedSuggestions.map(toAutoPurchaseLine),
             });
             showSuccess('Borrador de orden de compra creado correctamente.');
             setShowSuggestionsSidebar(false);
@@ -209,25 +252,6 @@ export default function PurchaseOrders() {
         }
     };
 
-    const getStatusBadge = (status: string) => {
-        const styles: Record<string, string> = {
-            DRAFT: 'status-borrador',
-            ISSUED: 'status-emitida',
-            RECEIVED: 'status-recibida',
-            CANCELLED: 'status-cancelada'
-        };
-        const labels: Record<string, string> = {
-            DRAFT: 'Borrador',
-            ISSUED: 'Emitida',
-            RECEIVED: 'Recibida',
-            CANCELLED: 'Cancelada'
-        };
-        return (
-            <span className={`modern-status-badge ${styles[status] || ''}`}>
-                {labels[status] ?? status}
-            </span>
-        );
-    };
 
     const filteredOrders = orders.filter(order => {
         const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
@@ -238,32 +262,13 @@ export default function PurchaseOrders() {
             order.supplier?.name.toLowerCase().includes(searchLower) ||
             (order.invoiceNumber && order.invoiceNumber.toLowerCase().includes(searchLower));
 
-        // Date range filter (compare local YYYY-MM-DD strings to avoid timezone issues)
-        let matchesDate = true;
-        if (startDate || endDate) {
-            const od = new Date(order.date);
-            const orderDateStr = od.getFullYear() + '-' +
-                String(od.getMonth() + 1).padStart(2, '0') + '-' +
-                String(od.getDate()).padStart(2, '0');
-
-            if (startDate && orderDateStr < startDate) matchesDate = false;
-            if (endDate && orderDateStr > endDate) matchesDate = false;
-        }
+        // Date range (local YYYY-MM-DD). Partially received orders with a pending
+        // balance stay visible outside the range; see purchaseOrderDateVisibility.
+        const matchesDate = purchaseOrderDateVisibility(order, { startDate, endDate, statusFilter }).visible;
 
         return matchesStatus && matchesSearch && matchesDate;
     });
 
-    // Pagination logic
-    const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
-    const paginatedOrders = filteredOrders.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
-
-    // Reset page when filters change
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [statusFilter, searchQuery, startDate, endDate]);
 
     const handleOpenForm = (id?: number) => {
         if (!canManagePurchaseOrders) {
@@ -310,7 +315,8 @@ export default function PurchaseOrders() {
         setPaymentTab('register');
         setReversalPaymentId(null);
         setReversalReason('');
-        const balance = Number(order.total) - Number(order.paidAmount || 0);
+        // Partially received CREDIT orders owe only what arrived (server caps there).
+        const balance = purchaseOrderPayable(order) - Number(order.paidAmount || 0);
         setPaymentForm({
             amount: balance > 0 ? balance.toFixed(2) : '',
             date: formatLocalDateInput(),
@@ -322,16 +328,16 @@ export default function PurchaseOrders() {
         try {
             const res = await purchaseOrdersAPI.getPayments(order.id);
             setPaymentHistory(Array.isArray(res.data.data) ? res.data.data : []);
-        } catch {
+        } catch (error) {
             setPaymentHistory(order.payments || []);
-            showWarning('No se pudo actualizar el historial de pagos; se muestra la última información disponible.');
+            notifyError(error, 'No se pudo actualizar el historial de pagos (se muestra la última información disponible)', { type: 'warning' });
         } finally {
             setLoadingPaymentHistory(false);
         }
     };
 
     const handleReverseReceipt = async (order: PurchaseOrder) => {
-        if (!canDeletePurchaseOrders || order.status !== 'RECEIVED') return;
+        if (!canDeletePurchaseOrders || (order.status !== 'RECEIVED' && order.status !== 'PARTIALLY_RECEIVED')) return;
         const reason = window.prompt('Motivo obligatorio del reverso de recepción:')?.trim();
         if (!reason) return;
         const accepted = await confirm(
@@ -340,11 +346,36 @@ export default function PurchaseOrders() {
         );
         if (!accepted) return;
         try {
-            await purchaseOrdersAPI.reverseReceipt(order.id, reason);
+            const attempt = getIdempotentAttempt(reverseReceiptAttemptRef.current, `reverse-receipt:${order.id}:${reason}`);
+            reverseReceiptAttemptRef.current = attempt;
+            await purchaseOrdersAPI.reverseReceipt(order.id, reason, attempt.key);
+            reverseReceiptAttemptRef.current = null;
             showSuccess('Recepción revertida correctamente');
             loadOrders();
         } catch (error: unknown) {
             showError(errMsg(error, 'No se pudo revertir la recepción'));
+        }
+    };
+
+    /** "Cerrar saldo": finish a partially received order without receiving the rest. */
+    const handleCloseRemaining = async (order: PurchaseOrder) => {
+        if (!canManagePurchaseOrders || order.status !== 'PARTIALLY_RECEIVED') return;
+        const reason = window.prompt('Motivo obligatorio para cerrar el saldo pendiente:')?.trim();
+        if (!reason) return;
+        const accepted = await confirm(
+            `¿Cerrar el saldo de la orden #${order.id}? Lo pendiente se abandona sin afectar inventario y el total de la orden pasa a ${money(Number(order.receivedTotal || 0))} (valor recibido).`,
+            { title: 'Confirmar cierre de saldo' }
+        );
+        if (!accepted) return;
+        try {
+            const attempt = getIdempotentAttempt(closeRemainingAttemptRef.current, `close-remaining:${order.id}:${reason}`);
+            closeRemainingAttemptRef.current = attempt;
+            await purchaseOrdersAPI.closeRemaining(order.id, reason, attempt.key);
+            closeRemainingAttemptRef.current = null;
+            showSuccess('Saldo cerrado. La orden queda como recibida.');
+            loadOrders();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo cerrar el saldo de la orden'));
         }
     };
 
@@ -368,31 +399,44 @@ export default function PurchaseOrders() {
         if (!paymentModalOrder) return;
         const amount = parseFloat(paymentForm.amount);
         if (!amount || amount <= 0) { showError('El monto debe ser mayor a 0'); return; }
+        if (amount > purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0) + 0.005) {
+            showError('El monto no puede superar el saldo pendiente');
+            return;
+        }
+        const paymentData = {
+            amount,
+            date: paymentForm.date,
+            bank: paymentForm.bank || undefined,
+            referenceNumber: paymentForm.referenceNumber || undefined,
+            observations: paymentForm.observations || undefined
+        };
+        const fingerprint = `add-payment:${paymentModalOrder.id}:${JSON.stringify(paymentData)}`;
+        const attempt = getIdempotentAttempt(addPaymentAttemptRef.current, fingerprint);
+        addPaymentAttemptRef.current = attempt;
         setSavingPayment(true);
         try {
-            await purchaseOrdersAPI.addPayment(paymentModalOrder.id, {
-                amount,
-                date: paymentForm.date,
-                bank: paymentForm.bank || undefined,
-                referenceNumber: paymentForm.referenceNumber || undefined,
-                observations: paymentForm.observations || undefined
-            });
+            await purchaseOrdersAPI.addPayment(paymentModalOrder.id, paymentData, attempt.key);
+            addPaymentAttemptRef.current = null;
             showSuccess('Pago registrado correctamente.');
-            const [paymentsRes, orderRes] = await Promise.all([
-                purchaseOrdersAPI.getPayments(paymentModalOrder.id),
-                purchaseOrdersAPI.getById(paymentModalOrder.id),
-            ]);
-            const updatedOrder = orderRes.data.data as PurchaseOrder;
-            setPaymentModalOrder(updatedOrder);
-            setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
-            const balance = Number(updatedOrder.total) - Number(updatedOrder.paidAmount || 0);
-            setPaymentForm((prev) => ({
-                ...prev,
-                amount: balance > 0 ? balance.toFixed(2) : '',
-                bank: '',
-                referenceNumber: '',
-                observations: '',
-            }));
+            try {
+                const [paymentsRes, orderRes] = await Promise.all([
+                    purchaseOrdersAPI.getPayments(paymentModalOrder.id),
+                    purchaseOrdersAPI.getById(paymentModalOrder.id),
+                ]);
+                const updatedOrder = orderRes.data.data as PurchaseOrder;
+                setPaymentModalOrder(updatedOrder);
+                setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+                const balance = purchaseOrderPayable(updatedOrder) - Number(updatedOrder.paidAmount || 0);
+                setPaymentForm((prev) => ({
+                    ...prev,
+                    amount: balance > 0 ? balance.toFixed(2) : '',
+                    bank: '',
+                    referenceNumber: '',
+                    observations: '',
+                }));
+            } catch (error) {
+                notifyError(error, 'El pago fue registrado, pero no se pudo actualizar el detalle (recarga antes de registrar otro abono)', { type: 'warning' });
+            }
             loadOrders();
         } catch (error: unknown) {
             showError(errMsg(error, 'Error al registrar pago'));
@@ -409,20 +453,30 @@ export default function PurchaseOrders() {
             return;
         }
         const accepted = await confirm(
-            `¿Revertir el abono de ${formatCurrency(Number(payment.amount), settings)}?`,
+            `¿Revertir el abono de ${formatMoney(Number(payment.amount), settings.currency_symbol || 'C$')}?`,
             { title: 'Confirmar reverso de pago' }
         );
         if (!accepted) return;
 
         setReversingPayment(true);
         try {
-            await purchaseOrdersAPI.reversePayment(paymentModalOrder.id, payment.id, reason);
-            const [paymentsRes, orderRes] = await Promise.all([
-                purchaseOrdersAPI.getPayments(paymentModalOrder.id),
-                purchaseOrdersAPI.getById(paymentModalOrder.id),
-            ]);
-            setPaymentModalOrder(orderRes.data.data as PurchaseOrder);
-            setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+            const attempt = getIdempotentAttempt(
+                reversePaymentAttemptRef.current,
+                `reverse-payment:${paymentModalOrder.id}:${payment.id}:${reason}`,
+            );
+            reversePaymentAttemptRef.current = attempt;
+            await purchaseOrdersAPI.reversePayment(paymentModalOrder.id, payment.id, reason, attempt.key);
+            reversePaymentAttemptRef.current = null;
+            try {
+                const [paymentsRes, orderRes] = await Promise.all([
+                    purchaseOrdersAPI.getPayments(paymentModalOrder.id),
+                    purchaseOrdersAPI.getById(paymentModalOrder.id),
+                ]);
+                setPaymentModalOrder(orderRes.data.data as PurchaseOrder);
+                setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+            } catch (error) {
+                notifyError(error, 'El reverso fue aplicado, pero no se pudo actualizar el historial (recarga la orden para conciliarlo)', { type: 'warning' });
+            }
             setReversalPaymentId(null);
             setReversalReason('');
             showSuccess('Pago revertido correctamente');
@@ -442,500 +496,326 @@ export default function PurchaseOrders() {
         return diff;
     };
 
-    const draftCount = orders.filter(o => o.status === 'DRAFT').length;
-    const issuedCount = orders.filter(o => o.status === 'ISSUED').length;
-    const receivedCount = orders.filter(o => o.status === 'RECEIVED').length;
+
+    const symbol = settings.currency_symbol || 'C$';
+    const money = (value: unknown) => formatMoney(value, symbol);
+
     const pendingPaymentOrders = orders.filter(o =>
-        o.status === 'RECEIVED' && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
+        (o.status === 'RECEIVED' || o.status === 'PARTIALLY_RECEIVED') && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
     );
     const overduePayments = pendingPaymentOrders.filter(o => {
         const days = getDaysRemaining(o.paymentDueDate);
         return days !== null && days < 0;
     });
+    const payableBalance = pendingPaymentOrders.reduce(
+        (sum, o) => sum + Math.max(0, purchaseOrderPayable(o) - (Number(o.paidAmount) || 0)), 0);
+    const mostOverdueOrder = [...overduePayments].sort(
+        (a, b) => (getDaysRemaining(a.paymentDueDate) ?? 0) - (getDaysRemaining(b.paymentDueDate) ?? 0))[0]
+        ?? pendingPaymentOrders[0];
 
-    if (loading) return <div className="inventory-loading">Cargando órdenes de compra...</div>;
+    const issuedOrders = orders.filter(o => o.status === 'ISSUED');
+    const committedAmount = issuedOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const issuedOverdue = issuedOrders.filter(o => {
+        const days = getDaysRemaining(o.paymentDueDate);
+        return days !== null && days < 0;
+    });
+
+    const renderPaymentCell = (order: PurchaseOrder) => {
+        // CASH is paid on delivery: nothing is settled before a receipt.
+        if (order.invoiceType !== 'CREDIT') {
+            return order.paymentStatus === 'PAID' ? <Badge tone="success">Pagado</Badge> : <Badge tone="neutral">Contra entrega</Badge>;
+        }
+        const days = order.paymentStatus !== 'PAID' && order.paymentDueDate ? getDaysRemaining(order.paymentDueDate) : null;
+        const tone = order.paymentStatus === 'PAID' ? 'success' : order.paymentStatus === 'PARTIAL' ? 'warning' : 'neutral';
+        return (
+            <span className={styles.inline}>
+                <Badge tone={tone}>{order.paymentStatus === 'PAID' ? 'Pagado' : order.paymentStatus === 'PARTIAL' ? 'Parcial' : 'Pendiente'}</Badge>
+                {days !== null && (
+                    <span className={styles.muted}>
+                        {days < 0 ? `Vencido ${Math.abs(days)}d` : days === 0 ? 'Hoy' : `${days}d restantes`}
+                    </span>
+                )}
+            </span>
+        );
+    };
+
+    const orderColumns: Column<PurchaseOrder>[] = [
+        { key: 'id', header: 'Orden', width: '0.7fr', render: (o) => `#${o.id}` },
+        { key: 'supplier', header: 'Proveedor', width: '1.8fr', render: (o) => o.supplier?.name ?? 'N/D' },
+        { key: 'invoiceNumber', header: 'Nº Factura', width: '1fr', hideBelow: 'md', render: (o) => o.invoiceNumber || '-' },
+        { key: 'date', header: 'Fecha', width: '1fr', type: 'date' },
+        {
+            key: 'invoiceType', header: 'Tipo', width: '0.8fr', hideBelow: 'lg',
+            render: (o) => <Badge tone={o.invoiceType === 'CREDIT' ? 'warning' : 'neutral'}>{o.invoiceType === 'CREDIT' ? 'Crédito' : 'Contado'}</Badge>,
+        },
+        {
+            key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (o) => Number(o.total) || 0,
+            render: (o) => (o.status === 'PARTIALLY_RECEIVED' ? (
+                <span className={styles.cellStack}>
+                    <span>{formatNumber(Number(o.total) || 0)}</span>
+                    <span className={styles.muted}>Recibido {money(Number(o.receivedTotal) || 0)}</span>
+                </span>
+            ) : formatNumber(Number(o.total) || 0)),
+        },
+        { key: 'payment', header: 'Pago', width: '1.4fr', hideBelow: 'lg', render: renderPaymentCell },
+        {
+            key: 'status', header: 'Estado', width: '0.9fr',
+            render: (o) => (
+                <span className={styles.cellStack}>
+                    <Badge tone={STATUS_TONE[o.status] ?? 'neutral'} dot>{STATUS_LABEL[o.status] ?? o.status}</Badge>
+                    {purchaseOrderDateVisibility(o, { startDate, endDate, statusFilter }).outOfRange && (
+                        <span className={styles.muted} title="Fuera del rango de fechas: se muestra porque tiene saldo pendiente de recibir">
+                            Saldo pendiente · fuera del rango
+                        </span>
+                    )}
+                </span>
+            ),
+        },
+        {
+            key: 'actions', header: 'Acciones', width: '10rem', type: 'actions',
+            render: (order) => (
+                <span className={styles.rowActions}>
+                    {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
+                        <IconButton
+                            icon={DollarSign} size="sm"
+                            label={order.paymentStatus === 'PAID' ? 'Ver historial de abonos' : 'Registrar pago / abono'}
+                            onClick={() => handleOpenPayment(order)}
+                        />
+                    )}
+                    {canManagePurchaseOrders && (
+                        <IconButton
+                            icon={order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED' ? Eye : Pencil} size="sm"
+                            label={order.status === 'RECEIVED' ? 'Ver detalles' : order.status === 'PARTIALLY_RECEIVED' ? 'Ver / recibir saldo' : 'Editar'}
+                            onClick={() => handleOpenForm(order.id)}
+                        />
+                    )}
+                    {canManagePurchaseOrders && order.status === 'PARTIALLY_RECEIVED' && (
+                        <IconButton
+                            icon={PackageCheck} size="sm"
+                            label={`Cerrar saldo de la orden ${order.id} (abandonar lo pendiente)`}
+                            onClick={() => void handleCloseRemaining(order)}
+                        />
+                    )}
+                    {order.invoicePdf && (
+                        <IconButton icon={FileText} size="sm" label="Ver Factura PDF" onClick={() => void handleDownloadInvoice(order)} />
+                    )}
+                    {canDeletePurchaseOrders && order.status === 'DRAFT' && (
+                        <IconButton icon={X} size="sm" label="Eliminar borrador" onClick={() => void handleDeleteOrder(order.id)} />
+                    )}
+                    {canDeletePurchaseOrders && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
+                        <IconButton icon={Undo2} size="sm" label="Revertir recepción" onClick={() => void handleReverseReceipt(order)} />
+                    )}
+                </span>
+            ),
+        },
+    ];
+
+    const suggestionColumns: Column<PoSuggestionRow>[] = [
+        {
+            key: 'select', header: '', width: '3rem',
+            render: (s) => (
+                <Checkbox
+                    aria-label={`Seleccionar ${s.productName?.trim() || `Producto #${s.productId}`}`}
+                    checked={Boolean(selectedSuggestionKeys[getSuggestionKey(s)])}
+                    onChange={() => handleToggleSuggestion(s)}
+                    label=""
+                />
+            ),
+        },
+        { key: 'product', header: 'Producto', width: '2fr', render: (s) => s.productName?.trim() || `Producto #${s.productId}` },
+        { key: 'warehouse', header: 'Bodega', width: '1.2fr', hideBelow: 'md', render: (s) => s.warehouseName || 'Sin bodega' },
+        {
+            key: 'priority', header: 'Prioridad', width: '0.9fr',
+            render: (s) => <Badge tone={s.priority === 'URGENT' ? 'danger' : 'neutral'}>{s.priority === 'URGENT' ? 'Urgente' : 'Normal'}</Badge>,
+        },
+        { key: 'current', header: 'Actual', width: '1fr', type: 'qty', hideBelow: 'md', render: (s) => `${formatNumber(s.currentStock || 0)} ${s.unit || ''}`.trim() },
+        { key: 'min', header: 'Mín', width: '1fr', type: 'qty', hideBelow: 'lg', render: (s) => `${formatNumber(s.minStock || 0)} ${s.unit || ''}`.trim() },
+        { key: 'suggested', header: 'Sugerido', width: '1fr', type: 'qty', render: (s) => formatSuggestionQuantity(s) },
+        { key: 'cost', header: `Estimado (${symbol})`, width: '1fr', type: 'money', accessor: (s) => Number(s.estimatedCost) || 0 },
+    ];
+
+    if (loading) return <div role="status">Cargando órdenes de compra...</div>;
+
+    const balance = paymentModalOrder ? purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0) : 0;
+    const paymentFormAmount = paymentForm.amount === '' ? null : Number(paymentForm.amount);
 
     return (
-        <div className="inventory-page purchase-orders-page">
-            <div className="inventory-header-new">
-                <div className="header-title-section">
-                    <h1><ShoppingCart size={32} /> Órdenes de Compra</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <Button variant="secondary" onClick={loadAutoSuggestions} disabled={loadingSuggestions || !canManagePurchaseOrders}>
-                        <Zap size={18} />
-                        {loadingSuggestions ? 'Cargando...' : 'Auto-Generar'}
-                    </Button>
-                    <Button variant="secondary" onClick={() => setIsImportSidebarOpen(true)} disabled={!canManagePurchaseOrders}>
-                        <FileDown size={18} />
-                        Carga Masiva
-                    </Button>
-                    <Button onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders} title="Nueva orden" aria-label="Nueva orden">
-                        <Plus size={20} />
-                    </Button>
-                </div>
-            </div>
+        <PageContent>
+            <PageHeader
+                title="Órdenes de Compra"
+                description="Compras a proveedores, recepción y pagos."
+                actions={(
+                    <>
+                        <Button icon={Zap} onClick={loadAutoSuggestions} disabled={loadingSuggestions || !canManagePurchaseOrders}>
+                            {loadingSuggestions ? 'Cargando...' : 'Auto-Generar'}
+                        </Button>
+                        <Button icon={FileDown} onClick={() => setIsImportSidebarOpen(true)} disabled={!canManagePurchaseOrders}>
+                            Carga Masiva
+                        </Button>
+                        <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders}>
+                            Nueva orden
+                        </Button>
+                    </>
+                )}
+            />
 
-            <div className="inventory-grid-new" style={{ marginBottom: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-                <div className="inventory-card-new">
-                    <div className="inventory-card-body-new">
-                        <div className="product-name-new">Resumen de órdenes</div>
-                        <div className="product-details-new">
-                            <div className="detail-item"><span>{orders.length} órdenes totales</span></div>
-                            <div className="detail-item"><span>{draftCount} borradores</span></div>
-                            <div className="detail-item"><span>{issuedCount} emitidas · {receivedCount} recibidas</span></div>
-                        </div>
-                    </div>
-                </div>
-                <div className="inventory-card-new">
-                    <div className="inventory-card-body-new">
-                        <div className="product-name-new">Pagos pendientes</div>
-                        <div className="product-details-new">
-                            {pendingPaymentOrders.slice(0, 3).map(order => (
-                                <button
-                                    key={order.id}
-                                    type="button"
-                                    className="detail-item po-pending-payment-link"
-                                    onClick={() => handleOpenPayment(order)}
-                                >
-                                    <AlertTriangle size={14} />
-                                    <span>#{order.id} {order.supplier?.name}</span>
-                                </button>
-                            ))}
-                            {pendingPaymentOrders.length === 0 && (
-                                <div className="detail-item"><span>Sin pagos pendientes</span></div>
-                            )}
-                            {overduePayments.length > 0 && (
-                                <div className="detail-item"><span>{overduePayments.length} vencidos</span></div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div className="inventory-card-new">
-                    <div className="inventory-card-body-new">
-                        <div className="product-name-new">Reposición sugerida</div>
-                        <div className="product-details-new">
-                            <div className="detail-item"><span>Genera órdenes desde stock bajo</span></div>
-                            {canManagePurchaseOrders && (
-                                <div className="detail-item" style={{ marginTop: '8px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={loadAutoSuggestions}
-                                        disabled={loadingSuggestions}
-                                        style={{
-                                            border: 'none',
-                                            background: 'transparent',
-                                            color: 'var(--color-primary)',
-                                            fontWeight: 700,
-                                            cursor: 'pointer',
-                                            padding: 0
-                                        }}
-                                    >
-                                        {loadingSuggestions ? 'Cargando sugerencias...' : 'Revisar sugerencias y crear borrador'}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
+            {ordersLoadError && <LoadErrorState message={ordersLoadError} onRetry={() => { void loadOrders(); }} />}
 
-            <div className="inventory-filters-row">
-                <div className="inventory-status-filters">
-                    {['all', 'DRAFT', 'ISSUED', 'RECEIVED', 'CANCELLED'].map(status => (
-                        <button
-                            key={status}
-                            type="button"
-                            className={`inventory-status-btn ${statusFilter === status ? 'active' : ''}`}
-                            onClick={() => setStatusFilter(status)}
-                        >
-                            {status === 'all' ? 'Todas' :
-                                status === 'DRAFT' ? 'Borrador' :
-                                    status === 'ISSUED' ? 'Emitida' :
-                                        status === 'RECEIVED' ? 'Recibida' : 'Cancelada'}
-                        </button>
-                    ))}
-
-                    <div style={{ width: '1px', height: '24px', background: 'var(--color-border)', margin: '0 8px' }} />
-
-                    <div className="po-date-filters">
-                        <div className="date-input-group">
-                            <label>Desde:</label>
-                            <input
-                                type="date"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                            />
-                        </div>
-                        <div className="date-input-group">
-                            <label>Hasta:</label>
-                            <input
-                                type="date"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                            />
-                        </div>
-                        {(startDate || endDate) && (
-                            <button type="button" className="clear-dates" onClick={() => { setStartDate(''); setEndDate(''); }}>
-                                <X size={14} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                <div className="filter-right-section">
-                    <input
-                        type="text"
-                        placeholder="Buscar por ID, proveedor o factura..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="search-input inventory-search"
+            {(orders.length > 0 || !ordersLoadError) && (
+                <div className={styles.kpiGrid}>
+                    <StatCard
+                        label="Comprometido sin recibir"
+                        value={money(committedAmount)}
+                        tone={issuedOverdue.length > 0 ? 'warning' : 'neutral'}
+                        context={`${issuedOrders.length} órdenes emitidas · ${issuedOverdue.length} con fecha de vencimiento ya pasada`}
+                        action={issuedOrders.length > 0 ? { label: 'Ver emitidas', onClick: () => setStatusFilter('ISSUED') } : undefined}
+                    />
+                    <StatCard
+                        label="Por pagar a proveedores"
+                        value={money(payableBalance)}
+                        tone={overduePayments.length > 0 ? 'danger' : 'neutral'}
+                        context={pendingPaymentOrders.length === 0
+                            ? 'Sin facturas a crédito pendientes de pago'
+                            : `${overduePayments.length} vencidas de ${pendingPaymentOrders.length} facturas a crédito recibidas`}
+                        action={canManagePurchaseOrders && mostOverdueOrder
+                            ? { label: `Registrar pago OC #${mostOverdueOrder.id}`, onClick: () => { void handleOpenPayment(mostOverdueOrder); } }
+                            : undefined}
                     />
                 </div>
-            </div>
+            )}
 
-            <div className="inventory-table-wrapper">
-                <table className="inventory-table">
-                        <thead>
-                            <tr>
-                                <th>Orden</th>
-                                <th>Proveedor</th>
-                                <th>Nº Factura</th>
-                                <th>Fecha</th>
-                                <th>Tipo</th>
-                                <th className="text-right">Total</th>
-                                <th>Pago</th>
-                                <th>Estado</th>
-                                <th className="text-right">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {paginatedOrders.map(order => (
-                                <tr key={order.id} onClick={() => canManagePurchaseOrders && handleOpenForm(order.id)} className="clickable-row">
-                                    <td data-label="Orden" className="cell-name">
-                                        <span className="cell-name-title order-id">
-                                            <span className="hashtag">#</span>
-                                            {order.id}
-                                        </span>
-                                    </td>
-                                    <td data-label="Proveedor">
-                                        <div className="supplier-cell">
-                                            <span className="supplier-name">{order.supplier?.name}</span>
-                                        </div>
-                                    </td>
-                                    <td data-label="Nº Factura">
-                                        <div className="invoice-cell">
-                                            {order.invoiceNumber || <span className="text-muted">-</span>}
-                                        </div>
-                                    </td>
-                                    <td data-label="Fecha">
-                                        <div className="date-cell">
-                                            {new Date(order.date).toLocaleDateString('es-ES', {
-                                                day: '2-digit',
-                                                month: 'short',
-                                                year: 'numeric'
-                                            })}
-                                        </div>
-                                    </td>
-                                    <td data-label="Tipo">
-                                        <span className={`po-type-badge ${order.invoiceType === 'CREDIT' ? 'credit' : 'cash'}`}>
-                                            {order.invoiceType === 'CREDIT' ? 'Crédito' : 'Contado'}
-                                        </span>
-                                    </td>
-                                    <td data-label="Total" className="text-right">
-                                        <div className="total-cell">
-                                            {formatCurrency(Number(order.total) || 0, settings)}
-                                        </div>
-                                    </td>
-                                    <td data-label="Pago" onClick={(e) => e.stopPropagation()}>
-                                        {order.invoiceType === 'CREDIT' ? (
-                                            <div className="payment-info-cell">
-                                                <span className={`payment-status-badge ${order.paymentStatus?.toLowerCase() || 'pending'}`}>
-                                                    {order.paymentStatus === 'PAID' ? 'Pagado' : order.paymentStatus === 'PARTIAL' ? 'Parcial' : 'Pendiente'}
-                                                </span>
-                                                {order.paymentStatus !== 'PAID' && order.paymentDueDate && (
-                                                    <span className={`days-remaining ${(getDaysRemaining(order.paymentDueDate) ?? 0) < 0 ? 'overdue' : (getDaysRemaining(order.paymentDueDate) ?? 0) <= 3 ? 'urgent' : ''}`}>
-                                                        {(() => {
-                                                            const days = getDaysRemaining(order.paymentDueDate);
-                                                            if (days === null) return '';
-                                                            if (days < 0) return `Vencido ${Math.abs(days)}d`;
-                                                            if (days === 0) return 'Hoy';
-                                                            return `${days}d restantes`;
-                                                        })()}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <span className="payment-status-badge paid">Pagado</span>
-                                        )}
-                                    </td>
-                                    <td data-label="Estado">{getStatusBadge(order.status)}</td>
-                                    <td className="text-right" onClick={(e) => e.stopPropagation()}>
-                                        <div className="table-actions">
-                                            {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && order.status === 'RECEIVED' && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action-btn"
-                                                    onClick={() => handleOpenPayment(order)}
-                                                    title={order.paymentStatus === 'PAID' ? 'Ver historial de abonos' : 'Registrar pago / abono'}
-                                                >
-                                                    <DollarSign size={16} />
-                                                </button>
-                                            )}
-                                            {canManagePurchaseOrders && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action-btn"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleOpenForm(order.id);
-                                                    }}
-                                                    title={order.status === 'RECEIVED' ? 'Ver detalles' : 'Editar'}
-                                                >
-                                                    {order.status === 'RECEIVED' ? <Eye size={16} /> : <Zap size={16} />}
-                                                </button>
-                                            )}
-                                            {order.invoicePdf && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action-btn"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        void handleDownloadInvoice(order);
-                                                    }}
-                                                    title="Ver Factura PDF"
-                                                >
-                                                    <FileText size={16} />
-                                                </button>
-                                            )}
-                                            {canDeletePurchaseOrders && order.status === 'DRAFT' && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action-btn danger"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDeleteOrder(order.id);
-                                                    }}
-                                                    title="Eliminar borrador"
-                                                >
-                                                    <X size={16} />
-                                                </button>
-                                            )}
-                                            {canDeletePurchaseOrders && order.status === 'RECEIVED' && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action-btn danger"
-                                                    onClick={() => handleReverseReceipt(order)}
-                                                    title="Revertir recepción"
-                                                >
-                                                    <Undo2 size={16} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredOrders.length === 0 && (
-                                <tr>
-                                    <td colSpan={9}>
-                                        <div className="empty-state">
-                                            <ShoppingCart size={48} />
-                                            <p>No se encontraron órdenes de compra</p>
-                                        </div>
-                                    </td>
-                                </tr>
+            <DataTable
+                ariaLabel="Órdenes de compra"
+                columns={orderColumns}
+                rows={filteredOrders}
+                rowKey={(o) => o.id}
+                resetKey={`${statusFilter}|${searchQuery}|${startDate}|${endDate}`}
+                onRowClick={canManagePurchaseOrders ? (o) => handleOpenForm(o.id) : undefined}
+                empty="No se encontraron órdenes de compra"
+                toolbar={(
+                    <TableToolbar>
+                        <div className={styles.filters}>
+                            <SegmentedControl
+                                ariaLabel="Estado de la orden"
+                                options={STATUS_OPTIONS}
+                                value={statusFilter}
+                                onChange={setStatusFilter}
+                            />
+                            <div className={styles.filterField}>
+                                <label htmlFor="po-from">Desde</label>
+                                <DateInput id="po-from" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                            </div>
+                            <div className={styles.filterField}>
+                                <label htmlFor="po-to">Hasta</label>
+                                <DateInput id="po-to" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                            </div>
+                            {(startDate || endDate) && (
+                                <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); }}>
+                                    Quitar fechas
+                                </Button>
                             )}
-                        </tbody>
-                    </table>
-                <Pagination
-                    page={currentPage}
-                    totalPages={totalPages}
-                    totalItems={filteredOrders.length}
-                    pageSize={itemsPerPage}
-                    onPageChange={setCurrentPage}
-                />
-            </div>
+                            <div className={`${styles.filterField} ${styles.search}`}>
+                                <label htmlFor="po-search">Buscar</label>
+                                <Input
+                                    id="po-search"
+                                    type="search"
+                                    placeholder="Buscar por ID, proveedor o factura..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                    </TableToolbar>
+                )}
+            />
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={showSuggestionsSidebar && !!suggestions}
                 onClose={() => setShowSuggestionsSidebar(false)}
                 title="Sugerencias de Órdenes de Compra"
-                width="wide"
+                subtitle={suggestions
+                    ? `${suggestions.summary.totalProducts ?? suggestionRows.length} productos · ${suggestions.summary.urgentProducts} urgentes · costo estimado ${money(Number(suggestions.summary.totalEstimatedCost) || 0)}`
+                    : undefined}
+                dirty={selectedSuggestions.length > 0}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cerrar</Button>
+                        <Button
+                            variant="primary"
+                            type="submit"
+                            form="po-suggestions-form"
+                            disabled={creatingAutoPurchaseOrder || selectedSuggestions.length === 0}
+                        >
+                            {creatingAutoPurchaseOrder ? 'Creando...' : 'Crear borrador'}
+                        </Button>
+                    </>
+                )}
             >
                 {suggestions && (
-                    <div className="premium-modal-content product-modal-content">
-                        <form onSubmit={handleCreateAutoPurchaseOrder} className="modal-form-new">
-                            <div className="modal-tab-content">
-                                <div className="import-summary-grid po-suggestions-summary">
-                                    <div className="import-summary-card">
-                                        <div className="import-summary-value">{suggestions.summary.totalProducts ?? suggestionRows.length}</div>
-                                        <div className="import-summary-label">Productos</div>
-                                    </div>
-                                    <div className="import-summary-card import-summary-error">
-                                        <div className="import-summary-value">{suggestions.summary.urgentProducts}</div>
-                                        <div className="import-summary-label">Urgentes</div>
-                                    </div>
-                                    <div className="import-summary-card import-summary-new">
-                                        <div className="import-summary-value">
-                                            {formatCurrency(Number(suggestions.summary.totalEstimatedCost) || 0, settings)}
-                                        </div>
-                                        <div className="import-summary-label">Costo estimado</div>
-                                    </div>
-                                </div>
-
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <FileText size={18} />
-                                        <h3>Configurar borrador</h3>
-                                    </div>
-                                    <div className="modal-form-row">
-                                        <Select
-                                            variant="modal"
-                                            label="Sucursal"
-                                            options={branches.map((branch) => ({
-                                                value: branch.id.toString(),
-                                                label: branch.name,
-                                            }))}
-                                            value={autoPurchaseForm.branchId
-                                                ? {
-                                                    value: autoPurchaseForm.branchId,
-                                                    label: branches.find((branch) => branch.id.toString() === autoPurchaseForm.branchId)?.name || 'Seleccionar sucursal',
-                                                }
-                                                : null}
-                                            onChange={(option: SingleValue<StrOption>) => setAutoPurchaseForm((prev) => ({ ...prev, branchId: option?.value || '' }))}
-                                            placeholder="Seleccionar sucursal..."
-                                            isSearchable={false}
-                                        />
-                                        <Select
-                                            variant="modal"
-                                            label="Proveedor"
-                                            options={suppliers.map((supplier) => ({
-                                                value: supplier.id.toString(),
-                                                label: supplier.name,
-                                            }))}
-                                            value={autoPurchaseForm.supplierId
-                                                ? {
-                                                    value: autoPurchaseForm.supplierId,
-                                                    label: suppliers.find((supplier) => supplier.id.toString() === autoPurchaseForm.supplierId)?.name || 'Seleccionar proveedor',
-                                                }
-                                                : null}
-                                            onChange={(option: SingleValue<StrOption>) => setAutoPurchaseForm((prev) => ({ ...prev, supplierId: option?.value || '' }))}
-                                            placeholder="Seleccionar proveedor..."
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <AlertTriangle size={18} />
-                                        <h3>Productos sugeridos</h3>
-                                    </div>
-
-                                    <div className="po-suggestion-toolbar">
-                                        <span className="po-suggestion-count">
-                                            {selectedSuggestions.length} seleccionados de {suggestionRows.length} sugerencias
-                                        </span>
-                                        <div className="po-suggestion-toolbar-actions">
-                                            <input
-                                                type="text"
-                                                className="search-input po-suggestion-search"
-                                                placeholder="Buscar producto o almacén..."
-                                                value={suggestionSearch}
-                                                onChange={(e) => setSuggestionSearch(e.target.value)}
-                                            />
-                                            <Button type="button" variant="ghost" onClick={handleSelectUrgentSuggestions}>
-                                                Seleccionar urgentes
-                                            </Button>
-                                            <Button type="button" variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>
-                                                Limpiar
-                                            </Button>
-                                        </div>
-                                    </div>
-
-                                    <div className="po-suggestion-list">
-                                        {filteredSuggestionRows.length === 0 ? (
-                                            <div className="po-suggestion-empty">
-                                                No hay sugerencias que coincidan con la búsqueda.
+                    <form id="po-suggestions-form" onSubmit={handleCreateAutoPurchaseOrder} className={styles.stack}>
+                        <FormSection step={1} title="Configurar borrador">
+                            <FormGrid>
+                                <Field label="Sucursal" htmlFor="auto-po-branch" required>
+                                    <AppSelect
+                                        inputId="auto-po-branch"
+                                        options={branches.map((branch) => ({ value: branch.id.toString(), label: branch.name }))}
+                                        value={autoPurchaseForm.branchId || null}
+                                        onChange={(v) => setAutoPurchaseForm((prev) => ({ ...prev, branchId: v || '' }))}
+                                        placeholder="Seleccionar sucursal..."
+                                    />
+                                </Field>
+                                <Field label="Proveedor" htmlFor="auto-po-supplier" required>
+                                    <AppSelect
+                                        inputId="auto-po-supplier"
+                                        options={suppliers.map((supplier) => ({ value: supplier.id.toString(), label: supplier.name }))}
+                                        value={autoPurchaseForm.supplierId || null}
+                                        onChange={(v) => setAutoPurchaseForm((prev) => ({ ...prev, supplierId: v || '' }))}
+                                        placeholder="Seleccionar proveedor..."
+                                    />
+                                </Field>
+                            </FormGrid>
+                        </FormSection>
+                        <FormSection step={2} title="Productos sugeridos" description={`${selectedSuggestions.length} seleccionados de ${suggestionRows.length} sugerencias`}>
+                            <DataTable
+                                ariaLabel="Productos sugeridos"
+                                columns={suggestionColumns}
+                                rows={filteredSuggestionRows}
+                                rowKey={getSuggestionKey}
+                                resetKey={suggestionSearch}
+                                empty="No hay sugerencias que coincidan con la búsqueda."
+                                toolbar={(
+                                    <TableToolbar>
+                                        <div className={styles.filters}>
+                                            <div className={`${styles.filterField} ${styles.search}`}>
+                                                <label htmlFor="po-suggestion-search">Buscar</label>
+                                                <Input
+                                                    id="po-suggestion-search"
+                                                    type="search"
+                                                    placeholder="Buscar producto o almacén..."
+                                                    value={suggestionSearch}
+                                                    onChange={(e) => setSuggestionSearch(e.target.value)}
+                                                />
                                             </div>
-                                        ) : (
-                                            filteredSuggestionRows.map((suggestion) => {
-                                                const key = getSuggestionKey(suggestion);
-                                                const checked = Boolean(selectedSuggestionKeys[key]);
-                                                const isUrgent = suggestion.priority === 'URGENT';
-                                                const displayName = suggestion.productName?.trim() || `Producto #${suggestion.productId}`;
-                                                return (
-                                                    <label
-                                                        key={key}
-                                                        className={`po-suggestion-card${checked ? ' is-selected' : ''}${isUrgent ? ' is-urgent' : ''}`}
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            className="po-suggestion-checkbox"
-                                                            checked={checked}
-                                                            onChange={() => handleToggleSuggestion(suggestion)}
-                                                        />
-                                                        <div className="po-suggestion-body">
-                                                            <div className="po-suggestion-header">
-                                                                <span className="po-suggestion-name">{displayName}</span>
-                                                                <span className={`po-priority-badge${isUrgent ? ' po-priority-badge--urgent' : ' po-priority-badge--normal'}`}>
-                                                                    {isUrgent ? 'Urgente' : 'Normal'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="po-suggestion-tags">
-                                                                <span className="sku-tag">{suggestion.warehouseName || 'Sin bodega'}</span>
-                                                            </div>
-                                                            <div className="po-suggestion-metrics">
-                                                                <span><strong>Actual:</strong> {Number(suggestion.currentStock || 0).toFixed(2)} {suggestion.unit || ''}</span>
-                                                                <span><strong>Mín:</strong> {Number(suggestion.minStock || 0).toFixed(2)} {suggestion.unit || ''}</span>
-                                                                <span><strong>Sugerido:</strong> {Number(suggestion.suggestedQuantity).toFixed(2)} {suggestion.unit || ''}</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="po-suggestion-cost">
-                                                            <span className="po-suggestion-cost-value">
-                                                                {formatCurrency(Number(suggestion.estimatedCost) || 0, settings)}
-                                                            </span>
-                                                            <span className="po-suggestion-cost-label">estimado</span>
-                                                        </div>
-                                                    </label>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="modal-footer">
-                                <Button type="button" variant="ghost" onClick={() => setShowSuggestionsSidebar(false)}>
-                                    Cerrar
-                                </Button>
-                                <Button type="submit" variant="primary" disabled={creatingAutoPurchaseOrder || selectedSuggestions.length === 0}>
-                                    {creatingAutoPurchaseOrder ? 'Creando...' : 'Crear borrador'}
-                                </Button>
-                            </div>
-                        </form>
-                    </div>
+                                            <Button variant="ghost" onClick={handleSelectUrgentSuggestions}>Seleccionar urgentes</Button>
+                                            <Button variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>Limpiar</Button>
+                                        </div>
+                                    </TableToolbar>
+                                )}
+                            />
+                        </FormSection>
+                    </form>
                 )}
-            </Sidebar>
-            {/* Purchase Order Form Sidebar */}
-            <Sidebar
-                isOpen={isSidebarOpen}
-                onClose={handleFormClose}
-                title={editingOrderId ? `Editar Orden #${editingOrderId}` : 'Nueva Orden de Compra'}
-            >
+            </FullScreenModal>
+
+            {isSidebarOpen && (
                 <PurchaseOrderForm
                     sidebarId={editingOrderId}
                     onClose={handleFormClose}
                     onSaved={handleFormSaved}
                 />
-            </Sidebar>
+            )}
 
-            {/* Bulk Import Sidebar */}
-            <Sidebar
-                isOpen={isImportSidebarOpen}
-                onClose={() => setIsImportSidebarOpen(false)}
-                title="Carga Masiva desde Excel"
-                width="wide"
-            >
+            {isImportSidebarOpen && (
                 <PurchaseOrderImport
                     onClose={() => setIsImportSidebarOpen(false)}
                     onSaved={() => {
@@ -944,237 +824,171 @@ export default function PurchaseOrders() {
                     }}
                     settings={settings}
                 />
-            </Sidebar>
+            )}
 
-            {/* Payment Sidebar */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={!!paymentModalOrder}
                 onClose={() => setPaymentModalOrder(null)}
                 title={paymentModalOrder ? `Registrar Pago - OC #${paymentModalOrder.id}` : 'Registrar Pago'}
+                subtitle={paymentModalOrder?.supplier?.name}
+                tabs={[
+                    { id: 'register', label: 'Registrar abono' },
+                    { id: 'history', label: 'Historial de abonos', badge: paymentHistory.length > 0 ? paymentHistory.length : undefined },
+                ]}
+                activeTab={paymentTab}
+                onTabChange={(id) => setPaymentTab(id as 'register' | 'history')}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        {paymentTab === 'register' && paymentModalOrder && (
+                            <Button
+                                variant="primary"
+                                loading={savingPayment}
+                                disabled={savingPayment || balance <= 0}
+                                onClick={handleSubmitPayment}
+                            >
+                                {savingPayment ? 'Registrando...' : 'Registrar Pago'}
+                            </Button>
+                        )}
+                    </>
+                )}
             >
                 {paymentModalOrder && (
-                    <div className="premium-modal-content po-sidebar-form payment-sidebar-form">
-                        <div className="modal-tabs" role="tablist" aria-label="Secciones de pagos">
-                            <button
-                                type="button"
-                                role="tab"
-                                aria-selected={paymentTab === 'register'}
-                                className={`modal-tab ${paymentTab === 'register' ? 'active' : ''}`}
-                                onClick={() => setPaymentTab('register')}
-                            >
-                                <CreditCard size={18} />
-                                <span>Registrar abono</span>
-                            </button>
-                            <button
-                                type="button"
-                                role="tab"
-                                aria-selected={paymentTab === 'history'}
-                                className={`modal-tab ${paymentTab === 'history' ? 'active' : ''}`}
-                                onClick={() => setPaymentTab('history')}
-                            >
-                                <History size={18} />
-                                <span>Historial de abonos</span>
-                                {paymentHistory.length > 0 && (
-                                    <span className="payment-tab-count">{paymentHistory.length}</span>
+                    <div className={styles.stack}>
+                        {paymentTab === 'register' ? (
+                            <>
+                                <FormSection step={1} title="Resumen de la factura">
+                                    <div className={styles.summary}>
+                                        <div className={styles.summaryRow}><span>Total factura</span><strong>{money(Number(paymentModalOrder.total))}</strong></div>
+                                        {paymentModalOrder.status === 'PARTIALLY_RECEIVED' && (
+                                            <div className={styles.summaryRow}><span>Valor recibido (exigible)</span><strong>{money(Number(paymentModalOrder.receivedTotal || 0))}</strong></div>
+                                        )}
+                                        <div className={styles.summaryRow}><span>Abonado</span><strong>{money(Number(paymentModalOrder.paidAmount || 0))}</strong></div>
+                                        <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>Saldo pendiente</span><strong>{money(balance)}</strong></div>
+                                        {paymentModalOrder.paymentDueDate && (
+                                            <div className={styles.summaryRow}>
+                                                <span>Fecha vencimiento</span>
+                                                <strong>{new Date(paymentModalOrder.paymentDueDate).toLocaleDateString('es-ES')}</strong>
+                                            </div>
+                                        )}
+                                    </div>
+                                </FormSection>
+
+                                {balance > 0 ? (
+                                    <FormSection step={2} title="Datos del pago">
+                                        <FormGrid>
+                                            <Field label="Monto del pago" htmlFor="payment-amount" required>
+                                                <NumberInput
+                                                    id="payment-amount"
+                                                    value={paymentFormAmount}
+                                                    onChange={(v) => setPaymentForm({ ...paymentForm, amount: v === null ? '' : String(v) })}
+                                                    min={0.01}
+                                                    prefix={symbol}
+                                                />
+                                            </Field>
+                                            <Field label="Fecha de pago" htmlFor="payment-date" required>
+                                                <DateInput
+                                                    id="payment-date"
+                                                    value={paymentForm.date}
+                                                    onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })}
+                                                />
+                                            </Field>
+                                            <Field label="Banco" htmlFor="payment-bank">
+                                                <AppSelect
+                                                    inputId="payment-bank"
+                                                    options={BANK_OPTIONS}
+                                                    value={paymentForm.bank || null}
+                                                    onChange={(v) => setPaymentForm({ ...paymentForm, bank: v ?? '' })}
+                                                    isClearable
+                                                    placeholder="Seleccionar banco..."
+                                                />
+                                            </Field>
+                                            <Field label="Nº Transferencia" htmlFor="payment-reference">
+                                                <Input
+                                                    id="payment-reference"
+                                                    value={paymentForm.referenceNumber}
+                                                    onChange={e => setPaymentForm({ ...paymentForm, referenceNumber: e.target.value })}
+                                                    placeholder="Nº transferencia o comprobante"
+                                                />
+                                            </Field>
+                                        </FormGrid>
+                                        <Field label="Observaciones" htmlFor="payment-observations">
+                                            <Textarea
+                                                id="payment-observations"
+                                                value={paymentForm.observations}
+                                                onChange={e => setPaymentForm({ ...paymentForm, observations: e.target.value })}
+                                                placeholder="Notas adicionales..."
+                                            />
+                                        </Field>
+                                    </FormSection>
+                                ) : (
+                                    <p className={styles.muted}>Esta orden ya está pagada en su totalidad.</p>
                                 )}
-                            </button>
-                        </div>
-
-                        <div className="modal-tab-content">
-                            {paymentTab === 'register' ? (
-                                <>
-                                    <div className="modal-content-group">
-                                        <div className="modal-section-header">
-                                            <Info size={18} />
-                                            <h3>Resumen de la factura</h3>
-                                        </div>
-                                        <div className="payment-summary">
-                                            <div className="payment-summary-row">
-                                                <span>Total factura</span>
-                                                <strong>{formatCurrency(Number(paymentModalOrder.total), settings)}</strong>
-                                            </div>
-                                            <div className="payment-summary-row">
-                                                <span>Abonado</span>
-                                                <strong>{formatCurrency(Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
-                                            </div>
-                                            <div className="payment-summary-row highlight">
-                                                <span>Saldo pendiente</span>
-                                                <strong>{formatCurrency(Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
-                                            </div>
-                                            {paymentModalOrder.paymentDueDate && (
-                                                <div className="payment-summary-row">
-                                                    <span>Fecha vencimiento</span>
-                                                    <strong>{new Date(paymentModalOrder.paymentDueDate).toLocaleDateString('es-ES')}</strong>
+                            </>
+                        ) : (
+                            <FormSection title="Abonos registrados">
+                                {loadingPaymentHistory ? (
+                                    <p className={styles.muted}>Cargando abonos...</p>
+                                ) : paymentHistory.length === 0 ? (
+                                    <p className={styles.muted}>Sin abonos registrados para esta orden.</p>
+                                ) : (
+                                    <div>
+                                        {paymentHistory.map((payment) => (
+                                            <div key={payment.id} className={`${styles.paymentCard} ${payment.status === 'REVERSED' ? styles.reversed : ''}`}>
+                                                <div className={styles.summaryRow}>
+                                                    <strong>{money(Number(payment.amount))}</strong>
+                                                    <span className={styles.inline}>
+                                                        {payment.status === 'REVERSED' && <Badge tone="danger">Revertido</Badge>}
+                                                        {new Date(payment.date).toLocaleDateString('es-ES')}
+                                                    </span>
                                                 </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0) > 0 ? (
-                                        <div className="modal-content-group">
-                                            <div className="modal-section-header">
-                                                <DollarSign size={18} />
-                                                <h3>Datos del pago</h3>
-                                            </div>
-                                            <div className="form-grid-modern">
-                                                <div className="modal-input-group">
-                                                    <label className="modal-input-label" htmlFor="payment-amount">Monto del pago *</label>
-                                                    <Input
-                                                        id="payment-amount"
-                                                        type="number"
-                                                        value={paymentForm.amount}
-                                                        onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                                                        step="0.01"
-                                                        min="0.01"
-                                                        max={Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0)}
-                                                        variant="modal"
-                                                    />
+                                                <div className={styles.inline}>
+                                                    {payment.bank && <span className={styles.muted}>{payment.bank}</span>}
+                                                    {payment.referenceNumber && <span className={styles.muted}>Ref: {payment.referenceNumber}</span>}
+                                                    {payment.observations && <span className={styles.muted}>{payment.observations}</span>}
+                                                    {payment.status === 'REVERSED' && payment.reversalReason && (
+                                                        <span className={styles.muted}>Motivo: {payment.reversalReason}</span>
+                                                    )}
                                                 </div>
-                                                <div className="modal-input-group">
-                                                    <label className="modal-input-label" htmlFor="payment-date">Fecha de pago *</label>
-                                                    <input
-                                                        id="payment-date"
-                                                        type="date"
-                                                        className="modal-standard-input"
-                                                        value={paymentForm.date}
-                                                        onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })}
-                                                    />
-                                                </div>
-                                                <div className="modal-form-row">
-                                                    <div className="modal-input-group">
-                                                        <label className="modal-input-label" htmlFor="payment-bank">Banco</label>
-                                                        <Select
-                                                            inputId="payment-bank"
-                                                            options={BANK_OPTIONS}
-                                                            value={BANK_OPTIONS.find(o => o.value === paymentForm.bank) ?? null}
-                                                            onChange={(option: SingleValue<StrOption>) =>
-                                                                setPaymentForm({ ...paymentForm, bank: option?.value ?? '' })
-                                                            }
-                                                            isClearable
-                                                            placeholder="Seleccionar banco..."
-                                                            variant="modal"
-                                                        />
-                                                    </div>
-                                                    <div className="modal-input-group">
-                                                        <label className="modal-input-label" htmlFor="payment-reference">Nº Transferencia</label>
-                                                        <Input
-                                                            id="payment-reference"
-                                                            value={paymentForm.referenceNumber}
-                                                            onChange={e => setPaymentForm({ ...paymentForm, referenceNumber: e.target.value })}
-                                                            placeholder="Nº transferencia o comprobante"
-                                                            variant="modal"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="modal-input-group full-width">
-                                                    <label className="modal-input-label" htmlFor="payment-observations">Observaciones</label>
-                                                    <textarea
-                                                        id="payment-observations"
-                                                        className="modal-textarea"
-                                                        value={paymentForm.observations}
-                                                        onChange={e => setPaymentForm({ ...paymentForm, observations: e.target.value })}
-                                                        placeholder="Notas adicionales..."
-                                                        rows={3}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="payment-history-empty payment-history-paid">
-                                            Esta orden ya está pagada en su totalidad.
-                                        </div>
-                                    )}
-                                </>
-                            ) : (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <History size={18} />
-                                        <h3>Abonos registrados</h3>
-                                    </div>
-                                    {loadingPaymentHistory ? (
-                                        <p className="payment-history-empty">Cargando abonos...</p>
-                                    ) : paymentHistory.length === 0 ? (
-                                        <p className="payment-history-empty">Sin abonos registrados para esta orden.</p>
-                                    ) : (
-                                        <div className="payment-history-list">
-                                            {paymentHistory.map((payment) => (
-                                                <div key={payment.id} className={`payment-history-item${payment.status === 'REVERSED' ? ' is-reversed' : ''}`}>
-                                                    <div className="payment-history-main">
-                                                        <strong>{formatCurrency(Number(payment.amount), settings)}</strong>
-                                                        <span>
-                                                            {payment.status === 'REVERSED' && <em className="payment-reversed-badge">Revertido</em>}
-                                                            {new Date(payment.date).toLocaleDateString('es-ES')}
-                                                        </span>
-                                                    </div>
-                                                    <div className="payment-history-meta">
-                                                        {payment.bank && <span>{payment.bank}</span>}
-                                                        {payment.referenceNumber && <span>Ref: {payment.referenceNumber}</span>}
-                                                        {payment.observations && <span>{payment.observations}</span>}
-                                                        {payment.status === 'REVERSED' && payment.reversalReason && (
-                                                            <span>Motivo: {payment.reversalReason}</span>
-                                                        )}
-                                                    </div>
-                                                    {canDeletePurchaseOrders && payment.status !== 'REVERSED' && reversalPaymentId !== payment.id && (
-                                                        <button
-                                                            type="button"
-                                                            className="payment-reverse-btn"
-                                                            onClick={() => {
-                                                                setReversalPaymentId(payment.id);
-                                                                setReversalReason('');
-                                                            }}
+                                                {canDeletePurchaseOrders && payment.status !== 'REVERSED' && reversalPaymentId !== payment.id && (
+                                                    <div>
+                                                        <Button
+                                                            size="sm" icon={Undo2}
+                                                            onClick={() => { setReversalPaymentId(payment.id); setReversalReason(''); }}
                                                         >
-                                                            <Undo2 size={13} /> Revertir abono
-                                                        </button>
-                                                    )}
-                                                    {reversalPaymentId === payment.id && (
-                                                        <div className="payment-reversal-form">
-                                                            <textarea
-                                                                className="modal-textarea"
-                                                                rows={2}
-                                                                value={reversalReason}
-                                                                onChange={(event) => setReversalReason(event.target.value)}
-                                                                placeholder="Motivo obligatorio del reverso"
-                                                                disabled={reversingPayment}
-                                                            />
-                                                            <div className="payment-reversal-actions">
-                                                                <Button type="button" variant="ghost" onClick={() => setReversalPaymentId(null)} disabled={reversingPayment}>
-                                                                    Cancelar
-                                                                </Button>
-                                                                <Button type="button" variant="danger" onClick={() => handleReversePayment(payment)} disabled={reversingPayment || !reversalReason.trim()}>
-                                                                    {reversingPayment ? 'Revirtiendo...' : 'Confirmar reverso'}
-                                                                </Button>
-                                                            </div>
+                                                            Revertir abono
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                                {reversalPaymentId === payment.id && (
+                                                    <div className={styles.stack}>
+                                                        <Textarea
+                                                            aria-label="Motivo del reverso"
+                                                            rows={2}
+                                                            value={reversalReason}
+                                                            onChange={(event) => setReversalReason(event.target.value)}
+                                                            placeholder="Motivo obligatorio del reverso"
+                                                            disabled={reversingPayment}
+                                                        />
+                                                        <div className={styles.inline}>
+                                                            <Button variant="ghost" onClick={() => setReversalPaymentId(null)} disabled={reversingPayment}>
+                                                                Cancelar
+                                                            </Button>
+                                                            <Button variant="danger" onClick={() => handleReversePayment(payment)} disabled={reversingPayment || !reversalReason.trim()}>
+                                                                {reversingPayment ? 'Revirtiendo...' : 'Confirmar reverso'}
+                                                            </Button>
                                                         </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="modal-footer">
-                            <div className="action-buttons">
-                                <Button variant="secondary" type="button" onClick={() => setPaymentModalOrder(null)}>
-                                    Cancelar
-                                </Button>
-                                {paymentTab === 'register' && (
-                                    <Button
-                                        type="button"
-                                        className="save-btn-premium"
-                                        disabled={savingPayment || Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0) <= 0}
-                                        onClick={handleSubmitPayment}
-                                    >
-                                        <Save size={20} />
-                                        <span>{savingPayment ? 'Registrando...' : 'Registrar Pago'}</span>
-                                    </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
-                            </div>
-                        </div>
+                            </FormSection>
+                        )}
                     </div>
                 )}
-            </Sidebar>
-        </div>
+            </FullScreenModal>
+        </PageContent>
     );
 }

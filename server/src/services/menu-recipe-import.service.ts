@@ -497,11 +497,12 @@ function parseMenuRecipeSection(input: unknown): ParsedDocumentResult {
             if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) {
                 issues.push(issue('ERROR', 'INGREDIENT_QUANTITY_INVALID', `${ingredientPath}.quantity`, 'La cantidad debe ser un número finito mayor que 0.'));
             } else {
-                if (quantity > 9_999_999.999) {
-                    issues.push(issue('ERROR', 'INGREDIENT_QUANTITY_OVERFLOW', `${ingredientPath}.quantity`, 'La cantidad excede DECIMAL(10,3).'));
+                // Recipe.quantity is DECIMAL(18,6).
+                if (quantity > 999_999_999_999) {
+                    issues.push(issue('ERROR', 'INGREDIENT_QUANTITY_OVERFLOW', `${ingredientPath}.quantity`, 'La cantidad excede DECIMAL(18,6).'));
                 }
-                if (decimalPlaces(quantity) > 3) {
-                    issues.push(issue('ERROR', 'INGREDIENT_QUANTITY_PRECISION', `${ingredientPath}.quantity`, 'La cantidad admite como máximo 3 decimales.'));
+                if (decimalPlaces(quantity) > 6) {
+                    issues.push(issue('ERROR', 'INGREDIENT_QUANTITY_PRECISION', `${ingredientPath}.quantity`, 'La cantidad admite como máximo 6 decimales.'));
                 }
             }
             if (ingredientSourceRowRaw !== undefined && ingredientSourceRowRaw !== null && ingredientSourceRow === null) {

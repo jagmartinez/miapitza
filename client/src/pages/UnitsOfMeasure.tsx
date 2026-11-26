@@ -1,16 +1,16 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
 import { useNavigate } from 'react-router-dom';
 import { unitsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { Plus, Ruler, Edit2, Power, PowerOff, Weight, Beaker, Hash, Package as PackageIcon } from 'lucide-react';
 import type { UnitOfMeasure } from '../types';
 import './UnitsOfMeasure.css';
+import { Button, FullScreenModal, PageHeader } from '@/ui';
 
 type MeasurementTypeOption = UnitOfMeasure['measurementType'];
 type FilterOption = 'all' | 'active' | 'inactive';
@@ -135,7 +135,7 @@ export default function UnitsOfMeasurePage() {
             setUnits(res.data.data || []);
         } catch (error) {
             console.error('Error loading units:', error);
-            showError('No se pudieron cargar las unidades de medida');
+            showError(getApiErrorMessage(error, 'No se pudieron cargar las unidades de medida'));
         } finally {
             setLoading(false);
         }
@@ -267,25 +267,23 @@ export default function UnitsOfMeasurePage() {
 
     return (
         <div className="units-page">
-            <div className="units-header">
-                <div>
-                    <h1><Ruler size={32} /> Unidades de Medida</h1>
-                    <p className="units-subtitle">
-                        {units.filter((u) => u.active).length} activas · {units.length} en catálogo
-                    </p>
-                </div>
-                <div className="units-header-actions">
-                    <Button variant="secondary" onClick={() => navigate('/inventory')}>
-                        Ir a Inventario
-                    </Button>
-                    {canMutate && (
-                        <Button variant="primary" onClick={() => openModal()}>
-                            <Plus size={20} />
-                            Nueva Unidad
+            <PageHeader
+                title="Unidades de Medida"
+                description={`${units.filter((u) => u.active).length} activas · ${units.length} en catálogo`}
+                actions={(
+                    <>
+                        <Button variant="secondary" onClick={() => navigate('/inventory')}>
+                            Ir a Inventario
                         </Button>
-                    )}
-                </div>
-            </div>
+                        {canMutate && (
+                            <Button variant="primary" onClick={() => openModal()}>
+                                <Plus size={20} />
+                                Nueva Unidad
+                            </Button>
+                        )}
+                    </>
+                )}
+            />
 
             <div className="units-filters-row">
                 <div className="units-status-filters">
@@ -318,7 +316,7 @@ export default function UnitsOfMeasurePage() {
                         antes de configurar productos.
                     </p>
                     {canMutate && (
-                        <Button onClick={() => openModal()}>Crear primera unidad</Button>
+                        <Button variant="primary" onClick={() => openModal()}>Crear primera unidad</Button>
                     )}
                 </div>
             )}
@@ -384,7 +382,7 @@ export default function UnitsOfMeasurePage() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={closeModal}
                 title={editingUnit ? 'Editar unidad' : 'Nueva unidad de medida'}
@@ -529,7 +527,7 @@ export default function UnitsOfMeasurePage() {
                         </Button>
                     </div>
                 </form>
-            </Sidebar>
+            </FullScreenModal>
 
             <ToastContainer toasts={toasts} onRemove={removeToast} />
         </div>

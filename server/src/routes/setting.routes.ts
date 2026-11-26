@@ -13,6 +13,10 @@ router.use(authMiddleware);
 // Reads stay available to any authenticated user; writes are restricted to admins.
 router.get('/', SettingController.getAll);
 router.put('/', requireRole(...ADMINS), validate(s.updateSettings), SettingController.update);
+router.get('/registry', SettingController.getRegistry);
+router.get('/resolved', validate(s.getResolvedSettings), SettingController.getResolved);
+router.patch('/resolved', requireRole(...ADMINS), validate(s.patchResolvedSettings), SettingController.patchResolved);
+router.get('/history', validate(s.settingsHistory), SettingController.getHistory);
 router.get('/costing-method', CostingController.getCostingMethod);
 router.put('/costing-method', requireRole(...ADMINS), validate(s.updateCostingMethod), CostingController.updateCostingMethod);
 

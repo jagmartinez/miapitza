@@ -1,0 +1,75 @@
+:root {
+  --ui-bg: #F7F7F8;
+  --ui-surface: #FFFFFF;
+  --ui-surface-2: #F1F2F4;
+  --ui-border: #E4E5E9;
+  --ui-text: #17181C;
+  --ui-text-muted: #5F6370;
+  --ui-primary: #3451D1;
+  --ui-primary-hover: #2A41A8;
+  --ui-primary-fg: #FFFFFF;
+  --ui-primary-soft: #E8ECFD;
+  --ui-success: #1F7A4D;
+  --ui-success-soft: #E3F4EA;
+  --ui-warning: #A15C07;
+  --ui-warning-soft: #FDF1DC;
+  --ui-danger: #C4322B;
+  --ui-danger-soft: #FCE8E6;
+  --ui-overlay: rgba(15, 16, 19, .55);
+
+  --ui-radius-sm: 6px;
+  --ui-radius-md: 8px;
+  --ui-radius-lg: 12px;
+
+  --ui-text-xs: 12px;
+  --ui-text-lg: 18px;
+  --ui-text-sm: 13px;
+  --ui-text-md: 14px;
+  --ui-text-2xl: 24px;
+  --ui-text-3xl: 28px;
+  --ui-text-2xs: 11px;
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 20px;
+  --ui-space-6: 24px;
+  --ui-space-7: 32px;
+  --ui-space-8: 48px;
+
+  --ui-font-sans: 'Inter', system-ui, sans-serif;
+
+  --ui-z-modal: 1000;
+  --ui-z-select-menu: 1100;
+  --ui-z-toast: 1200;
+
+  --ui-control-md: 40px;
+  --ui-control-sm: 32px;
+  --ui-control-touch: 44px;
+}
+
+.dark {
+  --ui-bg: #0F1013;
+  --ui-surface: #17181C;
+  --ui-surface-2: #1F2126;
+  --ui-border: #2B2E35;
+  --ui-text: #ECECEF;
+  --ui-text-muted: #A0A4AE;
+  --ui-primary: #8EA2FF;
+  --ui-primary-hover: #A9B8FF;
+  --ui-primary-fg: #0F1013;
+  --ui-primary-soft: #232A4D;
+  --ui-success: #4CCF8F;
+  --ui-success-soft: #14301F;
+  --ui-warning: #F0B44C;
+  --ui-warning-soft: #35280F;
+  --ui-danger: #FF7B72;
+  --ui-danger-soft: #3A1714;
+  --ui-overlay: rgba(0, 0, 0, .7);
+}
+
+/* Alias de diálogo heredados. */
+:root, .dark {
+  --dialog-accent: var(--ui-primary);
+  --dialog-overlay: var(--ui-overlay);
+}

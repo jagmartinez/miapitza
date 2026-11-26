@@ -1,6 +1,5 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { KardexService } from '../services/kardex.service';
-import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, BranchScopeError } from '../utils/branch-scope';
 import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
@@ -9,7 +8,7 @@ export class KardexController {
      * Generate Kardex report for a product
      * GET /api/reports/kardex?productId=1&warehouseId=1&dateFrom=2026-01-01&dateTo=2026-01-31
      */
-    static async getKardex(req: Request, res: Response) {
+    static async getKardex(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const productId = parseInt(req.query.productId as string);
@@ -39,7 +38,7 @@ export class KardexController {
                 return res.status(error.statusCode).json({ error: error.message });
             }
             console.error('[KardexController] Error getting kardex:', error);
-            res.status(500).json({ error: getErrorMessage(error) });
+            next(error);
         }
     }
 
@@ -47,7 +46,7 @@ export class KardexController {
      * Generate Kardex summary for multiple products
      * GET /api/reports/kardex/summary?warehouseId=1&categoryId=1
      */
-    static async getKardexSummary(req: Request, res: Response) {
+    static async getKardexSummary(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const warehouseId = req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined;
@@ -71,7 +70,7 @@ export class KardexController {
                 return res.status(error.statusCode).json({ error: error.message });
             }
             console.error('[KardexController] Error getting kardex summary:', error);
-            res.status(500).json({ error: getErrorMessage(error) });
+            next(error);
         }
     }
 
@@ -79,7 +78,7 @@ export class KardexController {
      * Export Kardex to Excel
      * GET /api/reports/kardex/export?productId=1&warehouseId=1
      */
-    static async exportKardex(req: Request, res: Response) {
+    static async exportKardex(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const productId = parseInt(req.query.productId as string);
@@ -110,7 +109,7 @@ export class KardexController {
             res.send(buffer);
         } catch (error: unknown) {
             console.error('[KardexController] Error exporting kardex:', error);
-            res.status(500).json({ error: getErrorMessage(error) });
+            next(error);
         }
     }
 }

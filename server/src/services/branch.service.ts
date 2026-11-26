@@ -1,6 +1,8 @@
 import prisma from '../utils/prisma';
 import { isValidTimeZone } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
+import { SaleWarehouseService } from './sale-warehouse.service';
+import { MIN_LOCATION_ACCURACY_M } from '../utils/hr-location';
 
 export class BranchService {
     static async getAll(companyId: number) {
@@ -8,6 +10,12 @@ export class BranchService {
             where: { companyId },
             include: {
                 company: true,
+                // Candidates for Branch.defaultSaleWarehouseId (branch settings UI).
+                warehouses: {
+                    where: { type: 'BRANCH' },
+                    select: { id: true, name: true, code: true, type: true },
+                    orderBy: { id: 'asc' }
+                },
                 _count: {
                     select: {
                         users: true,
@@ -57,7 +65,9 @@ export class BranchService {
                 warehouses: {
                     select: {
                         id: true,
-                        name: true
+                        name: true,
+                        code: true,
+                        type: true
                     }
                 }
             }
@@ -102,8 +112,8 @@ export class BranchService {
         if (!Number.isInteger(geofenceRadiusM) || geofenceRadiusM < 10 || geofenceRadiusM > 10000) {
             throw new Error('geofenceRadiusM debe estar entre 10 y 10000 metros');
         }
-        if (!Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < 1 || maxLocationAccuracyM > 5000) {
-            throw new Error('maxLocationAccuracyM debe estar entre 1 y 5000 metros');
+        if (!Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < MIN_LOCATION_ACCURACY_M || maxLocationAccuracyM > 5000) {
+            throw new Error(`La precisión GPS máxima debe estar entre ${MIN_LOCATION_ACCURACY_M} y 5000 metros`);
         }
         if (!isValidTimeZone(timezone)) throw new Error('Zona horaria inválida');
         const status = data.status || 'ACTIVE';
@@ -173,6 +183,8 @@ export class BranchService {
         address?: string;
         phone?: string;
         status?: 'ACTIVE' | 'INACTIVE';
+        /** null clears the default; undefined leaves it unchanged. */
+        defaultSaleWarehouseId?: number | null;
     }, actorUserId: number) {
         if (!Number.isInteger(id) || id <= 0) throw new Error('Sucursal inválida');
         if (data.name !== undefined && !data.name.trim()) throw new Error('El nombre de la sucursal es requerido');
@@ -197,6 +209,9 @@ export class BranchService {
                 });
                 if (duplicate) throw new Error('Ya existe una sucursal con este código en la empresa');
             }
+            const defaultSaleWarehouseId = data.defaultSaleWarehouseId !== undefined
+                ? await SaleWarehouseService.assertValidDefault(tx, companyId, id, data.defaultSaleWarehouseId)
+                : undefined;
             const disablingAttendance = data.status === 'INACTIVE' && branch.attendanceEnabled;
             const updated = await tx.branch.update({
                 where: { id },
@@ -206,6 +221,7 @@ export class BranchService {
                     ...(data.address !== undefined ? { address: data.address.trim() || null } : {}),
                     ...(data.phone !== undefined ? { phone: data.phone.trim() || null } : {}),
                     ...(data.status !== undefined ? { status: data.status } : {}),
+                    ...(defaultSaleWarehouseId !== undefined ? { defaultSaleWarehouseId } : {}),
                     ...(disablingAttendance ? {
                         attendanceEnabled: false,
                         geofenceVersion: branch.geofenceVersion + 1,
@@ -235,7 +251,13 @@ export class BranchService {
                 entityType: 'Branch',
                 entityId: id,
                 action: 'UPDATE',
-                details: { fields: Object.keys(data), attendanceDisabled: disablingAttendance },
+                details: {
+                    fields: Object.keys(data).filter((key) => data[key as keyof typeof data] !== undefined),
+                    attendanceDisabled: disablingAttendance,
+                    ...(defaultSaleWarehouseId !== undefined ? {
+                        defaultSaleWarehouseId: { from: branch.defaultSaleWarehouseId ?? null, to: defaultSaleWarehouseId }
+                    } : {}),
+                },
             }, tx);
             return updated;
         });

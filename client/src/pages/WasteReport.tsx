@@ -1,20 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { notifyError } from '../services/notify';
 import api, { unitsAPI } from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
-import type { SingleValue } from 'react-select';
-import Select from '../components/Select';
-import Button from '../components/Button';
-import Pagination from '../components/Pagination';
 import {
-    Trash2, AlertTriangle, FileText, Search, RefreshCw,
-    Calendar, Warehouse as WarehouseIcon, Package, Tag,
+    Trash2, FileText, Search, RefreshCw,
+    Calendar, Package, Tag,
     DollarSign, BarChart3, Save
 } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { newIdempotencyKey } from '../utils/idempotency';
+import { AppSelect, Button, Field, DataTable, EmptyState, PageHeader, formatNumber, type Column } from '@/ui';
 
-type StrOption = { value: string; label: string };
 
 function errMsg(error: unknown): string {
     if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -77,7 +74,6 @@ const PAGE_SIZE = 20;
 const WasteReport: React.FC = () => {
     const { error: showError, success } = useAppToast();
     const [activeTab, setActiveTab] = useState<'record' | 'report'>('record');
-    const [page, setPage] = useState(1);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [wasteReasons, setWasteReasons] = useState<string[]>([]);
@@ -115,7 +111,7 @@ const WasteReport: React.FC = () => {
             setProducts(productsRes.data.data || []);
             setWasteReasons(reasonsRes.data.data || []);
         } catch (error) {
-            console.error('Error loading data:', error);
+            notifyError(error, 'No se pudieron cargar bodegas, productos o motivos de merma');
         }
     }, []);
 
@@ -124,7 +120,7 @@ const WasteReport: React.FC = () => {
             const response = await api.get('/settings');
             setSettings(response.data.data || {});
         } catch (error) {
-            console.error('Error loading settings:', error);
+            notifyError(error, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' });
         }
     }, []);
 
@@ -176,7 +172,6 @@ const WasteReport: React.FC = () => {
 
             const response = await api.get(`/advanced/waste/report?${params.toString()}`);
             setReport(response.data.data);
-            setPage(1);
         } catch (error: unknown) {
             showError('Error al cargar reporte: ' + errMsg(error));
         } finally {
@@ -192,10 +187,6 @@ const WasteReport: React.FC = () => {
     useEffect(() => {
         if (activeTab === 'report') void loadReport();
     }, [activeTab, loadReport]);
-
-    useEffect(() => {
-        setPage(1);
-    }, [filters.startDate, filters.endDate, filters.warehouseId, filters.productId]);
 
     // Load the product's allowed units so the user can record waste in any of them.
     // Default to the base unit (backend assumes base when no unit is sent).
@@ -226,19 +217,13 @@ const WasteReport: React.FC = () => {
     }, [formData.productId, showError]);
 
     const detailEntries = report?.details ?? [];
-    const totalPages = Math.max(1, Math.ceil(detailEntries.length / PAGE_SIZE));
-    const pagedDetails = detailEntries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     return (
         <div className="page-wrapper">
-            <div className="page-header-bar">
-                <div className="header-title-section">
-                    <h1><Trash2 size={28} /> Reporte de Merma y Desperdicio</h1>
-                    <p className="header-subtitle">
-                        Registra y analiza las pérdidas de inventario para mejorar el control de costos.
-                    </p>
-                </div>
-            </div>
+            <PageHeader
+                title="Reporte de Merma y Desperdicio"
+                description="Registra y analiza las pérdidas de inventario para mejorar el control de costos."
+            />
 
             {/* Tabs */}
             <div className="page-tabs">
@@ -272,28 +257,16 @@ const WasteReport: React.FC = () => {
 
                             <div className="modal-form-row">
                                 <div className="modal-input-group">
-                                    <Select
-                                        label={<><WarehouseIcon size={12} /> Almacén *</>}
-                                        options={warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))}
-                                        value={
-                                            formData.warehouseId
+                                    <Field label="Almacén" htmlFor="sel-275" required>
+<AppSelect inputId="sel-275" options={warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))} value={(formData.warehouseId
                                                 ? { value: formData.warehouseId, label: warehouses.find((w) => w.id.toString() === formData.warehouseId)?.name || '' }
-                                                : null
-                                        }
-                                        onChange={(option: SingleValue<StrOption>) =>
-                                            option && setFormData({ ...formData, warehouseId: option.value })
-                                        }
-                                        placeholder="Seleccionar almacén"
-                                        required
-                                    />
+                                                : null)?.value ?? null} onChange={(__v) => { const option = (warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, warehouseId: option.value }); }} placeholder="Seleccionar almacén" />
+</Field>
                                 </div>
 
                                 <div className="modal-input-group">
-                                    <Select
-                                        label={<><Package size={12} /> Producto *</>}
-                                        options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
-                                        value={
-                                            formData.productId
+                                    <Field label="Producto" htmlFor="sel-292" required>
+<AppSelect inputId="sel-292" options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))} value={(formData.productId
                                                 ? {
                                                     value: formData.productId,
                                                     label: (() => {
@@ -301,14 +274,8 @@ const WasteReport: React.FC = () => {
                                                         return prod ? `${prod.name} (${prod.unit})` : '';
                                                     })(),
                                                 }
-                                                : null
-                                        }
-                                        onChange={(option: SingleValue<StrOption>) =>
-                                            option && setFormData({ ...formData, productId: option.value })
-                                        }
-                                        placeholder="Seleccionar producto"
-                                        required
-                                    />
+                                                : null)?.value ?? null} onChange={(__v) => { const option = (products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, productId: option.value }); }} placeholder="Seleccionar producto" />
+</Field>
                                 </div>
                             </div>
 
@@ -329,14 +296,11 @@ const WasteReport: React.FC = () => {
                                 </div>
 
                                 <div className="modal-input-group">
-                                    <Select
-                                        label={<><Package size={12} /> Unidad</>}
-                                        options={productUnits.map((u) => ({
+                                    <Field label="Unidad" htmlFor="sel-332">
+<AppSelect inputId="sel-332" options={productUnits.map((u) => ({
                                             value: u.abbreviation,
                                             label: u.isBase ? `${u.abbreviation} (base)` : u.abbreviation
-                                        }))}
-                                        value={
-                                            formData.unit
+                                        }))} value={(formData.unit
                                                 ? {
                                                     value: formData.unit,
                                                     label: (() => {
@@ -344,31 +308,19 @@ const WasteReport: React.FC = () => {
                                                         return u ? (u.isBase ? `${u.abbreviation} (base)` : u.abbreviation) : formData.unit;
                                                     })()
                                                 }
-                                                : null
-                                        }
-                                        onChange={(option: SingleValue<StrOption>) =>
-                                            option && setFormData({ ...formData, unit: option.value })
-                                        }
-                                        placeholder={formData.productId ? 'Unidad base' : 'Seleccione producto'}
-                                        isDisabled={!formData.productId || productUnits.length === 0}
-                                        isSearchable={false}
-                                    />
+                                                : null)?.value ?? null} onChange={(__v) => { const option = (productUnits.map((u) => ({
+                                            value: u.abbreviation,
+                                            label: u.isBase ? `${u.abbreviation} (base)` : u.abbreviation
+                                        }))).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, unit: option.value }); }} placeholder={formData.productId ? 'Unidad base' : 'Seleccione producto'} isDisabled={!formData.productId || productUnits.length === 0} />
+</Field>
                                 </div>
                             </div>
 
                             <div className="modal-form-row">
                                 <div className="modal-input-group">
-                                    <Select
-                                        label={<><AlertTriangle size={12} /> Razón *</>}
-                                        options={wasteReasons.map((reason) => ({ value: reason, label: reason }))}
-                                        value={formData.reason ? { value: formData.reason, label: formData.reason } : null}
-                                        onChange={(option: SingleValue<StrOption>) =>
-                                            option && setFormData({ ...formData, reason: option.value })
-                                        }
-                                        placeholder="Seleccionar razón"
-                                        required
-                                        isSearchable={false}
-                                    />
+                                    <Field label="Razón" htmlFor="sel-361" required>
+<AppSelect inputId="sel-361" options={wasteReasons.map((reason) => ({ value: reason, label: reason }))} value={(formData.reason ? { value: formData.reason, label: formData.reason } : null)?.value ?? null} onChange={(__v) => { const option = (wasteReasons.map((reason) => ({ value: reason, label: reason }))).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, reason: option.value }); }} placeholder="Seleccionar razón" />
+</Field>
                                 </div>
                             </div>
 
@@ -386,7 +338,7 @@ const WasteReport: React.FC = () => {
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--spacing-lg)' }}>
-                            <Button type="submit" disabled={loading}>
+                            <Button variant="primary" type="submit" disabled={loading}>
                                 {loading ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
                                 {loading ? 'Guardando...' : 'Registrar Merma'}
                             </Button>
@@ -422,41 +374,37 @@ const WasteReport: React.FC = () => {
                         </div>
 
                         <div className="filter-field">
-                            <Select
-                                label={<><WarehouseIcon size={12} /> Almacén</>}
-                                options={[
+                            <Field label="Almacén" htmlFor="sel-425">
+<AppSelect inputId="sel-425" options={[
                                     { value: '', label: 'Todos los Almacenes' },
                                     ...warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))
-                                ]}
-                                value={
-                                    filters.warehouseId
+                                ]} value={(filters.warehouseId
                                         ? { value: filters.warehouseId, label: warehouses.find(w => w.id.toString() === filters.warehouseId)?.name || 'Todos' }
-                                        : { value: '', label: 'Todos los Almacenes' }
-                                }
-                                onChange={(option: SingleValue<StrOption>) => option && setFilters({ ...filters, warehouseId: option.value })}
-                            />
+                                        : { value: '', label: 'Todos los Almacenes' })?.value ?? null} onChange={(__v) => { const option = ([
+                                    { value: '', label: 'Todos los Almacenes' },
+                                    ...warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))
+                                ]).find((o) => o.value === __v) ?? null; return option && setFilters({ ...filters, warehouseId: option.value }); }} />
+</Field>
                         </div>
 
                         <div className="filter-field">
-                            <Select
-                                label={<><Package size={12} /> Producto</>}
-                                options={[
+                            <Field label="Producto" htmlFor="sel-441">
+<AppSelect inputId="sel-441" options={[
                                     { value: '', label: 'Todos los Productos' },
                                     ...products.map((p) => ({ value: p.id.toString(), label: p.name }))
-                                ]}
-                                value={
-                                    filters.productId
+                                ]} value={(filters.productId
                                         ? { value: filters.productId, label: products.find(p => p.id.toString() === filters.productId)?.name || 'Todos' }
-                                        : { value: '', label: 'Todos los Productos' }
-                                }
-                                onChange={(option: SingleValue<StrOption>) => option && setFilters({ ...filters, productId: option.value })}
-                            />
+                                        : { value: '', label: 'Todos los Productos' })?.value ?? null} onChange={(__v) => { const option = ([
+                                    { value: '', label: 'Todos los Productos' },
+                                    ...products.map((p) => ({ value: p.id.toString(), label: p.name }))
+                                ]).find((o) => o.value === __v) ?? null; return option && setFilters({ ...filters, productId: option.value }); }} />
+</Field>
                         </div>
 
                         <div className="filter-spacer" />
 
                         <div className="filter-actions">
-                            <Button onClick={loadReport} disabled={loading}>
+                            <Button variant="primary" onClick={loadReport} disabled={loading}>
                                 {loading ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
                                 {loading ? 'Cargando...' : 'Generar Reporte'}
                             </Button>
@@ -466,19 +414,13 @@ const WasteReport: React.FC = () => {
                     {report && (
                         <>
                             <div className="kpi-grid">
-                                <div className="kpi-card kpi-neutral">
-                                    <div className="kpi-label">
-                                        <FileText size={14} /> Total Entradas
-                                    </div>
-                                    <div className="kpi-value">{report.summary.totalEntries}</div>
-                                </div>
                                 <div className="kpi-card kpi-warning">
                                     <div className="kpi-label">
                                         <Package size={14} /> Cantidad física
                                     </div>
                                     <div className="kpi-value">
                                         {report.summary.quantities.length > 0
-                                            ? report.summary.quantities.map((item) => `${item.quantity.toFixed(2)} ${item.unit}`).join(' · ')
+                                            ? report.summary.quantities.map((item) => `${formatNumber(item.quantity)} ${item.unit}`).join(' · ')
                                             : '0'}
                                     </div>
                                 </div>
@@ -496,33 +438,20 @@ const WasteReport: React.FC = () => {
                                     <span><Tag size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />Merma por Razón</span>
                                     <span className="data-table-count">{report.byReason.length} razones</span>
                                 </div>
-                                <div className="data-table-scroll">
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Razón</th>
-                                                <th className="text-right">Entradas</th>
-                                                <th className="text-right">Unidades</th>
-                                                <th>Unidad</th>
-                                                <th className="text-right">Costo</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {report.byReason.map((item, idx) => (
-                                                <tr key={idx}>
-                                                    <td>{item.reason}</td>
-                                                    <td className="text-right">{item.count}</td>
-                                                    <td className="text-right">{item.quantity.toFixed(2)}</td>
-                                                    <td>{item.unit}</td>
-                                                    <td className="text-right font-semibold">{formatCurrency(item.cost, settings)}</td>
-                                                </tr>
-                                            ))}
-                                            {report.byReason.length === 0 && (
-                                                <tr><td colSpan={5} className="data-table-empty">Sin datos para los filtros seleccionados</td></tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <DataTable
+                                    ariaLabel="Merma por razón"
+                                    rows={report.byReason}
+                                    rowKey={(item) => item.reason}
+                                    pagination={{ mode: 'client' }}
+                                    empty={<EmptyState title="Sin datos para los filtros seleccionados" />}
+                                    columns={[
+                                        { key: 'reason', header: 'Razón' },
+                                        { key: 'count', header: 'Entradas', type: 'number', decimals: 0 },
+                                        { key: 'quantity', header: 'Unidades', type: 'qty' },
+                                        { key: 'unit', header: 'Unidad' },
+                                        { key: 'cost', header: 'Costo', type: 'money', render: (item) => formatCurrency(item.cost, settings) },
+                                    ] as Column<(typeof report.byReason)[number]>[]}
+                                />
                             </div>
 
                             {/* Details */}
@@ -531,45 +460,22 @@ const WasteReport: React.FC = () => {
                                     <span><FileText size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />Detalle de Mermas</span>
                                     <span className="data-table-count">{report.details.length} registros</span>
                                 </div>
-                                <div className="data-table-scroll">
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Fecha</th>
-                                                <th>Producto</th>
-                                                <th className="text-right">Cantidad</th>
-                                                <th className="text-right">Costo</th>
-                                                <th>Razón</th>
-                                                <th>Almacén</th>
-                                                <th>Usuario</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {pagedDetails.map((entry) => (
-                                                <tr key={entry.id}>
-                                                    <td>{new Date(entry.date).toLocaleDateString()}</td>
-                                                    <td>{entry.product}</td>
-                                                    <td className="text-right">
-                                                        {entry.quantity.toFixed(2)} {entry.unit}
-                                                    </td>
-                                                    <td className="text-right font-semibold">{formatCurrency(entry.cost, settings)}</td>
-                                                    <td>{entry.reason}</td>
-                                                    <td>{entry.warehouse}</td>
-                                                    <td>{entry.user}</td>
-                                                </tr>
-                                            ))}
-                                            {detailEntries.length === 0 && (
-                                                <tr><td colSpan={7} className="data-table-empty">Sin registros de merma en el período seleccionado</td></tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <Pagination
-                                    page={page}
-                                    totalPages={totalPages}
-                                    totalItems={detailEntries.length}
-                                    pageSize={PAGE_SIZE}
-                                    onPageChange={setPage}
+                                <DataTable
+                                    ariaLabel="Detalle de mermas"
+                                    rows={detailEntries}
+                                    rowKey={(entry) => entry.id}
+                                    defaultPageSize={PAGE_SIZE}
+                                    pageSizeOptions={[10, 20, 50, 100]}
+                                    empty={<EmptyState title="Sin registros de merma en el período seleccionado" />}
+                                    columns={[
+                                        { key: 'date', header: 'Fecha', type: 'date' },
+                                        { key: 'product', header: 'Producto' },
+                                        { key: 'quantity', header: 'Cantidad', type: 'qty', render: (entry) => `${formatNumber(entry.quantity)} ${entry.unit}` },
+                                        { key: 'cost', header: 'Costo', type: 'money', render: (entry) => formatCurrency(entry.cost, settings) },
+                                        { key: 'reason', header: 'Razón' },
+                                        { key: 'warehouse', header: 'Almacén' },
+                                        { key: 'user', header: 'Usuario' },
+                                    ] as Column<(typeof detailEntries)[number]>[]}
                                 />
                             </div>
                         </>

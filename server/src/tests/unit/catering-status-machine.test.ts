@@ -82,7 +82,7 @@ describe('catering service boundary', () => {
             menuItems: [],
             payments: [{ status: 'ACTIVE' }]
         } as never);
-        jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 3 } as never);
+        jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 3, status: 'ACTIVE' } as never);
 
         const tx = {
             $queryRaw: jest.fn(async () => []),
@@ -100,5 +100,51 @@ describe('catering service boundary', () => {
         await expect(CateringService.updateEvent(9, 1, 7, { branchId: 3 }))
             .rejects.toThrow(/cambiar la sucursal.*pagos activos/i);
         expect(tx.cateringEvent.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects moving an event to an inactive branch', async () => {
+        jest.spyOn(prisma.cateringEvent, 'findFirst').mockResolvedValue({
+            status: 'QUOTED', date: new Date(Date.now() + 86_400_000), branchId: 2, customerId: null,
+            balance: 0, services: [], menuItems: [], payments: []
+        } as never);
+        jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ status: 'INACTIVE' } as never);
+        const tx = jest.spyOn(prisma, '$transaction');
+
+        await expect(CateringService.updateEvent(9, 1, 7, { branchId: 3 })).rejects.toThrow(/inactiva/i);
+        expect(tx).not.toHaveBeenCalled();
+    });
+
+    it('rejects RESERVED -> PAID while a balance is pending', async () => {
+        jest.spyOn(prisma.cateringEvent, 'findFirst').mockResolvedValue({
+            status: 'RESERVED', date: new Date(Date.now() + 86_400_000), branchId: 2, customerId: null,
+            balance: 150, services: [], menuItems: [], payments: []
+        } as never);
+
+        await expect(CateringService.updateEvent(9, 1, 7, { status: 'PAID' })).rejects.toThrow(/Transición de estado inválida/);
+    });
+
+    it('settles a zero-total RESERVED event as PAID', async () => {
+        jest.spyOn(prisma.cateringEvent, 'findFirst').mockResolvedValue({
+            status: 'RESERVED', date: new Date(Date.now() + 86_400_000), branchId: 2, customerId: null,
+            balance: 0, services: [], menuItems: [], payments: []
+        } as never);
+        jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 2, status: 'ACTIVE' } as never);
+        const update = jest.fn(async (args: { data: Record<string, unknown> }) => ({
+            id: 9, totalAmount: 0, payments: [], ...args.data
+        }));
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            cateringEvent: {
+                findFirst: jest.fn(async () => ({ status: 'RESERVED', payments: [], services: [], menuItems: [] })),
+                update
+            },
+            auditLog: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await CateringService.updateEvent(9, 1, 7, { status: 'PAID' });
+        expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'PAID' }) }));
     });
 });

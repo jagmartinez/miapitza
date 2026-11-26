@@ -196,7 +196,8 @@ export class ReportProductionService {
      * Menu Engineering (Star Products): classifies items into Stars, Puzzles, Plowhorses, Dogs
      * based on popularity (quantity sold) and profitability (margin).
      */
-    static async getMenuEngineering(companyId: number, filters?: { dateFrom?: Date; dateTo?: Date; branchId?: number }) {
+    static async getMenuEngineering(companyId: number, filters?: { dateFrom?: Date; dateTo?: Date; branchId?: number; includeUnsold?: boolean }) {
+        const includeUnsold = filters?.includeUnsold === true;
         const orderWhere: Record<string, unknown> = {
             companyId,
             financialStatus: 'PAID',
@@ -247,6 +248,7 @@ export class ReportProductionService {
         const analysis = await Promise.all(menuItems.map(async (mi) => {
             const sales = salesMap.get(mi.id) || { qty: 0, revenue: 0 };
             let recipeCost = 0;
+            let costError = false;
             for (const r of mi.recipes) {
                 const recipeUnit = r.unit || r.product.unit;
                 let qtyInBase = Number(r.quantity);
@@ -259,6 +261,7 @@ export class ReportProductionService {
                     );
                     qtyInBase = conv.baseQuantity;
                 } catch (error) {
+                    if (includeUnsold) { costError = true; break; }
                     throw new Error(
                         `No se pudo convertir "${recipeUnit}" del producto ${r.product.id} en ingeniería de menú: ` +
                         `${error instanceof Error ? error.message : String(error)}`
@@ -269,6 +272,7 @@ export class ReportProductionService {
                     companyId
                 );
             }
+            if (costError) recipeCost = 0;
             const margin = Number(mi.price) - recipeCost;
 
             return {
@@ -277,6 +281,7 @@ export class ReportProductionService {
                 category: mi.category?.name || 'Sin categoría',
                 price: Number(mi.price),
                 cost: Math.round(recipeCost * 100) / 100,
+                costError,
                 margin: Math.round(margin * 100) / 100,
                 qtySold: sales.qty,
                 revenue: Math.round(sales.revenue * 100) / 100,
@@ -284,11 +289,14 @@ export class ReportProductionService {
             };
         }));
         const filteredAnalysis = analysis.filter(i => i.qtySold > 0);
+        // Sin includeUnsold el reporte conserva su contrato: solo platos con ventas.
+        // Con includeUnsold (Menú) también salen los platos sin ventas, para mostrar su costo.
+        const resultRows = includeUnsold ? analysis : filteredAnalysis;
 
         const avgQty = filteredAnalysis.length > 0 ? filteredAnalysis.reduce((s, i) => s + i.qtySold, 0) / filteredAnalysis.length : 0;
         const avgMargin = filteredAnalysis.length > 0 ? filteredAnalysis.reduce((s, i) => s + i.margin, 0) / filteredAnalysis.length : 0;
 
-        const classified = filteredAnalysis.map(item => {
+        const classified = resultRows.map(item => {
             const highPop = item.qtySold >= avgQty;
             const highProfit = item.margin >= avgMargin;
 

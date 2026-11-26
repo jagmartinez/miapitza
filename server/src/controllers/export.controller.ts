@@ -4,7 +4,7 @@ import { ReportService } from '../services/report.service';
 import { OrderService } from '../services/order.service';
 import { InventoryMovementService } from '../services/inventory-movement.service';
 import { getErrorMessage } from '../utils/error';
-import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
+import { InvalidQueryDateError, parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 type OrderListRow = Awaited<ReturnType<typeof OrderService.getAll>>['data'][number];
 type InventoryMovementRow = Awaited<ReturnType<typeof InventoryMovementService.getAll>>[number];
@@ -33,6 +33,52 @@ function inventoryCostCells(movement: InventoryMovementRow, quantity: number): {
     };
 }
 
+/** Exports load whole windows in memory; cap them to one (leap) year. */
+export const MAX_EXPORT_RANGE_DAYS = 366;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_TOP_PRODUCTS_LIMIT = 500;
+
+export class ExportRangeError extends Error {
+    readonly statusCode = 400;
+}
+
+/**
+ * Resolve an export window. Missing bounds default to the last
+ * MAX_EXPORT_RANGE_DAYS days ending now (or ending at `endDate`); an explicit
+ * window longer than that, or an inverted one, is rejected with a 400.
+ */
+export function resolveExportRange(
+    startRaw: unknown,
+    endRaw: unknown,
+    timeZone?: string,
+    now: Date = new Date()
+): { startDate: Date; endDate: Date } {
+    let parsedStart: Date | undefined;
+    let parsedEnd: Date | undefined;
+    try {
+        parsedStart = parseOptionalQueryDateFrom(typeof startRaw === 'string' ? startRaw : undefined, timeZone);
+        parsedEnd = parseOptionalQueryDateTo(typeof endRaw === 'string' ? endRaw : undefined, timeZone);
+    } catch (error) {
+        if (error instanceof InvalidQueryDateError) throw new ExportRangeError(error.message);
+        throw error;
+    }
+    const endDate = parsedEnd ?? now;
+    const startDate = parsedStart ?? new Date(endDate.getTime() - MAX_EXPORT_RANGE_DAYS * DAY_MS);
+    if (startDate > endDate) {
+        throw new ExportRangeError('La fecha inicial no puede ser posterior a la fecha final');
+    }
+    // +1 day tolerance: an inclusive end-of-day bound adds ~24h to the span.
+    if (endDate.getTime() - startDate.getTime() > (MAX_EXPORT_RANGE_DAYS + 1) * DAY_MS) {
+        throw new ExportRangeError(`El rango de exportación no puede superar ${MAX_EXPORT_RANGE_DAYS} días; divida la exportación en períodos más cortos`);
+    }
+    return { startDate, endDate };
+}
+
+function sendExportError(res: Response, error: unknown) {
+    const status = error instanceof ExportRangeError ? 400 : 500;
+    res.status(status).json({ success: false, message: getErrorMessage(error) });
+}
+
 export class ExportController {
 
     // Export sales report to CSV
@@ -41,14 +87,14 @@ export class ExportController {
             const companyId = req.user!.companyId;
             const { startDate, endDate, branchId } = req.query;
 
-            const filters: NonNullable<Parameters<typeof OrderService.getAll>[1]> = {};
-            if (startDate) filters.startDate = parseOptionalQueryDateFrom(startDate as string, req.user!.timezone);
-            if (endDate) filters.endDate = parseOptionalQueryDateTo(endDate as string, req.user!.timezone);
+            const filters: NonNullable<Parameters<typeof OrderService.getAll>[1]> = {
+                ...resolveExportRange(startDate, endDate, req.user!.timezone)
+            };
             if (branchId) filters.branchId = parseInt(branchId as string);
 
             // OrderService caps each page at 200. Fetch the complete, fixed
             // createdAt window instead of silently exporting only the first page.
-            const exportFilters = { ...filters, endDate: filters.endDate ?? new Date() };
+            const exportFilters = { ...filters };
             const orders: OrderListRow[] = [];
             let page = 1;
             let totalPages = 1;
@@ -91,7 +137,7 @@ export class ExportController {
             res.setHeader('Content-Disposition', `attachment; filename=ventas_${Date.now()}.csv`);
             res.send('\uFEFF' + csv); // UTF-8 BOM for Excel compatibility
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: getErrorMessage(error) });
+            sendExportError(res, error);
         }
     }
 
@@ -141,7 +187,7 @@ export class ExportController {
             res.setHeader('Content-Disposition', `attachment; filename=inventario_${Date.now()}.csv`);
             res.send('\uFEFF' + csv);
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: getErrorMessage(error) });
+            sendExportError(res, error);
         }
     }
 
@@ -154,7 +200,7 @@ export class ExportController {
             const topProducts = await ReportService.getTopSellingProducts(
                 companyId,
                 branchId ? parseInt(branchId as string) : undefined,
-                limit ? parseInt(limit as string) : 20
+                Math.min(Math.max(Number.parseInt(String(limit ?? ''), 10) || 20, 1), MAX_TOP_PRODUCTS_LIMIT)
             );
 
             const data = topProducts.map((product: TopProductRow, index: number) => ({
@@ -171,7 +217,7 @@ export class ExportController {
             res.setHeader('Content-Disposition', `attachment; filename=productos_top_${Date.now()}.csv`);
             res.send('\uFEFF' + csv);
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: getErrorMessage(error) });
+            sendExportError(res, error);
         }
     }
 
@@ -181,11 +227,12 @@ export class ExportController {
             const companyId = req.user!.companyId;
             const { branchId, startDate, endDate } = req.query;
 
+            const range = resolveExportRange(startDate, endDate, req.user!.timezone);
             const salesByUser = await ReportService.getSalesByUser(
                 companyId,
                 branchId ? parseInt(branchId as string) : undefined,
-                parseOptionalQueryDateFrom(startDate as string | undefined, req.user!.timezone),
-                parseOptionalQueryDateTo(endDate as string | undefined, req.user!.timezone)
+                range.startDate,
+                range.endDate
             );
 
             const data = salesByUser.map((user: SalesByUserRow, index: number) => ({
@@ -203,7 +250,7 @@ export class ExportController {
             res.setHeader('Content-Disposition', `attachment; filename=ventas_por_mesero_${Date.now()}.csv`);
             res.send('\uFEFF' + csv);
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: getErrorMessage(error) });
+            sendExportError(res, error);
         }
     }
 }

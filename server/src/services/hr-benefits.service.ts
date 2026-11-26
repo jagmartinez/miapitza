@@ -11,6 +11,7 @@ import { AuditLogService } from './audit-log.service';
 import {
   activeBenefitPolicy,
   validateLoanPolicy,
+  loanPolicyView,
   validateLoanTerms,
   validateTravelExpensePolicy,
   validateTravelPolicy,
@@ -1230,6 +1231,59 @@ export class HrLoanService {
           revision: 0,
         });
         return presentLoan(item, tx, true, Boolean(scope.selfUserId));
+      }
+    );
+  }
+
+  static async policyFor(scope: Scope) {
+    const user = await ensureInternalUser(scope.companyId, scopedUser(scope, undefined));
+    return loanPolicyView(scope.companyId, user.employeeId);
+  }
+
+  /** Owner of a loan request cancels it while it is still REQUESTED. */
+  static async cancelOwn(scope: Scope, id: number, payload: InputMap, key: string) {
+    if (!scope.selfUserId)
+      throw new HrBenefitsError('La cancelacion propia requiere autoservicio', 403);
+    const reason =
+      payload.reason === undefined || payload.reason === null || payload.reason === ''
+        ? null
+        : requiredText(payload.reason, 'reason', 500);
+    return idempotent(
+      scope.companyId,
+      key,
+      `LOAN_CANCEL_OWN:${id}`,
+      { actorId: scope.actorId, reason },
+      async (tx) => {
+        const item = await tx.hrLoan.findFirst({
+          where: { id, companyId: scope.companyId, userId: scope.selfUserId },
+        });
+        if (!item)
+          throw new HrBenefitsError(
+            'Solicitud de prestamo no encontrada',
+            404,
+            'HR_LOAN_REQUEST_NOT_FOUND'
+          );
+        if (item.status !== 'REQUESTED')
+          throw new HrBenefitsError(
+            'Solo una solicitud en estado REQUESTED puede cancelarse',
+            409,
+            'HR_LOAN_REQUEST_NOT_CANCELLABLE'
+          );
+        await casLoan(tx, id, scope.companyId, item.revision, { status: 'CANCELLED' });
+        await trace(tx, {
+          companyId: scope.companyId,
+          resourceType: 'LOAN',
+          resourceId: id,
+          event: 'CANCEL',
+          actorId: scope.actorId,
+          reason,
+          fromStatus: item.status,
+          toStatus: 'CANCELLED',
+          revision: item.revision + 1,
+          metadata: { by: 'OWNER_SELF' },
+        });
+        const loaded = await tx.hrLoan.findUniqueOrThrow({ where: { id }, include: loanInclude });
+        return presentLoan(loaded, tx, true, true);
       }
     );
   }

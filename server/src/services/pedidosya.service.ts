@@ -2,7 +2,8 @@ import prisma from '../utils/prisma';
 import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { AuditLogService } from './audit-log.service';
-import { OrderService } from './order.service';
+import { ORDER_ALREADY_CANCELLED_MESSAGE, OrderService } from './order.service';
+import { resolveIntegrationUser } from './delivery.service';
 import { encrypt, decrypt, isEncrypted, isLegacyEncryptionCandidate } from '../utils/encryption';
 import { DynamicPricingService } from './dynamic-pricing.service';
 import { externalHttpTimeoutMs, fetchWithTimeout } from '../utils/external-http';
@@ -324,11 +325,7 @@ export class PedidosYaService {
             );
         }
 
-        const systemUser = await prisma.user.findFirst({
-            where: { companyId, username: 'system', status: 'ACTIVE' },
-            select: { id: true },
-        });
-        if (!systemUser) throw new Error('Debe existir el usuario de servicio activo "system" para recibir pedidos PedidosYa');
+        const systemUser = await resolveIntegrationUser(companyId, 'PEDIDOSYA');
         const userId = systemUser.id;
 
         const customerName = `[PEDIDOSYA] ${payload.customerName || 'Cliente'} | ID:${externalId}`;
@@ -370,6 +367,26 @@ export class PedidosYaService {
                         },
                     },
                 });
+
+                if (acceptedAt) {
+                    // Auto-accepted orders enter the KDS exactly like a manual
+                    // send: the queue, start/finish and stock deduction operate on
+                    // persisted KitchenBatch rows, so the first wave must exist.
+                    const kitchenBatch = await tx.kitchenBatch.create({
+                        data: {
+                            companyId,
+                            branchId,
+                            orderId: created.id,
+                            sequence: 1,
+                            status: 'PENDING',
+                            sentAt: acceptedAt,
+                        },
+                    });
+                    await tx.orderItem.updateMany({
+                        where: { orderId: created.id, sentAt: acceptedAt },
+                        data: { kitchenBatchId: kitchenBatch.id },
+                    });
+                }
 
                 await tx.pedidosYaOrderSync.create({
                     data: {
@@ -419,11 +436,7 @@ export class PedidosYaService {
         // Route through OrderService.cancel so the cancellation validates the
         // state transition, reverses any consumed inventory (reverseForOrder) and
         // frees the table — instead of a raw status write that skips all of that.
-        const systemUser = await prisma.user.findFirst({
-            where: { companyId, username: 'system', status: 'ACTIVE' },
-            select: { id: true },
-        });
-        if (!systemUser) throw new Error('Usuario de servicio "system" no disponible para cancelar la orden PedidosYa');
+        const systemUser = await resolveIntegrationUser(companyId, 'PedidosYa (cancelación)', { allowFallback: false });
 
         try {
             await OrderService.cancel(
@@ -435,13 +448,15 @@ export class PedidosYaService {
                 {
                     allowPaidReversal: true,
                     wasteWarehouseId: config.defaultWarehouseId ?? undefined,
+                    // Configured default, not a user choice: routing applies.
+                    wasteWarehouseIsDefault: true,
                     // The signed provider cancellation is the external refund
                     // evidence for non-cash channel payments.
                     externalRefundReference: `PEDIDOSYA-CANCEL-${externalId}`
                 }
             );
         } catch (err) {
-            if ((err as Error).message === 'Order is already cancelled') {
+            if ((err as Error).message === ORDER_ALREADY_CANCELLED_MESSAGE) {
                 // Idempotent webhook replay: local and external state already agree.
             } else {
             // The order may already be in a terminal/incompatible state (e.g.
@@ -482,11 +497,7 @@ export class PedidosYaService {
             if (!config?.defaultWarehouseId) {
                 throw new Error('PedidosYa no tiene una bodega predeterminada configurada para completar la entrega');
             }
-            const systemUser = await prisma.user.findFirst({
-                where: { companyId, username: 'system', status: 'ACTIVE' },
-                select: { id: true }
-            });
-            if (!systemUser) throw new Error('Usuario de servicio "system" no disponible para completar la entrega PedidosYa');
+            const systemUser = await resolveIntegrationUser(companyId, 'PedidosYa (entrega)', { allowFallback: false });
 
             // External delivery is authoritative, but it must use the exact same
             // atomic stock+status operation as local delivery. Disable the
@@ -717,7 +728,13 @@ export class PedidosYaService {
         }
 
         return prisma.pedidosYaProductMapping.create({
-            data: { companyId, ...data },
+            data: {
+                companyId,
+                externalId: data.externalId,
+                externalName: data.externalName,
+                menuItemId: data.menuItemId ?? null,
+                ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+            },
         });
     }
 

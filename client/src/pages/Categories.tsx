@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react';
+import { notifyError } from '../services/notify';
 import { categoriesAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Tag, Edit2, Trash2, List } from 'lucide-react';
 import { getCategoryVisibilityLabel } from '../utils/categoryVisibility';
 import './Categories.css';
+import { Button, DataTable, FullScreenModal, PageHeader, type Column } from '@/ui';
 
 interface CategoryRow {
     id: number;
@@ -62,7 +60,7 @@ export default function Categories() {
             const res = await categoriesAPI.getAll();
             setCategories(res.data.data);
         } catch (error) {
-            console.error('Error loading categories:', error);
+            notifyError(error, 'No se pudieron cargar las categorías');
         } finally {
             setLoading(false);
         }
@@ -160,8 +158,7 @@ export default function Categories() {
         <div className="categories-page">
             <PageHeader
                 title="Categorías"
-                subtitle={`${categories.length} categorías configuradas`}
-                icon={Tag}
+                description={`${categories.length} categorías configuradas`}
                 actions={(
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
@@ -176,7 +173,8 @@ export default function Categories() {
             />
 
             {viewMode === 'table' && categories.length > 0 && (
-                <CatalogTable<CategoryRow>
+                <DataTable<CategoryRow>
+                    ariaLabel="Listado de categorías"
                     rows={categories}
                     rowKey={(c) => c.id}
                     columns={[
@@ -191,8 +189,8 @@ export default function Categories() {
                             )
                         },
                         { key: 'prefix', header: 'Prefijo', render: (c) => c.codePrefix || '-' },
-                        { key: 'items', header: 'Platos', align: 'center', render: (c) => c._count?.menuItems || 0 },
-                        { key: 'order', header: 'Orden', align: 'center', render: (c) => c.sortOrder ?? 0 },
+                        { key: 'items', header: 'Platos', type: 'number', decimals: 0, render: (c) => c._count?.menuItems || 0 },
+                        { key: 'order', header: 'Orden', type: 'number', decimals: 0, render: (c) => c.sortOrder ?? 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -210,7 +208,7 @@ export default function Categories() {
                         ...(canMutateCategory ? [{
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right' as const,
+                            type: 'actions',
                             render: (c: CategoryRow) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(c)} title="Editar">
@@ -227,7 +225,7 @@ export default function Categories() {
                                 </div>
                             )
                         }] : [])
-                    ] as CatalogColumn<CategoryRow>[]}
+                    ] as Column<CategoryRow>[]}
                 />
             )}
 
@@ -303,12 +301,12 @@ export default function Categories() {
                     <Tag size={48} />
                     <p>No hay categorías configuradas</p>
                     {canMutateCategory && (
-                        <Button onClick={() => openModal()}>Crear primera categoría</Button>
+                        <Button variant="primary" onClick={() => openModal()}>Crear primera categoría</Button>
                     )}
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={() => { closeModal(); setActiveTab('info'); }}
                 title={editingCategory ? 'Editar Categoría' : 'Nueva Categoría'}
@@ -369,7 +367,7 @@ export default function Categories() {
                                             placeholder="Ej: CAR, BEB, VEG..."
                                             maxLength={10}
                                         />
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                        <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '4px' }}>
                                             Se usa para generar códigos automáticos en productos (ej: CAR-000001). Solo letras, máx 10 caracteres.
                                         </p>
                                     </div>
@@ -405,14 +403,14 @@ export default function Categories() {
                                             aria-labelledby="category-show-in-menu-label"
                                             className={`modal-toggle-card ${formData.showInMenu ? 'active' : ''}`}
                                             onClick={() => setFormData({ ...formData, showInMenu: !formData.showInMenu })}
-                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)' }}
                                         >
                                             <div className="toggle-switch">
                                                 <div className={`toggle-dot ${formData.showInMenu ? 'active' : ''}`} />
                                             </div>
                                             <span>{formData.showInMenu ? 'Visible en el menú / POS' : 'Oculta del menú / POS'}</span>
                                         </div>
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                        <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '4px' }}>
                                             Controla si la categoría aparece al crear platos y en el punto de venta.
                                         </p>
                                     </div>
@@ -426,20 +424,20 @@ export default function Categories() {
                                             aria-labelledby="category-show-in-inventory-label"
                                             className={`modal-toggle-card ${formData.showInInventory ? 'active' : ''}`}
                                             onClick={() => setFormData({ ...formData, showInInventory: !formData.showInInventory })}
-                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)' }}
                                         >
                                             <div className="toggle-switch">
                                                 <div className={`toggle-dot ${formData.showInInventory ? 'active' : ''}`} />
                                             </div>
                                             <span>{formData.showInInventory ? 'Visible en inventario' : 'Oculta del inventario'}</span>
                                         </div>
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                        <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '4px' }}>
                                             Controla si la categoría aparece al crear productos y en los filtros de inventario.
                                         </p>
                                     </div>
 
                                     {formData.active && !formData.showInMenu && !formData.showInInventory && (
-                                        <p style={{ fontSize: '12px', color: 'var(--color-danger, #ef4444)', margin: 0 }}>
+                                        <p style={{ fontSize: '12px', color: 'var(--ui-danger)', margin: 0 }}>
                                             Debe activar al menos una visibilidad (menú o inventario).
                                         </p>
                                     )}
@@ -453,14 +451,14 @@ export default function Categories() {
                                             aria-labelledby="category-active-label"
                                             className={`modal-toggle-card ${formData.active ? 'active' : ''}`}
                                             onClick={() => setFormData({ ...formData, active: !formData.active })}
-                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--ui-bg)', borderRadius: '8px', border: '1px solid var(--ui-border)' }}
                                         >
                                             <div className="toggle-switch">
                                                 <div className={`toggle-dot ${formData.active ? 'active' : ''}`} />
                                             </div>
                                             <span>{formData.active ? 'Categoría activa' : 'Categoría desactivada'}</span>
                                         </div>
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                        <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '4px' }}>
                                             Si se desactiva, la categoría no aparecerá en ningún lugar del sistema.
                                         </p>
                                     </div>
@@ -476,7 +474,7 @@ export default function Categories() {
                                                 onChange={e => setFormData({ ...formData, sortOrder: parseInt(e.target.value) })}
                                                 placeholder="0"
                                             />
-                                            <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '8px' }}>
+                                            <p style={{ fontSize: '11px', color: 'var(--ui-text-muted)', marginTop: '8px' }}>
                                                 Define la posición de esta categoría en los filtros del menú. Números menores aparecen primero.
                                             </p>
                                         </div>
@@ -495,7 +493,7 @@ export default function Categories() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

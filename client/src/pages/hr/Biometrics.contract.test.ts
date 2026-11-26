@@ -27,7 +27,15 @@ describe('Biometrics guided UX contract', () => {
         expect(source).toContain('profile.canEnroll === false');
         expect(source).toContain("error?.includes('expiró')");
         expect(source).toContain('Revocar biometría');
+        expect(source).toContain('Ir a marcar ahora');
+        expect(source).toContain("navigate('/rh/marcaje')");
         expect(source).toContain('Every failed submission therefore needs a fresh challenge');
+    });
+
+    it('tells the employee the first enrollment waits for HR approval', () => {
+        expect(source).toContain('Registro facial pendiente de aprobación de RRHH');
+        expect(source).toContain("updated.status === 'PENDING'");
+        expect(source).toContain('profile.rejectionReason');
     });
 
     it('uses the Mi RH shell and blocks sensitive mutations while offline', () => {

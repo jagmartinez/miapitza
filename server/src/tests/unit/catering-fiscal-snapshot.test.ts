@@ -37,12 +37,12 @@ describe('Catering fiscal immutable snapshots', () => {
     });
 
     it('fails closed when line, tax, total or payments no longer reconcile', () => {
-        expect(() => deserializeCateringInvoiceSnapshot(asJson({ ...invoiceSnapshot, tax: 14 }))).toThrow(/do not reconcile/);
-        expect(() => deserializeCateringInvoiceSnapshot(asJson({ ...invoiceSnapshot, total: 114 }))).toThrow(/do not reconcile/);
+        expect(() => deserializeCateringInvoiceSnapshot(asJson({ ...invoiceSnapshot, tax: 14 }))).toThrow(/no concilian/);
+        expect(() => deserializeCateringInvoiceSnapshot(asJson({ ...invoiceSnapshot, total: 114 }))).toThrow(/no concilian/);
         expect(() => deserializeCateringInvoiceSnapshot(asJson({
             ...invoiceSnapshot,
             payments: [{ ...invoiceSnapshot.payments[0], amount: 114 }]
-        }))).toThrow(/do not reconcile/);
+        }))).toThrow(/no concilian/);
     });
 
     it('requires a full credit note refund equal to the original immutable invoice', () => {
@@ -64,6 +64,6 @@ describe('Catering fiscal immutable snapshots', () => {
         expect(() => deserializeCateringCreditNoteSnapshot(asJson({
             ...credit,
             refunds: [{ ...credit.refunds[0], amount: 100 }]
-        }))).toThrow(/refunds do not reconcile/);
+        }))).toThrow(/reembolsos de la nota de crédito de catering no concilian/);
     });
 });

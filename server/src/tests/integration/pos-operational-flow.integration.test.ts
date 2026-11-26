@@ -20,6 +20,7 @@ describe('POS operational flow', () => {
         'orders.edit',
         'orders.cancel',
         'orders.deliver',
+        'kds.view',
         'kds.manage',
         'invoices.issue',
         'invoices.view',
@@ -34,6 +35,9 @@ describe('POS operational flow', () => {
     let directMenuItemId: number;
     let ingredientProductId: number;
     let paymentMethodId: number;
+    let cardPaymentMethodId: number;
+    let atomicSettlementTotal = 0;
+    let deliveredRecoveryTotal = 0;
     let registerId: number;
     let shiftId: number;
     let warehouseId: number;
@@ -76,11 +80,13 @@ describe('POS operational flow', () => {
         // Recover cleanly when a previous interrupted integration run left this
         // isolated tenant behind (notifications now restrict order/user deletes).
         await prisma.kitchenNotification.deleteMany({ where: { companyId } });
+        await prisma.cashCount.deleteMany({ where: { shift: { companyId } } });
         await prisma.cashMovement.deleteMany({ where: { shift: { companyId } } });
         await prisma.cashShift.deleteMany({ where: { companyId } });
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
         await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { companyId } } } });
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
+        await prisma.kitchenBatch.deleteMany({ where: { companyId } });
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.reservation.deleteMany({ where: { companyId } });
         await prisma.inventoryMovement.deleteMany({ where: { companyId } });
@@ -146,6 +152,8 @@ describe('POS operational flow', () => {
         tableId = table.id;
         const method = await prisma.paymentMethod.create({ data: { companyId, name: 'EFECTIVO', type: 'CASH' } });
         paymentMethodId = method.id;
+        const cardMethod = await prisma.paymentMethod.create({ data: { companyId, name: 'TARJETA', type: 'CARD' } });
+        cardPaymentMethodId = cardMethod.id;
         const register = await prisma.cashRegister.create({ data: { companyId, branchId, name: 'Integration Register' } });
         registerId = register.id;
         const warehouse = await prisma.warehouse.upsert({
@@ -168,12 +176,14 @@ describe('POS operational flow', () => {
     });
 
     afterAll(async () => {
+        await prisma.cashCount.deleteMany({ where: { shift: { companyId } } });
         await prisma.cashMovement.deleteMany({ where: { shift: { companyId } } });
         await prisma.cashShift.deleteMany({ where: { companyId } });
         await prisma.kitchenNotification.deleteMany({ where: { companyId } });
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
         await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { companyId } } } });
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
+        await prisma.kitchenBatch.deleteMany({ where: { companyId } });
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.reservation.deleteMany({ where: { companyId } });
         await prisma.promotion.deleteMany({ where: { companyId } });
@@ -196,7 +206,7 @@ describe('POS operational flow', () => {
         await prisma.company.deleteMany({ where: { id: companyId } });
     });
 
-    it('keeps a prepaid prepared order operational through KDS until paid delivery', async () => {
+    it('keeps the table occupied after invoicing and releases it only after full payment', async () => {
         const opened = await request(app).post('/api/cash-shifts/open').set('Authorization', `Bearer ${token}`)
             .send({ cashRegisterId: registerId, startAmount: 50 });
         expect(opened.status).toBe(201);
@@ -226,24 +236,41 @@ describe('POS operational flow', () => {
         expect(Number(priced.body.data.tax)).toBe(13.5);
         expect(Number(priced.body.data.total)).toBe(103.5);
 
-        const issuedInvoice = await request(app).post(`/api/invoices/${paidOrderId}/issue`).set('Authorization', `Bearer ${token}`);
-        expect(issuedInvoice.status).toBe(201);
-        expect(issuedInvoice.body.data.invoiceNumber).toMatch(/^FAC-/);
+        const issuedPreInvoice = await request(app).post(`/api/invoices/${paidOrderId}/preinvoice`).set('Authorization', `Bearer ${token}`);
+        expect(issuedPreInvoice.status).toBe(201);
+        expect(issuedPreInvoice.body.data.invoiceNumber).toBe(`PREF-ORD-${paidOrderId}`);
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${paidOrderId}`, type: 'OUT' }
+        })).toBe(0);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'Order', entityId: paidOrderId, action: 'DELIVER' }
+        })).toBe(0);
+        const activeAfterInvoice = await request(app).get('/api/orders/active')
+            .set('Authorization', `Bearer ${token}`).query({ branchId });
+        expect(activeAfterInvoice.status).toBe(200);
+        expect(activeAfterInvoice.body.data.map((order: { id: number }) => order.id))
+            .toContain(paidOrderId);
 
         const paid = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
             .send({ orderId: paidOrderId, paymentMethodId, amount: 103.5 });
         expect(paid.status).toBe(201);
+        expect(paid.body.fiscalInvoice?.invoiceNumber).toMatch(/^FAC-/);
+        expect(paid.body.fiscalInvoiceError).toBeNull();
         expect(await prisma.order.findUnique({ where: { id: paidOrderId } })).toEqual(expect.objectContaining({
             status: 'OPEN',
             financialStatus: 'PAID'
         }));
-        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
         const activeAfterPrepay = await request(app).get('/api/orders/active').set('Authorization', `Bearer ${token}`)
             .query({ branchId });
         expect(activeAfterPrepay.status).toBe(200);
-        expect(activeAfterPrepay.body.data.map((order: { id: number }) => order.id)).toContain(paidOrderId);
+        expect(activeAfterPrepay.body.data.map((order: { id: number }) => order.id)).not.toContain(paidOrderId);
         expect((await prisma.promotion.findFirst({ where: { companyId, code: 'POS10' } }))?.usageCount).toBe(1);
         expect(await prisma.cashMovement.count({ where: { shiftId, reference: `PAY-${paid.body.data.id}` } })).toBe(1);
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${paidOrderId}`, type: 'OUT' }
+        })).toBe(0);
 
         const invoice = await request(app).get(`/api/invoices/${paidOrderId}`).set('Authorization', `Bearer ${token}`);
         expect(invoice.status).toBe(200);
@@ -256,7 +283,15 @@ describe('POS operational flow', () => {
             status: 'READY',
             financialStatus: 'PAID'
         }));
-        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        const historicalReady = await request(app).get('/api/orders').set('Authorization', `Bearer ${token}`)
+            .query({ branchId, status: 'READY' });
+        expect(historicalReady.status).toBe(200);
+        expect(historicalReady.body.data.map((order: { id: number }) => order.id)).toContain(paidOrderId);
+        const kitchenReady = await request(app).get('/api/orders/kitchen/queue')
+            .set('Authorization', `Bearer ${token}`).query({ branchId });
+        expect(kitchenReady.status).toBe(200);
+        expect(kitchenReady.body.data.map((order: { id: number }) => order.id)).toContain(paidOrderId);
 
         await request(app).post(`/api/orders/${paidOrderId}/complete`).set('Authorization', `Bearer ${token}`)
             .send({ warehouseId }).expect(200);
@@ -265,6 +300,174 @@ describe('POS operational flow', () => {
             financialStatus: 'PAID'
         }));
         expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${paidOrderId}`, type: 'OUT' }
+        })).toBeGreaterThan(0);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'Order', entityId: paidOrderId, action: 'DELIVER' }
+        })).toBe(1);
+    });
+
+    it('keeps payment financial-only and prevents an old delivery from releasing a new table account', async () => {
+        const created = await request(app).post('/api/orders').set('Authorization', `Bearer ${token}`)
+            .send({ branchId, tableId, orderType: 'DINE_IN' });
+        expect(created.status).toBe(201);
+        const orderId = created.body.data.id as number;
+
+        const added = await request(app).post(`/api/orders/${orderId}/items`).set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 });
+        expect(added.status).toBe(201);
+        const itemId = added.body.data.id as number;
+        await request(app).post(`/api/orders/${orderId}/send-to-kitchen`).set('Authorization', `Bearer ${token}`).expect(200);
+        await request(app).patch(`/api/orders/${orderId}/items/${itemId}/start`).set('Authorization', `Bearer ${token}`).expect(200);
+        await request(app).patch(`/api/orders/${orderId}/items/${itemId}/finish`).set('Authorization', `Bearer ${token}`).expect(200);
+        await request(app).post(`/api/invoices/${orderId}/preinvoice`).set('Authorization', `Bearer ${token}`).expect(201);
+
+        const ready = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+        atomicSettlementTotal = Number(ready.total);
+        expect(ready.status).toBe('READY');
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+
+        const legacySettlement = await request(app).post('/api/payments')
+            .set('Authorization', `Bearer ${token}`)
+            .set('X-Idempotency-Key', `legacy-settle-ready-${orderId}`)
+            .send({
+                orderId,
+                paymentMethodId: cardPaymentMethodId,
+                amount: Number(ready.total),
+                warehouseId
+            });
+        expect(legacySettlement.status).toBe(400);
+        expect(legacySettlement.body.message).toMatch(/No se puede incluir warehouseId.*Entregar/i);
+        expect(await prisma.payment.count({ where: { orderId } })).toBe(0);
+
+        const settled = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
+            .set('X-Idempotency-Key', `settle-ready-${orderId}`)
+            .send({
+                orderId,
+                paymentMethodId: cardPaymentMethodId,
+                amount: Number(ready.total)
+            });
+        expect(settled.status).toBe(201);
+        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
+            status: 'READY',
+            financialStatus: 'PAID'
+        }));
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${orderId}`, warehouseId, type: 'OUT' }
+        })).toBe(0);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'Order', entityId: orderId, action: 'DELIVER' }
+        })).toBe(0);
+
+        // Reversing the full payment reopens the debt without changing the invoice.
+        await request(app).delete(`/api/payments/${settled.body.data.id}`).set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'Atomic settlement reversal coverage' }).expect(200);
+        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
+            status: 'READY',
+            financialStatus: 'UNPAID'
+        }));
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${orderId}`, warehouseId, type: 'OUT' }
+        })).toBe(0);
+
+        await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
+            .set('X-Idempotency-Key', `resettle-ready-${orderId}`)
+            .send({
+                orderId,
+                paymentMethodId: cardPaymentMethodId,
+                amount: Number(ready.total)
+            }).expect(201);
+        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
+            status: 'READY',
+            financialStatus: 'PAID'
+        }));
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+
+        const newAccount = await request(app).post('/api/orders').set('Authorization', `Bearer ${token}`)
+            .send({ branchId, tableId, orderType: 'DINE_IN' });
+        expect(newAccount.status).toBe(201);
+        const newAccountOrderId = newAccount.body.data.id as number;
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+
+        await request(app).post(`/api/orders/${orderId}/complete`).set('Authorization', `Bearer ${token}`)
+            .send({ warehouseId }).expect(200);
+        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
+            status: 'DELIVERED',
+            financialStatus: 'PAID'
+        }));
+        // Completing the old invoiced order must not release the new account.
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${orderId}`, warehouseId, type: 'OUT' }
+        })).toBeGreaterThan(0);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'Order', entityId: orderId, action: 'DELIVER' }
+        })).toBe(1);
+
+        await request(app).post(`/api/orders/${newAccountOrderId}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'Cleanup new account concurrency coverage' }).expect(200);
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+    });
+
+    it('keeps delivered unpaid debt recoverable from the POS until it is paid', async () => {
+        const created = await request(app).post('/api/orders').set('Authorization', `Bearer ${token}`)
+            .send({ branchId, tableId, orderType: 'DINE_IN' });
+        expect(created.status).toBe(201);
+        const orderId = created.body.data.id as number;
+
+        const added = await request(app).post(`/api/orders/${orderId}/items`).set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 });
+        expect(added.status).toBe(201);
+        const itemId = added.body.data.id as number;
+
+        await request(app).post(`/api/orders/${orderId}/send-to-kitchen`)
+            .set('Authorization', `Bearer ${token}`).expect(200);
+        await request(app).patch(`/api/orders/${orderId}/items/${itemId}/start`)
+            .set('Authorization', `Bearer ${token}`).expect(200);
+        await request(app).patch(`/api/orders/${orderId}/items/${itemId}/finish`)
+            .set('Authorization', `Bearer ${token}`).expect(200);
+        await request(app).post(`/api/invoices/${orderId}/preinvoice`)
+            .set('Authorization', `Bearer ${token}`).expect(201);
+        const ready = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+        deliveredRecoveryTotal = Number(ready.total);
+        const settled = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
+            .set('X-Idempotency-Key', `settle-before-delivery-${orderId}`)
+            .send({
+                orderId,
+                paymentMethodId: cardPaymentMethodId,
+                amount: Number(ready.total)
+            });
+        expect(settled.status).toBe(201);
+        await request(app).post(`/api/orders/${orderId}/complete`)
+            .set('Authorization', `Bearer ${token}`).send({ warehouseId }).expect(200);
+        await request(app).delete(`/api/payments/${settled.body.data.id}`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'Delivered debt recovery coverage' }).expect(200);
+
+        const delivered = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+        expect(delivered).toEqual(expect.objectContaining({
+            status: 'DELIVERED',
+            financialStatus: 'UNPAID'
+        }));
+        expect((await prisma.table.findUniqueOrThrow({ where: { id: tableId } })).status).toBe('OCCUPIED');
+
+        const recoverableAccounts = await request(app).get('/api/orders/active')
+            .set('Authorization', `Bearer ${token}`).query({ branchId });
+        expect(recoverableAccounts.status).toBe(200);
+        expect(recoverableAccounts.body.data.map((order: { id: number }) => order.id)).toContain(orderId);
+
+        await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
+            .set('X-Idempotency-Key', `pay-delivered-${orderId}`)
+            .send({
+                orderId,
+                paymentMethodId: cardPaymentMethodId,
+                amount: Number(delivered.total)
+            }).expect(201);
+        expect((await prisma.table.findUniqueOrThrow({ where: { id: tableId } })).status).toBe('AVAILABLE');
     });
 
     it('cancels an occupied table order without leaving an orphan state', async () => {
@@ -316,6 +519,83 @@ describe('POS operational flow', () => {
         expect((await prisma.table.findUniqueOrThrow({ where: { id: tableId } })).status).toBe('AVAILABLE');
     });
 
+    it('persists a second KDS batch and reopens an unpaid prefactura for a late product', async () => {
+        const created = await request(app).post('/api/orders')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ branchId, tableId, orderType: 'DINE_IN' })
+            .expect(201);
+        const orderId = created.body.data.id as number;
+
+        const firstItem = await request(app).post(`/api/orders/${orderId}/items`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 })
+            .expect(201);
+        const firstSend = await request(app).post(`/api/orders/${orderId}/send-to-kitchen`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+
+        const secondItem = await request(app).post(`/api/orders/${orderId}/items`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 })
+            .expect(201);
+        const secondSend = await request(app).post(`/api/orders/${orderId}/send-to-kitchen`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+
+        expect(firstSend.body.data.kitchenBatchId).not.toBe(secondSend.body.data.kitchenBatchId);
+        expect(secondSend.body.data.kitchenBatchSequence).toBe(2);
+        const queue = await request(app).get('/api/orders/kitchen/queue')
+            .set('Authorization', `Bearer ${token}`)
+            .query({ branchId })
+            .expect(200);
+        const orderBatches = queue.body.data.filter((entry: { id: number }) => entry.id === orderId);
+        expect(orderBatches).toHaveLength(2);
+        expect(orderBatches.map((entry: { kitchenBatchSequence: number }) => entry.kitchenBatchSequence))
+            .toEqual([1, 2]);
+        expect(orderBatches.map((entry: { items: Array<{ id: number }> }) => entry.items.map((item) => item.id)))
+            .toEqual([[firstItem.body.data.id], [secondItem.body.data.id]]);
+
+        await request(app).post(`/api/invoices/${orderId}/preinvoice`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(201);
+        await request(app).post(`/api/orders/${orderId}/items`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 })
+            .expect(400);
+
+        const reversed = await request(app).post(`/api/invoices/${orderId}/preinvoice/reverse`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'El comensal solicitó un producto adicional' })
+            .expect(200);
+        expect(reversed.body.data).toMatchObject({ orderId, preInvoicedAt: null });
+        const reopened = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+        expect(reopened.preInvoicedAt).toBeNull();
+        expect(reopened.preInvoiceSnapshot).toBeNull();
+
+        await request(app).post(`/api/orders/${orderId}/items`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 })
+            .expect(201);
+        const thirdSend = await request(app).post(`/api/orders/${orderId}/send-to-kitchen`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        expect(thirdSend.body.data.kitchenBatchSequence).toBe(3);
+
+        const active = await request(app).get('/api/orders/active')
+            .set('Authorization', `Bearer ${token}`)
+            .query({ branchId })
+            .expect(200);
+        const sameAccount = active.body.data.find((entry: { id: number }) => entry.id === orderId);
+        expect(sameAccount.items).toHaveLength(3);
+        expect((await prisma.table.findUniqueOrThrow({ where: { id: tableId } })).status)
+            .toBe('OCCUPIED');
+
+        await request(app).post(`/api/orders/${orderId}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ cancelReason: 'Cierre de certificación KDS por tandas', warehouseId })
+            .expect(200);
+    });
+
     it('supports charging a DIRECT item and reverses finance without corrupting operations', async () => {
         const invalidLegacyType = await request(app).post('/api/orders').set('Authorization', `Bearer ${token}`)
             .send({ branchId, orderType: 'TAKEAWAY' });
@@ -339,7 +619,7 @@ describe('POS operational flow', () => {
         expect(split.body.data.splits.map((entry: { amount: number }) => entry.amount)).toEqual([38.34, 38.34, 38.34]);
         expect(split.body.data.splits.reduce((sum: number, entry: { amount: number }) => sum + entry.amount, 0)).toBeCloseTo(115.02, 2);
 
-        await request(app).post(`/api/invoices/${splitOrderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
+        await request(app).post(`/api/invoices/${splitOrderId}/preinvoice`).set('Authorization', `Bearer ${token}`).expect(201);
 
         const first = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
             .send({ orderId: splitOrderId, paymentMethodId, amount: 40 });
@@ -419,7 +699,7 @@ describe('POS operational flow', () => {
                 .send({ menuItemId, quantity: 1 }).expect(201);
             await request(app).patch(`/api/orders/${orderId}/pricing`).set('Authorization', `Bearer ${token}`)
                 .send({ discount: 1, discountCode: 'RACE1' }).expect(200);
-            await request(app).post(`/api/invoices/${orderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
+            await request(app).post(`/api/invoices/${orderId}/preinvoice`).set('Authorization', `Bearer ${token}`).expect(201);
         }
 
         const attempts = await Promise.all(orderIds.map((orderId) =>
@@ -430,17 +710,118 @@ describe('POS operational flow', () => {
         expect((await prisma.promotion.findFirst({ where: { companyId, code: 'RACE1' } }))?.usageCount).toBe(1);
         expect(await prisma.payment.count({ where: { orderId: { in: orderIds } } })).toBe(1);
 
-        const successfulPaymentId = attempts.find((response) => response.status === 201)!.body.data.id as number;
+        const successfulIndex = attempts.findIndex((response) => response.status === 201);
+        const successfulOrderId = orderIds[successfulIndex]!;
+        const failedOrderId = orderIds[successfulIndex === 0 ? 1 : 0]!;
+        const successfulPaymentId = attempts[successfulIndex]!.body.data.id as number;
         await request(app).delete(`/api/payments/${successfulPaymentId}`).set('Authorization', `Bearer ${token}`)
             .send({ reason: 'Promotion concurrency cleanup' }).expect(200);
         expect((await prisma.promotion.findFirst({ where: { companyId, code: 'RACE1' } }))?.usageCount).toBe(0);
-        for (const orderId of orderIds) {
-            await request(app).post(`/api/orders/${orderId}/cancel`).set('Authorization', `Bearer ${token}`)
-                .send({ cancelReason: 'invoiced concurrency fixture' }).expect(400);
-        }
+        // The paid order already owns a fiscal original even after financial
+        // reversal, so it requires the fiscal counterflow. The rejected payment
+        // left only a non-fiscal prefactura and remains administratively cancellable.
+        await request(app).post(`/api/orders/${successfulOrderId}/cancel`).set('Authorization', `Bearer ${token}`)
+            .send({ cancelReason: 'invoiced concurrency fixture' }).expect(400);
+        await request(app).post(`/api/orders/${failedOrderId}/cancel`).set('Authorization', `Bearer ${token}`)
+            .send({ cancelReason: 'prefactura concurrency fixture' }).expect(200);
     });
 
-    it('closes the cash shift with an auditable expected balance', async () => {
+    it('rejects reserved payment references on the manual-movement endpoint', async () => {
+        const before = await prisma.cashMovement.count({ where: { shiftId } });
+        const response = await request(app)
+            .post(`/api/cash-shifts/${shiftId}/movements`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                type: 'IN',
+                amount: 999,
+                description: 'Intento manual reservado',
+                reference: 'PAY-999999'
+            });
+
+        expect(response.status).toBe(400);
+        expect(response.body.message).toMatch(/namespace reservado/i);
+        expect(await prisma.cashMovement.count({ where: { shiftId } })).toBe(before);
+    });
+
+    it('reports payment methods and separates manual entries from POS/Catering sales', async () => {
+        await request(app)
+            .post(`/api/cash-shifts/${shiftId}/movements`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                type: 'IN',
+                amount: 0.10,
+                description: 'Entrada manual para clasificación'
+            })
+            .expect(201);
+        await request(app)
+            .post(`/api/cash-shifts/${shiftId}/movements`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                type: 'OUT',
+                amount: 0.10,
+                description: 'Salida manual compensatoria'
+            })
+            .expect(201);
+
+        const shiftResponse = await request(app)
+            .get(`/api/cash-shifts/${shiftId}`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        const movements = shiftResponse.body.data.movements as Array<{
+            description: string;
+            reference: string | null;
+            category: string;
+            paymentMethod: { name: string; type: string | null; source: string };
+        }>;
+        expect(movements.find((movement) => movement.description === 'Entrada manual para clasificación'))
+            .toMatchObject({
+                category: 'MANUAL_INCOME',
+                paymentMethod: {
+                    name: 'Movimiento manual de caja',
+                    type: null,
+                    source: 'MANUAL_CASH_MOVEMENT'
+                }
+            });
+        expect(movements.find((movement) => movement.reference?.startsWith('PAY-')))
+            .toMatchObject({
+                category: 'POS_SALE',
+                paymentMethod: {
+                    name: 'EFECTIVO',
+                    type: 'CASH',
+                    source: 'PAYMENT'
+                }
+            });
+
+        const summary = await request(app)
+            .get(`/api/cash-shifts/${shiftId}/summary`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        expect(summary.body.data.summary.otherIncome).toBe(0.1);
+        expect(summary.body.data.summary.otherOutflows).toBe(0.1);
+        expect(summary.body.data.summary.expectedBalance).toBe(153.5);
+
+        const report = await request(app)
+            .get(`/api/cash-arqueo/${shiftId}/report`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        const reportMovements = [
+            ...report.body.data.movements.in,
+            ...report.body.data.movements.out
+        ] as Array<{
+            reference: string | null;
+            category: string;
+            paymentMethod: { name: string; type: string | null };
+        }>;
+        expect(report.body.data.amounts.otherIncome).toBe(0.1);
+        expect(report.body.data.amounts.otherOutflows).toBe(0.1);
+        expect(reportMovements.find((movement) => movement.reference?.startsWith('PAY-')))
+            .toMatchObject({
+                category: 'POS_SALE',
+                paymentMethod: { name: 'EFECTIVO', type: 'CASH' }
+            });
+    });
+
+    it('closes the cash shift with reconciled denominations, actor and historical FX rate', async () => {
         const otherCompany = await prisma.company.create({ data: { name: 'Tolerance Isolation', active: true } });
         await SettingService.update(companyId, { cash_reconciliation_tolerance: '0.25' });
         await SettingService.update(otherCompany.id, { cash_reconciliation_tolerance: '2.50' });
@@ -456,17 +837,36 @@ describe('POS operational flow', () => {
         const summary = await request(app).get(`/api/cash-shifts/${shiftId}/summary`).set('Authorization', `Bearer ${token}`);
         expect(summary.status).toBe(200);
         const expectedBalance = Number(summary.body.data.summary.expectedBalance);
-        const closed = await request(app).post(`/api/cash-shifts/${shiftId}/close`).set('Authorization', `Bearer ${token}`)
-            .send({ closingBalance: expectedBalance, notes: 'integration close' });
+        expect(expectedBalance).toBe(153.5);
+        const closed = await request(app).post(`/api/cash-arqueo/${shiftId}/close`).set('Authorization', `Bearer ${token}`)
+            .send({
+                endAmount: expectedBalance,
+                notes: 'integration close',
+                bills: [{ denomination: 100, count: 1 }],
+                coins: [
+                    { denomination: 10, count: 1 },
+                    { denomination: 5, count: 1 },
+                    { denomination: 1, count: 1 },
+                    { denomination: 0.5, count: 1 }
+                ],
+                usdBills: [{ denomination: 1, count: 1 }],
+                exchangeRate: 37
+            });
         expect(closed.status).toBe(200);
         expect(Number(closed.body.data.difference)).toBe(0);
         expect(closed.body.data.endDate).toBeTruthy();
+        expect(closed.body.data.closedById).toBe(userId);
+        expect(closed.body.data.forceClosed).toBe(false);
+        expect(Number(closed.body.data.closingExchangeRate)).toBe(37);
+        expect(await prisma.cashCount.count({ where: { shiftId } })).toBe(6);
         const reconciliation = await BankReconciliationService.getReconciliationStatus(
             companyId,
             new Date(Date.now() - 60 * 60 * 1000),
             new Date(Date.now() + 60 * 60 * 1000)
         );
-        expect(reconciliation.totals.totalSales).toBe(103.5);
+        expect(reconciliation.totals.totalSales).toBe(
+            103.5 + atomicSettlementTotal + deliveredRecoveryTotal,
+        );
         expect(reconciliation.totals.byMethod.cash).toBe(103.5);
         expect(reconciliation.reconciliation.cashExpected).toBe(153.5);
         expect(reconciliation.reconciliation.cashActual).toBe(153.5);

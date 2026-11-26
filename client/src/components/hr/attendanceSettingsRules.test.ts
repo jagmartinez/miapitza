@@ -31,9 +31,10 @@ const validPolicy: HrAttendancePolicyPayload = {
 describe('attendance settings validation', () => {
   it('accepts the server policy bounds and rejects values outside them', () => {
     expect(validateAttendancePolicy(validPolicy)).toBeNull();
-    expect(validateAttendancePolicy({ ...validPolicy, maxLocationAccuracyM: 0 })).toContain(
-      '1 y 5000'
+    expect(validateAttendancePolicy({ ...validPolicy, maxLocationAccuracyM: 9 })).toContain(
+      '10 y 5000'
     );
+    expect(validateAttendancePolicy({ ...validPolicy, maxLocationAccuracyM: 10 })).toBeNull();
     expect(validateAttendancePolicy({ ...validPolicy, lateCheckOutMinutes: 2881 })).toContain(
       '2880'
     );

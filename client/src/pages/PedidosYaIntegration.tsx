@@ -1,15 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
 import { API_BASE_URL, pedidosYaAPI, menuAPI } from '../services/api';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import Input from '../components/Input';
-import Select from '../components/Select';
-import type { SingleValue } from 'react-select';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, Input, PageHeader } from '@/ui';
+
 import {
     Settings, Zap, Link2, RefreshCw, CheckCircle, XCircle,
     Package, AlertTriangle, Clock, ArrowRightLeft, Search, Plus, Trash2
@@ -101,8 +99,8 @@ export default function PedidosYaIntegration() {
             setMenuItems((menuRes.data.data || []).map((mi: { id: number; name: string; price: number }) => ({
                 id: mi.id, name: mi.name, price: mi.price,
             })));
-        } catch {
-            showError('No se pudo cargar la configuración de PedidosYa.');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'No se pudo cargar la configuración de PedidosYa.'));
         }
         setLoading(false);
     }, [showError]);
@@ -111,21 +109,21 @@ export default function PedidosYaIntegration() {
         try {
             const res = await pedidosYaAPI.getMappings();
             setMappings(res.data.data || []);
-        } catch { showError('No se pudieron cargar los mapeos.'); }
+        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar los mapeos.')); }
     }, [showError]);
 
     const loadOrderSyncs = useCallback(async () => {
         try {
             const res = await pedidosYaAPI.getOrderSyncs();
             setOrderSyncs(res.data.data || []);
-        } catch { showError('No se pudieron cargar las órdenes sincronizadas.'); }
+        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar las órdenes sincronizadas.')); }
     }, [showError]);
 
     const loadWebhookLogs = useCallback(async () => {
         try {
             const res = await pedidosYaAPI.getWebhookLogs();
             setWebhookLogs(res.data.data || []);
-        } catch { showError('No se pudieron cargar los logs del webhook.'); }
+        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar los logs del webhook.')); }
     }, [showError]);
 
     useEffect(() => {
@@ -149,8 +147,8 @@ export default function PedidosYaIntegration() {
             if (!config.webhookSecret?.trim()) delete payload.webhookSecret;
             await pedidosYaAPI.upsertConfig(payload);
             success('Configuración guardada');
-        } catch {
-            showError('Error al guardar');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al guardar'));
         }
         setSaving(false);
     };
@@ -170,8 +168,8 @@ export default function PedidosYaIntegration() {
             const res = await pedidosYaAPI.syncMenu();
             success(`Menú sincronizado: ${res.data.data.synced} items`);
             loadAll();
-        } catch {
-            showError('Error al sincronizar menú');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al sincronizar menú'));
         }
     };
 
@@ -185,8 +183,8 @@ export default function PedidosYaIntegration() {
             setMappingSidebarOpen(false);
             setMappingForm({ externalId: '', externalName: '', menuItemId: '' });
             loadMappings();
-        } catch {
-            showError('Error al guardar mapeo');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al guardar mapeo'));
         }
     };
 
@@ -195,8 +193,8 @@ export default function PedidosYaIntegration() {
         try {
             await pedidosYaAPI.deleteMapping(id);
             loadMappings();
-        } catch {
-            showError('Error al eliminar');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al eliminar'));
         }
     };
 
@@ -206,18 +204,18 @@ export default function PedidosYaIntegration() {
 
     return (
         <div className="pedidosya-page">
-            <div className="pedidosya-header">
-                <div>
-                    <h1><Zap size={32} /> PedidosYa</h1>
-                    <p className="pedidosya-subtitle">
+            <PageHeader
+                title="PedidosYa"
+                description={
+                    <>
                         {config.active
                             ? <span className="status-active"><CheckCircle size={14} /> Integración activa</span>
                             : <span className="status-inactive"><XCircle size={14} /> Integración inactiva</span>
                         }
                         {config.lastSyncAt && <span className="last-sync"> · Última sync: {new Date(config.lastSyncAt).toLocaleString('es-NI')}</span>}
-                    </p>
-                </div>
-            </div>
+                    </>
+                }
+            />
 
             <div className="pedidosya-tabs">
                 {([
@@ -247,42 +245,46 @@ export default function PedidosYaIntegration() {
                                 <h3>Credenciales OAuth2</h3>
                             </div>
                             <div className="form-row">
-                                <Input
-                                    label="Client ID"
-                                    value={config.clientId || ''}
-                                    onChange={e => setConfig({ ...config, clientId: e.target.value })}
-                                    placeholder="Tu Client ID de PedidosYa"
-                                />
-                                <Input
-                                    label="Client Secret"
-                                    type="password"
-                                    value={config.clientSecret || ''}
-                                    onChange={e => setConfig({ ...config, clientSecret: e.target.value })}
-                                    placeholder={config.clientSecretSet ? 'Configurado; escribe para reemplazar' : '••••••••'}
-                                />
+                                <Field label="Client ID" htmlFor="pedidosya-input-1">
+                                    <Input
+                                    id="pedidosya-input-1"
+                                        value={config.clientId || ''}
+                                        onChange={e => setConfig({ ...config, clientId: e.target.value })}
+                                        placeholder="Tu Client ID de PedidosYa"
+                                    />
+                                </Field>
+                                <Field label="Client Secret" htmlFor="pedidosya-input-2">
+                                    <Input
+                                    id="pedidosya-input-2"
+                                        type="password"
+                                        value={config.clientSecret || ''}
+                                        onChange={e => setConfig({ ...config, clientSecret: e.target.value })}
+                                        placeholder={config.clientSecretSet ? 'Configurado; escribe para reemplazar' : '••••••••'}
+                                    />
+                                </Field>
                             </div>
                             <div className="form-row">
-                                <Input
-                                    label="Restaurant ID"
-                                    value={config.restaurantId || ''}
-                                    onChange={e => setConfig({ ...config, restaurantId: e.target.value })}
-                                    placeholder="ID del restaurante en PedidosYa"
-                                />
-                                <Select
-                                    variant="modal"
-                                    label="Ambiente"
-                                    value={{
-                                        value: config.environment,
-                                        label: config.environment === 'production' ? 'Producción' : 'Sandbox (Pruebas)'
-                                    }}
-                                    onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                        option && setConfig({ ...config, environment: option.value })}
-                                    options={[
-                                        { value: 'sandbox', label: 'Sandbox (Pruebas)' },
-                                        { value: 'production', label: 'Producción' }
-                                    ]}
-                                    isSearchable={false}
-                                />
+                                <Field label="Restaurant ID" htmlFor="pedidosya-input-3">
+                                    <Input
+                                    id="pedidosya-input-3"
+                                        value={config.restaurantId || ''}
+                                        onChange={e => setConfig({ ...config, restaurantId: e.target.value })}
+                                        placeholder="ID del restaurante en PedidosYa"
+                                    />
+                                </Field>
+                                <Field label="Ambiente" htmlFor="pedidosya-select-1">
+                                    <AppSelect
+                                        inputId="pedidosya-select-1"
+                                        value={config.environment}
+                                        isClearable={false}
+                                        onChange={(option) =>
+                                            option && setConfig({ ...config, environment: option })}
+                                        options={[
+                                            { value: 'sandbox', label: 'Sandbox (Pruebas)' },
+                                            { value: 'production', label: 'Producción' }
+                                        ]}
+                                    />
+                                </Field>
                             </div>
                         </div>
 
@@ -331,12 +333,14 @@ export default function PedidosYaIntegration() {
                                 <AlertTriangle size={20} />
                                 <h3>Webhook</h3>
                             </div>
-                            <Input
-                                label="Webhook Secret"
-                                value={config.webhookSecret || ''}
-                                onChange={e => setConfig({ ...config, webhookSecret: e.target.value })}
-                                placeholder={config.webhookSecretSet ? 'Configurado; escribe para reemplazar' : 'Secret para validar firmas HMAC'}
-                            />
+                            <Field label="Webhook Secret" htmlFor="pedidosya-input-4">
+                                <Input
+                                id="pedidosya-input-4"
+                                    value={config.webhookSecret || ''}
+                                    onChange={e => setConfig({ ...config, webhookSecret: e.target.value })}
+                                    placeholder={config.webhookSecretSet ? 'Configurado; escribe para reemplazar' : 'Secret para validar firmas HMAC'}
+                                />
+                            </Field>
                             <div className="webhook-url-display">
                                 <label className="input-label">URL del Webhook (configura en PedidosYa)</label>
                                 <code>{webhookUrl}</code>
@@ -383,54 +387,31 @@ export default function PedidosYaIntegration() {
                             </Button>
                         </div>
 
-                        <div className="mappings-table-container">
-                            <table className="mappings-table">
-                                <thead>
-                                    <tr>
-                                        <th>ID Externo</th>
-                                        <th>Nombre PedidosYa</th>
-                                        <th>Producto Interno</th>
-                                        <th>Estado</th>
-                                        <th>Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {mappings
-                                        .filter(m => !mappingSearch ||
-                                            m.externalName.toLowerCase().includes(mappingSearch.toLowerCase()) ||
-                                            m.menuItem?.name.toLowerCase().includes(mappingSearch.toLowerCase())
-                                        )
-                                        .map(mapping => (
-                                            <tr key={mapping.id}>
-                                                <td><code>{mapping.externalId}</code></td>
-                                                <td>{mapping.externalName}</td>
-                                                <td>
-                                                    {mapping.menuItem
-                                                        ? <span className="mapped">{mapping.menuItem.name}</span>
-                                                        : <span className="unmapped">Sin mapear</span>
-                                                    }
-                                                </td>
-                                                <td>
-                                                    <span className={`badge ${mapping.isActive ? 'badge-active' : 'badge-inactive'}`}>
-                                                        {mapping.isActive ? 'Activo' : 'Inactivo'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <button className="action-btn-new delete" onClick={() => handleDeleteMapping(mapping.id)}>
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                </tbody>
-                            </table>
-                            {mappings.length === 0 && (
-                                <div className="empty-state">
-                                    <Package size={48} />
-                                    <p>No hay mapeos configurados. Los mapeos se crean automáticamente al recibir pedidos o puedes crearlos manualmente.</p>
-                                </div>
-                            )}
-                        </div>
+                        <DataTable<ProductMapping>
+                            ariaLabel="Mapeo de productos PedidosYa"
+                            rows={mappings.filter((m) => !mappingSearch ||
+                                m.externalName.toLowerCase().includes(mappingSearch.toLowerCase()) ||
+                                m.menuItem?.name.toLowerCase().includes(mappingSearch.toLowerCase()))}
+                            rowKey={(m) => m.id}
+                            minWidth="720px"
+                            resetKey={mappingSearch}
+                            empty={mappings.length === 0 ? 'No hay mapeos configurados. Los mapeos se crean automáticamente al recibir pedidos o puedes crearlos manualmente.' : 'Ningún mapeo coincide con la búsqueda.'}
+                            columns={[
+                                { key: 'externalId', header: 'ID Externo', render: (m) => <code>{m.externalId}</code> },
+                                { key: 'externalName', header: 'Nombre PedidosYa' },
+                                { key: 'menuItem', header: 'Producto Interno', render: (m) => m.menuItem
+                                    ? <span className="mapped">{m.menuItem.name}</span>
+                                    : <span className="unmapped">Sin mapear</span> },
+                                { key: 'isActive', header: 'Estado', render: (m) => (
+                                    <span className={`badge ${m.isActive ? 'badge-active' : 'badge-inactive'}`}>{m.isActive ? 'Activo' : 'Inactivo'}</span>
+                                ) },
+                                { key: 'actions', header: 'Acciones', type: 'actions', render: (m) => (
+                                    <button className="action-btn-new delete" aria-label="Eliminar mapeo" onClick={() => handleDeleteMapping(m.id)}>
+                                        <Trash2 size={16} />
+                                    </button>
+                                ) },
+                            ]}
+                        />
                     </div>
                 )}
 
@@ -441,40 +422,22 @@ export default function PedidosYaIntegration() {
                             <h3>Últimas Órdenes Sincronizadas</h3>
                             <Button variant="ghost" onClick={loadOrderSyncs}><RefreshCw size={16} /> Actualizar</Button>
                         </div>
-                        <div className="mappings-table-container">
-                            <table className="mappings-table">
-                                <thead>
-                                    <tr>
-                                        <th>ID Externo</th>
-                                        <th>Orden Interna</th>
-                                        <th>Estado Externo</th>
-                                        <th>Estado Interno</th>
-                                        <th>Dirección</th>
-                                        <th>Total</th>
-                                        <th>Última Sync</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {orderSyncs.map(sync => (
-                                        <tr key={sync.id}>
-                                            <td><code>{sync.externalId}</code></td>
-                                            <td>#{sync.order.id}</td>
-                                            <td><span className="badge">{sync.externalStatus || '-'}</span></td>
-                                            <td><span className="badge">{sync.internalStatus || '-'}</span></td>
-                                            <td>{sync.syncDirection === 'INBOUND' ? '← Entrante' : '→ Saliente'}</td>
-                                            <td>{formatMoney(Number(sync.order.total))}</td>
-                                            <td>{new Date(sync.lastSyncAt).toLocaleString('es-NI')}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            {orderSyncs.length === 0 && (
-                                <div className="empty-state">
-                                    <ArrowRightLeft size={48} />
-                                    <p>No hay órdenes sincronizadas todavía.</p>
-                                </div>
-                            )}
-                        </div>
+                        <DataTable<OrderSync>
+                            ariaLabel="Órdenes sincronizadas con PedidosYa"
+                            rows={orderSyncs}
+                            rowKey={(s) => s.id}
+                            minWidth="860px"
+                            empty="No hay órdenes sincronizadas todavía."
+                            columns={[
+                                { key: 'externalId', header: 'ID Externo', render: (s) => <code>{s.externalId}</code> },
+                                { key: 'order', header: 'Orden Interna', render: (s) => `#${s.order.id}` },
+                                { key: 'externalStatus', header: 'Estado Externo', render: (s) => <span className="badge">{s.externalStatus || '-'}</span> },
+                                { key: 'internalStatus', header: 'Estado Interno', render: (s) => <span className="badge">{s.internalStatus || '-'}</span> },
+                                { key: 'syncDirection', header: 'Dirección', render: (s) => s.syncDirection === 'INBOUND' ? '← Entrante' : '→ Saliente' },
+                                { key: 'total', header: 'Total', type: 'money', accessor: (s) => Number(s.order.total) },
+                                { key: 'lastSyncAt', header: 'Última Sync', render: (s) => new Date(s.lastSyncAt).toLocaleString('es-NI') },
+                            ]}
+                        />
                     </div>
                 )}
 
@@ -485,46 +448,26 @@ export default function PedidosYaIntegration() {
                             <h3>Webhook Logs</h3>
                             <Button variant="ghost" onClick={loadWebhookLogs}><RefreshCw size={16} /> Actualizar</Button>
                         </div>
-                        <div className="mappings-table-container">
-                            <table className="mappings-table">
-                                <thead>
-                                    <tr>
-                                        <th>Evento</th>
-                                        <th>ID Externo</th>
-                                        <th>Estado</th>
-                                        <th>Error</th>
-                                        <th>Fecha</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {webhookLogs.map(log => (
-                                        <tr key={log.id}>
-                                            <td><code>{log.eventType}</code></td>
-                                            <td>{log.externalId || '-'}</td>
-                                            <td>
-                                                <span className={`badge badge-${log.status.toLowerCase()}`}>
-                                                    {log.status}
-                                                </span>
-                                            </td>
-                                            <td className="error-cell">{log.errorMessage || '-'}</td>
-                                            <td>{new Date(log.createdAt).toLocaleString('es-NI')}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            {webhookLogs.length === 0 && (
-                                <div className="empty-state">
-                                    <Clock size={48} />
-                                    <p>No hay logs de webhook. Los eventos aparecerán cuando PedidosYa envíe notificaciones.</p>
-                                </div>
-                            )}
-                        </div>
+                        <DataTable<WebhookLog>
+                            ariaLabel="Logs de webhook de PedidosYa"
+                            rows={webhookLogs}
+                            rowKey={(l) => l.id}
+                            minWidth="760px"
+                            empty="No hay logs de webhook. Los eventos aparecerán cuando PedidosYa envíe notificaciones."
+                            columns={[
+                                { key: 'eventType', header: 'Evento', render: (l) => <code>{l.eventType}</code> },
+                                { key: 'externalId', header: 'ID Externo', render: (l) => l.externalId || '-' },
+                                { key: 'status', header: 'Estado', render: (l) => <span className={`badge badge-${l.status.toLowerCase()}`}>{l.status}</span> },
+                                { key: 'errorMessage', header: 'Error', render: (l) => <span className="error-cell">{l.errorMessage || '-'}</span> },
+                                { key: 'createdAt', header: 'Fecha', render: (l) => new Date(l.createdAt).toLocaleString('es-NI') },
+                            ]}
+                        />
                     </div>
                 )}
             </div>
 
             {/* ── MAPPING SIDEBAR ── */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={mappingSidebarOpen}
                 onClose={() => setMappingSidebarOpen(false)}
                 title="Nuevo Mapeo de Producto"
@@ -561,30 +504,20 @@ export default function PedidosYaIntegration() {
                                         required
                                     />
                                 </div>
-                                <Select
-                                    variant="modal"
-                                    inputId="pedidosya-menu-item"
-                                    label="Producto Interno (Menú)"
-                                    value={
-                                        mappingForm.menuItemId
-                                            ? (() => {
-                                                const mi = menuItems.find((m) => m.id.toString() === mappingForm.menuItemId);
-                                                return mi
-                                                    ? { value: mappingForm.menuItemId, label: `${mi.name} (${formatMoney(Number(mi.price))})` }
-                                                    : null;
-                                            })()
-                                            : null
-                                    }
-                                    onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                        setMappingForm({ ...mappingForm, menuItemId: option?.value || '' })}
-                                    options={menuItems.map((mi) => ({
-                                        value: mi.id.toString(),
-                                        label: `${mi.name} (${formatMoney(Number(mi.price))})`
-                                    }))}
-                                    placeholder="-- Sin mapear --"
-                                    isClearable
-                                    isSearchable
-                                />
+                                <Field label="Producto Interno (Menú)" htmlFor="pedidosya-menu-item">
+                                    <AppSelect
+                                        inputId="pedidosya-menu-item"
+                                        value={mappingForm.menuItemId || null}
+                                        onChange={(option) =>
+                                            setMappingForm({ ...mappingForm, menuItemId: option || '' })}
+                                        options={menuItems.map((mi) => ({
+                                            value: mi.id.toString(),
+                                            label: `${mi.name} (${formatMoney(Number(mi.price))})`
+                                        }))}
+                                        placeholder="-- Sin mapear --"
+                                        isClearable
+                                    />
+                                </Field>
                             </div>
                         </div>
                         <div className="modal-footer">
@@ -593,7 +526,7 @@ export default function PedidosYaIntegration() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

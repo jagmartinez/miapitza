@@ -5,13 +5,13 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    background: var(--dialog-overlay, color-mix(in srgb, #020617 82%, transparent));
+    background: var(--dialog-overlay, color-mix(in srgb, var(--ui-surface-2) 82%, transparent));
     backdrop-filter: blur(10px) saturate(.86);
 }
 
 .payment-dialog {
-    --payment-line: var(--color-border, #334155);
-    --payment-muted: var(--color-text-secondary, #94a3b8);
+    --payment-line: var(--ui-border);
+    --payment-muted: var(--ui-text-muted);
     width: min(1180px, 100%);
     height: min(780px, calc(100dvh - 48px));
     max-height: 940px;
@@ -21,9 +21,9 @@
     position: relative;
     border: 1px solid var(--dialog-panel-border, var(--payment-line));
     border-radius: 20px;
-    background: var(--dialog-panel-bg, var(--color-surface, #172033));
-    color: var(--color-text, #f8fafc);
-    box-shadow: var(--dialog-panel-shadow, 0 24px 80px rgb(2 6 23 / 52%));
+    background: var(--dialog-panel-bg, var(--ui-surface, var(--ui-surface-2)));
+    color: var(--ui-text, var(--ui-bg));
+    box-shadow: var(--dialog-panel-shadow, 0 24px 80px var(--ui-overlay));
     animation: payment-enter 180ms ease-out;
 }
 
@@ -34,7 +34,7 @@
 
 .payment-dialog button:focus-visible,
 .payment-dialog input:focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--color-primary, #2563eb) 42%, transparent);
+    outline: 3px solid color-mix(in srgb, var(--ui-primary, var(--ui-primary)) 42%, transparent);
     outline-offset: 2px;
 }
 
@@ -59,7 +59,7 @@
 .payment-section-heading h3,
 .unit-allocation h4 {
     margin: 0;
-    color: var(--color-text, #f8fafc);
+    color: var(--ui-text, var(--ui-bg));
 }
 
 .payment-dialog-header h2 {
@@ -70,7 +70,7 @@
 .payment-eyebrow {
     display: block;
     margin-bottom: 4px;
-    color: var(--color-text-secondary, #94a3b8);
+    color: var(--ui-text-muted, var(--ui-text-muted));
     font-size: .72rem;
     font-weight: 800;
     letter-spacing: .09em;
@@ -85,15 +85,15 @@
     place-items: center;
     border: 1px solid var(--payment-line);
     border-radius: 12px;
-    background: var(--dialog-muted-bg, var(--color-background, #0f172a));
+    background: var(--dialog-muted-bg, var(--ui-bg, var(--ui-surface-2)));
     color: var(--payment-muted);
     cursor: pointer;
 }
 
 .payment-close:hover:not(:disabled) {
-    border-color: var(--color-text-secondary, #94a3b8);
-    background: var(--color-surface-hover, #334155);
-    color: var(--color-text, #f8fafc);
+    border-color: var(--ui-text-muted, var(--ui-border));
+    background: var(--ui-surface-2, var(--ui-surface-2));
+    color: var(--ui-text, var(--ui-bg));
 }
 
 .payment-mode-tabs {
@@ -113,7 +113,7 @@
     padding: 9px 14px;
     border: 1px solid var(--payment-line);
     border-radius: 11px;
-    background: var(--color-background, #0f172a);
+    background: var(--ui-bg, var(--ui-surface-2));
     color: var(--payment-muted);
     font-weight: 750;
     cursor: pointer;
@@ -121,9 +121,9 @@
 
 .payment-mode-tabs button:hover:not(:disabled),
 .payment-mode-tabs button.active {
-    border-color: var(--color-primary, #2563eb);
-    background: color-mix(in srgb, var(--color-primary, #2563eb) 14%, var(--color-background, #0f172a));
-    color: var(--color-primary, #60a5fa);
+    border-color: var(--ui-primary, var(--ui-primary));
+    background: color-mix(in srgb, var(--ui-primary, var(--ui-primary)) 14%, var(--ui-bg, var(--ui-surface-2)));
+    color: var(--ui-primary, var(--ui-primary));
 }
 
 .payment-mode-tabs button.active {
@@ -136,7 +136,7 @@
     overscroll-behavior: contain;
     padding: 18px 24px 24px;
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border, #475569) transparent;
+    scrollbar-color: var(--ui-border, var(--ui-text-muted)) transparent;
 }
 
 .payment-scroll-area::-webkit-scrollbar,
@@ -156,7 +156,7 @@
 .payment-leg-list::-webkit-scrollbar-thumb,
 .unit-allocation::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background: var(--color-border, #475569);
+    background: var(--ui-border, var(--ui-surface-2));
 }
 
 .payment-total-card {
@@ -167,8 +167,8 @@
     padding: 16px 20px;
     border: 1px solid var(--payment-line);
     border-radius: 16px;
-    background: var(--color-surface, #172033);
-    color: var(--color-text, #f8fafc);
+    background: var(--ui-surface, var(--ui-surface-2));
+    color: var(--ui-text, var(--ui-bg));
     text-align: center;
 }
 
@@ -184,14 +184,14 @@
     line-height: 1.05;
     font-variant-numeric: tabular-nums;
     letter-spacing: -.04em;
-    color: var(--color-text, #f8fafc);
+    color: var(--ui-text, var(--ui-bg));
 }
 
 .payment-panel {
     padding: 20px;
     border: 1px solid var(--payment-line);
     border-radius: 16px;
-    background: color-mix(in srgb, var(--color-background, #0f172a) 72%, var(--color-surface, #172033));
+    background: color-mix(in srgb, var(--ui-bg, var(--ui-surface-2)) 72%, var(--ui-surface, var(--ui-surface-2)));
 }
 
 .single-panel {
@@ -205,7 +205,7 @@
     justify-content: space-between;
     gap: 14px;
     margin-bottom: 18px;
-    color: var(--color-primary, #60a5fa);
+    color: var(--ui-primary, var(--ui-primary));
 }
 
 .payment-section-heading-with-actions {
@@ -240,7 +240,7 @@
     display: grid;
     align-content: start;
     gap: 7px;
-    color: var(--color-text, #f8fafc);
+    color: var(--ui-text, var(--ui-bg));
     font-size: .82rem;
     font-weight: 700;
 }
@@ -264,24 +264,24 @@
     box-sizing: border-box;
     border: 1px solid var(--payment-line);
     border-radius: 10px;
-    background: var(--color-surface, #172033);
-    color: var(--color-text, #f8fafc);
+    background: var(--ui-surface, var(--ui-surface-2));
+    color: var(--ui-text, var(--ui-bg));
 }
 
 /* Every payment control uses the same 46px rhythm. React Select normally
    defaults to 38px, which made method selection feel disconnected. */
-.payment-dialog .select-group.modal .react-select__control {
+.payment-dialog .app-select__control {
     min-height: 46px;
     border-radius: 10px;
-    background: var(--color-surface, #172033);
+    background: var(--ui-surface, var(--ui-surface-2));
 }
 
-.payment-dialog .select-group.modal .react-select__value-container {
+.payment-dialog .app-select__value-container {
     min-height: 44px;
     padding-inline: 12px;
 }
 
-.payment-dialog .select-group.modal .react-select__indicators {
+.payment-dialog .app-select__indicators {
     min-height: 44px;
 }
 
@@ -291,7 +291,7 @@
 
 .payment-field > input:focus,
 .money-input-wrap:focus-within {
-    border-color: var(--color-primary, #2563eb);
+    border-color: var(--ui-primary, var(--ui-primary));
 }
 
 .payment-field input:disabled {
@@ -300,7 +300,7 @@
 }
 
 .payment-field input::placeholder {
-    color: var(--color-text-tertiary, #64748b);
+    color: var(--ui-text-muted, var(--ui-text-muted));
 }
 
 .money-input-wrap {
@@ -324,7 +324,7 @@
     border: 0;
     outline: 0;
     background: transparent;
-    color: var(--color-text, #f8fafc);
+    color: var(--ui-text, var(--ui-bg));
     font-size: 1rem;
     font-variant-numeric: tabular-nums;
     font-weight: 750;
@@ -340,29 +340,29 @@
     border: 1px solid var(--payment-line);
     border-radius: 13px;
     color: var(--payment-muted);
-    background: var(--color-surface, #172033);
+    background: var(--ui-surface, var(--ui-surface-2));
 }
 
 .payment-change strong {
-    color: var(--color-text, #f8fafc);
+    color: var(--ui-text, var(--ui-bg));
     font-size: 1.7rem;
     font-variant-numeric: tabular-nums;
 }
 
 .payment-change.positive {
-    border-color: var(--color-success, #10b981);
-    background: color-mix(in srgb, var(--color-success, #10b981) 9%, var(--color-surface, #172033));
+    border-color: var(--ui-success, var(--ui-success));
+    background: color-mix(in srgb, var(--ui-success, var(--ui-success)) 9%, var(--ui-surface, var(--ui-surface-2)));
 }
 
 .payment-change.positive strong {
-    color: var(--color-success, #10b981);
+    color: var(--ui-success, var(--ui-success));
 }
 
 .payment-leg-list {
     display: grid;
     gap: 12px;
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border, #475569) transparent;
+    scrollbar-color: var(--ui-border, var(--ui-text-muted)) transparent;
 }
 
 .payment-leg {
@@ -370,12 +370,12 @@
     padding: 16px;
     border: 1px solid var(--payment-line);
     border-radius: 14px;
-    background: var(--color-surface, #172033);
+    background: var(--ui-surface, var(--ui-surface-2));
 }
 
 .payment-leg.completed {
-    border-color: var(--color-success, #10b981);
-    background: color-mix(in srgb, var(--color-success, #10b981) 7%, var(--color-surface, #172033));
+    border-color: var(--ui-success, var(--ui-success));
+    background: color-mix(in srgb, var(--ui-success, var(--ui-success)) 7%, var(--ui-surface, var(--ui-surface-2)));
 }
 
 .payment-leg-title {
@@ -388,7 +388,7 @@
 }
 
 .payment-leg-title b {
-    color: var(--color-success, #10b981);
+    color: var(--ui-success, var(--ui-success));
     font-size: .72rem;
     text-transform: uppercase;
 }
@@ -415,7 +415,7 @@
 }
 
 .leg-change b {
-    color: var(--color-success, #10b981);
+    color: var(--ui-success, var(--ui-success));
     font-variant-numeric: tabular-nums;
 }
 
@@ -439,7 +439,7 @@
 .leg-remove {
     margin-top: 10px;
     border: 0;
-    color: var(--color-danger, #ef4444);
+    color: var(--ui-danger, var(--ui-danger));
 }
 
 .payment-add-leg,
@@ -450,8 +450,8 @@
 
 .payment-add-leg:hover:not(:disabled),
 .payment-recalculate:hover:not(:disabled) {
-    border-color: var(--color-primary, #2563eb);
-    color: var(--color-primary, #60a5fa);
+    border-color: var(--ui-primary, var(--ui-primary));
+    color: var(--ui-primary, var(--ui-primary));
 }
 
 .allocation-status {
@@ -461,14 +461,14 @@
     gap: 14px;
     margin-top: 14px;
     padding: 13px 15px;
-    border: 1px solid var(--color-danger, #ef4444);
+    border: 1px solid var(--ui-danger, var(--ui-danger));
     border-radius: 12px;
-    background: color-mix(in srgb, var(--color-danger, #ef4444) 7%, transparent);
+    background: color-mix(in srgb, var(--ui-danger, var(--ui-danger)) 7%, transparent);
 }
 
 .allocation-status.valid {
-    border-color: var(--color-success, #10b981);
-    background: color-mix(in srgb, var(--color-success, #10b981) 7%, transparent);
+    border-color: var(--ui-success, var(--ui-success));
+    background: color-mix(in srgb, var(--ui-success, var(--ui-success)) 7%, transparent);
 }
 
 .allocation-status > div {
@@ -486,12 +486,12 @@
 }
 
 .allocation-status > b {
-    color: var(--color-danger, #ef4444);
+    color: var(--ui-danger, var(--ui-danger));
     font-size: .8rem;
 }
 
 .allocation-status.valid > b {
-    color: var(--color-success, #10b981);
+    color: var(--ui-success, var(--ui-success));
 }
 
 .allocation-status.compact {
@@ -532,7 +532,7 @@
     padding: 8px 13px;
     border: 1px solid var(--payment-line);
     border-radius: 9px;
-    background: var(--color-surface, #172033);
+    background: var(--ui-surface, var(--ui-surface-2));
     color: var(--payment-muted);
     font-weight: 750;
     cursor: pointer;
@@ -540,9 +540,9 @@
 
 .split-strategies button.active,
 .split-count-row button.active {
-    border-color: var(--color-primary, #2563eb);
-    background: var(--color-primary, #2563eb);
-    color: #fff;
+    border-color: var(--ui-primary, var(--ui-primary));
+    background: var(--ui-primary, var(--ui-primary));
+    color: var(--ui-primary-fg);
 }
 
 .split-count-row {
@@ -566,13 +566,9 @@
     padding: 15px;
     border: 1px solid var(--payment-line);
     border-radius: 14px;
-    background: var(--color-background, #0f172a);
+    background: var(--ui-bg, var(--ui-surface-2));
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border, #475569) transparent;
-}
-
-.unit-allocation-header {
-    margin-bottom: 12px;
+    scrollbar-color: var(--ui-border, var(--ui-text-muted)) transparent;
 }
 
 .unit-row {
@@ -608,11 +604,11 @@
 }
 
 .unit-row > header b.complete {
-    color: var(--color-success, #10b981);
+    color: var(--ui-success, var(--ui-success));
 }
 
 .unit-row > header b.pending {
-    color: var(--color-warning, #f59e0b);
+    color: var(--ui-warning, var(--ui-warning));
 }
 
 .unit-assignment-list {
@@ -629,7 +625,7 @@
     padding: 8px 10px;
     border: 1px solid var(--payment-line);
     border-radius: 10px;
-    background: var(--color-surface, #172033);
+    background: var(--ui-surface, var(--ui-surface-2));
 }
 
 .unit-assignment-row > span {
@@ -650,7 +646,7 @@
     padding: 6px 11px;
     border: 1px solid var(--payment-line);
     border-radius: 999px;
-    background: var(--color-background, #0f172a);
+    background: var(--ui-bg, var(--ui-surface-2));
     color: var(--payment-muted);
     font-size: .76rem;
     font-weight: 750;
@@ -658,14 +654,14 @@
 }
 
 .unit-payer-options button:hover:not(:disabled) {
-    border-color: var(--color-primary, #2563eb);
-    color: var(--color-primary, #60a5fa);
+    border-color: var(--ui-primary, var(--ui-primary));
+    color: var(--ui-primary, var(--ui-primary));
 }
 
 .unit-payer-options button.selected {
-    border-color: var(--color-primary, #2563eb);
-    background: color-mix(in srgb, var(--color-primary, #2563eb) 18%, var(--color-background, #0f172a));
-    color: var(--color-text, #f8fafc);
+    border-color: var(--ui-primary, var(--ui-primary));
+    background: color-mix(in srgb, var(--ui-primary, var(--ui-primary)) 18%, var(--ui-bg, var(--ui-surface-2)));
+    color: var(--ui-text, var(--ui-bg));
     box-shadow: none;
 }
 
@@ -683,11 +679,11 @@
     padding: 14px;
     border: 1px solid var(--payment-line);
     border-radius: 12px;
-    background: var(--color-surface, #172033);
+    background: var(--ui-surface, var(--ui-surface-2));
 }
 
 .split-payer-total.completed {
-    border-color: var(--color-success, #10b981);
+    border-color: var(--ui-success, var(--ui-success));
 }
 
 .split-payer-total > header {
@@ -712,7 +708,7 @@
 }
 
 .split-payer-amount strong {
-    color: var(--color-text, #f8fafc);
+    color: var(--ui-text, var(--ui-bg));
     font-size: 1.15rem;
     font-variant-numeric: tabular-nums;
 }
@@ -725,7 +721,7 @@
 
 .split-payer-confirmed {
     margin-top: 10px;
-    color: var(--color-success, #10b981);
+    color: var(--ui-success, var(--ui-success));
     font-size: .74rem;
     font-weight: 750;
     text-align: right;
@@ -747,22 +743,22 @@
 }
 
 .payment-alert.error {
-    border-color: color-mix(in srgb, var(--color-danger, #ef4444) 70%, var(--payment-line));
-    background: color-mix(in srgb, var(--color-danger, #ef4444) 8%, transparent);
-    color: var(--color-danger, #ef4444);
+    border-color: color-mix(in srgb, var(--ui-danger, var(--ui-danger)) 70%, var(--payment-line));
+    background: color-mix(in srgb, var(--ui-danger, var(--ui-danger)) 8%, transparent);
+    color: var(--ui-danger, var(--ui-danger));
 }
 
 .payment-alert.warning {
-    border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 65%, var(--payment-line));
-    background: color-mix(in srgb, var(--color-warning, #f59e0b) 8%, transparent);
-    color: var(--color-warning, #f59e0b);
+    border-color: color-mix(in srgb, var(--ui-warning, var(--ui-warning)) 65%, var(--payment-line));
+    background: color-mix(in srgb, var(--ui-warning, var(--ui-warning)) 8%, transparent);
+    color: var(--ui-warning, var(--ui-warning));
 }
 
 .payment-dialog-footer {
     position: relative;
     padding: 14px 24px 17px;
     border-top: 1px solid var(--payment-line);
-    background: var(--color-surface, #172033);
+    background: var(--ui-surface, var(--ui-surface-2));
 }
 
 .payment-dialog-footer > .payment-alert,
@@ -798,13 +794,13 @@
 }
 
 .payment-footer-actions .primary {
-    border: 1px solid var(--color-primary, #2563eb);
-    background: var(--color-primary, #2563eb);
-    color: #fff;
+    border: 1px solid var(--ui-primary, var(--ui-primary));
+    background: var(--ui-primary, var(--ui-primary));
+    color: var(--ui-primary-fg);
 }
 
 .payment-footer-actions .primary:hover:not(:disabled) {
-    background: var(--color-primary-dark, #1d4ed8);
+    background: var(--ui-primary-hover, var(--ui-primary-hover));
 }
 
 .payment-dialog button:disabled {
@@ -935,7 +931,7 @@
     min-width: 0;
     padding: 20px;
     border-right: 1px solid var(--payment-line);
-    background: var(--color-background, #0f172a);
+    background: var(--ui-bg, var(--ui-surface-2));
 }
 
 .payment-context .payment-total-card {
@@ -999,11 +995,11 @@
     padding: 14px;
     border: 1px solid var(--payment-line);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--color-surface, #172033) 82%, transparent);
+    background: color-mix(in srgb, var(--ui-surface, var(--ui-surface-2)) 82%, transparent);
 }
 
 .payment-context-help > span {
-    color: var(--color-primary, #60a5fa);
+    color: var(--ui-primary, var(--ui-primary));
     font-size: .65rem;
     font-weight: 800;
     letter-spacing: .06em;
@@ -1011,7 +1007,7 @@
 }
 
 .payment-context-help > strong {
-    color: var(--color-text, #f8fafc);
+    color: var(--ui-text, var(--ui-bg));
     font-size: .86rem;
 }
 
@@ -1024,7 +1020,7 @@
 
 .payment-workspace > .payment-scroll-area {
     padding: 22px;
-    background: color-mix(in srgb, var(--color-surface, #172033) 88%, var(--color-background, #0f172a));
+    background: color-mix(in srgb, var(--ui-surface, var(--ui-surface-2)) 88%, var(--ui-bg, var(--ui-surface-2)));
 }
 
 .payment-workspace .single-panel {

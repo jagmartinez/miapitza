@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import axios from 'axios';
 import {
     Calendar, Users, Plus, MapPin, FileText,
     Download,
@@ -6,11 +7,7 @@ import {
     Grid3x3, List, CalendarDays, ChevronLeft, ChevronRight, Phone,
     Eye
 } from 'lucide-react';
-import Select from '../components/Select';
-import type { SingleValue } from 'react-select';
-import Button from '../components/Button';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
-import Sidebar from '../components/Sidebar';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, PageHeader, type Column } from '@/ui';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, warehousesAPI } from '../services/api';
 import { getCateringStatusOptions, isCateringStatusTerminal } from '../utils/cateringStatus';
@@ -24,7 +21,9 @@ import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { newIdempotencyKey } from '../utils/idempotency';
 import { filterMenuItemsByCategory, getMenuCategoryOptions } from '../utils/cateringMenuFilter';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
 import './CateringMod.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface CateringClausesForm {
     manifiestan: string;
@@ -64,6 +63,29 @@ interface CateringPaymentEntry {
     reversedAt?: string | null;
     reversalReason?: string | null;
 }
+
+interface CateringInventoryPreviewLine {
+    productId: number;
+    productName: string;
+    unit: string | null;
+    warehouseId: number;
+    warehouseName: string;
+    routed: boolean;
+    required: number;
+    available: number;
+    shortage: number;
+}
+
+const FINISH_PREVIEW_COLUMNS: Column<CateringInventoryPreviewLine>[] = [
+    { key: 'productName', header: 'Ingrediente' },
+    { key: 'warehouseName', header: 'Bodega', render: (line) => `${line.warehouseName}${line.routed ? ' (regla)' : ''}` },
+    { key: 'required', header: 'Requerido', render: (line) => `${line.required} ${line.unit ?? ''}` },
+    {
+        key: 'available',
+        header: 'Disponible',
+        render: (line) => `${line.available} ${line.unit ?? ''}${line.shortage > 0 ? ` (faltan ${line.shortage})` : ''}`,
+    },
+];
 
 interface CateringServiceCatalog {
     id: number;
@@ -123,6 +145,39 @@ function formatAvailabilityAlert(alert: InventoryAvailabilityAlert): string {
     return `${alert.productName}: requiere ${alert.required}, disponible ${alert.available}, déficit ${alert.deficit}`;
 }
 
+async function contractDownloadError(error: unknown): Promise<string> {
+    const fallback = 'Error al generar el contrato en PDF';
+    if (!axios.isAxiosError(error)) {
+        return error instanceof Error && error.message ? `${fallback}: ${error.message}` : fallback;
+    }
+    const responseData: unknown = error.response?.data;
+    if (responseData instanceof Blob) {
+        try {
+            const parsed = JSON.parse(await responseData.text()) as { message?: unknown };
+            if (typeof parsed.message === 'string' && parsed.message.trim()) return parsed.message.trim();
+        } catch {
+            // An opaque proxy/body failure has no safe domain message to expose.
+        }
+    } else if (
+        responseData
+        && typeof responseData === 'object'
+        && 'message' in responseData
+        && typeof responseData.message === 'string'
+        && responseData.message.trim()
+    ) {
+        return responseData.message.trim();
+    }
+    return fallback;
+}
+
+function contractFilename(contentDisposition: unknown, eventId: number): string {
+    const fallback = `contrato-catering-EVT-${String(eventId).padStart(5, '0')}.pdf`;
+    if (typeof contentDisposition !== 'string') return fallback;
+    const match = /filename="?([^";]+)"?/i.exec(contentDisposition);
+    const candidate = match?.[1]?.trim().replace(/[\\/:*?"<>|]/g, '_');
+    return candidate?.toLowerCase().endsWith('.pdf') ? candidate : fallback;
+}
+
 export default function Catering() {
     const { formatMoney } = useCurrency();
     const { user } = useAuth();
@@ -153,6 +208,8 @@ export default function Catering() {
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     const [availabilityAlerts, setAvailabilityAlerts] = useState<InventoryAvailabilityAlert[]>([]);
     const [settings, setSettings] = useState<CateringCompanySettings>({});
+    const [contractPdfBusyId, setContractPdfBusyId] = useState<number | null>(null);
+    const [contractPdfError, setContractPdfError] = useState<string | null>(null);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -206,6 +263,23 @@ export default function Catering() {
         setExternalRefundReferences({});
     }, [selectedEvent?.id]);
     const [finishWarehouseId, setFinishWarehouseId] = useState<number | null>(null);
+    const [finishPreview, setFinishPreview] = useState<CateringInventoryPreviewLine[] | null>(null);
+    const [finishPreviewError, setFinishPreviewError] = useState<string | null>(null);
+    const finishPreviewEventId = selectedEvent?.status === 'PAID' && formData.status === 'FINISHED' ? selectedEvent.id : null;
+    useEffect(() => {
+        setFinishPreview(null);
+        setFinishPreviewError(null);
+        if (finishPreviewEventId == null || !finishWarehouseId) return;
+        let cancelled = false;
+        cateringAPI.getInventoryPreview(finishPreviewEventId, finishWarehouseId)
+            .then((response) => {
+                if (!cancelled) setFinishPreview((response.data?.data?.lines ?? []) as CateringInventoryPreviewLine[]);
+            })
+            .catch((error: unknown) => {
+                if (!cancelled) setFinishPreviewError(getApiErrorMessage(error, 'No se pudo calcular el origen de los ingredientes'));
+            });
+        return () => { cancelled = true; };
+    }, [finishPreviewEventId, finishWarehouseId]);
 
     const menuCategoryOptions = useMemo(
         () => [{ value: 'all', label: 'Todas las categorías' }, ...getMenuCategoryOptions(allMenuItems)],
@@ -217,30 +291,35 @@ export default function Catering() {
     );
 
     const handleDownloadContract = useCallback(async (event: CateringEvent) => {
-        try {
-            const [{ pdf }, { default: ContractPDF }] = await Promise.all([
-                import('@react-pdf/renderer'),
-                import('../components/ContractPDF')
-            ]);
+        if (contractPdfBusyId !== null) return;
 
-            const contractEvent = {
-                ...event,
-                customer: event.customer || undefined
-            };
-            const blob = await pdf(<ContractPDF event={contractEvent} settings={settings} />).toBlob();
+        setContractPdfBusyId(event.id);
+        setContractPdfError(null);
+        try {
+            const response = await cateringAPI.downloadContract(event.id);
+            const contentType = String(response.headers['content-type'] || '').toLowerCase();
+            const blob = response.data as Blob;
+            if (!contentType.includes('application/pdf') || !(blob instanceof Blob) || blob.size === 0) {
+                throw new Error('El servidor no devolvió un PDF válido');
+            }
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `Contrato_${event.title.replace(/\s+/g, '_')}.pdf`;
+            link.download = contractFilename(response.headers['content-disposition'], event.id);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+            showSuccess('Contrato PDF descargado');
         } catch (error) {
             console.error('Error generating contract PDF:', error);
-            showError('Error al generar el contrato en PDF');
+            const message = await contractDownloadError(error);
+            setContractPdfError(message);
+            showError(message);
+        } finally {
+            setContractPdfBusyId(null);
         }
-    }, [settings, showError]);
+    }, [contractPdfBusyId, showError, showSuccess]);
 
     const loadEvents = useCallback(async () => {
         try {
@@ -249,7 +328,7 @@ export default function Catering() {
             setEvents(response.data.data);
         } catch (error) {
             console.error('Error loading catering events:', error);
-            showError('No se pudieron cargar los eventos de catering.');
+            showError(getApiErrorMessage(error, 'No se pudieron cargar los eventos de catering'));
         } finally {
             setLoading(false);
         }
@@ -274,7 +353,7 @@ export default function Catering() {
             setSettings(settingsRes.data.data);
         } catch (error) {
             console.error('Error loading master data:', error);
-            showError('No se pudieron cargar sucursales, menú o métodos de pago de catering.');
+            showError(getApiErrorMessage(error, 'No se pudieron cargar sucursales, menú o métodos de pago de catering'));
         }
     }, [showError]);
 
@@ -320,7 +399,7 @@ export default function Catering() {
                 });
             } catch (error) {
                 console.error('Error loading event details:', error);
-                showError('No se pudo cargar el detalle del evento.');
+                showError(getApiErrorMessage(error, 'No se pudo cargar el detalle del evento'));
                 return;
             }
         } else {
@@ -396,7 +475,15 @@ export default function Catering() {
 
             if (selectedEvent) {
                 if (selectedEvent.status === 'PAID' && formData.status === 'FINISHED') {
-                    await cateringAPI.updateEvent(selectedEvent.id, { status: 'FINISHED', warehouseId: finishWarehouseId });
+                    const response = await cateringAPI.updateEvent(selectedEvent.id, { status: 'FINISHED', warehouseId: finishWarehouseId });
+                    // Same policy as sales: short stock does not block the finish;
+                    // the server records the deficit and returns a warning.
+                    const inventoryWarning = response.data?.data?.inventoryWarning;
+                    if (typeof inventoryWarning === 'string' && inventoryWarning) {
+                        showWarning(inventoryWarning);
+                    } else {
+                        showSuccess('Evento finalizado e inventario descontado.');
+                    }
                 } else {
                     await cateringAPI.updateEvent(selectedEvent.id, dataToSave);
                 }
@@ -407,10 +494,8 @@ export default function Catering() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error saving event:', error);
-            const message = typeof error === 'object' && error !== null && 'response' in error
-                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
-                : undefined;
-            showError(message || 'No se pudo guardar el evento de catering.');
+            // The server message already carries its own lead ("No se pudo actualizar…").
+            showError(getApiErrorMessage(error));
         } finally {
             setSavingEvent(false);
         }
@@ -602,11 +687,11 @@ export default function Catering() {
             loadEvents();
         } catch (error) {
             console.error('Error deleting event:', error);
-            showError('No se pudo eliminar el evento de catering.');
+            showError(getApiErrorMessage(error, 'No se pudo eliminar el evento de catering'));
         }
     };
 
-    const tableColumns: CatalogColumn<CateringEvent>[] = [
+    const tableColumns: Column<CateringEvent>[] = [
         {
             key: 'event',
             header: 'Evento',
@@ -634,7 +719,6 @@ export default function Catering() {
         {
             key: 'people',
             header: 'Personas',
-            align: 'center',
             render: (event) => event.peopleCount,
         },
         {
@@ -645,7 +729,7 @@ export default function Catering() {
         {
             key: 'total',
             header: 'Total',
-            align: 'right',
+            type: 'number',
             render: (event) => formatMoney(Number(event.totalAmount || 0)),
         },
         {
@@ -668,7 +752,7 @@ export default function Catering() {
         {
             key: 'actions',
             header: 'Acciones',
-            align: 'right',
+            type: 'number',
             render: (event) => (
                 <div className="catalog-table-actions">
                     <button
@@ -693,8 +777,12 @@ export default function Catering() {
                         type="button"
                         className="catalog-action-btn"
                         onClick={() => void handleDownloadContract(event)}
-                        title="Descargar contrato PDF"
-                        aria-label={`Descargar contrato de ${event.title}`}
+                        disabled={contractPdfBusyId !== null}
+                        aria-busy={contractPdfBusyId === event.id}
+                        title={contractPdfBusyId === event.id ? 'Generando contrato PDF' : 'Descargar contrato PDF'}
+                        aria-label={contractPdfBusyId === event.id
+                            ? `Generando contrato de ${event.title}`
+                            : `Descargar contrato de ${event.title}`}
                     >
                         <Download size={16} />
                     </button>
@@ -795,11 +883,10 @@ export default function Catering() {
     return (
         <div className="catering-page">
             {/* Header */}
-            <div className="catering-header">
-                <div>
-                    <h1><ConciergeBell size={32} /> Servicios de Catering</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
+            <PageHeader
+                title="Servicios de Catering"
+                actions={
+                    <div className="ui-page-actions">
                     <div className="view-toggle">
                         <button
                             type="button"
@@ -833,13 +920,14 @@ export default function Catering() {
                         </button>
                     </div>
                     {canManageCatering && (
-                        <Button onClick={() => handleOpenSidebar()}>
+                        <Button variant="primary" onClick={() => handleOpenSidebar()}>
                             <Plus size={20} />
                             Nuevo Evento
                         </Button>
                     )}
                 </div>
-            </div>
+                }
+            />
 
             {/* Filters apply to card and table views. */}
             {viewMode !== 'calendar' && (
@@ -896,6 +984,17 @@ export default function Catering() {
                         />
                     </div>
                 </div>
+            )}
+
+            {contractPdfBusyId !== null && (
+                <p className="catering-contract-status" role="status" aria-live="polite">
+                    Preparando contrato PDF…
+                </p>
+            )}
+            {contractPdfError && (
+                <p className="catering-contract-status error" role="alert">
+                    {contractPdfError}
+                </p>
             )}
 
             {loading ? (
@@ -1007,7 +1106,7 @@ export default function Catering() {
                                             </div>
                                             <div className="week-day-events">
                                                 {dayEvents.map(e => (
-                                                    <div key={e.id} className={`week-event-item status-${e.status.toLowerCase()}`} onClick={() => handleOpenSidebar(e)}>
+                                                    <div key={e.id} className={`week-event-item status-${e.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${e.title}`} onClick={() => handleOpenSidebar(e)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(e))}>
                                                         <div className="year-event-time">{new Date(e.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>
                                                         <div className="week-event-name">{e.title}</div>
                                                     </div>
@@ -1030,7 +1129,7 @@ export default function Catering() {
                                         <div className="day-hour-label">{hour}:00</div>
                                         <div className="day-hour-content">
                                             {dayEvents.map(e => (
-                                                <div key={e.id} className={`day-event-item status-${e.status.toLowerCase()}`} onClick={() => handleOpenSidebar(e)}>
+                                                <div key={e.id} className={`day-event-item status-${e.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${e.title}`} onClick={() => handleOpenSidebar(e)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(e))}>
                                                     <div className="day-event-info">
                                                         <span className="day-event-time">{new Date(e.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
                                                         <span className="day-event-name">{e.title}</span>
@@ -1051,17 +1150,18 @@ export default function Catering() {
                 </div>
             ) : viewMode === 'table' ? (
                 <div className="catering-events-table">
-                    <CatalogTable<CateringEvent>
+                    <DataTable<CateringEvent>
+                        ariaLabel="Eventos de catering"
                         rows={filteredEvents}
                         rowKey={(event) => event.id}
                         columns={tableColumns}
-                        resetKey={`${filterStatus}-${searchQuery}`}
+                        resetKey={`${filterStatus}-${searchQuery}-${filteredEvents.length}`}
                     />
                 </div>
             ) : (
                 <div className="catering-grid">
                     {filteredEvents.map(event => (
-                        <div key={event.id} className={`table-card-new status-${event.status.toLowerCase()}`} onClick={() => handleOpenSidebar(event)}>
+                        <div key={event.id} className={`table-card-new status-${event.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${event.title}`} onClick={() => handleOpenSidebar(event)} onKeyDown={(keyboardEvent) => activateOnKeyboard(keyboardEvent, () => handleOpenSidebar(event))}>
                             {/* Status Badge */}
                             <div className={`status-badge-new status-${event.status.toLowerCase()}`}>
                                 <span>{getStatusText(event.status)}</span>
@@ -1082,7 +1182,7 @@ export default function Catering() {
                                             <span>{event.customer.phone}</span>
                                         </div>
                                     )}
-                                    <div className="detail-item" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--color-border)', opacity: 0.8 }}>
+                                    <div className="detail-item" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--ui-border)', opacity: 0.8 }}>
                                         <Calendar size={14} />
                                         <span>{new Date(event.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} • {new Date(event.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
@@ -1118,11 +1218,17 @@ export default function Catering() {
                                 </button>
 
                                 <button
+                                    type="button"
                                     className="action-btn-new"
                                     onClick={() => void handleDownloadContract(event)}
+                                    disabled={contractPdfBusyId !== null}
+                                    aria-busy={contractPdfBusyId === event.id}
+                                    aria-label={contractPdfBusyId === event.id
+                                        ? `Generando contrato de ${event.title}`
+                                        : `Descargar contrato de ${event.title}`}
                                 >
                                     <Download size={20} />
-                                    <span>PDF</span>
+                                    <span>{contractPdfBusyId === event.id ? 'Generando…' : 'PDF'}</span>
                                 </button>
 
                                 {canManageCatering && (
@@ -1140,11 +1246,10 @@ export default function Catering() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo Evento de Catering'}
-                width="medium"
             >
                 <div className="premium-modal-content catering-modal-content catering-event-modal-content">
                     <div className="modal-tabs" role="tablist" aria-label="Secciones del evento de catering">
@@ -1270,24 +1375,17 @@ export default function Catering() {
                                         <h3>Detalles del evento</h3>
                                     </div>
                                     <div className="modal-form-row">
-                                        <Select
-                                            variant="modal"
-                                            label="Sucursal"
-                                            value={
-                                                formData.branchId
-                                                    ? {
-                                                        value: formData.branchId,
-                                                        label: allBranches.find((b) => b.id.toString() === formData.branchId)?.name || ''
-                                                    }
-                                                    : null
-                                            }
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                                setFormData({ ...formData, branchId: option?.value || '' })}
-                                            options={allBranches.map((b) => ({ value: b.id.toString(), label: b.name }))}
-                                            placeholder="Seleccione Sucursal..."
-                                            isClearable
-                                            isSearchable
-                                        />
+                                        <Field label="Sucursal" htmlFor="catering-select-1">
+                                            <AppSelect
+                                                inputId="catering-select-1"
+                                                value={formData.branchId || null}
+                                                onChange={(option) =>
+                                                    setFormData({ ...formData, branchId: option || '' })}
+                                                options={allBranches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                                                placeholder="Seleccione Sucursal..."
+                                                isClearable
+                                            />
+                                        </Field>
                                         <div className="modal-input-group">
                                             <label htmlFor="catering-event-title">Título del evento</label>
                                             <input
@@ -1322,39 +1420,67 @@ export default function Catering() {
                                         </div>
                                     </div>
                                     <div className="modal-form-row">
-                                        <Select
-                                            variant="modal"
-                                            label="Estado"
-                                            value={{ value: formData.status, label: getStatusText(formData.status) }}
-                                            onChange={(option: SingleValue<{ value: CateringEvent['status']; label: string }>) => {
-                                                if (!option) return;
-                                                setFormData({ ...formData, status: option.value });
-                                                if (option.value !== 'FINISHED') setFinishWarehouseId(null);
-                                            }}
-                                            options={getCateringStatusOptions(selectedEvent?.status).map((value) => ({
-                                                value,
-                                                label: getStatusText(value),
-                                            }))}
-                                            isDisabled={Boolean(selectedEvent && isCateringStatusTerminal(selectedEvent.status))}
-                                            isSearchable={false}
-                                        />
+                                        <Field label="Estado" htmlFor="catering-select-2">
+                                            <AppSelect
+                                                inputId="catering-select-2"
+                                                value={formData.status}
+                                                isClearable={false}
+                                                onChange={(option) => {
+                                                    if (!option) return;
+                                                    setFormData({ ...formData, status: option });
+                                                    if (option !== 'FINISHED') setFinishWarehouseId(null);
+                                                }}
+                                                options={getCateringStatusOptions(selectedEvent?.status).map((value) => ({
+                                                    value,
+                                                    label: getStatusText(value),
+                                                }))}
+                                                isDisabled={Boolean(selectedEvent && isCateringStatusTerminal(selectedEvent.status))}
+                                            />
+                                        </Field>
                                         {selectedEvent?.status === 'RESERVED' && (
                                             <small>El estado Pagado se asigna automáticamente al completar el saldo.</small>
                                         )}
                                         {selectedEvent?.status === 'PAID' && formData.status === 'FINISHED' && (
-                                            <Select
-                                                variant="modal"
-                                                label="Bodega para consumo"
-                                                options={allWarehouses
-                                                    .filter((warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === Number(formData.branchId))
-                                                    .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
-                                                value={allWarehouses
-                                                    .filter((warehouse) => warehouse.id === finishWarehouseId)
-                                                    .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))[0] ?? null}
-                                                onChange={(option: SingleValue<{ value: number; label: string }>) => setFinishWarehouseId(option?.value ?? null)}
-                                                placeholder="Seleccionar bodega de la sucursal..."
-                                                noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
-                                            />
+                                            <Field label="Bodega para consumo" htmlFor="catering-select-3">
+                                                <AppSelect
+                                                    inputId="catering-select-3"
+                                                    options={allWarehouses
+                                                        .filter((warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === Number(formData.branchId))
+                                                        .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
+                                                    value={finishWarehouseId}
+                                                    onChange={(option) => setFinishWarehouseId(option ?? null)}
+                                                    placeholder="Seleccionar bodega de la sucursal..."
+                                                    noOptionsText='No hay bodegas de sucursal disponibles'
+                                                />
+                                            </Field>
+                                        )}
+                                        {finishPreviewEventId != null && finishWarehouseId != null && (
+                                            <div className="catering-finish-preview" aria-live="polite">
+                                                <small>
+                                                    Cada ingrediente se descuenta de la bodega asignada por las reglas de la sucursal;
+                                                    sin regla, de la bodega seleccionada.
+                                                </small>
+                                                {finishPreviewError && <small role="alert">{finishPreviewError}</small>}
+                                                {finishPreview && finishPreview.length === 0 && (
+                                                    <small>El evento no tiene ingredientes con receta para descontar.</small>
+                                                )}
+                                                {finishPreview && finishPreview.length > 0 && (
+                                                    <DataTable<CateringInventoryPreviewLine>
+                                                        ariaLabel="Ingredientes a descontar"
+                                                        columns={FINISH_PREVIEW_COLUMNS}
+                                                        rows={finishPreview}
+                                                        rowKey={(line) => line.productId}
+                                                        rowTone={(line) => (line.shortage > 0 ? 'danger' : undefined)}
+                                                        pagination={{ mode: 'client' }}
+                                                        defaultPageSize={50}
+                                                    />
+                                                )}
+                                                {finishPreview?.some((line) => line.shortage > 0) && (
+                                                    <small>
+                                                        Hay faltantes: como en ventas, el evento se finaliza igual y se registra existencia negativa.
+                                                    </small>
+                                                )}
+                                            </div>
                                         )}
                                         <div className="modal-input-group">
                                             <label htmlFor="catering-people-count">Invitados</label>
@@ -1412,26 +1538,26 @@ export default function Catering() {
                                     <h3>Servicios del evento</h3>
                                 </div>
                                 <div className="catering-tab-toolbar single-control">
-                                    <Select
-                                        variant="modal"
-                                        label="Agregar Servicio"
-                                        value={null}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => {
-                                            if (option) {
-                                                const service = allServices.find((s) => s.id.toString() === option.value);
-                                                if (service) {
-                                                    setFormData({
-                                                        ...formData,
-                                                        services: [...formData.services, { service, quantity: 1, unitPrice: service.salePrice ?? 0 }]
-                                                    });
+                                    <Field label="Agregar Servicio" htmlFor="catering-select-4">
+                                        <AppSelect
+                                            inputId="catering-select-4"
+                                            value={null}
+                                            onChange={(option) => {
+                                                if (option) {
+                                                    const service = allServices.find((s) => s.id.toString() === option);
+                                                    if (service) {
+                                                        setFormData({
+                                                            ...formData,
+                                                            services: [...formData.services, { service, quantity: 1, unitPrice: service.salePrice ?? 0 }]
+                                                        });
+                                                    }
                                                 }
-                                            }
-                                        }}
-                                        options={allServices.map((s) => ({ value: s.id.toString(), label: `${s.name} - ${formatMoney(Number(s.salePrice))}` }))}
-                                        placeholder="Seleccione un servicio..."
-                                        isClearable
-                                        isSearchable
-                                    />
+                                            }}
+                                            options={allServices.map((s) => ({ value: s.id.toString(), label: `${s.name} - ${formatMoney(Number(s.salePrice))}` }))}
+                                            placeholder="Seleccione un servicio..."
+                                            isClearable
+                                        />
+                                    </Field>
                                 </div>
 
                                 <div className="items-table">
@@ -1490,34 +1616,36 @@ export default function Catering() {
                                     <h3>Menú del evento</h3>
                                 </div>
                                 <div className="catering-tab-toolbar">
-                                    <Select
-                                        variant="modal"
-                                        label="Categoría"
-                                        value={menuCategoryOptions.find((option) => option.value === menuCategoryFilter) ?? menuCategoryOptions[0]}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setMenuCategoryFilter(option?.value ?? 'all')}
-                                        options={menuCategoryOptions}
-                                        placeholder="Todas las categorías"
-                                    />
-                                    <Select
-                                        variant="modal"
-                                        label="Agregar Plato"
-                                        value={null}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => {
-                                            if (option) {
-                                                const menuItem = allMenuItems.find((m) => m.id.toString() === option.value);
-                                                if (menuItem) {
-                                                    setFormData({
-                                                        ...formData,
-                                                        menuItems: [...formData.menuItems, { menuItem, quantity: 1, unitPrice: menuItem.price || 0 }]
-                                                    });
+                                    <Field label="Categoría" htmlFor="catering-select-5">
+                                        <AppSelect
+                                            inputId="catering-select-5"
+                                            value={menuCategoryFilter}
+                                            isClearable={false}
+                                            onChange={(option) => setMenuCategoryFilter(option ?? 'all')}
+                                            options={menuCategoryOptions}
+                                            placeholder="Todas las categorías"
+                                        />
+                                    </Field>
+                                    <Field label="Agregar Plato" htmlFor="catering-select-6">
+                                        <AppSelect
+                                            inputId="catering-select-6"
+                                            value={null}
+                                            onChange={(option) => {
+                                                if (option) {
+                                                    const menuItem = allMenuItems.find((m) => m.id.toString() === option);
+                                                    if (menuItem) {
+                                                        setFormData({
+                                                            ...formData,
+                                                            menuItems: [...formData.menuItems, { menuItem, quantity: 1, unitPrice: menuItem.price || 0 }]
+                                                        });
+                                                    }
                                                 }
-                                            }
-                                        }}
-                                        options={filteredMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} · ${m.category?.name || 'Sin categoría'} - ${formatMoney(Number(m.price || 0))}` }))}
-                                        placeholder="Seleccione un plato..."
-                                        isClearable
-                                        isSearchable
-                                    />
+                                            }}
+                                            options={filteredMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} · ${m.category?.name || 'Sin categoría'} - ${formatMoney(Number(m.price || 0))}` }))}
+                                            placeholder="Seleccione un plato..."
+                                            isClearable
+                                        />
+                                    </Field>
                                     <Button
                                         type="button"
                                         variant="ghost"
@@ -1715,14 +1843,14 @@ export default function Catering() {
                                     </div>
                                 </div>
 
-                                <div className="payment-form" style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', marginBottom: '12px' }}>
+                                <div className="payment-form" style={{ padding: '12px', background: 'var(--ui-surface-2)', borderRadius: '8px', marginBottom: '12px' }}>
                                     <h3 style={{ marginBottom: '10px', fontSize: '0.95rem' }}>Documentos fiscales</h3>
                                     {selectedEvent.fiscalInvoice ? (
                                         <p style={{ margin: '0 0 10px' }}>
                                             Factura <strong>{selectedEvent.fiscalInvoice.number}</strong> · {selectedEvent.fiscalInvoice.status === 'CREDITED' ? 'Acreditada' : 'Emitida'}
                                         </p>
                                     ) : (
-                                        <Button
+                                        <Button variant="primary"
                                             type="button"
                                             onClick={handleIssueFiscalInvoice}
                                             disabled={!canManageCatering || fiscalBusy || !['PAID', 'FINISHED'].includes(selectedEvent.status)}
@@ -1775,7 +1903,7 @@ export default function Catering() {
                                     )}
                                 </div>
 
-                                <div className="payment-form" style={{ padding: '10px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                <div className="payment-form" style={{ padding: '10px', background: 'var(--ui-surface-2)', borderRadius: '8px' }}>
                                     <h3 style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}>
                                         Registrar Pago
                                     </h3>
@@ -1790,26 +1918,19 @@ export default function Catering() {
                                                 onChange={e => setPaymentData({ ...paymentData, amount: parseFloat(e.target.value) })}
                                             />
                                         </div>
-                                        <Select
-                                            variant="modal"
-                                            label="Método de Pago"
-                                            value={
-                                                paymentData.paymentMethodId
-                                                    ? {
-                                                        value: paymentData.paymentMethodId,
-                                                        label: paymentMethods.find((pm) => pm.id.toString() === paymentData.paymentMethodId)?.name || ''
-                                                    }
-                                                    : null
-                                            }
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                                setPaymentData({ ...paymentData, paymentMethodId: option?.value || '' })}
-                                            options={paymentMethods.map((pm) => ({ value: pm.id.toString(), label: pm.name }))}
-                                            placeholder="Seleccione..."
-                                            isClearable
-                                            isSearchable={false}
-                                        />
+                                        <Field label="Método de Pago" htmlFor="catering-select-7">
+                                            <AppSelect
+                                                inputId="catering-select-7"
+                                                value={paymentData.paymentMethodId || null}
+                                                onChange={(option) =>
+                                                    setPaymentData({ ...paymentData, paymentMethodId: option || '' })}
+                                                options={paymentMethods.map((pm) => ({ value: pm.id.toString(), label: pm.name }))}
+                                                placeholder="Seleccione..."
+                                                isClearable
+                                            />
+                                        </Field>
                                         <div className="modal-input-group" style={{ marginBottom: 0 }}>
-                                            <Button type="button" onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
+                                            <Button variant="primary" type="button" onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
                                                 Agregar Pago
                                             </Button>
                                         </div>
@@ -1865,14 +1986,14 @@ export default function Catering() {
                         </div>
                         <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
                         {canManageCatering && (
-                            <Button type="submit" disabled={savingEvent}>
+                            <Button variant="primary" type="submit" disabled={savingEvent}>
                                 {savingEvent ? 'Guardando...' : selectedEvent ? 'Guardar Cambios' : 'Crear Evento'}
                             </Button>
                         )}
                     </div>
                     </form>
                 </div>
-            </Sidebar >
+            </FullScreenModal>
         </div >
     );
 }

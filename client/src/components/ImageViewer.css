@@ -4,7 +4,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: color-mix(in srgb, var(--dialog-overlay, rgba(15, 23, 42, 0.92)) 86%, #000 14%);
+    background: color-mix(in srgb, var(--dialog-overlay, var(--ui-overlay)) 86%, var(--ui-surface-2) 14%);
     z-index: 9999;
     display: flex;
     align-items: center;
@@ -20,8 +20,8 @@
     max-height: 88vh;
     border: 1px solid color-mix(in srgb, white 20%, transparent);
     border-radius: var(--radius-xl);
-    background: rgba(2, 6, 23, 0.72);
-    box-shadow: var(--dialog-panel-shadow, 0 28px 70px -24px #000);
+    background: var(--ui-overlay);
+    box-shadow: var(--dialog-panel-shadow, 0 28px 70px -24px var(--ui-text));
 }
 
 .viewer-image {
@@ -37,8 +37,8 @@
     position: absolute;
     top: -52px;
     right: 0;
-    background: rgba(15, 23, 42, 0.78);
-    border: 1px solid rgba(255, 255, 255, 0.24);
+    background: var(--ui-overlay);
+    border: 1px solid color-mix(in srgb, var(--ui-surface) 24%, transparent);
     color: white;
     width: 40px;
     height: 40px;
@@ -52,9 +52,9 @@
 }
 
 .viewer-close-btn:hover {
-    background: color-mix(in srgb, var(--dialog-accent) 30%, rgba(15, 23, 42, 0.9));
+    background: color-mix(in srgb, var(--dialog-accent) 30%, var(--ui-overlay));
     border-color: var(--dialog-accent);
-    color: #ffffff;
+    color: var(--ui-primary-fg);
 }
 
 .viewer-close-btn:focus-visible,
@@ -67,7 +67,7 @@
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--ui-overlay);
     color: white;
     border: none;
     width: 50px;
@@ -81,7 +81,7 @@
 }
 
 .viewer-nav-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--ui-surface) 20%, transparent);
     transform: translateY(-50%) scale(1.1);
 }
 

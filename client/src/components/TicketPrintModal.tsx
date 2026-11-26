@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import Select from './Select';
-import Modal from './Modal';
+import { AppSelect, Button, Field, FullScreenModal } from '@/ui';
 import api from '../services/api';
 import { Printer } from 'lucide-react';
-import type { SingleValue } from 'react-select';
 import { escapeHtml } from '../utils/escapeHtml';
 import { resolveAssetUrl } from '../utils/assets';
 import '../index.css';
@@ -59,7 +57,8 @@ interface KitchenTicketData {
   notes?: string;
 }
 
-type WidthOption = { value: string; label: string };
+/** Printed tickets keep the plain 2-decimal format (no thousands separator). */
+const money2 = (n: number) => n.toFixed(2);
 
 function ticketLoadErrorMessage(err: unknown): string {
   if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -116,7 +115,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
   const handlePrint = () => {
     setPrintError(null);
     if (!ticketData || loadError) {
-      setPrintError('El ticket no estÃ¡ disponible; vuelve a cargarlo antes de imprimir');
+      setPrintError('El ticket no está disponible; vuelve a cargarlo antes de imprimir');
       return;
     }
     const printWindow = window.open('', '_blank');
@@ -220,37 +219,37 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
           <span class="item-qty">${e(item.quantity)}x</span>
           <div class="item-desc">
             <span class="bold">${e(item.name)}</span>
-            <div style="font-size: 10px; color: #666;">Precio: ${e(ticketDataCustomer.header.currency_symbol || '$')}${item.price.toFixed(2)}</div>
+            <div style="font-size: 10px; color: #666;">Precio: ${e(ticketDataCustomer.header.currency_symbol || '$')}${money2(item.price)}</div>
             ${item.modifiers.map((mod) => `<div style="font-size: 10px; color: #666;">+ ${e(mod.name)}</div>`).join('')}
           </div>
-          <span class="item-price">${e(ticketDataCustomer.header.currency_symbol || '$')}${item.subtotal.toFixed(2)}</span>
+          <span class="item-price">${e(ticketDataCustomer.header.currency_symbol || '$')}${money2(item.subtotal)}</span>
         </div>
       `).join('')}
       
       <div class="separator"></div>
       <div class="line">
         <span>Subtotal:</span>
-        <span>${e(ticketDataCustomer.header.currency_symbol || '$')}${ticketDataCustomer.totals.subtotal.toFixed(2)}</span>
+        <span>${e(ticketDataCustomer.header.currency_symbol || '$')}${money2(ticketDataCustomer.totals.subtotal)}</span>
       </div>
       <div class="line">
         <span>IVA:</span>
-        <span>${e(ticketDataCustomer.header.currency_symbol || '$')}${ticketDataCustomer.totals.tax.toFixed(2)}</span>
+        <span>${e(ticketDataCustomer.header.currency_symbol || '$')}${money2(ticketDataCustomer.totals.tax)}</span>
       </div>
       ${ticketDataCustomer.totals.discount > 0 ? `
         <div class="line" style="color: #d32f2f;">
           <span>Descuento (${e(ticketDataCustomer.totals.discountCode || '')}):</span>
-          <span>-${e(ticketDataCustomer.header.currency_symbol || '$')}${ticketDataCustomer.totals.discount.toFixed(2)}</span>
+          <span>-${e(ticketDataCustomer.header.currency_symbol || '$')}${money2(ticketDataCustomer.totals.discount)}</span>
         </div>
       ` : ''}
       ${ticketDataCustomer.totals.tip > 0 ? `
         <div class="line">
           <span>Propina:</span>
-          <span>${e(ticketDataCustomer.header.currency_symbol || '$')}${ticketDataCustomer.totals.tip.toFixed(2)}</span>
+          <span>${e(ticketDataCustomer.header.currency_symbol || '$')}${money2(ticketDataCustomer.totals.tip)}</span>
         </div>
       ` : ''}
       <div class="line total">
         <span>TOTAL:</span>
-        <span>${e(ticketDataCustomer.header.currency_symbol || '$')}${ticketDataCustomer.totals.total.toFixed(2)}</span>
+        <span>${e(ticketDataCustomer.header.currency_symbol || '$')}${money2(ticketDataCustomer.totals.total)}</span>
       </div>
       <div class="separator"></div>
       
@@ -259,7 +258,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
         ${ticketDataCustomer.payments.map((p) => `
           <div class="line">
             <span>${e(p.method)}:</span>
-            <span class="bold">${e(ticketDataCustomer.header.currency_symbol || '$')}${p.amount.toFixed(2)}</span>
+            <span class="bold">${e(ticketDataCustomer.header.currency_symbol || '$')}${money2(p.amount)}</span>
           </div>
         `).join('')}
         <div class="separator"></div>
@@ -329,29 +328,29 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <Modal
+    <FullScreenModal
+      size="compact"
       isOpen={isOpen}
       onClose={onClose}
       title={type === 'kitchen' ? 'Ticket de Cocina' : 'Ticket de Cliente'}
-      size="sm"
       footer={(
         <>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button type="button" className="btn btn-primary" onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
             <Printer size={18} aria-hidden="true" /> Imprimir
-          </button>
+          </Button>
         </>
       )}
     >
       <div className="ticket-print-content">
         <div className="ticket-print-body">
           {loadError && (
-            <div style={{ color: 'var(--color-error, #d32f2f)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'rgba(211, 47, 47, 0.08)' }}>
+            <div style={{ color: 'var(--ui-danger)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'var(--ui-danger-soft)' }}>
               {loadError}
             </div>
           )}
           {printError && (
-            <div style={{ color: 'var(--color-error, #d32f2f)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'rgba(211, 47, 47, 0.08)' }}>
+            <div style={{ color: 'var(--ui-danger)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'var(--ui-danger-soft)' }}>
               {printError}
             </div>
           )}
@@ -361,16 +360,18 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
             </div>
           ) : (
             <>
-              <Select
-                label="Ancho de Impresora"
-                options={[
-                  { value: '58', label: '58mm (Pequeña)' },
-                  { value: '80', label: '80mm (Estándar)' }
-                ]}
-                value={printerWidth === 58 ? { value: '58', label: '58mm (Pequeña)' } : { value: '80', label: '80mm (Estándar)' }}
-                onChange={(option: SingleValue<WidthOption>) => setPrinterWidth(parseInt(option?.value || '80', 10) as 58 | 80)}
-                isSearchable={false}
-              />
+              <Field label="Ancho de Impresora" htmlFor="ticket-width-1">
+                  <AppSelect
+                      inputId="ticket-width-1"
+                    options={[
+                      { value: '58', label: '58mm (Pequeña)' },
+                      { value: '80', label: '80mm (Estándar)' }
+                    ]}
+                    value={String(printerWidth)}
+                    isClearable={false}
+                    onChange={(option) => setPrinterWidth(parseInt(option || '80', 10) as 58 | 80)}
+                  />
+              </Field>
 
               <div
                 style={{
@@ -392,7 +393,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
           )}
         </div>
       </div>
-    </Modal>
+    </FullScreenModal>
   );
 };
 

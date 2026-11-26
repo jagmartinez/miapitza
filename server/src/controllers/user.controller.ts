@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { UserService } from '../services/user.service';
+import { PreferencesValidationError, UserPreferencesService } from '../services/user-preferences.service';
 import { getErrorMessage } from '../utils/error';
 import {
     isPlatformOperator,
@@ -51,6 +52,25 @@ export class UserController {
             res.json({ success: true, data: user });
         } catch (error: unknown) {
             next({ statusCode: 404, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getMyPreferences(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await UserPreferencesService.get(req.user!.userId);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
+    static async updateMyPreferences(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await UserPreferencesService.update(req.user!.userId, req.body);
+            res.json({ success: true, message: 'Preferencias actualizadas', data });
+        } catch (error: unknown) {
+            const statusCode = error instanceof PreferencesValidationError ? 400 : 500;
+            next({ statusCode, message: getErrorMessage(error) });
         }
     }
 

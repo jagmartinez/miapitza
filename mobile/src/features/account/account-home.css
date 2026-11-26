@@ -1,0 +1,39 @@
+.ah { min-height: 100vh; background: var(--bg); color: var(--text); }
+.ah-top { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0; min-height: 48px; }
+.ah-hello { font-size: 13px; color: var(--muted); }
+.ah-logout { min-height: 48px; min-width: 48px; padding: 0 4px; background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; }
+.ah-body { display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 32px; }
+.ah-punch { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.ah-shift { margin: 0; font-size: 22px; font-weight: 500; line-height: 1.25; }
+.ah-punch > .muted { margin: 0; font-size: 15px; }
+.ah-mark { min-height: 56px; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.ah-geo { margin: 0; font-size: 12px; color: var(--muted); text-align: center; }
+.ah-h { margin: 16px 0 0; font-size: 13px; font-weight: 400; color: var(--muted); }
+.ah-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ah-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-height: 48px; padding: 12px; text-align: left; font: inherit; color: var(--text); background: var(--surface-2); border: 0; border-radius: 10px; }
+.ah-tile svg { color: var(--muted-2); flex-shrink: 0; }
+.ah-tile b { font-size: 14px; font-weight: 500; }
+.ah-tile span { font-size: 12px; color: var(--muted); }
+.ah-tile-row { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 12px; }
+.ah-tile-text { flex: 1; display: flex; flex-direction: column; gap: 2px; color: var(--text); }
+.ah-tile-text b { color: var(--text); }
+.ah-tile-text > span { color: var(--muted); }
+.ah-navrow svg:last-child { color: var(--muted); }
+.ah-list { display: flex; flex-direction: column; gap: 8px; }
+.ah .ui-card { background: var(--surface-2); border: 0; border-radius: 10px; padding: 12px; }
+.ah .ui-card-title { font-size: 14px; font-weight: 500; }
+/* Card content stacks with breathing room: rows, notes and actions never touch. */
+.ah .ui-card-body { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; font-size: 13px; }
+.ah .ui-card-body > p { margin: 0; }
+.ah-req { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: var(--surface-2); border-radius: 10px; font-size: 13px; }
+.ah-req-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ah-req-head b { font-size: 14px; font-weight: 500; }
+.ah-req-detail { color: var(--muted); }
+.ah-status { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ah-status-pending { color: var(--ready); }
+.ah-status-rejected { color: var(--alert); }
+.ah-req-cancel { align-self: flex-start; min-height: 48px; margin: -6px 0 -12px; padding: 12px 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; text-decoration: underline; }
+.ah-wide { width: 100%; }
+.ah-link { background: none; border: 0; color: var(--text); font: inherit; text-decoration: underline; padding: 0; }
+.ah-all { align-self: flex-start; min-height: 48px; font-size: 13px; color: var(--muted-2); }
+.ah-cancel { margin-top: 10px; min-height: 48px; }

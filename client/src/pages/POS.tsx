@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
 import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI, warehousesAPI, invoicesAPI } from '../services/api';
 import { offlineManager } from '../services/offlineManager';
@@ -11,8 +10,12 @@ import {
     hasAnyRole,
     canSendOrderToKitchen,
     canCancelOrder,
-    canCreatePayment
+    canCreatePayment,
+    canVoidKitchenLine,
+    hasPermission
 } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
+import { orderLineVoidBlocker, voidableOrderLines } from '../utils/orderLineVoid';
 import { getOrderStatusLabel } from '../utils/orderStatus';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -20,9 +23,7 @@ import TableSelectionModal from '../components/TableSelectionModal';
 import OrderCart from '../components/OrderCart';
 import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
-import Modal from '../components/Modal';
-import Button from '../components/Button';
-import Select from '../components/Select';
+import { AppSelect, Button, Field, FullScreenModal, SegmentedControl } from '@/ui';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
@@ -30,7 +31,18 @@ import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table
 import { useCurrency } from '../hooks/useCurrency';
 import { hasUsableCashShift } from '../utils/paymentAccess';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
+import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
+import { preferredSaleWarehouseId } from '../utils/saleWarehouse';
+import { indexAvailability, stockBadgeFor, type MenuAvailabilityResponse, type MenuItemAvailability } from '../utils/stockAvailability';
+import { getIdempotentAttempt, isAmbiguousMutationFailure, type IdempotentAttempt } from '../utils/idempotency';
+import {
+    findTableAccountForTable,
+    isEligibleForPosOrderBucket,
+} from '../utils/posOrderBucket';
 import './POS.css';
+import { getApiErrorMessage } from '../utils/apiError';
+import { promotionPreviewItems } from '../utils/promotionRules';
+import { notifyError } from '../services/notify';
 
 interface OfflineResponse {
     _offline?: boolean;
@@ -94,8 +106,17 @@ interface FiscalCustomerForm {
     phone: string;
 }
 
+interface FiscalCustomerDraft extends FiscalCustomerForm {
+    customerName: string;
+}
+
 const EMPTY_FISCAL_CUSTOMER: FiscalCustomerForm = {
     taxId: '', taxIdType: '', fiscalAddress: '', email: '', phone: ''
+};
+
+const EMPTY_FISCAL_CUSTOMER_DRAFT: FiscalCustomerDraft = {
+    customerName: '',
+    ...EMPTY_FISCAL_CUSTOMER,
 };
 
 interface ShiftInfo {
@@ -120,20 +141,25 @@ interface POSProps {
 export default function POS({ initialTableId, embedded = false, onExit, onOperationalChange }: POSProps = {}) {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { symbol: currencySymbol } = useCurrency();
+    const { symbol: currencySymbol, formatMoney } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { success, error: showError, warning, info } = useAppToast();
     const canManageShift = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO']);
     const canManageWarehouse = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF']);
     const canSendToKitchen = canSendOrderToKitchen(user);
     const canCancelActive = canCancelOrder(user);
+    const canVoidLines = canVoidKitchenLine(user);
+    const [showLineVoid, setShowLineVoid] = useState(false);
     const canPay = canCreatePayment(user);
+    const canIssueInvoice = hasPermission(user, 'invoices.issue', ['SUPERADMIN', 'ADMIN', 'CAJERO']);
     const [tables, setTables] = useState<Table[]>([]);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [brands, setBrands] = useState<Brand[]>([]);
     const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+    // DELIVERY is created from the delivery flow, not from the POS.
+    const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEOUT'>('DINE_IN');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [showMobileCart, setShowMobileCart] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -143,6 +169,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
     const [activeTableOrder, setActiveTableOrder] = useState<Order | null>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
     const [showTableModal, setShowTableModal] = useState(false);
     const [settings, setSettings] = useState<POSSettings>({});
     const [discount, setDiscount] = useState<number>(0);
@@ -152,6 +179,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [customerName, setCustomerName] = useState('');
     const [fiscalCustomer, setFiscalCustomer] = useState<FiscalCustomerForm>(EMPTY_FISCAL_CUSTOMER);
     const [showFiscalCustomer, setShowFiscalCustomer] = useState(false);
+    const [fiscalCustomerDraft, setFiscalCustomerDraft] = useState<FiscalCustomerDraft>(EMPTY_FISCAL_CUSTOMER_DRAFT);
+    const [savingFiscalCustomer, setSavingFiscalCustomer] = useState(false);
+    const [fiscalCustomerError, setFiscalCustomerError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 250);
     const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -163,13 +193,17 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     // null = aún sin verificar; false bloquea el cobro proactivamente.
     const [hasWarehouse, setHasWarehouse] = useState<boolean | null>(null);
     const [branchWarehouses, setBranchWarehouses] = useState<Warehouse[]>([]);
-    const [warehouseAction, setWarehouseAction] = useState<'DELIVER' | 'CANCEL' | null>(null);
+    const [warehouseAction, setWarehouseAction] = useState<'CANCEL' | null>(null);
     const [operationalWarehouseId, setOperationalWarehouseId] = useState<number | null>(null);
+    const [processingWarehouseAction, setProcessingWarehouseAction] = useState(false);
+    const warehouseActionGateRef = useRef(new DeliveryAttemptGate());
     const warehouseOptions = useMemo<WarehouseOption[]>(() => branchWarehouses.map((warehouse) => ({
         value: warehouse.id,
         label: `${warehouse.name} (${warehouse.code})`,
     })), [branchWarehouses]);
     const [pendingCancelReason, setPendingCancelReason] = useState<string | undefined>();
+    // Informational stock badges per menu item (never blocks selling).
+    const [stockAvailability, setStockAvailability] = useState<Map<number, MenuItemAvailability>>(() => new Map());
     const waiterAccentColor = getUserAccentColor(activeTableOrder?.user || user);
 
     // Scope the local menu cache by company + branch so different tenants/branches
@@ -202,7 +236,23 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         setActiveTableOrder(null);
     }, [clearDraftCart]);
 
-    const loadData = useCallback(async () => {
+    const loadDataRequestRef = useRef(0);
+    // Per user action (create order / add cart batch): kept across retries of the
+    // same payload after an ambiguous failure so the server can deduplicate.
+    const persistCartAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const tablesRefreshRequestRef = useRef(0);
+    const tipInitializedRef = useRef(false);
+    const settingsRef = useRef<POSSettings>({});
+    useEffect(() => {
+        settingsRef.current = settings;
+    }, [settings]);
+    const currentOrderIdRef = useRef<number | null>(null);
+    useEffect(() => {
+        currentOrderIdRef.current = currentOrderId;
+    }, [currentOrderId]);
+
+    const loadData = useCallback(async (notifyOnError = true): Promise<boolean> => {
+        const requestId = ++loadDataRequestRef.current;
         setLoadError(null);
         try {
             const effectiveBranchId = selectedTable?.branchId ?? user?.branchId;
@@ -223,6 +273,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 categoriesAPI.getAll(),
                 menuBrandsAPI.getAll()
             ]);
+            // A newer loadData superseded this one: never let a late response overwrite it.
+            if (requestId !== loadDataRequestRef.current) return true;
             setTables(tablesRes.data.data);
             setSelectedTable(prevTable =>
                 prevTable
@@ -231,17 +283,60 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             );
             setMenuItems(menuRes.data.data);
             setSettings(settingsRes.data.data);
-            setTipApplied(settingsRes.data.data.tipEnabled === 'true');
+            // The tip toggle is the cashier's choice: seed it from settings only once and
+            // never overwrite it on later refreshes (only force it off if tips get disabled).
+            const tipEnabledSetting = settingsRes.data.data.tipEnabled === 'true';
+            if (!tipInitializedRef.current) {
+                tipInitializedRef.current = true;
+                setTipApplied(tipEnabledSetting);
+            } else if (!tipEnabledSetting) {
+                setTipApplied(false);
+            }
             setCategories(categoriesRes.data.data);
             setBrands(brandsRes.data.data || []);
-        } catch {
-            const message = 'No se pudieron cargar los datos del POS (mesas, menú o configuración). Revisa tu conexión e inténtalo de nuevo.';
+            return true;
+        } catch (error) {
+            if (requestId !== loadDataRequestRef.current) return true;
+            const message = getApiErrorMessage(error, 'No se pudieron cargar los datos del POS (mesas, menú o configuración)');
             setLoadError(message);
-            showError(message);
+            if (notifyOnError) {
+                showError(message);
+            }
+            return false;
         } finally {
-            setLoading(false);
+            if (requestId === loadDataRequestRef.current) setLoading(false);
         }
     }, [menuCacheKey, selectedTable?.branchId, showError, user?.branchId]);
+
+    // Lightweight refresh for websocket events: only tables (and the active order's
+    // server snapshot when the event targets it). Menu/settings/catalogs stay as loaded.
+    const refreshFromRealtimeEvent = useCallback(async (eventOrderId?: number) => {
+        const requestId = ++tablesRefreshRequestRef.current;
+        try {
+            const tablesRes = await tablesAPI.getAll();
+            if (requestId !== tablesRefreshRequestRef.current) return;
+            setTables(tablesRes.data.data);
+            setSelectedTable(prevTable =>
+                prevTable
+                    ? tablesRes.data.data.find((table: Table) => table.id === prevTable.id) || prevTable
+                    : prevTable
+            );
+        } catch (error) {
+            console.error('POS realtime table refresh failed:', error);
+            notifyError(error, 'No se pudo actualizar el estado de las mesas en tiempo real', { type: 'warning' });
+        }
+
+        const activeOrderId = currentOrderIdRef.current;
+        if (!eventOrderId || !activeOrderId || eventOrderId !== activeOrderId || !offlineManager.getStatus()) return;
+        try {
+            const response = await ordersAPI.getById(activeOrderId);
+            const refreshedOrder = response.data.data as Order;
+            setActiveTableOrder((current) => (current?.id === refreshedOrder.id ? refreshedOrder : current));
+        } catch (error) {
+            console.error('POS realtime active order refresh failed:', error);
+            notifyError(error, 'No se pudo actualizar la orden activa en tiempo real', { type: 'warning' });
+        }
+    }, []);
 
     // Check if user has an active shift
     const checkShiftStatus = useCallback(async () => {
@@ -254,10 +349,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             if (!status.hasActiveShift || status.requiresClose) {
                 setShowShiftWarning(true);
             }
-        } catch {
-            warning('No se pudo verificar el estado del turno de caja. Los cobros podrían no estar disponibles.');
+        } catch (error) {
+            notifyError(error, 'No se pudo verificar el estado del turno de caja (los cobros podrían no estar disponibles)', { type: 'warning' });
         }
-    }, [warning]);
+    }, []);
 
     // Proactively detect whether the active branch has at least one warehouse.
     // Mirrors the backend payment guard so the cashier is warned BEFORE trying to
@@ -290,6 +385,28 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         checkBranchWarehouse();
     }, [checkBranchWarehouse]);
 
+    // Stock availability of the branch sale warehouse: one batched request,
+    // refreshed periodically. Failures only hide the badges.
+    const availabilityBranchId = selectedTable?.branchId ?? user?.branchId;
+    const loadStockAvailability = useCallback(async () => {
+        if (!availabilityBranchId) {
+            setStockAvailability(new Map());
+            return;
+        }
+        try {
+            const res = await menuAPI.getAvailability(availabilityBranchId);
+            setStockAvailability(indexAvailability(res.data?.data as MenuAvailabilityResponse));
+        } catch {
+            setStockAvailability(new Map());
+        }
+    }, [availabilityBranchId]);
+
+    useEffect(() => {
+        loadStockAvailability();
+        const timer = setInterval(loadStockAvailability, 60_000);
+        return () => clearInterval(timer);
+    }, [loadStockAvailability]);
+
     // Show table modal on first load only in the standalone POS. The map-owned
     // workspace receives a table explicitly and must never ask again.
     useEffect(() => {
@@ -311,7 +428,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 message.type === WS_EVENTS.ORDER_IN_PREPARATION ||
                 message.type === WS_EVENTS.ORDER_UPDATE
             ) {
-                loadData();
+                const eventOrderId = Number(message.payload?.orderId);
+                void refreshFromRealtimeEvent(Number.isFinite(eventOrderId) && eventOrderId > 0 ? eventOrderId : undefined);
             }
 
             const activeTable = selectedTableRef.current;
@@ -332,7 +450,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         });
 
         return unsubscribe;
-    }, [info, loadData, success]);
+    }, [info, refreshFromRealtimeEvent, success]);
 
     // Cache products in localStorage
     useEffect(() => {
@@ -395,10 +513,20 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
         try {
             const response = await ordersAPI.getActive();
-            const tableOrder = (response.data.data as Order[]).find(order => order.table?.id === table.id) || null;
+            const tableOrder = findTableAccountForTable(response.data.data as Order[], table.id);
 
             setCurrentOrderId(tableOrder?.id ?? null);
             setActiveTableOrder(tableOrder);
+            // Seed the tip toggle per table: a priced/pre-invoiced order is authoritative,
+            // otherwise fall back to the configured default.
+            const tipSettingEnabled = settingsRef.current.tipEnabled === 'true';
+            const orderTipIsAuthoritative = Boolean(tableOrder && (
+                Number(tableOrder.tipAmount || 0) > 0 || tableOrder.preInvoicedAt || tableOrder.invoiceNumber
+            ));
+            if (orderTipIsAuthoritative) tipInitializedRef.current = true;
+            setTipApplied(orderTipIsAuthoritative
+                ? Number(tableOrder?.tipAmount || 0) > 0
+                : tipSettingEnabled);
             setCustomerName(tableOrder?.customerName || '');
             setFiscalCustomer(tableOrder ? {
                 taxId: tableOrder.customerTaxId || '',
@@ -451,6 +579,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [loadingModifiers, setLoadingModifiers] = useState(false);
 
     const addToCart = useCallback((item: MenuItem, quantity: number = 1, modifiers: SelectedModifier[] = []) => {
+        if (activeTableOrder?.preInvoicedAt || activeTableOrder?.invoiceNumber) {
+            warning('La orden ya tiene prefactura o factura y no admite cambios. Completa el cobro mediante el flujo fiscal.');
+            return;
+        }
         const modifiersExtra = modifiers.reduce((sum, mod) => sum + Number(mod.price), 0);
         const unitPrice = Number(item.price) + modifiersExtra;
 
@@ -476,7 +608,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 modifiers
             }];
         });
-    }, []);
+    }, [activeTableOrder?.invoiceNumber, activeTableOrder?.preInvoicedAt, warning]);
 
     const openModifierSelector = useCallback(async (item: MenuItem) => {
         setModifierItem(item);
@@ -486,8 +618,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             const res = await menuAPI.getById(item.id);
             const groups = (res.data.data?.modifierGroups || []) as ModifierGroupWithModifiers[];
             setModifierGroups(groups);
-        } catch {
-            showError('No se pudieron cargar los modificadores de este producto.');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'No se pudieron cargar los modificadores de este producto'));
             setModifierItem(null);
         } finally {
             setLoadingModifiers(false);
@@ -549,6 +681,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const buildOrderPayload = useCallback(() => ({
         tableId: selectedTable?.id,
         branchId: selectedTable?.branchId,
+        orderType,
         customerName: customerName || undefined,
         customerTaxId: fiscalCustomer.taxId || undefined,
         customerTaxIdType: fiscalCustomer.taxIdType || undefined,
@@ -562,7 +695,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             notes: item.notes || '',
             modifierIds: item.modifiers.map(mod => mod.id)
         }))
-    }), [selectedTable, customerName, fiscalCustomer, cart]);
+    }), [selectedTable, orderType, customerName, fiscalCustomer, cart]);
 
     const syncOrderContext = useCallback(async (orderId: number) => {
         if (!offlineManager.getStatus()) {
@@ -581,29 +714,32 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             email: refreshedOrder.customerEmail || '',
             phone: refreshedOrder.customerPhone || ''
         });
-        return refreshedOrder;
-    }, []);
-
-    const persistCartToOrder = useCallback(async () => {
-        if (cart.length === 0) {
-            return {
-                orderId: currentOrderId,
-                offlineQueued: false
-            };
+        if (!isEligibleForPosOrderBucket(refreshedOrder)) {
+            clearDraftCart(refreshedOrder.customerName || '');
         }
+        return refreshedOrder;
+    }, [clearDraftCart]);
 
+    const persistCartWithKey = useCallback(async (
+        actionKey: string,
+        orderPayload: ReturnType<typeof buildOrderPayload>,
+    ) => {
         if (currentOrderId) {
             let offlineQueued = false;
+            const operationGroupKey = `order-${currentOrderId}-kitchen-${typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
 
-            for (const item of cart) {
+            for (const [index, item] of cart.entries()) {
                 const response = await ordersAPI.addItem(currentOrderId, {
                     menuItemId: item.menuItemId,
                     quantity: item.quantity,
                     notes: item.notes || '',
                     modifierIds: item.modifiers.map(mod => mod.id)
                 }, {
-                    operationType: 'ADD_ORDER_ITEM'
-                });
+                    operationType: 'ADD_ORDER_ITEM',
+                    entityTempId: operationGroupKey,
+                }, `${actionKey}:item-${index}`);
 
                 if ((response.data as OfflineResponse)._offline) {
                     offlineQueued = true;
@@ -619,19 +755,21 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             return {
                 orderId: currentOrderId,
-                offlineQueued
+                offlineQueued,
+                dependencyKey: offlineQueued ? operationGroupKey : null,
             };
         }
 
-        const createResponse = await ordersAPI.create(buildOrderPayload(), {
+        const createResponse = await ordersAPI.create(orderPayload, {
             operationType: 'CREATE_ORDER',
             entityTempId: `order-${Date.now()}`
-        });
+        }, actionKey);
 
         if ((createResponse.data as OfflineResponse)._offline) {
             return {
                 orderId: null,
-                offlineQueued: true
+                offlineQueued: true,
+                dependencyKey: null,
             };
         }
 
@@ -642,9 +780,35 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
         return {
             orderId: createdOrder.id,
-            offlineQueued: false
+            offlineQueued: false,
+            dependencyKey: null,
         };
-    }, [activeTableOrder?.customerName, buildOrderPayload, cart, clearDraftCart, currentOrderId, syncOrderContext]);
+    }, [activeTableOrder?.customerName, cart, clearDraftCart, currentOrderId, syncOrderContext]);
+
+    const persistCartToOrder = useCallback(async () => {
+        if (cart.length === 0) {
+            return {
+                orderId: currentOrderId,
+                offlineQueued: false,
+                dependencyKey: null,
+            };
+        }
+
+        const orderPayload = buildOrderPayload();
+        const attempt = getIdempotentAttempt(
+            persistCartAttemptRef.current,
+            JSON.stringify({ orderId: currentOrderId ?? null, payload: orderPayload }),
+        );
+        persistCartAttemptRef.current = attempt;
+        try {
+            const result = await persistCartWithKey(attempt.key, orderPayload);
+            persistCartAttemptRef.current = null;
+            return result;
+        } catch (error) {
+            if (!isAmbiguousMutationFailure(error)) persistCartAttemptRef.current = null;
+            throw error;
+        }
+    }, [buildOrderPayload, cart.length, currentOrderId, persistCartWithKey]);
 
     const handleSendToKitchen = async () => {
         if (!canSendToKitchen) {
@@ -663,12 +827,14 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         }
 
         setSendingToKitchen(true);
+        let persistedOrderId: number | null = null;
         try {
             const requestedDiscountPercent = discount;
             const requestedDiscountOverride = discountAmountOverride;
             const requestedPromotionCode = appliedPromotionCode;
             const requestedTipApplied = tipApplied;
-            const { orderId, offlineQueued } = await persistCartToOrder();
+            const { orderId, offlineQueued, dependencyKey } = await persistCartToOrder();
+            persistedOrderId = orderId;
 
             if (!orderId) {
                 warning('La orden quedó pendiente, pero no puede enviarse a cocina hasta existir en el servidor.');
@@ -715,7 +881,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             }
 
             const response = await ordersAPI.sendToKitchen(orderId, {
-                operationType: 'SEND_TO_KITCHEN'
+                operationType: 'SEND_TO_KITCHEN',
+                dependencyKey,
+                forceQueue: Boolean(dependencyKey),
             });
             const queuedOffline = Boolean((response.data as OfflineResponse)._offline);
 
@@ -730,8 +898,18 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 await loadData();
             }
         } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'Error al enviar la orden');
+            if (persistedOrderId) {
+                warning(getApiErrorMessage(error, 'No se pudo enviar la nueva tanda a cocina (los productos sí quedaron guardados en la orden)'));
+                try {
+                    await syncOrderContext(persistedOrderId);
+                    await loadData();
+                } catch (refreshError) {
+                    console.error('Order persisted but could not be refreshed after kitchen failure:', refreshError);
+                    notifyError(refreshError, 'Los productos quedaron guardados, pero la orden no pudo actualizarse (recarga la página)', { type: 'warning' });
+                }
+            } else {
+                showError(getApiErrorMessage(error, 'No se pudo enviar la nueva tanda a cocina'));
+            }
         } finally {
             setSendingToKitchen(false);
         }
@@ -741,9 +919,86 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         window.print();
     };
 
+    const openFiscalCustomerModal = useCallback(() => {
+        setFiscalCustomerDraft({
+            customerName,
+            ...fiscalCustomer,
+        });
+        setFiscalCustomerError(null);
+        setShowFiscalCustomer(true);
+    }, [customerName, fiscalCustomer]);
+
+    const closeFiscalCustomerModal = useCallback(() => {
+        if (savingFiscalCustomer) return;
+        setFiscalCustomerError(null);
+        setShowFiscalCustomer(false);
+    }, [savingFiscalCustomer]);
+
+    const saveFiscalCustomer = async () => {
+        const normalized: FiscalCustomerDraft = {
+            customerName: fiscalCustomerDraft.customerName.trim(),
+            taxId: fiscalCustomerDraft.taxId.trim(),
+            taxIdType: fiscalCustomerDraft.taxIdType.trim(),
+            fiscalAddress: fiscalCustomerDraft.fiscalAddress.trim(),
+            email: fiscalCustomerDraft.email.trim(),
+            phone: fiscalCustomerDraft.phone.trim(),
+        };
+        const hasTaxIdentity = Boolean(normalized.taxId || normalized.taxIdType);
+
+        if (hasTaxIdentity && (!normalized.customerName || !normalized.taxId || !normalized.taxIdType)) {
+            setFiscalCustomerError('Nombre, identificación tributaria y tipo de identificación deben registrarse juntos.');
+            return;
+        }
+        if (normalized.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.email)) {
+            setFiscalCustomerError('El correo fiscal del cliente no es válido.');
+            return;
+        }
+
+        setSavingFiscalCustomer(true);
+        setFiscalCustomerError(null);
+        try {
+            if (currentOrderId) {
+                const response = await ordersAPI.updateFiscalCustomer(currentOrderId, {
+                    customerName: normalized.customerName,
+                    customerTaxId: normalized.taxId,
+                    customerTaxIdType: normalized.taxIdType,
+                    customerFiscalAddress: normalized.fiscalAddress,
+                    customerEmail: normalized.email,
+                    customerPhone: normalized.phone,
+                });
+                const persistedOrder = response.data.data as Order;
+                setActiveTableOrder((current) => (
+                    current?.id === currentOrderId
+                        ? { ...current, ...persistedOrder }
+                        : current
+                ));
+            }
+
+            setCustomerName(normalized.customerName);
+            setFiscalCustomer({
+                taxId: normalized.taxId,
+                taxIdType: normalized.taxIdType,
+                fiscalAddress: normalized.fiscalAddress,
+                email: normalized.email,
+                phone: normalized.phone,
+            });
+            setShowFiscalCustomer(false);
+            success(currentOrderId
+                ? 'Datos fiscales guardados en la orden.'
+                : 'Datos fiscales guardados para este pedido.');
+        } catch (error: unknown) {
+            // Shown inside the fiscal dialog, so the server reason alone is clearer than a prefixed lead.
+            const message = getApiErrorMessage(error);
+            setFiscalCustomerError(message);
+            showError(message);
+        } finally {
+            setSavingFiscalCustomer(false);
+        }
+    };
+
     const handlePayment = async () => {
-        if (!canPay) {
-            warning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+        if (!canPay || !canIssueInvoice) {
+            warning('Tu rol necesita permisos de cobro y facturación. Pide apoyo a un cajero o administrador.');
             return;
         }
 
@@ -769,11 +1024,17 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 return;
             }
 
-            const refreshedOrder = await syncOrderContext(orderId);
+            let paymentSnapshot = await syncOrderContext(orderId);
+            if (!paymentSnapshot) {
+                throw new Error('No se pudo confirmar la orden antes de facturarla.');
+            }
 
-            // Persist pricing snapshot on the server before opening payment modal.
-            if (refreshedOrder && (cart.length > 0 || requestedDiscountPercent > 0 || requestedDiscountOverride !== null || requestedPromotionCode)) {
-                const refreshedSubtotal = (refreshedOrder.items || []).reduce(
+            // Persist pricing snapshot on the server before opening payment modal. A tip toggle
+            // alone must also be persisted, otherwise the prefactura freezes a stale tip.
+            const isPreInvoiced = Boolean(paymentSnapshot.preInvoicedAt || paymentSnapshot.invoiceNumber);
+            const tipStateChanged = !isPreInvoiced && (Number(paymentSnapshot.tipAmount || 0) > 0) !== tipApplied;
+            if (cart.length > 0 || requestedDiscountPercent > 0 || requestedDiscountOverride !== null || requestedPromotionCode || tipStateChanged) {
+                const refreshedSubtotal = (paymentSnapshot.items || []).reduce(
                     (sum, item) => sum + Number(item.subtotal || 0),
                     0
                 );
@@ -792,10 +1053,11 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     tax: Number(computedTax.toFixed(2)),
                     tipAmount: Number(computedTip.toFixed(2))
                 });
-                setActiveTableOrder(pricingResponse.data.data as Order);
+                paymentSnapshot = pricingResponse.data.data as Order;
+                setActiveTableOrder(paymentSnapshot);
             }
 
-            if (!refreshedOrder?.invoiceNumber) {
+            if (!paymentSnapshot.preInvoicedAt && !paymentSnapshot.invoiceNumber) {
                 await ordersAPI.updateFiscalCustomer(orderId, {
                     customerName,
                     customerTaxId: fiscalCustomer.taxId,
@@ -806,20 +1068,35 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 });
             }
 
-            // Emit the fiscal document before opening collection. The backend
-            // enforces the same invariant, so bypassing this UI cannot pay an
-            // unbilled order.
-            const invoiceResponse = await invoicesAPI.issue(orderId);
-            const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber;
-            if (!invoiceNumber) {
-                throw new Error('La factura no pudo emitirse antes del cobro');
+            let payableOrder = paymentSnapshot;
+            if (!paymentSnapshot.preInvoicedAt && !paymentSnapshot.invoiceNumber) {
+                const preInvoiceResponse = await invoicesAPI.issuePreInvoice(orderId);
+                if (!preInvoiceResponse.data?.data?.invoiceNumber) {
+                    throw new Error('La prefactura no pudo emitirse antes del cobro');
+                }
+                payableOrder = {
+                    ...paymentSnapshot,
+                    preInvoicedAt: preInvoiceResponse.data.data.date,
+                };
             }
-            await syncOrderContext(orderId);
+            setPaymentOrder(payableOrder);
+            setActiveTableOrder(payableOrder);
             setCurrentOrderId(orderId);
+            clearDraftCart(payableOrder.customerName || '');
             setShowPaymentModal(true);
+            success('Prefactura confirmada. La orden está lista para cobrar.');
+
+            const tableViewRefreshed = await loadData(false);
+            if (!tableViewRefreshed) {
+                warning('La prefactura fue emitida y la mesa sigue ocupada hasta el pago total, pero la vista de mesas no pudo actualizarse. Recarga la página.');
+            }
+            try {
+                await onOperationalChange?.();
+            } catch {
+                warning('La prefactura fue emitida y la mesa sigue ocupada hasta el pago total, pero el mapa operativo no pudo actualizarse. Recarga la página.');
+            }
         } catch (error: unknown) {
-            const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
-            showError(message || (error instanceof Error ? error.message : 'No se pudo preparar la orden para cobrarla.'));
+            showError(getApiErrorMessage(error, 'No se pudo preparar la orden para cobrarla'));
             return;
         } finally {
             setProcessingPayment(false);
@@ -828,39 +1105,48 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     handlePaymentRef.current = handlePayment;
     handleSendToKitchenRef.current = handleSendToKitchen;
 
-    const handlePaymentComplete = async (paymentData?: { offlineQueued?: boolean }) => {
-        try {
-            if (!currentOrderId) {
-                throw new Error('No se encontró una orden lista para cobrar');
-            }
-
-            setShowPaymentModal(false);
-
-            // An offline-queued payment is NOT confirmed. Never clear the table or
-            // close the order as if paid — keep it open until the sync confirms it.
-            if (paymentData?.offlineQueued) {
-                warning('Pago pendiente de sincronización. La orden permanece ABIERTA y se marcará como pagada al confirmarse la conexión.');
-                return;
-            }
-
-            clearTableContext();
-            success('Pago procesado exitosamente');
-
-            await loadData();
-            await onOperationalChange?.();
-            if (embedded) onExit?.();
-        } catch {
-            showError('Error al procesar el pago.');
-        }
-    };
-
-    const handleMarkDelivered = useCallback(async () => {
-        if (!activeTableOrder) {
+    const handlePaymentComplete = async (paymentData?: {
+        offlineQueued?: boolean;
+        fiscalInvoice?: { invoiceNumber: string } | null;
+        fiscalInvoiceError?: string | null;
+        invoicePrinted?: boolean;
+    }) => {
+        if (!paymentOrder) {
+            showError('No se encontró una orden lista para cobrar');
             return;
         }
-        setOperationalWarehouseId(branchWarehouses.length === 1 ? branchWarehouses[0].id : null);
-        setWarehouseAction('DELIVER');
-    }, [activeTableOrder, branchWarehouses]);
+
+        // La factura inmoviliza la orden, pero la cuenta de mesa se conserva
+        // hasta que el backend confirme el pago total. Un pago en cola no libera.
+        if (paymentData?.offlineQueued) {
+            warning('Pago pendiente de sincronización. La prefactura permanece abierta hasta confirmar la conexión.');
+            return;
+        }
+
+        setShowPaymentModal(false);
+        setPaymentOrder(null);
+        clearTableContext();
+        if (paymentData?.fiscalInvoiceError) {
+            warning(`Pago confirmado, pero la factura fiscal debe reintentarse: ${paymentData.fiscalInvoiceError}`);
+        } else if (paymentData?.fiscalInvoice && !paymentData.invoicePrinted) {
+            warning('Pago y factura fiscal confirmados. Reimprime la factura porque el navegador bloqueó la ventana.');
+        } else {
+            success(paymentData?.fiscalInvoice
+                ? `Pago confirmado y factura ${paymentData.fiscalInvoice.invoiceNumber} emitida.`
+                : 'Pago procesado exitosamente');
+        }
+
+        const refreshed = await loadData(false);
+        if (!refreshed) {
+            warning('El pago fue confirmado, pero el POS no pudo actualizarse. Recarga la página antes de continuar.');
+        }
+        try {
+            await onOperationalChange?.();
+        } catch {
+            warning('El pago fue confirmado, pero el mapa operativo no pudo actualizarse. Recarga la página.');
+        }
+        if (embedded) onExit?.();
+    };
 
     const handleCancelActiveOrder = useCallback(async () => {
         if (!activeTableOrder) {
@@ -880,7 +1166,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         const requiresWasteWarehouse = activeTableOrder.status !== 'OPEN';
         if (requiresWasteWarehouse) {
             setPendingCancelReason(reason);
-            setOperationalWarehouseId(branchWarehouses.length === 1 ? branchWarehouses[0].id : null);
+            setOperationalWarehouseId(preferredSaleWarehouseId(branchWarehouses));
             setWarehouseAction('CANCEL');
             return;
         }
@@ -891,8 +1177,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             clearTableContext();
             success(`Orden #${activeTableOrder.id} cancelada correctamente.`);
         } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'No se pudo cancelar la orden.');
+            showError(getApiErrorMessage(error, 'No se pudo cancelar la orden'));
         }
     }, [activeTableOrder, branchWarehouses, canCancelActive, clearTableContext, confirm, loadData, showError, success, warning]);
 
@@ -901,29 +1186,47 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             warning('Selecciona una bodega de la sucursal.');
             return;
         }
-        try {
-            if (warehouseAction === 'DELIVER') {
-                await ordersAPI.complete(activeTableOrder.id, operationalWarehouseId);
-                await syncOrderContext(activeTableOrder.id);
-                await loadData();
-                success(`Orden #${activeTableOrder.id} marcada como entregada.`);
-            } else {
-                await ordersAPI.cancel(activeTableOrder.id, pendingCancelReason, operationalWarehouseId);
-                await loadData();
+
+        const orderId = activeTableOrder.id;
+        const warehouseId = operationalWarehouseId;
+        const cancelReason = pendingCancelReason;
+        await warehouseActionGateRef.current.execute({
+            request: async () => {
+                await ordersAPI.cancel(orderId, cancelReason, warehouseId);
+            },
+            onSuccess: async () => {
+                const refreshed = await loadData(false);
                 clearTableContext();
-                success(`Orden #${activeTableOrder.id} cancelada correctamente.`);
-            }
-            setWarehouseAction(null);
-            setOperationalWarehouseId(null);
-            setPendingCancelReason(undefined);
-        } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'No se pudo completar la operación de inventario.');
-        }
-    }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, syncOrderContext, warehouseAction, warning]);
+                success(`Orden #${orderId} cancelada correctamente.`);
+                setWarehouseAction(null);
+                setOperationalWarehouseId(null);
+                setPendingCancelReason(undefined);
+                if (!refreshed) {
+                    throw new Error('La operación se aplicó, pero el POS no pudo actualizarse.');
+                }
+            },
+            onError: (message) => showError(message),
+            onSuccessError: (error) => {
+                console.error('Warehouse operation completed but POS refresh failed:', error);
+                showError('La orden fue cancelada, pero el POS no pudo actualizarse. Recarga la página.');
+            },
+            onPendingChange: setProcessingWarehouseAction,
+            fallbackMessage: 'No se pudo cancelar la orden ni registrar la merma.',
+        });
+    }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, warehouseAction, warning]);
+    // Branch of the order being priced: the POS only offers/applies promotions valid there.
+    const promotionBranchId = activeTableOrder?.branchId ?? selectedTable?.branchId ?? user?.branchId ?? null;
     const handleApplyPromotion = async (code: string) => {
         try {
-            const res = await promotionsAPI.validate(code, subtotal);
+            // Preview against the open order's lines plus the unsent cart so
+            // per-item, combo and happy-hour rules can be evaluated. The server
+            // recomputes the discount from the persisted lines when pricing.
+            const previewItems = promotionPreviewItems(cart, activeTableOrder?.items ?? []);
+            const previewTotal = previewItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+            const res = await promotionsAPI.validate(code, Math.round(Math.max(subtotal, previewTotal) * 100) / 100, {
+                branchId: promotionBranchId,
+                items: previewItems,
+            });
             const result = res.data.data;
             if (res.data.success && result) {
                 const discountAmount = Number(result.discount || 0);
@@ -938,8 +1241,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 showError(result?.message || 'Promoción inválida');
             }
         } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'Error al validar promoción');
+            showError(getApiErrorMessage(error, 'Error al validar promoción'));
         }
     };
 
@@ -997,7 +1299,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const activeOrderTotal = Number(activeTableOrder?.total || 0);
     const displayTotal = cart.length > 0 ? total : activeOrderTotal;
     const branchHasNoWarehouse = hasWarehouse === false;
-    const canProcessPayment = canPay && (cart.length > 0 || Boolean(currentOrderId));
+    const canProcessPayment = canPay && canIssueInvoice && (cart.length > 0 || Boolean(currentOrderId));
 
     return (
         <div className={`pos-container-new ${embedded ? 'pos-embedded' : ''}`}>
@@ -1057,7 +1359,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         className="header-action-btn primary"
                         onClick={handlePayment}
                         disabled={!canProcessPayment || processingPayment}
-                        title={!canPay ? 'Tu rol no puede registrar pagos' : 'Pagar (Ctrl+P)'}
+                        title={!canPay || !canIssueInvoice ? 'Tu rol necesita permisos de cobro y facturación' : 'Pagar (Ctrl+P)'}
                     >
                         <CreditCard size={18} />
                         <span>{processingPayment ? 'Preparando...' : 'Pagar'}</span>
@@ -1149,7 +1451,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 >
                                     <span
                                         className="pos-brand-dot"
-                                        style={{ background: brand.color || 'var(--color-primary)' }}
+                                        style={{ background: brand.color || 'var(--ui-primary)' }}
                                     />
                                     {brand.name}
                                 </button>
@@ -1164,7 +1466,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 onClick={handleItemClick}
                                 onContextMenu={handleItemRightClick}
                                 onQuantityEdit={handleQuantityEdit}
-                                currencySymbol={currencySymbol}
+                                formatMoney={formatMoney}
+                                stockBadge={stockBadgeFor(stockAvailability.get(item.id))}
                             />
                         ))}
                         {filteredMenuItems.length === 0 && (
@@ -1194,8 +1497,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 style={{
                                     width: '100%',
                                     justifyContent: 'center',
-                                    border: '1px solid var(--color-primary)',
-                                    color: 'var(--color-primary)',
+                                    border: '1px solid var(--ui-primary)',
+                                    color: 'var(--ui-primary)',
                                     padding: '12px',
                                     gap: '8px'
                                 }}
@@ -1205,12 +1508,25 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                             </button>
                         </div>
                     )}
+                    {selectedTable && !currentOrderId && !activeTableOrder && (
+                        <div className="pos-order-type">
+                            <SegmentedControl
+                                ariaLabel="Tipo de orden"
+                                value={orderType}
+                                onChange={setOrderType}
+                                options={[
+                                    { value: 'DINE_IN', label: 'Comer aquí' },
+                                    { value: 'TAKEOUT', label: 'Para llevar' },
+                                ]}
+                            />
+                        </div>
+                    )}
                     {selectedTable && activeTableOrder && (
-                        <div style={{
+                        <div className="pos-active-order-summary" style={{
                             marginBottom: '1rem',
                             padding: '0.85rem 1rem',
                             borderRadius: '12px',
-                            background: 'var(--color-surface-elevated)',
+                            background: 'var(--ui-surface)',
                             border: `1px solid ${waiterAccentColor}55`,
                             boxShadow: `inset 4px 0 0 ${waiterAccentColor}`
                         }}>
@@ -1232,29 +1548,33 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                             {activeTableOrder.user?.name || 'Sin mesero'}
                                         </span>
                                     </div>
-                                    <div style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>
+                                    <div style={{ fontSize: '0.9rem', color: 'var(--ui-text-muted)' }}>
                                         Estado: {getOrderStatusLabel(activeTableOrder.status)} · {activeTableOrder.items?.length || 0} items
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
-                                        {activeTableOrder.status === 'READY'
-                                            && (activeTableOrder.financialStatus === 'PAID' || Math.round(activeOrderTotal * 100) === 0) && (
-                                            <button className="header-action-btn secondary" onClick={handleMarkDelivered}>
-                                                Entregar
-                                            </button>
-                                        )}
                                         {canCancelActive && activeTableOrder.financialStatus === 'UNPAID' && !activeTableOrder.payments?.length && activeTableOrder.status !== 'CANCELLED' && (
                                             <button
                                                 className="header-action-btn secondary"
                                                 onClick={handleCancelActiveOrder}
-                                                style={{ borderColor: 'var(--color-error, #ef4444)', color: 'var(--color-error, #ef4444)' }}
+                                                style={{ borderColor: 'var(--ui-danger)', color: 'var(--ui-danger)' }}
                                             >
                                                 Cancelar
+                                            </button>
+                                        )}
+                                        {canVoidLines && !orderLineVoidBlocker(activeTableOrder) && voidableOrderLines(activeTableOrder).length > 0 && (
+                                            <button
+                                                type="button"
+                                                className="header-action-btn secondary"
+                                                onClick={() => setShowLineVoid(true)}
+                                                title="Anular una línea ya enviada a cocina y registrar su merma"
+                                            >
+                                                Anular línea
                                             </button>
                                         )}
                                     </div>
                                 </div>
                                 <div style={{ fontWeight: 700 }}>
-                                    {currencySymbol}{activeOrderTotal.toFixed(2)}
+                                    {formatMoney(activeOrderTotal)}
                                 </div>
                             </div>
                         </div>
@@ -1262,7 +1582,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     <button
                         type="button"
                         className="header-action-btn secondary"
-                        onClick={() => setShowFiscalCustomer(true)}
+                        onClick={openFiscalCustomerModal}
+                        aria-haspopup="dialog"
+                        aria-expanded={showFiscalCustomer}
                         style={{ width: '100%', justifyContent: 'center', marginBottom: '0.75rem' }}
                     >
                         Datos fiscales del cliente
@@ -1284,7 +1606,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         onTipToggle={settings.tipEnabled === 'true' ? (enabled) => setTipApplied(enabled) : undefined}
                         enablePromotions={settings.enablePromotions === 'true'}
                         onApplyPromotion={handleApplyPromotion}
-                        currencySymbol={currencySymbol}
+                        promotionBranchId={promotionBranchId}
+                        formatMoney={formatMoney}
                     />
                     {showMobileCart && showMobileActions && (
                         <div className="pos-mobile-actions in-cart-panel">
@@ -1337,18 +1660,32 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             {/* Mobile Cart Summary Bar */}
             <div className="mobile-cart-summary">
                 <div className="cart-total-preview">
-                    <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Total:</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{currencySymbol}{displayTotal.toFixed(2)}</span>
+                    <span style={{ fontSize: '0.9rem', color: 'var(--ui-text-muted)' }}>Total:</span>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{formatMoney(displayTotal)}</span>
                 </div>
                 <button className="mobile-cart-btn" onClick={() => setShowMobileCart(true)}>
                     <span>Ver Orden ({cart.reduce((acc, item) => acc + item.quantity, 0) || activeTableOrder?.items?.length || 0})</span>
                 </button>
             </div>
 
+            <KitchenLineVoidModal
+                isOpen={showLineVoid}
+                order={activeTableOrder}
+                onClose={() => setShowLineVoid(false)}
+                onVoided={(updated) => {
+                    if (updated) {
+                        setActiveTableOrder((current) => (current?.id === updated.id ? { ...current, ...updated } : current));
+                        void syncOrderContext(updated.id).catch((error) => {
+                            notifyError(error, 'La línea fue anulada, pero la orden no pudo actualizarse (recarga la página)', { type: 'warning' });
+                        });
+                    }
+                }}
+            />
             {/* Modals */}
             {showTableModal && (
                 <TableSelectionModal
                     tables={tables}
+                    excludeTableId={selectedTable?.id}
                     onSelectTable={handleSelectTable}
                     onClose={() => setShowTableModal(false)}
                 />
@@ -1357,55 +1694,72 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             {showPaymentModal && (
                 <PaymentModal
                     isOpen={showPaymentModal}
-                    onClose={() => setShowPaymentModal(false)}
-                    orderId={currentOrderId}
-                    orderTotal={currentOrderId ? activeOrderTotal : total}
-                    order={activeTableOrder}
+                    onClose={() => {
+                        setShowPaymentModal(false);
+                        setPaymentOrder(null);
+                    }}
+                    orderId={paymentOrder?.id ?? null}
+                    orderTotal={Number(paymentOrder?.total ?? 0)}
+                    order={paymentOrder}
                     onPaymentSuccess={handlePaymentComplete}
                     currencySymbol={currencySymbol}
-                    hasUsableCashShift={hasUsableCashShift(shiftStatus, selectedTable?.branchId)}
+                    hasUsableCashShift={hasUsableCashShift(shiftStatus, paymentOrder?.branchId)}
                 />
             )}
 
             {showFiscalCustomer && (
-                <Modal
+                <FullScreenModal
+                    size="compact"
                     isOpen
-                    onClose={() => setShowFiscalCustomer(false)}
+                    onClose={closeFiscalCustomerModal}
                     title="Datos fiscales del cliente"
-                    size="lg"
-                    description="Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir."
-                    footer={<Button type="button" onClick={() => setShowFiscalCustomer(false)}>Aceptar</Button>}
+                    subtitle="Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir."
+                    footer={activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt
+                        ? <Button type="button" variant="primary" onClick={closeFiscalCustomerModal}>Cerrar</Button>
+                        : (
+                            <>
+                                <Button type="button" variant="ghost" onClick={closeFiscalCustomerModal} disabled={savingFiscalCustomer}>
+                                    Cancelar
+                                </Button>
+                                <Button type="button" variant="primary" onClick={() => void saveFiscalCustomer()} disabled={savingFiscalCustomer}>
+                                    {savingFiscalCustomer ? 'Guardando...' : 'Guardar'}
+                                </Button>
+                            </>
+                        )}
                 >
                         <div className="pos-fiscal-grid">
-                            <label>
+                            <label htmlFor="pos-fiscal-customer-name">
                                 Nombre o razón social
-                                <input className="input" value={customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setCustomerName(event.target.value)} />
+                                <input id="pos-fiscal-customer-name" value={fiscalCustomerDraft.customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, customerName: event.target.value }))} placeholder="Consumidor final" />
                             </label>
-                            <label>
+                            <label htmlFor="pos-fiscal-tax-id-type">
                                 Tipo de identificación
-                                <input className="input" value={fiscalCustomer.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
+                                <input id="pos-fiscal-tax-id-type" value={fiscalCustomerDraft.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
                             </label>
-                            <label>
+                            <label htmlFor="pos-fiscal-tax-id">
                                 Identificación tributaria
-                                <input className="input" value={fiscalCustomer.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxId: event.target.value }))} />
+                                <input id="pos-fiscal-tax-id" value={fiscalCustomerDraft.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, taxId: event.target.value }))} />
                             </label>
-                            <label>
+                            <label htmlFor="pos-fiscal-phone">
                                 Teléfono
-                                <input className="input" value={fiscalCustomer.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, phone: event.target.value }))} />
+                                <input id="pos-fiscal-phone" value={fiscalCustomerDraft.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, phone: event.target.value }))} />
                             </label>
-                            <label className="pos-fiscal-span-full">
+                            <label className="pos-fiscal-span-full" htmlFor="pos-fiscal-address">
                                 Dirección fiscal
-                                <textarea className="input" rows={2} value={fiscalCustomer.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, fiscalAddress: event.target.value }))} />
+                                <textarea id="pos-fiscal-address" rows={2} value={fiscalCustomerDraft.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, fiscalAddress: event.target.value }))} />
                             </label>
-                            <label className="pos-fiscal-span-full">
+                            <label className="pos-fiscal-span-full" htmlFor="pos-fiscal-email">
                                 Correo
-                                <input className="input" type="email" value={fiscalCustomer.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, email: event.target.value }))} />
+                                <input id="pos-fiscal-email" type="email" value={fiscalCustomerDraft.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, email: event.target.value }))} />
                             </label>
                         </div>
-                        {activeTableOrder?.invoiceNumber && (
-                            <p className="shift-warning-note">La factura ya fue emitida; estos datos son de solo lectura.</p>
+                        {fiscalCustomerError && (
+                            <p className="pos-fiscal-error" role="alert">{fiscalCustomerError}</p>
                         )}
-                </Modal>
+                        {(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) && (
+                            <p className="shift-warning-note">La prefactura o factura ya fue emitida; estos datos son de solo lectura.</p>
+                        )}
+                </FullScreenModal>
             )}
 
             {showKeypad && (
@@ -1417,43 +1771,56 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             )}
 
             {warehouseAction && (
-                <Modal
+                <FullScreenModal
+                    size="compact"
                     isOpen
                     onClose={() => {
+                        if (processingWarehouseAction) return;
                         setWarehouseAction(null);
                         setOperationalWarehouseId(null);
                         setPendingCancelReason(undefined);
                     }}
-                    title={warehouseAction === 'DELIVER' ? 'Bodega de entrega' : 'Bodega para registrar merma'}
-                    size="sm"
-                    description={warehouseAction === 'DELIVER'
-                        ? 'Selecciona la bodega de esta sucursal de la que se descontará el inventario.'
-                        : 'La orden ya fue enviada a cocina. Selecciona la bodega donde se registrará el desperdicio.'}
+                    title="Bodega para registrar merma"
+                    subtitle="La orden ya fue enviada a cocina. Selecciona la bodega donde se registrará el desperdicio."
                     footer={(
                         <>
-                            <Button type="button" variant="ghost" onClick={() => {
-                                setWarehouseAction(null);
-                                setOperationalWarehouseId(null);
-                                setPendingCancelReason(undefined);
-                            }}>Volver</Button>
-                            <Button type="button" disabled={!operationalWarehouseId} onClick={() => void handleWarehouseAction()}>Confirmar</Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                disabled={processingWarehouseAction}
+                                onClick={() => {
+                                    setWarehouseAction(null);
+                                    setOperationalWarehouseId(null);
+                                    setPendingCancelReason(undefined);
+                                }}
+                            >
+                                Volver
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="primary"
+                                disabled={!operationalWarehouseId || processingWarehouseAction}
+                                onClick={() => void handleWarehouseAction()}
+                            >
+                                {processingWarehouseAction ? 'Procesando…' : 'Confirmar'}
+                            </Button>
                         </>
                     )}
                 >
                         <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
-                        <Select<WarehouseOption>
-                            variant="modal"
-                            label="Bodega operativa"
-                            placeholder="Seleccionar bodega…"
-                            options={warehouseOptions}
-                            value={warehouseOptions.find((option) => option.value === operationalWarehouseId) ?? null}
-                            onChange={(option: SingleValue<WarehouseOption>) => setOperationalWarehouseId(option?.value ?? null)}
-                            isSearchable={warehouseOptions.length > 6}
-                        />
+                        <Field label="Bodega operativa" htmlFor="pos-operational-warehouse">
+                            <AppSelect
+                                inputId="pos-operational-warehouse"
+                                placeholder="Seleccionar bodega…"
+                                options={warehouseOptions}
+                                value={operationalWarehouseId}
+                                onChange={setOperationalWarehouseId}
+                            />
+                        </Field>
                         {branchWarehouses.length === 0 && (
                             <p className="shift-warning-note">No hay una bodega tipo sucursal configurada para completar esta operación.</p>
                         )}
-                </Modal>
+                </FullScreenModal>
             )}
 
             {modifierItem && (
@@ -1461,7 +1828,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     item={modifierItem}
                     groups={modifierGroups}
                     loading={loadingModifiers}
-                    currencySymbol={currencySymbol}
+                    formatMoney={formatMoney}
                     onClose={() => {
                         setModifierItem(null);
                         setModifierGroups([]);
@@ -1472,21 +1839,20 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             {/* Cash Shift Warning Modal */}
             {showShiftWarning && shiftStatus && (
-                <Modal
+                <FullScreenModal
+                    size="compact"
                     isOpen
                     onClose={() => setShowShiftWarning(false)}
                     title={shiftStatus.requiresClose ? 'Turno de caja pendiente' : 'Sin turno de caja'}
-                    size="sm"
-                    closeOnBackdrop={false}
-                    description={canManageShift
+                    subtitle={canManageShift
                         ? shiftStatus.message
                         : 'No hay un turno de caja activo. Solicita al cajero o administrador que abra un turno para procesar pagos.'}
                     footer={canManageShift ? (
-                        <Button type="button" onClick={() => navigate('/cash-registers')}>
+                        <Button type="button" variant="primary" onClick={() => navigate('/cash-registers')}>
                             {shiftStatus.requiresClose ? 'Ir a cerrar turno' : 'Ir a abrir turno'}
                         </Button>
                     ) : (
-                        <Button type="button" onClick={() => setShowShiftWarning(false)}>Entendido</Button>
+                        <Button type="button" variant="primary" onClick={() => setShowShiftWarning(false)}>Entendido</Button>
                     )}
                 >
                         <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
@@ -1503,7 +1869,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                     ? 'Aviso: Puedes crear órdenes y enviarlas a cocina. Los cobros los registra cajería y requieren turno activo.'
                                     : 'Aviso: Los cobros los registra cajería y requieren turno de caja activo.'}
                         </p>
-                </Modal>
+                </FullScreenModal>
             )}
         </div>
     );
@@ -1513,7 +1879,7 @@ interface ModifierSelectorModalProps {
     item: MenuItem;
     groups: ModifierGroupWithModifiers[];
     loading: boolean;
-    currencySymbol: string;
+    formatMoney: (amount: unknown) => string;
     onClose: () => void;
     onConfirm: (selected: SelectedModifier[]) => void;
 }
@@ -1522,7 +1888,7 @@ function ModifierSelectorModal({
     item,
     groups,
     loading,
-    currencySymbol,
+    formatMoney,
     onClose,
     onConfirm
 }: ModifierSelectorModalProps) {
@@ -1579,20 +1945,19 @@ function ModifierSelectorModal({
     };
 
     return (
-        <Modal
+        <FullScreenModal
             isOpen
             onClose={onClose}
             title={item.name}
-            size="md"
-            description="Personaliza el producto y revisa el subtotal antes de agregarlo."
+            subtitle="Personaliza el producto y revisa el subtotal antes de agregarlo."
             footer={(
                 <>
                     <div className="pos-modifier-subtotal">
                         <span>Subtotal</span>
-                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
+                        <strong>{formatMoney(subtotal)}</strong>
                     </div>
                     <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-                    <Button type="button" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
+                    <Button type="button" variant="primary" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
                 </>
             )}
         >
@@ -1628,7 +1993,7 @@ function ModifierSelectorModal({
                                                     <span className="pos-modifier-option-name">{mod.name}</span>
                                                     {Number(mod.price) > 0 && (
                                                         <span className="pos-modifier-option-price">
-                                                            +{currencySymbol}{Number(mod.price).toFixed(2)}
+                                                            +{formatMoney(Number(mod.price))}
                                                         </span>
                                                     )}
                                                 </button>
@@ -1640,6 +2005,6 @@ function ModifierSelectorModal({
                         })
                     )}
                 </div>
-        </Modal>
+        </FullScreenModal>
     );
 }

@@ -301,17 +301,19 @@ export class UnitConversionController {
                     });
                 }
 
-                // Las unidades alternas deben compartir el measurementType de la base.
-                // Excepción: las unidades PACKAGE llevan factores específicos por
-                // producto que no se derivan del catálogo, así que se permite el
-                // factor explícito (ya validado > 0) aunque el tipo difiera.
+                // Cada unidad alterna lleva un factor explícito por producto (ya
+                // validado > 0) y convert() siempre prefiere ese factor sobre el
+                // catálogo, así que se acepta cualquier measurementType: p. ej.
+                // base "paquete" con alterna "g" (1 g = 0.002 paquete) o base
+                // "unidad" con alterna "kg" (1 kg = 8 unidades). Lo que sí se
+                // rechaza es una alterna que sea la misma unidad que la base
+                // (mismo id con factor != 1, o un alias de su abreviatura).
                 if (au.unitId !== baseUnitId
-                    && unit.measurementType !== baseUnit.measurementType
-                    && unit.measurementType !== 'PACKAGE') {
+                    && UnitConversionService.matchUnitAbbreviation(unit.abbreviation, [baseUnit], (u) => u.abbreviation)) {
                     return next({
                         statusCode: 400,
-                        message: `La unidad "${unit.abbreviation}" (${unit.measurementType}) no es compatible ` +
-                            `con la unidad base "${baseUnit.abbreviation}" (${baseUnit.measurementType})`
+                        message: `La unidad "${unit.abbreviation}" es la misma unidad base "${baseUnit.abbreviation}"; ` +
+                            'no puede configurarse como unidad alterna'
                     });
                 }
             }

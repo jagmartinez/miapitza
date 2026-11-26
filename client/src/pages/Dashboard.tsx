@@ -4,12 +4,13 @@ import { useAuth } from '../hooks/useAuth';
 import { reportsAPI, reservationsAPI, productsAPI } from '../services/api';
 import { hasAnyRole } from '../utils/authz';
 import { getOrderStatusLabel } from '../utils/orderStatus';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
 import type { Order } from '../types';
 import { ADMIN } from '../constants/roles';
 import { useCurrency } from '../hooks/useCurrency';
-import Select from '../components/Select';
-import type { SingleValue } from 'react-select';
-import Modal from '../components/Modal';
+import { AppSelect, FullScreenModal, formatNumber } from '@/ui';
+import { Heatmap, ParetoBars } from '@/ui/charts';
+import { toPareto, binScatter } from './dashboardCharts';
 import EmptyState from '../components/EmptyState';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import {
@@ -37,24 +38,6 @@ import {
     CalendarCheck,
     ClipboardList
 } from 'lucide-react';
-import {
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    BarChart,
-    Bar,
-    Cell,
-    ScatterChart,
-    Scatter,
-    Radar,
-    RadarChart,
-    PolarGrid,
-    PolarAngleAxis,
-    PolarRadiusAxis,
-    Treemap
-} from 'recharts';
 import './Dashboard.css';
 
 interface ApiResponse {
@@ -225,15 +208,11 @@ interface PaymentBreakdownItem {
     total: number;
 }
 
-interface CategoryOption {
-    value: string;
-    label: string;
-}
 
 export default function Dashboard() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { formatMoney: formatCurrency, symbol: currencySymbol } = useCurrency();
+    const { formatMoney: formatCurrency } = useCurrency();
     const isAdmin = hasAnyRole(user, ADMIN);
     const [stats, setStats] = useState({
         todaySales: 0,
@@ -611,7 +590,7 @@ export default function Dashboard() {
                                 <div key={i} className="ord-row">
                                     <div className="ord-meta"><span className="ord-id">{p.name}</span></div>
                                     <div className="ord-right">
-                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--color-danger)' : 'var(--color-warning)' }}>{p.current} {p.unit}</span>
+                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--ui-danger)' : 'var(--ui-warning)' }}>{p.current} {p.unit}</span>
                                         <span className="ord-total" style={{ opacity: 0.5 }}>min: {p.min}</span>
                                     </div>
                                 </div>
@@ -670,7 +649,7 @@ export default function Dashboard() {
                                 <div key={i} className="ord-row">
                                     <div className="ord-meta"><span className="ord-id">{p.name}</span></div>
                                     <div className="ord-right">
-                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--color-danger)' : 'var(--color-warning)' }}>
+                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--ui-danger)' : 'var(--ui-warning)' }}>
                                             {p.current} {p.unit}
                                         </span>
                                         <span className="ord-total" style={{ opacity: 0.5 }}>min: {p.min}</span>
@@ -705,7 +684,7 @@ export default function Dashboard() {
                                         <span className="inv-meta">{m.reason || m.type}</span>
                                     </div>
                                     <div className="invoice-right">
-                                        <span className="inv-amount" style={{ color: m.type === 'IN' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                        <span className="inv-amount" style={{ color: m.type === 'IN' ? 'var(--ui-success)' : 'var(--ui-danger)' }}>
                                             {m.type === 'IN' ? '+' : '-'}{m.quantity} {m.unit}
                                         </span>
                                         <span className={`inv-status status-${m.type === 'IN' ? 'paid' : 'cancelled'}`}>{m.type}</span>
@@ -758,7 +737,7 @@ export default function Dashboard() {
                                     </div>
                                     <div className="ord-row">
                                         <div className="ord-meta"><span className="ord-id">Efectivo Acumulado</span></div>
-                                        <div className="ord-right"><span className="ord-total" style={{ color: 'var(--color-success)' }}>{formatCurrency(myStats.activeShift.cashAccumulated)}</span></div>
+                                        <div className="ord-right"><span className="ord-total" style={{ color: 'var(--ui-success)' }}>{formatCurrency(myStats.activeShift.cashAccumulated)}</span></div>
                                     </div>
                                     <div className="ord-row">
                                         <div className="ord-meta"><span className="ord-id">Apertura</span></div>
@@ -824,7 +803,7 @@ export default function Dashboard() {
                                     />
                                 </div>
                             ) : myStats.myOrders.map((ord: RecentOrder) => (
-                                <div key={ord.id} className="ord-row clickable" onClick={() => setSelectedOrder(ord)}>
+                                <div key={ord.id} className="ord-row clickable" role="button" tabIndex={0} aria-label={`Ver orden ${ord.id}`} onClick={() => setSelectedOrder(ord)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedOrder(ord))}>
                                     <div className="ord-meta"><span className="ord-id">{ord.id}</span><span className="ord-table">{ord.table}</span></div>
                                     <div className="ord-right"><span className="ord-total">{formatCurrency(ord.total)}</span><span className={`ord-status status-${ord.status}`}>{ord.status}</span></div>
                                 </div>
@@ -867,7 +846,7 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                <Modal isOpen={!!selectedOrder} onClose={() => setSelectedOrder(null)} title="Detalle de Orden" size="sm" variant="sidebar">
+                <FullScreenModal isOpen={!!selectedOrder} onClose={() => setSelectedOrder(null)} title="Detalle de Orden">
                     {selectedOrder && (
                         <div className="detail-modal-content">
                             <div className="detail-header-section"><h3 className="detail-main-title">{selectedOrder.id}</h3><span className="detail-main-value">{formatCurrency(selectedOrder.total)}</span></div>
@@ -875,7 +854,7 @@ export default function Dashboard() {
                             <div className="detail-row"><span className="detail-label">Estado</span><span className={`detail-badge status-${selectedOrder.status}`}>{selectedOrder.status}</span></div>
                         </div>
                     )}
-                </Modal>
+                </FullScreenModal>
             </div>
         );
     }
@@ -911,7 +890,7 @@ export default function Dashboard() {
 
                     <div className="header-meta-group">
                         {stockAlerts.length > 0 && (
-                            <div className="compact-alert-ticker" onClick={() => navigate('/inventory')} title="Ver inventario con stock bajo">
+                            <div className="compact-alert-ticker" role="button" tabIndex={0} onClick={() => navigate('/inventory')} onKeyDown={(event) => activateOnKeyboard(event, () => navigate('/inventory'))} title="Ver inventario con stock bajo">
                                 <AlertCircle size={16} className="text-danger" />
                                 <span className="ticker-label text-danger">Stock bajo</span>
                                 <span className="ticker-count">{stockAlerts.length}</span>
@@ -1026,19 +1005,16 @@ export default function Dashboard() {
                         <PeriodSelector value={radarPeriod} onChange={setRadarPeriod} />
                     </div>
                     <div className="chart-wrapper">
-                        <ResponsiveContainer width="100%" height={280}>
-                            <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                                <PolarGrid />
-                                <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
-                                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} />
-                                <Radar name="Turno A" dataKey="A" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-                                <Radar name="Turno B" dataKey="B" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.6} />
-                                <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
-                            </RadarChart>
-                        </ResponsiveContainer>
+                        <Heatmap
+                            rows={[
+                                { label: 'Turno A', values: radarData.map((r) => r.A) },
+                                { label: 'Turno B', values: radarData.map((r) => r.B) },
+                            ]}
+                            columns={radarData.map((r) => r.subject)}
+                            format={(v) => formatNumber(v, 0)}
+                            ariaLabel="Evaluación de turnos por indicador"
+                        />
                         <div className="chart-legend-center">
-                            <span style={{ color: '#8884d8' }}>● Turno A</span>
-                            <span style={{ color: '#82ca9d' }}>● Turno B</span>
                             <span>Índice relativo (mejor turno = 100)</span>
                         </div>
                     </div>
@@ -1052,23 +1028,11 @@ export default function Dashboard() {
                         <PeriodSelector value={incomePeriod} onChange={setIncomePeriod} />
                     </div>
                     <div className="chart-wrapper">
-                        <ResponsiveContainer width="100%" height={260}>
-                            <BarChart data={incomeData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${currencySymbol}${Number(v) / 1000}k`} />
-                                <Tooltip
-                                    cursor={{ fill: '#f1f5f9' }}
-                                    formatter={(value) => [formatCurrency(Number(value)), 'Venta bruta']}
-                                    contentStyle={{ borderRadius: '8px' }}
-                                />
-                                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                                    {incomeData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
+                        <ParetoBars
+                            items={toPareto(incomeData.map((d) => ({ name: d.name, value: d.value })), Math.max(12, incomeData.length))}
+                            format={(v) => formatCurrency(v)}
+                            ariaLabel="Venta bruta por categoría con porcentaje acumulado"
+                        />
                     </div>
                 </div>
 
@@ -1076,53 +1040,35 @@ export default function Dashboard() {
                     <div className="section-header mb-large">
                         <h3>Demanda histórica por producto</h3>
                         <div className="treemap-filters" style={{ width: '250px' }}>
-                            <Select
-                                className="category-select-container"
-                                value={treemapCategory}
-                                onChange={(val: SingleValue<CategoryOption>) => val && setTreemapCategory(val)}
+                            <AppSelect
+                                aria-label="Categoría de producto"
+                                size="sm"
+                                isClearable={false}
+                                value={treemapCategory.value}
+                                onChange={(val) => {
+                                    if (val == null) return;
+                                    setTreemapCategory({ value: val, label: val === 'all' ? 'Todas las Categorías' : val });
+                                }}
                                 options={[
                                     { value: 'all', label: 'Todas las Categorías' },
                                     ...Array.from(new Set(topProducts?.map(p => p.category) || []))
                                         .filter(cat => cat && cat !== 'N/A')
                                         .map(cat => ({ value: cat, label: cat }))
                                 ]}
-                                isSearchable={false}
                             />
                         </div>
                     </div>
                     <div className="chart-wrapper">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <Treemap
-                                data={(topProducts || [])
+                        <ParetoBars
+                            items={toPareto(
+                                (topProducts || [])
                                     .filter(p => treemapCategory.value === 'all' || p.category === treemapCategory.value)
-                                    .map(p => ({
-                                        name: p.name,
-                                        size: Math.max(0, Number(p.totalQuantity || 0)),
-                                        fill: p.category === 'Bebidas' ? '#60a5fa' :
-                                            p.category === 'Platos' ? '#818cf8' :
-                                                p.category === 'Postres' ? '#fbbf24' :
-                                                    p.category === 'Entradas' ? '#34d399' : '#94a3b8'
-                                    }))}
-                                dataKey="size"
-                                stroke="#1e293b"
-                                fill="#8884d8"
-                            >
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: 'var(--color-surface)',
-                                        borderRadius: '8px',
-                                        border: '1px solid var(--color-border)',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                                        color: 'var(--color-text)'
-                                    }}
-                                    itemStyle={{ color: 'var(--color-text)' }}
-                                    formatter={(value: number, _name: string, props: { payload?: { name: string } }) => [
-                                        `${Number(value).toFixed(0)} unidades`,
-                                        props.payload?.name ?? ''
-                                    ]}
-                                />
-                            </Treemap>
-                        </ResponsiveContainer>
+                                    .map(p => ({ name: p.name, value: Number(p.totalQuantity || 0) })),
+                                15,
+                            )}
+                            format={(v) => `${formatNumber(v, 0)} unidades`}
+                            ariaLabel="Demanda histórica por producto con porcentaje acumulado"
+                        />
                     </div>
                 </div>
 
@@ -1133,15 +1079,12 @@ export default function Dashboard() {
                         <h3>Servicio vs Propina</h3>
                         <PeriodSelector value={tipsPeriod} onChange={setTipsPeriod} />
                     </div>
-                    <ResponsiveContainer width="100%" height={280}>
-                        <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis type="number" dataKey="waitTime" name="Espera" unit="min" tick={{ fontSize: 10 }} label={{ value: 'Tiempo Espera (min)', position: 'insideBottom', offset: -10 }} />
-                            <YAxis type="number" dataKey="tip" name="Propina" tickFormatter={(v) => `${currencySymbol}${v}`} tick={{ fontSize: 10 }} />
-                            <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '8px' }} />
-                            <Scatter name="Mesas" data={scatterTipsData} fill="#8884d8" />
-                        </ScatterChart>
-                    </ResponsiveContainer>
+                    <Heatmap
+                        {...binScatter(scatterTipsData as Array<Record<string, number | undefined>>, 'waitTime', 'tip', (n) => formatNumber(n, 1), 6, (n) => formatCurrency(n))}
+                        format={(v) => `${formatNumber(v, 0)} mesas`}
+                        ariaLabel="Mesas por tiempo de espera (min, columnas) y propina (filas)"
+                        caption="Columnas: tiempo de espera (min). Filas: propina."
+                    />
                 </div>
 
                 <div className="bento-item chart-section scatter-section-large">
@@ -1149,15 +1092,12 @@ export default function Dashboard() {
                         <h3>Gasto vs Permanencia</h3>
                         <PeriodSelector value={spendPeriod} onChange={setSpendPeriod} />
                     </div>
-                    <ResponsiveContainer width="100%" height={280}>
-                        <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis type="number" dataKey="dwellTime" name="Tiempo" unit="min" tick={{ fontSize: 10 }} label={{ value: 'Permanencia (min)', position: 'insideBottom', offset: -10 }} />
-                            <YAxis type="number" dataKey="spend" name="Consumo" tickFormatter={(v) => `${currencySymbol}${v}`} tick={{ fontSize: 10 }} />
-                            <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '8px' }} />
-                            <Scatter name="Mesas" data={scatterSpendData} fill="#82ca9d" />
-                        </ScatterChart>
-                    </ResponsiveContainer>
+                    <Heatmap
+                        {...binScatter(scatterSpendData as Array<Record<string, number | undefined>>, 'dwellTime', 'spend', (n) => formatNumber(n, 1), 6, (n) => formatCurrency(n))}
+                        format={(v) => `${formatNumber(v, 0)} mesas`}
+                        ariaLabel="Mesas por permanencia (min, columnas) y consumo (filas)"
+                        caption="Columnas: permanencia (min). Filas: consumo."
+                    />
                 </div>
 
                 {/* --- ROW 5: OPERATIONS (Top 5, Active Orders, Today Invoices, Upcoming Reservations) --- */}
@@ -1169,7 +1109,7 @@ export default function Dashboard() {
                     </div>
                     <div className="leaderboard-compact-list">
                         {topProducts.slice(0, 5).map((p, i) => (
-                            <div key={p.menuItemId} className="lb-compact-row clickable" onClick={() => setSelectedProduct(p)}>
+                            <div key={p.menuItemId} className="lb-compact-row clickable" role="button" tabIndex={0} aria-label={`Ver producto ${p.name}`} onClick={() => setSelectedProduct(p)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedProduct(p))}>
                                 <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
                                 <div className="lb-info">
                                     <span className="lb-name">{p.name}</span>
@@ -1196,7 +1136,7 @@ export default function Dashboard() {
                                 />
                             </div>
                         ) : recentOrders.slice(ordersPage * WIDGET_PAGE_SIZE, (ordersPage + 1) * WIDGET_PAGE_SIZE).map(ord => (
-                            <div key={ord.id} className="ord-row clickable" onClick={() => setSelectedOrder(ord)}>
+                            <div key={ord.id} className="ord-row clickable" role="button" tabIndex={0} aria-label={`Ver orden ${ord.id}`} onClick={() => setSelectedOrder(ord)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedOrder(ord))}>
                                 <div className="ord-meta">
                                     <span className="ord-id">{ord.id}</span>
                                     <span className="ord-table">{ord.table}</span>
@@ -1232,7 +1172,7 @@ export default function Dashboard() {
                                 />
                             </div>
                         ) : recentInvoices.slice(invoicesPage * WIDGET_PAGE_SIZE, (invoicesPage + 1) * WIDGET_PAGE_SIZE).map(inv => (
-                            <div key={inv.id} className="invoice-row clickable" onClick={() => setSelectedInvoice(inv)}>
+                            <div key={inv.id} className="invoice-row clickable" role="button" tabIndex={0} aria-label={`Ver factura ${inv.id}`} onClick={() => setSelectedInvoice(inv)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedInvoice(inv))}>
                                 <div className="invoice-info">
                                     <span className="inv-id">{inv.id}</span>
                                     <span className="inv-meta">{inv.time}</span>
@@ -1268,7 +1208,7 @@ export default function Dashboard() {
                                 />
                             </div>
                         ) : todaysReservations.slice(reservationsPage * WIDGET_PAGE_SIZE, (reservationsPage + 1) * WIDGET_PAGE_SIZE).map(res => (
-                            <div key={res.id} className="res-row clickable" onClick={() => setSelectedReservation(res)}>
+                            <div key={res.id} className="res-row clickable" role="button" tabIndex={0} aria-label={`Ver reservación ${res.id}`} onClick={() => setSelectedReservation(res)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedReservation(res))}>
                                 <div className="res-time">{res.day || res.time}</div>
                                 <div className="res-info">
                                     <span className="res-name">{res.name}</span>
@@ -1292,12 +1232,10 @@ export default function Dashboard() {
 
             {/* Detail Modals */}
             {/* Product Detail Modal */}
-            <Modal
+            <FullScreenModal
                 isOpen={!!selectedProduct}
                 onClose={() => setSelectedProduct(null)}
                 title="Detalle del Producto"
-                size="sm"
-                variant="sidebar"
             >
                 {selectedProduct && (
                     <div className="detail-modal-content">
@@ -1330,15 +1268,13 @@ export default function Dashboard() {
                         </div>
                     </div>
                 )}
-            </Modal>
+            </FullScreenModal>
 
             {/* Order Detail Modal */}
-            <Modal
+            <FullScreenModal
                 isOpen={!!selectedOrder}
                 onClose={() => setSelectedOrder(null)}
                 title="Detalle de Orden"
-                size="md"
-                variant="sidebar"
             >
                 {selectedOrder && (
                     <div className="detail-modal-content">
@@ -1390,15 +1326,13 @@ export default function Dashboard() {
                         </div>
                     </div>
                 )}
-            </Modal>
+            </FullScreenModal>
 
             {/* Invoice Detail Modal */}
-            <Modal
+            <FullScreenModal
                 isOpen={!!selectedInvoice}
                 onClose={() => setSelectedInvoice(null)}
                 title="Detalle de Factura"
-                size="sm"
-                variant="sidebar"
             >
                 {selectedInvoice && (
                     <div className="detail-modal-content">
@@ -1433,15 +1367,13 @@ export default function Dashboard() {
                         </div>
                     </div>
                 )}
-            </Modal>
+            </FullScreenModal>
 
             {/* Reservation Detail Modal */}
-            <Modal
+            <FullScreenModal
                 isOpen={!!selectedReservation}
                 onClose={() => setSelectedReservation(null)}
                 title="Detalle de Reserva"
-                size="sm"
-                variant="sidebar"
             >
                 {selectedReservation && (
                     <div className="detail-modal-content">
@@ -1482,7 +1414,7 @@ export default function Dashboard() {
                         </div>
                     </div>
                 )}
-            </Modal>
+            </FullScreenModal>
         </div >
     );
 }

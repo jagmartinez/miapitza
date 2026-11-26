@@ -15,7 +15,10 @@ export class WarehouseService {
                     select: {
                         id: true,
                         name: true,
-                        code: true
+                        code: true,
+                        // Lets delivery/cancel dialogs preselect the branch's
+                        // default sale warehouse (warehouse.id === this value).
+                        defaultSaleWarehouseId: true
                     }
                 },
                 _count: {
@@ -107,23 +110,32 @@ export class WarehouseService {
             .slice(0, 32);
         if (!normalizedCode) throw new Error('El código de la bodega no es válido');
 
-        return await prisma.warehouse.create({
-            data: {
-                companyId,
-                branchId,
-                type: warehouseType,
-                name,
-                code: normalizedCode
-            },
-            include: {
-                branch: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
+        return await prisma.$transaction(async (tx) => {
+            // The warehouse carries a copy of the company costing method (read by
+            // the inventory engine). Read it with a locking read so a concurrent
+            // method switch (Company FOR UPDATE first) is either fully before or
+            // fully after this insert.
+            const companyRows = await tx.$queryRaw<Array<{ costingMethod: string }>>`SELECT costingMethod FROM \`Company\` WHERE id = ${companyId} LOCK IN SHARE MODE`;
+            const costingMethod = companyRows[0]?.costingMethod === 'FIFO' ? 'FIFO' : 'WEIGHTED_AVERAGE';
+            return tx.warehouse.create({
+                data: {
+                    companyId,
+                    branchId,
+                    type: warehouseType,
+                    name,
+                    code: normalizedCode,
+                    costingMethod
+                },
+                include: {
+                    branch: {
+                        select: {
+                            id: true,
+                            name: true,
+                            code: true
+                        }
                     }
                 }
-            }
+            });
         });
     }
 

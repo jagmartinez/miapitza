@@ -1,0 +1,133 @@
+.headerActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ui-space-2);
+}
+
+.workgrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+    gap: var(--ui-space-4);
+    align-items: start;
+}
+
+.card {
+    overflow: hidden;
+    min-width: 0;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    background: var(--ui-surface);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text) 14%, transparent);
+}
+
+.card > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-space-3);
+    padding: var(--ui-space-4);
+    border-bottom: 1px solid var(--ui-border);
+    background: color-mix(in srgb, var(--ui-surface-2) 92%, var(--ui-primary) 8%);
+}
+
+.card > header h2 { margin: 0.2rem 0 0; color: var(--ui-text); font-size: var(--ui-text-lg); }
+
+.card > header > svg { color: var(--ui-primary); }
+
+.eyebrow { color: var(--ui-text-muted); font-size: var(--ui-text-xs); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.count { display: grid; min-width: 2.25rem; height: 2.25rem; padding-inline: 0.55rem; place-items: center; border-radius: 999px; background: var(--ui-primary); color: white; font-weight: 800; }
+
+.taskList { display: grid; }
+
+.taskList button,
+.route button,
+.setupGrid button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--ui-text);
+    cursor: pointer;
+    text-align: left;
+}
+
+.taskList button {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: var(--ui-space-3);
+    padding: var(--ui-space-3) var(--ui-space-4);
+    border-bottom: 1px solid var(--ui-border);
+}
+
+.taskList button:last-child { border-bottom: 0; }
+
+.taskList button > svg:first-child { color: var(--ui-primary); }
+
+.taskList button > svg:last-child { color: var(--ui-text-muted); }
+
+.taskList button span,
+.taskList button small,
+.route button span,
+.route button small,
+.setupGrid button span,
+.setupGrid button small { display: block; }
+
+.taskList small,
+.route small,
+.setupGrid small { margin-top: 0.2rem; color: var(--ui-text-muted); line-height: 1.35; }
+
+.taskList b { min-width: 2rem; padding: 0.3rem 0.55rem; border-radius: 999px; background: var(--ui-surface-2); color: var(--ui-text); text-align: center; font-variant-numeric: tabular-nums; }
+
+.taskList button:hover,
+.route button:hover,
+.setupGrid button:hover { background: color-mix(in srgb, var(--ui-primary) 7%, transparent); }
+
+.taskList button:focus-visible,
+.route button:focus-visible,
+.setupGrid button:focus-visible { outline: 3px solid color-mix(in srgb, var(--ui-primary) 35%, transparent); outline-offset: -3px; }
+
+.route { display: grid; margin: 0; padding: 0; list-style: none; }
+
+.route li { border-bottom: 1px solid var(--ui-border); }
+
+.route li:last-child { border-bottom: 0; }
+
+.route button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--ui-space-3); padding: var(--ui-space-3) var(--ui-space-4); }
+
+.route .stepNumber { display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface-2); font-weight: 800; }
+
+.route li.complete .stepNumber { border-color: var(--ui-success); background: color-mix(in srgb, var(--ui-success) 14%, var(--ui-surface)); color: var(--ui-success); }
+
+.route li.complete button > svg { color: var(--ui-success); }
+
+.route li.current { box-shadow: inset 3px 0 var(--ui-primary); }
+
+.setupGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.setupGrid button { display: flex; align-items: flex-start; gap: var(--ui-space-2); padding: var(--ui-space-4); border-right: 1px solid var(--ui-border); }
+
+.setupGrid button:last-child { border-right: 0; }
+
+.setupGrid svg { flex: 0 0 auto; color: var(--ui-primary); }
+
+@media (max-width: 1100px) {
+    .workgrid { grid-template-columns: 1fr; }
+    .setupGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .setupGrid button:nth-child(2) { border-right: 0; }
+    .setupGrid button:nth-child(-n + 2) { border-bottom: 1px solid var(--ui-border); }
+}
+
+@media (max-width: 640px) {
+    .headerActions,
+    .headerActions button { width: 100%; }
+    .setupGrid { grid-template-columns: 1fr; }
+    .setupGrid button { border-right: 0; border-bottom: 1px solid var(--ui-border); }
+    .setupGrid button:last-child { border-bottom: 0; }
+    .taskList button { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .taskList button > svg:last-child { display: none; }
+}
+
+.page { display: grid; gap: var(--ui-space-4); min-width: 0; }
+/* tarjetas KPI de @/ui/StatCard: se reparten el ancho y bajan de línea */
+.kpiRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--ui-space-3); min-width: 0; }

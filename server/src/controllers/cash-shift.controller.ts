@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../utils/prisma';
 import { CashShiftService } from '../services/cash-shift.service';
-import { CashArqueoService } from '../services/cash-arqueo.service';
+import { SettingService } from '../services/setting.service';
 import { getErrorMessage } from '../utils/error';
+import { CashError } from '../services/cash-errors';
+import { redactBlindSummary } from '../services/cash-blind';
 import { assertBranchAccess, isCompanyWide, resolveBranchScope } from '../utils/branch-scope';
 
 export class CashShiftController {
@@ -99,7 +101,7 @@ export class CashShiftController {
             const summary = await CashShiftService.getShiftSummary(id, companyId);
             res.json({
                 success: true,
-                data: summary
+                data: redactBlindSummary(summary, req.user!)
             });
         } catch (error: unknown) {
             next({ statusCode: 404, message: getErrorMessage(error) });
@@ -154,38 +156,19 @@ export class CashShiftController {
             });
         } catch (error: unknown) {
             console.error('[CASH-SHIFT] Error opening shift:', getErrorMessage(error));
+            if (error instanceof CashError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
 
-    static async close(req: Request, res: Response, next: NextFunction) {
-        try {
-            const id = parseInt(req.params.id);
-            const companyId = req.user!.companyId;
-            const { closingBalance, notes } = req.body;
-
-            if (closingBalance === undefined) {
-                return next({ statusCode: 400, message: 'closingBalance es requerido' });
-            }
-
-            await CashShiftController.assertShiftBranchAccess(req, id);
-            const shift = await CashArqueoService.closeShiftWithArqueo(
-                id,
-                companyId,
-                Number(closingBalance),
-                req.user!.roles || [req.user!.role],
-                notes,
-                undefined,
-                { forceClose: req.body.forceClose === true }
-            );
-            res.json({
-                success: true,
-                message: 'Turno de caja cerrado exitosamente',
-                data: shift
-            });
-        } catch (error: unknown) {
-            next({ statusCode: 400, message: getErrorMessage(error) });
-        }
+    static async close(req: Request, res: Response, _next: NextFunction) {
+        const id = parseInt(req.params.id);
+        res.setHeader('Deprecation', 'true');
+        res.setHeader('Link', `</api/cash-arqueo/${id}/close>; rel="successor-version"`);
+        res.status(410).json({
+            success: false,
+            message: 'Este cierre directo fue retirado porque no registra el arqueo físico. Use el cierre de caja con denominaciones.'
+        });
     }
 
     static async addMovement(req: Request, res: Response, next: NextFunction) {
@@ -193,13 +176,14 @@ export class CashShiftController {
             const shiftId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             await CashShiftController.assertShiftBranchAccess(req, shiftId);
-            const movement = await CashShiftService.addMovement(shiftId, companyId, req.body);
+            const movement = await CashShiftService.addMovement(shiftId, companyId, req.body, req.user!.userId);
             res.status(201).json({
                 success: true,
                 message: 'Movimiento agregado exitosamente',
                 data: movement
             });
         } catch (error: unknown) {
+            if (error instanceof CashError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -216,6 +200,37 @@ export class CashShiftController {
             });
         } catch (error: unknown) {
             next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getSuggestedFloat(req: Request, res: Response, next: NextFunction) {
+        try {
+            const cashRegisterId = parseInt(String(req.query.cashRegisterId ?? ''), 10);
+            if (!Number.isInteger(cashRegisterId) || cashRegisterId < 1) {
+                return next({ statusCode: 400, message: 'cashRegisterId es requerido' });
+            }
+            const companyId = req.user!.companyId;
+            const register = await prisma.cashRegister.findFirst({
+                where: { id: cashRegisterId, companyId },
+                select: { id: true, branchId: true }
+            });
+            if (!register) return next({ statusCode: 404, message: 'Caja registradora no encontrada' });
+            assertBranchAccess(req.user!, register.branchId);
+            const data = await CashShiftService.getSuggestedFloat(companyId, register.branchId, register.id);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            next(error instanceof Error && 'statusCode' in error
+                ? error
+                : { statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getCashSettings(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await SettingService.getCashSettings(req.user!.companyId);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
 

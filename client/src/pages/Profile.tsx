@@ -1,39 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { useConfirmDialog } from '../context/ConfirmContext';
 import { useTheme } from '../hooks/useTheme';
 import { useLanguage } from '../hooks/useLanguage';
 import { useCurrency } from '../hooks/useCurrency';
-import { usersAPI, reportsAPI, authAPI } from '../services/api';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import Button from '../components/Button';
-import Select from '../components/Select';
-import type { SingleValue } from 'react-select';
+import { usersAPI, reportsAPI } from '../services/api';
 import {
-    User, Lock, Save, Eye, EyeOff, Check, X, ShieldCheck,
-    Calendar, TrendingUp, Shield, Smartphone, Monitor, LogOut,
-    ShoppingBag, CreditCard, Star, Languages,
-    Moon, Sun, Bell, Settings,
-    Briefcase as BriefcaseBusiness, CalendarClock, ChevronRight, Fingerprint, MapPin, FileText, WalletCards,
-    Building2, BadgeCheck, KeyRound, CircleUserRound, AlertCircle,
-    type LucideIcon
+    Badge, Button, DataTable, EmptyState, Field, FormGrid, Input, LoadErrorState, PageContent, PageHeader, StatCard, Tabs,
+    formatMoney, formatNumber, toneFor, type Column,
+} from '@/ui';
+import { TrendChart } from '@/ui/charts';
+import {
+    Save, Calendar, TrendingUp, ChevronRight, Fingerprint, MapPin, FileText, WalletCards,
+    Building2, BadgeCheck, KeyRound, CircleUserRound, AlertCircle, CalendarClock,
+    Briefcase as BriefcaseBusiness,
 } from 'lucide-react';
 import type { User as AppUser } from '../types';
-import type { Language } from '../utils/translations';
 import { workforceClient } from '../components/hr/workforceClient';
 import { selectVacationBalance } from '../components/hr/vacationBalance';
 import type { HrMyWorkforce } from '../types/hr-workforce';
-import { formatHrNumber } from '../utils/hrFormat';
+import { formatHrNumber } from '../utils/hrDisplay';
+import { SecurityTab, type PasswordInfoState, type RolePermissionRow } from './profile/SecurityTab';
+import { NotificationsTab, PreferencesTab } from './profile/PreferencesTab';
+import { useUserPreferencesState } from './profile/usePreferencesState';
+import { axiosErr, profileCompleteness, PROFILE_TABS, resolveProfileTab, type ProfileTab } from './profile/profileHelpers';
 import './Profile.css';
-
-function axiosErr(err: unknown, fallback: string): string {
-    if (typeof err === 'object' && err !== null && 'response' in err) {
-        const m = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
-        if (typeof m === 'string' && m) return m;
-    }
-    return fallback;
-}
 
 interface ActivityEntry {
     id: number;
@@ -49,31 +40,9 @@ interface PerformanceData {
     myWeekTotal?: number;
 }
 
-interface PasswordInfoState {
-    passwordChangedAt?: string | null;
-    daysUntilExpiry: number | null;
-    expiryDays: number;
-}
-
-interface RolePermissionRow {
-    id: number;
-    name: string;
-    description?: string;
-}
-
 type FullProfileUser = AppUser & {
     role?: AppUser['role'] & { description?: string; permissions?: RolePermissionRow[] };
 };
-
-interface SessionRow {
-    id: string;
-    device?: string;
-    isCurrent?: boolean;
-    ipAddress?: string;
-    createdAt: string;
-}
-
-type ProfileTab = 'info' | 'hr' | 'stats' | 'permissions' | 'settings' | 'security' | 'sessions' | '2fa';
 
 interface MyStats {
     salesToday: number;
@@ -82,38 +51,33 @@ interface MyStats {
     topProduct: string;
 }
 
-const PWD_RULES = [
-    { id: 'len', label: 'Mínimo 8 caracteres', test: (p: string) => p.length >= 8 },
-    { id: 'up', label: 'Una mayúscula', test: (p: string) => /[A-Z]/.test(p) },
-    { id: 'low', label: 'Una minúscula', test: (p: string) => /[a-z]/.test(p) },
-    { id: 'num', label: 'Un número', test: (p: string) => /\d/.test(p) },
-    { id: 'sym', label: 'Un símbolo (!@#$%...)', test: (p: string) => /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(p) },
-];
+type SectionFailures = { stats: boolean; activity: boolean; performance: boolean; password: boolean };
 
 function getInitials(name: string): string {
     return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 }
 
 export default function Profile() {
-    const { formatMoney } = useCurrency();
+    const { symbol } = useCurrency();
+    const money = (n: number) => formatMoney(n, symbol || 'C$');
     const { user, logout } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const { language, setLanguage } = useLanguage();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const requestedTab = searchParams.get('tab');
-    const [activeTab, setActiveTab] = useState<ProfileTab>(() =>
-        requestedTab === 'hr' || (user?.accountType === 'INTERNAL' && Boolean(user.employeeId)) ? 'hr' : 'info'
-    );
+    const activeTab = resolveProfileTab(searchParams.get('tab'));
     const [stats, setStats] = useState<MyStats | null>(null);
     const [fullUserData, setFullUserData] = useState<FullProfileUser | null>(null);
     const [activities, setActivities] = useState<ActivityEntry[]>([]);
     const [performance, setPerformance] = useState<PerformanceData | null>(null);
     const [passwordInfo, setPasswordInfo] = useState<PasswordInfoState | null>(null);
+    const [failures, setFailures] = useState<SectionFailures>({ stats: false, activity: false, performance: false, password: false });
     const [myWorkforce, setMyWorkforce] = useState<HrMyWorkforce | null>(null);
     const [myHrLoading, setMyHrLoading] = useState(false);
     const [profileLoading, setProfileLoading] = useState(true);
     const [profileLoadWarning, setProfileLoadWarning] = useState<string | null>(null);
+    const [reloadKey, setReloadKey] = useState(0);
+    const prefsState = useUserPreferencesState(user?.id);
 
     const [formData, setFormData] = useState({
         name: user?.name || '', email: user?.email || '',
@@ -143,6 +107,12 @@ export default function Profile() {
                 if (actRes.status === 'fulfilled') setActivities(actRes.value.data.data);
                 if (perfRes.status === 'fulfilled') setPerformance(perfRes.value.data.data);
                 if (pwdRes.status === 'fulfilled') setPasswordInfo(pwdRes.value.data.data);
+                setFailures({
+                    stats: statsRes.status === 'rejected',
+                    activity: actRes.status === 'rejected',
+                    performance: perfRes.status === 'rejected',
+                    password: pwdRes.status === 'rejected',
+                });
                 if ([statsRes, actRes, perfRes, pwdRes].some(result => result.status === 'rejected')) {
                     setProfileLoadWarning('Tu identidad está disponible, pero algunos datos secundarios no pudieron actualizarse.');
                 }
@@ -152,7 +122,7 @@ export default function Profile() {
                 setProfileLoading(false);
             }
         })();
-    }, [user]);
+    }, [user, reloadKey]);
 
     useEffect(() => {
         if (user?.accountType !== 'INTERNAL' || !user.employeeId) {
@@ -168,15 +138,8 @@ export default function Profile() {
         return () => { active = false; };
     }, [user?.accountType, user?.employeeId]);
 
-    useEffect(() => {
-        if (requestedTab && ['info', 'hr', 'stats', 'permissions', 'settings', 'security', 'sessions', '2fa'].includes(requestedTab)) {
-            setActiveTab(requestedTab as ProfileTab);
-        }
-    }, [requestedTab]);
-
     const selectTab = (tab: ProfileTab) => {
-        setActiveTab(tab);
-        setSearchParams(tab === 'info' ? {} : { tab }, { replace: true });
+        setSearchParams(tab === 'resumen' ? {} : { tab }, { replace: true });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -207,699 +170,263 @@ export default function Profile() {
         .filter(item => item.status === 'APPROVED')
         .reduce((total, item) => total + (item.approvedMinutes ?? 0), 0) ?? null;
 
-    const tabs: { id: ProfileTab; icon: LucideIcon; label: string }[] = [
-        { id: 'info', icon: User, label: 'Información' },
-        { id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' },
-        { id: 'stats', icon: TrendingUp, label: 'Mi Desempeño' },
-        { id: 'permissions', icon: Shield, label: 'Permisos' },
-        { id: 'settings', icon: Settings, label: 'Preferencias' },
-        { id: 'security', icon: Lock, label: 'Contraseña' },
-        { id: 'sessions', icon: Monitor, label: 'Sesiones' },
-        { id: '2fa', icon: Smartphone, label: '2FA' },
+    const roleNames = useMemo(() => {
+        const names = (user?.roles ?? []).map(r => r.name);
+        if (user?.role?.name && !names.includes(user.role.name)) names.unshift(user.role.name);
+        return names;
+    }, [user?.roles, user?.role?.name]);
+
+    const branchOptions = useMemo(() => {
+        const list: { id: number; name: string }[] = [];
+        const add = (b?: { id: number; name: string } | null) => { if (b && !list.some(x => x.id === b.id)) list.push({ id: b.id, name: b.name }); };
+        add(fullUserData?.branch ?? user?.branch);
+        (fullUserData?.allowedBranches ?? user?.allowedBranches ?? []).forEach(ab => add(ab.branch));
+        return list;
+    }, [fullUserData, user]);
+
+    const completeness = profileCompleteness(
+        { name: formData.name, email: formData.email, nif: formData.nif, phone: formData.phone, address: formData.address },
+        user?.accountType === 'INTERNAL' ? hasEmployeeContext : null,
+    );
+
+    const activityColumns: Column<ActivityEntry>[] = [
+        { key: 'description', header: 'Descripción', width: '2fr' },
+        { key: 'date', header: 'Fecha', render: (a) => new Date(a.date).toLocaleString('es-MX') },
+        { key: 'amount', header: 'Monto', type: 'money', render: (a) => money(a.amount) },
+        { key: 'status', header: 'Estado', type: 'status', render: (a) => <Badge tone={toneFor(String(a.status).toUpperCase())} dot>{a.status}</Badge> },
     ];
 
-    return (
-        <div className="profile-page">
-            <h1 className="sr-only">Mi perfil</h1>
-            <header className="profile-overview" aria-labelledby="profile-overview-title">
-                <div className="profile-overview-main">
-                    <div className={`profile-avatar role-${roleLower}`} aria-hidden="true">{initials}</div>
-                    <div className="profile-overview-identity">
-                        <span className="profile-eyebrow"><CircleUserRound size={14} /> Centro de cuenta</span>
-                        <div className="profile-name-row">
-                            <h2 id="profile-overview-title" className="profile-user-name">{user?.name}</h2>
-                            <span className="profile-role-badge"><BadgeCheck size={14} /> {user?.role?.name ?? 'Sin rol'}</span>
-                        </div>
-                        <p className="profile-user-email">{user?.email || 'Correo no disponible'} · @{user?.username}</p>
-                        <div className="profile-overview-status">
-                            <span><Building2 size={15} /> {fullUserData?.company?.name || user?.company?.name || 'Empresa no disponible'}</span>
-                            <span><MapPin size={15} /> {fullUserData?.branch?.name || user?.branch?.name || 'Sin sucursal asignada'}</span>
-                            <span className={hasEmployeeContext ? 'linked' : 'pending'}><BriefcaseBusiness size={15} /> {hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="profile-overview-security">
-                    <span className="profile-security-icon"><KeyRound size={21} /></span>
-                    <div><strong>Seguridad de la cuenta</strong><small>Contraseña, sesiones y verificación en dos pasos</small></div>
-                    <button type="button" onClick={() => selectTab('security')}>Revisar <ChevronRight size={16} /></button>
-                </div>
-                <dl className="profile-overview-facts">
-                    <div><dt>Tipo de cuenta</dt><dd>{user?.accountType === 'INTERNAL' ? 'Interna' : user?.accountType === 'EXTERNAL' ? 'Externa' : 'No definido'}</dd></div>
-                    <div><dt>Estado</dt><dd>{user?.status || 'No disponible'}</dd></div>
-                    <div><dt>Miembro desde</dt><dd>{profileLoading ? 'Actualizando…' : fullUserData?.createdAt ? new Date(fullUserData.createdAt).toLocaleDateString('es-NI', { month: 'short', year: 'numeric' }) : 'No disponible'}</dd></div>
-                    <div><dt>Empleado</dt><dd>{hasEmployeeContext ? user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}` : 'No vinculado'}</dd></div>
-                </dl>
-            </header>
-
-            {profileLoadWarning && <div className="profile-load-warning" role="status"><AlertCircle size={18} /><span>{profileLoadWarning}</span></div>}
-
-            <div className="profile-workspace">
-                <nav className="profile-nav" role="tablist" aria-label="Secciones de mi perfil">
-                    {tabs.map(t => (
-                        <button
-                            key={t.id}
-                            className={`profile-nav-item ${activeTab === t.id ? 'active' : ''}`}
-                            onClick={() => selectTab(t.id)}
-                            role="tab"
-                            aria-selected={activeTab === t.id}
-                            aria-controls="profile-active-panel"
-                        >
-                            <t.icon size={17} aria-hidden="true" />
-                            <strong>{t.label}</strong>
-                        </button>
-                    ))}
-                </nav>
-
-                <main className="profile-content">
-                <div className="profile-content-card" id="profile-active-panel" role="tabpanel" aria-label={tabs.find(tab => tab.id === activeTab)?.label}>
-
-                    {/* INFO */}
-                    {activeTab === 'info' && (
-                        <div className="profile-tab-fade">
-                            <h3 className="profile-section-title"><User size={20} /> Editar Información</h3>
-                            <form onSubmit={handleSubmit} className="profile-edit-form">
-                                <div className="profile-form-row">
-                                    <div className="profile-field">
-                                        <label htmlFor="profile-name">Nombre completo</label>
-                                        <input id="profile-name" name="name" type="text" className="profile-input" value={formData.name}
-                                            onChange={e => setFormData({ ...formData, name: e.target.value })} />
-                                    </div>
-                                    <div className="profile-field">
-                                        <label htmlFor="profile-email">Correo electrónico</label>
-                                        <input id="profile-email" name="email" type="email" className="profile-input" value={formData.email}
-                                            onChange={e => setFormData({ ...formData, email: e.target.value })} />
-                                    </div>
-                                </div>
-                                <div className="profile-form-row">
-                                    <div className="profile-field">
-                                        <label htmlFor="profile-nif">Cédula / NIF</label>
-                                        <input id="profile-nif" name="nif" type="text" className="profile-input" placeholder="001-010101-0001A"
-                                            value={formData.nif} onChange={e => setFormData({ ...formData, nif: e.target.value })} />
-                                    </div>
-                                    <div className="profile-field">
-                                        <label htmlFor="profile-phone">Teléfono</label>
-                                        <input id="profile-phone" name="phone" type="tel" autoComplete="tel" className="profile-input" placeholder="+505 0000 0000"
-                                            value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
-                                    </div>
-                                </div>
-                                <div className="profile-field">
-                                    <label htmlFor="profile-address">Dirección</label>
-                                    <input id="profile-address" name="address" type="text" autoComplete="street-address" className="profile-input" placeholder="Calle, barrio, ciudad…"
-                                        value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                                </div>
-                                <div className="profile-form-footer">
-                                    <Button type="submit" disabled={loading} variant="primary">
-                                        <Save size={18} /> {loading ? 'Guardando...' : 'Guardar Cambios'}
-                                    </Button>
-                                </div>
-                                {message && <div className={`profile-msg ${message.type}`} role={message.type === 'error' ? 'alert' : 'status'} aria-live="polite">{message.text}</div>}
-                            </form>
-                        </div>
-                    )}
-
-                    {/* EMPLOYEE SELF-SERVICE */}
-                    {activeTab === 'hr' && (
-                        <div className="profile-tab-fade">
-                            {!hasEmployeeContext ? (
-                                <section className="profile-hr-unlinked" aria-labelledby="profile-hr-unlinked-title">
-                                    <span className="profile-hr-unlinked-icon"><BriefcaseBusiness size={28} aria-hidden="true" /></span>
-                                    <div>
-                                        <p className="profile-hr-kicker">Mi expediente laboral</p>
-                                        <h3 id="profile-hr-unlinked-title">Esta cuenta todavía no está vinculada a un empleado</h3>
-                                        <p>Por eso no podemos mostrar horario, marcajes, horas extra, vacaciones, préstamos ni colillas personales. No significa que el módulo esté vacío: falta relacionar este usuario con su expediente en Personal.</p>
-                                        <dl className="profile-hr-link-status">
-                                            <div><dt>Tipo de cuenta</dt><dd>{user?.accountType === 'INTERNAL' ? 'Interna, pendiente de vínculo' : 'Externa'}</dd></div>
-                                            <div><dt>Expediente</dt><dd>No vinculado</dd></div>
-                                        </dl>
-                                        {canManageEmployeeLinks ? (
-                                            <Link to="/rh/personal" className="profile-hr-main-link">Vincular en Personal <ChevronRight size={17} aria-hidden="true" /></Link>
-                                        ) : (
-                                            <p className="profile-hr-help">Solicita a Recursos Humanos que vincule tu usuario con tu expediente laboral.</p>
-                                        )}
-                                    </div>
-                                </section>
-                            ) : <>
-                            <div className="profile-hr-hero">
-                                <div>
-                                    <p className="profile-hr-kicker">EXPEDIENTE PERSONAL</p>
-                                    <h3><BriefcaseBusiness size={22} /> Mi información laboral</h3>
-                                    <p>Consulta tu jornada, registra marcajes y gestiona solicitudes, pagos y beneficios desde un solo lugar.</p>
-                                </div>
-                                <Link to="/rh/marcaje" className="profile-hr-main-link"><MapPin size={17} /> Ir a marcaje <ChevronRight size={17} aria-hidden="true" /></Link>
-                            </div>
-                            <dl className="profile-hr-identity">
-                                <div><dt>Empleado</dt><dd>{user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}`}</dd></div>
-                                <div className="profile-hr-vacation-balance"><dt>Saldo de vacaciones</dt><dd>{myHrLoading ? 'Cargando…' : vacationBalance ? `${formatHrNumber(vacationBalance.available)} ${vacationBalance.unit.toLowerCase()}` : 'Sin saldo disponible'}</dd></div>
-                                <div><dt>Solicitudes en espera</dt><dd>{myHrLoading ? '…' : myPendingRequests ?? '—'}</dd></div>
-                                <div><dt>Horas extra aprobadas</dt><dd>{myHrLoading ? '…' : myApprovedOvertimeMinutes != null ? `${formatHrNumber(myApprovedOvertimeMinutes)} min` : '—'}</dd></div>
-                            </dl>
-                            <div className="profile-hr-context"><span><strong>{user?.employee?.status ?? 'Vinculado'}</strong> Estado laboral</span><span><strong>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</strong> Sucursal</span></div>
-                            <div className="profile-hr-section-heading"><div><h4>Accesos de Mi RH</h4><p>Abre cada sección para consultar datos emitidos por el servidor o iniciar una gestión.</p></div></div>
-                            <div className="profile-hr-grid">
-                                <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Mi horario</strong><small>Turnos publicados y acuse de lectura</small></span><ChevronRight size={17} /></Link>
-                                <Link to="/rh/marcaje"><MapPin size={22} /><span><strong>Marcajes</strong><small>Entrada, descansos y salida</small></span><ChevronRight size={17} /></Link>
-                                <Link to="/rh/mi-portal/gestion?tab=OVERTIME"><TrendingUp size={22} /><span><strong>Horas extra</strong><small>Solicitadas, aprobadas y rechazadas</small></span><ChevronRight size={17} /></Link>
-                                <Link to="/rh/mi-portal/gestion?tab=LEAVE"><Calendar size={22} /><span><strong>Vacaciones y permisos</strong><small>Crea solicitudes y revisa sus estados</small></span><ChevronRight size={17} /></Link>
-                                <Link to="/rh/mi-portal/nomina"><FileText size={22} /><span><strong>Recibos de pago</strong><small>Ingresos, deducciones y colillas</small></span><ChevronRight size={17} /></Link>
-                                <Link to="/rh/mi-portal/prestaciones"><WalletCards size={22} /><span><strong>Beneficios</strong><small>Viáticos, préstamos y deducciones</small></span><ChevronRight size={17} /></Link>
-                                <Link to="/rh/biometria"><Fingerprint size={22} /><span><strong>Mi biometría</strong><small>Consentimiento, enrolamiento y revocación</small></span><ChevronRight size={17} /></Link>
-                            </div>
-                            </>}
-                        </div>
-                    )}
-
-                    {/* STATS */}
-                    {activeTab === 'stats' && (
-                        <div className="profile-tab-fade">
-                            <h3 className="profile-section-title"><TrendingUp size={20} /> Mi Rendimiento</h3>
-
-                            {/* KPI Cards */}
-                            <div className="stats-cards-grid">
-                                <div className="stat-card-mini">
-                                    <div className="stat-icon sales"><CreditCard size={22} /></div>
-                                    <div><div className="stat-label">Ventas Hoy</div><div className="stat-value">{formatMoney(stats?.salesToday || 0)}</div></div>
-                                </div>
-                                <div className="stat-card-mini">
-                                    <div className="stat-icon orders"><ShoppingBag size={22} /></div>
-                                    <div><div className="stat-label">Órdenes Hoy</div><div className="stat-value">{stats?.ordersToday || 0}</div></div>
-                                </div>
-                                <div className="stat-card-mini">
-                                    <div className="stat-icon ticket"><TrendingUp size={22} /></div>
-                                    <div><div className="stat-label">Ticket Prom.</div><div className="stat-value">{formatMoney(stats?.averageTicket || 0)}</div></div>
-                                </div>
-                                <div className="stat-card-mini">
-                                    <div className="stat-icon product"><Star size={22} /></div>
-                                    <div><div className="stat-label">Producto Top</div><div className="stat-value">{stats?.topProduct || '—'}</div></div>
-                                </div>
-                            </div>
-
-                            {/* Weekly Chart + Comparison */}
-                            {performance && (
-                                <div className="perf-chart-section">
-                                    <div className="perf-chart-header">
-                                        <h4>Ventas Últimos 7 Días</h4>
-                                        <div className={`perf-vs-badge ${performance.vsTeam >= 0 ? 'positive' : 'negative'}`}>
-                                            {performance.vsTeam >= 0 ? '+' : ''}{performance.vsTeam}% vs promedio del equipo
-                                        </div>
-                                    </div>
-                                    <div style={{ width: '100%', height: 240 }}>
-                                        <ResponsiveContainer>
-                                            <BarChart data={performance.dailyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                                                <XAxis dataKey="day" tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }} />
-                                                <YAxis tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }} tickFormatter={v => `$${v}`} />
-                                                <Tooltip
-                                                    contentStyle={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 12 }}
-                                                    formatter={(value: number | string, name: string) => [`$${Number(value).toFixed(0)}`, name === 'mySales' ? 'Mis Ventas' : 'Promedio Equipo']}
-                                                />
-                                                <Legend formatter={(v) => v === 'mySales' ? 'Mis Ventas' : 'Promedio Equipo'} />
-                                                <Bar dataKey="mySales" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                                                <Bar dataKey="teamAvg" fill="#334155" radius={[4, 4, 0, 0]} />
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <div className="perf-week-total">
-                                        Total semana: <strong>{formatMoney(performance.myWeekTotal || 0)}</strong>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Activity */}
-                            <div className="activity-section">
-                                <h4>Actividad Reciente</h4>
-                                <div className="activity-timeline">
-                                    {activities.length > 0 ? activities.map(act => (
-                                        <div key={act.id} className="activity-item">
-                                            <div className="activity-dot"></div>
-                                            <div className="activity-content">
-                                                <div>
-                                                    <div className="act-desc">{act.description}</div>
-                                                    <div className="activity-meta">{new Date(act.date).toLocaleString('es-MX')}</div>
-                                                </div>
-                                                <div className="act-right">
-                                                    <span className="act-amount">{formatMoney(act.amount)}</span>
-                                                    <span className={`act-status ${act.status.toLowerCase()}`}>{act.status}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )) : (
-                                        <div className="activity-placeholder">
-                                            <Calendar size={48} /><p>Sin actividad reciente</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* PERMISSIONS */}
-                    {activeTab === 'permissions' && (
-                        <div className="profile-tab-fade">
-                            <h3 className="profile-section-title"><Shield size={20} /> Capacidades del Rol: {user?.role?.name ?? ''}</h3>
-                            <p className="permissions-summary">{fullUserData?.role?.description || 'Este rol define tus acciones permitidas en el sistema.'}</p>
-                            <div className="permissions-list">
-                                {(() => {
-                                    // Use DB permissions if available, otherwise show role capabilities
-                                    const dbPerms = fullUserData?.role?.permissions || [];
-                                    if (dbPerms.length > 0) {
-                                        return dbPerms.map((p: RolePermissionRow) => (
-                                            <div key={p.id} className="permission-item">
-                                                <div className="p-badge">ACTIVO</div>
-                                                <div className="p-text"><strong>{p.name}</strong><span>{p.description}</span></div>
-                                            </div>
-                                        ));
-                                    }
-                                    // Static capabilities by role
-                                    const ROLE_CAPS: Record<string, string[]> = {
-                                        SUPERADMIN: ['Acceso total al sistema', 'Gestión de empresas y sucursales', 'Administración de usuarios y roles', 'Configuración del sistema', 'Reportes y estadísticas', 'Gestión de menú, inventario y compras', 'POS y operaciones de caja', 'Catering y reservaciones'],
-                                        ADMIN: ['Administración de usuarios y roles', 'Configuración del sistema', 'Reportes y estadísticas', 'Gestión de menú, inventario y compras', 'POS y operaciones de caja', 'Catering y reservaciones', 'Gestión de sucursales'],
-                                        CHEF: ['Pantalla de cocina', 'Gestión de menú y categorías', 'Inventario y proveedores', 'Órdenes de compra (lectura)', 'Dashboard de cocina e inventario'],
-                                        CAJERO: ['Punto de Venta (POS)', 'Gestión de caja y turnos', 'Facturación y pagos', 'Órdenes', 'Reservaciones y catering', 'Dashboard de caja'],
-                                        MESERO: ['Punto de Venta (POS)', 'Gestión de mesas', 'Crear y enviar órdenes a cocina', 'Pantalla de cocina', 'Dashboard personal de ventas'],
-                                        HOST: ['Gestión de mesas', 'Reservaciones', 'Dashboard de reservas'],
-                                        COCINA: ['Pantalla de cocina', 'Dashboard de cocina'],
-                                        BODEGA: ['Inventario y kardex', 'Proveedores', 'Órdenes de compra', 'Movimientos de inventario', 'Dashboard de bodega'],
-                                    };
-                                    const caps = ROLE_CAPS[user?.role?.name || ''] || ['Acceso básico'];
-                                    return caps.map((cap, i) => (
-                                        <div key={i} className="permission-item">
-                                            <div className="p-badge">ACTIVO</div>
-                                            <div className="p-text"><strong>{cap}</strong></div>
-                                        </div>
-                                    ));
-                                })()}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* PREFERENCES */}
-                    {activeTab === 'settings' && (
-                        <div className="profile-tab-fade">
-                            <h3 className="profile-section-title"><Settings size={20} /> Preferencias</h3>
-                            <div className="preferences-grid">
-                                <div className="preference-box">
-                                    <div className="pref-info">
-                                        <Languages size={22} />
-                                        <div><h4>Idioma</h4><p>Idioma de la interfaz</p></div>
-                                    </div>
-                                    <Select
-                                        className="profile-select"
-                                        value={{ value: language, label: language === 'es' ? 'Español' : 'English' }}
-                                        onChange={(option: SingleValue<{ value: Language; label: string }>) =>
-                                            option && setLanguage(option.value)}
-                                        options={[
-                                            { value: 'es' as Language, label: 'Español' },
-                                            { value: 'en' as Language, label: 'English' }
-                                        ]}
-                                        isSearchable={false}
-                                    />
-                                </div>
-                                <div className="preference-box">
-                                    <div className="pref-info">
-                                        {theme === 'dark' ? <Moon size={22} /> : <Sun size={22} />}
-                                        <div><h4>Tema</h4><p>Modo {theme === 'dark' ? 'oscuro' : 'claro'} activo</p></div>
-                                    </div>
-                                    <Button variant="ghost" onClick={toggleTheme}>
-                                        {theme === 'dark' ? 'Cambiar a Claro' : 'Cambiar a Oscuro'}
-                                    </Button>
-                                </div>
-                                <div className="preference-box">
-                                    <div className="pref-info">
-                                        <Bell size={22} />
-                                        <div><h4>Notificaciones</h4><p>Alertas en tiempo real</p></div>
-                                    </div>
-                                    <label className="switch"><span className="sr-only">Activar notificaciones en tiempo real</span><input type="checkbox" defaultChecked aria-label="Activar notificaciones en tiempo real" /><span className="slider round"></span></label>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* SECURITY */}
-                    {activeTab === 'security' && <SecuritySection logout={logout} passwordInfo={passwordInfo} />}
-
-                    {/* SESSIONS */}
-                    {activeTab === 'sessions' && <SessionsSection />}
-
-                    {/* 2FA */}
-                    {activeTab === '2fa' && <TwoFactorSection />}
-
-                </div>
-                </main>
+    const performanceBlock = (
+        <section className="profile-section" aria-labelledby="profile-sec-perf">
+            <h2 id="profile-sec-perf" className="profile-section__title"><TrendingUp size={18} aria-hidden="true" /> Mi rendimiento</h2>
+            <div className="profile-kpis">
+                <StatCard
+                    label="Ventas de hoy"
+                    value={stats ? money(stats.salesToday) : 'No disponible'}
+                    context={stats
+                        ? `${stats.ordersToday} ${stats.ordersToday === 1 ? 'orden' : 'órdenes'} · ticket promedio ${money(stats.averageTicket)}${stats.topProduct ? ` · top: ${stats.topProduct}` : ''}`
+                        : failures.stats ? 'No pudimos consultar tus ventas de hoy.' : 'Consultando…'}
+                />
+                {performance ? (
+                    <StatCard
+                        label="Mi semana vs el equipo"
+                        value={`${performance.vsTeam >= 0 ? '+' : ''}${formatHrNumber(performance.vsTeam)}%`}
+                        tone={performance.vsTeam >= 0 ? 'success' : 'warning'}
+                        context={`Total de la semana: ${(performance.myWeekTotal == null ? "N/D" : money(performance.myWeekTotal))} frente al promedio del equipo`}
+                    />
+                ) : null}
             </div>
-        </div>
+            {performance && performance.dailyData.length > 0 ? (
+                <TrendChart
+                    ariaLabel="Mis ventas de los últimos 7 días frente al promedio del equipo"
+                    buckets={performance.dailyData.map(d => d.day)}
+                    current={performance.dailyData.map(d => d.mySales)}
+                    previous={performance.dailyData.map(d => d.teamAvg)}
+                    previousLabel="Promedio del equipo"
+                    format={money}
+                />
+            ) : failures.performance ? (
+                <LoadErrorState message="No pudimos consultar tu desempeño de la semana." onRetry={() => setReloadKey(k => k + 1)} />
+            ) : null}
+        </section>
     );
-}
 
-/** Security section as separate component to isolate its state */
-function SecuritySection({ logout, passwordInfo }: { logout: () => void; passwordInfo: PasswordInfoState | null }) {
-    const [oldPwd, setOldPwd] = useState('');
-    const [newPwd, setNewPwd] = useState('');
-    const [confirmPwd, setConfirmPwd] = useState('');
-    const [showOld, setShowOld] = useState(false);
-    const [showNew, setShowNew] = useState(false);
-    const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const [saving, setSaving] = useState(false);
-    const [success, setSuccess] = useState(false);
+    const activityBlock = (
+        <section className="profile-section" aria-labelledby="profile-sec-activity">
+            <h2 id="profile-sec-activity" className="profile-section__title"><Calendar size={18} aria-hidden="true" /> Actividad reciente</h2>
+            {failures.activity ? (
+                <LoadErrorState message="No pudimos consultar tu actividad reciente." onRetry={() => setReloadKey(k => k + 1)} />
+            ) : (
+                <DataTable<ActivityEntry>
+                    ariaLabel="Actividad reciente"
+                    columns={activityColumns}
+                    rows={activities}
+                    rowKey={(a) => a.id}
+                    loading={profileLoading && activities.length === 0}
+                    empty="Sin actividad reciente"
+                    minWidth="38rem"
+                    defaultPageSize={10}
+                />
+            )}
+        </section>
+    );
 
-    const allValid = PWD_RULES.every(r => r.test(newPwd));
-    const match = newPwd === confirmPwd && confirmPwd.length > 0;
-    const canSubmit = oldPwd.length > 0 && allValid && match && !saving;
+    const dataBlock = (
+        <section className="profile-section" aria-labelledby="profile-sec-data">
+            <h2 id="profile-sec-data" className="profile-section__title"><CircleUserRound size={18} aria-hidden="true" /> Mis datos</h2>
+            <form onSubmit={handleSubmit} className="profile-form" aria-label="Editar información">
+                <FormGrid>
+                    <Field label="Nombre completo" htmlFor="profile-name">
+                        <Input id="profile-name" name="name" type="text" value={formData.name}
+                            onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                    </Field>
+                    <Field label="Correo electrónico" htmlFor="profile-email">
+                        <Input id="profile-email" name="email" type="email" value={formData.email}
+                            onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                    </Field>
+                    <Field label="Cédula / NIF" htmlFor="profile-nif">
+                        <Input id="profile-nif" name="nif" type="text" placeholder="001-010101-0001A"
+                            value={formData.nif} onChange={e => setFormData({ ...formData, nif: e.target.value })} />
+                    </Field>
+                    <Field label="Teléfono" htmlFor="profile-phone">
+                        <Input id="profile-phone" name="phone" type="tel" autoComplete="tel" placeholder="+505 0000 0000"
+                            value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                    </Field>
+                </FormGrid>
+                <Field label="Dirección" htmlFor="profile-address">
+                    <Input id="profile-address" name="address" type="text" autoComplete="street-address" placeholder="Calle, barrio, ciudad…"
+                        value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                </Field>
+                <div className="profile-form__footer">
+                    <Button type="submit" variant="primary" icon={Save} loading={loading}>
+                        {loading ? 'Guardando...' : 'Guardar Cambios'}
+                    </Button>
+                </div>
+                {message && <div className={`profile-msg ${message.type}`} role={message.type === 'error' ? 'alert' : 'status'} aria-live="polite">{message.text}</div>}
+            </form>
+        </section>
+    );
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!canSubmit) return;
-        setMsg(null); setSaving(true);
-        try {
-            await authAPI.changePassword(oldPwd, newPwd);
-            setSuccess(true);
-            setTimeout(() => logout(), 2500);
-        } catch (err: unknown) {
-            setMsg({ type: 'error', text: axiosErr(err, 'Error al cambiar contraseña') });
-        } finally { setSaving(false); }
-    };
+    const hrBlock = (
+        <section className="profile-section" aria-labelledby="profile-sec-hr">
+            <h2 id="profile-sec-hr" className="profile-section__title"><BriefcaseBusiness size={18} aria-hidden="true" /> Mi RH</h2>
+            {!hasEmployeeContext ? (
+                <div className="profile-hr-unlinked">
+                    <p className="profile-hr-kicker">Mi expediente laboral</p>
+                    <h3>Esta cuenta todavía no está vinculada a un empleado</h3>
+                    <p>Por eso no podemos mostrar horario, marcajes, horas extra, vacaciones, préstamos ni colillas personales. No significa que el módulo esté vacío: falta relacionar este usuario con su expediente en Personal.</p>
+                    <dl className="profile-hr-link-status">
+                        <div><dt>Tipo de cuenta</dt><dd>{user?.accountType === 'INTERNAL' ? 'Interna, pendiente de vínculo' : 'Externa'}</dd></div>
+                        <div><dt>Expediente</dt><dd>No vinculado</dd></div>
+                    </dl>
+                    {canManageEmployeeLinks ? (
+                        <Link to="/rh/personal" className="profile-hr-main-link">Vincular en Personal <ChevronRight size={17} aria-hidden="true" /></Link>
+                    ) : (
+                        <p className="profile-hr-help">Solicita a Recursos Humanos que vincule tu usuario con tu expediente laboral.</p>
+                    )}
+                </div>
+            ) : (
+                <>
+                    <div className="profile-hr-hero">
+                        <p>Consulta tu jornada, registra marcajes y gestiona solicitudes, pagos y beneficios desde un solo lugar.</p>
+                        <Link to="/rh/marcaje" className="profile-hr-main-link"><MapPin size={17} aria-hidden="true" /> Ir a marcaje <ChevronRight size={17} aria-hidden="true" /></Link>
+                    </div>
+                    <dl className="profile-hr-identity">
+                        <div><dt>Empleado</dt><dd>{user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}`}</dd></div>
+                        <div className="profile-hr-vacation-balance"><dt>Saldo de vacaciones</dt><dd>{myHrLoading ? 'Cargando…' : vacationBalance ? `${formatHrNumber(vacationBalance.available)} ${vacationBalance.unit.toLowerCase()}` : 'Sin saldo disponible'}</dd></div>
+                        <div><dt>Solicitudes en espera</dt><dd>{myHrLoading ? '…' : myPendingRequests ?? 'No disponible'}</dd></div>
+                        <div><dt>Horas extra aprobadas</dt><dd>{myHrLoading ? '…' : myApprovedOvertimeMinutes != null ? `${formatNumber(myApprovedOvertimeMinutes, 0)} min` : 'No disponible'}</dd></div>
+                        <div><dt>Estado laboral</dt><dd>{user?.employee?.status ?? 'Vinculado'}</dd></div>
+                        <div><dt>Sucursal</dt><dd>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</dd></div>
+                    </dl>
+                    <h3 className="profile-hr-heading">Accesos de Mi RH</h3>
+                    <p className="profile-note">Abre cada sección para consultar datos emitidos por el servidor o iniciar una gestión.</p>
+                    <div className="profile-hr-grid">
+                        <Link to="/rh/mi-portal/horario"><CalendarClock size={22} aria-hidden="true" /><span><strong>Mi horario</strong><small>Turnos publicados y acuse de lectura</small></span><ChevronRight size={17} aria-hidden="true" /></Link>
+                        <Link to="/rh/marcaje"><MapPin size={22} aria-hidden="true" /><span><strong>Marcajes</strong><small>Entrada, descansos y salida</small></span><ChevronRight size={17} aria-hidden="true" /></Link>
+                        <Link to="/rh/mi-portal/gestion?tab=OVERTIME"><TrendingUp size={22} aria-hidden="true" /><span><strong>Horas extra</strong><small>Solicitadas, aprobadas y rechazadas</small></span><ChevronRight size={17} aria-hidden="true" /></Link>
+                        <Link to="/rh/mi-portal/gestion?tab=LEAVE"><Calendar size={22} aria-hidden="true" /><span><strong>Vacaciones y permisos</strong><small>Crea solicitudes y revisa sus estados</small></span><ChevronRight size={17} aria-hidden="true" /></Link>
+                        <Link to="/rh/mi-portal/nomina"><FileText size={22} aria-hidden="true" /><span><strong>Recibos de pago</strong><small>Ingresos, deducciones y colillas</small></span><ChevronRight size={17} aria-hidden="true" /></Link>
+                        <Link to="/rh/mi-portal/prestaciones"><WalletCards size={22} aria-hidden="true" /><span><strong>Beneficios</strong><small>Viáticos, préstamos y deducciones</small></span><ChevronRight size={17} aria-hidden="true" /></Link>
+                        <Link to="/rh/biometria"><Fingerprint size={22} aria-hidden="true" /><span><strong>Mi biometría</strong><small>Consentimiento, enrolamiento y revocación</small></span><ChevronRight size={17} aria-hidden="true" /></Link>
+                    </div>
+                </>
+            )}
+        </section>
+    );
 
-    if (success) {
-        return (
-            <div className="profile-tab-fade" style={{ textAlign: 'center', padding: '60px 20px' }}>
-                <ShieldCheck size={56} style={{ color: 'var(--color-success)', marginBottom: 16 }} />
-                <h3 className="profile-section-title" style={{ justifyContent: 'center' }}>Contraseña actualizada</h3>
-                <p style={{ color: 'var(--color-text-secondary)' }}>Serás redirigido al inicio de sesión...</p>
-            </div>
-        );
+    if (!user) {
+        return <EmptyState title="Sesión no disponible" description="Inicia sesión para ver tu perfil." />;
     }
 
     return (
-        <div className="profile-tab-fade">
-            <h3 className="profile-section-title"><Lock size={20} /> Seguridad</h3>
-
-            {/* Password Info Card */}
-            {passwordInfo && (
-                <div className="pwd-info-card">
-                    <div className="pwd-info-row">
-                        <span className="pwd-info-label">Último cambio</span>
-                        <span className="pwd-info-value">
-                            {passwordInfo.passwordChangedAt
-                                ? new Date(passwordInfo.passwordChangedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
-                                : 'Nunca'}
-                        </span>
-                    </div>
-                    {passwordInfo.daysUntilExpiry !== null && (
-                        <>
-                            <div className="pwd-info-row">
-                                <span className="pwd-info-label">Expira en</span>
-                                <span className={`pwd-info-value ${passwordInfo.daysUntilExpiry <= 15 ? 'danger' : passwordInfo.daysUntilExpiry <= 30 ? 'warning' : ''}`}>
-                                    {passwordInfo.daysUntilExpiry} días
-                                </span>
+        <PageContent maxWidth={1100}>
+            <div className="profile-page">
+                <PageHeader title="Mi perfil" description="Tu identidad, seguridad y preferencias en un solo lugar." />
+                <header className="profile-overview" aria-labelledby="profile-overview-title">
+                    <div className={`profile-avatar role-${roleLower}`} aria-hidden="true">{initials}</div>
+                    <div className="profile-overview-identity">
+                        <span className="profile-eyebrow"><CircleUserRound size={14} aria-hidden="true" /> Centro de cuenta</span>
+                        <div className="profile-name-row">
+                            <h2 id="profile-overview-title" className="profile-user-name">{user?.name}</h2>
+                            {(roleNames.length > 0 ? roleNames : ['Sin rol']).map(name => (
+                                <span key={name} className="profile-role-badge"><BadgeCheck size={14} aria-hidden="true" /> {name}</span>
+                            ))}
+                        </div>
+                        <p className="profile-user-email">{user?.email || 'Correo no disponible'} · @{user?.username}</p>
+                        <div className="profile-overview-status">
+                            <span><Building2 size={15} aria-hidden="true" /> {fullUserData?.company?.name || user?.company?.name || 'Empresa no disponible'}</span>
+                            <span><MapPin size={15} aria-hidden="true" /> {branchOptions.length > 0 ? branchOptions.map(b => b.name).join(', ') : 'Sin sucursal asignada'}</span>
+                            <span className={hasEmployeeContext ? 'linked' : 'pending'}><BriefcaseBusiness size={15} aria-hidden="true" /> {hasEmployeeContext ? 'Expediente laboral vinculado' : 'Sin expediente laboral vinculado'}</span>
+                        </div>
+                        <div className="profile-completeness">
+                            <div className="profile-completeness__bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={completeness.pct} aria-label="Completitud del perfil">
+                                <span style={{ width: `${completeness.pct}%` }} />
                             </div>
-                            <div className="pwd-expiry-bar">
-                                <div
-                                    className={`pwd-expiry-fill ${passwordInfo.daysUntilExpiry <= 15 ? 'danger' : passwordInfo.daysUntilExpiry <= 30 ? 'warning' : 'ok'}`}
-                                    style={{ width: `${Math.min(100, Math.max(2, (passwordInfo.daysUntilExpiry / passwordInfo.expiryDays) * 100))}%` }}
-                                />
-                            </div>
-                        </>
-                    )}
-                    {passwordInfo.expiryDays === 0 && (
-                        <div className="pwd-info-row">
-                            <span className="pwd-info-label">Política</span>
-                            <span className="pwd-info-value">Sin expiración</span>
+                            <small>
+                                Perfil completo al {completeness.pct}%
+                                {completeness.missing.length > 0 ? ` · falta: ${completeness.missing.join(', ')}` : ''}
+                            </small>
+                        </div>
+                    </div>
+                    <div className="profile-overview-security">
+                        <KeyRound size={20} aria-hidden="true" />
+                        <div><strong>Seguridad de la cuenta</strong><small>Contraseña, sesiones y verificación en dos pasos</small></div>
+                        <Button variant="secondary" size="sm" onClick={() => selectTab('seguridad')}>Revisar <ChevronRight size={16} aria-hidden="true" /></Button>
+                    </div>
+                    <dl className="profile-overview-facts">
+                        <div><dt>Tipo de cuenta</dt><dd>{user?.accountType === 'INTERNAL' ? 'Interna' : user?.accountType === 'EXTERNAL' ? 'Externa' : 'No definido'}</dd></div>
+                        <div><dt>Estado</dt><dd>{user?.status || 'No disponible'}</dd></div>
+                        <div><dt>Miembro desde</dt><dd>{profileLoading ? 'Actualizando…' : fullUserData?.createdAt ? new Date(fullUserData.createdAt).toLocaleDateString('es-NI', { month: 'short', year: 'numeric' }) : 'No disponible'}</dd></div>
+                        <div><dt>Empleado</dt><dd>{hasEmployeeContext ? user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}` : 'No vinculado'}</dd></div>
+                    </dl>
+                </header>
+
+                {profileLoadWarning && (
+                    <div className="profile-load-warning" role="status">
+                        <AlertCircle size={18} aria-hidden="true" /><span>{profileLoadWarning}</span>
+                        <Button variant="ghost" size="sm" onClick={() => setReloadKey(k => k + 1)}>Reintentar</Button>
+                    </div>
+                )}
+
+                <Tabs
+                    ariaLabel="Secciones de mi perfil"
+                    active={activeTab}
+                    onChange={(id) => selectTab(id as ProfileTab)}
+                    tabs={PROFILE_TABS}
+                />
+
+                <div className="profile-panel" id="profile-active-panel" role="tabpanel" aria-label={PROFILE_TABS.find(t => t.id === activeTab)?.label}>
+                    {activeTab === 'resumen' && (
+                        <div className="profile-stack">
+                            {performanceBlock}
+                            {activityBlock}
+                            {hrBlock}
+                            {dataBlock}
                         </div>
                     )}
-                </div>
-            )}
-
-            <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', margin: '24px 0 8px' }}>Cambiar Contraseña</h4>
-            <p className="security-note">Mínimo 8 caracteres con mayúscula, minúscula, número y símbolo.</p>
-
-            <form onSubmit={handleSubmit} className="profile-edit-form">
-                {msg && <div className={`profile-msg ${msg.type}`}>{msg.text}</div>}
-
-                <div className="profile-field">
-                    <label htmlFor="profile-current-password">Contraseña actual</label>
-                    <div className="profile-pass-wrap">
-                        <input id="profile-current-password" name="currentPassword" autoComplete="current-password" type={showOld ? 'text' : 'password'} className="profile-input"
-                            value={oldPwd} onChange={e => setOldPwd(e.target.value)} placeholder="Contraseña actual" />
-                        <button type="button" className="profile-pass-toggle" onClick={() => setShowOld(!showOld)} aria-label={showOld ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'} aria-pressed={showOld}>
-                            {showOld ? <EyeOff size={18} /> : <Eye size={18} />}
-                        </button>
-                    </div>
-                </div>
-
-                <div className="profile-field">
-                    <label htmlFor="profile-new-password">Nueva contraseña</label>
-                    <div className="profile-pass-wrap">
-                        <input id="profile-new-password" name="newPassword" autoComplete="new-password" type={showNew ? 'text' : 'password'} className="profile-input"
-                            value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Nueva contraseña" />
-                        <button type="button" className="profile-pass-toggle" onClick={() => setShowNew(!showNew)} aria-label={showNew ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'} aria-pressed={showNew}>
-                            {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
-                        </button>
-                    </div>
-                </div>
-
-                <div className="pwd-rules-profile">
-                    {PWD_RULES.map(r => (
-                        <div key={r.id} className={`pwd-rule-item ${r.test(newPwd) ? 'pass' : newPwd.length > 0 ? 'fail' : ''}`}>
-                            {r.test(newPwd) ? <Check size={14} /> : <X size={14} />}
-                            <span>{r.label}</span>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="profile-field">
-                    <label htmlFor="profile-confirm-password">Confirmar nueva contraseña</label>
-                    <input id="profile-confirm-password" name="confirmPassword" autoComplete="new-password" type="password" className="profile-input" value={confirmPwd}
-                        onChange={e => setConfirmPwd(e.target.value)} placeholder="Repite la nueva contraseña" aria-invalid={confirmPwd.length > 0 && !match} aria-describedby={confirmPwd.length > 0 && !match ? 'profile-password-mismatch' : undefined} />
-                    {confirmPwd.length > 0 && !match && <span className="pwd-mismatch-msg" id="profile-password-mismatch">No coinciden</span>}
-                </div>
-
-                <div className="profile-form-footer">
-                    <Button type="submit" disabled={!canSubmit} variant="primary">
-                        <Lock size={18} /> {saving ? 'Cambiando...' : 'Cambiar Contraseña'}
-                    </Button>
-                </div>
-            </form>
-        </div>
-    );
-}
-
-/** Sessions management */
-function SessionsSection() {
-    const { confirm } = useConfirmDialog();
-    const [sessions, setSessions] = useState<SessionRow[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    const loadSessions = useCallback(async () => {
-        try {
-            const res = await authAPI.getSessions();
-            setSessions(res.data.data || []);
-        } catch { /* ignore */ }
-        finally { setLoading(false); }
-    }, []);
-
-    useEffect(() => { void loadSessions(); }, [loadSessions]);
-
-    const handleRevoke = async (id: string) => {
-        if (!(await confirm('¿Cerrar esta sesión?', { title: 'Confirmar acción' }))) return;
-        try {
-            await authAPI.revokeSession(id);
-            loadSessions();
-        } catch { /* ignore */ }
-    };
-
-    const handleRevokeAll = async () => {
-        if (!(await confirm('¿Cerrar todas las demás sesiones?', { title: 'Confirmar acción' }))) return;
-        try {
-            await authAPI.revokeAllSessions();
-            loadSessions();
-        } catch { /* ignore */ }
-    };
-
-    return (
-        <div className="profile-tab-fade">
-            <h3 className="profile-section-title"><Monitor size={20} /> Sesiones Activas</h3>
-            <p className="security-note">Dispositivos donde tu cuenta está conectada. Puedes cerrar sesiones remotas.</p>
-
-            {loading ? <p style={{ color: 'var(--color-text-secondary)' }}>Cargando...</p> : (
-                <>
-                    <div className="sessions-list">
-                        {sessions.length === 0 ? (
-                            <div className="no-permissions">Sin sesiones registradas</div>
-                        ) : sessions.map((s) => (
-                            <div key={s.id} className={`session-item ${s.isCurrent ? 'current' : ''}`}>
-                                <div className="session-icon">
-                                    {s.device === 'Móvil' ? <Smartphone size={20} /> : <Monitor size={20} />}
-                                </div>
-                                <div className="session-info">
-                                    <div className="session-device">
-                                        {s.device || 'Navegador'}
-                                        {s.isCurrent && <span className="session-current-badge">Sesión actual</span>}
-                                    </div>
-                                    <div className="session-meta">
-                                        {s.ipAddress && <span>IP: {s.ipAddress}</span>}
-                                        <span>{new Date(s.createdAt).toLocaleString('es-MX')}</span>
-                                    </div>
-                                </div>
-                                {!s.isCurrent && (
-                                    <button type="button" className="session-revoke-btn" onClick={() => handleRevoke(s.id)} aria-label={`Cerrar sesión en ${s.device || 'navegador'}`}>
-                                        <LogOut size={16} />
-                                    </button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                    {sessions.length > 1 && (
-                        <button type="button" className="revoke-all-btn" onClick={handleRevokeAll}>
-                            <LogOut size={16} /> Cerrar todas las demás sesiones
-                        </button>
-                    )}
-                </>
-            )}
-        </div>
-    );
-}
-
-/** Two-Factor Authentication */
-function TwoFactorSection() {
-    const { user } = useAuth();
-    const [status, setStatus] = useState<'loading' | 'unavailable' | 'off' | 'setup' | 'on'>('loading');
-    const [qrCode, setQrCode] = useState('');
-    const [code, setCode] = useState('');
-    const [error, setError] = useState('');
-    const [saving, setSaving] = useState(false);
-
-    const checkStatus = useCallback(async () => {
-        setError('');
-        setStatus('loading');
-        try {
-            if (!user?.id) {
-                setStatus('unavailable');
-                setError('No se pudo identificar la cuenta para consultar el estado de 2FA.');
-                return;
-            }
-
-            const userRes = await usersAPI.getById(user.id);
-            const enabled = Boolean(userRes.data?.data?.twoFactorEnabled);
-            setStatus(enabled ? 'on' : 'off');
-        } catch (err: unknown) {
-            // Unknown is not the same as disabled: exposing the enable flow on
-            // a failed read can misrepresent or overwrite security state.
-            setStatus('unavailable');
-            setError(axiosErr(err, 'No se pudo consultar el estado de 2FA.'));
-        }
-    }, [user?.id]);
-
-    useEffect(() => { void checkStatus(); }, [checkStatus]);
-
-    const handleSetup = async () => {
-        setError('');
-        try {
-            const res = await authAPI.setup2FA();
-            setQrCode(res.data.data.qrCodeDataUrl);
-            setStatus('setup');
-        } catch (err: unknown) {
-            setError(axiosErr(err, 'Error al configurar 2FA'));
-        }
-    };
-
-    const handleVerify = async () => {
-        if (code.length !== 6) return;
-        setError(''); setSaving(true);
-        try {
-            await authAPI.verify2FA(code);
-            setStatus('on');
-            setCode('');
-        } catch (err: unknown) {
-            setError(axiosErr(err, 'Código inválido'));
-        } finally { setSaving(false); }
-    };
-
-    const handleDisable = async () => {
-        if (code.length !== 6) return;
-        setError(''); setSaving(true);
-        try {
-            await authAPI.disable2FA(code);
-            setStatus('off');
-            setCode('');
-            setQrCode('');
-        } catch (err: unknown) {
-            setError(axiosErr(err, 'Código inválido'));
-        } finally { setSaving(false); }
-    };
-
-    return (
-        <div className="profile-tab-fade">
-            <h3 className="profile-section-title"><Smartphone size={20} /> Autenticación de Dos Factores</h3>
-            <p className="security-note">Agrega una capa extra de seguridad usando Google Authenticator, Authy u otra app TOTP.</p>
-
-            {error && <div className="profile-msg error" role="alert" aria-live="assertive">{error}</div>}
-
-            {status === 'loading' && <p className="profile-inline-loading" role="status">Cargando estado de seguridad…</p>}
-
-            {status === 'unavailable' && (
-                <div className="twofa-status-card">
-                    <div className="twofa-status-info">
-                        <Shield size={24} style={{ color: 'var(--color-warning)' }} />
-                        <div>
-                            <strong>Estado de 2FA no disponible</strong>
-                            <p>No se habilitarán cambios hasta confirmar el estado actual.</p>
-                        </div>
-                    </div>
-                    <button type="button" className="twofa-enable-btn" onClick={() => void checkStatus()}>Reintentar</button>
-                </div>
-            )}
-
-            {status === 'off' && (
-                <div className="twofa-status-card">
-                    <div className="twofa-status-info">
-                        <Shield size={24} style={{ color: 'var(--color-text-secondary)' }} />
-                        <div>
-                            <strong>2FA desactivado</strong>
-                            <p>Tu cuenta solo está protegida con contraseña.</p>
-                        </div>
-                    </div>
-                    <button type="button" className="twofa-enable-btn" onClick={handleSetup}>Activar 2FA</button>
-                </div>
-            )}
-
-            {status === 'setup' && (
-                <div className="twofa-setup">
-                    <p style={{ fontWeight: 600, marginBottom: 12 }}>1. Escanea este código QR con tu app de autenticación:</p>
-                    {qrCode && <img src={qrCode} alt="QR Code" className="twofa-qr" />}
-                    <p style={{ fontWeight: 600, marginTop: 16, marginBottom: 8 }}>2. Ingresa el código de 6 dígitos que muestra la app:</p>
-                    <div className="twofa-verify-row">
-                        <input
-                            id="profile-2fa-setup-code" name="twoFactorCode" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="000000" aria-label="Código de verificación de 6 dígitos"
-                            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
-                            className="twofa-code-input"
+                    {activeTab === 'seguridad' && (
+                        <SecurityTab
+                            logout={logout}
+                            passwordInfo={failures.password ? null : passwordInfo}
+                            roleName={user?.role?.name ?? ''}
+                            roleDescription={fullUserData?.role?.description}
+                            permissions={fullUserData?.role?.permissions ?? []}
                         />
-                        <button type="button" className="twofa-enable-btn" onClick={handleVerify} disabled={code.length !== 6 || saving}>
-                            {saving ? 'Verificando...' : 'Verificar y Activar'}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {status === 'on' && (
-                <div className="twofa-status-card on">
-                    <div className="twofa-status-info">
-                        <ShieldCheck size={24} style={{ color: 'var(--color-success)' }} />
-                        <div>
-                            <strong>2FA activado</strong>
-                            <p>Tu cuenta tiene doble protección.</p>
-                        </div>
-                    </div>
-                    <div className="twofa-disable-area">
-                        <input
-                            id="profile-2fa-disable-code" name="twoFactorDisableCode" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="Código para desactivar" aria-label="Código de 6 dígitos para desactivar 2FA"
-                            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
-                            className="twofa-code-input small"
+                    )}
+                    {activeTab === 'preferencias' && (
+                        <PreferencesTab
+                            state={prefsState}
+                            language={language}
+                            setLanguage={setLanguage}
+                            theme={theme}
+                            toggleTheme={toggleTheme}
+                            branches={branchOptions}
                         />
-                        <button type="button" className="twofa-disable-btn" onClick={handleDisable} disabled={code.length !== 6 || saving}>
-                            Desactivar
-                        </button>
-                    </div>
+                    )}
+                    {activeTab === 'notificaciones' && <NotificationsTab state={prefsState} />}
                 </div>
-            )}
-        </div>
+            </div>
+        </PageContent>
     );
 }

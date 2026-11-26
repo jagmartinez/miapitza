@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarCheck, ChevronLeft, ChevronRight, CheckCheck, RefreshCw } from 'lucide-react';
+import { CalendarCheck, ChevronLeft, ChevronRight, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import Button from '../../components/Button';
+import { Button, EmptyState, LoadErrorState, PageHeader } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
 import MyHrNav from '../../components/hr/MyHrNav';
 import ScheduleStatusPill from '../../components/hr/ScheduleStatusPill';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
@@ -41,7 +40,7 @@ export default function MySchedule() {
         setLoading(true);
         setError(null);
         try {
-            const result = await scheduleClient.getMySchedule(weekStart);
+            const result = await scheduleClient.getTeamSchedule(weekStart);
             if (activeRequest !== requestId.current) return;
             setSchedules(result.schedules);
             setHolidays(result.holidays);
@@ -51,7 +50,7 @@ export default function MySchedule() {
             setSchedules([]);
             setHolidays([]);
             setFromCache(false);
-            setError(getScheduleErrorMessage(loadError, 'No fue posible cargar tu horario.'));
+            setError(getScheduleErrorMessage(loadError, 'No fue posible cargar los horarios del equipo.'));
         } finally {
             if (activeRequest === requestId.current) setLoading(false);
         }
@@ -60,7 +59,7 @@ export default function MySchedule() {
     useEffect(() => { void loadWeek(); }, [loadWeek]);
 
     const published = useMemo(() => schedules.filter((schedule) => schedule.status === 'PUBLISHED'), [schedules]);
-    const pendingAcknowledgements = published.filter((schedule) => !schedule.acknowledgedAt);
+    const pendingAcknowledgements = published.filter((schedule) => schedule.viewerHasShift && !schedule.acknowledgedAt);
     const hasShifts = published.some((schedule) => schedule.shifts.length > 0);
 
     const acknowledge = async (schedule: HrWeeklySchedule) => {
@@ -82,7 +81,11 @@ export default function MySchedule() {
 
     return (
         <div className="page-wrapper hr-my-schedule-page my-hr-page">
-            <PageHeader className="my-hr-page-header" title="Mi horario" subtitle="Consulta tus turnos publicados y confirma su recepción" icon={CalendarCheck} actions={<MyHrNav />} />
+            <PageHeader
+        title="Horarios del equipo"
+        description="Consulta los turnos publicados de tu sucursal y confirma los que te corresponden"
+        actions={<MyHrNav />}
+      />
 
             <section className="hr-week-navigation my-hr-toolbar" aria-label="Navegación semanal">
                 <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={acknowledgingId !== null} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
@@ -92,27 +95,22 @@ export default function MySchedule() {
             </section>
 
             {fromCache && (
-                <div className="hr-schedule-alert info" role="status">
+                <div className="hr-schedule-alert warning" role="alert">
                     Estás consultando una copia guardada sin conexión. La confirmación de recepción se habilitará al recuperar conexión.
                 </div>
             )}
 
-            {!loading && !error && (
-                <section className="my-hr-summary-grid" aria-label="Resumen de la semana consultada">
-                    <article><CalendarCheck size={19} aria-hidden="true" /><span>Versiones publicadas</span><strong>{published.length}</strong><small>{weekLabel(weekStart)}</small></article>
-                    <article className={pendingAcknowledgements.length > 0 ? 'is-warning' : 'is-success'}><CheckCheck size={19} aria-hidden="true" /><span>Por confirmar</span><strong>{pendingAcknowledgements.length}</strong><small>Acuses de recepción pendientes</small></article>
-                    <article><RefreshCw size={19} aria-hidden="true" /><span>Estado de la semana</span><strong>{hasShifts ? 'Con turnos' : 'Sin turnos'}</strong><small>{fromCache ? 'Copia offline' : 'Datos actualizados'}</small></article>
-                </section>
-            )}
-
+            
             {!loading && !error && published.length > 0 && (
                 <div className="hr-my-schedule-statuses" aria-label="Versiones publicadas">
                     {published.map((schedule) => (
                         <div key={schedule.id}>
                             <div><ScheduleStatusPill status={schedule.status} /><span>Versión {schedule.version}</span></div>
-                            {schedule.acknowledgedAt
+                            {!schedule.viewerHasShift
+                                ? <span className="hr-schedule-personal-state">Sin turno personal esta semana</span>
+                                : schedule.acknowledgedAt
                                 ? <span className="hr-acknowledged"><CheckCheck size={17} aria-hidden="true" /> Recibido</span>
-                                : <Button size="sm" onClick={() => void acknowledge(schedule)} disabled={acknowledgingId !== null || fromCache}>{acknowledgingId === schedule.id ? 'Confirmando…' : 'Confirmar recepción'}</Button>}
+                                : <Button variant="primary" size="sm" onClick={() => void acknowledge(schedule)} disabled={acknowledgingId !== null || fromCache}>{acknowledgingId === schedule.id ? 'Confirmando…' : 'Confirmar recepción'}</Button>}
                         </div>
                     ))}
                 </div>
@@ -120,19 +118,19 @@ export default function MySchedule() {
 
             {pendingAcknowledgements.length > 0 && <p className="hr-schedule-help">Confirma cada versión publicada después de revisar tus turnos. El acuse registra recepción, no modifica el horario.</p>}
 
-            {loading && <LoadingSpinner text="Cargando tu horario…" />}
-            {!loading && error && (
-                <div className="state-placeholder" role="alert"><CalendarCheck size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></div>
-            )}
+            {loading && <LoadingSpinner text="Cargando horarios del equipo…" />}
+            {!loading && error && <LoadErrorState message={error} onRetry={() => void loadWeek()} />}
             {!loading && !error && !hasShifts && (
-                <div className="state-placeholder">
-                    <CalendarCheck size={48} aria-hidden="true" />
-                    <p>No tienes turnos publicados para esta semana.</p>
-                    <div className="hr-schedule-empty-actions">
-                        <Button onClick={() => navigate('/rh/marcaje')}>Ir a marcaje</Button>
-                        <Button variant="ghost" onClick={() => navigate('/rh/mi-portal/gestion')}>Ver solicitudes</Button>
-                    </div>
-                </div>
+                <EmptyState
+                    icon={CalendarCheck}
+                    title="No hay turnos publicados para tu equipo esta semana."
+                    action={
+                        <>
+                            <Button variant="primary" onClick={() => navigate('/rh/marcaje')}>Ir a marcaje</Button>
+                            <Button variant="ghost" onClick={() => navigate('/rh/mi-portal/gestion')}>Ver solicitudes</Button>
+                        </>
+                    }
+                />
             )}
             {!loading && !error && hasShifts && <ScheduleWeekView weekStart={weekStart} schedules={published} holidays={holidays} readOnly />}
         </div>

@@ -5,7 +5,7 @@
     min-width: 320px;
     max-width: 500px;
     padding: var(--spacing-md) var(--spacing-xl);
-    background: var(--color-surface);
+    background: var(--ui-surface);
     border-radius: var(--radius-xl);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
     display: flex;
@@ -13,14 +13,14 @@
     gap: var(--spacing-md);
     z-index: 10000;
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }
 
 .dark .notification {
-    background: rgba(30, 41, 59, 0.9);
-    border-color: rgba(255, 255, 255, 0.1);
+    background: color-mix(in srgb, var(--ui-primary) 90%, transparent);
+    border-color: color-mix(in srgb, var(--ui-surface) 10%, transparent);
 }
 
 .notification.show {
@@ -57,19 +57,19 @@
 }
 
 .notification-success {
-    border-left: 4px solid #10b981;
+    border-left: 4px solid var(--ui-success);
 }
 
 .notification-info {
-    border-left: 4px solid #3b82f6;
+    border-left: 4px solid var(--ui-primary);
 }
 
 .notification-warning {
-    border-left: 4px solid #f59e0b;
+    border-left: 4px solid var(--ui-warning);
 }
 
 .notification-error {
-    border-left: 4px solid #ef4444;
+    border-left: 4px solid var(--ui-danger);
 }
 
 .notification-icon {
@@ -81,33 +81,33 @@
 }
 
 .icon-success {
-    color: #10b981;
+    color: var(--ui-success);
 }
 
 .icon-info {
-    color: #3b82f6;
+    color: var(--ui-primary);
 }
 
 .icon-warning {
-    color: #f59e0b;
+    color: var(--ui-warning);
 }
 
 .icon-error {
-    color: #ef4444;
+    color: var(--ui-danger);
 }
 
 .notification-message {
     flex: 1;
     font-size: var(--font-size-sm);
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
     line-height: 1.5;
 }
 
 .notification-close {
     background: transparent;
     border: none;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     cursor: pointer;
     padding: 4px;
     border-radius: var(--radius-md);
@@ -119,11 +119,11 @@
 }
 
 .notification-close:hover {
-    background: rgba(0, 0, 0, 0.05);
-    color: var(--color-text);
+    background: color-mix(in srgb, var(--ui-text) 5%, transparent);
+    color: var(--ui-text);
     opacity: 1;
 }
 
 .dark .notification-close:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: color-mix(in srgb, var(--ui-surface) 10%, transparent);
 }

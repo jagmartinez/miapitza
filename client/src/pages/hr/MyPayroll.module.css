@@ -1,0 +1,42 @@
+.page {
+  min-width: 0;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ui-space-3);
+  min-width: 0;
+}
+
+.filters > :global(.ui-field) {
+  min-width: min(100%, 200px);
+  flex: 1 1 200px;
+  max-width: 280px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: var(--ui-space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.workspace {
+  min-width: 0;
+}
+
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  color: var(--ui-text);
+}
+
+@media (max-width: 1080px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { resolveEffectiveUnitCost } from '../utils/product-cost';
+import { transactionWithLockRetry } from '../utils/transaction-retry';
 import { getErrorMessage } from '../utils/error';
 
 /**
@@ -27,13 +28,15 @@ export class CostingService {
         newQuantity: number,
         newCost: number
     ): Promise<number> {
-        // If no current stock, the new cost becomes the average cost
-        if (currentStock === 0) {
+        // With no (or negative, after allowNegative outflows) stock there is no
+        // valued quantity to blend with: the entry cost becomes the average.
+        // Blending a negative quantity yields Infinity or an inflated cost.
+        const totalQuantity = currentStock + newQuantity;
+        if (!(currentStock > 0) || !(totalQuantity > 0)) {
             return newCost;
         }
 
         const totalValue = (currentStock * currentAverageCost) + (newQuantity * newCost);
-        const totalQuantity = currentStock + newQuantity;
 
         return totalValue / totalQuantity;
     }
@@ -452,9 +455,12 @@ export class CostingService {
                 for (const entry of completeHistory) {
                     const qty = Number(entry.quantity);
                     if (entry.productionOrderId === productionOrderId || entry.reversedAt != null) {
-                        // Exact batch reversal guarantees this produced quantity
-                        // was not consumed. Every later history row therefore saw
-                        // `qty` more stock than the counterfactual replay should.
+                        // The cancelled output was removed (FIFO: from its own
+                        // layer; WA: fungible units, current stock >= produced).
+                        // Every later history row therefore saw `qty` more stock
+                        // than the counterfactual replay should; a counterfactual
+                        // that dips below zero is clamped like any negative WA
+                        // prior stock (calculateWeightedAverageCost semantics).
                         removedStockBefore += qty;
                         continue;
                     }
@@ -682,40 +688,63 @@ export class CostingService {
         companyId: number,
         costingMethod: 'WEIGHTED_AVERAGE' | 'FIFO'
     ) {
-        return prisma.$transaction(async (tx) => {
+        // Company X -> Warehouse X can meet FK S-locks on Company taken by
+        // concurrent movement inserts: retry deadlocks/lock timeouts.
+        return transactionWithLockRetry(async (tx) => {
+            // Lock order Company -> Warehouse -> (Product) -> Stock, the same as
+            // production (Company FOR UPDATE first) and every inventory movement
+            // (Warehouse first). All reads below are LOCKING reads: under
+            // REPEATABLE READ a plain read would return this transaction's
+            // snapshot, not what concurrent movements committed meanwhile.
+            await tx.$queryRaw`SELECT id FROM \`Company\` WHERE id = ${companyId} FOR UPDATE`;
             const company = await tx.company.findUnique({
                 where: { id: companyId },
                 select: { id: true, name: true, costingMethod: true }
             });
             if (!company) throw new Error('Empresa no encontrada');
-            // Re-selecting FIFO is also the supported reconciliation path for
-            // legacy tenants whose stock predates explicit cost layers.
-            if (company.costingMethod === costingMethod && costingMethod !== 'FIFO') return company;
+            // Both directions take every Warehouse row FOR UPDATE: in-flight
+            // movements hold their warehouse FOR SHARE, so the switch waits for
+            // them, and later movements read the new Warehouse.costingMethod from
+            // their own locking read. Re-selecting a method also re-syncs the
+            // warehouse copies (and, for FIFO, reconciles legacy stock).
+            await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE companyId = ${companyId} ORDER BY id FOR UPDATE`;
 
             if (costingMethod === 'FIFO') {
-                await tx.$queryRaw`SELECT id FROM \`Stock\` WHERE companyId = ${companyId} ORDER BY id FOR UPDATE`;
-                const [stocks, layers] = await Promise.all([
-                    tx.stock.findMany({
-                        where: { companyId },
+                const lockedStocks = await tx.$queryRaw<Array<{ warehouseId: number; productId: number; quantity: unknown }>>`SELECT warehouseId, productId, quantity FROM \`Stock\` WHERE companyId = ${companyId} ORDER BY id FOR UPDATE`;
+                const lockedLayers = await tx.$queryRaw<Array<{ warehouseId: number; productId: number; remainingQty: unknown }>>`SELECT warehouseId, productId, remainingQty FROM \`InventoryBatch\` WHERE companyId = ${companyId} AND remainingQty > 0 ORDER BY id FOR UPDATE`;
+                const stockRows = Array.isArray(lockedStocks) ? lockedStocks : [];
+                const productIds = [...new Set(stockRows.map((row) => Number(row.productId)))];
+                // Product costs only seed OPENING layers; product rows are not
+                // written here, so a plain read keeps the lock order intact.
+                const products = productIds.length > 0
+                    ? await tx.product.findMany({
+                        where: { companyId, id: { in: productIds } },
                         select: {
-                            warehouseId: true,
-                            productId: true,
-                            quantity: true,
-                            product: {
-                                select: {
-                                    currentAverageCost: true,
-                                    averageCostKnown: true,
-                                    cost: true,
-                                    referenceCostKnown: true
-                                }
-                            }
+                            id: true,
+                            currentAverageCost: true,
+                            averageCostKnown: true,
+                            cost: true,
+                            referenceCostKnown: true
                         }
-                    }),
-                    tx.inventoryBatch.findMany({
-                        where: { companyId, remainingQty: { gt: 0 } },
-                        select: { warehouseId: true, productId: true, remainingQty: true }
                     })
-                ]);
+                    : [];
+                const productById = new Map(products.map((product) => [product.id, product]));
+                const stocks = stockRows.map((row) => ({
+                    warehouseId: Number(row.warehouseId),
+                    productId: Number(row.productId),
+                    quantity: row.quantity,
+                    product: productById.get(Number(row.productId)) ?? {
+                        currentAverageCost: null,
+                        averageCostKnown: false,
+                        cost: null,
+                        referenceCostKnown: false
+                    }
+                }));
+                const layers = (Array.isArray(lockedLayers) ? lockedLayers : []).map((row) => ({
+                    warehouseId: Number(row.warehouseId),
+                    productId: Number(row.productId),
+                    remainingQty: row.remainingQty
+                }));
                 const represented = new Map<string, number>();
                 for (const layer of layers) {
                     const key = `${layer.warehouseId}:${layer.productId}`;
@@ -767,6 +796,11 @@ export class CostingService {
                 }
             }
 
+            await tx.warehouse.updateMany({
+                where: { companyId },
+                data: { costingMethod }
+            });
+            if (company.costingMethod === costingMethod) return company;
             return tx.company.update({
                 where: { id: companyId },
                 data: { costingMethod },
@@ -836,7 +870,9 @@ export class CostingService {
 
         return {
             totalCost: Math.round(totalCost * 100) / 100,
-            costPerUnit: Math.round(costPerUnit * 100) / 100,
+            // Per-base-unit cost (often per g/ml): keep the stored scale (6),
+            // cents would turn 0.004 into 0.00.
+            costPerUnit: Math.round(costPerUnit * 1_000_000) / 1_000_000,
             batchesUsed
         };
     }

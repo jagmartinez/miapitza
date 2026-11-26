@@ -1,7 +1,7 @@
 import prisma from '../utils/prisma';
 import type { Prisma } from '@prisma/client';
 
-export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'CANCEL' | 'TRANSFER' | 'REVERSE' | 'REVERSE_RECEIPT' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'PERMISSION_CHANGE';
+export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'CANCEL' | 'TRANSFER' | 'REVERSE' | 'REVERSE_RECEIPT' | 'RECEIVE' | 'CLOSE_REMAINING' | 'LOGIN' | 'PIN_LOGIN' | 'DEVICE_LOGIN' | 'PIN_CHANGE' | 'DISCOUNT_AUTHORIZED' | 'DISCOUNT_AUTH_REJECTED' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'PERMISSION_CHANGE' | 'OPERATIONAL_DEVICE_REGISTERED' | 'OPERATIONAL_DEVICE_REVOKED';
 
 export interface AuditLogEntry {
     companyId: number;

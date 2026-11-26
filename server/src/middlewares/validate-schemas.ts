@@ -30,6 +30,7 @@ export const createOrder: ValidationSchema = {
         customerFiscalAddress: { type: 'string', max: 1000 },
         customerEmail: { type: 'string', max: 191 },
         customerPhone: { type: 'string', max: 50 },
+        guests: { type: 'number', min: 1, max: 99, integer: true },
     },
 };
 
@@ -50,6 +51,43 @@ export const addOrderItem: ValidationSchema = {
     body: {
         menuItemId: { type: 'number', required: true, min: 1 },
         quantity: { type: 'number', required: true, min: 1, integer: true },
+    },
+};
+
+export const updateOrderItem: ValidationSchema = {
+    params: { itemId: { type: 'number', required: true, min: 1 } },
+    body: {
+        quantity: { type: 'number', min: 1, max: 999, integer: true },
+        notes: { type: 'string', max: 200 },
+    },
+};
+
+export const updateOrderGuests: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        guests: { type: 'number', required: true, min: 1, max: 99, integer: true },
+    },
+};
+
+export const deliverOrderItems: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        itemIds: {
+            type: 'array', required: true, min: 1, max: 100,
+            items: { type: 'number', required: true, min: 1, integer: true },
+        },
+    },
+};
+
+export const voidOrderItem: ValidationSchema = {
+    params: {
+        id: { type: 'number', required: true, min: 1 },
+        itemId: { type: 'number', required: true, min: 1 },
+    },
+    body: {
+        quantity: { type: 'number', min: 1, integer: true },
+        reason: { type: 'string', required: true, min: 3, max: 500 },
+        warehouseId: { type: 'number', min: 1, integer: true },
     },
 };
 
@@ -296,6 +334,53 @@ export const consolidateTables: ValidationSchema = {
     }
 };
 
+export const reverseTableConsolidation: ValidationSchema = {
+    params: {
+        id: { type: 'number', required: true, min: 1, integer: true }
+    },
+    body: {
+        expectedVersion: { type: 'number', required: true, min: 0, integer: true },
+        reversalKey: { type: 'string', required: true, min: 8, max: 191 },
+        reason: { type: 'string', required: true, min: 3, max: 500 }
+    }
+};
+
+export const activeTableConsolidation: ValidationSchema = {
+    query: {
+        orderId: { type: 'number', min: 1, integer: true },
+        tableId: { type: 'number', min: 1, integer: true }
+    }
+};
+
+export const legacyTableConsolidationInventory: ValidationSchema = {
+    query: {
+        branchId: { type: 'number', min: 1, integer: true }
+    }
+};
+
+export const markLegacyTableConsolidation: ValidationSchema = {
+    params: {
+        candidateKey: { type: 'string', required: true, pattern: /^[a-f0-9]{64}$/ }
+    },
+    body: {
+        expectedEvidenceHash: {
+            type: 'string',
+            required: true,
+            pattern: /^[a-f0-9]{64}$/
+        },
+        resolutionKey: { type: 'string', required: true, min: 8, max: 191 },
+        outcome: {
+            type: 'string',
+            required: true,
+            enum: [
+                'ACKNOWLEDGED_NO_AUTOMATIC_REVERSAL',
+                'EXTERNAL_EVIDENCE_REQUIRED'
+            ]
+        },
+        note: { type: 'string', required: true, min: 5, max: 1000 }
+    }
+};
+
 export const transferTableConsumption: ValidationSchema = {
     body: {
         sourceTableId: { type: 'number', required: true, min: 1, integer: true },
@@ -324,6 +409,30 @@ export const reverseCateringPayment: ValidationSchema = {
     body: { reason: { type: 'string', required: true, min: 3, max: 500 } },
 };
 
+export const createTableGroup: ValidationSchema = {
+    body: {
+        primaryTableId: { type: 'number', required: true, min: 1, integer: true },
+        memberTableIds: { type: 'array', required: true, min: 1, max: 19, items: { type: 'number', min: 1, integer: true } },
+        reason: { type: 'string', max: 500 }
+    }
+};
+
+export const updateTableGroup: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        primaryTableId: { type: 'number', required: true, min: 1, integer: true },
+        expectedPrimaryTableId: { type: 'number', required: true, min: 1, integer: true },
+        memberTableIds: { type: 'array', required: true, min: 2, max: 20, items: { type: 'number', min: 1, integer: true } },
+        expectedMemberTableIds: { type: 'array', required: true, min: 2, max: 20, items: { type: 'number', min: 1, integer: true } },
+        reason: { type: 'string', required: true, min: 3, max: 500 }
+    }
+};
+
+export const closeTableGroup: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: { reason: { type: 'string', max: 500 } }
+};
+
 export const issueCateringFiscalCreditNote: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1, integer: true } },
     body: {
@@ -347,6 +456,14 @@ export const addCashMovement: ValidationSchema = {
         amount: { type: 'number', required: true },
         type: { type: 'string', required: true, enum: ['IN', 'OUT'] },
         description: { type: 'string', required: true, min: 1 },
+        reference: { type: 'string', max: 191 },
+        documentDate: { type: 'date' },
+        documentType: {
+            type: 'string',
+            enum: ['FACTURA', 'RECIBO_GASTO', 'RECIBO_CAJA', 'NOTA_CREDITO', 'NOTA_DEBITO']
+        },
+        documentNumber: { type: 'string', max: 191 },
+        supplierId: { type: 'number', min: 1, integer: true },
     },
 };
 
@@ -432,7 +549,7 @@ export const createBranch: ValidationSchema = {
         latitude: { type: 'number', required: true, min: -90, max: 90 },
         longitude: { type: 'number', required: true, min: -180, max: 180 },
         geofenceRadiusM: { type: 'number', required: true, min: 10, max: 10000, integer: true },
-        maxLocationAccuracyM: { type: 'number', required: true, min: 1, max: 5000, integer: true },
+        maxLocationAccuracyM: { type: 'number', required: true, min: 10, max: 5000, integer: true },
         timezone: { type: 'string', max: 64 },
         attendanceEnabled: { type: 'boolean' },
         status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
@@ -447,6 +564,8 @@ export const updateBranch: ValidationSchema = {
         address: { type: 'string', max: 500 },
         phone: { type: 'string', max: 50 },
         status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+        // null clears the default sale warehouse.
+        defaultSaleWarehouseId: { type: 'number', min: 1, integer: true },
     },
 };
 
@@ -498,6 +617,8 @@ export const createModifier: ValidationSchema = {
         productId: { type: 'number', min: 1 },
         consumeQuantity: { type: 'number', min: 0 },
         unitId: { type: 'number', min: 1 },
+        // ADD consumes productId; REMOVE ("sin X") reduces that recipe line.
+        inventoryEffect: { type: 'string', enum: ['ADD', 'REMOVE'] },
     },
 };
 
@@ -581,13 +702,33 @@ export const createPromotion: ValidationSchema = {
     body: {
         code: { type: 'string', required: true, min: 1, max: 50 },
         name: { type: 'string', required: true, min: 1, max: 200 },
-        type: { type: 'string', required: true, enum: ['PERCENTAGE', 'FIXED_AMOUNT'] },
-        value: { type: 'number', required: true, min: 0 },
+        type: { type: 'string', required: true, enum: ['PERCENTAGE', 'FIXED_AMOUNT', 'BUY_X_GET_Y', 'COMBO'] },
+        // "N x M" (BUY_X_GET_Y) has no monetary value; the service stores 0.
+        value: { type: 'number', min: 0 },
         minOrderAmount: { type: 'number', min: 0 },
         maxDiscount: { type: 'number', min: 0 },
         validFrom: { type: 'date' },
         validTo: { type: 'date' },
         usageLimit: { type: 'number', min: 1 },
+        scope: { type: 'string', enum: ['ORDER', 'ITEMS'] },
+        weekdays: { type: 'array', max: 7, items: { type: 'number', integer: true, min: 1, max: 7 } },
+        dailyStartTime: { type: 'string', pattern: /^([01]\d|2[0-3]):[0-5]\d$/ },
+        dailyEndTime: { type: 'string', pattern: /^([01]\d|2[0-3]):[0-5]\d$/ },
+        allBranches: { type: 'boolean' },
+        branchIds: { type: 'array', max: 500, items: { type: 'number', integer: true, min: 1 } },
+        targetMenuItemIds: { type: 'array', max: 1000, items: { type: 'number', integer: true, min: 1 } },
+        targetCategoryIds: { type: 'array', max: 500, items: { type: 'number', integer: true, min: 1 } },
+        comboItems: {
+            type: 'array', max: 50, items: {
+                type: 'object',
+                properties: {
+                    menuItemId: { type: 'number', required: true, integer: true, min: 1 },
+                    quantity: { type: 'number', integer: true, min: 1, max: 99 }
+                }
+            }
+        },
+        buyQuantity: { type: 'number', integer: true, min: 2, max: 100 },
+        payQuantity: { type: 'number', integer: true, min: 1, max: 99 },
     },
 };
 
@@ -620,7 +761,7 @@ export const updatePromotion: ValidationSchema = {
     body: {
         code: { type: 'string', min: 1, max: 50 },
         name: { type: 'string', min: 1, max: 200 },
-        type: { type: 'string', enum: ['PERCENTAGE', 'FIXED_AMOUNT'] },
+        type: { type: 'string', enum: ['PERCENTAGE', 'FIXED_AMOUNT', 'BUY_X_GET_Y', 'COMBO'] },
         value: { type: 'number', min: 0 },
         minOrderAmount: { type: 'number', min: 0 },
         maxDiscount: { type: 'number', min: 0 },
@@ -628,6 +769,25 @@ export const updatePromotion: ValidationSchema = {
         validTo: { type: 'date' },
         usageLimit: { type: 'number', min: 1 },
         active: { type: 'boolean' },
+        scope: { type: 'string', enum: ['ORDER', 'ITEMS'] },
+        weekdays: { type: 'array', max: 7, items: { type: 'number', integer: true, min: 1, max: 7 } },
+        dailyStartTime: { type: 'string', pattern: /^([01]\d|2[0-3]):[0-5]\d$/ },
+        dailyEndTime: { type: 'string', pattern: /^([01]\d|2[0-3]):[0-5]\d$/ },
+        allBranches: { type: 'boolean' },
+        branchIds: { type: 'array', max: 500, items: { type: 'number', integer: true, min: 1 } },
+        targetMenuItemIds: { type: 'array', max: 1000, items: { type: 'number', integer: true, min: 1 } },
+        targetCategoryIds: { type: 'array', max: 500, items: { type: 'number', integer: true, min: 1 } },
+        comboItems: {
+            type: 'array', max: 50, items: {
+                type: 'object',
+                properties: {
+                    menuItemId: { type: 'number', required: true, integer: true, min: 1 },
+                    quantity: { type: 'number', integer: true, min: 1, max: 99 }
+                }
+            }
+        },
+        buyQuantity: { type: 'number', integer: true, min: 2, max: 100 },
+        payQuantity: { type: 'number', integer: true, min: 1, max: 99 },
     },
 };
 
@@ -635,6 +795,18 @@ export const validatePromotion: ValidationSchema = {
     body: {
         code: { type: 'string', required: true },
         orderTotal: { type: 'number', required: true, min: 0 },
+        branchId: { type: 'number', integer: true, min: 1 },
+        items: {
+            type: 'array', max: 500, items: {
+                type: 'object',
+                properties: {
+                    menuItemId: { type: 'number', required: true, integer: true, min: 1 },
+                    quantity: { type: 'number', required: true, integer: true, min: 1 },
+                    unitPrice: { type: 'number', required: true, min: 0 },
+                    modifierUnitPrice: { type: 'number', min: 0 }
+                }
+            }
+        },
     },
 };
 
@@ -726,11 +898,12 @@ export const closeShift: ValidationSchema = {
     params: { shiftId: { type: 'number', required: true, min: 1 } },
     body: {
         endAmount: { type: 'number', required: true, min: 0 },
-        bills: { type: 'array' },
-        coins: { type: 'array' },
+        bills: { type: 'array', required: true },
+        coins: { type: 'array', required: true },
         usdBills: { type: 'array' },
         exchangeRate: { type: 'number', min: 0 },
         forceClose: { type: 'boolean' },
+        notes: { type: 'string', max: 2000 },
     },
 };
 
@@ -738,6 +911,28 @@ export const closeShift: ValidationSchema = {
 export const updateSettings: ValidationSchema = {
     body: {
         restaurantName: { type: 'string' },
+    },
+};
+
+export const getResolvedSettings: ValidationSchema = {
+    query: {
+        branchId: { type: 'number', integer: true, min: 1 },
+    },
+};
+
+export const patchResolvedSettings: ValidationSchema = {
+    body: {
+        branchId: { type: 'number', integer: true, min: 1 },
+        version: { type: 'string', required: true },
+        changes: { type: 'object', required: true },
+    },
+};
+
+export const settingsHistory: ValidationSchema = {
+    query: {
+        section: { type: 'string', max: 50 },
+        key: { type: 'string', max: 100 },
+        limit: { type: 'number', integer: true, min: 1, max: 200 },
     },
 };
 

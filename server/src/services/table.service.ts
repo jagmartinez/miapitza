@@ -1,28 +1,34 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { tableOpenAccountWhere } from './table-occupancy-policy';
 
 export type TableOperationalState =
   | 'AVAILABLE' | 'RESERVED' | 'DISABLED' | 'OPEN_ORDER' | 'WAITING_KITCHEN'
   | 'PREPARING' | 'PARTIALLY_READY' | 'READY' | 'INVOICED'
-  | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION';
+  | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION' | 'JOINED';
 
 interface OperationalOrder {
   status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
   financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   invoiceNumber: string | null;
+  preInvoicedAt?: Date | null;
   items: Array<{ status: 'PENDING' | 'IN_PROGRESS' | 'DONE' }>;
 }
 
 export function deriveTableOperationalState(
   tableStatus: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE',
-  orders: OperationalOrder[]
+  orders: OperationalOrder[],
+  isPhysicallyGrouped = false
 ): TableOperationalState {
   if (tableStatus === 'OUT_OF_SERVICE') return 'DISABLED';
   if (tableStatus === 'RESERVED') return 'RESERVED';
-  if (orders.length === 0) return tableStatus === 'OCCUPIED' ? 'ATTENTION' : 'AVAILABLE';
+  if (orders.length === 0) {
+    if (isPhysicallyGrouped) return 'JOINED';
+    return tableStatus === 'OCCUPIED' ? 'ATTENTION' : 'AVAILABLE';
+  }
   if (orders.some((order) => order.financialStatus === 'PARTIAL')) return 'PARTIAL_PAYMENT';
   if (orders.every((order) => order.financialStatus === 'PAID')) return 'PAID';
-  if (orders.some((order) => Boolean(order.invoiceNumber))) return 'INVOICED';
+  if (orders.some((order) => Boolean(order.invoiceNumber || order.preInvoicedAt))) return 'INVOICED';
   if (orders.every((order) => order.status === 'READY')) return 'READY';
   const items = orders.flatMap((order) => order.items);
   if (items.some((item) => item.status === 'DONE') && items.some((item) => item.status !== 'DONE')) {
@@ -48,17 +54,23 @@ export class TableService {
             code: true
           }
         },
+        activeTableGroup: {
+          select: {
+            id: true,
+            primaryTableId: true,
+            memberTableIds: true,
+            status: true,
+            createdAt: true,
+            primaryTable: { select: { id: true, number: true } }
+          }
+        },
         orders: {
-          where: {
-            OR: [
-              { status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } },
-              { status: 'DELIVERED', financialStatus: { not: 'PAID' } }
-            ]
-          },
+          where: tableOpenAccountWhere(),
           select: {
             status: true,
             financialStatus: true,
             invoiceNumber: true,
+            preInvoicedAt: true,
             items: { select: { status: true } }
           }
         }
@@ -70,7 +82,8 @@ export class TableService {
     });
     return tables.map(({ orders, ...table }) => ({
       ...table,
-      operationalState: deriveTableOperationalState(table.status, orders)
+      activeOrderCount: orders.length,
+      operationalState: deriveTableOperationalState(table.status, orders, Boolean(table.activeTableGroup))
     }));
   }
 
@@ -86,12 +99,20 @@ export class TableService {
             address: true
           }
         },
+        activeTableGroup: {
+          select: {
+            id: true,
+            primaryTableId: true,
+            memberTableIds: true,
+            status: true,
+            createdAt: true,
+            primaryTable: { select: { id: true, number: true } }
+          }
+        },
         orders: {
           where: {
-            status: {
-              in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY']
-            },
-            companyId
+            companyId,
+            ...tableOpenAccountWhere()
           },
           select: {
             id: true,
@@ -192,17 +213,20 @@ export class TableService {
       if (!current) throw new Error('Table not found');
 
       if (data.status !== undefined && data.status !== current.status) {
+        if (current.activeTableGroupId && data.status !== 'OCCUPIED') {
+          throw new Error('Separe primero el grupo físico antes de cambiar el estado de esta mesa');
+        }
         const activeOrders = await tx.order.count({
           where: {
             companyId,
             tableId: id,
-            status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
+            ...tableOpenAccountWhere()
           }
         });
         if (activeOrders > 0 && data.status !== 'OCCUPIED') {
-          throw new Error('La mesa tiene una orden activa y debe permanecer ocupada');
+          throw new Error('La mesa tiene una cuenta pendiente y debe permanecer ocupada');
         }
-        if (data.status === 'OCCUPIED' && activeOrders === 0) {
+        if (data.status === 'OCCUPIED' && activeOrders === 0 && !current.activeTableGroupId) {
           throw new Error('Una mesa solo puede marcarse ocupada mediante una orden activa');
         }
         if (data.status === 'OUT_OF_SERVICE') {
@@ -242,19 +266,23 @@ export class TableService {
   }
 
   static async delete(id: number, companyId: number) {
+    const grouped = await prisma.table.findFirst({
+      where: { id, companyId, activeTableGroupId: { not: null } },
+      select: { id: true }
+    });
+    if (grouped) throw new Error('Separe primero la mesa de su grupo activo antes de eliminarla');
+
     // Check if table has active orders
     const activeOrders = await prisma.order.findFirst({
       where: {
         tableId: id,
         companyId,
-        status: {
-          in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY']
-        }
+        ...tableOpenAccountWhere()
       }
     });
 
     if (activeOrders) {
-      throw new Error('Cannot delete table with active orders');
+      throw new Error('No se puede eliminar una mesa con cuentas pendientes');
     }
 
     const activeReservation = await prisma.reservation.findFirst({

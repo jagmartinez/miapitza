@@ -190,6 +190,7 @@ describe('HrEmployeeService tenant and account invariants', () => {
             } as never)
             .mockResolvedValueOnce({ id: 8, companyId: 4, employeeCode: 'EMP-8' } as never);
         const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 8 }] as never),
             employee: { update: jest.fn().mockResolvedValue({ id: 8 } as never) },
             auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
         };
@@ -249,6 +250,7 @@ describe('HrEmployeeService tenant and account invariants', () => {
             terminationDate: null,
         } as never);
         const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 8 }] as never),
             employee: { updateMany: jest.fn().mockResolvedValue({ count: 1 } as never) },
             employeeBranchAssignment: {
                 findFirst: jest.fn().mockResolvedValue(null as never),
@@ -270,12 +272,16 @@ describe('HrEmployeeService tenant and account invariants', () => {
                 create: jest.fn().mockResolvedValue({ id: 91 } as never),
             },
             auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
+            payrollCoverageClaim: { findFirst: jest.fn().mockResolvedValue(null as never) },
         };
         jest.spyOn(prisma, '$transaction').mockImplementation(
             (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never,
         );
 
         await HrEmployeeService.setStatus(8, 4, 'TERMINATED', '2026-07-13', 'Baja', 3);
+        expect(tx.payrollCoverageClaim.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ companyId: 4, userId: 21 }),
+        }));
 
         expect(tx.user.updateMany).toHaveBeenCalledWith({
             where: { id: 21, companyId: 4 },
@@ -286,8 +292,10 @@ describe('HrEmployeeService tenant and account invariants', () => {
             data: { revoked: true },
         });
         expect(tx.biometricProfile.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-            where: { id: 31, companyId: 4, userId: 21, status: 'ACTIVE' },
-            data: expect.objectContaining({ status: 'REVOKED', revocationReason: 'EMPLOYMENT_TERMINATED' }),
+            where: { id: 31, companyId: 4, userId: 21, status: { in: ['ACTIVE', 'PENDING'] } },
+            data: expect.objectContaining({
+                status: 'REVOKED', revocationReason: 'EMPLOYMENT_TERMINATED', approvedAt: null, approvedByUserId: null,
+            }),
         }));
         expect(tx.biometricPurgeRequest.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({
@@ -297,5 +305,67 @@ describe('HrEmployeeService tenant and account invariants', () => {
                 reason: 'EMPLOYMENT_TERMINATED',
             }),
         }));
+    });
+
+    it('termination withdraws the HR approval of an already self-revoked biometric profile', async () => {
+        jest.spyOn(prisma.employee, 'findFirst').mockResolvedValue({
+            id: 8, companyId: 4, userId: 21, employeeCode: 'EMP-21', legalName: 'Ana Pérez',
+            status: 'ACTIVE', hireDate: new Date('2025-01-01T00:00:00Z'), terminationDate: null,
+        } as never);
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 8 }] as never),
+            employee: { updateMany: jest.fn().mockResolvedValue({ count: 1 } as never) },
+            employeeBranchAssignment: {
+                findFirst: jest.fn().mockResolvedValue(null as never),
+                updateMany: jest.fn().mockResolvedValue({ count: 1 } as never),
+            },
+            employmentContract: {
+                findFirst: jest.fn().mockResolvedValue(null as never),
+                updateMany: jest.fn().mockResolvedValue({ count: 1 } as never),
+            },
+            user: { updateMany: jest.fn().mockResolvedValue({ count: 1 } as never) },
+            userSession: { updateMany: jest.fn().mockResolvedValue({ count: 0 } as never) },
+            biometricProfile: {
+                // Self-revoked earlier: no ACTIVE/PENDING profile, approval kept.
+                findFirst: jest.fn().mockResolvedValue(null as never),
+                updateMany: jest.fn().mockResolvedValue({ count: 1 } as never),
+            },
+            biometricPurgeRequest: { create: jest.fn() },
+            auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
+            payrollCoverageClaim: { findFirst: jest.fn().mockResolvedValue(null as never) },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never,
+        );
+
+        await HrEmployeeService.setStatus(8, 4, 'TERMINATED', '2026-07-13', 'Baja', 3);
+
+        // A rehire must not re-enroll straight to ACTIVE on the old approval.
+        expect(tx.biometricProfile.updateMany).toHaveBeenCalledWith({
+            where: { companyId: 4, userId: 21, approvedAt: { not: null } },
+            data: { approvedAt: null, approvedByUserId: null },
+        });
+        expect(tx.biometricPurgeRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a termination date that would rewrite frozen payroll coverage', async () => {
+        jest.spyOn(prisma.employee, 'findFirst').mockResolvedValue({
+            id: 8, companyId: 4, userId: 21, employeeCode: 'EMP-21', legalName: 'Ana Pérez',
+            status: 'ACTIVE', hireDate: new Date('2025-01-01T00:00:00Z'), terminationDate: null,
+        } as never);
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 8 }] as never),
+            employee: { updateMany: jest.fn().mockResolvedValue({ count: 1 } as never) },
+            payrollCoverageClaim: {
+                findFirst: jest.fn().mockResolvedValue({ run: { code: 'NOM-2026-07-A', status: 'PAID' } } as never),
+            },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never,
+        );
+
+        await expect(HrEmployeeService.setStatus(8, 4, 'TERMINATED', '2026-07-13', 'Baja', 3))
+            .rejects.toMatchObject({ statusCode: 409 });
+        expect(tx.employee.updateMany).not.toHaveBeenCalled();
     });
 });

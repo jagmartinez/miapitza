@@ -4,6 +4,7 @@ import { describe, expect, it } from '@jest/globals';
 
 describe('HR schedule route contract', () => {
     const routes = fs.readFileSync(path.resolve(__dirname, '../../routes/hr-schedule.routes.ts'), 'utf8');
+    const controller = fs.readFileSync(path.resolve(__dirname, '../../controllers/hr-schedule.controller.ts'), 'utf8');
 
     it('exposes owner and self schedule workflows with explicit permissions', () => {
         expect(routes).toContain("requirePermission('hr.schedule.read', ROLES.SUPERADMIN)");
@@ -12,10 +13,18 @@ describe('HR schedule route contract', () => {
         expect(routes).toContain("requirePermission('hr.schedule.self'");
         expect(routes).toContain("router.put('/schedules/:id'");
         expect(routes).toContain("router.get('/me/schedule'");
+        expect(routes).toContain("router.get('/team/schedule'");
+        expect(routes).toContain("router.get('/schedules/lookups', ownerRead");
         expect(routes).toContain("router.get('/holidays'");
     });
 
     it('never accepts companyId from a privileged DTO body', () => {
         expect(routes).not.toMatch(/allowHrBodyFields\([^)]*companyId/);
+    });
+
+    it('returns the team endpoint with an explicit collection contract', () => {
+        expect(controller).toContain('schedules: schedule ? [schedule] : []');
+        expect(controller).toContain('conflicts: []');
+        expect(controller).toContain('holidays: []');
     });
 });

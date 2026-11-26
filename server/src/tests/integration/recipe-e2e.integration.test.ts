@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -8,6 +8,7 @@ import { PaymentService } from '../../services/payment.service';
 import { InvoiceService } from '../../services/invoice.service';
 import { ProductionRecipeService } from '../../services/production-recipe.service';
 import { ProductionOrderService } from '../../services/production-order.service';
+import { AuditLogService } from '../../services/audit-log.service';
 import { InventoryEngineService } from '../../services/inventory-engine.service';
 import { runDemoCleanup } from '../../scripts/cleanup-demo-data';
 
@@ -230,6 +231,7 @@ describe('Recipe inventory flows (integration)', () => {
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
         await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { companyId } } } });
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
+        await prisma.kitchenBatch.deleteMany({ where: { companyId } });
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.productionOrderItem.deleteMany({ where: { productionOrder: { companyId } } });
         await prisma.productionOrder.deleteMany({ where: { companyId } });
@@ -261,13 +263,14 @@ describe('Recipe inventory flows (integration)', () => {
         });
         if (!order) throw new Error('OrderService.create returned null in recipe E2E fixture.');
         orderId = order.id;
-        await InvoiceService.generateInvoice(orderId, companyId);
+        await InvoiceService.generatePreInvoice(orderId, companyId, userId);
 
         const firstPayment = await PaymentService.create(
             companyId,
             { orderId, paymentMethodId, amount: Number(order.total) },
             userId
         );
+        await InvoiceService.generateInvoice(orderId, companyId, userId);
 
         expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
         expect(await prisma.inventoryMovement.count({
@@ -350,13 +353,14 @@ describe('Recipe inventory flows (integration)', () => {
             where: { id: order.id },
             data: { discountCode: promotion.code }
         });
-        await InvoiceService.generateInvoice(order.id, companyId);
+        await InvoiceService.generatePreInvoice(order.id, companyId, userId);
 
         await PaymentService.create(
             companyId,
             { orderId: order.id, paymentMethodId, amount: Number(order.total) },
             userId
         );
+        await InvoiceService.generateInvoice(order.id, companyId, userId);
         expect(await quantity(saleIngredientId)).toBeCloseTo(initialIngredientQuantity, 6);
         expect((await prisma.promotion.findUnique({ where: { id: promotion.id } }))?.usageCount).toBe(1);
 
@@ -419,6 +423,16 @@ describe('Recipe inventory flows (integration)', () => {
             userId
         );
         productionOrderId = order.id;
+        const audit = jest.spyOn(AuditLogService, 'log')
+            .mockRejectedValueOnce(new Error('forced production audit failure'));
+        await expect(
+            ProductionOrderService.setStatus(productionOrderId, companyId, 'IN_PROGRESS', userId)
+        ).rejects.toThrow('forced production audit failure');
+        audit.mockRestore();
+        expect((await prisma.productionOrder.findUniqueOrThrow({
+            where: { id: productionOrderId }
+        })).status).toBe('PENDING');
+
         await ProductionOrderService.setStatus(productionOrderId, companyId, 'IN_PROGRESS', userId);
 
         const finished = await ProductionOrderService.finish(
@@ -429,6 +443,7 @@ describe('Recipe inventory flows (integration)', () => {
         );
 
         expect(finished.status).toBe('FINISHED');
+        expect(finished.finishedById).toBe(userId);
         expect(await quantity(productionIngredientId)).toBeCloseTo(80, 6);
         expect(await quantity(outputProductId)).toBeCloseTo(7, 6);
         expect(Number(finished.realCost)).toBeCloseTo(40, 6);
@@ -436,6 +451,9 @@ describe('Recipe inventory flows (integration)', () => {
         expect(await prisma.productCostHistory.count({
             where: { companyId, productionOrderId }
         })).toBe(1);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'ProductionOrder', entityId: productionOrderId }
+        })).toBe(3);
 
         const cancelled = await ProductionOrderService.cancel(
             productionOrderId,

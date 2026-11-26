@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { authAPI } from '../services/api';
 import { Lock, Eye, EyeOff, Check, X, ShieldCheck } from 'lucide-react';
+import { Button, EmptyState, Field, IconButton, Input } from '@/ui';
 import './ChangePassword.css';
 
 const RULES = [
@@ -54,11 +55,11 @@ export default function ChangePassword() {
         return (
             <div className="change-pwd-page">
                 <div className="change-pwd-card">
-                    <div className="pwd-success">
-                        <ShieldCheck size={64} />
-                        <h2>Contraseña actualizada</h2>
-                        <p>Serás redirigido al inicio de sesión...</p>
-                    </div>
+                    <EmptyState
+                        icon={ShieldCheck}
+                        title="Contraseña actualizada"
+                        description="Serás redirigido al inicio de sesión..."
+                    />
                 </div>
             </div>
         );
@@ -67,75 +68,82 @@ export default function ChangePassword() {
     return (
         <div className="change-pwd-page">
             <div className="change-pwd-card">
-                <div className="pwd-header">
-                    <Lock size={32} />
-                    <h2>Cambiar Contraseña</h2>
+                <header className="pwd-header">
+                    <Lock size={28} aria-hidden="true" />
+                    <h1>Cambiar Contraseña</h1>
                     <p>Por seguridad, debes actualizar tu contraseña para continuar.</p>
-                </div>
+                </header>
 
                 <form onSubmit={handleSubmit} className="pwd-form">
-                    {error && <div className="pwd-error">{error}</div>}
+                    {error && <div className="pwd-error" role="alert">{error}</div>}
 
-                    <div className="pwd-field">
-                        <label>Contraseña actual</label>
-                        <div className="pwd-input-wrap">
-                            <input
-                                type={showOld ? 'text' : 'password'}
-                                value={oldPassword}
-                                onChange={(e) => setOldPassword(e.target.value)}
-                                placeholder="Ingresa tu contraseña actual"
-                                autoFocus
-                            />
-                            <button type="button" className="pwd-toggle" onClick={() => setShowOld(!showOld)}>
-                                {showOld ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
-                    </div>
+                    <Field label="Contraseña actual" htmlFor="cp-old">
+                        <Input
+                            id="cp-old"
+                            type={showOld ? 'text' : 'password'}
+                            autoComplete="current-password"
+                            value={oldPassword}
+                            onChange={(e) => setOldPassword(e.target.value)}
+                            placeholder="Ingresa tu contraseña actual"
+                            autoFocus
+                            suffix={
+                                <IconButton
+                                    icon={showOld ? EyeOff : Eye}
+                                    label={showOld ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'}
+                                    aria-pressed={showOld}
+                                    onClick={() => setShowOld(!showOld)}
+                                />
+                            }
+                        />
+                    </Field>
 
-                    <div className="pwd-field">
-                        <label>Nueva contraseña</label>
-                        <div className="pwd-input-wrap">
-                            <input
-                                type={showNew ? 'text' : 'password'}
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                maxLength={72}
-                                placeholder="Ingresa tu nueva contraseña"
-                            />
-                            <button type="button" className="pwd-toggle" onClick={() => setShowNew(!showNew)}>
-                                {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
-                    </div>
+                    <Field label="Nueva contraseña" htmlFor="cp-new">
+                        <Input
+                            id="cp-new"
+                            type={showNew ? 'text' : 'password'}
+                            autoComplete="new-password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            maxLength={72}
+                            placeholder="Ingresa tu nueva contraseña"
+                            suffix={
+                                <IconButton
+                                    icon={showNew ? EyeOff : Eye}
+                                    label={showNew ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'}
+                                    aria-pressed={showNew}
+                                    onClick={() => setShowNew(!showNew)}
+                                />
+                            }
+                        />
+                    </Field>
 
-                    {/* Strength Rules */}
-                    <div className="pwd-rules">
+                    <ul className="pwd-rules" aria-label="Requisitos de la contraseña">
                         {RULES.map(rule => (
-                            <div key={rule.id} className={`pwd-rule ${rule.test(newPassword) ? 'pass' : newPassword.length > 0 ? 'fail' : ''}`}>
-                                {rule.test(newPassword) ? <Check size={14} /> : <X size={14} />}
+                            <li key={rule.id} className={`pwd-rule ${rule.test(newPassword) ? 'pass' : newPassword.length > 0 ? 'fail' : ''}`}>
+                                {rule.test(newPassword) ? <Check size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
                                 <span>{rule.label}</span>
-                            </div>
+                            </li>
                         ))}
-                    </div>
+                    </ul>
 
-                    <div className="pwd-field">
-                        <label>Confirmar nueva contraseña</label>
-                        <div className="pwd-input-wrap">
-                            <input
-                                type="password"
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                placeholder="Repite tu nueva contraseña"
-                            />
-                        </div>
-                        {confirmPassword.length > 0 && !passwordsMatch && (
-                            <span className="pwd-mismatch">Las contraseñas no coinciden</span>
-                        )}
-                    </div>
+                    <Field
+                        label="Confirmar nueva contraseña"
+                        htmlFor="cp-confirm"
+                        error={confirmPassword.length > 0 && !passwordsMatch ? 'Las contraseñas no coinciden' : undefined}
+                    >
+                        <Input
+                            id="cp-confirm"
+                            type="password"
+                            autoComplete="new-password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Repite tu nueva contraseña"
+                        />
+                    </Field>
 
-                    <button type="submit" className="pwd-submit" disabled={!canSubmit}>
+                    <Button type="submit" variant="primary" disabled={!canSubmit} loading={saving}>
                         {saving ? 'Guardando...' : 'Cambiar Contraseña'}
-                    </button>
+                    </Button>
                 </form>
             </div>
         </div>

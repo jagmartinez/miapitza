@@ -29,6 +29,9 @@ npm-debug.log*
 # Local audit/import artifacts (never upload or commit)
 .claude/worktrees/
 .tmp/
+.tmp-*/
+.coverage
+output/
 outputs/
 *.pdf
 *.xlsx
@@ -36,3 +39,7 @@ outputs/
 
 # Package lock (keep per-project)
 # package-lock.json
+
+# Firebase: server credential is a secret; client config stays local too
+server/firebase-service-account.json
+mobile/android/app/google-services.json

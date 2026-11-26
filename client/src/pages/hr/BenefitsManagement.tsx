@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { formatHrMoney } from '../../utils/hrFormat';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import {
   AlertTriangle,
   Banknote,
   FileMinus2,
   Eye,
-  WalletCards,
   Plus,
   RefreshCw,
   Route,
@@ -13,12 +12,8 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import Button from '../../components/Button';
-import HrReactSelect from '../../components/hr/HrReactSelect';
+import { DataTable, FullScreenModal, PageHeader, StatCard, AppSelect, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
-import Pagination from '../../components/Pagination';
-import Sidebar from '../../components/Sidebar';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
 import BenefitsTransitionForm from '../../components/hr/BenefitsTransitionForm';
@@ -57,7 +52,6 @@ import '../Inventory.css';
 
 type OperationalTab = 'TRAVEL' | 'LOAN' | 'DEDUCTION';
 type Tab = OperationalTab | 'GOVERNANCE';
-const PAGE_SIZE = 12;
 const STATUS_OPTIONS: Record<OperationalTab, Array<{ value: string; label: string }>> = {
   TRAVEL: [
     { value: 'DRAFT', label: 'Borrador' },
@@ -144,6 +138,18 @@ function money(currency: string, amount?: string | null): string {
   return formatHrMoney(currency, amount);
 }
 
+/** Totals already-loaded amounts per currency (no server call, display only). */
+function sumByCurrency(rows: Array<{ currency: string; amount?: string | null }>): string {
+  const totals = new Map<string, number>();
+  rows.forEach(({ currency, amount }) => {
+    const numeric = Number(amount ?? 0);
+    const key = currency?.trim().toUpperCase() || 'NIO';
+    totals.set(key, (totals.get(key) ?? 0) + (Number.isFinite(numeric) ? numeric : 0));
+  });
+  if (totals.size === 0) return money('NIO', '0');
+  return [...totals.entries()].map(([currency, total]) => money(currency, total.toFixed(2))).join(' · ');
+}
+
 export default function BenefitsManagement() {
   const online = useBenefitsOnline();
   const { success: showSuccess, error: showError } = useAppToast();
@@ -162,7 +168,6 @@ export default function BenefitsManagement() {
   const [createPanel, setCreatePanel] = useState<CreatePanel>(null);
   const expenseOperationKey = useRef<string | null>(null);
   const [transition, setTransition] = useState<Transition | null>(null);
-  const [tablePage, setTablePage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -198,9 +203,6 @@ export default function BenefitsManagement() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    setTablePage(1);
-  }, [status, tab]);
 
   const openDetail = async (selection: Selected) => {
     setDetailLoading(true);
@@ -383,10 +385,6 @@ export default function BenefitsManagement() {
       return `${item.code} ${item.user?.name ?? ''} ${detail}`.toLocaleLowerCase('es-NI').includes(term);
     });
   }, [cards, search, tab]);
-  const pagedCards = filteredCards.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
-  useEffect(() => {
-    setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))));
-  }, [filteredCards.length]);
   const internalUsers = (organization.users ?? []).filter(
     (user) => user.accountType === 'INTERNAL' && Boolean(user.employeeId ?? user.employee?.id)
   );
@@ -395,12 +393,7 @@ export default function BenefitsManagement() {
   if (tab === 'GOVERNANCE') {
     return (
       <div className="page-wrapper inventory-page hr-benefits-page hr-admin-catalog-page hr-operation-page">
-        <PageHeader
-          className="inventory-header-new hr-operation-header"
-          title="Beneficios y liquidaciones"
-          subtitle="Opera viáticos, préstamos, deducciones, políticas y cierres laborales desde una sola vista."
-          icon={WalletCards}
-        />
+        <PageHeader title="Beneficios y liquidaciones" description="Opera viáticos, préstamos, deducciones, políticas y cierres laborales desde una sola vista." />
         <div className="hr-benefits-toolbar inventory-filters-row hr-operation-toolbar">
           <div
             className="hr-benefits-tabs inventory-status-filters"
@@ -438,13 +431,15 @@ export default function BenefitsManagement() {
     );
   }
 
+  const travelInProgress = travel.filter((item) => ['SUBMITTED', 'APPROVED', 'ADVANCED', 'IN_SETTLEMENT'].includes(item.status));
+  const openLoans = loans.filter((item) => ['DISBURSED', 'ACTIVE'].includes(item.status));
+  const pendingActions = [...travel, ...loans, ...deductions].filter((item) => item.allowedActions.length > 0).length;
+
   return (
     <div className="page-wrapper inventory-page hr-benefits-page hr-admin-catalog-page hr-operation-page">
       <PageHeader
-        className="inventory-header-new hr-operation-header"
         title="Viáticos, préstamos y deducciones"
-        subtitle="Aprueba solicitudes, registra pagos y controla lo que se descontará en nómina"
-        icon={WalletCards}
+        description="Aprueba solicitudes, registra pagos y controla lo que se descontará en nómina"
         actions={
           <div className="hr-benefits-header-actions">
             <Button variant="secondary" onClick={() => setCreatePanel(tab)} disabled={!online}>
@@ -459,6 +454,28 @@ export default function BenefitsManagement() {
         }
       />
       <BenefitsOnlineNotice online={online} />
+      {(travelInProgress.length > 0 || openLoans.length > 0 || pendingActions > 0) && (
+        <section className="hr-kpi-row" aria-label="Indicadores de beneficios">
+          {pendingActions > 0 && (
+            <StatCard tone="danger" label="Por atender" value={String(pendingActions)} context="Registros con una acción disponible." />
+          )}
+          {travelInProgress.length > 0 && (
+            <StatCard
+              tone="warning"
+              label="Viáticos en curso"
+              value={String(travelInProgress.length)}
+              context={sumByCurrency(travelInProgress.map((item) => ({ currency: item.currency, amount: item.approvedAmount ?? item.requestedAmount })))}
+            />
+          )}
+          {openLoans.length > 0 && (
+            <StatCard
+              label="Saldo de préstamos"
+              value={sumByCurrency(openLoans.map((item) => ({ currency: item.currency, amount: item.outstandingBalance })))}
+              context={`${openLoans.length} préstamo${openLoans.length === 1 ? '' : 's'} vigente${openLoans.length === 1 ? '' : 's'}`}
+            />
+          )}
+        </section>
+      )}
       <div className="hr-benefits-toolbar inventory-filters-row hr-operation-toolbar">
         <div
           className="hr-benefits-tabs inventory-status-filters"
@@ -529,14 +546,19 @@ export default function BenefitsManagement() {
         </label>
         <label className="hr-benefits-status-filter">
           <span className="sr-only">Estado</span>
-          <HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filtrar por estado">
-            <option value="">Todos</option>
-            {STATUS_OPTIONS[tab].map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </HrReactSelect>
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Todos' },
+              ...STATUS_OPTIONS[tab].map((option) => ({
+                value: String(option.value),
+                label: option.label,
+              })),
+            ]}
+            value={status}
+            onChange={(next) => setStatus(next ?? '')}
+            aria-label="Filtrar por estado"
+            isClearable={false}
+          />
         </label>
         <Button variant="ghost" onClick={() => void load()} disabled={loading || !online}>
           <RefreshCw size={16} /> Actualizar
@@ -560,29 +582,13 @@ export default function BenefitsManagement() {
               aria-label={`Bandeja de ${tab === 'TRAVEL' ? 'viáticos' : tab === 'LOAN' ? 'préstamos' : 'deducciones'}`}
             >
               <div className="hr-admin-table-wrap">
-                <table className="hr-admin-table inventory-table" aria-label={`${tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}: ${filteredCards.length} registros`}>
-                  <thead>
-                    <tr>
-                      <th scope="col">Código</th>
-                      <th scope="col">Empleado</th>
-                      <th scope="col">
-                        {tab === 'TRAVEL'
-                          ? 'Destino y fechas'
-                          : tab === 'LOAN'
-                            ? 'Motivo'
-                            : 'Deducción y vigencia'}
-                      </th>
-                      <th scope="col" className="hr-amount-cell">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th>
-                      <th scope="col">Estado</th>
-                      <th scope="col">Siguiente paso</th>
-                      <th scope="col" className="hr-admin-actions-col">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCards.length === 0 ? (
-                      <tr>
-                        <td colSpan={7}>
-                          <div className="hr-admin-empty">
+                <DataTable
+                ariaLabel={`${tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}: ${filteredCards.length} registros`}
+                rows={filteredCards}
+                rowKey={(entry) => `${tab}-${entry.id}`}
+                pagination={{ mode: 'client' }}
+                minWidth="56rem"
+                empty={<div className="hr-admin-empty">
                             <strong>{search ? 'No hay coincidencias' : 'No hay registros para este estado'}</strong>
                             <span>{search ? 'Prueba otro código, empleado o detalle.' : 'Cambia el estado o crea un nuevo registro.'}</span>
                             {search && <Button size="sm" variant="ghost" onClick={() => setSearch('')}>Limpiar búsqueda</Button>}
@@ -591,7 +597,7 @@ export default function BenefitsManagement() {
                                 Mostrar todos
                               </Button>
                             )}
-                            <Button
+                            <Button variant="primary"
                               size="sm"
                               onClick={() => setCreatePanel(tab)}
                               disabled={!online}
@@ -603,70 +609,19 @@ export default function BenefitsManagement() {
                                   ? 'Nuevo préstamo'
                                   : 'Nueva deducción'}
                             </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      pagedCards.map((entry) => {
-                        const resource = tab;
-                        const item = entry as HrTravelRequest | HrLoan | HrDeduction;
-                        const description =
-                          resource === 'TRAVEL'
-                            ? `${(item as HrTravelRequest).destination} · ${dateLabel((item as HrTravelRequest).departureDate)} a ${dateLabel((item as HrTravelRequest).returnDate)}`
-                            : resource === 'LOAN'
-                              ? (item as HrLoan).purpose
-                              : `${(item as HrDeduction).name} · desde ${dateLabel((item as HrDeduction).effectiveFrom)}`;
-                        const amount =
-                          resource === 'TRAVEL'
-                            ? money(
-                                (item as HrTravelRequest).currency,
-                                (item as HrTravelRequest).approvedAmount ??
-                                  (item as HrTravelRequest).requestedAmount
-                              )
-                            : resource === 'LOAN'
-                              ? money(
-                                  (item as HrLoan).currency,
-                                  (item as HrLoan).outstandingBalance
-                                )
-                              : money(
-                                  (item as HrDeduction).currency,
-                                  (item as HrDeduction).applicableAmount
-                                );
-                        const nextAction = item.allowedActions[0];
-                        const nextLabel = !nextAction
-                          ? 'Sin acciones pendientes'
-                          : resource === 'TRAVEL'
-                            ? TRAVEL_ACTION_LABELS[
-                                nextAction as HrTravelRequest['allowedActions'][number]
-                              ]
-                            : resource === 'LOAN'
-                              ? LOAN_ACTION_LABELS[nextAction as HrLoan['allowedActions'][number]]
-                              : DEDUCTION_ACTION_LABELS[
-                                  nextAction as HrDeduction['allowedActions'][number]
-                                ];
-                        return (
-                          <tr
-                            key={`${resource}-${item.id}`}
-                            className={
-                              selected?.resource === resource && selected.item.id === item.id
-                                ? 'is-selected'
-                                : ''
-                            }
-                          >
-                            <td>
-                              <strong>{item.code}</strong>
-                            </td>
-                            <td>{item.user?.name ?? `Usuario #${item.userId}`}</td>
-                            <td>{description}</td>
-                            <td className="hr-amount-cell">
-                              <strong>{amount}</strong>
-                            </td>
-                            <td>
-                              <BenefitsStatusPill status={item.status} />
-                            </td>
-                            <td>{nextLabel}</td>
-                            <td className="hr-admin-actions-col">
-                              <div className="table-actions">
+                          </div>}
+                columns={[
+                  { key: 'c0', header: 'Código', render: (entry) => { const item = entry as HrTravelRequest | HrLoan | HrDeduction; return <strong>{item.code}</strong>; } },
+                  { key: 'c1', header: 'Empleado', render: (entry) => { const item = entry as HrTravelRequest | HrLoan | HrDeduction; return <>{item.user?.name ?? `Usuario #${item.userId}`}</>; } },
+                  { key: 'c2', header: tab === 'TRAVEL'
+                          ? 'Destino y fechas'
+                          : tab === 'LOAN'
+                            ? 'Motivo'
+                            : 'Deducción y vigencia', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; const description = resource === 'TRAVEL' ? `${(item as HrTravelRequest).destination} · ${dateLabel((item as HrTravelRequest).departureDate)} a ${dateLabel((item as HrTravelRequest).returnDate)}` : resource === 'LOAN' ? (item as HrLoan).purpose : `${(item as HrDeduction).name} · desde ${dateLabel((item as HrDeduction).effectiveFrom)}`; return <>{description}</>; } },
+                  { key: 'c3', header: tab === 'LOAN' ? 'Saldo' : 'Importe', type: 'money', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; const amount = resource === 'TRAVEL' ? money( (item as HrTravelRequest).currency, (item as HrTravelRequest).approvedAmount ?? (item as HrTravelRequest).requestedAmount ) : resource === 'LOAN' ? money( (item as HrLoan).currency, (item as HrLoan).outstandingBalance ) : money( (item as HrDeduction).currency, (item as HrDeduction).applicableAmount ); return <strong>{amount}</strong>; } },
+                  { key: 'c4', header: 'Estado', render: (entry) => { const item = entry as HrTravelRequest | HrLoan | HrDeduction; return <><BenefitsStatusPill status={item.status} /></>; } },
+                  { key: 'c5', header: 'Siguiente paso', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; const nextAction = item.allowedActions[0]; const nextLabel = !nextAction ? 'Sin acciones pendientes' : resource === 'TRAVEL' ? TRAVEL_ACTION_LABELS[ nextAction as HrTravelRequest['allowedActions'][number] ] : resource === 'LOAN' ? LOAN_ACTION_LABELS[nextAction as HrLoan['allowedActions'][number]] : DEDUCTION_ACTION_LABELS[ nextAction as HrDeduction['allowedActions'][number] ]; return <>{nextLabel}</>; } },
+                  { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; return (<div className="table-actions">
                                 <Button
                                   className="table-action-btn"
                                   size="sm"
@@ -677,24 +632,10 @@ export default function BenefitsManagement() {
                                 >
                                   <Eye size={16} />
                                 </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <Pagination
-                page={tablePage}
-                totalPages={Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))}
-                totalItems={filteredCards.length}
-                pageSize={PAGE_SIZE}
-                onPageChange={setTablePage}
-                alwaysShow
-                emptyLabel="Sin registros"
+                              </div>); } },
+                ]}
               />
+              </div>
             </section>
             <section
               className={`hr-benefits-workspace ${selected || detailLoading ? 'is-visible' : 'is-empty'}`}
@@ -871,38 +812,22 @@ export default function BenefitsManagement() {
                     <>
                       <h3>Gastos y soportes</h3>
                       <div className="hr-benefits-table-wrap">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th scope="col">Fecha</th>
-                              <th scope="col">Categoría</th>
-                              <th scope="col" className="hr-amount-cell">Reclamado</th>
-                              <th scope="col" className="hr-amount-cell">Reconocido</th>
-                              <th scope="col">Soporte</th>
-                              <th scope="col">Estado</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(selected.item.expenses ?? []).map((expense) => (
-                              <tr key={expense.id}>
-                                <td>{dateLabel(expense.occurredOn)}</td>
-                                <td>{expense.category}</td>
-                                <td className="hr-amount-cell">
-                                  {money(expense.currency, expense.claimedAmount)}
-                                </td>
-                                <td className="hr-amount-cell">
-                                  {money(expense.currency, expense.recognizedAmount)}
-                                </td>
-                                <td>
-                                  {expense.evidence?.fileName ?? expense.receiptReference ?? '—'}
-                                </td>
-                                <td>
-                                  <BenefitsStatusPill status={expense.status} />
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <DataTable
+                ariaLabel="Gastos y soportes"
+                rows={(selected.item.expenses ?? [])}
+                rowKey={(expense) => expense.id}
+                pagination={{ mode: 'client' }}
+                minWidth="48rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Fecha', render: (expense) => <>{dateLabel(expense.occurredOn)}</> },
+                  { key: 'c1', header: 'Categoría', render: (expense) => <>{expense.category}</> },
+                  { key: 'c2', header: 'Reclamado', type: 'money', render: (expense) => <>{money(expense.currency, expense.claimedAmount)}</> },
+                  { key: 'c3', header: 'Reconocido', type: 'money', render: (expense) => <>{money(expense.currency, expense.recognizedAmount)}</> },
+                  { key: 'c4', header: 'Soporte', render: (expense) => <>{expense.evidence?.fileName ?? expense.receiptReference ?? '—'}</> },
+                  { key: 'c5', header: 'Estado', render: (expense) => <><BenefitsStatusPill status={expense.status} /></> },
+                ]}
+              />
                       </div>
                     </>
                   )}
@@ -910,38 +835,22 @@ export default function BenefitsManagement() {
                     <>
                       <h3>Calendario informativo del servidor</h3>
                       <div className="hr-benefits-table-wrap">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th scope="col">#</th>
-                              <th scope="col">Vence</th>
-                              <th scope="col" className="hr-amount-cell">Programado</th>
-                              <th scope="col" className="hr-amount-cell">Pagado</th>
-                              <th scope="col" className="hr-amount-cell">Saldo cuota</th>
-                              <th scope="col">Estado</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(selected.item.schedule ?? []).map((installment) => (
-                              <tr key={installment.id}>
-                                <td>{installment.number}</td>
-                                <td>{dateLabel(installment.dueDate)}</td>
-                                <td className="hr-amount-cell">
-                                  {money(selected.item.currency, installment.scheduledTotal)}
-                                </td>
-                                <td className="hr-amount-cell">
-                                  {money(selected.item.currency, installment.paidAmount)}
-                                </td>
-                                <td className="hr-amount-cell">
-                                  {money(selected.item.currency, installment.outstandingAmount)}
-                                </td>
-                                <td>
-                                  <BenefitsStatusPill status={installment.status} />
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <DataTable
+                ariaLabel="Calendario de cuotas"
+                rows={(selected.item.schedule ?? [])}
+                rowKey={(installment) => installment.id}
+                pagination={{ mode: 'client' }}
+                minWidth="48rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: '#', render: (installment) => <>{installment.number}</> },
+                  { key: 'c1', header: 'Vence', render: (installment) => <>{dateLabel(installment.dueDate)}</> },
+                  { key: 'c2', header: 'Programado', type: 'money', render: (installment) => <>{money(selected.item.currency, installment.scheduledTotal)}</> },
+                  { key: 'c3', header: 'Pagado', type: 'money', render: (installment) => <>{money(selected.item.currency, installment.paidAmount)}</> },
+                  { key: 'c4', header: 'Saldo cuota', type: 'money', render: (installment) => <>{money(selected.item.currency, installment.outstandingAmount)}</> },
+                  { key: 'c5', header: 'Estado', render: (installment) => <><BenefitsStatusPill status={installment.status} /></> },
+                ]}
+              />
                       </div>
                       <h3>Ledger</h3>
                       <div className="hr-benefits-ledger">
@@ -981,7 +890,7 @@ export default function BenefitsManagement() {
           </div>
         </>
       )}
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(createPanel)}
         onClose={() => {
           if (!saving) {
@@ -998,7 +907,6 @@ export default function BenefitsManagement() {
                 ? 'Nueva deducción'
                 : 'Registrar gasto'
         }
-        width="large"
       >
         {createPanel === 'TRAVEL' && (
           <TravelRequestForm
@@ -1039,12 +947,11 @@ export default function BenefitsManagement() {
             }}
           />
         )}
-      </Sidebar>
-      <Sidebar
+      </FullScreenModal>
+      <FullScreenModal
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar transición"
-        width="large"
       >
         {transition && (
           <BenefitsTransitionForm
@@ -1058,7 +965,7 @@ export default function BenefitsManagement() {
             onCancel={() => setTransition(null)}
           />
         )}
-      </Sidebar>
+      </FullScreenModal>
     </div>
   );
 }

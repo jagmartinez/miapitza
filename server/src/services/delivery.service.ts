@@ -35,6 +35,45 @@ export interface DeliveryStatusUpdate {
     status: 'ACCEPTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED';
 }
 
+/** Per-tenant integration username; `User.username` is unique system-wide. */
+export function integrationUsernameFor(companyId: number): string {
+    return `system-${companyId}`;
+}
+
+/**
+ * Resolve the user to attribute integration (webhook) orders to, strictly
+ * within `companyId`: `system-<companyId>` → legacy `system` → oldest active
+ * user (logged as a warning). Throws when the company has no active user.
+ */
+export async function resolveIntegrationUser(
+    companyId: number,
+    source = 'integration',
+    options: { allowFallback?: boolean } = {},
+): Promise<{ id: number }> {
+    const dedicated = await prisma.user.findFirst({
+        where: { companyId, username: { in: [integrationUsernameFor(companyId), 'system'] }, status: 'ACTIVE' },
+        orderBy: { username: 'desc' }, // "system-<id>" sorts after "system"
+        select: { id: true }
+    });
+    if (dedicated) return dedicated;
+    if (options.allowFallback === false) {
+        // Cancellations/deliveries move money (cash refunds land in the actor's
+        // open shift) and are attributed to the actor: never borrow a human.
+        throw new Error(`Debe existir el usuario de integración activo "${integrationUsernameFor(companyId)}" (o "system") para esta operación de ${source}`);
+    }
+
+    const fallback = await prisma.user.findFirst({
+        where: { companyId, status: 'ACTIVE' },
+        orderBy: { id: 'asc' },
+        select: { id: true }
+    });
+    if (!fallback) throw new Error('No active user found to assign delivery order');
+    console.warn(`[DELIVERY] No active "${integrationUsernameFor(companyId)}" integration user; attributing webhook order to fallback user`, {
+        companyId, userId: fallback.id, platform: source,
+    });
+    return fallback;
+}
+
 export class DeliveryService {
     static async assertStatusUpdateTarget(
         companyId: number,
@@ -102,15 +141,11 @@ export class DeliveryService {
             return existing;
         }
 
-        // Get default user for delivery orders (system user or branch manager)
-        const systemUser = await prisma.user.findFirst({
-            where: { companyId, status: 'ACTIVE' },
-            orderBy: { id: 'asc' }
-        });
-
-        if (!systemUser) {
-            throw new Error('No active user found to assign delivery order');
-        }
+        // Webhook orders have no acting user. `username` is globally unique, so a
+        // literal "system" can belong to only one tenant: each company gets its
+        // own integration user `system-<companyId>` (legacy "system" still honoured
+        // for the tenant that owns it). Otherwise fall back with a warning.
+        const systemUser = await resolveIntegrationUser(companyId, deliveryOrder.platform);
 
         // Create order in system - store delivery metadata in customerName
         const customerNameWithMeta = `[${deliveryOrder.platform}] ${deliveryOrder.customerName} | ID:${deliveryOrder.externalId} | ${deliveryOrder.customerPhone || 'N/A'} | ${deliveryOrder.customerAddress}`;

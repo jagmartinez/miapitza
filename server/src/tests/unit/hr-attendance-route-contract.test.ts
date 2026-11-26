@@ -18,7 +18,8 @@ describe('HR attendance route security contract', () => {
         for (const pathValue of [
             '/attendance/policy', '/me/attendance/today', '/biometrics/challenges', '/biometrics/me',
             '/biometrics/enroll', '/biometrics/users/:userId/revoke', '/biometrics/maintenance/run',
-            '/biometrics/provider/health',
+            '/biometrics/provider/health', '/biometrics/enrollments/pending',
+            '/biometrics/users/:userId/approve', '/biometrics/users/:userId/reject',
             '/attendance/punches', '/attendance/events', '/attendance/manual', '/attendance/devices',
         ]) expect(source).toContain(pathValue);
         expect(source).toContain("requirePermission('hr.attendance.manage', ROLES.SUPERADMIN)");

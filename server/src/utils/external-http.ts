@@ -2,7 +2,7 @@ export class ExternalHttpTimeoutError extends Error {
     readonly timeoutMs: number;
 
     constructor(timeoutMs: number, cause?: unknown) {
-        super(`La integraciÃ³n externa excediÃ³ el tiempo lÃ­mite de ${timeoutMs} ms`);
+        super(`La integración externa excedió el tiempo límite de ${timeoutMs} ms`);
         this.name = 'ExternalHttpTimeoutError';
         this.timeoutMs = timeoutMs;
         (this as Error & { cause?: unknown }).cause = cause;
@@ -24,7 +24,7 @@ export async function fetchWithTimeout(
     timeoutMs = 8_000
 ): Promise<Response> {
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) {
-        throw new Error('Timeout HTTP externo invÃ¡lido');
+        throw new Error('Timeout HTTP externo inválido');
     }
 
     const controller = new AbortController();

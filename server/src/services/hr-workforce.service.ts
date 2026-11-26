@@ -11,6 +11,7 @@ import {
     type VacationBalanceUnit,
 } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
 import { scheduledWorkMinutes } from '../utils/hr-shift-minutes';
 import { isValidTimeZone, zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
@@ -668,7 +669,9 @@ export class AttendanceDerivedService {
             generated.push({ key: `REJECTED_EVENT:${event.id}`, type: 'REJECTED_ATTENDANCE_EVENT', severity: 'WARNING', message: `Marcaje ${event.id} rechazado` });
         }
         const dedupeKeys = generated.map(item => `${userId}:${date}:${scopeKey}:${item.key}`);
-        return prisma.$transaction(async tx => {
+        // Reads (list/me endpoints) recalculate the same day concurrently; a
+        // SERIALIZABLE write conflict is transient, so replay the whole unit.
+        return transactionWithP2034Retry(async tx => {
             const currentPeriod = await tx.attendancePeriod.findFirst({
                 where: { companyId, dateFrom: { lte: localDate }, dateTo: { gte: localDate } },
                 orderBy: { id: 'desc' },
@@ -2225,10 +2228,13 @@ export class WorkforcePortalService {
         dateTo?: string;
         page?: number;
         limit?: number;
-    }) {
+    }, options: { includeSummaries?: boolean } = {}) {
         await ensureUser(companyId, userId);
         const bounded = { ...filters, userId, limit: Math.min(filters.limit || 100, 100) };
-        const attendance = await AttendanceDerivedService.list(companyId, bounded);
+        // Recalculating the daily summaries walks every day of the range; skip it when not wanted.
+        const attendance = options.includeSummaries === false
+            ? { items: [] as Awaited<ReturnType<typeof AttendanceDerivedService.list>>['items'] }
+            : await AttendanceDerivedService.list(companyId, bounded);
         const [incidents, corrections, overtime, leave, balances, ledger] = await Promise.all([
             AttendanceIncidentService.list(companyId, bounded),
             AttendanceCorrectionService.list(companyId, bounded),

@@ -1,238 +1,21 @@
-.production-recipes-page {
-    min-width: 0;
-}
 
-.production-recipes-page .header-title-section h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-}
-
-.pr-subtitle {
-    margin: 4px 0 0;
-    font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
-}
-
-.pr-filter-summary {
-    margin-left: auto;
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-    color: var(--color-text-tertiary);
-    white-space: nowrap;
-}
-
-.pr-search-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.pr-search-icon {
-    position: absolute;
-    left: 12px;
-    color: var(--color-text-tertiary);
-    pointer-events: none;
-}
-
-.pr-search-wrapper .inventory-search {
-    padding-left: 36px;
-}
-
-.pr-table-card {
-    padding: 0;
-    overflow: hidden;
-}
-
-.pr-table-card .card-body {
-    padding: 0;
-}
-
-/* Version chip */
-.pr-version {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-    background: var(--color-neutral-100);
-    color: var(--color-text-secondary);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-}
-
-.dark .pr-version {
-    background: var(--color-neutral-700);
-    color: var(--color-neutral-300);
-}
-
-/* Status pills */
-.pr-status-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 12px;
-    border-radius: var(--radius-full);
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-}
-
-.pr-status-active {
-    background: rgba(16, 185, 129, 0.12);
-    color: var(--color-success);
-}
-
-.pr-status-draft {
-    background: rgba(234, 179, 8, 0.12);
-    color: var(--color-warning, #eab308);
-}
-
-.pr-status-inactive {
-    background: var(--color-neutral-100);
-    color: var(--color-neutral-600);
-}
-
-.dark .pr-status-inactive {
-    background: var(--color-neutral-700);
-    color: var(--color-neutral-300);
-}
-
-/* Table action variants */
-.table-action-btn.success:hover:not(:disabled) {
-    background: rgba(16, 185, 129, 0.12);
-    color: var(--color-success);
-}
 
 /* Form helpers */
 .pr-helper-text {
     margin: 6px 0 0;
     font-size: var(--font-size-xs);
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
 }
 
-.production-recipe-modal-content .modal-tabs {
-    overflow-x: auto;
-    scrollbar-width: thin;
-}
-
-.production-recipe-modal-content .modal-tab {
-    min-width: max-content;
-}
-
-.pr-tab-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: var(--radius-full);
-    background: var(--color-neutral-100);
-    color: var(--color-text-secondary);
-    font-size: 11px;
-    font-weight: 700;
-}
-
-.modal-tab.active .pr-tab-count {
-    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-    color: var(--color-primary);
-}
-
-.dark .pr-tab-count {
-    background: var(--color-neutral-700);
-    color: var(--color-neutral-200);
-}
-
-/* Components editor */
-.pr-components {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: var(--color-surface);
-}
-
-.pr-component-head,
-.pr-component-row {
-    display: grid;
-    grid-template-columns: minmax(0, 2.4fr) 90px minmax(0, 1.4fr) 96px 40px;
-    gap: var(--spacing-sm);
-    align-items: center;
-    padding: 10px 12px;
-}
-
-.pr-component-head {
-    background: var(--color-neutral-50);
-    border-bottom: 1px solid var(--color-border);
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-text-tertiary);
-}
-
-.dark .pr-component-head {
-    background: var(--color-neutral-800);
-}
-
-.pr-component-row {
-    border-bottom: 1px solid var(--color-neutral-50);
-}
-
-.dark .pr-component-row {
-    border-bottom-color: var(--color-neutral-800);
-}
-
-.pr-component-row:last-child {
-    border-bottom: none;
-}
-
-.pr-col-qty .modal-standard-input {
-    text-align: center;
-}
-
-.pr-col-cost {
-    text-align: right;
-    font-weight: 600;
-    font-size: var(--font-size-sm);
-    color: var(--color-text);
-}
-
-.pr-col-remove {
-    display: flex;
-    justify-content: center;
-}
-
-.pr-remove-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-md);
-    color: var(--color-text-tertiary);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.pr-remove-btn:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--color-danger);
-}
-
-.pr-add-component {
-    margin-top: var(--spacing-md);
-}
 
 /* Cost panel */
 .pr-cost-panel {
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-lg);
-    background: var(--color-background);
+    background: var(--ui-bg);
     padding: var(--spacing-md);
 }
+
 
 .pr-cost-lines {
     display: flex;
@@ -241,40 +24,46 @@
     margin-bottom: var(--spacing-sm);
 }
 
+
 .pr-cost-line {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
     gap: var(--spacing-md);
     align-items: center;
     font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     padding: 4px 0;
 }
 
+
 .pr-cost-line-name {
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+
 .pr-cost-line-qty {
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
     font-size: var(--font-size-xs);
 }
 
+
 .pr-cost-line-total {
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--ui-text);
     text-align: right;
 }
 
+
 .pr-cost-totals {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--ui-border);
     padding-top: var(--spacing-sm);
     margin-top: var(--spacing-xs);
 }
+
 
 .pr-cost-total-row {
     display: flex;
@@ -282,29 +71,36 @@
     align-items: center;
     padding: 4px 0;
     font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
+
 
 .pr-cost-total-row.highlight {
     font-size: var(--font-size-md);
-    color: var(--color-text);
+    color: var(--ui-text);
 }
+
 
 .pr-cost-total-row.highlight strong {
-    color: var(--color-primary);
+    color: var(--ui-primary);
 }
 
+
 .pr-recipe-detail .inventory-detail-hero { align-items: stretch; }
+
 .pr-recipe-yield-summary { justify-content: center; }
-.pr-recipe-yield-summary > strong { color: var(--color-primary); }
+
+.pr-recipe-yield-summary > strong { color: var(--ui-primary); }
+
 
 .pr-detail-component-list {
     display: grid;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    background: var(--color-surface);
+    background: var(--ui-surface);
 }
+
 
 .pr-detail-component {
     display: grid;
@@ -312,10 +108,12 @@
     gap: var(--spacing-md);
     align-items: center;
     padding: 14px 16px;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--ui-border);
 }
 
+
 .pr-detail-component:last-child { border-bottom: 0; }
+
 .pr-detail-component-index {
     display: inline-flex;
     align-items: center;
@@ -323,86 +121,38 @@
     width: 30px;
     height: 30px;
     border-radius: 9px;
-    color: var(--color-primary);
-    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
+    color: var(--ui-primary);
+    background: color-mix(in srgb, var(--ui-primary) 12%, var(--ui-bg));
     font-size: var(--font-size-xs);
     font-weight: 800;
 }
 
+
 .pr-detail-component-identity,
 .pr-detail-component-quantity,
 .pr-detail-component-cost { display: grid; gap: 3px; min-width: 0; }
+
 .pr-detail-component-identity strong { overflow-wrap: anywhere; }
+
 .pr-detail-component-identity span,
 .pr-detail-component-quantity span,
 .pr-detail-component-cost span {
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .04em;
 }
+
 .pr-detail-component-quantity,
 .pr-detail-component-cost { text-align: right; }
-.pr-detail-component-cost strong { color: var(--color-primary); }
 
-/* Activate toggle */
-.pr-activate-toggle {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--color-text);
-    cursor: pointer;
-}
+.pr-detail-component-cost strong { color: var(--ui-primary); }
 
-.pr-activate-toggle input {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--color-primary);
-    cursor: pointer;
-}
 
 @media (max-width: 768px) {
-    .pr-detail-component { grid-template-columns: 34px minmax(0, 1fr) auto; }
-    .pr-detail-component-cost { grid-column: 2 / -1; display: flex; align-items: center; justify-content: space-between; text-align: left; }
-    .pr-filter-summary {
-        width: 100%;
-        margin-left: 0;
-    }
-
-    .pr-component-head {
-        display: none;
-    }
-
-    .pr-component-row {
-        grid-template-columns: 1fr 1fr;
-        gap: var(--spacing-sm);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        margin-bottom: var(--spacing-sm);
-        padding: var(--spacing-md);
-    }
-
-    .pr-col-product {
-        grid-column: 1 / -1;
-    }
-
-    .pr-col-cost {
-        text-align: left;
-        align-self: center;
-    }
-
-    .pr-col-remove {
-        justify-content: flex-end;
-    }
-
-    .production-recipe-modal-content .modal-tabs {
-        padding-inline: var(--spacing-md);
-    }
-
-    .production-recipe-modal-content .modal-tab {
-        padding-inline: var(--spacing-sm);
-    }
+  .pr-detail-component { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  
+      .pr-detail-component-cost { grid-column: 2 / -1; display: flex; align-items: center; justify-content: space-between; text-align: left; }
 }
+

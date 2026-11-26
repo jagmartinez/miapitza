@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mia Pitza Ops</string>
+    <string name="title_activity_main">Mia Pitza Ops</string>
+    <string name="package_name">com.miapitza.ops</string>
+    <string name="custom_url_scheme">com.miapitza.ops</string>
+</resources>

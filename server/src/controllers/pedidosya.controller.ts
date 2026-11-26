@@ -1,9 +1,9 @@
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { PedidosYaService } from '../services/pedidosya.service';
-import { BranchScopeError, resolveBranchScope } from '../utils/branch-scope';
+import { resolveBranchScope } from '../utils/branch-scope';
 
 export class PedidosYaController {
-    static async getConfig(req: Request, res: Response) {
+    static async getConfig(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const branchId = resolveBranchScope(
@@ -13,11 +13,11 @@ export class PedidosYaController {
             const config = await PedidosYaService.getMaskedConfig(companyId, branchId);
             res.json({ success: true, data: config });
         } catch (error: unknown) {
-            res.status(error instanceof BranchScopeError ? 403 : 500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async upsertConfig(req: Request, res: Response) {
+    static async upsertConfig(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const userId = req.user!.userId;
@@ -26,51 +26,51 @@ export class PedidosYaController {
             const config = await PedidosYaService.getMaskedConfig(companyId, branchId);
             res.json({ success: true, data: config });
         } catch (error: unknown) {
-            res.status(error instanceof BranchScopeError ? 403 : 500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async testConnection(req: Request, res: Response) {
+    static async testConnection(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const result = await PedidosYaService.testConnection(companyId);
             res.json({ success: true, data: result });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async getMappings(req: Request, res: Response) {
+    static async getMappings(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const mappings = await PedidosYaService.getMappings(companyId);
             res.json({ success: true, data: mappings });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async upsertMapping(req: Request, res: Response) {
+    static async upsertMapping(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const mapping = await PedidosYaService.upsertMapping(companyId, req.body);
             res.json({ success: true, data: mapping });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async deleteMapping(req: Request, res: Response) {
+    static async deleteMapping(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             await PedidosYaService.deleteMapping(companyId, Number(req.params.id));
             res.json({ success: true, message: 'Mapping eliminado' });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async getWebhookLogs(req: Request, res: Response) {
+    static async getWebhookLogs(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const status = req.query.status as string | undefined;
@@ -78,28 +78,28 @@ export class PedidosYaController {
             const logs = await PedidosYaService.getWebhookLogs(companyId, { status, limit });
             res.json({ success: true, data: logs });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async getOrderSyncs(req: Request, res: Response) {
+    static async getOrderSyncs(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const limit = req.query.limit ? Number(req.query.limit) : undefined;
             const syncs = await PedidosYaService.getOrderSyncs(companyId, { limit });
             res.json({ success: true, data: syncs });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async syncMenu(req: Request, res: Response) {
+    static async syncMenu(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const result = await PedidosYaService.syncMenu(companyId);
             res.json({ success: true, data: result });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
@@ -140,7 +140,7 @@ export class PedidosYaController {
             res.status(200).json({ received: true, ...result });
         } catch (error: unknown) {
             console.error('[PedidosYa Webhook] Error:', (error as Error).message);
-            res.status(500).json({ error: 'Processing failed' });
+            res.status(500).json({ success: false, message: 'No se pudo procesar el webhook de PedidosYa' });
         }
     }
 }

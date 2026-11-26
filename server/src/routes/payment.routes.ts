@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import { PaymentController } from '../controllers/payment.controller';
 import { authMiddleware, requirePermission } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
@@ -16,13 +16,33 @@ const PAYMENT_READ_FALLBACK_ROLES = [
     'BODEGA',
     'CAJERO'
 ];
+const requireOrderDelivery = requirePermission(
+    'orders.deliver',
+    'SUPERADMIN',
+    'ADMIN',
+    'MESERO',
+    'CAJERO'
+);
+const requireOrderDeliveryWhenSettling = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => req.body.warehouseId === undefined
+    ? next()
+    : requireOrderDelivery(req, res, next);
 
 router.use(authMiddleware);
 
 router.get('/methods', requirePermission('payments.process', ...PAYMENT_READ_FALLBACK_ROLES), PaymentController.getPaymentMethods);
 router.get('/order/:orderId', requirePermission('payments.process', ...PAYMENT_READ_FALLBACK_ROLES), PaymentController.getByOrderId);
 router.get('/order/:orderId/summary', requirePermission('payments.process', ...PAYMENT_READ_FALLBACK_ROLES), PaymentController.getOrderSummary);
-router.post('/', requirePermission('payments.process', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.createPayment), PaymentController.create);
+router.post(
+    '/',
+    requirePermission('payments.process', 'SUPERADMIN', 'ADMIN', 'CAJERO'),
+    validate(s.createPayment),
+    requireOrderDeliveryWhenSettling,
+    PaymentController.create
+);
 router.delete('/:id', requirePermission('payments.reverse', 'SUPERADMIN', 'ADMIN'), validate(s.idParam), PaymentController.delete);
 
 export default router;

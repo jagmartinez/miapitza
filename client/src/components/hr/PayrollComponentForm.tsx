@@ -1,10 +1,9 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import HrModalFormShell from './HrModalFormShell';
 import PayrollOnlineNotice from './PayrollOnlineNotice';
 import { useState } from 'react';
 import { CircleDollarSign } from 'lucide-react';
-import Button from '../Button';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrPayrollComponentPayload, HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
 
@@ -68,7 +67,7 @@ export default function PayrollComponentForm({
         <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
           Cancelar
         </Button>
-        <Button
+        <Button variant="primary"
           type="submit"
           disabled={!online || saving || !userId || !selectedConcept || !inputAmount || !reason.trim() || !classificationConfirmed}
         >
@@ -78,21 +77,36 @@ export default function PayrollComponentForm({
     >
       <label>
         Persona
-        <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
-          <option value="">Seleccionar…</option>
-          {users.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.name} · @{user.username}
-            </option>
-          ))}
-        </HrReactSelect>
+        <AppSelect<string>
+          options={[
+            { value: '', label: 'Seleccionar…' },
+            ...users.map((user) => ({
+              value: String(user.id),
+              label: `${user.name} · @${user.username}`,
+            })),
+          ]}
+          value={userId}
+          onChange={(next) => setUserId(next ?? '')}
+          isClearable={false}
+        />
       </label>
       <label>
         Concepto configurado
-        <HrReactSelect value={code} onChange={(event) => { setCode(event.target.value); setClassificationConfirmed(false); }} required>
-          <option value="">Seleccionar…</option>
-          {concepts.map((concept) => <option key={concept.code} value={concept.code}>{concept.name} · {concept.code}</option>)}
-        </HrReactSelect>
+        <AppSelect<string>
+          options={[
+            { value: '', label: 'Seleccionar…' },
+            ...concepts.map((concept) => ({
+              value: String(concept.code),
+              label: `${concept.name} · ${concept.code}`,
+            })),
+          ]}
+          value={code}
+          onChange={(next) => {
+            setCode(next ?? '');
+            setClassificationConfirmed(false);
+          }}
+          isClearable={false}
+        />
       </label>
       <label>
         Importe de entrada

@@ -220,6 +220,8 @@ async function collectInventory(companyId: number) {
         { reference: { startsWith: DEMO_PREFIX } }
     ];
     if (exactReferences.length) movementWhere.push({ reference: { in: exactReferences } });
+    // Partial receipts reference PO-{id}-R{n}.
+    for (const id of purchaseOrderIds) movementWhere.push({ reference: { startsWith: `PO-${id}-R` } });
     if (demoProductIds.length) movementWhere.push({ productId: { in: demoProductIds } });
     const movements = await prisma.inventoryMovement.findMany({
         where: { companyId, OR: movementWhere },
@@ -229,6 +231,7 @@ async function collectInventory(companyId: number) {
 
     const batchWhere: Prisma.InventoryBatchWhereInput[] = [{ sourceRef: { startsWith: DEMO_PREFIX } }];
     if (exactReferences.length) batchWhere.push({ sourceRef: { in: exactReferences } });
+    for (const id of purchaseOrderIds) batchWhere.push({ sourceRef: { startsWith: `PO-${id}-R` } });
     if (demoProductIds.length) batchWhere.push({ productId: { in: demoProductIds } });
     const batches = await prisma.inventoryBatch.findMany({
         where: { companyId, OR: batchWhere },
@@ -654,6 +657,7 @@ async function applyCleanup(inventory: CleanupInventory, stockPlans: StockPlan[]
         if (orderItemIds.length) await tx.orderItemModifier.deleteMany({ where: { orderItemId: { in: orderItemIds } } });
         if (orderIds.length) await tx.pedidosYaOrderSync.deleteMany({ where: { orderId: { in: orderIds }, companyId } });
         if (orderItemIds.length) await tx.orderItem.deleteMany({ where: { id: { in: orderItemIds }, order: { companyId } } });
+        if (orderIds.length) await tx.surveyResponse.deleteMany({ where: { orderId: { in: orderIds }, companyId } });
         if (orderIds.length) await tx.order.deleteMany({ where: { id: { in: orderIds }, companyId } });
 
         if (productionOrderIds.length) {

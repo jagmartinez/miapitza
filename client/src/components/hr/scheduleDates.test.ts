@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     addDaysDateOnly,
     isDateInWeek,
+    seedDraftFromPublished,
     shiftCrossesMidnight,
     sortScheduleShifts,
     weekDates,
@@ -54,5 +55,40 @@ describe('HR schedule date rules', () => {
             endTime: '06:00',
             breakMinutes: 30,
         }));
+    });
+
+    it('seeds a new draft from every published shift before adding a worker-day change', () => {
+        const published = {
+            id: 7,
+            weekStart: '2026-07-13',
+            status: 'PUBLISHED' as const,
+            version: 1,
+            revision: 2,
+            shifts: [{
+                id: 11,
+                userId: 3,
+                branchId: 4,
+                jobPositionId: 5,
+                date: '2026-07-13',
+                startTime: '08:00',
+                endTime: '17:00',
+                breakMinutes: 30,
+            }],
+        };
+        const added = {
+            userId: 8,
+            branchId: 4,
+            jobPositionId: 5,
+            date: '2026-07-14',
+            startTime: '09:00',
+            endTime: '18:00',
+            breakMinutes: 30,
+        };
+
+        expect(seedDraftFromPublished(published, added)).toEqual([
+            expect.objectContaining({ userId: 3, date: '2026-07-13' }),
+            added,
+        ]);
+        expect(seedDraftFromPublished(null, added)).toEqual([added]);
     });
 });

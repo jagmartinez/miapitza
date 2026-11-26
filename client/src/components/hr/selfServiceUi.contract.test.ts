@@ -12,11 +12,23 @@ const timeClock = read('../../pages/hr/TimeClock.tsx');
 const biometrics = read('../../pages/hr/Biometrics.tsx');
 const profile = read('../../pages/Profile.tsx');
 const navigation = read('./MyHrNav.tsx');
-const layout = read('../Layout.tsx');
+const punchWizard = read('./AttendancePunchWizard.tsx');
+const layout = read('../Layout.tsx') + read('../../navigation/navConfig.ts') + read('../../ui/layout/Topbar.tsx');
 const selfServiceCss = read('../../pages/hr/self-service.css');
+const navigationCss = read('./MyHrNav.module.css');
+const dataTable = read('../../ui/data/DataTable.tsx');
+const dataTableCss = read('../../ui/data/data.css');
 
 describe('employee self-service UX contract', () => {
-  it('uses Profile cards as the launcher and only a back link inside each destination', () => {
+  it('turns wide self-service tables and receipt rows into mobile-native layouts', () => {
+    expect(benefits.match(/stackOnMobile/g)?.length).toBe(3);
+    expect(payroll).toContain('stackOnMobile');
+    expect(dataTable).toContain('data-label={labelOf(c)}');
+    expect(dataTableCss).toContain('content: attr(data-label)');
+    expect(selfServiceCss).toContain('scroll-snap-type: x proximity');
+  });
+
+  it('uses Profile cards as the launcher and adds a compact mobile punch shortcut', () => {
     [schedule, workforce, payroll, benefits, timeClock, biometrics].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
       expect(source).toContain('my-hr-page');
@@ -25,11 +37,22 @@ describe('employee self-service UX contract', () => {
     });
     expect(profile).not.toContain('<MyHrNav />');
     expect(navigation).toContain('to="/profile?tab=hr"');
+    expect(navigation).toContain('to="/rh/marcaje"');
+    expect(navigation).toContain('Marcar ahora');
     expect(navigation).toContain('Mis accesos de RH');
     expect(navigation).not.toContain("const ITEMS");
-    expect(navigation).toContain('aria-label="Volver a Mis accesos de RH"');
+    expect(navigation).toContain('aria-label="Navegación de Mi RH"');
     expect(selfServiceCss).toContain('.my-hr-summary-grid');
-    expect(selfServiceCss).toContain('.my-hr-page-header .page-header-actions');
+    expect(navigationCss).toContain('.punch');
+    expect(navigationCss).toContain('@media (max-width: 768px)');
+  });
+
+  it('explains why a punch is unavailable and links the next safe action', () => {
+    expect(punchWizard).toContain('No tienes un turno publicado aplicable');
+    expect(punchWizard).toContain('No tienes una asignación RH vigente');
+    expect(punchWizard).toContain('Ver mi horario');
+    expect(timeClock).toContain('onViewSchedule={() => navigate');
+    expect(biometrics).toContain('Ir a marcar ahora');
   });
 
   it('builds the portal summary from scoped server resources and tolerates partial failures', () => {
@@ -47,13 +70,14 @@ describe('employee self-service UX contract', () => {
 
   it('always explains Profile HR access and opens self-service only for a linked account', () => {
     expect(profile).toContain("user?.accountType === 'INTERNAL' && Boolean(user.employeeId)");
-    expect(profile).toContain("{ id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' }");
+    expect(profile).toContain('id="profile-sec-hr"');
+    expect(profile).toContain('Mi RH</h2>');
     expect(profile).toContain('Esta cuenta todavía no está vinculada a un empleado');
     expect(profile).toContain('Vincular en Personal');
-    expect(profile).toContain("setSearchParams(tab === 'info' ? {} : { tab }");
+    expect(profile).toContain("setSearchParams(tab === 'resumen' ? {} : { tab }");
     expect(layout).not.toContain("section: 'Mi portal RH'");
     expect(layout).not.toContain("to: '/profile?tab=hr'");
-    expect(layout).toContain('className="user-profile-section-link"');
+    expect(layout).toContain('title="Perfil y Mi RH"');
     expect(profile).toContain('workforceClient.getMyWorkforce');
     expect(profile).toContain('selectVacationBalance');
     expect(profile).toContain('Saldo de vacaciones');
@@ -74,9 +98,9 @@ describe('employee self-service UX contract', () => {
 
   it('keeps empty/error recovery and creation CTAs visible', () => {
     expect(schedule).toContain('Ir a marcaje');
-    expect(schedule).toContain('Reintentar');
+    expect(schedule).toContain('LoadErrorState');
     expect(payroll).toContain('Ver recibos del año actual');
-    expect(payroll).toContain('Reintentar');
+    expect(payroll).toContain('LoadErrorState');
     expect(benefits).toContain("tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'");
     expect(benefits).toContain('Reintentar');
     expect(workforce).toContain('En espera');

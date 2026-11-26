@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SingleValue } from 'react-select';
+import type { SingleValue } from './HrOptionSelect';
 import {
     Building2,
     Briefcase,
     FileText,
-    MapPin,
     UserRound,
     WalletCards,
 } from 'lucide-react';
-import Button from '../Button';
-import Select from '../Select';
+import { Tabs, Button } from '@/ui';
+import Select from './HrOptionSelect';
 import HrMoneyInput from './HrMoneyInput';
 import type {
     HrEmployee,
@@ -50,6 +49,8 @@ interface FormState {
     notes: string;
     hireDate: string;
     employmentType: string;
+    /** ISO weekdays (1 = lunes .. 7 = domingo); empty = legal default (domingo). */
+    weeklyRestDays: number[];
     departmentId: string;
     jobPositionId: string;
     costCenterId: string;
@@ -61,6 +62,15 @@ interface FormState {
     compensationCurrency: string;
     compensationReason: string;
 }
+
+/** ISO weekdays, matching Employee.weeklyRestDays on the server. */
+const REST_DAY_OPTIONS = [
+    { value: 1, label: 'Lun' }, { value: 2, label: 'Mar' }, { value: 3, label: 'Mié' }, { value: 4, label: 'Jue' },
+    { value: 5, label: 'Vie' }, { value: 6, label: 'Sáb' }, { value: 7, label: 'Dom' },
+] as const;
+
+/** Weekly rest days allowed per employee (Art. 64 CT séptimo día; at most a two-day rest). */
+const MAX_WEEKLY_REST_DAYS = 2;
 
 const EMPTY_FORM: FormState = {
     userId: '',
@@ -80,6 +90,7 @@ const EMPTY_FORM: FormState = {
     notes: '',
     hireDate: '',
     employmentType: '',
+    weeklyRestDays: [],
     departmentId: '',
     jobPositionId: '',
     costCenterId: '',
@@ -117,6 +128,7 @@ function initialState(employee: HrEmployee | null): FormState {
         notes: employee.notes ?? '',
         hireDate: employee.hireDate?.slice(0, 10) ?? '',
         employmentType: employee.employmentType ?? '',
+        weeklyRestDays: employee.weeklyRestDays ?? [],
         departmentId: employee.departmentId ? String(employee.departmentId) : '',
         jobPositionId: employee.jobPositionId ? String(employee.jobPositionId) : '',
         costCenterId: employee.costCenterId ? String(employee.costCenterId) : '',
@@ -194,6 +206,11 @@ export default function EmployeeForm({
             setValidationError('El código y el nombre legal son obligatorios.');
             return;
         }
+        if (form.weeklyRestDays.length > MAX_WEEKLY_REST_DAYS) {
+            setActiveTab('relationship');
+            setValidationError('Selecciona uno o dos días de descanso semanal.');
+            return;
+        }
         if (!form.hireDate) {
             setActiveTab('relationship');
             setValidationError('La fecha de ingreso es obligatoria.');
@@ -238,6 +255,7 @@ export default function EmployeeForm({
             notes: nullable(form.notes),
             hireDate: form.hireDate,
             employmentType: nullable(form.employmentType),
+            weeklyRestDays: form.weeklyRestDays.length ? [...form.weeklyRestDays].sort((a, b) => a - b) : null,
             departmentId: form.departmentId ? Number(form.departmentId) : null,
             jobPositionId: form.jobPositionId ? Number(form.jobPositionId) : null,
             costCenterId: form.costCenterId ? Number(form.costCenterId) : null,
@@ -255,32 +273,22 @@ export default function EmployeeForm({
         });
     };
 
-    const tab = (id: FormTab, label: string, icon: React.ReactNode) => (
-        <button
-            type="button"
-            id={`hr-employee-tab-${id}`}
-            role="tab"
-            aria-selected={activeTab === id}
-            aria-controls={`hr-employee-panel-${id}`}
-            className={`modal-tab ${activeTab === id ? 'active' : ''}`}
-            onClick={() => setActiveTab(id)}
-        >
-            {icon}
-            <span>{label}</span>
-        </button>
-    );
-
     return (
-        <div className="premium-modal-content hr-employee-modal-content">
-            <div className="modal-tabs" role="tablist" aria-label="Secciones del expediente">
-                {tab('data', 'Datos', <UserRound size={18} aria-hidden="true" />)}
-                {tab('relationship', 'Relación laboral', <Briefcase size={18} aria-hidden="true" />)}
-                {!employee && tab('compensation', 'Compensación', <WalletCards size={18} aria-hidden="true" />)}
-                {tab('user', 'Usuario', <FileText size={18} aria-hidden="true" />)}
-                {tab('assignment', 'Asignación', <MapPin size={18} aria-hidden="true" />)}
-            </div>
+        <div className="hr-employee-modal-content">
+            <Tabs
+                ariaLabel="Secciones del expediente"
+                active={activeTab}
+                onChange={(id) => setActiveTab(id as FormTab)}
+                tabs={[
+                    { id: 'data', label: 'Datos' },
+                    { id: 'relationship', label: 'Relación laboral' },
+                    ...(!employee ? [{ id: 'compensation', label: 'Compensación' }] : []),
+                    { id: 'user', label: 'Usuario' },
+                    { id: 'assignment', label: 'Asignación' },
+                ]}
+            />
 
-            <form className="modal-form-new" onSubmit={submit}>
+            <form className="hr-modal-form" onSubmit={submit}>
                 <div className="modal-tab-content">
                     {validationError && (
                         <div className="hr-inline-alert danger" role="alert">{validationError}</div>
@@ -290,7 +298,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-data"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-data"
+                            aria-label="Datos"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -361,7 +369,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-relationship"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-relationship"
+                            aria-label="Relación laboral"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -385,6 +393,32 @@ export default function EmployeeForm({
                                         isClearable
                                     />
                                 </div>
+                            </div>
+                            <div className="modal-input-group">
+                                <span id="hr-employee-rest-days-label">Día(s) de descanso semanal</span>
+                                <div className="hr-branch-picker" role="group" aria-labelledby="hr-employee-rest-days-label">
+                                    {REST_DAY_OPTIONS.map((day) => {
+                                        const checked = form.weeklyRestDays.includes(day.value);
+                                        const blocked = !checked && form.weeklyRestDays.length >= MAX_WEEKLY_REST_DAYS;
+                                        return (
+                                            <label key={day.value} className={`hr-branch-option ${checked ? 'selected' : ''}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checked}
+                                                    disabled={blocked}
+                                                    onChange={() => update('weeklyRestDays', checked
+                                                        ? form.weeklyRestDays.filter((value) => value !== day.value)
+                                                        : [...form.weeklyRestDays, day.value])}
+                                                />
+                                                <span>{day.label}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                <p className="hr-form-help">
+                                    Séptimo día (Art. 64 CT). Las horas trabajadas en el descanso se pagan con el recargo configurado en la regla de nómina (doble por defecto). Máximo dos días.
+                                    {form.weeklyRestDays.length === 0 ? ' Sin selección se aplica el domingo y la nómina lo marca para revisión.' : ''}
+                                </p>
                             </div>
                             <Select<Option>
                                 variant="modal"
@@ -417,7 +451,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-compensation"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-compensation"
+                            aria-label="Compensación"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -484,7 +518,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-user"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-user"
+                            aria-label="Usuario"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -518,7 +552,7 @@ export default function EmployeeForm({
                         <section
                             id="hr-employee-panel-assignment"
                             role="tabpanel"
-                            aria-labelledby="hr-employee-tab-assignment"
+                            aria-label="Asignación"
                             className="modal-content-group"
                         >
                             <div className="modal-section-header">
@@ -555,9 +589,9 @@ export default function EmployeeForm({
                     )}
                 </div>
 
-                <div className="modal-footer">
+                <div className="hr-modal-form-footer">
                     <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
-                    <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : employee ? 'Guardar cambios' : 'Crear empleado'}</Button>
+                    <Button variant="primary" type="submit" disabled={saving}>{saving ? 'Guardando…' : employee ? 'Guardar cambios' : 'Crear empleado'}</Button>
                 </div>
             </form>
         </div>

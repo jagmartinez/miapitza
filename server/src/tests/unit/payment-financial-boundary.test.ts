@@ -1,13 +1,81 @@
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import prisma from '../../utils/prisma';
 import { InventoryConsumptionService } from '../../services/inventory-consumption.service';
+import { OrderService } from '../../services/order.service';
 import { PaymentService } from '../../services/payment.service';
+
+beforeEach(() => {
+    // Table -> Order lock preflight (outside the transaction).
+    jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
+});
 
 afterEach(() => {
     jest.restoreAllMocks();
 });
 
 describe('PaymentService financial/physical boundary and domain replay', () => {
+    it('repeats the complete payment callback after a retryable P2034 conflict', async () => {
+        const makeTx = (paymentId: number) => ({
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, branchId: 2, tableId: null, total: 10,
+                    financialStatus: 'UNPAID', status: 'READY', cashRegisterId: null,
+                    discountCode: null, invoiceNumber: 'FAC-2-000009', invoiceFiscalStatus: 'ISSUED', payments: []
+                })),
+                update: jest.fn(async (_args: unknown) => ({}))
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            paymentMethod: { findFirst: jest.fn(async () => ({ id: 3, type: 'CARD' })) },
+            payment: {
+                create: jest.fn(async () => ({ id: paymentId, orderId: 9, amount: 10, methodType: 'CARD' }))
+            },
+            cashMovement: { create: jest.fn() },
+            promotion: { findFirst: jest.fn(), updateMany: jest.fn() }
+        });
+        const firstTx = makeTx(43);
+        const secondTx = makeTx(44);
+        // Auto-delivery runs in its own transaction after the payment commits.
+        const autoDeliver = jest.spyOn(OrderService, 'autoDeliverIfSettled').mockResolvedValue({ delivered: true });
+        const transaction = jest.spyOn(prisma, '$transaction')
+            .mockImplementationOnce((async (callback: (db: typeof firstTx) => unknown) => {
+                await callback(firstTx);
+                throw Object.assign(new Error('Transaction failed due to a write conflict or a deadlock'), {
+                    code: 'P2034'
+                });
+            }) as never)
+            .mockImplementationOnce(
+                (async (callback: (db: typeof secondTx) => unknown) => callback(secondTx)) as never
+            );
+
+        await expect(PaymentService.create(
+            1,
+            { orderId: 9, paymentMethodId: 3, amount: 10 },
+            7
+        )).resolves.toEqual(expect.objectContaining({ id: 44 }));
+
+        expect(transaction).toHaveBeenCalledTimes(2);
+        expect(firstTx.payment.create).toHaveBeenCalledTimes(1);
+        expect(secondTx.payment.create).toHaveBeenCalledTimes(1);
+        expect(secondTx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ financialStatus: 'PAID' })
+        }));
+        expect(autoDeliver).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry or hide a non-retryable payment-domain failure', async () => {
+        const transaction = jest.spyOn(prisma, '$transaction')
+            .mockRejectedValue(new Error('Order not found') as never);
+
+        await expect(PaymentService.create(
+            1,
+            { orderId: 9, paymentMethodId: 3, amount: 10 },
+            7
+        )).rejects.toThrow('Order not found');
+
+        expect(transaction).toHaveBeenCalledTimes(1);
+    });
+
     it('settles a fully paid order without selecting a warehouse or moving inventory', async () => {
         const consume = jest.spyOn(InventoryConsumptionService, 'consumeForOrder');
         const tx = {
@@ -41,13 +109,81 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         expect(consume).not.toHaveBeenCalled();
     });
 
-    it('rejects payment before an invoice is issued', async () => {
+    it('rejects a new pay-and-deliver request without creating financial or physical rows', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, branchId: 2, tableId: 5, total: 10,
+                    financialStatus: 'UNPAID', status: 'READY', cashRegisterId: null,
+                    discountCode: null, invoiceNumber: 'FAC-2-000009', invoiceFiscalStatus: 'ISSUED', payments: []
+                })),
+                update: jest.fn()
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            payment: { findUnique: jest.fn(async () => null), create: jest.fn() },
+            paymentMethod: { findFirst: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        const complete = jest.spyOn(OrderService, 'completeWithTransaction');
+
+        await expect(PaymentService.create(1, {
+            orderId: 9,
+            paymentMethodId: 3,
+            amount: 10,
+            idempotencyKey: 'new-pay-deliver',
+            warehouseId: 8
+        }, 7)).rejects.toThrow(/No se puede incluir warehouseId.*Entregar/i);
+
+        expect(tx.payment.create).not.toHaveBeenCalled();
+        expect(tx.order.update).not.toHaveBeenCalled();
+        expect(tx.paymentMethod.findFirst).not.toHaveBeenCalled();
+        expect(complete).not.toHaveBeenCalled();
+    });
+
+    it('reconciles and releases the physical table after full payment', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, branchId: 2, tableId: 5, total: 10,
+                    financialStatus: 'UNPAID', status: 'DELIVERED', cashRegisterId: null,
+                    discountCode: null, invoiceNumber: 'FAC-2-000009', invoiceFiscalStatus: 'ISSUED', payments: []
+                })),
+                update: jest.fn(async (_args: unknown) => ({}))
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            paymentMethod: { findFirst: jest.fn(async () => ({ id: 3, type: 'CARD' })) },
+            payment: {
+                create: jest.fn(async () => ({ id: 44, orderId: 9, amount: 10, methodType: 'CARD' }))
+            },
+            cashMovement: { create: jest.fn() },
+            promotion: { findFirst: jest.fn(), updateMany: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        const reconciliation = jest.spyOn(OrderService, 'reconcileTableAccount').mockResolvedValue(false);
+
+        await PaymentService.create(1, { orderId: 9, paymentMethodId: 3, amount: 10 }, 7);
+
+        expect(reconciliation).toHaveBeenCalledTimes(1);
+        expect(reconciliation.mock.calls[0]?.[0]).toBe(tx as never);
+        expect(reconciliation.mock.calls[0]?.slice(1)).toEqual([
+            1, 5, 7, 'Orden facturada #9 liberada después del pago total'
+        ]);
+    });
+
+    it('rejects payment before a prefactura is issued', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
                 findFirst: jest.fn(async () => ({
                     id: 9, companyId: 1, branchId: 2, total: 10,
-                    financialStatus: 'UNPAID', status: 'READY', invoiceNumber: null, payments: []
+                    financialStatus: 'UNPAID', status: 'READY',
+                    preInvoicedAt: null, invoiceNumber: null, payments: []
                 })),
                 update: jest.fn()
             },
@@ -61,7 +197,7 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
 
         await expect(PaymentService.create(1, {
             orderId: 9, paymentMethodId: 3, amount: 10
-        }, 7)).rejects.toThrow(/factura.*antes/i);
+        }, 7)).rejects.toThrow(/prefactura.*antes/i);
         expect(tx.paymentMethod.findFirst).not.toHaveBeenCalled();
         expect(tx.payment.create).not.toHaveBeenCalled();
     });
@@ -110,6 +246,86 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         expect(tx.payment.create).not.toHaveBeenCalled();
         expect(tx.paymentMethod.findFirst).not.toHaveBeenCalled();
         expect(tx.order.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects reusing a financial-only payment key as a pay-and-deliver request', async () => {
+        const existing = {
+            id: 44,
+            orderId: 9,
+            paymentMethodId: 3,
+            amount: 10,
+            reference: null,
+            payerName: null,
+            idempotencyKey: 'stable-key',
+            settlementWarehouseId: null,
+            methodType: 'CARD',
+            status: 'ACTIVE',
+            paymentMethod: { id: 3, type: 'CARD' }
+        };
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, branchId: 2, tableId: 5, total: 10,
+                    financialStatus: 'PAID', status: 'READY', payments: [{ amount: 10 }]
+                }))
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            payment: { findUnique: jest.fn(async () => existing) }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        const complete = jest.spyOn(OrderService, 'completeWithTransaction');
+
+        await expect(PaymentService.create(1, {
+            orderId: 9,
+            paymentMethodId: 3,
+            amount: 10,
+            idempotencyKey: 'stable-key',
+            warehouseId: 8
+        }, 7)).rejects.toThrow(/different payment data/i);
+        expect(complete).not.toHaveBeenCalled();
+    });
+
+    it('replays the exact pay-and-deliver request without delivering twice', async () => {
+        const existing = {
+            id: 44,
+            orderId: 9,
+            paymentMethodId: 3,
+            amount: 10,
+            reference: null,
+            payerName: null,
+            idempotencyKey: 'stable-key',
+            settlementWarehouseId: 8,
+            methodType: 'CARD',
+            status: 'ACTIVE',
+            paymentMethod: { id: 3, type: 'CARD' }
+        };
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, branchId: 2, tableId: 5, total: 10,
+                    financialStatus: 'PAID', status: 'DELIVERED', payments: [{ amount: 10 }]
+                }))
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            payment: { findUnique: jest.fn(async () => existing) }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        const complete = jest.spyOn(OrderService, 'completeWithTransaction');
+
+        await expect(PaymentService.create(1, {
+            orderId: 9,
+            paymentMethodId: 3,
+            amount: 10,
+            idempotencyKey: 'stable-key',
+            warehouseId: 8
+        }, 7)).resolves.toBe(existing);
+        expect(complete).not.toHaveBeenCalled();
     });
 
     it('rejects key reuse with a different financial payload', async () => {

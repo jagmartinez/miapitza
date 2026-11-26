@@ -107,7 +107,26 @@ export interface HrBiometricProfile {
   retentionExpiresAt?: string | null;
   purgeRequestedAt?: string | null;
   revokedAt?: string | null;
+  /** Set once HR approved the first enrollment. */
+  approvedAt?: string | null;
+  /** First enrollment awaiting HR approval (status PENDING): punches are rejected. */
+  pendingApproval?: boolean;
+  /** HR rejection reason of the last enrollment, when it was rejected. */
+  rejectionReason?: string | null;
   canEnroll?: boolean;
+}
+
+export interface HrPendingBiometricEnrollment {
+  profileId: number;
+  userId: number;
+  consentVersion: string;
+  enrolledAt: string | null;
+  provider: string;
+  userName: string;
+  username: string;
+  employeeId: number | null;
+  employeeCode: string | null;
+  employeeName: string;
 }
 
 export interface HrAttendanceCheck {
@@ -133,6 +152,10 @@ export interface HrTodayAttendance {
   timezone: string;
   policy: HrAttendancePolicy;
   targetBranch: HrNamedEntity | null;
+  locationRequirements: {
+    maxAccuracyM: number;
+    geofenceRadiusM: number | null;
+  } | null;
   availableActions: HrAttendanceAction[];
   punches: HrAttendancePunch[];
   blockingIssue: {

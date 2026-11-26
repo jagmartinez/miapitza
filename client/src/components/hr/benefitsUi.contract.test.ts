@@ -17,7 +17,6 @@ const governance = readFileSync(
 );
 const governanceClient = readFileSync(new URL('./benefitsGovernanceClient.ts', import.meta.url), 'utf8');
 const benefitsStyles = readFileSync(new URL('../../pages/hr/benefits.css', import.meta.url), 'utf8');
-const hrUiStyles = readFileSync(new URL('../../pages/hr/hr-ui.css', import.meta.url), 'utf8');
 
 describe('Phase 6 benefits UI contract', () => {
   it('exposes all Owner workspaces and server-authored detail', () => {
@@ -33,7 +32,7 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('allowedActions.map');
     expect(owner).toContain('createBenefitsIdempotencyKey()');
     expect(owner).toContain('STATUS_OPTIONS[tab].map');
-    expect(owner).toContain('className="hr-admin-table inventory-table"');
+    expect(owner).toContain('<DataTable');
     expect(owner).toContain('className="hr-benefits-admin-register"');
     expect(owner).toContain('placeholder="Código, empleado o detalle"');
     expect(owner).toContain('filteredCards');
@@ -48,8 +47,6 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('<span className="sr-only">Estado</span>');
     expect(owner).toContain('aria-label="Filtrar por estado"');
     expect(benefitsStyles).toContain('minmax(480px, 1.25fr)');
-    expect(benefitsStyles).toContain(':is(th, td).hr-amount-cell');
-    expect(hrUiStyles).toContain(':is(td, th).hr-amount-cell');
   });
 
   it('keeps policies and settlement drafts administrable without native prompts', () => {
@@ -76,9 +73,9 @@ describe('Phase 6 benefits UI contract', () => {
 
   it('presents personal benefits as a full-width paginated register', () => {
     expect(self).toContain('className="my-benefits-register"');
-    expect(self).toContain('inventory-table my-benefits-table');
-    expect(self).toContain('<Pagination');
-    expect(self).toContain('className="hr-amount-cell"');
+    expect(self).toContain('<DataTable');
+    expect(self).toContain("pagination={{ mode: 'client' }}");
+    expect(self).toContain("type: 'money'");
     expect(self).not.toContain('className="hr-benefits-list"');
   });
 

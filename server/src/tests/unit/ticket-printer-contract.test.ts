@@ -4,9 +4,9 @@ import { TicketPrintingService, type PrintableOrderTicket } from '../../services
 
 const fixture: PrintableOrderTicket = {
     header: {
-        businessName: 'Restaurante con nombre extremadamente largo para impresora tÃ©rmica',
+        businessName: 'Restaurante con nombre extremadamente largo para impresora térmica',
         ruc: 'J0310000000000',
-        address: 'DirecciÃ³n extensa\ncon salto inyectado y referencias adicionales',
+        address: 'Dirección extensa\ncon salto inyectado y referencias adicionales',
         phone: '2222-2222',
         branch: 'Central',
         currency_symbol: 'C$',
@@ -19,17 +19,17 @@ const fixture: PrintableOrderTicket = {
         type: 'DINE_IN',
         table: 'Mesa principal con identificador largo',
         waiter: 'Operador de caja con nombre largo',
-        customerName: 'Cliente\r\ncon control de lÃ­nea'
+        customerName: 'Cliente\r\ncon control de línea'
     },
     items: [{
-        name: 'Pizza familiar con una descripciÃ³n que supera cualquier ancho de papel',
+        name: 'Pizza familiar con una descripción que supera cualquier ancho de papel',
         quantity: 2,
         price: 150,
         subtotal: 300,
-        modifiers: [{ name: 'Extra queso con descripciÃ³n prolongada', price: 25 }]
+        modifiers: [{ name: 'Extra queso con descripción prolongada', price: 25 }]
     }],
     totals: { subtotal: 300, discount: 0, discountCode: null, tip: 0, tax: 45, total: 345 },
-    payments: [{ method: 'Tarjeta de crÃ©dito', amount: 345, reference: 'AUTH-1' }],
+    payments: [{ method: 'Tarjeta de crédito', amount: 345, reference: 'AUTH-1' }],
     footer: { message: 'Gracias por su visita y vuelva pronto a nuestra sucursal principal', printedAt: '' }
 };
 

@@ -42,11 +42,45 @@ Los errores tienen `{ code, message, retryable, requestId }`. Un HTTP 422 descri
 - Las replicas son stateless y comparten la base de plantillas. Cada worker carga aproximadamente 40 MB de modelos; dimensionar workers segun RAM y CPU.
 - `FACE_MAX_CONCURRENCY` limita solicitudes admitidas por worker y `FACE_QUEUE_TIMEOUT_SECONDS` rechaza saturacion con HTTP 503 en vez de crear una cola ilimitada. La escala recomendada es aumentar workers/replicas segun CPU y RAM; el balanceador debe aplicar limites por cliente y TLS.
 - Los encabezados de proxy sólo se confian desde `127.0.0.1` por defecto. Configure `FACE_FORWARDED_ALLOW_IPS` con la red exacta del proxy cuando corresponda, nunca `*` en una exposicion publica.
-- Se pueden rotar tokens aceptando temporalmente dos valores separados por coma.
+- Se pueden rotar tokens aceptando temporalmente dos valores separados por coma
+  en `FACE_AUTH_TOKENS`; el consumidor debe enviar únicamente el token activo.
+  En el Compose de la raíz, `HR_FACE_PROVIDER_TOKEN` es el token activo de salida
+  y `FACE_AUTH_TOKENS` puede contener `activo,anterior` durante una ventana
+  acotada. Retire el anterior al terminar.
 - `/metrics` requiere autenticacion y expone conteos/latencias, nunca imagenes, embeddings ni identificadores.
+- `/health` falla cerrado si la base de plantillas o el worker de retención no
+  están disponibles, y vuelve a `200` sólo después de una purga exitosa. La
+  respuesta no expone detalles de la dependencia.
 - Los umbrales son configurables, pero deben calibrarse con camaras, iluminacion y poblacion reales antes de ampliar el uso.
 
-`scripts/calibrate_threshold.py` calcula FAR/FRR global y por cohorte desde un CSV de scores etiquetados, sin tocar produccion. `scripts/load_test.py` ejecuta verificacion concurrente contra staging usando `FACE_LOAD_TEST_TOKEN`; no imprime cuerpos ni respuestas biometricas. El archivo temporal de evidencia debe eliminarse al finalizar la prueba.
+`scripts/calibrate_threshold.py` calcula FAR/FRR global y por cohorte desde un CSV
+de scores etiquetados, sin tocar producción. El modo normal es únicamente
+informativo. Antes de habilitar cámaras reales se debe ejecutar como gate,
+declarando los límites y tamaños de muestra aprobados para la operación:
+
+```bash
+python scripts/calibrate_threshold.py evidence/scores.csv \
+  --gate \
+  --threshold "$FACE_MATCH_THRESHOLD" \
+  --max-far 0.001 \
+  --max-frr <limite-aprobado> \
+  --min-genuine <muestras-aprobadas> \
+  --min-impostor <muestras-aprobadas> \
+  --min-cohort-genuine <muestras-por-camara-o-cohorte> \
+  --min-cohort-impostor <muestras-por-camara-o-cohorte> \
+  --out evidence/calibration-result.json
+```
+
+El comando termina con código 2 si el umbral que se desplegará incumple en el
+total o en una sola cohorte. La evidencia separa el umbral sugerido del umbral
+evaluado y contiene el SHA-256 del dataset, pero no capturas ni identificadores.
+Los valores entre `<...>` deben provenir de una política aprobada; el repositorio
+no inventa esos umbrales.
+
+`scripts/load_test.py` ejecuta verificación concurrente contra staging usando
+`FACE_LOAD_TEST_TOKEN`; no imprime cuerpos ni respuestas biométricas. Los
+archivos temporales de evidencia deben protegerse y eliminarse al finalizar la
+prueba según la política de retención aplicable.
 
 ## Modelos y licencias
 

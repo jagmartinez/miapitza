@@ -11,6 +11,8 @@ router.use(authMiddleware);
 
 router.get('/', requireRole(...ADMINS), UserController.getAll);
 router.get('/profile', UserController.getProfile);
+router.get('/me/preferences', UserController.getMyPreferences);
+router.put('/me/preferences', UserController.updateMyPreferences);
 router.get('/:id', validate(s.idParam), UserController.getById);
 router.put('/profile', UserController.updateMe);
 router.post('/', requireRole(...ADMINS), validate(s.createUser), UserController.create);

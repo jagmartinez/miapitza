@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { CashArqueoService } from '../services/cash-arqueo.service';
+import { CashArqueoService, ShiftCloseForbiddenError } from '../services/cash-arqueo.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { CASHIERS } from '../constants/roles';
 import prisma from '../utils/prisma';
@@ -7,12 +7,26 @@ import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
+import { CashError } from '../services/cash-errors';
+import { isBlindCashier, redactBlindCount, redactBlindDetails, redactBlindReport } from '../services/cash-blind';
 
 const router = Router();
 
 router.use(authMiddleware);
 // Cash counting/closing is cash-handling: restrict to cashiers and admins.
 router.use(requireRole(...CASHIERS));
+
+/** Blind count applies only while the shift is still open (R2). */
+async function redactIfShiftOpen<T extends object>(
+    data: T,
+    shiftId: number,
+    companyId: number,
+    user: NonNullable<Request['user']>
+): Promise<Partial<T>> {
+    if (!isBlindCashier(user)) return data;
+    const shift = await prisma.cashShift.findFirst({ where: { id: shiftId, companyId }, select: { endDate: true } });
+    return shift?.endDate ? data : redactBlindCount(data, user);
+}
 
 // Every endpoint below is shift-addressed. Enforce branch scope once here so a
 // cashier cannot inspect, count, close or export another branch's shift.
@@ -48,7 +62,7 @@ router.get('/:shiftId', validate(s.shiftIdParam), async (req: Request, res: Resp
 
         res.json({
             success: true,
-            data: details
+            data: redactBlindDetails(details, req.user!)
         });
     } catch (error: unknown) {
         console.error('[CASH-ARQUEO] Error getting shift details:', getErrorMessage(error));
@@ -76,9 +90,10 @@ router.post('/:shiftId/count', validate(s.cashCount), async (req: Request, res: 
 
         res.json({
             success: true,
-            data: result
+            data: await redactIfShiftOpen(result, shiftId, companyId, req.user!)
         });
     } catch (error: unknown) {
+        if (error instanceof CashError) return next(error);
         next({ statusCode: 500, message: getErrorMessage(error) });
     }
 });
@@ -100,9 +115,10 @@ router.post('/:shiftId/preview-close', validate(s.closeShift), async (req: Reque
 
         res.json({
             success: true,
-            data: result
+            data: await redactIfShiftOpen(result, shiftId, companyId, req.user!)
         });
     } catch (error: unknown) {
+        if (error instanceof CashError) return next(error);
         next({ statusCode: 500, message: getErrorMessage(error) });
     }
 });
@@ -125,6 +141,7 @@ router.post('/:shiftId/close', validate(s.closeShift), async (req: Request, res:
             companyId,
             endAmount,
             req.user!.roles || [req.user!.role],
+            req.user!.userId,
             notes,
             { bills, coins, usdBills, exchangeRate },
             { forceClose }
@@ -136,6 +153,8 @@ router.post('/:shiftId/close', validate(s.closeShift), async (req: Request, res:
             data: result
         });
     } catch (error: unknown) {
+        if (error instanceof ShiftCloseForbiddenError) return next({ statusCode: 403, message: error.message });
+        if (error instanceof CashError) return next(error);
         next({ statusCode: 500, message: getErrorMessage(error) });
     }
 });
@@ -156,7 +175,7 @@ router.get('/:shiftId/report', validate(s.shiftIdParam), async (req: Request, re
 
         res.json({
             success: true,
-            data: report
+            data: redactBlindReport(report, req.user!)
         });
     } catch (error: unknown) {
         next({ statusCode: 500, message: getErrorMessage(error) });

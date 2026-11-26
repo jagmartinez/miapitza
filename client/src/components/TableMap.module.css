@@ -1,0 +1,4 @@
+.touch {
+  min-width: 44px;
+  min-height: var(--ui-control-touch);
+}

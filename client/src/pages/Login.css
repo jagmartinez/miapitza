@@ -1,20 +1,20 @@
 .login-page {
-    --login-bg: #0f172a;
-    --login-panel: #1e293b;
-    --login-panel-soft: #243249;
-    --login-border: #334155;
-    --login-text: #f8fafc;
-    --login-muted: #94a3b8;
-    --login-blue: #3b82f6;
-    --login-blue-bright: #60a5fa;
+    --login-bg: var(--ui-bg);
+    --login-panel: var(--ui-surface);
+    --login-panel-soft: var(--ui-surface-2);
+    --login-border: var(--ui-border);
+    --login-text: var(--ui-text);
+    --login-muted: var(--ui-text-muted);
+    --login-blue: var(--ui-primary);
+    --login-blue-bright: var(--ui-primary-hover);
     position: relative;
     min-height: 100vh;
     min-height: 100dvh;
     overflow: hidden;
     isolation: isolate;
     background:
-        radial-gradient(circle at 4% 6%, rgba(37, 99, 235, 0.2), transparent 34%),
-        radial-gradient(circle at 96% 92%, rgba(59, 130, 246, 0.12), transparent 30%),
+        radial-gradient(circle at 4% 6%, color-mix(in srgb, var(--ui-primary) 20%, transparent), transparent 34%),
+        radial-gradient(circle at 96% 92%, color-mix(in srgb, var(--ui-primary) 12%, transparent), transparent 30%),
         var(--login-bg);
     color: var(--login-text);
 }
@@ -26,8 +26,8 @@
     z-index: -2;
     opacity: 0.28;
     background-image:
-        linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px);
+        linear-gradient(color-mix(in srgb, var(--ui-text-muted) 4%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--ui-text-muted) 4%, transparent) 1px, transparent 1px);
     background-size: 52px 52px;
     mask-image: linear-gradient(to right, black, transparent 72%);
 }
@@ -46,13 +46,13 @@
 .login-page__glow--top {
     top: -240px;
     right: 18%;
-    background: #3b82f6;
+    background: var(--ui-primary);
 }
 
 .login-page__glow--bottom {
     bottom: -280px;
     left: 22%;
-    background: #1d4ed8;
+    background: var(--ui-primary-hover);
 }
 
 .login-shell {
@@ -89,11 +89,11 @@
     width: 48px;
     height: 48px;
     flex: 0 0 auto;
-    border: 1px solid rgba(96, 165, 250, 0.35);
+    border: 1px solid color-mix(in srgb, var(--ui-primary) 35%, transparent);
     border-radius: 12px;
-    background: linear-gradient(145deg, rgba(59, 130, 246, 0.28), rgba(37, 99, 235, 0.1));
-    color: #bfdbfe;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 30px rgba(37, 99, 235, 0.15);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--ui-primary) 28%, transparent), color-mix(in srgb, var(--ui-primary) 10%, transparent));
+    color: var(--ui-primary-soft);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-surface) 8%, transparent), 0 10px 30px color-mix(in srgb, var(--ui-primary) 15%, transparent);
 }
 
 .login-brand__mark > svg {
@@ -115,7 +115,7 @@
 
 .login-brand div > span {
     margin-top: 2px;
-    color: #64748b;
+    color: var(--ui-text-muted);
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.12em;
@@ -133,10 +133,10 @@
     align-items: center;
     gap: 8px;
     padding: 7px 12px;
-    border: 1px solid rgba(96, 165, 250, 0.2);
+    border: 1px solid color-mix(in srgb, var(--ui-primary) 20%, transparent);
     border-radius: 999px;
-    background: rgba(37, 99, 235, 0.09);
-    color: #bfdbfe;
+    background: color-mix(in srgb, var(--ui-primary) 9%, transparent);
+    color: var(--ui-primary-soft);
     font-size: 0.74rem;
     font-weight: 700;
     letter-spacing: 0.03em;
@@ -171,7 +171,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    color: #cbd5e1;
+    color: var(--ui-text-muted);
     font-size: 0.91rem;
     font-weight: 500;
 }
@@ -184,7 +184,7 @@
     height: 25px;
     flex: 0 0 auto;
     border-radius: 50%;
-    background: rgba(59, 130, 246, 0.12);
+    background: color-mix(in srgb, var(--ui-primary) 12%, transparent);
     color: var(--login-blue-bright);
 }
 
@@ -192,13 +192,13 @@
     display: flex;
     align-items: center;
     gap: 9px;
-    color: #64748b;
+    color: var(--ui-text-muted);
     font-size: 0.77rem;
     font-weight: 600;
 }
 
 .login-showcase__footer svg {
-    color: #475569;
+    color: var(--ui-text-muted);
 }
 
 .login-access {
@@ -220,10 +220,10 @@
     padding: clamp(28px, 4vw, 42px);
     border: 1px solid var(--login-border);
     border-radius: 16px;
-    background: linear-gradient(145deg, rgba(36, 50, 73, 0.96), rgba(30, 41, 59, 0.98));
+    background: linear-gradient(145deg, color-mix(in srgb, var(--ui-primary) 96%, transparent), color-mix(in srgb, var(--ui-primary) 98%, transparent));
     box-shadow:
-        0 28px 72px rgba(2, 6, 23, 0.34),
-        inset 0 1px 0 rgba(255, 255, 255, 0.045);
+        0 28px 72px color-mix(in srgb, var(--ui-text) 34%, transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--ui-surface) 45%, transparent);
 }
 
 .login-header {
@@ -240,9 +240,9 @@
     justify-content: center;
     width: 44px;
     height: 44px;
-    border: 1px solid rgba(96, 165, 250, 0.2);
+    border: 1px solid color-mix(in srgb, var(--ui-primary) 20%, transparent);
     border-radius: 10px;
-    background: rgba(37, 99, 235, 0.1);
+    background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
     color: var(--login-blue-bright);
 }
 
@@ -285,7 +285,7 @@
 
 .login-field label,
 .login-field__heading {
-    color: #cbd5e1;
+    color: var(--ui-text-muted);
     font-size: 0.78rem;
     font-weight: 700;
 }
@@ -298,7 +298,7 @@
 }
 
 .login-field__heading > span {
-    color: #64748b;
+    color: var(--ui-text-muted);
     font-size: 0.68rem;
     font-weight: 600;
 }
@@ -313,7 +313,7 @@
     position: absolute;
     left: 15px;
     z-index: 1;
-    color: #64748b;
+    color: var(--ui-text-muted);
     pointer-events: none;
     transition: color 160ms ease;
 }
@@ -322,10 +322,10 @@
     width: 100%;
     min-height: 50px;
     padding: 12px 15px 12px 45px;
-    border: 1px solid rgba(148, 163, 184, 0.18);
+    border: 1px solid color-mix(in srgb, var(--ui-primary) 18%, transparent);
     border-radius: 8px;
     outline: none;
-    background: rgba(15, 23, 42, 0.82);
+    background: var(--ui-overlay);
     color: var(--login-text);
     caret-color: var(--login-blue-bright);
     font-size: 0.9rem;
@@ -337,13 +337,13 @@
 }
 
 .login-input-wrap input::placeholder {
-    color: #526076;
+    color: var(--ui-text-muted);
 }
 
 .login-input-wrap:focus-within input {
-    border-color: rgba(96, 165, 250, 0.7);
-    background: rgba(15, 23, 42, 0.98);
-    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.11);
+    border-color: color-mix(in srgb, var(--ui-primary) 70%, transparent);
+    background: var(--ui-overlay);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-primary) 11%, transparent);
 }
 
 .login-input-wrap:focus-within > svg {
@@ -351,11 +351,11 @@
 }
 
 .login-field.has-error .login-input-wrap input {
-    border-color: rgba(248, 113, 113, 0.72);
+    border-color: color-mix(in srgb, var(--ui-warning) 72%, transparent);
 }
 
 .login-field.has-error .login-input-wrap:focus-within input {
-    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-danger) 10%, transparent);
 }
 
 .password-toggle {
@@ -367,13 +367,13 @@
     width: 36px;
     height: 36px;
     border-radius: 9px;
-    color: #64748b;
+    color: var(--ui-text-muted);
     transition: color 160ms ease, background-color 160ms ease;
 }
 
 .password-toggle:hover {
-    background: rgba(148, 163, 184, 0.08);
-    color: #cbd5e1;
+    background: color-mix(in srgb, var(--ui-primary) 8%, transparent);
+    color: var(--ui-text-muted);
 }
 
 .password-toggle:focus-visible {
@@ -383,9 +383,9 @@
 
 .login-field--2fa {
     padding: 14px;
-    border: 1px solid rgba(96, 165, 250, 0.14);
+    border: 1px solid color-mix(in srgb, var(--ui-primary) 14%, transparent);
     border-radius: 10px;
-    background: rgba(37, 99, 235, 0.045);
+    background: color-mix(in srgb, var(--ui-primary) 4%, transparent);
     animation: loginSlideDown 220ms ease-out;
 }
 
@@ -407,11 +407,11 @@
     min-height: 52px;
     margin-top: 4px;
     padding: 12px 18px;
-    border: 1px solid rgba(147, 197, 253, 0.18);
+    border: 1px solid color-mix(in srgb, var(--ui-primary) 18%, transparent);
     border-radius: 8px;
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    background: linear-gradient(135deg, var(--ui-primary), var(--ui-primary-hover));
     color: white;
-    box-shadow: 0 12px 26px rgba(29, 78, 216, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    box-shadow: 0 12px 26px color-mix(in srgb, var(--ui-primary) 24%, transparent), inset 0 1px 0 color-mix(in srgb, var(--ui-surface) 18%, transparent);
     font-size: 0.9rem;
     font-weight: 700;
     letter-spacing: 0.01em;
@@ -421,11 +421,11 @@
 .login-submit:hover:not(:disabled) {
     transform: translateY(-1px);
     filter: brightness(1.08);
-    box-shadow: 0 16px 32px rgba(29, 78, 216, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    box-shadow: 0 16px 32px color-mix(in srgb, var(--ui-primary) 32%, transparent), inset 0 1px 0 color-mix(in srgb, var(--ui-surface) 18%, transparent);
 }
 
 .login-submit:focus-visible {
-    outline: 3px solid rgba(96, 165, 250, 0.45);
+    outline: 3px solid color-mix(in srgb, var(--ui-primary) 45%, transparent);
     outline-offset: 3px;
 }
 
@@ -444,10 +444,10 @@
     align-items: flex-start;
     gap: 10px;
     padding: 12px 14px;
-    border: 1px solid rgba(248, 113, 113, 0.24);
+    border: 1px solid color-mix(in srgb, var(--ui-warning) 24%, transparent);
     border-radius: 11px;
-    background: rgba(127, 29, 29, 0.14);
-    color: #fecaca;
+    background: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+    color: var(--ui-danger-soft);
     font-size: 0.78rem;
     font-weight: 600;
     line-height: 1.45;
@@ -457,7 +457,7 @@
 .login-error svg {
     flex: 0 0 auto;
     margin-top: 1px;
-    color: #f87171;
+    color: var(--ui-danger);
 }
 
 .login-hint {
@@ -465,7 +465,7 @@
     align-items: center;
     justify-content: center;
     gap: 7px;
-    color: #64748b;
+    color: var(--ui-text-muted);
     font-size: 0.68rem;
     font-weight: 650;
     letter-spacing: 0.04em;
@@ -476,15 +476,15 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #22c55e;
-    box-shadow: 0 0 8px rgba(34, 197, 94, 0.65);
+    background: var(--ui-success);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--ui-success) 65%, transparent);
 }
 
 .login-card__support {
     margin: 28px 0 0;
     padding-top: 22px;
-    border-top: 1px solid rgba(148, 163, 184, 0.1);
-    color: #64748b;
+    border-top: 1px solid color-mix(in srgb, var(--ui-primary) 10%, transparent);
+    color: var(--ui-text-muted);
     font-size: 0.72rem;
     line-height: 1.55;
     text-align: center;

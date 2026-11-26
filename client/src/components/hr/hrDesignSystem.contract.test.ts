@@ -12,12 +12,11 @@ function readTsx(directory: URL): string {
 }
 
 const hrSource = `${readTsx(componentDirectory)}\n${readTsx(pageDirectory)}`;
-const selectAdapter = readFileSync(new URL('./HrReactSelect.tsx', import.meta.url), 'utf8');
 const moneyInput = readFileSync(new URL('./HrMoneyInput.tsx', import.meta.url), 'utf8');
 const moneyInputFormat = readFileSync(new URL('./hrMoneyInputFormat.ts', import.meta.url), 'utf8');
 const sharedStyles = readFileSync(new URL('../../pages/hr/hr-ui.css', import.meta.url), 'utf8');
 const catering = readFileSync(new URL('../../pages/Catering.tsx', import.meta.url), 'utf8');
-const layout = readFileSync(new URL('../Layout.tsx', import.meta.url), 'utf8');
+const layout = readFileSync(new URL('../../navigation/navConfig.ts', import.meta.url), 'utf8');
 const schedules = readFileSync(new URL('../../pages/hr/Schedules.tsx', import.meta.url), 'utf8');
 const employees = readFileSync(new URL('../../pages/hr/Employees.tsx', import.meta.url), 'utf8');
 const shiftForm = readFileSync(new URL('./ScheduleShiftForm.tsx', import.meta.url), 'utf8');
@@ -38,22 +37,21 @@ describe('RH and Catering UI design-system contract', () => {
 
   it('uses the project React Select adapter instead of native selects in RH', () => {
     expect(hrSource).not.toMatch(/<\/?select\b/);
-    expect(selectAdapter).toContain("import Select from '../Select'");
-    expect(hrSource).toContain('<HrReactSelect');
-    expect(sharedStyles).toContain(":not(.react-select__input)");
+    expect(hrSource).toContain('<AppSelect');
+    expect(hrSource).not.toContain('HrReactSelect');
   });
 
   it('keeps attendance and its settings from being active at the same time', () => {
-    expect(layout).toContain("item.to === '/rh/asistencia'");
-    expect(layout).toContain("item.to === '/rh/nomina'");
+    // activeNavId elige la ruta más larga que coincide: /rh/asistencia/configuracion no activa /rh/asistencia.
+    expect(layout).toContain('it.to.length > best.to.length');
   });
 
   it('uses compact premium shells for employee and shift editors', () => {
-    expect(employees).toContain('width="large"');
-    expect(schedules).toContain('width="large"');
-    expect(shiftForm).toContain('premium-modal-content hr-shift-modal-content');
-    expect(shiftForm).toContain('className="modal-tabs"');
-    expect(shiftForm).toContain('className="modal-footer"');
+    expect(employees).toContain('<FullScreenModal');
+    expect(schedules).toContain('<FullScreenModal');
+    expect(shiftForm).toContain('hr-shift-modal-content');
+    expect(shiftForm).toContain('<Tabs');
+    expect(shiftForm).toContain('className="hr-modal-form-footer"');
   });
 
   it('styles attendance controls without leaking into React Select internals', () => {
@@ -79,8 +77,9 @@ describe('RH and Catering UI design-system contract', () => {
   });
 
   it('uses one accessible typography and spacing contract for RH modal forms', () => {
-    expect(modalShell).toContain('aria-controls={panelId}');
-    expect(modalShell).toContain('role="tabpanel"');
+    expect(modalShell).toContain('<FormSection');
+    expect(modalShell).toContain('<FormGrid>');
+    expect(modalShell).toContain('aria-label={ariaLabel}');
     expect(modalStyles).toContain('font-family: inherit');
     expect(modalStyles).toContain('font-size: 14px');
     expect(modalStyles).toContain('min-height: 42px');

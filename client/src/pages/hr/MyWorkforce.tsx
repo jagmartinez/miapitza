@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { formatHrNumber } from '../../utils/hrFormat';
+import { formatHrNumber } from '../../utils/hrDisplay';
 import {
   AlertTriangle,
   Briefcase as BriefcaseBusiness,
@@ -11,10 +11,8 @@ import {
   RefreshCw,
   WalletCards,
 } from 'lucide-react';
-import Button from '../../components/Button';
+import { FullScreenModal, Button } from '@/ui';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PageHeader from '../../components/PageHeader';
-import Sidebar from '../../components/Sidebar';
 import MyHrNav from '../../components/hr/MyHrNav';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
@@ -28,6 +26,8 @@ import {
   getWorkforceErrorMessage,
   workforceClient,
 } from '../../components/hr/workforceClient';
+import { HrHero, HrPage, HrSection, HrToolbar, type HrFact } from '../../components/hr/layout/HrWorkspace';
+import { selectVacationBalance } from '../../components/hr/vacationBalance';
 import { useAppToast } from '../../context/ToastContext';
 import type {
   HrAttendanceCorrection,
@@ -43,6 +43,7 @@ import type {
 } from '../../types/hr-workforce';
 import './workforce.css';
 import './self-service.css';
+import './layouts/autoservicio.css';
 
 function initialRange(): { dateFrom: string; dateTo: string } {
   const end = new Date();
@@ -252,34 +253,48 @@ export default function MyWorkforce() {
   const approvedCount = workflowItems.filter((item) => item.status === 'APPROVED' || item.status === 'APPLIED').length;
   const rejectedCount = workflowItems.filter((item) => item.status === 'REJECTED' || item.status === 'CANCELLED').length;
 
+  const vacation = selectVacationBalance(workforce.vacationBalances);
+  const ready = !loading && !error;
+  const facts: HrFact[] = [
+    {
+      label: 'Saldo de vacaciones',
+      value: ready ? (vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()}` : 'Sin saldo') : '—',
+      hint: vacation ? `Al ${vacation.asOf}` : 'Disponibilidad emitida por el servidor',
+      tone: ready && vacation ? 'accent' : 'default',
+    },
+    { label: 'En espera', value: ready ? pendingCount : '—', hint: 'Borradores o pendientes', tone: ready && pendingCount > 0 ? 'warning' : 'default' },
+    { label: 'Aprobadas', value: ready ? approvedCount : '—', hint: 'Aprobadas o aplicadas', tone: ready && approvedCount > 0 ? 'success' : 'default' },
+    { label: 'Rechazadas o canceladas', value: ready ? rejectedCount : '—', hint: 'Contraflujos conservados en historial', tone: ready && rejectedCount > 0 ? 'danger' : 'default' },
+    { label: 'Incidencias', value: ready ? workforce.incidents.length : '—', hint: 'En el rango consultado' },
+  ];
+
   return (
-    <div className="page-wrapper hr-workforce-page my-hr-page">
-      <PageHeader
-        className="my-hr-page-header"
+    <HrPage className="hr-workforce-page my-hr-page ss-page ss-workforce">
+      <MyHrNav />
+      <HrHero
+        eyebrow="Mi RH"
+        icon={BriefcaseBusiness}
         title="Mi gestión laboral"
         subtitle="Revisa tu asistencia y gestiona solicitudes, saldos y trazabilidad en una sola bandeja"
-        icon={BriefcaseBusiness}
         actions={
           <>
-            <div className="hr-header-actions">
-              <Button
-                variant="secondary"
-                onClick={() => setPanel({ kind: 'correction' })}
-                disabled={!online}
-              >
-                <FilePenLine size={16} /> Corrección
-              </Button>
-              <Button onClick={() => setPanel({ kind: 'leave' })} disabled={!online || leaveTypes.length === 0} title={leaveTypes.length === 0 ? 'Los tipos de permiso no están disponibles' : undefined}>
-                <CalendarPlus size={16} /> Permiso
-              </Button>
-            </div>
-            <MyHrNav />
+            <Button
+              variant="secondary"
+              onClick={() => setPanel({ kind: 'correction' })}
+              disabled={!online}
+            >
+              <FilePenLine size={16} /> Corrección
+            </Button>
+            <Button variant="primary" onClick={() => setPanel({ kind: 'leave' })} disabled={!online || leaveTypes.length === 0} title={leaveTypes.length === 0 ? 'Los tipos de permiso no están disponibles' : undefined}>
+              <CalendarPlus size={16} /> Permiso
+            </Button>
           </>
         }
+        facts={facts}
       />
       {!online && <OnlineOnlyNotice online={false} />}
       {partialWarning && (
-        <div className="hr-workforce-partial-warning" role="status">
+        <div className="ss-inline-alert" role="status">
           <AlertTriangle size={18} aria-hidden="true" />
           <span>{partialWarning}</span>
           <Button size="sm" variant="ghost" onClick={() => void load()}>
@@ -287,7 +302,18 @@ export default function MyWorkforce() {
           </Button>
         </div>
       )}
-      <section className="hr-workforce-filters my-hr-toolbar">
+
+      {!loading && !error && (
+        <nav className="hr-ws-tabs-bar" aria-label="Bandejas de mi gestión laboral">
+          <div className="hr-ws-tabs" role="tablist" aria-label="Bandejas de mi gestión laboral">
+            <button type="button" role="tab" id="my-workforce-tab-attendance" aria-controls="my-workforce-panel-attendance" aria-selected={activeWorkspace === 'ATTENDANCE'} className={activeWorkspace === 'ATTENDANCE' ? 'active' : undefined} onClick={() => setActiveWorkspace('ATTENDANCE')}><Clock3 size={16} aria-hidden="true" /><span>Asistencia</span><small>{summaries.length + workforce.incidents.length}</small></button>
+            <button type="button" role="tab" id="my-workforce-tab-requests" aria-controls="my-workforce-panel-requests" aria-selected={activeWorkspace === 'REQUESTS'} className={activeWorkspace === 'REQUESTS' ? 'active' : undefined} onClick={() => setActiveWorkspace('REQUESTS')}><FilePenLine size={16} aria-hidden="true" /><span>Solicitudes</span><small>{workforce.overtimeRequests.length + workforce.leaveRequests.length}</small></button>
+            <button type="button" role="tab" id="my-workforce-tab-balances" aria-controls="my-workforce-panel-balances" aria-selected={activeWorkspace === 'BALANCES'} className={activeWorkspace === 'BALANCES' ? 'active' : undefined} onClick={() => setActiveWorkspace('BALANCES')}><WalletCards size={16} aria-hidden="true" /><span>Vacaciones</span><small>{workforce.vacationBalances.length}</small></button>
+          </div>
+        </nav>
+      )}
+
+      <HrToolbar ariaLabel="Rango de consulta">
         <label>
           Desde
           <input
@@ -305,20 +331,22 @@ export default function MyWorkforce() {
             onChange={(event) => setDateTo(event.target.value)}
           />
         </label>
-        <Button variant="ghost" onClick={() => void load()}>
-          <RefreshCw size={16} /> Actualizar
-        </Button>
-        {workforce.serverTime && (
-          <small>
-            Servidor:{' '}
-            {new Intl.DateTimeFormat('es-NI', {
-              dateStyle: 'short',
-              timeStyle: 'short',
-              timeZone: workforce.timezone || undefined,
-            }).format(new Date(workforce.serverTime))}
-          </small>
-        )}
-      </section>
+        <div className="hr-ws-toolbar-actions">
+          {workforce.serverTime && (
+            <small className="ss-meta">
+              Servidor:{' '}
+              {new Intl.DateTimeFormat('es-NI', {
+                dateStyle: 'short',
+                timeStyle: 'short',
+                timeZone: workforce.timezone || undefined,
+              }).format(new Date(workforce.serverTime))}
+            </small>
+          )}
+          <Button variant="ghost" onClick={() => void load()}>
+            <RefreshCw size={16} /> Actualizar
+          </Button>
+        </div>
+      </HrToolbar>
 
       {loading && <LoadingSpinner text="Cargando tu gestión laboral…" />}
       {!loading && error && (
@@ -332,30 +360,21 @@ export default function MyWorkforce() {
       )}
       {!loading && !error && (
         <>
-          <nav className="hr-workforce-jump-nav my-hr-tabs" role="tablist" aria-label="Bandejas de mi gestión laboral">
-            <button type="button" role="tab" id="my-workforce-tab-attendance" aria-controls="my-workforce-panel-attendance" aria-selected={activeWorkspace === 'ATTENDANCE'} onClick={() => setActiveWorkspace('ATTENDANCE')}><Clock3 size={17} /> Asistencia <span>{summaries.length + workforce.incidents.length}</span></button>
-            <button type="button" role="tab" id="my-workforce-tab-requests" aria-controls="my-workforce-panel-requests" aria-selected={activeWorkspace === 'REQUESTS'} onClick={() => setActiveWorkspace('REQUESTS')}><FilePenLine size={17} /> Solicitudes <span>{workforce.overtimeRequests.length + workforce.leaveRequests.length}</span></button>
-            <button type="button" role="tab" id="my-workforce-tab-balances" aria-controls="my-workforce-panel-balances" aria-selected={activeWorkspace === 'BALANCES'} onClick={() => setActiveWorkspace('BALANCES')}><WalletCards size={17} /> Vacaciones <span>{workforce.vacationBalances.length}</span></button>
-          </nav>
-          <section className="hr-workflow-overview my-hr-summary-grid" aria-label="Estado de mis solicitudes">
-            <article className={pendingCount > 0 ? 'is-warning' : undefined}><Clock3 size={19} aria-hidden="true" /><span>En espera</span><strong>{pendingCount}</strong><small>Borradores o pendientes</small></article>
-            <article className="is-success"><BriefcaseBusiness size={19} aria-hidden="true" /><span>Aprobadas</span><strong>{approvedCount}</strong><small>Aprobadas o aplicadas</small></article>
-            <article className={rejectedCount > 0 ? 'is-danger' : undefined}><AlertTriangle size={19} aria-hidden="true" /><span>Rechazadas o canceladas</span><strong>{rejectedCount}</strong><small>Contraflujos conservados en historial</small></article>
-          </section>
           {activeWorkspace === 'ATTENDANCE' && (
-          <div id="my-workforce-panel-attendance" className="my-hr-tab-panel" role="tabpanel" aria-labelledby="my-workforce-tab-attendance" tabIndex={0}>
-          <section id="mi-asistencia" className="hr-workforce-section hr-workforce-anchor">
-            <div className="hr-section-heading">
-              <div>
-                <h2>
-                  <Clock3 size={20} /> Mis resúmenes
-                </h2>
-                <p>Minutos calculados por el servidor, no por este dispositivo.</p>
-              </div>
-              <Button size="sm" onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>
+          <div id="my-workforce-panel-attendance" className="hr-ws-tabpanel" role="tabpanel" aria-labelledby="my-workforce-tab-attendance" tabIndex={0}>
+          <HrSection
+            id="mi-asistencia"
+            className="hr-workforce-anchor"
+            eyebrow="Asistencia"
+            title="Mis resúmenes"
+            count={summaries.length}
+            description="Minutos calculados por el servidor, no por este dispositivo."
+            actions={
+              <Button variant="primary" size="sm" onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>
                 <Plus size={15} /> Horas extra
               </Button>
-            </div>
+            }
+          >
             {summaries.length === 0 ? (
               <p className="hr-empty">Sin resúmenes en el rango.</p>
             ) : (
@@ -422,16 +441,10 @@ export default function MyWorkforce() {
                 ))}
               </div>
             )}
-          </section>
+          </HrSection>
 
-          <div className="hr-workforce-columns">
-            <section className="hr-workforce-section">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>Mis incidencias</h2>
-                  <p>Revisa el motivo antes de pedir corrección.</p>
-                </div>
-              </div>
+          <div className="ss-two-col">
+            <HrSection title="Mis incidencias" count={workforce.incidents.length} description="Revisa el motivo antes de pedir corrección.">
               {workforce.incidents.length === 0 ? (
                 <p className="hr-empty">Sin incidencias.</p>
               ) : (
@@ -460,14 +473,8 @@ export default function MyWorkforce() {
                   ))}
                 </div>
               )}
-            </section>
-            <section className="hr-workforce-section">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>Mis correcciones</h2>
-                  <p>Cada cambio conserva historial y actor.</p>
-                </div>
-              </div>
+            </HrSection>
+            <HrSection title="Mis correcciones" count={workforce.corrections.length} description="Cada cambio conserva historial y actor.">
               {workforce.corrections.length === 0 ? (
                 <p className="hr-empty">Sin solicitudes.</p>
               ) : (
@@ -491,22 +498,23 @@ export default function MyWorkforce() {
                   ))}
                 </div>
               )}
-            </section>
+            </HrSection>
           </div>
-
           </div>
           )}
 
           {activeWorkspace === 'REQUESTS' && (
-          <div id="my-workforce-panel-requests" className="my-hr-tab-panel" role="tabpanel" aria-labelledby="my-workforce-tab-requests" tabIndex={0}>
-          <div className="hr-workforce-columns">
-            <section id="mis-horas-extra" className="hr-workforce-section hr-workforce-anchor" tabIndex={-1} aria-labelledby="mis-horas-extra-title">
-              <div className="hr-section-heading">
+          <div id="my-workforce-panel-requests" className="hr-ws-tabpanel" role="tabpanel" aria-labelledby="my-workforce-tab-requests" tabIndex={0}>
+          <div className="ss-two-col">
+            <section id="mis-horas-extra" className="hr-ws-section hr-workforce-anchor" tabIndex={-1} aria-labelledby="mis-horas-extra-title">
+              <header className="hr-ws-section-header">
                 <div>
-                  <h2 id="mis-horas-extra-title">Mis horas extra</h2>
+                  <span className="hr-ws-eyebrow">Solicitudes</span>
+                  <h2 id="mis-horas-extra-title">Mis horas extra<small>{workforce.overtimeRequests.length}</small></h2>
                   <p>Lo candidato y lo solicitado no sustituyen la decisión.</p>
                 </div>
-              </div>
+              </header>
+              <div className="hr-ws-section-body">
               {workforce.overtimeRequests.length === 0 ? (
                 <p className="hr-empty">Sin solicitudes.</p>
               ) : (
@@ -537,14 +545,17 @@ export default function MyWorkforce() {
                   ))}
                 </div>
               )}
+              </div>
             </section>
-            <section id="mis-permisos" className="hr-workforce-section hr-workforce-anchor" tabIndex={-1} aria-labelledby="mis-permisos-title">
-              <div className="hr-section-heading">
+            <section id="mis-permisos" className="hr-ws-section hr-workforce-anchor" tabIndex={-1} aria-labelledby="mis-permisos-title">
+              <header className="hr-ws-section-header">
                 <div>
-                  <h2 id="mis-permisos-title">Mis permisos y vacaciones</h2>
+                  <span className="hr-ws-eyebrow">Solicitudes</span>
+                  <h2 id="mis-permisos-title">Mis permisos y vacaciones<small>{workforce.leaveRequests.length}</small></h2>
                   <p>Rango, fracción y estado autoritativo.</p>
                 </div>
-              </div>
+              </header>
+              <div className="hr-ws-section-body">
               {workforce.leaveRequests.length === 0 ? (
                 <p className="hr-empty">Sin solicitudes.</p>
               ) : (
@@ -561,7 +572,7 @@ export default function MyWorkforce() {
                       <div className="hr-record-actions">
                         <WorkforceStatusPill status={item.status} />
                         {item.status === 'DRAFT' && (
-                          <Button
+                          <Button variant="primary"
                             size="sm"
                             onClick={() => void submitLeave(item)}
                             disabled={!online || saving}
@@ -584,24 +595,16 @@ export default function MyWorkforce() {
                   ))}
                 </div>
               )}
+              </div>
             </section>
           </div>
-
           </div>
           )}
 
           {activeWorkspace === 'BALANCES' && (
-          <div id="my-workforce-panel-balances" className="my-hr-tab-panel" role="tabpanel" aria-labelledby="my-workforce-tab-balances" tabIndex={0}>
-          <div className="hr-workforce-columns">
-            <section id="mis-vacaciones" className="hr-workforce-section hr-workforce-anchor">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>
-                    <WalletCards size={20} /> Mis saldos
-                  </h2>
-                  <p>Disponibilidad emitida por el servidor.</p>
-                </div>
-              </div>
+          <div id="my-workforce-panel-balances" className="hr-ws-tabpanel" role="tabpanel" aria-labelledby="my-workforce-tab-balances" tabIndex={0}>
+          <div className="ss-two-col">
+            <HrSection id="mis-vacaciones" className="hr-workforce-anchor" eyebrow="Vacaciones" title="Mis saldos" count={workforce.vacationBalances.length} description="Disponibilidad emitida por el servidor.">
               {workforce.vacationBalances.length === 0 ? (
                 <p className="hr-empty">Sin saldos.</p>
               ) : (
@@ -625,14 +628,8 @@ export default function MyWorkforce() {
                   ))}
                 </div>
               )}
-            </section>
-            <section className="hr-workforce-section">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>Mi ledger</h2>
-                  <p>Movimientos y resultado reportado.</p>
-                </div>
-              </div>
+            </HrSection>
+            <HrSection title="Mi ledger" count={workforce.vacationLedger.length} description="Movimientos y resultado reportado.">
               {workforce.vacationLedger.length === 0 ? (
                 <p className="hr-empty">Sin movimientos.</p>
               ) : (
@@ -657,14 +654,14 @@ export default function MyWorkforce() {
                   ))}
                 </div>
               )}
-            </section>
+            </HrSection>
           </div>
           </div>
           )}
         </>
       )}
 
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(panel)}
         onClose={() => !saving && setPanel(null)}
         title={
@@ -674,9 +671,6 @@ export default function MyWorkforce() {
               ? 'Solicitar horas extra'
               : 'Solicitar permiso o vacaciones'
         }
-        width="large"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
       >
           {panel?.kind === 'correction' && (
             <AttendanceCorrectionForm
@@ -712,15 +706,12 @@ export default function MyWorkforce() {
               onCancel={() => setPanel(null)}
             />
           )}
-      </Sidebar>
+      </FullScreenModal>
 
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(cancelPanel)}
         onClose={() => !saving && setCancelPanel(null)}
         title="Cancelar solicitud"
-        width="large"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
       >
         <HrModalFormShell
           ariaLabel="Cancelación de solicitud"
@@ -752,7 +743,7 @@ export default function MyWorkforce() {
             />
           </label>
         </HrModalFormShell>
-      </Sidebar>
-    </div>
+      </FullScreenModal>
+    </HrPage>
   );
 }

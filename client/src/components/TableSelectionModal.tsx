@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { Table } from '../types';
-import Modal from './Modal';
+import { FullScreenModal } from '@/ui';
 import './TableSelectionModal.css';
 
 interface TableSelectionModalProps {
     tables: Table[];
+    excludeTableId?: number | null;
     onSelectTable: (table: Table) => void;
     onClose: () => void;
 }
@@ -18,19 +19,26 @@ function matchesTableSearch(table: Table, query: string): boolean {
     return number.includes(q) || location.includes(q);
 }
 
-export default function TableSelectionModal({ tables, onSelectTable, onClose }: TableSelectionModalProps) {
+export default function TableSelectionModal({
+    tables,
+    excludeTableId,
+    onSelectTable,
+    onClose
+}: TableSelectionModalProps) {
     const [searchQuery, setSearchQuery] = useState('');
 
     const filteredTables = useMemo(
-        () => tables.filter((t) => matchesTableSearch(t, searchQuery)),
-        [tables, searchQuery]
+        () => tables.filter((table) => (
+            table.id !== excludeTableId && matchesTableSearch(table, searchQuery)
+        )),
+        [excludeTableId, tables, searchQuery]
     );
 
     const availableTables = filteredTables.filter(t => t.status === 'AVAILABLE');
     const occupiedTables = filteredTables.filter(t => t.status === 'OCCUPIED');
 
     return (
-        <Modal isOpen onClose={onClose} title="Seleccionar Mesa" size="lg">
+        <FullScreenModal isOpen onClose={onClose} title="Seleccionar Mesa">
             <div className="table-selection-modal-content">
                 <div className="table-selection-modal-toolbar">
                     <div className="table-selection-search">
@@ -49,7 +57,9 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
                 <div className="table-selection-modal-body">
                     {filteredTables.length === 0 && (
                         <div className="table-selection-empty">
-                            No hay mesas que coincidan con &quot;{searchQuery}&quot;
+                            {searchQuery.trim()
+                                ? <>No hay mesas que coincidan con &quot;{searchQuery}&quot;</>
+                                : 'No hay otra mesa disponible para seleccionar.'}
                         </div>
                     )}
 
@@ -99,6 +109,6 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
                     )}
                 </div>
             </div>
-        </Modal>
+        </FullScreenModal>
     );
 }

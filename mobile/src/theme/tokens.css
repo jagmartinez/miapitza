@@ -1,0 +1,37 @@
+:root {
+    --bg: #0E0F10;
+    --surface: #151618;
+    --surface-2: #1C1D20;
+    --border: #26272A;
+    --text: #E8E8E6;
+    --muted: #8C8D90;
+    --ready: #D4A84B;
+    --alert: #C96B66;
+    --scrim: rgba(0, 0, 0, 0.55);
+
+    /* Mockup palette (design kit). Colour only for state: --ready, --alert. */
+    --surface-3: #2A2B2E;   /* avatars, free-table border */
+    --line: #26272A;        /* hairline structural borders */
+    --line-strong: #3A3B3F; /* outlined buttons, chips */
+    --divider: #222326;     /* row dividers */
+    --faint: #55565A;       /* delivered / empty states */
+    --muted-2: #B4B5B8;     /* icon grey */
+    --text-2: #B4B5B8;      /* secondary text */
+    --ready-bg: #2A2416;    /* amber-tinted pill */
+    --on-text: #0E0F10;     /* text on solid white fill */
+    /* Hairline: 0.5px is unreliable on Android WebView (can render 0 or 1px
+       by DPR), so we use 1px with the low-contrast --line colours. Use
+       --hair for structural lines, 1px --text/--ready/--alert for state. */
+    --hair: 1px;
+    --radius-s: 6px;
+    --radius-m: 8px;
+    --radius-l: 12px;
+}
+
+html, body, #root {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}

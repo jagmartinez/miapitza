@@ -1,6 +1,7 @@
 // WebSocket utility for real-time POS-Kitchen communication
 
 import { resolveWebSocketBaseUrl } from './runtime-routing';
+import { publishNotice } from '../services/notify';
 
 export interface WebSocketMessage {
     type: string;
@@ -9,6 +10,7 @@ export interface WebSocketMessage {
 
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let idleCloseTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 let isConnecting = false;
 let isManuallyClosed = false;
@@ -18,6 +20,21 @@ const MAX_RECONNECT_ATTEMPTS = 20;
 const BASE_RECONNECT_DELAY = 5000; // 5 seconds
 const MAX_RECONNECT_DELAY = 60000; // 60 seconds
 const CONNECTION_ERROR_EVENT = 'WEBSOCKET_CONNECTION_ERROR';
+/** Consecutive failed reconnects before the operator is told live updates stopped. */
+const NOTIFY_AFTER_FAILED_ATTEMPTS = 2;
+const REALTIME_NOTICE_KEY = 'realtime-connection';
+export const REALTIME_LOST_MESSAGE = 'Se perdió la conexión en tiempo real. Reintentando… Pedidos y mesas podrían no actualizarse solos; recarga si ves datos desactualizados.';
+export const REALTIME_RESTORED_MESSAGE = 'Conexión en tiempo real restablecida.';
+export const REALTIME_GAVE_UP_MESSAGE = 'No se pudo restablecer la conexión en tiempo real. Recarga la página para volver a recibir actualizaciones.';
+let connectionLostNotified = false;
+
+const isBrowserOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+/**
+ * Grace period before closing an unused socket. Route changes unmount one
+ * subscriber and mount the next in the same commit; closing immediately would
+ * tear down and rebuild the connection on every navigation.
+ */
+export const IDLE_CLOSE_DELAY_MS = 3000;
 
 const resolveWebSocketUrl = () => {
     const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
@@ -37,6 +54,10 @@ export const buildWebSocketUrl = (baseUrl: string) => {
     return trimmed;
 };
 
+/** A subscriber that keeps failing warns the operator at most once per window. */
+export const SUBSCRIBER_FAILURE_NOTICE_INTERVAL_MS = 60_000;
+const lastSubscriberFailureNoticeAt = new WeakMap<(data: WebSocketMessage) => void, number>();
+
 const notifyListeners = (data: WebSocketMessage) => {
     listeners.forEach((listener) => {
         try {
@@ -45,6 +66,15 @@ const notifyListeners = (data: WebSocketMessage) => {
             // Isolate subscribers so one broken view cannot stop the others,
             // but keep the failure observable for operational diagnosis.
             console.error('[WebSocket] subscriber failed while handling an event:', error);
+            const now = Date.now();
+            const last = lastSubscriberFailureNoticeAt.get(listener);
+            if (last !== undefined && now - last < SUBSCRIBER_FAILURE_NOTICE_INTERVAL_MS) return;
+            lastSubscriberFailureNoticeAt.set(listener, now);
+            publishNotice({
+                type: 'warning',
+                dedupeKey: 'realtime-subscriber',
+                message: 'No se pudo aplicar una actualización en tiempo real. Si la pantalla no se actualiza, recarga la página.',
+            });
         }
     });
 };
@@ -60,12 +90,56 @@ const notifyConnectionIssue = (code: string, error?: unknown) => {
     });
 };
 
+const cancelIdleClose = () => {
+    if (idleCloseTimer) {
+        clearTimeout(idleCloseTimer);
+        idleCloseTimer = null;
+    }
+};
+
+/** Detach and close the current socket without firing reconnect logic. */
+const dropSocket = () => {
+    if (!socket) return;
+    const previousSocket = socket;
+    socket = null;
+    previousSocket.onclose = null;
+    previousSocket.onerror = null;
+    previousSocket.close();
+};
+
+/**
+ * Close the connection once nobody listens. Unlike closeWebSocket() this is not
+ * a manual/logout close: a later subscribe reopens normally.
+ */
+const scheduleIdleClose = () => {
+    if (listeners.size > 0 || idleCloseTimer) return;
+    idleCloseTimer = setTimeout(() => {
+        idleCloseTimer = null;
+        if (listeners.size > 0) return;
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+        reconnectAttempts = 0;
+        dropSocket();
+        isConnecting = false;
+    }, IDLE_CLOSE_DELAY_MS);
+};
+
 const scheduleReconnect = () => {
     if (isManuallyClosed || listeners.size === 0 || reconnectTimer) return;
 
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         notifyConnectionIssue('RECONNECT_LIMIT_REACHED');
+        publishNotice({ type: 'error', dedupeKey: REALTIME_NOTICE_KEY, duration: 15000, message: REALTIME_GAVE_UP_MESSAGE });
+        connectionLostNotified = true;
         return;
+    }
+
+    // The browser-offline notice already covers lost connectivity.
+    if (!connectionLostNotified && reconnectAttempts >= NOTIFY_AFTER_FAILED_ATTEMPTS && !isBrowserOffline()) {
+        connectionLostNotified = true;
+        publishNotice({ type: 'warning', dedupeKey: REALTIME_NOTICE_KEY, message: REALTIME_LOST_MESSAGE });
     }
 
     const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
@@ -82,10 +156,12 @@ export const initializeWebSocket = (onMessage?: (data: WebSocketMessage) => void
     if (onMessage) {
         listeners.add(onMessage);
     }
+    cancelIdleClose();
 
     // Prevent duplicate connection attempts
-    if (isConnecting) return socket;
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    if (isConnecting || (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING))) {
+        // An init without subscribers must not pin the socket open forever.
+        scheduleIdleClose();
         return socket;
     }
 
@@ -103,6 +179,10 @@ export const initializeWebSocket = (onMessage?: (data: WebSocketMessage) => void
             if (socket !== nextSocket) return;
             isConnecting = false;
             reconnectAttempts = 0; // Reset on successful connection
+            if (connectionLostNotified) {
+                connectionLostNotified = false;
+                publishNotice({ type: 'success', dedupeKey: REALTIME_NOTICE_KEY, message: REALTIME_RESTORED_MESSAGE });
+            }
             // Backward compatibility: explicit AUTH for legacy bearer flow.
         };
 
@@ -130,6 +210,7 @@ export const initializeWebSocket = (onMessage?: (data: WebSocketMessage) => void
             scheduleReconnect();
         };
 
+        scheduleIdleClose();
         return nextSocket;
     } catch (error) {
         socket = null;
@@ -144,8 +225,12 @@ export const subscribeWebSocket = (listener: (data: WebSocketMessage) => void) =
     listeners.add(listener);
     initializeWebSocket();
 
+    let active = true;
     return () => {
+        if (!active) return;
+        active = false;
         listeners.delete(listener);
+        scheduleIdleClose();
     };
 };
 
@@ -158,6 +243,8 @@ export const sendWebSocketMessage = (type: string, payload: Record<string, unkno
 export const closeWebSocket = () => {
     isManuallyClosed = true;
     reconnectAttempts = 0;
+    connectionLostNotified = false;
+    cancelIdleClose();
 
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);

@@ -111,7 +111,8 @@ export class SupplierService {
             purchaseOrder: {
                 supplierId: id,
                 companyId,
-                status: 'RECEIVED',
+                // Unit prices of every order that already received goods.
+                status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] },
                 ...(filters?.dateFrom || filters?.dateTo
                     ? {
                           date: {

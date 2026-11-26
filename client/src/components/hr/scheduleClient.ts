@@ -1,4 +1,5 @@
 import api from '../../services/api';
+import type { HrScheduleLookups } from '../../types/hr';
 import type {
     HrHoliday,
     HrScheduleCollection,
@@ -10,6 +11,8 @@ import type {
     HrSchedulePublishPayload,
     HrScheduleUpdatePayload,
     HrShiftTemplate,
+    HrShiftTemplateCreatePayload,
+    HrShiftTemplateUpdatePayload,
     HrWeeklySchedule,
 } from '../../types/hr-schedule';
 
@@ -99,6 +102,7 @@ function normalizeScheduleRecord(value: unknown): HrWeeklySchedule {
 }
 
 function normalizeCollection(value: unknown): HrScheduleCollection {
+    if (value === null || value === undefined) return { schedules: [], conflicts: [], holidays: [] };
     if (Array.isArray(value)) return { schedules: value.map(normalizeScheduleRecord), conflicts: [], holidays: [] };
     if (!value || typeof value !== 'object') throw contractError('la colección de horarios');
     const raw = value as Record<string, unknown>;
@@ -171,6 +175,23 @@ export const scheduleClient = {
         return { ...normalizeCollection(unwrap(response.data)), fromCache: responseFromCache(response) };
     },
 
+    async getTeamSchedule(weekStart: string): Promise<HrScheduleCollection> {
+        const response = await api.get(`${HR_BASE}/team/schedule`, { params: { weekStart } });
+        return { ...normalizeCollection(unwrap(response.data)), fromCache: responseFromCache(response) };
+    },
+
+    async getScheduleLookups(weekStart: string): Promise<HrScheduleLookups> {
+        const response = await api.get(`${HR_BASE}/schedules/lookups`, { params: { weekStart } });
+        const value = unwrap<unknown>(response.data);
+        if (!value || typeof value !== 'object') throw contractError('los catálogos de horarios');
+        const raw = value as Record<string, unknown>;
+        return {
+            positions: requiredArray(raw.positions, 'los puestos') as HrScheduleLookups['positions'],
+            branches: requiredArray(raw.branches, 'las sucursales') as HrScheduleLookups['branches'],
+            users: requiredArray(raw.users, 'los trabajadores') as HrScheduleLookups['users'],
+        };
+    },
+
     async getShiftTemplates(branchId?: number): Promise<HrShiftTemplate[]> {
         const response = await api.get(`${HR_BASE}/shift-templates`, { params: branchId ? { branchId } : undefined });
         const value = unwrap<unknown>(response.data);
@@ -179,6 +200,21 @@ export const scheduleClient = {
         const raw = value as Record<string, unknown>;
         const templates = raw.shiftTemplates ?? raw.templates ?? raw.items;
         return requiredArray(templates, 'las plantillas de turno') as HrShiftTemplate[];
+    },
+
+    async createShiftTemplate(payload: HrShiftTemplateCreatePayload): Promise<HrShiftTemplate> {
+        const response = await api.post(`${HR_BASE}/shift-templates`, payload);
+        return unwrap<HrShiftTemplate>(response.data);
+    },
+
+    async updateShiftTemplate(id: number, payload: HrShiftTemplateUpdatePayload): Promise<HrShiftTemplate> {
+        const response = await api.put(`${HR_BASE}/shift-templates/${id}`, payload);
+        return unwrap<HrShiftTemplate>(response.data);
+    },
+
+    async setShiftTemplateActive(id: number, active: boolean, expectedRevision: number): Promise<HrShiftTemplate> {
+        const response = await api.patch(`${HR_BASE}/shift-templates/${id}/status`, { active, expectedRevision });
+        return unwrap<HrShiftTemplate>(response.data);
     },
 
     async getHolidays(weekStart: string, branchId?: number): Promise<HrHoliday[]> {

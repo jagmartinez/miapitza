@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { ReportService, type ReportPeriod } from '../services/report.service';
 import { ExcelExporter, sendExcelResponse } from '../utils/excel-export';
 import { getErrorMessage } from '../utils/error';
-import { resolveBranchScope } from '../utils/branch-scope';
+import { resolveBranchScope, isCompanyWide } from '../utils/branch-scope';
 import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 const parseCategoryIds = (value: unknown): number[] | undefined => {
@@ -213,7 +213,9 @@ export class ReportController {
             const userId = req.user!.userId;
             const companyId = req.user!.companyId;
             const role = req.user!.role;
-            const data = await ReportService.getMyStats(userId, companyId, role);
+            // Operational roles are pinned to their active branch; admins see all.
+            const branchId = isCompanyWide(req.user!) ? undefined : (req.user!.branchId || -1); // -1 fails closed when unassigned
+            const data = await ReportService.getMyStats(userId, companyId, role, branchId);
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });

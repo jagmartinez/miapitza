@@ -2,9 +2,11 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Prisma, type AttendanceEnforcementMode } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
-import { decryptBiometricTemplate } from '../utils/hr-biometric-crypto';
+import { decryptBiometricTemplate, isBiometricTemplateReadable } from '../utils/hr-biometric-crypto';
 import { AuditLogService } from './audit-log.service';
-import { AttendancePolicyService, BiometricService, HrAttendanceError, livenessActionFromNonce } from './hr-biometric.service';
+import {
+    AttendancePolicyService, BIOMETRIC_ENROLLMENT_PENDING_APPROVAL, BiometricService, HrAttendanceError, livenessActionFromNonce,
+} from './hr-biometric.service';
 import {
     createFaceVerificationProvider,
     FaceEvidenceRejectedError,
@@ -12,6 +14,7 @@ import {
     type FaceCaptureEvidence,
     type FaceVerificationProvider,
 } from './hr-face-provider';
+import { effectiveLocationAccuracyLimit } from '../utils/hr-location';
 
 const ACTIONS = ['CHECK_IN', 'BREAK_START', 'BREAK_END', 'CHECK_OUT'] as const;
 type Action = typeof ACTIONS[number];
@@ -127,7 +130,14 @@ export function availableActionsFrom(events: Array<{ action: string }>): Action[
 }
 
 type EffectiveBranchAssignment = Prisma.EmployeeBranchAssignmentGetPayload<{
-    include: { branch: { select: { id: true; name: true; code: true; timezone: true; status: true } } };
+    include: {
+        branch: {
+            select: {
+                id: true; name: true; code: true; timezone: true; status: true;
+                attendanceEnabled: true; geofenceRadiusM: true; maxLocationAccuracyM: true;
+            };
+        };
+    };
 }>;
 
 function assignmentCovers(
@@ -144,7 +154,14 @@ function assignmentCovers(
 async function employeeBranchAssignments(companyId: number, userId: number): Promise<EffectiveBranchAssignment[]> {
     return prisma.employeeBranchAssignment.findMany({
         where: { companyId, employee: { companyId, userId } },
-        include: { branch: { select: { id: true, name: true, code: true, timezone: true, status: true } } },
+        include: {
+            branch: {
+                select: {
+                    id: true, name: true, code: true, timezone: true, status: true,
+                    attendanceEnabled: true, geofenceRadiusM: true, maxLocationAccuracyM: true,
+                },
+            },
+        },
         orderBy: [{ isPrimary: 'desc' }, { effectiveFrom: 'desc' }],
     });
 }
@@ -457,14 +474,18 @@ export function evaluateGeofence(input: { latitude: number | null; longitude: nu
         locationAccuracy: check('REVIEW', 'No se pudo validar la precisión contra la sucursal', 'GEOFENCE_NOT_CONFIGURED'),
         distanceM: null,
     };
-    const accuracyLimit = Math.min(policy.maxLocationAccuracyM, branch.maxLocationAccuracyM || policy.maxLocationAccuracyM);
+    const accuracyLimit = effectiveLocationAccuracyLimit(policy.maxLocationAccuracyM, branch.maxLocationAccuracyM);
     const distanceM = haversineDistanceM(input.latitude, input.longitude, Number(branch.latitude), Number(branch.longitude));
+    const geofenceFits = distanceM + input.accuracyM <= branch.geofenceRadiusM;
+    const centerIsInside = distanceM <= branch.geofenceRadiusM;
     return {
         // Conservative acceptance: the full reported accuracy circle must fit
         // inside the configured radius, not merely its center point.
-        geofence: distanceM + input.accuracyM <= branch.geofenceRadiusM
+        geofence: geofenceFits
             ? check('PASSED', 'Ubicación dentro de la geocerca', undefined, distanceM, branch.geofenceRadiusM)
-            : check('FAILED', 'Ubicación o incertidumbre fuera de la geocerca', 'OUTSIDE_GEOFENCE', distanceM + input.accuracyM, branch.geofenceRadiusM),
+            : centerIsInside
+                ? check('FAILED', 'La ubicación es demasiado imprecisa para confirmar la geocerca', 'GEOFENCE_UNCERTAIN', distanceM, branch.geofenceRadiusM)
+                : check('FAILED', 'Ubicación fuera de la geocerca', 'OUTSIDE_GEOFENCE', distanceM, branch.geofenceRadiusM),
         locationAccuracy: input.accuracyM <= accuracyLimit
             ? check('PASSED', 'Precisión de ubicación aceptable', undefined, input.accuracyM, accuracyLimit)
             : check('FAILED', 'Precisión insuficiente', 'LOCATION_ACCURACY_TOO_LOW', input.accuracyM, accuracyLimit),
@@ -661,6 +682,13 @@ export class AttendanceService {
                 || scheduledShift?.branch
                 || await prisma.branch.findFirst({ where: { id: targetBranchId, companyId }, select: { id: true, name: true, code: true, timezone: true, status: true } })
             : null;
+        const branchAccuracyLimit = targetBranch && 'maxLocationAccuracyM' in targetBranch && typeof targetBranch.maxLocationAccuracyM === 'number'
+            ? targetBranch.maxLocationAccuracyM
+            : null;
+        const branchGeofenceRadius = targetBranch && 'geofenceRadiusM' in targetBranch && typeof targetBranch.geofenceRadiusM === 'number'
+            ? targetBranch.geofenceRadiusM
+            : null;
+        const effectiveAccuracyLimit = effectiveLocationAccuracyLimit(policy.maxLocationAccuracyM, branchAccuracyLimit);
         const sessionEvents = open?.[1]
             || (scheduledShift ? history.filter((event) => event.scheduledShiftId === scheduledShift.id) : []);
         const stale = staleOpenSession(open, openShift, policy, now);
@@ -675,6 +703,10 @@ export class AttendanceService {
             serverTime: now, timezone: policy.timezone, availableActions,
             policy: effectivePolicySnapshot(policy),
             targetBranch: targetBranch ? { id: targetBranch.id, name: targetBranch.name, code: targetBranch.code } : null,
+            locationRequirements: policy.requireGeolocation ? {
+                maxAccuracyM: effectiveAccuracyLimit,
+                geofenceRadiusM: branchGeofenceRadius ?? null,
+            } : null,
             blockingIssue: stale && open ? {
                 code: 'STALE_OPEN_ATTENDANCE' as const,
                 message: 'Existe una entrada anterior sin salida fuera de su ventana válida. Solicita una corrección antes de iniciar otra jornada.',
@@ -718,7 +750,7 @@ export class AttendanceService {
         if (requestedDeviceId && process.env.HR_ATTENDANCE_KIOSK_ENABLED !== 'true') {
             throw new HrAttendanceError('El cliente de kiosco protegido no está habilitado en este despliegue', 503, 'KIOSK_DISABLED');
         }
-        if ((requestedDeviceId && !input.deviceKey) || (!requestedDeviceId && input.deviceKey)) throw new HrAttendanceError('Las credenciales de dispositivo están incompletas', 401, 'DEVICE_CREDENTIALS_REQUIRED');
+        if ((requestedDeviceId && !input.deviceKey) || (!requestedDeviceId && input.deviceKey)) throw new HrAttendanceError('Las credenciales de dispositivo están incompletas', 403, 'DEVICE_CREDENTIALS_REQUIRED');
         let device: { id: number; branchId: number } | null = null;
         if (requestedDeviceId && input.deviceKey) {
             const stored = await prisma.attendanceDevice.findFirst({
@@ -728,7 +760,7 @@ export class AttendanceService {
             const suppliedHash = createHash('sha256').update(input.deviceKey).digest('hex');
             const valid = stored && /^[0-9a-f]{64}$/i.test(stored.keyHash)
                 && timingSafeEqual(Buffer.from(stored.keyHash, 'hex'), Buffer.from(suppliedHash, 'hex'));
-            if (!valid || !stored) throw new HrAttendanceError('Dispositivo de asistencia inválido o revocado', 401, 'DEVICE_INVALID');
+            if (!valid || !stored) throw new HrAttendanceError('Dispositivo de asistencia inválido o revocado', 403, 'DEVICE_INVALID');
             device = { id: stored.id, branchId: stored.branchId };
         }
         const hash = requestHash({ userId: input.userId, action, challengeId: input.challengeId, latitude, longitude, accuracyM, clientAt: clientAt?.toISOString(), deviceId: device?.id || null });
@@ -836,7 +868,7 @@ export class AttendanceService {
             });
             consumedChallengeId = input.challengeId;
         } catch (error) {
-            challengeError = error instanceof HrAttendanceError ? error : new HrAttendanceError('Reto inválido', 401, 'CHALLENGE_INVALID');
+            challengeError = error instanceof HrAttendanceError ? error : new HrAttendanceError('Reto inválido', 409, 'CHALLENGE_INVALID');
         }
         if (challengeError?.code === 'IDEMPOTENCY_IN_PROGRESS') {
             const completed = await prisma.attendanceEvent.findFirst({ where: { companyId: input.companyId, idempotencyKey }, include: eventInclude });
@@ -844,13 +876,29 @@ export class AttendanceService {
             throw challengeError;
         }
         if (!challengeError && policy.requireBiometric && input.evidence && consumedChallenge) {
-            const profile = await prisma.biometricProfile.findFirst({ where: { companyId: input.companyId, userId: input.userId, status: 'ACTIVE' } });
-            if (!profile) {
+            const profile = await prisma.biometricProfile.findFirst({ where: { companyId: input.companyId, userId: input.userId } });
+            if (profile?.status === 'PENDING') {
+                // First enrollment awaiting HR approval: never matched against,
+                // recorded as a rejected attempt like a missing profile.
+                biometricProfileId = profile.id;
+                biometric = check('FAILED', 'Tu registro facial está pendiente de aprobación de RRHH; podrás marcar cuando sea aprobado', BIOMETRIC_ENROLLMENT_PENDING_APPROVAL);
+            } else if (!profile || profile.status !== 'ACTIVE') {
                 biometric = check('FAILED', 'No existe un perfil biométrico activo', 'BIOMETRIC_PROFILE_REQUIRED');
             } else if (!profile.retentionExpiresAt || profile.retentionExpiresAt <= now) {
                 biometric = check('FAILED', 'El perfil biométrico expiró y debe reenrolarse', 'BIOMETRIC_RETENTION_EXPIRED');
             } else if (profile.consentVersion !== policy.biometricConsentVersion) {
                 biometric = check('FAILED', 'El consentimiento biométrico debe renovarse', 'BIOMETRIC_CONSENT_STALE');
+            } else if (provider.name !== 'disabled' && profile.provider !== provider.name) {
+                // A template issued by another adapter (e.g. dev "fake" -> "http")
+                // is meaningless to the current provider; never send it for matching.
+                biometricProfileId = profile.id;
+                biometric = check('FAILED', 'Tu perfil biométrico fue creado con otro proveedor facial; debes volver a registrar tu rostro', 'BIOMETRIC_REENROLL_REQUIRED');
+            } else if (!isBiometricTemplateReadable(profile.templateRef)) {
+                // Encrypted with another key (rotation or data copied between
+                // environments): reporting it as a provider outage would leave
+                // the employee retrying forever.
+                biometricProfileId = profile.id;
+                biometric = check('FAILED', 'Tu registro facial ya no es válido; debes volver a registrar tu rostro', 'BIOMETRIC_REENROLL_REQUIRED');
             } else {
                 biometricProfileId = profile.id;
                 try {
@@ -896,12 +944,17 @@ export class AttendanceService {
         };
         let decision: 'ACCEPTED' | 'REVIEW' | 'REJECTED' = 'ACCEPTED';
         const reasonCodes: string[] = [];
+        const primaryReasonCodes: string[] = [];
         const addReason = (value?: string | null) => { if (value && !reasonCodes.includes(value)) reasonCodes.push(value); };
-        if (challengeError) { decision = 'REJECTED'; addReason(challengeError.code); }
-        if (sequence.status === 'FAILED') { decision = 'REJECTED'; addReason(sequence.reasonCode); }
-        if (deviceCheck.status === 'FAILED') { decision = 'REJECTED'; addReason(deviceCheck.reasonCode); }
-        if (branchAuthorization.status === 'FAILED') { decision = 'REJECTED'; addReason(branchAuthorization.reasonCode); }
-        if (branchStatus.status === 'FAILED') { decision = 'REJECTED'; addReason(branchStatus.reasonCode); }
+        const addPrimaryReason = (value?: string | null) => {
+            addReason(value);
+            if (value && !primaryReasonCodes.includes(value)) primaryReasonCodes.push(value);
+        };
+        if (challengeError) { decision = 'REJECTED'; addPrimaryReason(challengeError.code); }
+        if (sequence.status === 'FAILED') { decision = 'REJECTED'; addPrimaryReason(sequence.reasonCode); }
+        if (deviceCheck.status === 'FAILED') { decision = 'REJECTED'; addPrimaryReason(deviceCheck.reasonCode); }
+        if (branchAuthorization.status === 'FAILED') { decision = 'REJECTED'; addPrimaryReason(branchAuthorization.reasonCode); }
+        if (branchStatus.status === 'FAILED') { decision = 'REJECTED'; addPrimaryReason(branchStatus.reasonCode); }
         const scheduleMode = !shift ? (policy.allowUnscheduledPunch ? policy.unscheduledViolationMode : 'BLOCK') : policy.scheduleViolationMode;
         decision = decisionForViolation(decision, schedule.status, scheduleMode);
         // Identidad y ubicación son evidencia constitutiva del auto-marcaje. Una
@@ -914,9 +967,15 @@ export class AttendanceService {
         // Infrastructure failures are never effective, even when the business
         // policy is WARN. The immutable attempt remains reviewable and returns 503.
         if ((providerStatus === 'UNAVAILABLE' || providerStatus === 'ERROR') && decision !== 'REJECTED') decision = 'REVIEW';
-        [schedule, geo.geofence, geo.locationAccuracy, freshness, biometric].forEach((entry) => {
+        [geo.geofence, geo.locationAccuracy, freshness, biometric, schedule].forEach((entry) => {
             if (entry.status === 'FAILED' || entry.status === 'REVIEW') addReason(entry.reasonCode);
         });
+        [geo.geofence, geo.locationAccuracy, freshness, biometric].forEach((entry) => {
+            if (entry.status === 'FAILED' || entry.status === 'REVIEW') addPrimaryReason(entry.reasonCode);
+        });
+        if ((schedule.status === 'FAILED' || schedule.status === 'REVIEW') && scheduleMode !== 'WARN') {
+            addPrimaryReason(schedule.reasonCode);
+        }
         const sequenceKey = decision === 'ACCEPTED' ? `${sessionKey}:${sessionEvents.length}` : null;
         const eventData: Prisma.AttendanceEventUncheckedCreateInput = {
             companyId: input.companyId, userId: input.userId, actorUserId: input.userId,
@@ -930,12 +989,14 @@ export class AttendanceService {
             locationAccuracyM: accuracyM === null ? null : new Prisma.Decimal(accuracyM),
             distanceM: geo.distanceM === null ? null : new Prisma.Decimal(geo.distanceM),
             faceStatus, livenessStatus, providerStatus, providerScore: providerScore === null ? null : new Prisma.Decimal(providerScore),
-            decision, reasonCode: reasonCodes[0] || null, reasonCodes: json(reasonCodes),
+            decision, reasonCode: decision === 'ACCEPTED' ? null : primaryReasonCodes[0] || reasonCodes[0] || null, reasonCodes: json(reasonCodes),
             message: decision === 'ACCEPTED'
                 ? 'Marcaje aceptado'
                 : decision === 'REVIEW'
                     ? 'Marcaje enviado a revisión'
-                    : challengeError?.message || (sequence.status === 'FAILED' ? sequence.message : 'Marcaje rechazado'),
+                    : challengeError?.message || (sequence.status === 'FAILED'
+                        ? sequence.message
+                        : biometric.reasonCode === BIOMETRIC_ENROLLMENT_PENDING_APPROVAL ? biometric.message : 'Marcaje rechazado'),
             checks: json(checks),
         };
         let event: EventForApi;

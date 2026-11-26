@@ -1,34 +1,59 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { tablesAPI, ordersAPI, branchesAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
+import {
+    AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton,
+    Input, NumberInput, PageContent, PageHeader, SegmentedControl,
+    type Column, type Opt, type Tone,
+} from '@/ui';
+import SalonCards from '../components/SalonCards';
 import TableOrdersModal from '../components/TableOrdersModal';
+import LegacyConsolidationReview from '../components/LegacyConsolidationReview';
 import PaymentModal from '../components/PaymentModal';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { canCreatePayment, getUserRoleNames } from '../utils/authz';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned } from 'lucide-react';
-import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
-import { useViewMode } from '../hooks/useViewMode';
-import type { Table, Order, Branch, TableFloorPlan } from '../types';
-import type { SingleValue } from 'react-select';
-import Select from '../components/Select';
-import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
+import { canCreatePayment, canVoidKitchenLine } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
+import { getTableAccess } from '../utils/tableAccess';
+import { Grid3x3, Plus, Edit2, Trash2, Eye, MapPin, MapPinned, History } from 'lucide-react';
+import type {
+    ActiveTableConsolidation,
+    LegacyTableConsolidationCandidate,
+    LegacyTableConsolidationInventory,
+    Table,
+    Order,
+    Branch,
+    TableFloorPlan,
+} from '../types';
 import './Tables.css';
 import TableMap, { type FloorPlanDraft } from '../components/TableMap';
-import { newIdempotencyKey } from '../utils/idempotency';
+import { resolveTablePresentationState } from '../utils/tablePresentation';
+import {
+    getIdempotentAttempt,
+    newIdempotencyKey,
+    type IdempotentAttempt,
+} from '../utils/idempotency';
 import TableOperationModal from '../components/TableOperationModal';
+import TableGroupModal, { type TableGroupFormData } from '../components/TableGroupModal';
 import POS from './POS';
 import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { useCurrency } from '../hooks/useCurrency';
+import { openMinutesByTable, openAmountByTable, openTableOrders } from '../utils/salonInsights';
 import ThemeToggle from '../components/ThemeToggle';
 import KitchenNotificationBell from '../components/KitchenNotificationBell';
+import { doesOrderRemainVisibleAtTable } from '../utils/posOrderBucket';
+import {
+    renderInvoiceHtml,
+    renderInvoiceLoadingHtml,
+    renderPreInvoiceHtml,
+    renderPreInvoiceLoadingHtml,
+    type PrintableInvoiceSnapshot,
+} from '../utils/invoicePrint';
 import { useNavigate } from 'react-router-dom';
+import { getApiErrorMessage } from '../utils/apiError';
+import { markErrorHandled, notifyError } from '../services/notify';
 
 interface ApiValidationError { field?: string; message?: string }
 function extractApiError(error: unknown, fallback: string): string {
@@ -52,18 +77,19 @@ export default function Tables() {
     const { symbol: currencySymbol } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
-    const userRoleNames = getUserRoleNames(user);
-    const canCreateTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
-    const canEditTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
-    const canDeleteTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
-    const canEditMap = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
-    const canTransfer = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO'].includes(role));
-    const canConsolidate = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
-    const canIssueInvoice = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
+    const {
+        canCreateTable,
+        canEditTable,
+        canDeleteTable,
+        canEditMap,
+        canTransfer,
+        canConsolidate,
+        canGroup,
+        canIssueInvoice,
+        canOperatePOS,
+        canChooseBranch,
+    } = getTableAccess(user);
     const canPay = canCreatePayment(user);
-    const canOperatePOS = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'].includes(role));
-    // Managers (company-wide) may create/list tables across branches of their company.
-    const canChooseBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [tables, setTables] = useState<Table[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [branchFilter, setBranchFilter] = useState<number | null>(() => user?.branchId ?? null);
@@ -81,17 +107,42 @@ export default function Tables() {
         branchId: ''
     });
     const [activeTab, setActiveTab] = useState<'general' | 'ubicacion'>('general');
+    const [formDirty, setFormDirty] = useState(false);
 
     // Orders Modal State
     const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
-    const { viewMode, setViewMode } = useViewMode('tables');
+    const canVoidLines = canVoidKitchenLine(user);
+    const [voidLineTarget, setVoidLineTarget] = useState<{ order: Order; itemId: number } | null>(null);
+    const [loadingTableOrders, setLoadingTableOrders] = useState(false);
+    const tableOrderRequestRef = useRef(0);
+    const consolidationLookupRequestRef = useRef(0);
+    const tablesRequestRef = useRef(0);
+    const tablesLoadedScopeRef = useRef<number | null | undefined>(undefined);
+    const reversalAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const [activeConsolidation, setActiveConsolidation] = useState<ActiveTableConsolidation | null>(null);
+    const [loadingConsolidation, setLoadingConsolidation] = useState(false);
+    const [consolidationLookupError, setConsolidationLookupError] = useState<string | null>(null);
+    const [consolidationReversalError, setConsolidationReversalError] = useState<string | null>(null);
+    const [reversingConsolidation, setReversingConsolidation] = useState(false);
+    const legacyReviewAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const [isLegacyReviewOpen, setIsLegacyReviewOpen] = useState(false);
+    const [legacyInventory, setLegacyInventory] = useState<LegacyTableConsolidationInventory | null>(null);
+    const [loadingLegacyInventory, setLoadingLegacyInventory] = useState(false);
+    const [legacyInventoryError, setLegacyInventoryError] = useState<string | null>(null);
+    const [legacyReviewActionError, setLegacyReviewActionError] = useState<string | null>(null);
+    const [markingLegacyCandidateKey, setMarkingLegacyCandidateKey] = useState<string | null>(null);
     const [showMap, setShowMap] = useState(true);
+    const [openOrders, setOpenOrders] = useState<Order[] | null>(null);
+    const [openOrdersFailed, setOpenOrdersFailed] = useState(false);
+    const [metaNow, setMetaNow] = useState(() => Date.now());
     const [savingLayout, setSavingLayout] = useState(false);
     const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
     const [operationTableId, setOperationTableId] = useState<number | null>(null);
     const [submittingOperation, setSubmittingOperation] = useState(false);
+    const [groupTableId, setGroupTableId] = useState<number | null>(null);
+    const [submittingGroup, setSubmittingGroup] = useState(false);
     const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
     const [paymentMode, setPaymentMode] = useState<'single' | 'split'>('single');
@@ -101,18 +152,35 @@ export default function Tables() {
 
     const loadedBranchIds = Array.from(new Set(tables.map((table) => table.branchId)));
     const mapBranchId = branchFilter ?? (loadedBranchIds.length === 1 ? loadedBranchIds[0] : undefined);
+    const mapBranchName = user?.branch?.name
+        || tables.find((table) => table.branchId === mapBranchId)?.branch?.name
+        || 'Sucursal asignada';
+
+    useEffect(() => {
+        if (canChooseBranch) return;
+        setBranchFilter(user?.branchId ?? null);
+    }, [canChooseBranch, user?.branchId]);
 
     const loadTables = useCallback(async () => {
-        setLoading(true);
+        // Full-page loader only for the first load of a branch scope. Background refreshes
+        // (websocket events, post-action reloads) must not unmount the embedded POS or an
+        // in-flight PaymentModal (mixed payments keep idempotency refs in component state).
+        const scopeKey = branchFilter ?? null;
+        const isBackgroundRefresh = tablesLoadedScopeRef.current === scopeKey;
+        const requestId = ++tablesRequestRef.current;
+        if (!isBackgroundRefresh) setLoading(true);
         try {
             const response = await tablesAPI.getAll(branchFilter ?? undefined);
+            if (requestId !== tablesRequestRef.current) return;
             setTables(response.data.data);
+            tablesLoadedScopeRef.current = scopeKey;
         } catch (error) {
+            if (requestId !== tablesRequestRef.current) return;
             console.error('Error loading tables:', error);
-            setTables([]);
+            if (!isBackgroundRefresh) setTables([]);
             showError(extractApiError(error, 'No se pudieron cargar las mesas. No se mostrará un salón vacío como si fuera real.'));
         } finally {
-            setLoading(false);
+            if (requestId === tablesRequestRef.current) setLoading(false);
         }
     }, [branchFilter, showError]);
 
@@ -187,11 +255,12 @@ export default function Tables() {
             });
         }
         setActiveTab('general');
+        setFormDirty(false);
         setIsSidebarOpen(true);
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (editingTable && !canEditTable) {
             showWarning('No tienes permisos para editar mesas');
             return;
@@ -204,20 +273,26 @@ export default function Tables() {
             showWarning('Selecciona la sucursal a la que pertenece la mesa.');
             return;
         }
+        const capacity = parseInt(formData.capacity);
+        if (!Number.isFinite(capacity) || capacity < 1) {
+            setActiveTab('general');
+            showWarning('Indica la capacidad (mínimo 1 persona).');
+            return;
+        }
 
         try {
             if (editingTable) {
                 // La sucursal de una mesa no se reasigna desde la edición.
                 await tablesAPI.update(editingTable.id, {
                     number: formData.number,
-                    capacity: parseInt(formData.capacity),
+                    capacity,
                     location: formData.location,
                     status: formData.status
                 });
             } else {
                 await tablesAPI.create({
                     number: formData.number,
-                    capacity: parseInt(formData.capacity),
+                    capacity,
                     location: formData.location,
                     ...(formData.branchId ? { branchId: parseInt(formData.branchId) } : {})
                 });
@@ -249,25 +324,156 @@ export default function Tables() {
     };
 
     const loadTableOrders = useCallback(async (table: Table) => {
+        const requestId = ++tableOrderRequestRef.current;
+        setLoadingTableOrders(true);
         try {
             const response = await ordersAPI.getAll({
                 tableId: table.id,
             });
-            const active = response.data.data.filter((o: Order) =>
-                ACTIVE_ORDER_STATUSES.includes(o.status)
-                || (o.status === 'DELIVERED' && o.financialStatus !== 'PAID')
+            const active = response.data.data.filter((order: Order) =>
+                doesOrderRemainVisibleAtTable(order)
             );
-            setTableOrders(active);
+            if (requestId === tableOrderRequestRef.current) setTableOrders(active);
         } catch (error) {
             console.error('Error loading table orders:', error);
-            showError('No se pudieron cargar las órdenes de esta mesa.');
+            if (requestId === tableOrderRequestRef.current) {
+                showError(getApiErrorMessage(error, 'No se pudieron cargar las órdenes de esta mesa'));
+            }
+        } finally {
+            if (requestId === tableOrderRequestRef.current) setLoadingTableOrders(false);
         }
     }, [showError]);
 
+    const loadActiveConsolidation = useCallback(async (
+        tableId: number,
+    ): Promise<ActiveTableConsolidation | null | undefined> => {
+        const requestId = ++consolidationLookupRequestRef.current;
+        if (!canConsolidate) {
+            setActiveConsolidation(null);
+            setConsolidationLookupError(null);
+            setLoadingConsolidation(false);
+            return null;
+        }
+
+        setLoadingConsolidation(true);
+        setConsolidationLookupError(null);
+        try {
+            const response = await tablesAPI.getActiveConsolidation({ tableId });
+            const discovered = response.data.data as ActiveTableConsolidation | null;
+            const active = discovered?.status === 'ACTIVE' ? discovered : null;
+            if (requestId === consolidationLookupRequestRef.current) {
+                setActiveConsolidation(active);
+            }
+            return active;
+        } catch (error) {
+            console.error('Error loading active table consolidation:', error);
+            if (requestId === consolidationLookupRequestRef.current) {
+                setActiveConsolidation(null);
+                setConsolidationLookupError(extractApiError(
+                    error,
+                    'No se pudo verificar si esta cuenta proviene de una consolidación.',
+                ));
+            }
+            return undefined;
+        } finally {
+            if (requestId === consolidationLookupRequestRef.current) {
+                setLoadingConsolidation(false);
+            }
+        }
+    }, [canConsolidate]);
+
     const handleViewOrders = async (table: Table) => {
         setSelectedTable(table);
+        setTableOrders([]);
+        setActiveConsolidation(null);
+        setConsolidationLookupError(null);
+        setConsolidationReversalError(null);
         setIsOrdersModalOpen(true);
-        await loadTableOrders(table);
+        await Promise.all([
+            loadTableOrders(table),
+            loadActiveConsolidation(table.id),
+        ]);
+    };
+
+    const loadLegacyInventory = useCallback(async () => {
+        if (!canConsolidate) {
+            setLegacyInventory(null);
+            return;
+        }
+        setLoadingLegacyInventory(true);
+        setLegacyInventoryError(null);
+        try {
+            const response = await tablesAPI.getLegacyConsolidationInventory(
+                branchFilter ?? undefined,
+            );
+            setLegacyInventory(response.data.data as LegacyTableConsolidationInventory);
+        } catch (error) {
+            console.error('Error loading legacy table consolidations:', error);
+            setLegacyInventory(null);
+            setLegacyInventoryError(extractApiError(
+                error,
+                'No se pudo cargar el inventario de consolidaciones históricas.',
+            ));
+        } finally {
+            setLoadingLegacyInventory(false);
+        }
+    }, [branchFilter, canConsolidate]);
+
+    const openLegacyReview = () => {
+        if (!canConsolidate) return;
+        setIsLegacyReviewOpen(true);
+        setLegacyReviewActionError(null);
+        void loadLegacyInventory();
+    };
+
+    const markLegacyConsolidation = async (
+        candidate: LegacyTableConsolidationCandidate,
+        note: string,
+    ): Promise<boolean> => {
+        if (
+            !canConsolidate
+            || candidate.reversible !== false
+            || candidate.currentEvidenceReviewed
+        ) return false;
+        const outcome = candidate.classification === 'NOT_REVERSIBLE'
+            ? 'ACKNOWLEDGED_NO_AUTOMATIC_REVERSAL' as const
+            : 'EXTERNAL_EVIDENCE_REQUIRED' as const;
+        const fingerprint = [
+            'review-legacy-table-consolidation',
+            candidate.candidateKey,
+            candidate.evidenceHash,
+            outcome,
+            note,
+        ].join(':');
+        const attempt = getIdempotentAttempt(legacyReviewAttemptRef.current, fingerprint);
+        legacyReviewAttemptRef.current = attempt;
+        setLegacyReviewActionError(null);
+        setMarkingLegacyCandidateKey(candidate.candidateKey);
+        try {
+            const response = await tablesAPI.markLegacyConsolidation(candidate.candidateKey, {
+                expectedEvidenceHash: candidate.evidenceHash,
+                resolutionKey: attempt.key,
+                outcome,
+                note,
+            });
+            legacyReviewAttemptRef.current = null;
+            showSuccess(
+                response.data.message
+                || 'Revisión histórica registrada sin modificar órdenes ni productos.',
+            );
+            void loadLegacyInventory();
+            return true;
+        } catch (error) {
+            const message = extractApiError(
+                error,
+                'No se pudo registrar la revisión histórica.',
+            );
+            setLegacyReviewActionError(message);
+            showError(message);
+            return false;
+        } finally {
+            setMarkingLegacyCandidateKey(null);
+        }
     };
 
     const handleOpenPOS = (table: Table) => {
@@ -290,18 +496,127 @@ export default function Tables() {
             showWarning('Tu rol no puede emitir facturas.');
             return;
         }
+        // Mobile browsers only allow popups inside the original user gesture.
+        // Reserve the window before awaiting fiscal issuance; never issue and
+        // then silently lose the printable document to a popup blocker.
+        const isFiscalReprint = Boolean(order.invoiceNumber);
+        const invoiceWindow = window.open('', '_blank');
+        if (!invoiceWindow) {
+            showError('No se pudo abrir la factura. Permite ventanas emergentes e inténtalo de nuevo; no se emitió ningún documento.');
+            return;
+        }
+        try {
+            invoiceWindow.document.write(
+                isFiscalReprint
+                    ? renderInvoiceLoadingHtml(order.id)
+                    : renderPreInvoiceLoadingHtml(order.id),
+            );
+            invoiceWindow.document.close();
+        } catch (popupError) {
+            console.error('Invoice popup could not be prepared:', popupError);
+            if (!invoiceWindow.closed) invoiceWindow.close();
+            showError('No se pudo preparar la ventana de factura; no se emitió ningún documento.');
+            return;
+        }
+
+        setBusyOrderId(order.id);
+        let invoice: PrintableInvoiceSnapshot;
+        try {
+            const response = isFiscalReprint
+                ? await invoicesAPI.getData(order.id)
+                : await invoicesAPI.issuePreInvoice(order.id);
+            invoice = response.data?.data as PrintableInvoiceSnapshot;
+            const invoiceNumber = invoice?.invoiceNumber;
+            if (!invoiceNumber) {
+                throw new Error('El documento no devolvió una referencia imprimible.');
+            }
+        } catch (error) {
+            invoiceWindow.close();
+            showError(extractApiError(
+                error,
+                isFiscalReprint
+                    ? 'No se pudo recuperar la factura.'
+                    : 'No se pudo emitir la prefactura.',
+            ));
+            setBusyOrderId(null);
+            return;
+        }
+
+        const invoiceNumber = invoice.invoiceNumber;
+        try {
+            const invoiceHtml = isFiscalReprint
+                ? renderInvoiceHtml(invoice)
+                : renderPreInvoiceHtml(invoice);
+            invoiceWindow.document.open();
+            invoiceWindow.document.write(invoiceHtml);
+            invoiceWindow.document.close();
+            invoiceWindow.focus();
+            window.setTimeout(() => {
+                if (!invoiceWindow.closed) invoiceWindow.print();
+            }, 250);
+        } catch (printError) {
+            console.error('Invoice issued but printable snapshot could not be shown:', printError);
+            if (!invoiceWindow.closed) invoiceWindow.close();
+            showWarning(isFiscalReprint
+                ? `La factura ${invoiceNumber} existe, pero no se pudo mostrar para imprimir.`
+                : 'La prefactura fue emitida, pero no se pudo mostrar. Usa Reimprimir prefactura.');
+        }
+
+        try {
+            let nextOrder: Order = isFiscalReprint
+                ? {
+                    ...order,
+                    invoiceNumber,
+                    invoicedAt: invoice.date || order.invoicedAt,
+                    invoiceFiscalStatus: 'ISSUED',
+                }
+                : {
+                    ...order,
+                    preInvoicedAt: invoice.date || order.preInvoicedAt,
+                };
+            try {
+                const refreshed = await ordersAPI.getById(order.id);
+                nextOrder = refreshed.data.data as Order;
+            } catch (refreshError) {
+                console.error('Invoice issued but table order refresh failed:', refreshError);
+                notifyError(refreshError, isFiscalReprint
+                    ? 'La factura existe, pero el detalle de la orden no pudo actualizarse'
+                    : 'La prefactura fue emitida, pero el detalle no pudo actualizarse (recarga antes de cobrar)', { type: 'warning' });
+            }
+            setTableOrders((current) => current.map((item) => item.id === nextOrder.id ? nextOrder : item));
+            await refreshOperationalTable();
+            showSuccess(isFiscalReprint
+                ? `Factura ${invoiceNumber} lista para reimpresión.`
+                : 'Prefactura emitida. La cuenta quedó habilitada para cobrar.');
+        } catch (error) {
+            console.error('Invoice issued but table refresh failed:', error);
+            notifyError(error, isFiscalReprint
+                ? `La factura ${invoiceNumber} está disponible, pero la mesa no pudo refrescarse`
+                : 'La prefactura fue emitida, pero la mesa no pudo refrescarse (recarga antes de cobrar)', { type: 'warning' });
+        } finally {
+            setBusyOrderId(null);
+        }
+    };
+
+    const handleReversePreInvoice = async (order: Order, reason: string): Promise<boolean> => {
+        if (!canIssueInvoice) {
+            showWarning('Tu rol no puede revertir prefacturas.');
+            return false;
+        }
         setBusyOrderId(order.id);
         try {
-            const response = await invoicesAPI.issue(order.id);
-            const invoiceNumber = response.data?.data?.invoiceNumber as string | undefined;
+            await invoicesAPI.reversePreInvoice(order.id, reason);
             const refreshed = await ordersAPI.getById(order.id);
             const nextOrder = refreshed.data.data as Order;
-            setTableOrders((current) => current.map((item) => item.id === nextOrder.id ? nextOrder : item));
-            await loadTables();
-            await loadFloorPlan();
-            showSuccess(`Factura ${invoiceNumber || ''} emitida correctamente.`.trim());
+            setTableOrders((current) =>
+                current.map((item) => item.id === nextOrder.id ? nextOrder : item)
+            );
+            await refreshOperationalTable();
+            showSuccess('Prefactura revertida. Ya puedes agregar productos a la misma cuenta.');
+            return true;
         } catch (error) {
-            showError(extractApiError(error, 'No se pudo emitir la factura.'));
+            showError(extractApiError(error, 'No se pudo revertir la prefactura.'));
+            return false;
         } finally {
             setBusyOrderId(null);
         }
@@ -312,16 +627,16 @@ export default function Tables() {
             showWarning('Tu rol no puede procesar pagos.');
             return;
         }
-        if (!order.invoiceNumber) {
-            showWarning('Primero debes emitir la factura de esta orden.');
+        if (!order.preInvoicedAt && !order.invoiceNumber) {
+            showWarning('Primero debes emitir la prefactura de esta orden.');
             return;
         }
         try {
             const response = await cashShiftsAPI.getActiveStatus();
             setCashShiftStatus(response.data.data as CashShiftScope);
-        } catch {
+        } catch (error) {
             setCashShiftStatus(null);
-            showWarning('No se pudo validar el turno de caja; el efectivo permanecerá bloqueado.');
+            notifyError(error, 'No se pudo validar el turno de caja (el efectivo permanecerá bloqueado)', { type: 'warning' });
         }
         setPaymentMode(mode);
         setPaymentOrder(order);
@@ -338,12 +653,19 @@ export default function Tables() {
             ].includes(message.type)) return;
             void loadTables();
             void loadFloorPlan();
-            if (selectedTable) void loadTableOrders(selectedTable);
+            if (selectedTable) {
+                void loadTableOrders(selectedTable);
+                void loadActiveConsolidation(selectedTable.id);
+            }
         });
-    }, [loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
+    }, [loadActiveConsolidation, loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
 
     const filteredTables = statusFilter
-        ? tables.filter(t => t.status === statusFilter)
+        ? tables.filter((table) =>
+            ['AVAILABLE', 'OCCUPIED', 'PENDING_PAYMENT'].includes(statusFilter)
+                ? resolveTablePresentationState(table) === statusFilter
+                : table.status === statusFilter
+        )
         : tables;
 
     const handleSaveLayout = async (draft: FloorPlanDraft) => {
@@ -393,6 +715,8 @@ export default function Tables() {
             showSuccess('Plano guardado. Las posiciones, formas y salones ya quedaron persistidos.');
         } catch (error) {
             showError(extractApiError(error, 'No se pudo guardar el plano de mesas'));
+            // Already toasted: keep the global unhandledrejection handler from repeating it.
+            markErrorHandled(error);
             throw error;
         } finally {
             setSavingLayout(false);
@@ -424,12 +748,13 @@ export default function Tables() {
     const handleConsolidate = async (data: { destinationTableId: number; sourceTableIds: number[]; reason?: string }) => {
         setSubmittingOperation(true);
         try {
-            await tablesAPI.consolidate(data, newIdempotencyKey());
+            const response = await tablesAPI.consolidate(data, newIdempotencyKey());
+            const consolidatedOrder = response.data.data as Order;
             setOperation(null);
             setOperationTableId(null);
             await loadTables();
             await loadFloorPlan();
-            showSuccess('Las cuentas fueron consolidadas en la mesa principal.');
+            showSuccess(`Las cuentas fueron consolidadas en la mesa principal (orden #${consolidatedOrder.id}). Emite la factura para continuar al cobro.`);
         } catch (error) {
             showError(extractApiError(error, 'No se pudieron consolidar las cuentas'));
         } finally {
@@ -437,12 +762,106 @@ export default function Tables() {
         }
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'AVAILABLE': return 'available';
-            case 'OCCUPIED': return 'occupied';
-            case 'RESERVED': return 'reserved';
-            default: return 'unavailable';
+    const handleReverseConsolidation = async (reason: string): Promise<boolean> => {
+        if (!canConsolidate || !activeConsolidation || activeConsolidation.status !== 'ACTIVE') {
+            showWarning('No existe una consolidación activa y autorizada para revertir.');
+            return false;
+        }
+
+        const fingerprint = [
+            'reverse-table-consolidation',
+            activeConsolidation.id,
+            activeConsolidation.version,
+            reason.trim(),
+        ].join(':');
+        const attempt = getIdempotentAttempt(reversalAttemptRef.current, fingerprint);
+        reversalAttemptRef.current = attempt;
+        setConsolidationReversalError(null);
+        setReversingConsolidation(true);
+
+        try {
+            await tablesAPI.reverseConsolidation(activeConsolidation.id, {
+                expectedVersion: activeConsolidation.version,
+                reversalKey: attempt.key,
+                reason: reason.trim(),
+            });
+            reversalAttemptRef.current = null;
+
+            const selected = selectedTable;
+            await Promise.all([
+                loadTables(),
+                loadFloorPlan(),
+                selected ? loadTableOrders(selected) : Promise.resolve(),
+                selected ? loadActiveConsolidation(selected.id) : Promise.resolve(null),
+            ]);
+            setConsolidationReversalError(null);
+            showSuccess('Consolidación revertida. Las cuentas regresaron a sus mesas originales.');
+            return true;
+        } catch (error) {
+            const message = extractApiError(
+                error,
+                'No se pudo revertir la consolidación. Verifica que no existan pagos, factura, entrega, cambios u otra ocupación.',
+            );
+            setConsolidationReversalError(message);
+            showError(message);
+            if (selectedTable) await loadActiveConsolidation(selectedTable.id);
+            return false;
+        } finally {
+            setReversingConsolidation(false);
+        }
+    };
+
+    const handleSaveGroup = async (data: TableGroupFormData) => {
+        setSubmittingGroup(true);
+        try {
+            if (data.mode === 'EDIT') {
+                await tablesAPI.updateGroup(data.groupId, {
+                    primaryTableId: data.primaryTableId,
+                    expectedPrimaryTableId: data.expectedPrimaryTableId,
+                    memberTableIds: data.memberTableIds,
+                    expectedMemberTableIds: data.expectedMemberTableIds,
+                    reason: data.reason
+                }, newIdempotencyKey());
+            } else {
+                await tablesAPI.createGroup({
+                    primaryTableId: data.primaryTableId,
+                    memberTableIds: data.memberTableIds,
+                    reason: data.reason
+                }, newIdempotencyKey());
+            }
+            setGroupTableId(null);
+            await loadTables();
+            await loadFloorPlan();
+            const tableCount = data.mode === 'EDIT' ? data.memberTableIds.length : data.memberTableIds.length + 1;
+            showSuccess(data.mode === 'EDIT'
+                ? `Grupo actualizado: permanecen ${tableCount} mesas. Las cuentas conservaron su mesa.`
+                : `Se unieron ${tableCount} mesas. Cada silla sigue representando un comensal.`);
+        } catch (error) {
+            showError(extractApiError(error, data.mode === 'EDIT' ? 'No se pudo actualizar el grupo de mesas' : 'No se pudieron unir las mesas'));
+        } finally {
+            setSubmittingGroup(false);
+        }
+    };
+
+    const handleCloseGroup = async (table: Table) => {
+        const group = table.activeTableGroup;
+        if (!group) return;
+        const accepted = await confirm(
+            'Las mesas se separarán físicamente. Las cuentas y productos no se moverán; cada cuenta permanecerá en su mesa actual.',
+            { title: 'Separar mesas' }
+        );
+        if (!accepted) return;
+        setIsOrdersModalOpen(false);
+        setSubmittingGroup(true);
+        try {
+            await tablesAPI.closeGroup(group.id, { reason: 'Separación manual desde el mapa operativo' }, newIdempotencyKey());
+            await loadTables();
+            await loadFloorPlan();
+            showSuccess('Las mesas se separaron. Las que conservan una orden siguen ocupadas.');
+        } catch (error) {
+            showError(extractApiError(error, 'No se pudieron separar las mesas'));
+        } finally {
+            setSubmittingGroup(false);
         }
     };
 
@@ -451,87 +870,157 @@ export default function Tables() {
             case 'AVAILABLE': return 'Disponible';
             case 'OCCUPIED': return 'Ocupada';
             case 'RESERVED': return 'Reservada';
-            default: return 'Fuera de Servicio';
+            default: return 'Fuera de servicio';
         }
     };
+
+    const getStatusTone = (status: string): Tone => {
+        switch (status) {
+            case 'AVAILABLE': return 'success';
+            case 'OCCUPIED': return 'warning';
+            case 'RESERVED': return 'primary';
+            default: return 'neutral';
+        }
+    };
+
+    const setField = (patch: Partial<typeof formData>) => {
+        setFormData((current) => ({ ...current, ...patch }));
+        setFormDirty(true);
+    };
+
+    const branchOptions: Opt<number>[] = branches.map((b) => ({ value: b.id, label: b.name }));
+    const statusSegments: { value: string; label: string }[] = [
+        { value: 'ALL', label: 'Todas' },
+        { value: 'AVAILABLE', label: 'Disponibles' },
+        { value: 'OCCUPIED', label: 'Ocupadas' },
+        { value: 'RESERVED', label: 'Reservadas' },
+    ];
+    const operationalStatusOptions: Opt<Table['status']>[] = [
+        { value: 'AVAILABLE', label: 'Disponible' },
+        { value: 'RESERVED', label: 'Reservada' },
+        { value: 'OUT_OF_SERVICE', label: 'Fuera de servicio' },
+    ];
+
+    const tableColumns: Column<Table>[] = [
+        { key: 'number', header: 'Mesa', width: '8rem', render: (table) => `Mesa ${table.number}` },
+        ...(canChooseBranch ? [{ key: 'branch', header: 'Sucursal', width: '1fr', render: (table: Table) => table.branch?.name || '-' }] : []),
+        { key: 'capacity', header: 'Sillas / comensales', width: '12rem', type: 'number' as const, decimals: 0, accessor: (table) => table.capacity, render: (table) => `${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'} / ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}` },
+        { key: 'location', header: 'Ubicación', width: '1fr', hideBelow: 'md' as const, render: (table) => table.location || '-' },
+        { key: 'status', header: 'Estado', width: '10rem', type: 'status' as const, render: (table) => <Badge tone={getStatusTone(table.status)} dot>{getStatusText(table.status)}</Badge> },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            width: '8rem',
+            type: 'actions' as const,
+            render: (table) => (
+                <>
+                    <IconButton icon={Eye} label={`Ver órdenes de la mesa ${table.number}`} onClick={() => void handleViewOrders(table)} />
+                    {canEditTable && <IconButton icon={Edit2} label={`Editar mesa ${table.number}`} onClick={() => handleOpenSidebar(table)} />}
+                    {canDeleteTable && <IconButton icon={Trash2} label={`Eliminar mesa ${table.number}`} onClick={() => void handleDelete(table.id)} />}
+                </>
+            ),
+        },
+    ];
+
+    const mapBranchForMeta = mapBranchId;
+    useEffect(() => {
+        let cancelled = false;
+        const loadOpenOrders = async () => {
+            try {
+                const res = await ordersAPI.getActive(mapBranchForMeta, true);
+                if (cancelled) return;
+                setOpenOrders((res.data.data ?? []) as Order[]);
+                setOpenOrdersFailed(false);
+            } catch {
+                if (!cancelled) setOpenOrdersFailed(true);
+            }
+            if (!cancelled) setMetaNow(Date.now());
+        };
+        void loadOpenOrders();
+        const timer = window.setInterval(() => { void loadOpenOrders(); }, 60000);
+        return () => { cancelled = true; window.clearInterval(timer); };
+    }, [mapBranchForMeta]);
+
+    const tableMeta = useMemo(() => {
+        if (!openOrders) return undefined;
+        const minutes = openMinutesByTable(openOrders, metaNow);
+        const amounts = openAmountByTable(openOrders);
+        const meta = new Map<number, { minutes: number; amount: number | null }>();
+        for (const order of openTableOrders(openOrders)) {
+            if (order.tableId == null) continue;
+            meta.set(order.tableId, { minutes: minutes.get(order.tableId) ?? 0, amount: amounts.get(order.tableId) ?? null });
+        }
+        return meta;
+    }, [openOrders, metaNow]);
 
     if (loading) return <div className="tables-loading">Cargando...</div>;
 
     return (
         <div className={`tables-page ${showMap ? 'tables-page--map' : 'tables-page--list'}`}>
-            {!showMap && <PageHeader
-                title="Gestión de Mesas"
-                icon={Grid3x3}
-                actions={(
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <ThemeToggle />
-                        <button
-                            type="button"
-                            className="tables-map-toggle"
-                            onClick={() => setShowMap(true)}
-                        >
-                            <MapPinned size={18} /> Plano
-                        </button>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        {canCreateTable && (
-                            <Button onClick={() => handleOpenSidebar()}>
-                                <Plus size={20} />
-                                Nueva Mesa
-                            </Button>
+            {!showMap && (
+                <PageContent>
+                    <PageHeader
+                        title="Gestión de mesas"
+                        description="Plano, estado y consumo abierto del salón"
+                        actions={(
+                            <>
+                                <ThemeToggle />
+                                {canConsolidate && (
+                                    <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
+                                )}
+                                <Button icon={MapPinned} onClick={() => setShowMap(true)}>Plano</Button>
+                                {canCreateTable && (
+                                    <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>Nueva mesa</Button>
+                                )}
+                            </>
+                        )}
+                    />
+
+                    <SalonCards branchId={branchFilter} tables={tables} onReviewOrders={() => navigate('/orders')} />
+
+                    <div className="tables-filters-row">
+                        <SegmentedControl
+                            ariaLabel="Estado de la mesa"
+                            options={statusSegments}
+                            value={statusFilter ?? 'ALL'}
+                            onChange={(value) => setStatusFilter(value === 'ALL' ? null : value)}
+                        />
+                        {canChooseBranch && branches.length > 1 && (
+                            <div className="tables-branch-filter">
+                                <AppSelect<number>
+                                    aria-label="Filtrar por sucursal"
+                                    placeholder="Todas las sucursales"
+                                    options={branchOptions}
+                                    value={branchFilter}
+                                    onChange={setBranchFilter}
+                                />
+                            </div>
                         )}
                     </div>
-                )}
-            />}
 
-            {/* Filters Row */}
-            {!showMap && <div className="tables-filters-row">
-                <div className="table-status-filters">
-                    <button
-                        className={`table-status-btn ${statusFilter === null ? 'active' : ''}`}
-                        onClick={() => setStatusFilter(null)}
-                    >
-                        Todas
-                    </button>
-                    <button
-                        className={`table-status-btn available ${statusFilter === 'AVAILABLE' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('AVAILABLE')}
-                    >
-                        Disponibles
-                    </button>
-                    <button
-                        className={`table-status-btn occupied ${statusFilter === 'OCCUPIED' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('OCCUPIED')}
-                    >
-                        Ocupadas
-                    </button>
-                    <button
-                        className={`table-status-btn reserved ${statusFilter === 'RESERVED' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('RESERVED')}
-                    >
-                        Reservadas
-                    </button>
-                </div>
-
-                {canChooseBranch && branches.length > 1 && (
-                    <div className="tables-branch-filter">
-                        <Select
-                            placeholder="Todas las sucursales"
-                            options={[
-                                { value: 'all', label: 'Todas las sucursales' },
-                                ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))
-                            ]}
-                            value={
-                                branchFilter
-                                    ? { value: branchFilter.toString(), label: branches.find((b) => b.id === branchFilter)?.name || 'Sucursal' }
-                                    : { value: 'all', label: 'Todas las sucursales' }
-                            }
-                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                setBranchFilter(option && option.value !== 'all' ? parseInt(option.value) : null)}
-                            isSearchable={branches.length > 6}
-                        />
-                    </div>
-                )}
-            </div>}
+                    <DataTable
+                        ariaLabel="Mesas"
+                        columns={tableColumns}
+                        rows={filteredTables}
+                        rowKey={(table) => table.id}
+                        resetKey={`${statusFilter}-${branchFilter}`}
+                        empty={(
+                            <EmptyState
+                                icon={Grid3x3}
+                                title={`No hay mesas ${statusFilter ? 'con este estado' : 'registradas'}`}
+                                action={(
+                                    <Button
+                                        onClick={() => (statusFilter ? setStatusFilter(null) : handleOpenSidebar())}
+                                        disabled={!statusFilter && !canCreateTable}
+                                    >
+                                        {statusFilter ? 'Ver todas' : 'Crear primera mesa'}
+                                    </Button>
+                                )}
+                            />
+                        )}
+                    />
+                </PageContent>
+            )}
 
             {showMap && !mapBranchId && (
                 <div className="table-map-branch-required">
@@ -544,6 +1033,9 @@ export default function Tables() {
                 <TableMap
                     plan={floorPlan}
                     statusFilter={statusFilter}
+                    tableMeta={tableMeta}
+                    tableMetaUnavailable={openOrdersFailed && !openOrders}
+                    currencySymbol={currencySymbol}
                     onStatusFilterChange={setStatusFilter}
                     canEdit={canEditMap}
                     saving={savingLayout}
@@ -551,349 +1043,150 @@ export default function Tables() {
                     onSave={handleSaveLayout}
                     onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
                     onReturnToAdministration={canEditMap ? () => navigate('/dashboard') : undefined}
-                    themeControl={<KitchenNotificationBell inline />}
+                    themeControl={(
+                        <div className="table-map-utility-controls">
+                            {canConsolidate && (
+                                <button type="button" onClick={openLegacyReview}>
+                                    <History size={18} /> Históricos
+                                </button>
+                            )}
+                            <KitchenNotificationBell inline />
+                        </div>
+                    )}
+                    insights={<SalonCards branchId={mapBranchId} tables={tables} onReviewOrders={() => navigate('/orders')} />}
                     branchControl={canChooseBranch && branches.length > 1 ? (
                         <div className="table-map-branch-control">
-                            <Select
+                            <AppSelect<number>
+                                aria-label="Sucursal"
                                 placeholder="Sucursal"
-                                options={branches.map((branch) => ({ value: branch.id.toString(), label: branch.name }))}
-                                value={branchFilter ? {
-                                    value: branchFilter.toString(),
-                                    label: branches.find((branch) => branch.id === branchFilter)?.name || 'Sucursal'
-                                } : null}
-                                onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                    setBranchFilter(option ? Number(option.value) : null)}
-                                isSearchable={branches.length > 6}
+                                options={branchOptions}
+                                value={branchFilter}
+                                onChange={setBranchFilter}
                             />
+                        </div>
+                    ) : !canChooseBranch ? (
+                        <div className="table-map-fixed-branch" aria-label={`Sucursal activa: ${mapBranchName}`}>
+                            <MapPin size={16} aria-hidden="true" />
+                            <span><small>Sucursal activa</small><strong>{mapBranchName}</strong></span>
                         </div>
                     ) : undefined}
                 />
             )}
 
-            {!showMap && viewMode === 'table' && filteredTables.length > 0 && (
-                <CatalogTable<Table>
-                    rows={filteredTables}
-                    rowKey={(table) => table.id}
-                    resetKey={`${statusFilter}-${branchFilter}`}
-                    columns={[
-                        {
-                            key: 'number',
-                            header: 'Mesa',
-                            render: (table) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">Mesa {table.number}</span>
-                                </div>
-                            ),
-                        },
-                        ...(canChooseBranch ? [{
-                            key: 'branch',
-                            header: 'Sucursal',
-                            render: (table: Table) => table.branch?.name || '-',
-                        }] : []),
-                        {
-                            key: 'capacity',
-                            header: 'Capacidad',
-                            align: 'center',
-                            render: (table) => `${table.capacity} pers.`,
-                        },
-                        {
-                            key: 'location',
-                            header: 'Ubicación',
-                            render: (table) => table.location || '-',
-                        },
-                        {
-                            key: 'status',
-                            header: 'Estado',
-                            render: (table) => (
-                                <span className={`catalog-pill ${table.status === 'AVAILABLE' ? 'ok' : table.status === 'OCCUPIED' ? 'warning' : 'neutral'}`}>
-                                    {getStatusText(table.status)}
-                                </span>
-                            ),
-                        },
-                        {
-                            key: 'actions',
-                            header: 'Acciones',
-                            align: 'right',
-                            render: (table) => (
-                                <div className="catalog-table-actions">
-                                    <button
-                                        type="button"
-                                        className="catalog-action-btn"
-                                        onClick={() => handleViewOrders(table)}
-                                        title="Ver órdenes"
-                                    >
-                                        <Eye size={16} />
-                                    </button>
-                                    {canEditTable && (
-                                        <button
-                                            type="button"
-                                            className="catalog-action-btn"
-                                            onClick={() => handleOpenSidebar(table)}
-                                            title="Editar"
-                                        >
-                                            <Edit2 size={16} />
-                                        </button>
-                                    )}
-                                    {canDeleteTable && (
-                                        <button
-                                            type="button"
-                                            className="catalog-action-btn danger"
-                                            onClick={() => handleDelete(table.id)}
-                                            title="Eliminar"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            ),
-                        },
-                    ] as CatalogColumn<Table>[]}
+            <FullScreenModal
+                isOpen={isLegacyReviewOpen}
+                onClose={() => setIsLegacyReviewOpen(false)}
+                title="Consolidaciones históricas"
+                subtitle="Inventario de operaciones anteriores al registro transaccional reversible."
+            >
+                <LegacyConsolidationReview
+                    inventory={legacyInventory}
+                    loading={loadingLegacyInventory}
+                    error={legacyInventoryError}
+                    actionError={legacyReviewActionError}
+                    markingCandidateKey={markingLegacyCandidateKey}
+                    onRetry={() => void loadLegacyInventory()}
+                    onMark={markLegacyConsolidation}
                 />
-            )}
+            </FullScreenModal>
 
-            {!showMap && viewMode === 'cards' && (
-            <div className="tables-grid-new">
-                {filteredTables.map(table => {
-                    return (
-                        <div key={table.id} className={`table-card-new ${getStatusColor(table.status)}`}>
-                            {/* Status Badge */}
-                            <div className={`status-badge-new ${getStatusColor(table.status)}`}>
-                                {getStatusText(table.status)}
-                            </div>
-
-                            {/* Table Info */}
-                            <div className="table-card-body-new">
-                                <div className="table-number-new">Mesa {table.number}</div>
-
-                                {canChooseBranch && table.branch && (
-                                    <div className="table-branch-tag">
-                                        <Building2 size={12} />
-                                        <span>{table.branch.name}</span>
-                                    </div>
-                                )}
-
-                                <div className="table-details-new">
-                                    <div className="detail-item">
-                                        <Users size={16} />
-                                        <span>{table.capacity} personas</span>
-                                    </div>
-                                    {table.location && (
-                                        <div className="detail-item">
-                                            <MapPin size={16} />
-                                            <span>{table.location}</span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Order Count for Occupied Tables */}
-                                {table.status === 'OCCUPIED' && (
-                                    <div className="order-count-badge">
-                                        📋 Ver órdenes activas
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Actions */}
-                            <div className="table-card-actions-new">
-                                <button
-                                    className="action-btn-new view"
-                                    onClick={() => handleViewOrders(table)}
-                                    title="Ver Órdenes"
-                                >
-                                    <Eye size={20} />
-                                    <span>Ver</span>
-                                </button>
-                                {canEditTable && (
-                                    <button
-                                        className="action-btn-new edit"
-                                        onClick={() => handleOpenSidebar(table)}
-                                        title="Editar"
-                                    >
-                                        <Edit2 size={20} />
-                                        <span>Editar</span>
-                                    </button>
-                                )}
-                                {canDeleteTable && (
-                                    <button
-                                        className="action-btn-new delete"
-                                        onClick={() => handleDelete(table.id)}
-                                        title="Eliminar"
-                                    >
-                                        <Trash2 size={20} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-            )}
-
-            {!showMap && filteredTables.length === 0 && (
-                <div className="no-tables-message">
-                    <Grid3x3 size={48} />
-                    <p>No hay mesas {statusFilter ? 'con este estado' : 'registradas'}</p>
-                    <Button
-                        onClick={() => statusFilter ? setStatusFilter(null) : handleOpenSidebar()}
-                        disabled={!statusFilter && !canCreateTable}
-                    >
-                        {statusFilter ? 'Ver todas' : 'Crear primera mesa'}
-                    </Button>
-                </div>
-            )}
-
-            {/* Create/Edit Sidebar */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
-                title={editingTable ? 'Editar Mesa' : 'Nueva Mesa'}
+                title={editingTable ? 'Editar mesa' : 'Nueva mesa'}
+                dirty={formDirty}
+                tabs={[{ id: 'general', label: 'General' }, { id: 'ubicacion', label: 'Ubicación' }]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as 'general' | 'ubicacion')}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="secondary" onClick={requestClose}>Cancelar</Button>
+                        <Button type="submit" form="table-form" variant="primary">
+                            {editingTable ? 'Actualizar mesa' : 'Guardar mesa'}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content table-modal-content">
-                    {/* Tabs Navigation */}
-                    <div className="modal-tabs">
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'general'}
-                            className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('general')}
-                        >
-                            <Grid3x3 size={18} />
-                            <span>General</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === 'ubicacion'}
-                            className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('ubicacion')}
-                        >
-                            <MapPin size={18} />
-                            <span>Ubicación</span>
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            {activeTab === 'general' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Users size={18} />
-                                        <h3>Información de la Mesa</h3>
-                                    </div>
-
-                                    {editingTable ? (
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label">Sucursal</label>
-                                            <div className="modal-static-field">
-                                                <Building2 size={16} />
-                                                <span>{editingTable.branch?.name || `Sucursal #${editingTable.branchId}`}</span>
-                                            </div>
-                                        </div>
-                                    ) : canChooseBranch && (
-                                        <div className="modal-input-group">
-                                            <Select
-                                                variant="modal"
-                                                label="Sucursal"
-                                                placeholder="Selecciona la sucursal..."
-                                                options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
-                                                value={
-                                                    formData.branchId
-                                                        ? {
-                                                            value: formData.branchId,
-                                                            label: branches.find((b) => b.id.toString() === formData.branchId)?.name || ''
-                                                        }
-                                                        : null
-                                                }
-                                                onChange={(option: SingleValue<{ value: string; label: string }>) =>
-                                                    setFormData({ ...formData, branchId: option?.value || '' })}
-                                                isSearchable={branches.length > 6}
-                                            />
-                                        </div>
-                                    )}
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="table-number">Número/Nombre</label>
-                                            <input
-                                                id="table-number"
-                                                type="text"
-                                                className="modal-standard-input"
-                                                value={formData.number}
-                                                onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-                                                required
-                                                placeholder="Ej: 01, A2..."
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="table-capacity">Capacidad (Personas)</label>
-                                            <input
-                                                id="table-capacity"
-                                                type="number"
-                                                className="modal-standard-input"
-                                                value={formData.capacity}
-                                                onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
-                                                required
-                                                min="1"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'ubicacion' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <MapPin size={18} />
-                                        <h3>Localización y Estado</h3>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="table-location">Área / Ubicación</label>
-                                        <input
-                                            id="table-location"
-                                            type="text"
-                                            className="modal-standard-input"
-                                            value={formData.location}
-                                            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                                            placeholder="Ej: Terraza, Salón Principal, VIP..."
+                <form id="table-form" onSubmit={handleSubmit}>
+                    {activeTab === 'general' && (
+                        <FormSection title="Información de la mesa">
+                            <FormGrid>
+                                {editingTable ? (
+                                    <Field label="Sucursal" htmlFor="table-branch-static">
+                                        <Input id="table-branch-static" readOnly value={editingTable.branch?.name || `Sucursal #${editingTable.branchId}`} />
+                                    </Field>
+                                ) : canChooseBranch && (
+                                    <Field label="Sucursal" htmlFor="table-branch" required>
+                                        <AppSelect<number>
+                                            inputId="table-branch"
+                                            placeholder="Selecciona la sucursal..."
+                                            options={branchOptions}
+                                            value={formData.branchId ? Number(formData.branchId) : null}
+                                            onChange={(value) => setField({ branchId: value ? String(value) : '' })}
                                         />
-                                    </div>
+                                    </Field>
+                                )}
+                                <Field label="Número/Nombre" htmlFor="table-number" required>
+                                    <Input
+                                        id="table-number"
+                                        value={formData.number}
+                                        onChange={(e) => setField({ number: e.target.value })}
+                                        required
+                                        placeholder="Ej: 01, A2..."
+                                    />
+                                </Field>
+                                <Field label="Sillas / comensales (relación 1:1)" htmlFor="table-capacity" hint="Cada silla representa un comensal y aparecerá automáticamente en el plano." required>
+                                    <NumberInput
+                                        id="table-capacity"
+                                        decimals={0}
+                                        min={1}
+                                        value={formData.capacity === '' ? null : Number(formData.capacity)}
+                                        onChange={(value) => setField({ capacity: value === null ? '' : String(value) })}
+                                    />
+                                </Field>
+                            </FormGrid>
+                        </FormSection>
+                    )}
 
-                                    {editingTable && (
-                                        <Select
-                                            variant="modal"
-                                            label="Estado Operativo"
-                                            options={[
-                                                { value: 'AVAILABLE', label: 'Disponible' },
-                                                { value: 'RESERVED', label: 'Reservada' },
-                                                { value: 'OUT_OF_SERVICE', label: 'Fuera de Servicio' }
-                                            ]}
-                                            value={{
-                                                value: formData.status,
-                                                label: getStatusText(formData.status)
-                                            }}
-                                            onChange={(option: SingleValue<{ value: Table['status']; label: string }>) =>
-                                                option && setFormData({ ...formData, status: option.value })}
+                    {activeTab === 'ubicacion' && (
+                        <FormSection title="Localización y estado">
+                            <FormGrid>
+                                <Field label="Área / Ubicación" htmlFor="table-location">
+                                    <Input
+                                        id="table-location"
+                                        value={formData.location}
+                                        onChange={(e) => setField({ location: e.target.value })}
+                                        placeholder="Ej: Terraza, Salón Principal, VIP..."
+                                    />
+                                </Field>
+                                {editingTable && (
+                                    <Field label="Estado operativo" htmlFor="table-status">
+                                        <AppSelect<Table['status']>
+                                            inputId="table-status"
+                                            options={operationalStatusOptions}
+                                            value={formData.status}
+                                            onChange={(value) => value && setField({ status: value })}
                                             isDisabled={editingTable.status === 'OCCUPIED'}
-                                            isSearchable={false}
+                                            isClearable={false}
                                         />
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                                    </Field>
+                                )}
+                            </FormGrid>
+                        </FormSection>
+                    )}
+                </form>
+            </FullScreenModal>
 
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" variant="primary">
-                                {editingTable ? 'Actualizar Mesa' : 'Guardar Mesa'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
-            </Sidebar>
+            <KitchenLineVoidModal
+                isOpen={voidLineTarget !== null}
+                order={voidLineTarget?.order ?? null}
+                initialItemId={voidLineTarget?.itemId ?? null}
+                onClose={() => setVoidLineTarget(null)}
+                onVoided={() => {
+                    if (selectedTable) void loadTableOrders(selectedTable);
+                    void loadTables();
+                }}
+            />
 
             {/* Orders Modal */}
             <TableOrdersModal
@@ -901,14 +1194,27 @@ export default function Tables() {
                 onClose={() => setIsOrdersModalOpen(false)}
                 table={selectedTable}
                 orders={tableOrders}
+                loading={loadingTableOrders}
                 busyOrderId={busyOrderId}
                 canIssueInvoice={canIssueInvoice}
                 canPay={canPay}
                 canOperatePOS={canOperatePOS}
                 canTransfer={canTransfer}
                 canConsolidate={canConsolidate}
+                canGroup={canGroup}
+                canVoidLines={canVoidLines}
+                onVoidLine={(order, itemId) => setVoidLineTarget({ order, itemId })}
+                activeConsolidation={activeConsolidation}
+                loadingConsolidation={loadingConsolidation}
+                consolidationLookupError={consolidationLookupError}
+                consolidationReversalError={consolidationReversalError}
+                reversingConsolidation={reversingConsolidation}
+                groupTotalCapacity={selectedTable?.activeTableGroup
+                    ? tables.filter((table) => table.activeTableGroupId === selectedTable.activeTableGroupId).reduce((sum, table) => sum + table.capacity, 0)
+                    : undefined}
                 onOpenPOS={handleOpenPOS}
                 onIssueInvoice={(order) => void handleIssueInvoice(order)}
+                onReversePreInvoice={handleReversePreInvoice}
                 onPay={(order) => void openPayment(order, 'single')}
                 onSplit={(order) => void openPayment(order, 'split')}
                 onTransfer={(table) => {
@@ -921,6 +1227,20 @@ export default function Tables() {
                     setOperationTableId(table.id);
                     setOperation('CONSOLIDATE');
                 }}
+                onGroup={(table) => {
+                    setIsOrdersModalOpen(false);
+                    setGroupTableId(table.id);
+                }}
+                onEditGroup={(table) => {
+                    setIsOrdersModalOpen(false);
+                    setGroupTableId(table.id);
+                }}
+                onUngroup={(table) => void handleCloseGroup(table)}
+                onRetryConsolidationLookup={() => {
+                    setConsolidationReversalError(null);
+                    if (selectedTable) void loadActiveConsolidation(selectedTable.id);
+                }}
+                onReverseConsolidation={handleReverseConsolidation}
             />
             {paymentOrder && (
                 <PaymentModal
@@ -932,9 +1252,16 @@ export default function Tables() {
                     currencySymbol={currencySymbol}
                     initialMode={paymentMode}
                     hasUsableCashShift={hasUsableCashShift(cashShiftStatus, paymentOrder.branchId)}
-                    onPaymentSuccess={() => {
+                    onPaymentSuccess={(result) => {
                         setPaymentOrder(null);
                         void refreshOperationalTable();
+                        if (result?.fiscalInvoiceError) {
+                            showWarning(`El pago fue confirmado, pero la factura fiscal debe reintentarse: ${result.fiscalInvoiceError}`);
+                        } else if (result?.fiscalInvoice && !result.invoicePrinted) {
+                            showWarning('El pago y la factura fiscal fueron confirmados. Usa Reimprimir factura porque el navegador bloqueó la ventana de impresión.');
+                        } else if (result?.fiscalInvoice) {
+                            showSuccess(`Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.`);
+                        }
                     }}
                 />
             )}
@@ -947,6 +1274,14 @@ export default function Tables() {
                 onClose={() => { setOperation(null); setOperationTableId(null); }}
                 onTransfer={handleTransfer}
                 onConsolidate={handleConsolidate}
+            />
+            <TableGroupModal
+                isOpen={groupTableId !== null}
+                tables={mapBranchId ? tables.filter((table) => table.branchId === mapBranchId) : tables}
+                initialTableId={groupTableId}
+                submitting={submittingGroup}
+                onClose={() => setGroupTableId(null)}
+                onSubmit={handleSaveGroup}
             />
             {posTable && (
                 <div className="table-pos-workspace" role="dialog" aria-modal="true" aria-label={`Pedido de mesa ${posTable.number}`}>

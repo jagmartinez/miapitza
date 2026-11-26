@@ -1,27 +1,34 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI, invoicesAPI, cashShiftsAPI, warehousesAPI } from '../services/api';
-import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canOperateKitchenLineItems } from '../utils/authz';
+import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canDeliverOrder, canOperateKitchenLineItems, canVoidKitchenLine, getUserRoleNames, hasPermission } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
+import { isVoidableOrderLine, isVoidedOrderLine, orderLineVoidBlocker } from '../utils/orderLineVoid';
 import { useDebounce } from '../utils/useDebounce';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
 import PaymentModal from '../components/PaymentModal';
-import Modal from '../components/Modal';
-import Select from '../components/Select';
-import { NoResultsEmptyState } from '../components/EmptyState';
-import { LoadingOverlay } from '../components/LoadingSpinner';
+import {
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, Input,
+    PageContent, PageHeader, SegmentedControl, Tabs, Textarea,
+    type Column, type Opt, type Tone,
+} from '@/ui';
 import {
     Send, CheckCircle, XCircle, CreditCard,
-    Clock, User, Printer, Package, Info, ClipboardList
+    Printer, Package,
 } from 'lucide-react';
 import type { Order, Warehouse } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { hasUsableCashShift } from '../utils/paymentAccess';
-import type { SingleValue } from 'react-select';
-import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
+import { getOrderStatusLabel } from '../utils/orderStatus';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
+import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
+import { readServerPagination } from '../utils/serverPagination';
+import { preferredSaleWarehouseId } from '../utils/saleWarehouse';
 import './Orders.css';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
+
+const ORDERS_PAGE_SIZE = 50;
 
 interface ActiveShiftStatus {
     hasActiveShift: boolean;
@@ -32,16 +39,26 @@ interface ActiveShiftStatus {
 export default function Orders() {
     const { user } = useAuth();
     const { formatMoney, symbol: currencySymbol } = useCurrency();
-    const { error: showError, warning: showWarning } = useAppToast();
+    const { success, error: showError, warning: showWarning } = useAppToast();
     const canSendKitchen = canSendOrderToKitchen(user);
     const canManageKitchen = canOperateKitchenLineItems(user);
     const canCancel = canCancelOrder(user);
     const canPayOrder = canCreatePayment(user);
+    const canDeliver = canDeliverOrder(user);
+    const canIssueInvoice = hasPermission(user, 'invoices.issue', ['SUPERADMIN', 'ADMIN', 'CAJERO']);
+    const canVoidLines = canVoidKitchenLine(user);
+    const userRoleNames = getUserRoleNames(user);
+    const isWaiterWithoutAdministrativeRole = userRoleNames.includes('MESERO')
+        && !userRoleNames.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [page, setPage] = useState(1);
+    const [totalOrders, setTotalOrders] = useState(0);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [voidLineItemId, setVoidLineItemId] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<'info' | 'items'>('info');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -70,8 +87,12 @@ export default function Orders() {
     const [deliveryWarehouseId, setDeliveryWarehouseId] = useState<number | null>(null);
     const [deliveryWarehouses, setDeliveryWarehouses] = useState<Warehouse[]>([]);
     const [loadingWarehouses, setLoadingWarehouses] = useState(false);
+    const [completingDelivery, setCompletingDelivery] = useState(false);
+    const deliveryAttemptGateRef = useRef(new DeliveryAttemptGate());
+    const loadOrdersRequestRef = useRef(0);
 
     const loadOrders = useCallback(async () => {
+        const requestId = ++loadOrdersRequestRef.current;
         try {
             const now = new Date();
             let startDate: string;
@@ -103,15 +124,38 @@ export default function Orders() {
 
             const response = await ordersAPI.getAll({
                 startDate,
-                endDate
+                endDate,
+                // Status filtering happens on the server so totals/pages describe the filtered set.
+                ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+                // Text search runs server-side so pagination/totals describe the matches.
+                ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+                page,
+                limit: ORDERS_PAGE_SIZE,
             });
-            setOrders(response.data.data);
+            // A late response for an older date range must not overwrite newer results.
+            if (requestId !== loadOrdersRequestRef.current) return true;
+            const rows: Order[] = Array.isArray(response.data?.data) ? response.data.data : [];
+            const pagination = readServerPagination(response.data, rows.length, ORDERS_PAGE_SIZE, page);
+            setOrders(rows);
+            setTotalOrders(pagination.total);
+            // A refresh can shrink the result set (e.g. orders cancelled elsewhere); clamp to the last page.
+            if (page > pagination.totalPages) setPage(pagination.totalPages);
+            setLoadError(false);
+            return true;
         } catch (error) {
+            if (requestId !== loadOrdersRequestRef.current) return true;
             console.error('Error loading orders:', error);
+            setLoadError(true);
+            return false;
         } finally {
-            setLoading(false);
+            if (requestId === loadOrdersRequestRef.current) setLoading(false);
         }
-    }, [customEndDate, customStartDate, dateRange]);
+    }, [customEndDate, customStartDate, dateRange, debouncedSearch, page, statusFilter]);
+
+    // Any filter change restarts from the first page.
+    useEffect(() => {
+        setPage(1);
+    }, [statusFilter, dateRange, customStartDate, customEndDate, debouncedSearch]);
 
     const loadShiftStatus = useCallback(async () => {
         try {
@@ -175,37 +219,66 @@ export default function Orders() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error updating order status:', error);
-            showError('Error al actualizar el estado de la orden');
+            showError(getApiErrorMessage(error, 'Error al actualizar el estado de la orden'));
         }
     };
 
     const handlePaymentClick = async (order: Order) => {
-        if (!canPayOrder) {
-            showWarning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+        if (!canPayOrder || !canIssueInvoice) {
+            showWarning('Tu rol necesita permisos de cobro y facturación. Pide apoyo a un cajero o administrador.');
             return;
         }
         setPreparingPaymentOrderId(order.id);
         try {
-            // Keep the same fiscal invariant as POS and the table command center:
-            // an official invoice must exist before PaymentModal can collect.
-            await invoicesAPI.issue(order.id);
-            const refreshed = await ordersAPI.getById(order.id);
-            setPaymentOrder(refreshed.data.data as Order);
+            let payableOrder = order;
+            if (!order.preInvoicedAt && !order.invoiceNumber) {
+                const preInvoiceResponse = await invoicesAPI.issuePreInvoice(order.id);
+                if (!preInvoiceResponse.data?.data?.invoiceNumber) {
+                    throw new Error('La prefactura no devolvió una referencia imprimible.');
+                }
+                payableOrder = {
+                    ...order,
+                    preInvoicedAt: preInvoiceResponse.data.data.date,
+                };
+            }
+
+            try {
+                const refreshed = await ordersAPI.getById(order.id);
+                payableOrder = refreshed.data.data as Order;
+            } catch (refreshError) {
+                console.error('Pre-invoice issued but order refresh failed:', refreshError);
+                notifyError(refreshError, 'La prefactura fue emitida, pero el detalle no pudo actualizarse (el cobro usará la última información disponible)', { type: 'warning' });
+            }
+
+            await loadOrders();
+            setPaymentOrder(payableOrder);
             setShowPaymentModal(true);
+            success('Prefactura confirmada. La orden está lista para cobrar.');
         } catch (error: unknown) {
             const message = typeof error === 'object' && error !== null && 'response' in error
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
-            showError(message || 'No se pudo emitir la factura antes del cobro.');
+            showError(message || 'No se pudo emitir la prefactura antes del cobro.');
         } finally {
             setPreparingPaymentOrderId(null);
         }
     };
 
-    const handlePaymentComplete = () => {
+    const handlePaymentComplete = (result?: {
+        fiscalInvoice?: { invoiceNumber: string } | null;
+        fiscalInvoiceError?: string | null;
+        invoicePrinted?: boolean;
+    }) => {
         setShowPaymentModal(false);
         setPaymentOrder(null);
         loadOrders();
+        if (result?.fiscalInvoiceError) {
+            showWarning(`El pago fue confirmado, pero la factura fiscal debe reintentarse: ${result.fiscalInvoiceError}`);
+        } else if (result?.fiscalInvoice && !result.invoicePrinted) {
+            showWarning('Pago y factura fiscal confirmados. Usa Descargar Factura porque el navegador bloqueó la impresión.');
+        } else if (result?.fiscalInvoice) {
+            success(`Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.`);
+        }
         // Close sidebar if the paid order was the one open
         if (selectedOrder && paymentOrder && selectedOrder.id === paymentOrder.id) {
             setIsSidebarOpen(false);
@@ -234,9 +307,9 @@ export default function Orders() {
             try {
                 const warehouses = await loadBranchWarehouses(order.branchId);
                 setCancelWarehouses(warehouses);
-                if (warehouses.length === 1) setCancelWarehouseId(warehouses[0].id);
-            } catch {
-                showError('No se pudieron cargar las bodegas de la sucursal.');
+                setCancelWarehouseId(preferredSaleWarehouseId(warehouses));
+            } catch (error) {
+                showError(getApiErrorMessage(error, 'No se pudieron cargar las bodegas de la sucursal'));
             } finally {
                 setLoadingWarehouses(false);
             }
@@ -263,14 +336,18 @@ export default function Orders() {
             setCancelWarehouseId(null);
         } catch (error) {
             console.error('Error cancelling order:', error);
-            showError('Error al cancelar la orden');
+            showError(getApiErrorMessage(error, 'Error al cancelar la orden'));
         }
     };
 
     const handleReprintInvoice = async (order: Order) => {
         try {
-            const invoice = await invoicesAPI.getData(order.id);
+            const needsIssuance = !order.invoiceNumber;
+            const invoice = order.invoiceNumber
+                ? await invoicesAPI.getData(order.id)
+                : await invoicesAPI.issue(order.id);
             const invoiceNumber = invoice.data.data.invoiceNumber as string;
+            if (needsIssuance) await loadOrders();
             const pdf = await invoicesAPI.downloadPdf(order.id);
             const url = URL.createObjectURL(new Blob([pdf.data], { type: 'application/pdf' }));
             const link = document.createElement('a');
@@ -300,8 +377,8 @@ export default function Orders() {
             link.download = `${fileName}.pdf`;
             link.click();
             URL.revokeObjectURL(url);
-        } catch {
-            showError('No se pudo descargar el contraflujo fiscal.');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'No se pudo descargar el contraflujo fiscal'));
         }
     };
 
@@ -314,9 +391,10 @@ export default function Orders() {
         try {
             const warehouses = await loadBranchWarehouses(order.branchId);
             setDeliveryWarehouses(warehouses);
-            if (warehouses.length === 1) setDeliveryWarehouseId(warehouses[0].id);
-        } catch {
-            showError('No se pudieron cargar las bodegas de la sucursal.');
+            // Branch default sale warehouse first, else the only one.
+            setDeliveryWarehouseId(preferredSaleWarehouseId(warehouses));
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'No se pudieron cargar las bodegas de la sucursal'));
         } finally {
             setLoadingWarehouses(false);
         }
@@ -327,30 +405,56 @@ export default function Orders() {
             showWarning('Selecciona la bodega de la que se descontará el inventario.');
             return;
         }
-        try {
-            await ordersAPI.complete(deliveryOrder.id, deliveryWarehouseId);
-            await loadOrders();
-            setIsSidebarOpen(false);
-            setShowDeliveryModal(false);
-            setDeliveryOrder(null);
-            setDeliveryWarehouseId(null);
-        } catch (error) {
-            console.error('Error completing delivery:', error);
-            showError('No se pudo entregar la orden ni descontar el inventario.');
-        }
-    };
 
-    const getStatusColor = (status: string) => {
-        return `status-badge-${getOrderStatusClassName(status as Order['status']).replace('status-', '')}`;
-    };
-
-    const getStatusClass = (status: string) => {
-        return getOrderStatusClassName(status as Order['status']);
+        const orderId = deliveryOrder.id;
+        const warehouseId = deliveryWarehouseId;
+        await deliveryAttemptGateRef.current.execute({
+            request: () => ordersAPI.complete(orderId, warehouseId),
+            onSuccess: async () => {
+                const refreshed = await loadOrders();
+                setIsSidebarOpen(false);
+                setShowDeliveryModal(false);
+                setDeliveryOrder(null);
+                setDeliveryWarehouseId(null);
+                success(`Orden #${orderId} entregada. El inventario fue descontado de la bodega seleccionada.`);
+                if (!refreshed) {
+                    throw new Error('La entrega se aplicó, pero la lista de órdenes no pudo actualizarse.');
+                }
+            },
+            onError: (message, error) => {
+                console.error('Error completing delivery:', error);
+                showError(message);
+            },
+            onSuccessError: (error) => {
+                console.error('Delivery completed but order refresh failed:', error);
+                showError('La orden fue entregada, pero no se pudo actualizar la lista. Recarga la página.');
+            },
+            onPendingChange: setCompletingDelivery,
+            fallbackMessage: 'No se pudo entregar la orden ni descontar el inventario.',
+        });
     };
 
     const getStatusText = (status: string) => {
         return getOrderStatusLabel(status as Order['status']);
     };
+
+    const getStatusTone = (status: string): Tone => {
+        switch (status) {
+            case 'OPEN': return 'primary';
+            case 'SENT_TO_KITCHEN':
+            case 'IN_PREPARATION': return 'warning';
+            case 'READY':
+            case 'DELIVERED': return 'success';
+            default: return 'neutral';
+        }
+    };
+
+    const financialLabel = (order: Order) => (
+        order.financialStatus === 'PAID' ? 'Pagada' : order.financialStatus === 'PARTIAL' ? 'Pago parcial' : 'Pendiente de pago'
+    );
+    const financialTone = (order: Order): Tone => (
+        order.financialStatus === 'PAID' ? 'success' : order.financialStatus === 'PARTIAL' ? 'warning' : 'neutral'
+    );
 
     const getActionButtons = (order: Order) => {
         const buttons = [];
@@ -371,7 +475,7 @@ export default function Orders() {
             );
         }
 
-        if (order.status === 'READY' && (order.financialStatus === 'PAID' || Math.round(Number(order.total) * 100) === 0)) {
+        if (canDeliver && order.status === 'READY' && (order.financialStatus === 'PAID' || Math.round(Number(order.total) * 100) === 0)) {
             buttons.push(
                 <Button key="delivered" variant="primary" onClick={() => void openDeliveryModal(order)}>
                     <Package size={16} /> Entregar
@@ -379,7 +483,12 @@ export default function Orders() {
             );
         }
 
-        if (order.status !== 'CANCELLED' && order.financialStatus !== 'PAID' && canPayOrder) {
+        if (
+            order.status !== 'CANCELLED'
+            && order.financialStatus !== 'PAID'
+            && canPayOrder
+            && canIssueInvoice
+        ) {
             buttons.push(
                 <Button
                     key="pay"
@@ -387,23 +496,38 @@ export default function Orders() {
                     disabled={preparingPaymentOrderId === order.id}
                     onClick={() => void handlePaymentClick(order)}
                 >
-                    <CreditCard size={16} /> {preparingPaymentOrderId === order.id ? 'Facturando…' : 'Cobrar'}
+                    <CreditCard size={16} /> {preparingPaymentOrderId === order.id ? 'Preparando…' : 'Cobrar'}
                 </Button>
             );
         }
 
-        if (order.financialStatus === 'UNPAID' && order.status !== 'CANCELLED' && !order.invoiceNumber && canCancel) {
+        const wasSentToKitchen = order.items.some((item) => item.sentAt != null);
+        if (
+            order.financialStatus === 'UNPAID'
+            && order.status !== 'CANCELLED'
+            && !order.invoiceNumber
+            && !order.preInvoicedAt
+            && canCancel
+            && !(isWaiterWithoutAdministrativeRole && wasSentToKitchen)
+        ) {
             buttons.push(
-                <Button key="cancel" variant="ghost" className="text-danger" onClick={() => void openCancelModal(order)}>
+                <Button key="cancel" variant="danger" onClick={() => void openCancelModal(order)}>
                     <XCircle size={16} /> Cancelar
                 </Button>
             );
         }
 
-        if (order.invoiceNumber) {
+        if (
+            order.invoiceNumber
+            || (
+                canIssueInvoice
+                && order.financialStatus === 'PAID'
+                && Boolean(order.preInvoicedAt)
+            )
+        ) {
             buttons.push(
                 <Button key="reprint" variant="secondary" onClick={() => void handleReprintInvoice(order)}>
-                    <Printer size={16} /> Descargar Factura
+                    <Printer size={16} /> {order.invoiceNumber ? 'Descargar Factura' : 'Emitir Factura Original'}
                 </Button>
             );
         }
@@ -425,241 +549,122 @@ export default function Orders() {
         return buttons;
     };
 
-    const filteredOrders = orders.filter(o => {
-        const matchStatus = statusFilter === 'all'
-            || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter);
-        const searchLower = debouncedSearch.toLowerCase();
-        const matchSearch = !debouncedSearch || String(o.id).includes(searchLower) ||
-            o.customerName?.toLowerCase().includes(searchLower) ||
-            o.user?.name.toLowerCase().includes(searchLower) ||
-            (o.table && String(o.table.number).includes(debouncedSearch));
+    // Text search is applied by the server (`search` param) across every page.
+    const filteredOrders = orders.filter(o => statusFilter === 'all'
+        || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter));
 
-        return matchStatus && matchSearch;
-    });
+    const statusOptions: { value: string; label: string }[] = [
+        { value: 'all', label: 'Todas' },
+        { value: 'OPEN', label: 'Abierta' },
+        { value: 'SENT_TO_KITCHEN', label: 'En cocina' },
+        { value: 'READY', label: 'Lista' },
+        { value: 'DELIVERED', label: 'Entregada' },
+        { value: 'PAID', label: 'Pagada' },
+        { value: 'CANCELLED', label: 'Cancelada' },
+    ];
+    const dateOptions: Opt<'24h' | '7d' | '30d' | 'custom'>[] = [
+        { value: '24h', label: 'Últimas 24 horas' },
+        { value: '7d', label: 'Últimos 7 días' },
+        { value: '30d', label: 'Últimos 30 días' },
+        { value: 'custom', label: 'Rango personalizado' },
+    ];
+    const rangeLabel = dateOptions.find((o) => o.value === dateRange)?.label ?? '';
 
-    if (loading) return <LoadingOverlay text="Sincronizando órdenes..." />;
+    const columns: Column<Order>[] = [
+        { key: 'id', header: '#', width: '0.8fr', render: (o) => `#${o.id}` },
+        { key: 'time', header: 'Hora', width: '1fr', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+        { key: 'status', header: 'Estado', width: '1.5fr', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
+        { key: 'financial', header: 'Pago', width: '1.7fr', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
+        { key: 'table', header: 'Mesa', width: '1.3fr', render: (o) => (o.table ? `Mesa ${o.table.number}` : 'Para llevar') },
+        { key: 'waiter', header: 'Mesero', width: '1fr', render: (o) => o.user?.name || 'N/D' },
+        { key: 'customer', header: 'Cliente', width: '1fr', hideBelow: 'lg', render: (o) => o.customerName || '' },
+        { key: 'items', header: 'Items', width: '0.8fr', type: 'number', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
+        { key: 'total', header: `Total (${currencySymbol})`, width: '1.3fr', type: 'money', accessor: (o) => Number(o.total) },
+    ];
 
     return (
-        <div className="orders-page">
-            {/* Header */}
-            <header className="orders-header">
-                <div>
-                    <h1><ClipboardList size={32} /> Gestión de Órdenes</h1>
-                    <p className="subtitle">
-                        Control operativo de sala y cocina • {
-                            dateRange === '24h' ? 'Últimas 24 horas' :
-                                dateRange === '7d' ? 'Últimos 7 días' :
-                                    dateRange === '30d' ? 'Últimos 30 días' :
-                                        'Rango personalizado'
-                        }
-                    </p>
-                </div>
-            </header>
+        <PageContent>
+            <PageHeader
+                title="Gestión de órdenes"
+                description={`Control operativo de sala y cocina · ${rangeLabel}`}
+            />
 
-            {/* Filter Bar */}
-            <div className="orders-controls">
-                <div className="status-filters">
-                    <button
-                        className={`filter-tab ${statusFilter === 'all' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('all')}
-                    >
-                        Todas
-                    </button>
-                    <button
-                        className={`filter-tab open ${statusFilter === 'OPEN' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('OPEN')}
-                    >
-                        Abierta
-                    </button>
-                    <button
-                        className={`filter-tab kitchen ${statusFilter === 'SENT_TO_KITCHEN' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('SENT_TO_KITCHEN')}
-                    >
-                        En Cocina
-                    </button>
-                    <button
-                        className={`filter-tab ready ${statusFilter === 'READY' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('READY')}
-                    >
-                        Lista
-                    </button>
-                    <button
-                        className={`filter-tab delivered ${statusFilter === 'DELIVERED' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('DELIVERED')}
-                    >
-                        Entregada
-                    </button>
-                    <button
-                        className={`filter-tab paid ${statusFilter === 'PAID' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('PAID')}
-                    >
-                        Pagada
-                    </button>
-                    <button
-                        className={`filter-tab cancelled ${statusFilter === 'CANCELLED' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('CANCELLED')}
-                    >
-                        Cancelada
-                    </button>
-                </div>
-
-                <div className="controls-right">
-                    {/* Date Range Filter */}
-                    <Select
-                        value={(() => {
-                            const option = [
-                                { value: '24h', label: 'Últimas 24 horas' },
-                                { value: '7d', label: 'Últimos 7 días' },
-                                { value: '30d', label: 'Últimos 30 días' },
-                                { value: 'custom', label: 'Rango personalizado' }
-                            ].find(opt => opt.value === dateRange);
-                            return option || null;
-                        })()}
-                        onChange={(option: SingleValue<{ value: string; label: string }>) => {
-                            const v = option?.value;
-                            if (v === '24h' || v === '7d' || v === '30d' || v === 'custom') setDateRange(v);
-                        }}
-                        options={[
-                            { value: '24h', label: 'Últimas 24 horas' },
-                            { value: '7d', label: 'Últimos 7 días' },
-                            { value: '30d', label: 'Últimos 30 días' },
-                            { value: 'custom', label: 'Rango personalizado' }
-                        ]}
-                        isSearchable={false}
+            <div className="orders-filters">
+                <SegmentedControl ariaLabel="Estado de la orden" options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+                <div className="orders-filters__field">
+                    <AppSelect<'24h' | '7d' | '30d' | 'custom'>
+                        aria-label="Filtrar por fecha"
+                        options={dateOptions}
+                        value={dateRange}
+                        onChange={(v) => { if (v) setDateRange(v); }}
+                        isClearable={false}
                         placeholder="Filtrar por fecha"
                     />
-
-                    <div className="search-box">
-                        <input
-                            type="text"
-                            placeholder="Buscar por #, mesa, mesero..."
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                        />
-                    </div>
                 </div>
-            </div>
-
-            {/* Custom Date Inputs */}
-            {dateRange === 'custom' && (
-                <div className="custom-date-row">
-                    <div className="custom-date-inputs">
-                        <input
-                            type="date"
-                            value={customStartDate}
-                            onChange={(e) => setCustomStartDate(e.target.value)}
-                            placeholder="Desde"
-                        />
-                        <span>-</span>
-                        <input
-                            type="date"
-                            value={customEndDate}
-                            onChange={(e) => setCustomEndDate(e.target.value)}
-                            placeholder="Hasta"
-                        />
-                    </div>
+                <div className="orders-filters__field">
+                    <Input
+                        aria-label="Buscar órdenes por número, mesa, mesero, cliente o factura"
+                        placeholder="Buscar por #, mesa, mesero o cliente..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
                 </div>
-            )}
-
-            {/* Grid */}
-            <div className={`orders-grid ${filteredOrders.length === 0 ? 'empty' : ''}`}>
-                {filteredOrders.length > 0 ? (
-                    filteredOrders.map(order => (
-                        <div key={order.id} className={`modern-order-card ${getStatusClass(order.status)}`} onClick={() => handleViewDetails(order)}>
-                            <div className="card-header">
-                                <div className="order-meta">
-                                    <span className="order-hashtag">#{order.id}</span>
-                                    <span className={`status-badge ${getStatusColor(order.status)}`}>
-                                        {getStatusText(order.status)}
-                                    </span>
-                                    <span className={`status-badge ${order.financialStatus === 'PAID' ? 'status-badge-paid' : ''}`}>
-                                        {order.financialStatus === 'PAID' ? 'Pagada' : order.financialStatus === 'PARTIAL' ? 'Pago parcial' : 'Pendiente de pago'}
-                                    </span>
-                                </div>
-                                <div className="order-time">
-                                    <Clock size={14} />
-                                    {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                            </div>
-
-                            <div className="card-body">
-                                <div className="info-row">
-                                    {order.table ? (
-                                        <div className="info-pill table-pill">
-                                            <span>Mesa {order.table.number}</span>
-                                        </div>
-                                    ) : (
-                                        <div className="info-pill takeout-pill">
-                                            <span>Para Llevar</span>
-                                        </div>
-                                    )}
-                                    <div className="info-pill waiter-pill">
-                                        <User size={12} />
-                                        <span>{order.user?.name || 'N/A'}</span>
-                                    </div>
-                                </div>
-
-                                {order.customerName && (
-                                    <p className="customer-name">{order.customerName}</p>
-                                )}
-
-                                <div className="card-total">
-                                    <span className="label">Total</span>
-                                    <span className="amount">{formatMoney(Number(order.total))}</span>
-                                </div>
-                            </div>
-
-                            <div className="card-footer-preview">
-                                <span>{order.items?.length || 0} items</span>
-                            </div>
-                        </div>
-                    ))
-                ) : (
-                    <NoResultsEmptyState />
+                {dateRange === 'custom' && (
+                    <div className="orders-filters__dates">
+                        <DateInput aria-label="Desde" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} />
+                        <span aria-hidden="true">-</span>
+                        <DateInput aria-label="Hasta" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} />
+                    </div>
                 )}
             </div>
 
+            {loadError && (
+                <div className="orders-warning" role="alert">
+                    <span>No se pudieron cargar las órdenes. Los datos mostrados pueden estar desactualizados.</span>
+                    <Button size="sm" onClick={() => void loadOrders()}>Reintentar</Button>
+                </div>
+            )}
+
+            <DataTable
+                ariaLabel="Órdenes"
+                columns={columns}
+                rows={filteredOrders}
+                rowKey={(o) => o.id}
+                loading={loading}
+                resetKey={`${statusFilter}|${debouncedSearch}|${dateRange}`}
+                pagination={{ mode: 'server', page, pageSize: ORDERS_PAGE_SIZE, total: totalOrders, onChange: (nextPage) => setPage(nextPage) }}
+                pageSizeOptions={[ORDERS_PAGE_SIZE]}
+                onRowClick={handleViewDetails}
+                empty={<EmptyState title="Sin órdenes" description="No hay órdenes con los filtros seleccionados." />}
+            />
+
             {/* Sidebar Details */}
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
-                title={`Orden #${selectedOrder?.id}`}
-                width="normal"
+                title={`Orden #${selectedOrder?.id ?? ''}`}
             >
                 {selectedOrder && (
                     <div className="order-detail-content">
                         {/* Tabs */}
-                        <div className="modal-tabs" role="tablist">
-                            <button
-                                type="button"
-                                role="tab"
-                                aria-selected={activeTab === 'info'}
-                                className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('info')}
-                            >
-                                <Info size={18} />
-                                <span>Información</span>
-                            </button>
-                            <button
-                                type="button"
-                                role="tab"
-                                aria-selected={activeTab === 'items'}
-                                className={`modal-tab ${activeTab === 'items' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('items')}
-                            >
-                                <Package size={18} />
-                                <span>Productos <span className="tab-badge">{selectedOrder.items?.length || 0}</span></span>
-                            </button>
-                        </div>
+                        <Tabs
+                            ariaLabel="Detalle de la orden"
+                            active={activeTab}
+                            onChange={(id) => setActiveTab(id as 'info' | 'items')}
+                            tabs={[
+                                { id: 'info', label: 'Información' },
+                                { id: 'items', label: 'Productos', badge: selectedOrder.items?.length || 0 },
+                            ]}
+                        />
 
                         <div className="tab-content-scroll">
                             {activeTab === 'info' ? (
                                 <div className="tab-pane animate-fade-in">
                                     {/* Info Grid */}
                                     <div className="detail-info-grid">
-                                        <div className={`detail-info-item status-info-item ${getStatusColor(selectedOrder.status)}`}>
+                                        <div className="detail-info-item">
                                             <span className="detail-label">Estado</span>
-                                            <span className="detail-value">{getStatusText(selectedOrder.status)}</span>
+                                            <span className="detail-value"><Badge tone={getStatusTone(selectedOrder.status)} dot>{getStatusText(selectedOrder.status)}</Badge></span>
                                         </div>
                                         <div className="detail-info-item">
                                             <span className="detail-label">Estado financiero</span>
@@ -689,7 +694,7 @@ export default function Orders() {
                                                     <span style={{
                                                         width: '10px', height: '10px', borderRadius: '50%',
                                                         backgroundColor: selectedOrder.user.color, flexShrink: 0,
-                                                        border: '1px solid var(--color-neutral-300)'
+                                                        border: '1px solid var(--ui-border)'
                                                     }} />
                                                 )}
                                                 {selectedOrder.user?.name || 'Sin asignar'}
@@ -714,22 +719,22 @@ export default function Orders() {
                                             </div>
                                         )}
                                         {selectedOrder.status === 'CANCELLED' && (
-                                            <div style={{ marginTop: '8px', padding: '10px', background: 'var(--color-error, #ef4444)10', border: '1px solid var(--color-error, #ef4444)30', borderRadius: '8px' }}>
+                                            <div className="order-cancel-block">
                                                 {selectedOrder.cancelledBy && (
                                                     <div className="detail-info-item">
-                                                        <span className="detail-label" style={{ color: 'var(--color-error)' }}>Cancelada por</span>
+                                                        <span className="detail-label order-cancel-label">Cancelada por</span>
                                                         <span className="detail-value">{selectedOrder.cancelledBy.name}</span>
                                                     </div>
                                                 )}
                                                 {selectedOrder.cancelReason && (
                                                     <div className="detail-info-item">
-                                                        <span className="detail-label" style={{ color: 'var(--color-error)' }}>Motivo</span>
+                                                        <span className="detail-label order-cancel-label">Motivo</span>
                                                         <span className="detail-value">{selectedOrder.cancelReason}</span>
                                                     </div>
                                                 )}
                                                 {selectedOrder.cancelledAt && (
                                                     <div className="detail-info-item">
-                                                        <span className="detail-label" style={{ color: 'var(--color-error)' }}>Fecha cancelación</span>
+                                                        <span className="detail-label order-cancel-label">Fecha cancelación</span>
                                                         <span className="detail-value">{new Date(selectedOrder.cancelledAt).toLocaleString('es-ES')}</span>
                                                     </div>
                                                 )}
@@ -753,7 +758,16 @@ export default function Orders() {
                                 <div className="tab-pane animate-fade-in">
                                     {/* Items */}
                                     <div className="detail-items">
-                                        {selectedOrder.items?.map((item) => (
+                                        {selectedOrder.items?.map((item) => isVoidedOrderLine(item) ? (
+                                            <div key={item.id} className="detail-item-row order-line-voided" title={item.voidReason || undefined}>
+                                                <span className="item-qty">{item.voidedQuantity}x</span>
+                                                <div className="item-info">
+                                                    <div className="item-name order-line-voided-name">{item.menuItem?.name || 'Item eliminado'}</div>
+                                                    {item.voidReason && <div className="item-notes">Anulado: {item.voidReason}</div>}
+                                                </div>
+                                                <span className="order-line-void-badge">Anulado</span>
+                                            </div>
+                                        ) : (
                                             <div key={item.id || item.menuItemId} className="detail-item-row">
                                                 <span className="item-qty">{item.quantity}x</span>
                                                 <div className="item-info">
@@ -761,6 +775,16 @@ export default function Orders() {
                                                     {item.notes && <div className="item-notes">{item.notes}</div>}
                                                 </div>
                                                 <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
+                                                {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(selectedOrder) && (
+                                                    <button
+                                                        type="button"
+                                                        className="order-line-void-btn"
+                                                        onClick={() => setVoidLineItemId(item.id)}
+                                                        title="Anular línea y registrar merma"
+                                                    >
+                                                        Anular
+                                                    </button>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -774,7 +798,18 @@ export default function Orders() {
                         </div>
                     </div>
                 )}
-            </Sidebar >
+            </FullScreenModal>
+
+            <KitchenLineVoidModal
+                isOpen={voidLineItemId !== null}
+                order={selectedOrder}
+                initialItemId={voidLineItemId}
+                onClose={() => setVoidLineItemId(null)}
+                onVoided={(updated) => {
+                    if (updated) setSelectedOrder((current) => (current && current.id === updated.id ? { ...current, ...updated } : current));
+                    void loadOrders();
+                }}
+            />
 
             {/* Payment Modal */}
             {
@@ -792,85 +827,85 @@ export default function Orders() {
                 )
             }
 
-            <Modal
+            <FullScreenModal
                 isOpen={showDeliveryModal}
-                onClose={() => { setShowDeliveryModal(false); setDeliveryOrder(null); setDeliveryWarehouseId(null); }}
-                title={`Entregar Orden #${deliveryOrder?.id ?? ''}`}
-                size="sm"
+                onClose={() => {
+                    if (completingDelivery) return;
+                    setShowDeliveryModal(false);
+                    setDeliveryOrder(null);
+                    setDeliveryWarehouseId(null);
+                }}
+                title={`Entregar orden #${deliveryOrder?.id ?? ''}`}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="secondary" onClick={requestClose} disabled={completingDelivery}>Volver</Button>
+                        <Button
+                            variant="primary"
+                            onClick={() => void handleCompleteDelivery()}
+                            disabled={!deliveryWarehouseId || loadingWarehouses || completingDelivery}
+                            loading={completingDelivery}
+                        >
+                            {completingDelivery ? 'Entregando…' : 'Confirmar Entrega'}
+                        </Button>
+                    </>
+                )}
             >
-                <p>Selecciona la bodega de la sucursal de la que se descontará el inventario.</p>
-                <Select
-                    variant="modal"
-                    isLoading={loadingWarehouses}
-                    options={deliveryWarehouses.map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
-                    value={deliveryWarehouses
-                        .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))
-                        .find((option) => option.value === deliveryWarehouseId) ?? null}
-                    onChange={(option: SingleValue<{ value: number; label: string }>) => setDeliveryWarehouseId(option?.value ?? null)}
-                    placeholder={deliveryWarehouses.length === 0 ? 'No hay bodegas de sucursal disponibles' : 'Seleccionar bodega...'}
-                    noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
-                />
-                <div className="problem-modal-actions">
-                    <button type="button" className="btn-cancel-problem" onClick={() => setShowDeliveryModal(false)}>
-                        Volver
-                    </button>
-                    <button
-                        type="button"
-                        className="btn-submit-problem"
-                        onClick={() => void handleCompleteDelivery()}
-                        disabled={!deliveryWarehouseId || loadingWarehouses}
-                    >
-                        Confirmar Entrega
-                    </button>
-                </div>
-            </Modal>
+                <FormSection title="Bodega de descuento" description="La orden seguirá visible como pendiente hasta confirmar la entrega. Selecciona la bodega de la sucursal: al entregar se descontará allí el inventario.">
+                    <Field label="Bodega" htmlFor="delivery-warehouse" required>
+                        <AppSelect<number>
+                            inputId="delivery-warehouse"
+                            options={deliveryWarehouses.map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
+                            value={deliveryWarehouseId}
+                            onChange={setDeliveryWarehouseId}
+                            placeholder={loadingWarehouses ? 'Cargando bodegas...' : deliveryWarehouses.length === 0 ? 'No hay bodegas de sucursal disponibles' : 'Seleccionar bodega...'}
+                            noOptionsText="No hay bodegas de sucursal disponibles"
+                        />
+                    </Field>
+                </FormSection>
+            </FullScreenModal>
 
-            <Modal
+            <FullScreenModal
                 isOpen={showCancelModal}
                 onClose={() => { setShowCancelModal(false); setCancelOrder(null); setCancelReason(''); setCancelWarehouseId(null); }}
-                title={`Cancelar Orden #${cancelOrder?.id ?? ''}`}
-                size="sm"
-            >
-                <p style={{ fontSize: '0.9rem', color: 'var(--color-neutral-500)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <XCircle size={20} color="var(--color-error)" aria-hidden="true" />
-                    Esta acción quedará registrada en el historial de auditoría.
-                </p>
-                <textarea
-                    className="problem-textarea"
-                    value={cancelReason}
-                    onChange={(e) => setCancelReason(e.target.value)}
-                    placeholder="Motivo de cancelación (requerido)..."
-                    autoFocus
-                    style={{ minHeight: '80px' }}
-                />
-                {cancelOrder?.status !== 'OPEN' && (
-                    <Select
-                        variant="modal"
-                        isLoading={loadingWarehouses}
-                        options={cancelWarehouses.map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
-                        value={cancelWarehouses
-                            .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))
-                            .find((option) => option.value === cancelWarehouseId) ?? null}
-                        onChange={(option: SingleValue<{ value: number; label: string }>) => setCancelWarehouseId(option?.value ?? null)}
-                        placeholder={cancelWarehouses.length === 0 ? 'No hay bodegas de sucursal disponibles' : 'Bodega para registrar la merma...'}
-                        noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
-                    />
+                title={`Cancelar orden #${cancelOrder?.id ?? ''}`}
+                dirty={cancelReason.trim().length > 0}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="secondary" onClick={requestClose}>Volver</Button>
+                        <Button
+                            variant="danger"
+                            onClick={() => void handleCancelOrder()}
+                            disabled={!cancelReason.trim() || (cancelOrder?.status !== 'OPEN' && !cancelWarehouseId)}
+                        >
+                            Confirmar cancelación
+                        </Button>
+                    </>
                 )}
-                <div className="problem-modal-actions">
-                    <button type="button" className="btn-cancel-problem" onClick={() => { setShowCancelModal(false); setCancelReason(''); }}>
-                        Volver
-                    </button>
-                    <button
-                        type="button"
-                        className="btn-submit-problem"
-                        onClick={handleCancelOrder}
-                        disabled={!cancelReason.trim() || (cancelOrder?.status !== 'OPEN' && !cancelWarehouseId)}
-                        style={{ background: 'var(--color-error)' }}
-                    >
-                        Confirmar Cancelación
-                    </button>
-                </div>
-            </Modal>
-        </div >
+            >
+                <FormSection title="Motivo" description="Esta acción quedará registrada en el historial de auditoría.">
+                    <Field label="Motivo de cancelación" htmlFor="cancel-reason" required>
+                        <Textarea
+                            id="cancel-reason"
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            placeholder="Motivo de cancelación (requerido)..."
+                            autoFocus
+                        />
+                    </Field>
+                    {cancelOrder?.status !== 'OPEN' && (
+                        <Field label="Bodega para registrar la merma" htmlFor="cancel-warehouse" required>
+                            <AppSelect<number>
+                                inputId="cancel-warehouse"
+                                options={cancelWarehouses.map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
+                                value={cancelWarehouseId}
+                                onChange={setCancelWarehouseId}
+                                placeholder={loadingWarehouses ? 'Cargando bodegas...' : cancelWarehouses.length === 0 ? 'No hay bodegas de sucursal disponibles' : 'Bodega para registrar la merma...'}
+                                noOptionsText="No hay bodegas de sucursal disponibles"
+                            />
+                        </Field>
+                    )}
+                </FormSection>
+            </FullScreenModal>
+        </PageContent>
     );
 }

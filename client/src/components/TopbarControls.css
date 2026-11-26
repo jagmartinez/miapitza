@@ -1,0 +1,51 @@
+/* Controles de la barra superior: tema, red e idioma. Solo tokens --ui-*. */
+.network-status-box,
+.theme-toggle,
+.language-selector {
+  position: relative;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+  transition: background-color .15s, color .15s, border-color .15s;
+}
+.network-status-box:hover,
+.theme-toggle:hover,
+.language-selector:hover { background: var(--ui-surface-2); color: var(--ui-primary); }
+.network-status-box,
+.theme-toggle { width: 32px; }
+.network-status-box.online { color: var(--ui-success); background: var(--ui-success-soft); border-color: var(--ui-success); }
+.network-status-box.offline { color: var(--ui-danger); background: var(--ui-danger-soft); border-color: var(--ui-danger); }
+.pending-badge {
+  position: absolute; top: -6px; right: -6px;
+  display: flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 999px;
+  background: var(--ui-warning); color: var(--ui-primary-fg);
+}
+.language-selector-wrapper { position: relative; z-index: 50; }
+.language-selector {
+  padding: 0 var(--ui-space-2); gap: var(--ui-space-2); min-width: 70px;
+  justify-content: space-between; font: inherit; font-size: var(--ui-text-xs); font-weight: 600;
+}
+.current-lang { line-height: 1; }
+.lang-chevron { color: var(--ui-text-muted); transition: transform .15s; }
+.lang-chevron.rotate { transform: rotate(180deg); }
+.lang-dropdown {
+  position: absolute; top: calc(100% + var(--ui-space-1)); left: 0; width: 100%; min-width: 80px;
+  display: flex; flex-direction: column; gap: 2px; padding: var(--ui-space-1);
+  background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm);
+  box-shadow: 0 4px 12px var(--ui-overlay);
+}
+.lang-option {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px var(--ui-space-2); border: 0; border-radius: var(--ui-radius-sm);
+  background: transparent; color: var(--ui-text); font: inherit; font-size: var(--ui-text-xs); font-weight: 500;
+  text-align: left; cursor: pointer;
+}
+.lang-option:hover { background: var(--ui-surface-2); color: var(--ui-primary); }
+.lang-option.selected { background: var(--ui-primary-soft); color: var(--ui-primary); font-weight: 600; }

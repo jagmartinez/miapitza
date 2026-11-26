@@ -1,19 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
-import Select from '../components/Select';
 import { branchesAPI, hrAPI, type BranchGeofencePayload } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import BranchWarehouseRoutes from '../components/BranchWarehouseRoutes';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store, AlertTriangle, LocateFixed } from 'lucide-react';
 import type { Branch } from '../types';
-import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
+import { MIN_LOCATION_ACCURACY_M } from '../components/hr/attendanceSettingsRules';
 import './Branches.css';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, type Column, PageHeader } from '@/ui';
 
 interface BranchFormData {
     name: string;
@@ -28,6 +28,8 @@ interface BranchFormData {
     timezone: string;
     attendanceEnabled: boolean;
     geofenceVersion?: number;
+    /** Default sale warehouse (auto-delivery / POS availability); null = automatic. */
+    defaultSaleWarehouseId: number | null;
 }
 
 const resolvedBrowserTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -40,10 +42,11 @@ const emptyBranchForm = (timezone = resolvedBrowserTimezone()): BranchFormData =
     status: 'ACTIVE',
     latitude: '',
     longitude: '',
-    geofenceRadiusM: '',
-    maxLocationAccuracyM: '',
+    geofenceRadiusM: '100',
+    maxLocationAccuracyM: '30',
     timezone,
     attendanceEnabled: false,
+    defaultSaleWarehouseId: null,
 });
 
 export default function Branches() {
@@ -77,7 +80,7 @@ export default function Branches() {
 
         } catch (error) {
             console.error('Error loading data:', error);
-            setLoadError('No fue posible cargar las sucursales.');
+            setLoadError(getApiErrorMessage(error, 'No fue posible cargar las sucursales'));
         } finally {
             setLoading(false);
         }
@@ -128,8 +131,8 @@ export default function Branches() {
             setActiveTab('ubicacion');
             return;
         }
-        if (latitude !== null && (maxLocationAccuracyM === null || !Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < 1 || maxLocationAccuracyM > 5000)) {
-            showError('Define una precisión GPS máxima entera entre 1 y 5000 metros.');
+        if (latitude !== null && (maxLocationAccuracyM === null || !Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < MIN_LOCATION_ACCURACY_M || maxLocationAccuracyM > 5000)) {
+            showError(`Define una precisión GPS máxima entera entre ${MIN_LOCATION_ACCURACY_M} y 5000 metros. Los teléfonos rara vez garantizan menos de ${MIN_LOCATION_ACCURACY_M} m.`);
             setActiveTab('ubicacion');
             return;
         }
@@ -163,6 +166,9 @@ export default function Branches() {
             ...(formData.geofenceVersion !== undefined ? { expectedVersion: formData.geofenceVersion } : {}),
         };
 
+        const defaultSaleWarehouseChanged = !!editingBranch
+            && (editingBranch.defaultSaleWarehouseId ?? null) !== formData.defaultSaleWarehouseId;
+
         setSaving(true);
         try {
             let savedBranch = editingBranch;
@@ -177,8 +183,14 @@ export default function Branches() {
                         status: branchPayload.status,
                     });
                     savedBranch = editingBranch;
+                    if (defaultSaleWarehouseChanged) {
+                        await branchesAPI.update(editingBranch.id, { defaultSaleWarehouseId: formData.defaultSaleWarehouseId });
+                    }
                 } else {
-                    const response = await branchesAPI.update(editingBranch.id, branchPayload);
+                    const response = await branchesAPI.update(editingBranch.id, {
+                        ...branchPayload,
+                        ...(defaultSaleWarehouseChanged ? { defaultSaleWarehouseId: formData.defaultSaleWarehouseId } : {}),
+                    });
                     savedBranch = response.data.data as Branch;
                 }
             } else {
@@ -214,7 +226,7 @@ export default function Branches() {
             await loadData();
         } catch (error) {
             console.error('Error deleting branch:', error);
-            showError('Error al desactivar la sucursal');
+            showError(getApiErrorMessage(error, 'Error al desactivar la sucursal'));
         }
     };
 
@@ -238,6 +250,7 @@ export default function Branches() {
                 timezone: branch.timezone || user?.timezone || resolvedBrowserTimezone(),
                 attendanceEnabled: branch.attendanceEnabled ?? false,
                 geofenceVersion: branch.geofenceVersion,
+                defaultSaleWarehouseId: branch.defaultSaleWarehouseId ?? null,
             });
         } else {
             setEditingBranch(null);
@@ -264,7 +277,7 @@ export default function Branches() {
                 }
             } catch (error) {
                 console.error('Error loading branch geofence:', error);
-                showWarning('No se pudo actualizar la geocerca desde el servidor; se muestran los datos disponibles de la sucursal.');
+                notifyError(error, 'No se pudo actualizar la geocerca desde el servidor (se muestran los datos disponibles de la sucursal)', { type: 'warning' });
             } finally {
                 setGeofenceLoading(false);
             }
@@ -329,21 +342,20 @@ export default function Branches() {
 
     return (
         <div className="branches-page">
-            {/* Modern Header */}
-            <div className="branches-header-new">
-                <div className="header-title-section">
-                    <h1><Store size={32} /> Gestión de Sucursales</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <ViewToggle value={viewMode} onChange={setViewMode} />
-                    {isSuperAdmin && (
-                        <Button variant="primary" onClick={() => openModal()}>
-                            <Plus size={20} />
-                            Nueva Sucursal
-                        </Button>
-                    )}
-                </div>
-            </div>
+            <PageHeader
+                title="Gestión de Sucursales"
+                actions={(
+                    <>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        {isSuperAdmin && (
+                            <Button variant="primary" onClick={() => openModal()}>
+                                <Plus size={20} />
+                                Nueva Sucursal
+                            </Button>
+                        )}
+                    </>
+                )}
+            />
 
             {/* Filters Row */}
             <div className="branches-filters-row">
@@ -372,7 +384,8 @@ export default function Branches() {
 
             {/* Table view */}
             {viewMode === 'table' && filteredBranches.length > 0 && (
-                <CatalogTable<Branch>
+                <DataTable<Branch>
+                    ariaLabel="Listado de sucursales"
                     rows={filteredBranches}
                     rowKey={(b) => b.id}
                     resetKey={statusFilter}
@@ -387,7 +400,7 @@ export default function Branches() {
                                     {(b._count?.warehouses ?? 0) === 0 && (
                                         <span
                                             className="cell-sub"
-                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--color-warning, #f59e0b)', fontWeight: 600 }}
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--ui-warning)', fontWeight: 600 }}
                                             title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
                                         >
                                             <AlertTriangle size={12} /> Sin almacén
@@ -403,8 +416,8 @@ export default function Branches() {
                         }] : []),
                         { key: 'phone', header: 'Teléfono', render: (b) => b.phone || '-' },
                         { key: 'address', header: 'Dirección', render: (b) => b.address || '-' },
-                        { key: 'users', header: 'Usuarios', align: 'center', render: (b) => b._count?.users || 0 },
-                        { key: 'tables', header: 'Mesas', align: 'center', render: (b) => b._count?.tables || 0 },
+                        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, render: (b) => b._count?.users || 0 },
+                        { key: 'tables', header: 'Mesas', type: 'number', decimals: 0, render: (b) => b._count?.tables || 0 },
                         {
                             key: 'status',
                             header: 'Estado',
@@ -413,7 +426,7 @@ export default function Branches() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right',
+                            type: 'actions',
                             render: (b) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
@@ -427,7 +440,7 @@ export default function Branches() {
                                 </div>
                             )
                         }
-                    ] as CatalogColumn<Branch>[]}
+                    ] as Column<Branch>[]}
                 />
             )}
 
@@ -463,9 +476,9 @@ export default function Branches() {
                                             borderRadius: '999px',
                                             fontSize: '0.72rem',
                                             fontWeight: 700,
-                                            color: 'var(--color-warning, #f59e0b)',
-                                            background: 'color-mix(in srgb, var(--color-warning, #f59e0b) 15%, transparent)',
-                                            border: '1px solid var(--color-warning, #f59e0b)'
+                                            color: 'var(--ui-warning)',
+                                            background: 'color-mix(in srgb, var(--ui-warning) 15%, transparent)',
+                                            border: '1px solid var(--ui-warning)'
                                         }}
                                         title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
                                     >
@@ -531,7 +544,7 @@ export default function Branches() {
                     <Store size={48} />
                     <p>No hay sucursales {statusFilter ? 'con este estado' : 'registradas'}</p>
                     {(statusFilter || isSuperAdmin) && (
-                        <Button
+                        <Button variant="primary"
                             onClick={() => {
                                 if (statusFilter) setStatusFilter(null);
                                 else openModal();
@@ -543,7 +556,7 @@ export default function Branches() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={handleSidebarClose}
                 title={editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
@@ -608,7 +621,7 @@ export default function Branches() {
                                         <div className="modal-input-group">
                                             <label className="modal-input-label" htmlFor="branch-phone">Teléfono</label>
                                             <div style={{ position: 'relative' }}>
-                                                <Phone size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
+                                                <Phone size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ui-text-muted)' }} />
                                                 <input
                                                     id="branch-phone"
                                                     type="text"
@@ -623,20 +636,58 @@ export default function Branches() {
                                     </div>
 
                                     {editingBranch && (
-                                        <Select
-                                            variant="modal"
-                                            label="Estado de Sucursal"
-                                            options={[
+                                        <Field label="Estado de Sucursal" htmlFor="sel-625">
+<AppSelect isClearable={false} inputId="sel-625" options={[
                                                 { value: 'ACTIVE', label: 'Activa' },
                                                 { value: 'INACTIVE', label: 'Inactiva' }
-                                            ]}
-                                            value={formData.status === 'ACTIVE' ? { value: 'ACTIVE', label: 'Activa' } : { value: 'INACTIVE', label: 'Inactiva' }}
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) => setFormData({
+                                            ]} value={(formData.status === 'ACTIVE' ? { value: 'ACTIVE', label: 'Activa' } : { value: 'INACTIVE', label: 'Inactiva' })?.value ?? null} onChange={(__v) => { const option = ([
+                                                { value: 'ACTIVE', label: 'Activa' },
+                                                { value: 'INACTIVE', label: 'Inactiva' }
+                                            ]).find((o) => o.value === __v) ?? null; return setFormData({
                                                 ...formData,
                                                 status: option?.value === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
                                                 ...(option?.value === 'INACTIVE' ? { attendanceEnabled: false } : {}),
-                                            })}
-                                            isSearchable={false}
+                                            }); }} />
+</Field>
+                                    )}
+
+                                    {editingBranch && (() => {
+                                        const saleWarehouses = (editingBranch.warehouses ?? [])
+                                            .filter((warehouse) => !warehouse.type || warehouse.type === 'BRANCH');
+                                        const automatic = { value: 0, label: 'Automática (única bodega de sucursal)' };
+                                        const options = [
+                                            automatic,
+                                            ...saleWarehouses.map((warehouse) => ({
+                                                value: warehouse.id,
+                                                label: warehouse.code ? `${warehouse.name} (${warehouse.code})` : warehouse.name,
+                                            })),
+                                        ];
+                                        return (
+                                            <div className="modal-input-group">
+                                                <Field label="Bodega de venta predeterminada" htmlFor="branch-default-sale-warehouse">
+                                                    <AppSelect
+                                                        isClearable={false}
+                                                        inputId="branch-default-sale-warehouse"
+                                                        options={options}
+                                                        value={formData.defaultSaleWarehouseId ?? 0}
+                                                        onChange={(v) => setFormData({
+                                                            ...formData,
+                                                            defaultSaleWarehouseId: v !== null && Number(v) > 0 ? Number(v) : null,
+                                                        })}
+                                                    />
+                                                </Field>
+                                                <small style={{ color: 'var(--ui-text-muted)' }}>
+                                                    Se usa para la entrega automática y la disponibilidad del POS. Con varias bodegas y sin predeterminada, la entrega requiere elegir bodega.
+                                                </small>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {editingBranch && (
+                                        <BranchWarehouseRoutes
+                                            branchId={editingBranch.id}
+                                            warehouses={editingBranch.warehouses ?? []}
+                                            canEdit={hasAnyRole(user, ['SUPERADMIN', 'ADMIN'])}
                                         />
                                     )}
                                 </div>
@@ -667,12 +718,12 @@ export default function Branches() {
                                         <h3>Geocerca para marcaje</h3>
                                     </div>
 
-                                    <p style={{ margin: 0, color: 'var(--color-neutral-500)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                                    <p style={{ margin: 0, color: 'var(--ui-text-muted)', fontSize: '0.85rem', lineHeight: 1.5 }}>
                                         Se validará la ubicación solo al realizar el marcaje. No se realiza seguimiento continuo ni se muestra un mapa.
                                     </p>
 
                                     {geofenceLoading && (
-                                        <div role="status" style={{ color: 'var(--color-neutral-500)', fontSize: '0.85rem' }}>
+                                        <div role="status" style={{ color: 'var(--ui-text-muted)', fontSize: '0.85rem' }}>
                                             Cargando configuración de geocerca…
                                         </div>
                                     )}
@@ -728,11 +779,11 @@ export default function Branches() {
                                                 gap: '8px',
                                                 padding: '10px 12px',
                                                 borderRadius: '8px',
-                                                border: '1px solid var(--color-border)',
-                                                background: 'var(--color-background)',
+                                                border: '1px solid var(--ui-border)',
+                                                background: 'var(--ui-bg)',
                                                 color: locationAccuracyM <= Number(formData.maxLocationAccuracyM || 0)
-                                                    ? 'var(--color-success)'
-                                                    : 'var(--color-warning)',
+                                                    ? 'var(--ui-success)'
+                                                    : 'var(--ui-warning)',
                                                 fontSize: '0.85rem',
                                             }}
                                         >
@@ -763,11 +814,11 @@ export default function Branches() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-max-accuracy">Precisión GPS máxima (m)</label>
+                                            <label className="modal-input-label" htmlFor="branch-max-accuracy">Margen máximo de error GPS (m)</label>
                                             <input
                                                 id="branch-max-accuracy"
                                                 type="number"
-                                                min="1"
+                                                min={MIN_LOCATION_ACCURACY_M}
                                                 max="5000"
                                                 step="1"
                                                 className="modal-standard-input"
@@ -778,6 +829,19 @@ export default function Branches() {
                                             />
                                         </div>
                                     </div>
+
+                                    {formData.attendanceEnabled && Number(formData.maxLocationAccuracyM) < 20 && (
+                                        <div className="branch-geofence-warning" role="status">
+                                            <AlertTriangle size={17} aria-hidden="true" />
+                                            <span><strong>Configuración GPS estricta.</strong> Los teléfonos normalmente no garantizan menos de 10–15 m. Usa 20–30 m como punto de partida y valida en el local.</span>
+                                        </div>
+                                    )}
+                                    {formData.attendanceEnabled && Number(formData.geofenceRadiusM) < 50 && (
+                                        <div className="branch-geofence-warning" role="status">
+                                            <AlertTriangle size={17} aria-hidden="true" />
+                                            <span><strong>Geocerca muy pequeña.</strong> Un radio menor de 50 m puede rechazar personal dentro del local por deriva GPS. El valor inicial recomendado es 100 m.</span>
+                                        </div>
+                                    )}
 
                                     <div className="modal-input-group">
                                         <label className="modal-input-label" htmlFor="branch-timezone">Zona horaria IANA</label>
@@ -800,10 +864,10 @@ export default function Branches() {
                                             alignItems: 'flex-start',
                                             gap: '10px',
                                             padding: '12px',
-                                            border: '1px solid var(--color-border)',
+                                            border: '1px solid var(--ui-border)',
                                             borderRadius: '10px',
-                                            background: 'var(--color-background)',
-                                            color: 'var(--color-text)',
+                                            background: 'var(--ui-bg)',
+                                            color: 'var(--ui-text)',
                                             cursor: 'pointer',
                                         }}
                                     >
@@ -813,11 +877,11 @@ export default function Branches() {
                                             checked={formData.attendanceEnabled}
                                             disabled={!isSuperAdmin}
                                             onChange={e => setFormData({ ...formData, attendanceEnabled: e.target.checked })}
-                                            style={{ marginTop: '3px', accentColor: 'var(--color-primary)' }}
+                                            style={{ marginTop: '3px', accentColor: 'var(--ui-primary)' }}
                                         />
                                         <span>
                                             <strong style={{ display: 'block' }}>Habilitar validación de asistencia</strong>
-                                            <small style={{ color: 'var(--color-neutral-500)', lineHeight: 1.45 }}>
+                                            <small style={{ color: 'var(--ui-text-muted)', lineHeight: 1.45 }}>
                                                 Los marcajes de esta sucursal exigirán una ubicación dentro de la geocerca y con la precisión configurada.
                                             </small>
                                         </span>
@@ -836,7 +900,7 @@ export default function Branches() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

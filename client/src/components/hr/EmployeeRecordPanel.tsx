@@ -1,9 +1,8 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
-import { formatHrMoney } from '../../utils/hrFormat';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useState } from 'react';
 import { Download, FileLock2, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
-import Button from '../Button';
 import LoadingSpinner from '../LoadingSpinner';
 import { getHrErrorMessage, hrClient } from './hrClient';
 import type { HrCompensationRecord, HrEmployeeDocument, HrEmploymentContract, HrPayFrequency } from '../../types/hr';
@@ -96,11 +95,27 @@ export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: 
                     }}>
                         <h3><Plus size={17} /> Nuevo contrato</h3>
                         <label>Número<input value={contractForm.contractNumber} onChange={(event) => setContractForm(current => ({ ...current, contractNumber: event.target.value.toUpperCase() }))} required maxLength={80} /></label>
-                        <label>Tipo<HrReactSelect value={contractForm.employmentType} onChange={(event) => setContractForm(current => ({ ...current, employmentType: event.target.value }))}><option value="FULL_TIME">Tiempo completo</option><option value="PART_TIME">Tiempo parcial</option><option value="TEMPORARY">Temporal</option><option value="CONTRACTOR">Contratista</option><option value="INTERN">Pasantía</option></HrReactSelect></label>
+                        <label>Tipo<AppSelect<string>
+                                     options={[
+                                       { value: 'FULL_TIME', label: 'Tiempo completo' },
+                                       { value: 'PART_TIME', label: 'Tiempo parcial' },
+                                       { value: 'TEMPORARY', label: 'Temporal' },
+                                       { value: 'CONTRACTOR', label: 'Contratista' },
+                                       { value: 'INTERN', label: 'Pasantía' },
+                                     ]}
+                                     value={contractForm.employmentType}
+                                     onChange={(next) =>
+                                       setContractForm((current) => ({
+                                         ...current,
+                                         employmentType: next ?? '',
+                                       }))
+                                     }
+                                     isClearable={false}
+                                   /></label>
                         <label>Inicio<input type="date" value={contractForm.startDate} onChange={(event) => setContractForm(current => ({ ...current, startDate: event.target.value }))} required /></label>
                         <label>Fin previsto<input type="date" min={contractForm.startDate} value={contractForm.endDate} onChange={(event) => setContractForm(current => ({ ...current, endDate: event.target.value }))} /></label>
                         <label className="span-full">Notas<textarea value={contractForm.notes} onChange={(event) => setContractForm(current => ({ ...current, notes: event.target.value }))} maxLength={5000} /></label>
-                        <Button type="submit" disabled={saving}>Crear borrador</Button>
+                        <Button variant="primary" type="submit" disabled={saving}>Crear borrador</Button>
                     </form>
 
                     {contracts.length > 0 && <form className="hr-record-form" onSubmit={(event) => {
@@ -113,11 +128,41 @@ export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: 
                         }), 'Transición contractual aplicada y auditada.');
                     }}>
                         <h3>Transición controlada</h3>
-                        <label>Contrato<HrReactSelect value={transitionForm.contractId} onChange={(event) => setTransitionForm(current => ({ ...current, contractId: event.target.value }))} required><option value="">Seleccione</option>{contracts.map(contract => <option key={contract.id} value={contract.id}>{contract.contractNumber} · {contract.status}</option>)}</HrReactSelect></label>
-                        <label>Acción<HrReactSelect value={transitionForm.action} onChange={(event) => setTransitionForm(current => ({ ...current, action: event.target.value as typeof current.action }))}><option value="ACTIVATE">Activar firmado</option><option value="TERMINATE">Terminar</option><option value="EXPIRE">Expirar</option></HrReactSelect></label>
+                        <label>Contrato<AppSelect<string>
+                                         options={[
+                                           { value: '', label: 'Seleccione' },
+                                           ...contracts.map((contract) => ({
+                                             value: String(contract.id),
+                                             label: `${contract.contractNumber} · ${contract.status}`,
+                                           })),
+                                         ]}
+                                         value={transitionForm.contractId}
+                                         onChange={(next) =>
+                                           setTransitionForm((current) => ({
+                                             ...current,
+                                             contractId: next ?? '',
+                                           }))
+                                         }
+                                         isClearable={false}
+                                       /></label>
+                        <label>Acción<AppSelect<string>
+                                       options={[
+                                         { value: 'ACTIVATE', label: 'Activar firmado' },
+                                         { value: 'TERMINATE', label: 'Terminar' },
+                                         { value: 'EXPIRE', label: 'Expirar' },
+                                       ]}
+                                       value={transitionForm.action}
+                                       onChange={(next) =>
+                                         setTransitionForm((current) => ({
+                                           ...current,
+                                           action: (next ?? '') as typeof current.action,
+                                         }))
+                                       }
+                                       isClearable={false}
+                                     /></label>
                         {transitionForm.action === 'ACTIVATE' ? <label>Fecha/hora de firma<input type="datetime-local" value={transitionForm.signedAt} onChange={(event) => setTransitionForm(current => ({ ...current, signedAt: event.target.value }))} required /></label> : <label>Fecha final<input type="date" value={transitionForm.endDate} onChange={(event) => setTransitionForm(current => ({ ...current, endDate: event.target.value }))} required /></label>}
                         <label className="span-full">Razón<input value={transitionForm.reason} onChange={(event) => setTransitionForm(current => ({ ...current, reason: event.target.value }))} required minLength={3} maxLength={500} /></label>
-                        <Button type="submit" disabled={saving}>Aplicar transición</Button>
+                        <Button variant="primary" type="submit" disabled={saving}>Aplicar transición</Button>
                     </form>}
 
                     <RecordList empty="Sin contratos registrados.">{contracts.map(contract => <article key={contract.id}><div><strong>{contract.contractNumber}</strong><span>{contract.employmentType.replace(/_/g, ' ')} · {dateText(contract.startDate)} a {dateText(contract.endDate)}</span><small>{contract.signedAt ? `Firmado ${contract.signedAt}` : 'Pendiente de firma/activación'}</small></div><b>{contract.status}</b></article>)}</RecordList>
@@ -133,14 +178,85 @@ export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: 
                         }), 'Nueva versión de compensación creada; la anterior quedó cerrada.');
                     }}>
                         <h3><Plus size={17} /> Versionar compensación</h3>
-                        <label>Contrato<HrReactSelect value={compensationForm.contractId} onChange={(event) => setCompensationForm(current => ({ ...current, contractId: event.target.value }))}><option value="">Sin vínculo</option>{contracts.map(contract => <option key={contract.id} value={contract.id}>{contract.contractNumber} · {contract.status}</option>)}</HrReactSelect></label>
-                        <label>Tipo<HrReactSelect value={compensationForm.compensationType} onChange={(event) => setCompensationForm(current => ({ ...current, compensationType: event.target.value as typeof current.compensationType }))}><option value="SALARY">Salario</option><option value="HOURLY">Por hora</option></HrReactSelect></label>
-                        <label>Frecuencia<HrReactSelect value={compensationForm.payFrequency} onChange={(event) => setCompensationForm(current => ({ ...current, payFrequency: event.target.value as typeof current.payFrequency }))}><option value="WEEKLY">Semanal · 52 períodos/año</option><option value="BIWEEKLY">Quincenal · 24 períodos/año</option><option value="FORTNIGHTLY">Catorcenal · 26 períodos/año</option><option value="MONTHLY">Mensual · 12 períodos/año</option></HrReactSelect></label>
+                        <label>Contrato<AppSelect<string>
+                                         options={[
+                                           { value: '', label: 'Sin vínculo' },
+                                           ...contracts.map((contract) => ({
+                                             value: String(contract.id),
+                                             label: `${contract.contractNumber} · ${contract.status}`,
+                                           })),
+                                         ]}
+                                         value={compensationForm.contractId}
+                                         onChange={(next) =>
+                                           setCompensationForm((current) => ({
+                                             ...current,
+                                             contractId: next ?? '',
+                                           }))
+                                         }
+                                         isClearable={false}
+                                       /></label>
+                        <label>Tipo<AppSelect<string>
+                                     options={[
+                                       { value: 'SALARY', label: 'Salario' },
+                                       { value: 'HOURLY', label: 'Por hora' },
+                                     ]}
+                                     value={compensationForm.compensationType}
+                                     onChange={(next) =>
+                                       setCompensationForm((current) => ({
+                                         ...current,
+                                         compensationType: (next ??
+                                           '') as typeof current.compensationType,
+                                       }))
+                                     }
+                                     isClearable={false}
+                                   /></label>
+                        <label>Frecuencia<AppSelect<string>
+                                           options={[
+                                             {
+                                               value: 'WEEKLY',
+                                               label: 'Semanal · 52 períodos/año',
+                                             },
+                                             {
+                                               value: 'BIWEEKLY',
+                                               label: 'Quincenal · 24 períodos/año',
+                                             },
+                                             {
+                                               value: 'FORTNIGHTLY',
+                                               label: 'Catorcenal · 26 períodos/año',
+                                             },
+                                             {
+                                               value: 'MONTHLY',
+                                               label: 'Mensual · 12 períodos/año',
+                                             },
+                                           ]}
+                                           value={compensationForm.payFrequency}
+                                           onChange={(next) =>
+                                             setCompensationForm((current) => ({
+                                               ...current,
+                                               payFrequency: (next ??
+                                                 '') as typeof current.payFrequency,
+                                             }))
+                                           }
+                                           isClearable={false}
+                                         /></label>
                         <label>Monto<HrMoneyInput value={compensationForm.amount} onValueChange={(amount) => setCompensationForm(current => ({ ...current, amount }))} required /></label>
-                        <label>Moneda<HrReactSelect value={compensationForm.currency} onChange={(event) => setCompensationForm(current => ({ ...current, currency: event.target.value }))}><option value="NIO">NIO · Córdoba</option><option value="USD">USD · Dólar</option></HrReactSelect></label>
+                        <label>Moneda<AppSelect<string>
+                                       options={[
+                                         { value: 'NIO', label: 'NIO · Córdoba' },
+                                         { value: 'USD', label: 'USD · Dólar' },
+                                       ]}
+                                       value={compensationForm.currency}
+                                       onChange={(next) =>
+                                         setCompensationForm((current) => ({
+                                           ...current,
+                                           currency: next ?? '',
+                                         }))
+                                       }
+                                       isClearable={false}
+                                     /></label>
                         <label>Vigente desde<input type="date" value={compensationForm.effectiveFrom} onChange={(event) => setCompensationForm(current => ({ ...current, effectiveFrom: event.target.value }))} required /></label>
                         <label className="span-full">Razón<input value={compensationForm.reason} onChange={(event) => setCompensationForm(current => ({ ...current, reason: event.target.value }))} required minLength={3} maxLength={500} /></label>
-                        <Button type="submit" disabled={saving}>Guardar nueva versión</Button>
+                        <Button variant="primary" type="submit" disabled={saving}>Guardar nueva versión</Button>
                     </form>
                     <RecordList empty="Sin historial de compensación.">{compensations.map(item => <article key={item.id}><div><strong className="hr-money">{formatHrMoney(item.currency, item.amount)} · {item.compensationType === 'SALARY' ? 'Salario' : 'Tarifa por hora'}</strong><span>{frequencyText(item.payFrequency)} · {dateText(item.effectiveFrom)} a {dateText(item.effectiveTo)}</span><small>{item.reason} · por {item.changedBy?.name ?? 'usuario registrado'}</small></div><b>{item.effectiveTo ? 'HISTÓRICA' : 'VIGENTE'}</b></article>)}</RecordList>
                 </>
@@ -158,7 +274,7 @@ export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: 
                         <label>Tipo<input value={documentForm.documentType} onChange={(event) => setDocumentForm(current => ({ ...current, documentType: event.target.value.toUpperCase() }))} required maxLength={100} /></label>
                         <label>Expira<input type="date" min={today()} value={documentForm.expiresAt} onChange={(event) => setDocumentForm(current => ({ ...current, expiresAt: event.target.value }))} /></label>
                         <label className="span-full">Archivo<input type="file" accept="application/pdf,image/jpeg,image/png" onChange={(event) => setDocumentForm(current => ({ ...current, file: event.target.files?.[0] ?? null }))} required /></label>
-                        <Button type="submit" disabled={saving}>Validar y custodiar</Button>
+                        <Button variant="primary" type="submit" disabled={saving}>Validar y custodiar</Button>
                     </form>
                     <label className="hr-record-reason">Razón para revocar documentos<input value={revocationReason} onChange={(event) => setRevocationReason(event.target.value)} maxLength={500} placeholder="Obligatoria al revocar" /></label>
                     <RecordList empty="Sin documentos custodiados.">{documents.map(document => <article key={document.id}><div><strong>{document.documentType} · {document.fileName}</strong><span>{Math.ceil(document.sizeBytes / 1024)} KB · expira {dateText(document.expiresAt)}</span><small>SHA-256 {document.contentHash.slice(0, 16)}… · {document.status}</small></div><div className="hr-record-actions"><Button size="sm" variant="ghost" disabled={saving || document.status !== 'ACTIVE'} onClick={() => void mutate(() => hrClient.downloadEmployeeDocument(employeeId, document), 'Descarga verificada.') }><Download size={14} /> Descargar</Button><Button size="sm" variant="danger" disabled={saving || document.status !== 'ACTIVE' || revocationReason.trim().length < 3} onClick={() => void mutate(() => hrClient.revokeEmployeeDocument(employeeId, document.id, revocationReason), 'Documento revocado y purgado.')}>Revocar</Button></div></article>)}</RecordList>

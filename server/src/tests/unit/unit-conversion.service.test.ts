@@ -242,3 +242,44 @@ describe('UnitConversionService immutable physical contracts', () => {
         expect((db.stock.count as ReturnType<typeof jest.fn>)).not.toHaveBeenCalled();
     });
 });
+
+describe('UnitConversionService.convert — alias matching on both sides (D3)', () => {
+    const boxProduct = (allowedUnits: unknown[], baseAbbr = 'und') => ({
+        id: 1,
+        companyId: 1,
+        name: 'Servilletas',
+        unit: baseAbbr,
+        baseUnit: { abbreviation: baseAbbr, measurementType: 'UNIT', systemFactor: 1 },
+        allowedUnits
+    });
+
+    it('matches a configured "cja" unit when "caja" is requested', async () => {
+        const db = makeDb(boxProduct([{ conversionFactor: 24, unit: { abbreviation: 'cja', measurementType: 'PACKAGE' } }]));
+        const res = await UnitConversionService.convert(1, 1, 2, 'caja', db);
+        expect(res.baseQuantity).toBe(48);
+    });
+
+    it('treats a requested "unidad" as the configured "und" base unit', async () => {
+        const db = makeDb(boxProduct([]));
+        const res = await UnitConversionService.convert(1, 1, 5, 'unidad', db);
+        expect(res.baseQuantity).toBe(5);
+        expect(res.conversionFactor).toBe(1);
+    });
+
+    it('lets a raw exact match win over an alias that normalises to another configured unit', async () => {
+        const db = makeDb(boxProduct([
+            { conversionFactor: 12, unit: { abbreviation: 'pq', measurementType: 'PACKAGE' } },
+            { conversionFactor: 50, unit: { abbreviation: 'paquete', measurementType: 'PACKAGE' } }
+        ]));
+        await expect(UnitConversionService.convert(1, 1, 1, 'pq', db)).resolves.toMatchObject({ baseQuantity: 12 });
+        await expect(UnitConversionService.convert(1, 1, 1, 'paquete', db)).resolves.toMatchObject({ baseQuantity: 50 });
+    });
+
+    it('refuses an ambiguous alias instead of picking one of two configured units', async () => {
+        const db = makeDb(boxProduct([
+            { conversionFactor: 12, unit: { abbreviation: 'pq', measurementType: 'PACKAGE' } },
+            { conversionFactor: 50, unit: { abbreviation: 'pk', measurementType: 'PACKAGE' } }
+        ]));
+        await expect(UnitConversionService.convert(1, 1, 1, 'paq', db)).rejects.toThrow(/no permitida/i);
+    });
+});

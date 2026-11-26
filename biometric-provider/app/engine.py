@@ -16,7 +16,6 @@ from .config import Settings
 from .errors import BiometricError
 from .schemas import CaptureFrame
 
-
 MODEL_FILES = {
     "detector": "face_detection_yunet_2023mar.onnx",
     "recognizer": "face_recognition_sface_2021dec.onnx",
@@ -28,6 +27,51 @@ MODEL_SHA256 = {
     "recognizer": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
     "antispoof": "fde20585635cae62ed1d41796f76b6f8bc4b92cd91ec1cf0f1bc6485d2d587a9",
 }
+
+
+MIN_IMAGE_SIDE = 320
+MAX_IMAGE_SIDE = 2048
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# Start-of-frame markers that carry image dimensions (DHT/JPG/DAC excluded).
+JPEG_SOF_MARKERS = frozenset(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
+
+
+def declared_image_dimensions(raw: bytes) -> tuple[int, int] | None:
+    """Read width/height from the PNG/JPEG header without decoding pixels.
+
+    A small, highly compressible upload can declare a gigapixel canvas; decoding
+    it first would let one request exhaust provider memory before any size check.
+    """
+    if raw.startswith(PNG_SIGNATURE):
+        if len(raw) < 24 or raw[12:16] != b"IHDR":
+            return None
+        return int.from_bytes(raw[16:20], "big"), int.from_bytes(raw[20:24], "big")
+    if not raw.startswith(b"\xff\xd8"):
+        return None
+    index = 2
+    while index + 4 <= len(raw):
+        if raw[index] != 0xFF:
+            return None
+        marker = raw[index + 1]
+        if marker == 0xFF:
+            index += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD8:
+            index += 2
+            continue
+        if marker in (0xD9, 0xDA):
+            return None
+        segment_length = int.from_bytes(raw[index + 2 : index + 4], "big")
+        if segment_length < 2:
+            return None
+        if marker in JPEG_SOF_MARKERS:
+            if index + 9 > len(raw):
+                return None
+            height = int.from_bytes(raw[index + 5 : index + 7], "big")
+            width = int.from_bytes(raw[index + 7 : index + 9], "big")
+            return width, height
+        index += 2 + segment_length
+    return None
 
 
 @dataclass(slots=True)
@@ -76,13 +120,24 @@ class FaceEngine:
             raise BiometricError("CAPTURE_INVALID", "La captura no es base64 valido") from exc
         if not raw or len(raw) > self.settings.max_frame_bytes:
             raise BiometricError("CAPTURE_SIZE_INVALID", "La captura esta vacia o excede el limite", status_code=413)
+        declared = declared_image_dimensions(raw)
+        if declared is None:
+            raise BiometricError("CAPTURE_INVALID", "La captura no es una imagen valida")
+        self._assert_dimensions(*declared)
         image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
         if image is None or image.ndim != 3:
             raise BiometricError("CAPTURE_INVALID", "La captura no es una imagen valida")
         height, width = image.shape[:2]
-        if min(width, height) < 320 or max(width, height) > 2048:
-            raise BiometricError("CAPTURE_DIMENSIONS_INVALID", "La imagen debe medir entre 320 y 2048 pixeles")
+        self._assert_dimensions(width, height)
         return image
+
+    @staticmethod
+    def _assert_dimensions(width: int, height: int) -> None:
+        if min(width, height) < MIN_IMAGE_SIDE or max(width, height) > MAX_IMAGE_SIDE:
+            raise BiometricError(
+                "CAPTURE_DIMENSIONS_INVALID",
+                f"La imagen debe medir entre {MIN_IMAGE_SIDE} y {MAX_IMAGE_SIDE} pixeles",
+            )
 
     @staticmethod
     def _crop_face(image: np.ndarray, face: np.ndarray, expansion: float = 1.5) -> np.ndarray:
@@ -108,7 +163,9 @@ class FaceEngine:
         tensor = np.transpose(rgb.astype(np.float32) / 255.0, (2, 0, 1))[None, ...]
         logits = np.asarray(self._antispoof.run(None, {self._antispoof_input: tensor})[0]).reshape(-1)
         if logits.size < 2 or not np.all(np.isfinite(logits[:2])):
-            raise BiometricError("LIVENESS_MODEL_ERROR", "El modelo de vida devolvio un resultado invalido", status_code=503)
+            raise BiometricError(
+                "LIVENESS_MODEL_ERROR", "El modelo de vida devolvio un resultado invalido", status_code=503
+            )
         shifted = logits[:2] - np.max(logits[:2])
         probabilities = np.exp(shifted) / np.sum(np.exp(shifted))
         return float(probabilities[0])
@@ -118,7 +175,9 @@ class FaceEngine:
         flat = np.asarray(vector, dtype=np.float32).reshape(-1)
         norm = float(np.linalg.norm(flat))
         if not math.isfinite(norm) or norm <= 1e-8:
-            raise BiometricError("EMBEDDING_INVALID", "El modelo facial devolvio una plantilla invalida", status_code=503)
+            raise BiometricError(
+                "EMBEDDING_INVALID", "El modelo facial devolvio una plantilla invalida", status_code=503
+            )
         return flat / norm
 
     def _analyze_frame(self, image: np.ndarray) -> FrameAnalysis:
@@ -172,7 +231,9 @@ class FaceEngine:
         reference = analyses[0].embedding
         cross_scores = [float(np.dot(reference, item.embedding)) for item in analyses[1:]]
         if cross_scores and min(cross_scores) < self.settings.cross_frame_match_threshold:
-            raise BiometricError("IDENTITY_CHANGED_DURING_CAPTURE", "El rostro cambio durante la secuencia", retryable=False)
+            raise BiometricError(
+                "IDENTITY_CHANGED_DURING_CAPTURE", "El rostro cambio durante la secuencia", retryable=False
+            )
         passive_scores = [item.passive_score for item in analyses]
         passive_passes = sum(score >= self.settings.passive_liveness_threshold for score in passive_scores)
         passive_ratio = passive_passes / len(passive_scores)
@@ -192,7 +253,9 @@ class FaceEngine:
                     "ACTIVE_LIVENESS_WRONG_DIRECTION",
                     "Se detecto un giro hacia el lado contrario; sigue la flecha mostrada en la camara",
                 )
-            raise BiometricError("ACTIVE_LIVENESS_FAILED", "No se detecto el giro solicitado desde una posicion frontal")
+            raise BiometricError(
+                "ACTIVE_LIVENESS_FAILED", "No se detecto el giro solicitado desde una posicion frontal"
+            )
         aggregate = self._normalize(np.mean(np.stack([item.embedding for item in analyses], axis=0), axis=0))
         return EvidenceAnalysis(
             embedding=aggregate,

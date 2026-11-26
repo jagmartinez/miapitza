@@ -18,9 +18,9 @@ describe('identity surfaces UX contract', () => {
     });
 
     it('aligns login depth, panel, border and radius with the authenticated shell palette', () => {
-        expect(loginCss).toContain('--login-bg: #0f172a');
-        expect(loginCss).toContain('--login-panel: #1e293b');
-        expect(loginCss).toContain('--login-border: #334155');
+        expect(loginCss).toContain('--login-bg: var(--ui-bg)');
+        expect(loginCss).toContain('--login-panel: var(--ui-surface)');
+        expect(loginCss).toContain('--login-border: var(--ui-border)');
         expect(loginCss).toContain('width: min(100%, 1700px)');
         expect(loginCss).toContain('@media (prefers-reduced-motion: reduce)');
     });
@@ -32,7 +32,7 @@ describe('identity surfaces UX contract', () => {
         expect(profile).toContain("user?.accountType === 'INTERNAL' && Boolean(user.employeeId)");
         expect(profile).toContain('Esta cuenta todavía no está vinculada a un empleado');
         expect(profile).toContain('Expediente laboral vinculado');
-        expect(profile).toContain('aria-label="Secciones de mi perfil"');
+        expect(profile).toContain('ariaLabel="Secciones de mi perfil"');
         expect(profile).toContain('Promise.allSettled');
     });
 

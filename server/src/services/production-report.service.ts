@@ -352,9 +352,10 @@ export class ProductionReportService {
      * producción concreta. Incluye, por cada insumo que a su vez es producido
      * internamente, las órdenes de producción que lo generaron (un nivel hacia atrás).
      */
-    static async getTraceability(companyId: number, orderId: number) {
+    static async getTraceability(companyId: number, orderId: number, branchId?: number) {
         const order = await prisma.productionOrder.findFirst({
-            where: { id: orderId, companyId },
+            // Branch-pinned roles (BODEGA/CHEF) may only trace their own branch.
+            where: { id: orderId, companyId, ...(branchId ? { branchId } : {}) },
             include: {
                 product: { select: { id: true, name: true, sku: true, type: true } },
                 warehouse: { select: { id: true, name: true } },

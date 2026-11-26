@@ -1,4 +1,4 @@
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { ReportProductionService } from '../services/report-production.service';
 import { ExcelExporter, sendExcelResponse } from '../utils/excel-export';
 import { resolveBranchScope } from '../utils/branch-scope';
@@ -19,18 +19,18 @@ function parseFilters(req: Request) {
 }
 
 export class ReportProductionController {
-    static async getRecipeCostAnalysis(req: Request, res: Response) {
+    static async getRecipeCostAnalysis(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const filters = parseFilters(req);
             const data = await ReportProductionService.getRecipeCostAnalysis(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async exportRecipeCostAnalysis(req: Request, res: Response) {
+    static async exportRecipeCostAnalysis(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const filters = parseFilters(req);
@@ -56,22 +56,22 @@ export class ReportProductionController {
 
             sendExcelResponse(res, buffer, 'costos-recetas');
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async getProductionYield(req: Request, res: Response) {
+    static async getProductionYield(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const filters = parseFilters(req);
             const data = await ReportProductionService.getProductionYield(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async exportProductionYield(req: Request, res: Response) {
+    static async exportProductionYield(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const filters = parseFilters(req);
@@ -94,22 +94,22 @@ export class ReportProductionController {
 
             sendExcelResponse(res, buffer, 'rendimiento-produccion');
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async getMenuEngineering(req: Request, res: Response) {
+    static async getMenuEngineering(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters = parseFilters(req);
+            const filters = { ...parseFilters(req), includeUnsold: req.query.includeUnsold === '1' };
             const data = await ReportProductionService.getMenuEngineering(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async exportMenuEngineering(req: Request, res: Response) {
+    static async exportMenuEngineering(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const filters = parseFilters(req);
@@ -136,22 +136,22 @@ export class ReportProductionController {
 
             sendExcelResponse(res, buffer, 'ingenieria-menu');
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async getPurchaseProjection(req: Request, res: Response) {
+    static async getPurchaseProjection(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const filters = parseFilters(req);
             const data = await ReportProductionService.getPurchaseProjection(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 
-    static async exportPurchaseProjection(req: Request, res: Response) {
+    static async exportPurchaseProjection(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const filters = parseFilters(req);
@@ -178,7 +178,7 @@ export class ReportProductionController {
 
             sendExcelResponse(res, buffer, 'proyeccion-compras');
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            next(error);
         }
     }
 }

@@ -1,23 +1,25 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import Select from '../components/Select';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { cashShiftsAPI, cashArqueoAPI, suppliersAPI } from '../services/api';
-import { escapeHtml } from '../utils/escapeHtml';
-import Card from '../components/Card';
-import Button from '../components/Button';
-import Pagination from '../components/Pagination';
-import Input from '../components/Input';
-import Sidebar from '../components/Sidebar';
-import { ArrowLeft, Lock, Plus, Minus, Calendar, User, Banknote, Coins, Printer, Clock, Hash, TrendingUp, TrendingDown, Wallet, FileText, Building2, DollarSign } from 'lucide-react';
+import { buildCashShiftReportHtml, getMovementAuditLabel, getMovementCategoryLabel, getMovementPaymentOrigin } from './cashShiftReport';
+import {
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, Input,
+    PageContent, PageHeader, SegmentedControl, StatCard, StatusBadge, TableToolbar, Textarea,
+    formatMoney as formatMoneyUi, formatNumber,
+    type Column, type Opt,
+} from '@/ui';
+import { AlertTriangle, ArrowLeft, Lock, Minus, Plus, Printer } from 'lucide-react';
 import type { CashMovement, CashShift, Supplier } from '../types';
-import type { SingleValue } from 'react-select';
 import { hasAnyRole } from '../utils/authz';
 import { useAppToast } from '../context/ToastContext';
 import { DEFAULT_EXCHANGE_RATE } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import './CashShift.css';
+import styles from './CashShift.module.css';
+import { getIdempotentAttempt, isAmbiguousMutationFailure, type IdempotentAttempt } from '../utils/idempotency';
 
 interface DenomCountRow {
     denomination: number;
@@ -28,6 +30,11 @@ interface ShiftSummaryState {
     expectedAmount?: number;
     totalIn?: number;
     totalOut?: number;
+    totalSalesCash?: number;
+    grossSalesCash?: number;
+    cashRefunds?: number;
+    otherIncome?: number;
+    otherOutflows?: number;
     [key: string]: unknown;
 }
 
@@ -40,6 +47,8 @@ interface ArqueoDetailsState {
 }
 
 interface ClosePreviewState {
+    /** Always present; the server omits expected/difference for blind cashiers. */
+    status?: 'CUADRADO' | 'SOBRANTE' | 'FALTANTE';
     difference?: number;
     tolerance?: number;
     requiresNote?: boolean;
@@ -60,7 +69,6 @@ function errMsg(error: unknown, fallback: string): string {
 const BILL_DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10];
 const COIN_DENOMINATIONS = [10, 5, 1, 0.5, 0.25];
 const USD_BILL_DENOMINATIONS = [100, 50, 20, 10, 5, 1];
-const ITEMS_PER_PAGE = 8;
 
 const DOCUMENT_TYPES = [
     { value: 'FACTURA', label: 'Factura' },
@@ -86,7 +94,8 @@ const formatDuration = (startDate: string, endDate?: string): string => {
 };
 
 export default function CashShiftPage() {
-    const { formatMoney, symbol } = useCurrency();
+    const { symbol } = useCurrency();
+    const formatMoney = useCallback((value: unknown) => formatMoneyUi(value, symbol), [symbol]);
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -95,11 +104,11 @@ export default function CashShiftPage() {
     const [summary, setSummary] = useState<ShiftSummaryState | null>(null);
     const [arqueoDetails, setArqueoDetails] = useState<ArqueoDetailsState | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Movement Table State
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState<'all' | 'IN' | 'OUT'>('all');
-    const [currentPage, setCurrentPage] = useState(1);
 
     // Movement Sidebar
     const [isMovementSidebarOpen, setIsMovementSidebarOpen] = useState(false);
@@ -136,6 +145,12 @@ export default function CashShiftPage() {
     const [closeNotes, setCloseNotes] = useState('');
     const [closePreview, setClosePreview] = useState<ClosePreviewState | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
+    // In-flight guards: refs block same-tick double submits, state disables the buttons.
+    const [submittingMovement, setSubmittingMovement] = useState(false);
+    const [closingShift, setClosingShift] = useState(false);
+    const submittingMovementRef = useRef(false);
+    const movementAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const closingShiftRef = useRef(false);
 
     const canForceClose = hasAnyRole(user, ['ADMIN', 'SUPERADMIN']);
     /** Same backend constraint as supplier POST from cash context */
@@ -167,8 +182,11 @@ export default function CashShiftPage() {
     }, [summary?.expectedAmount, totalCounted]);
 
     const effectiveDifference = closePreview?.difference ?? closeDifference;
+    // Blind cashiers never receive the numeric difference: classify by status.
+    const closeStatusLabel = closePreview?.status === 'SOBRANTE' ? 'Sobrante'
+        : closePreview?.status === 'FALTANTE' ? 'Faltante' : 'Cuadrado';
+    const closeDiffPositive = isBlindCashier ? closePreview?.status !== 'FALTANTE' : effectiveDifference >= 0;
     const closeTolerance = Number(closePreview?.tolerance ?? 1);
-    const showLegacyExactMatchWarning = false;
 
     const buildClosePayload = () => ({
         endAmount: totalCounted,
@@ -199,9 +217,12 @@ export default function CashShiftPage() {
             setShift(shiftRes.data.data);
             setSummary(summaryRes.data.data.summary); // Access the nested summary object
             setArqueoDetails(arqueoRes.data.data);
+            setLoadError(null);
         } catch (error: unknown) {
             console.error('[CASH-SHIFT-PAGE] Error loading shift data:', error);
-            showError(`Error cargando datos del turno: ${error instanceof Error ? error.message : 'Error'}`);
+            const message = getApiErrorMessage(error, 'Error');
+            setLoadError(message);
+            showError(`Error cargando datos del turno: ${message}`);
         } finally {
             setLoading(false);
         }
@@ -234,6 +255,8 @@ export default function CashShiftPage() {
             filtered = filtered.filter(m =>
                 m.description?.toLowerCase().includes(query) ||
                 m.reference?.toLowerCase().includes(query) ||
+                getMovementPaymentOrigin(m).toLowerCase().includes(query) ||
+                getMovementCategoryLabel(m).toLowerCase().includes(query) ||
                 m.amount.toString().includes(query)
             );
         }
@@ -241,23 +264,15 @@ export default function CashShiftPage() {
         return filtered;
     }, [shift?.movements, filterType, searchQuery]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredMovements.length / ITEMS_PER_PAGE));
-    const paginatedMovements = filteredMovements.slice(
-        (currentPage - 1) * ITEMS_PER_PAGE,
-        currentPage * ITEMS_PER_PAGE
-    );
-
     // Movement counts by type
     const inCount = shift?.movements?.filter(m => m.type === 'IN').length || 0;
     const outCount = shift?.movements?.filter(m => m.type === 'OUT').length || 0;
 
-    // Reset page when filters change
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [filterType, searchQuery]);
-
     const handleAddMovement = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submittingMovementRef.current) return;
+        submittingMovementRef.current = true;
+        setSubmittingMovement(true);
         try {
             const payload: {
                 type: 'IN' | 'OUT';
@@ -288,7 +303,15 @@ export default function CashShiftPage() {
                 payload.supplierId = Number(movementForm.supplierId);
             }
 
-            await cashShiftsAPI.addMovement(Number(id), payload);
+            // One key per logical movement: a retry of the same form after a
+            // timeout reuses it; any edit to the payload yields a new key.
+            const attempt = getIdempotentAttempt(
+                movementAttemptRef.current,
+                JSON.stringify({ shiftId: Number(id), ...payload }),
+            );
+            movementAttemptRef.current = attempt;
+            await cashShiftsAPI.addMovement(Number(id), payload, attempt.key);
+            movementAttemptRef.current = null;
             setIsMovementSidebarOpen(false);
             setMovementForm({
                 amount: '',
@@ -300,8 +323,12 @@ export default function CashShiftPage() {
             });
             loadData();
         } catch (error) {
+            if (!isAmbiguousMutationFailure(error)) movementAttemptRef.current = null;
             console.error('Error adding movement:', error);
-            showError('Error al registrar movimiento');
+            showError(getApiErrorMessage(error, 'Error al registrar movimiento'));
+        } finally {
+            submittingMovementRef.current = false;
+            setSubmittingMovement(false);
         }
     };
 
@@ -321,6 +348,9 @@ export default function CashShiftPage() {
 
     const handleCloseShift = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (closingShiftRef.current) return;
+        closingShiftRef.current = true;
+        setClosingShift(true);
         try {
             const preview = closePreview || (await cashArqueoAPI.previewClose(Number(id), buildClosePayload())).data.data;
             setClosePreview(preview);
@@ -350,6 +380,9 @@ export default function CashShiftPage() {
         } catch (error: unknown) {
             console.error('Error closing shift:', error);
             showError('Error al cerrar turno: ' + errMsg(error, 'Error'));
+        } finally {
+            closingShiftRef.current = false;
+            setClosingShift(false);
         }
     };
 
@@ -361,7 +394,6 @@ export default function CashShiftPage() {
             const amounts = data.amounts;
             const movements = data.movements;
             const counts = data.counts;
-            const safeCurrencySymbol = escapeHtml(symbol);
 
             const printWindow = window.open('', '_blank');
             if (!printWindow) {
@@ -369,153 +401,14 @@ export default function CashShiftPage() {
                 return;
             }
 
-            printWindow.document.write(`
-                    <html>
-                        <head>
-                            <title>Reporte de Caja - Turno #${shift.id}</title>
-                            <style>
-                                body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #1a1a1a; line-height: 1.5; padding: 40px; }
-                                .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
-                                .header h1 { margin: 0; font-size: 24px; color: #111; text-transform: uppercase; letter-spacing: 1px; }
-                                .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; background: #f8f9fa; padding: 15px; border-radius: 8px; font-size: 14px; }
-                                .section-title { font-size: 16px; font-weight: 700; margin: 25px 0 15px 0; padding-bottom: 8px; border-bottom: 1px solid #ddd; text-transform: uppercase; color: #444; }
-                                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
-                                th { text-align: left; padding: 10px; background: #f1f3f5; border: 1px solid #dee2e6; color: #495057; }
-                                td { padding: 8px 10px; border: 1px solid #dee2e6; }
-                                .text-right { text-align: right; }
-                                .total-row { font-weight: 700; background: #f8f9fa; }
-                                .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-                                .amount-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #eee; }
-                                .amount-item.grand-total { border-top: 2px solid #111; border-bottom: none; margin-top: 10px; padding-top: 10px; font-size: 16px; font-weight: 800; }
-                                .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
-                                .badge-in { background: #d4edda; color: #155724; }
-                                .badge-out { background: #f8d7da; color: #721c24; }
-                                .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #777; }
-                                .signature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; margin-top: 80px; }
-                                .signature-box { border-top: 1px solid #000; text-align: center; padding-top: 10px; font-size: 13px; }
-                                @media print {
-                                    body { padding: 0; }
-                                    .no-print { display: none; }
-                                }
-                            </style>
-                        </head>
-                        <body>
-                            <div class="no-print" style="margin-bottom: 20px; text-align: right;">
-                                <button onclick="window.print()" style="padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">Imprimir</button>
-                            </div>
-
-                            <div class="header">
-                                <h1>Cierre de Caja</h1>
-                                <p style="margin: 5px 0 0 0; color: #666;">Turno #${escapeHtml(shift.id)}</p>
-                            </div>
-
-                            <div class="meta">
-                                <div>
-                                    <strong>Caja:</strong> ${escapeHtml(shift.cashRegister)}<br>
-                                    <strong>Cajero:</strong> ${escapeHtml(shift.user)}
-                                </div>
-                                <div class="text-right">
-                                    <strong>Apertura:</strong> ${new Date(shift.startDate).toLocaleString()}<br>
-                                    <strong>Cierre:</strong> ${shift.endDate ? new Date(shift.endDate).toLocaleString() : 'Pendiente'}
-                                </div>
-                            </div>
-
-                            <div class="summary-grid">
-                                <div>
-                                    <div class="section-title">Resumen de Totales</div>
-                                     <div class="amount-item"><span>Monto Inicial:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.startAmount)}</span></div>
-                                     <div class="amount-item"><span>Ventas (Efectivo):</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(summary?.totalSalesCash || 0))}</span></div>
-                                     <div class="amount-item"><span>Otros Ingresos:</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(amounts.totalIn)}</span></div>
-                                     <div class="amount-item"><span>Gastos / Retiros:</span> <span style="color: #dc3545;">- ${safeCurrencySymbol} ${formatCurrency(amounts.totalOut)}</span></div>
-                                     <div class="amount-item grand-total"><span>Monto Esperado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.expectedEndAmount)}</span></div>
-                                    
-                                    <div class="section-title">Resultados del Arqueo</div>
-                                     <div class="amount-item"><span>Monto Contado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.actualEndAmount || 0)}</span></div>
-                                    <div class="amount-item" style="font-weight: 700; color: ${amounts.difference >= 0 ? '#28a745' : '#dc3545'};">
-                                        <span>Diferencia:</span> 
-                                         <span>${safeCurrencySymbol} ${formatCurrency(amounts.difference || 0)}</span>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div class="section-title">Billetaje (Efectivo)</div>
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>Denominación</th>
-                                                <th class="text-right">Cant.</th>
-                                                <th class="text-right">Subtotal</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${counts.bills.map((b: DenomCountRow) => `
-                                                <tr>
-                                                     <td>Billete ${safeCurrencySymbol} ${b.denomination}</td>
-                                                    <td class="text-right">${b.count}</td>
-                                                     <td class="text-right">${safeCurrencySymbol} ${formatCurrency(b.denomination * b.count)}</td>
-                                                </tr>
-                                            `).join('')}
-                                            ${counts.coins.map((c: DenomCountRow) => `
-                                                <tr>
-                                                     <td>Moneda ${safeCurrencySymbol} ${c.denomination.toFixed(2)}</td>
-                                                    <td class="text-right">${c.count}</td>
-                                                     <td class="text-right">${safeCurrencySymbol} ${formatCurrency(c.denomination * c.count)}</td>
-                                                </tr>
-                                            `).join('')}
-                                        </tbody>
-                                        <tfoot>
-                                            <tr class="total-row">
-                                                <td colspan="2">TOTAL EFECTIVO</td>
-                                                 <td class="text-right">${safeCurrencySymbol} ${formatCurrency(amounts.actualEndAmount || 0)}</td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <div class="section-title">Detalle de Movimientos (Ingresos y Egresos)</div>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Hora</th>
-                                        <th>Tipo</th>
-                                        <th>Referencia</th>
-                                        <th>Descripción</th>
-                                        <th class="text-right">Monto</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${[...movements.in, ...movements.out].sort((a: CashMovement, b: CashMovement) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).map((m: CashMovement) => `
-                                        <tr>
-                                            <td>${escapeHtml(new Date(m.createdAt).toLocaleTimeString())}</td>
-                                            <td><span class="badge ${m.type === 'IN' ? 'badge-in' : 'badge-out'}">${m.type === 'IN' ? 'INGRESO' : 'EGRESO'}</span></td>
-                                            <td>${escapeHtml(m.documentNumber || m.reference || '-')}</td>
-                                            <td>${escapeHtml(m.description)} ${m.supplier ? `(${escapeHtml(m.supplier.name)})` : ''}</td>
-                                            <td class="text-right" style="color: ${m.type === 'IN' ? '#28a745' : '#dc3545'};">
-                                                 ${m.type === 'IN' ? '+' : '-'}${safeCurrencySymbol} ${formatCurrency(Number(m.amount))}
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                    ${(movements.in.length === 0 && movements.out.length === 0) ? '<tr><td colspan="5" style="text-align: center;">No se registraron movimientos adicionales</td></tr>' : ''}
-                                </tbody>
-                            </table>
-
-                            <div class="signature-row">
-                                <div class="signature-box">Firma del Cajero</div>
-                                <div class="signature-box">Firma del Supervisor</div>
-                            </div>
-
-                            <div class="footer">
-                                <p>Este documento es un comprobante oficial de arqueo de caja.</p>
-                                <p>Generado por Sistema de Restaurante | ${new Date().toLocaleString()}</p>
-                            </div>
-                        </body>
-                    </html>
-            `);
+            printWindow.document.write(buildCashShiftReportHtml({
+                shift, amounts, movements, counts, symbol,
+                salesCash: Number(summary?.totalSalesCash || 0)
+            }));
             printWindow.document.close();
         } catch (error) {
             console.error('Error printing report:', error);
-            showError('Error al generar el reporte');
+            showError(getApiErrorMessage(error, 'Error al generar el reporte'));
         }
     };
 
@@ -536,7 +429,7 @@ export default function CashShiftPage() {
                 const res = await suppliersAPI.getAll({ active: true });
                 setSuppliers(res.data.data);
             } catch (error) {
-                console.error('Error loading suppliers:', error);
+                notifyError(error, 'No se pudieron cargar los proveedores', { type: 'warning' });
             }
         }
 
@@ -544,693 +437,503 @@ export default function CashShiftPage() {
     };
 
 
-    if (loading || !shift) return <div className="cash-shift-loading">Cargando turno...</div>;
+    const isOpen = !!shift && !shift.endDate;
+    const movementOptions = useMemo<Opt<string>[]>(
+        () => [{ value: '', label: 'Sin proveedor' }, ...suppliers.map(s => ({ value: s.id.toString(), label: s.name }))],
+        [suppliers]
+    );
 
-    const isOpen = !shift.endDate;
+    const movementColumns: Column<CashMovement>[] = [
+        { key: 'time', header: 'Hora', width: '1fr', render: m => new Date(m.createdAt).toLocaleTimeString() },
+        {
+            key: 'type', header: 'Tipo', width: '1fr',
+            render: m => <Badge tone={m.type === 'IN' ? 'success' : 'danger'}>{m.type === 'IN' ? 'Ingreso' : 'Egreso'}</Badge>
+        },
+        { key: 'document', header: 'Documento', width: '1.2fr', render: m => m.documentNumber || '-' },
+        {
+            key: 'origin', header: 'Forma de pago / origen', width: '1.6fr',
+            render: m => (
+                <span className={styles.originCell}>
+                    <span>{getMovementPaymentOrigin(m)}</span>
+                    <small>{getMovementAuditLabel(m)}</small>
+                </span>
+            )
+        },
+        { key: 'description', header: 'Descripción', width: '2fr', render: m => m.description || '-' },
+        { key: 'supplier', header: 'Proveedor', width: '1.5fr', render: m => m.supplier?.name || '-' },
+        {
+            key: 'amount', header: 'Monto', width: '1.2fr', type: 'money',
+            render: m => (
+                <span className={m.type === 'IN' ? styles.amountIn : styles.amountOut}>
+                    {m.type === 'IN' ? '+' : '-'}{formatMoney(Math.abs(Number(m.amount)))}
+                </span>
+            )
+        }
+    ];
 
-    return (
-        <div className="cash-shift-page">
-            {/* Header */}
-            <div className="page-header">
-                <div className="flex items-center gap-4">
-                    <Button variant="secondary" onClick={() => navigate('/cash-registers')}>
-                        <ArrowLeft size={20} />
-                    </Button>
-                    <h1>Turno #{shift.id}</h1>
-                    <span className={`status-badge ${isOpen ? 'OPEN' : 'CLOSED'}`}>
-                        {isOpen ? 'ABIERTO' : 'CERRADO'}
+    if (loading || !shift) {
+        return (
+            <PageContent>
+                <PageHeader
+                    title="Turno de caja"
+                    actions={<Button icon={ArrowLeft} onClick={() => navigate('/cash-registers')}>Volver a cajas</Button>}
+                />
+                {loading ? (
+                    <p className={styles.loading} role="status">Cargando turno...</p>
+                ) : (
+                    <EmptyState
+                        icon={AlertTriangle}
+                        title="No disponible: no se pudo cargar el turno"
+                        description={loadError || 'Inténtalo de nuevo en unos segundos.'}
+                        action={<Button variant="primary" onClick={() => { setLoading(true); void loadData(); }}>Reintentar</Button>}
+                    />
+                )}
+            </PageContent>
+        );
+    }
+
+    const grossSales = summary?.grossSalesCash as number | undefined;
+    const refunds = summary?.cashRefunds as number | undefined;
+    const hasBreakdown = typeof grossSales === 'number' && typeof refunds === 'number';
+    const money = (value: unknown) => (value == null || value === '' || !Number.isFinite(Number(value)) ? 'N/D' : formatMoney(Number(value)));
+    // Server-side classification wins: "otros ingresos" are manual entries only (never POS/Catering collections).
+    const otherIn = typeof summary?.otherIncome === 'number'
+        ? summary.otherIncome
+        : hasBreakdown && summary?.totalIn != null ? Number(summary.totalIn) - grossSales : summary?.totalIn;
+    const otherOut = typeof summary?.otherOutflows === 'number'
+        ? summary.otherOutflows
+        : hasBreakdown && summary?.totalOut != null ? Number(summary.totalOut) - refunds : summary?.totalOut;
+    const movementCount = shift.movements?.length || 0;
+    const closedExpected = money(summary?.expectedAmount);
+    const arqueoBills = arqueoDetails?.counts?.bills ?? [];
+    const arqueoCoins = arqueoDetails?.counts?.coins ?? [];
+    const billsTotal = Object.entries(billsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0);
+    const coinsTotal = Object.entries(coinsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0);
+    const closeSubmitLabel = closePreview?.exceedsTolerance && canForceClose ? 'Forzar cierre' : 'Cerrar turno';
+    const closeSubmitDisabled =
+        closingShift ||
+        !closePreview ||
+        (!!closePreview.requiresNote && !closeNotes.trim()) ||
+        (!!closePreview.exceedsTolerance && (!canForceClose || !closeNotes.trim()));
+
+    const renderDenominations = (
+        kind: string,
+        label: string,
+        denominations: number[],
+        counts: Record<number, number>,
+        setCounts: (next: Record<number, number>) => void,
+        prefix: string,
+        format: (value: number) => string,
+        quantityLabel: (den: number) => string
+    ) => (
+        <div className={styles.denomList} role="group" aria-label={label}>
+            {denominations.map(den => (
+                <div key={`${kind}-${den}`} className={styles.denomRow}>
+                    <span className={styles.denomValue}>{prefix} {den}</span>
+                    <Input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        aria-label={quantityLabel(den)}
+                        value={counts[den] || ''}
+                        onChange={(e) => setCounts({ ...counts, [den]: parseInt(e.target.value) || 0 })}
+                        placeholder="0"
+                    />
+                    <span className={`${styles.denomSubtotal} ${counts[den] > 0 ? styles.hasValue : ''}`}>
+                        {format(den * (counts[den] || 0))}
                     </span>
                 </div>
-                {isOpen ? (
-                    <div className="actions">
-                        <Button variant="secondary" onClick={() => openMovementSidebar('IN')}>
-                            <Plus size={18} />
-                            Ingreso
-                        </Button>
-                        <Button variant="secondary" onClick={() => openMovementSidebar('OUT')}>
-                            <Minus size={18} />
-                            Retiro
-                        </Button>
-                        <Button onClick={() => setIsCloseModalOpen(true)}>
-                            <Lock size={18} />
-                            Cerrar Turno
-                        </Button>
-                    </div>
-                ) : (
-                    <div className="actions">
-                        <Button variant="secondary" onClick={handlePrintReport}>
-                            <Printer size={18} />
-                            Imprimir Reporte
-                        </Button>
-                    </div>
+            ))}
+        </div>
+    );
+
+    return (
+        <PageContent>
+            <PageHeader
+                title={`Turno #${shift.id}`}
+                description={
+                    <span className={styles.headerMeta}>
+                        <StatusBadge status={isOpen ? 'OPEN' : 'COMPLETED'} label={isOpen ? 'Abierto' : 'Cerrado'} />
+                        <span>{shift.register?.name || `Caja #${shift.cashRegisterId || shift.id}`}</span>
+                        <span>{shift.user?.name}</span>
+                    </span>
+                }
+                actions={
+                    <>
+                        <Button icon={ArrowLeft} onClick={() => navigate('/cash-registers')}>Volver a cajas</Button>
+                        {isOpen ? (
+                            <>
+                                <Button icon={Plus} onClick={() => openMovementSidebar('IN')}>Ingreso</Button>
+                                <Button icon={Minus} onClick={() => openMovementSidebar('OUT')}>Retiro</Button>
+                                <Button variant="primary" icon={Lock} onClick={() => setIsCloseModalOpen(true)}>Cerrar turno</Button>
+                            </>
+                        ) : (
+                            <Button icon={Printer} onClick={handlePrintReport}>Imprimir reporte</Button>
+                        )}
+                    </>
+                }
+            />
+
+            {loadError && (
+                <p className={styles.notice} role="alert">
+                    <AlertTriangle size={16} aria-hidden="true" />
+                    <span>No disponible: no se pudieron actualizar los datos del turno ({loadError}). Los montos mostrados pueden estar desactualizados.</span>
+                    <Button size="sm" onClick={() => { void loadData(); }}>Reintentar</Button>
+                </p>
+            )}
+
+            <div className={styles.kpis}>
+                <StatCard
+                    label="Saldo inicial"
+                    value={formatMoney(Number(shift.startAmount))}
+                    context={`Apertura ${new Date(shift.startDate).toLocaleString()}`}
+                />
+                <StatCard
+                    label="Ventas netas efectivo"
+                    tone="success"
+                    value={money(summary?.totalSalesCash)}
+                    context={hasBreakdown ? `Bruto ${formatMoney(grossSales)} menos reembolsos ${formatMoney(refunds)}` : 'Neto de reembolsos en efectivo'}
+                />
+                <StatCard
+                    label="Otros ingresos de caja"
+                    tone="primary"
+                    value={money(otherIn)}
+                    context={hasBreakdown || typeof summary?.otherIncome === 'number' ? 'Entradas manuales o no asociadas a ventas; no incluyen cobros POS ni Catering' : 'Incluye ventas en efectivo'}
+                />
+                <StatCard
+                    label="Gastos y retiros"
+                    tone="danger"
+                    value={money(otherOut)}
+                    context={hasBreakdown || typeof summary?.otherOutflows === 'number' ? 'Únicamente las demás salidas; los reembolsos ya descuentan de ventas netas' : 'Incluye reembolsos en efectivo'}
+                />
+                {!isBlindCashier && (
+                    <StatCard
+                        label="Esperado en caja"
+                        value={money(summary?.expectedAmount)}
+                        context={`Saldo inicial más ingresos menos egresos de ${movementCount} movimientos`}
+                        action={isOpen ? { label: 'Arquear y cerrar', onClick: () => setIsCloseModalOpen(true) } : undefined}
+                    />
                 )}
             </div>
 
-            <div className="shift-grid">
-                <div className="shift-main">
-                    {/* Stats Layout - Professional Dashboard Style */}
-                    <div className="shift-summary-dashboard">
-                        <div className="summary-card-v2 primary">
-                            <div className="card-icon"><Wallet size={24} /></div>
-                            <div className="card-data">
-                                <span className="label">Saldo Inicial</span>
-                                <span className="amount">{formatMoney(Number(shift.startAmount))}</span>
-                            </div>
-                        </div>
-                        <div className="summary-card-v2 success">
-                            <div className="card-icon"><TrendingUp size={24} /></div>
-                            <div className="card-data">
-                                <span className="label">Ventas Cash</span>
-                                <span className="amount">+ {formatMoney(Number(summary?.totalSalesCash || 0))}</span>
-                            </div>
-                        </div>
-                        <div className="summary-card-v2 blue">
-                            <div className="card-icon"><Plus size={24} /></div>
-                            <div className="card-data">
-                                <span className="label">Otros Ingresos</span>
-                                <span className="amount">+ {formatMoney(Number(summary?.totalIn || 0))}</span>
-                            </div>
-                        </div>
-                        <div className="summary-card-v2 danger">
-                            <div className="card-icon"><Minus size={24} /></div>
-                            <div className="card-data">
-                                <span className="label">Gastos / Retiros</span>
-                                <span className="amount">- {formatMoney(Number(summary?.totalOut || 0))}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Movements Card with Filters */}
-                    <Card>
-                        <div className="movements-header">
-                            <h3>Movimientos</h3>
-                            <div className="movements-toolbar">
-                                {/* Type Filter */}
-                                <div className="type-filter-buttons">
-                                    <button
-                                        className={`type-filter-btn ${filterType === 'all' ? 'active' : ''}`}
-                                        onClick={() => setFilterType('all')}
-                                    >
-                                        Todos ({shift.movements?.length || 0})
-                                    </button>
-                                    <button
-                                        className={`type-filter-btn in ${filterType === 'IN' ? 'active' : ''}`}
-                                        onClick={() => setFilterType('IN')}
-                                    >
-                                        <TrendingUp size={14} />
-                                        Ingresos ({inCount})
-                                    </button>
-                                    <button
-                                        className={`type-filter-btn out ${filterType === 'OUT' ? 'active' : ''}`}
-                                        onClick={() => setFilterType('OUT')}
-                                    >
-                                        <TrendingDown size={14} />
-                                        Egresos ({outCount})
-                                    </button>
-                                </div>
-                                {/* Search */}
-                                <input
-                                    type="text"
-                                    className="search-input"
+            <div className={styles.layout}>
+                <div className={styles.main}>
+                    <DataTable
+                        ariaLabel="Movimientos del turno"
+                        columns={movementColumns}
+                        rows={filteredMovements}
+                        rowKey={m => m.id}
+                        resetKey={`${filterType}|${searchQuery}`}
+                        empty={searchQuery || filterType !== 'all'
+                            ? 'No hay movimientos que coincidan con los filtros'
+                            : 'No hay movimientos registrados'}
+                        toolbar={
+                            <TableToolbar>
+                                <SegmentedControl<'all' | 'IN' | 'OUT'>
+                                    ariaLabel="Tipo de movimiento"
+                                    value={filterType}
+                                    onChange={setFilterType}
+                                    options={[
+                                        { value: 'all', label: `Todos (${movementCount})` },
+                                        { value: 'IN', label: `Ingresos (${inCount})` },
+                                        { value: 'OUT', label: `Egresos (${outCount})` }
+                                    ]}
+                                />
+                                <Input
+                                    type="search"
+                                    aria-label="Buscar movimientos"
                                     placeholder="Buscar..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
-                            </div>
-                        </div>
-
-                        <div className="table-responsive">
-                            <table className="movements-table">
-                                <thead>
-                                    <tr>
-                                        <th>Hora</th>
-                                        <th>Tipo</th>
-                                        <th>Documento</th>
-                                        <th>Descripción</th>
-                                        <th>Proveedor</th>
-                                        <th className="text-right">Monto</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {paginatedMovements.map(mov => (
-                                        <tr key={mov.id}>
-                                            <td>{new Date(mov.createdAt).toLocaleTimeString()}</td>
-                                            <td>
-                                                <span className={`type-badge ${mov.type}`}>
-                                                    {mov.type === 'IN' ? 'INGRESO' : 'EGRESO'}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                {mov.documentNumber ? (
-                                                    <span className="document-ref">
-                                                        {mov.documentNumber}
-                                                    </span>
-                                                ) : '-'}
-                                            </td>
-                                            <td>{mov.description || '-'}</td>
-                                            <td>{mov.supplier?.name || '-'}</td>
-                                            <td className={`text-right amount-cell ${mov.type === 'IN' ? 'text-green' : 'text-red'}`}>
-                                                {mov.type === 'IN' ? '+' : '-'}{formatMoney(Number(mov.amount))}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {paginatedMovements.length === 0 && (
-                                        <tr>
-                                            <td colSpan={6} className="text-center empty-row">
-                                                {searchQuery || filterType !== 'all'
-                                                    ? 'No hay movimientos que coincidan con los filtros'
-                                                    : 'No hay movimientos registrados'}
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <Pagination
-                            page={currentPage}
-                            totalPages={totalPages}
-                            totalItems={filteredMovements.length}
-                            pageSize={ITEMS_PER_PAGE}
-                            onPageChange={setCurrentPage}
-                            alwaysShow
-                            emptyLabel="Sin resultados"
-                        />
-                    </Card>
+                            </TableToolbar>
+                        }
+                    />
                 </div>
 
-                {/* Enhanced Sidebar */}
-                <div className="shift-sidebar">
-                    {/* Shift Info Card */}
-                    <Card title="Información del Turno">
-                        <div className="sidebar-info-grid">
-                            <div className="sidebar-info-item">
-                                <Hash size={16} />
-                                <div className="sidebar-info-content">
-                                    <span className="sidebar-info-label">ID Turno</span>
-                                    <span className="sidebar-info-value">#{shift.id}</span>
-                                </div>
-                            </div>
-                            <div className="sidebar-info-item">
-                                <Wallet size={16} />
-                                <div className="sidebar-info-content">
-                                    <span className="sidebar-info-label">Caja</span>
-                                    <span className="sidebar-info-value">{shift.register?.name || `Caja #${shift.cashRegisterId || shift.id}`}</span>
-                                </div>
-                            </div>
-                            <div className="sidebar-info-item">
-                                <User size={16} />
-                                <div className="sidebar-info-content">
-                                    <span className="sidebar-info-label">Cajero</span>
-                                    <span className="sidebar-info-value">{shift.user?.name}</span>
-                                </div>
-                            </div>
-                            <div className="sidebar-info-item">
-                                <Calendar size={16} />
-                                <div className="sidebar-info-content">
-                                    <span className="sidebar-info-label">Inicio</span>
-                                    <span className="sidebar-info-value">{new Date(shift.startDate).toLocaleString()}</span>
-                                </div>
-                            </div>
-                            {shift.endDate && (
-                                <div className="sidebar-info-item">
-                                    <Calendar size={16} />
-                                    <div className="sidebar-info-content">
-                                        <span className="sidebar-info-label">Cierre</span>
-                                        <span className="sidebar-info-value">{new Date(shift.endDate).toLocaleString()}</span>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="sidebar-info-item">
-                                <Clock size={16} />
-                                <div className="sidebar-info-content">
-                                    <span className="sidebar-info-label">Duración</span>
-                                    <span className="sidebar-info-value">{formatDuration(shift.startDate, shift.endDate || undefined)}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </Card>
+                <aside className={styles.side}>
+                    <section className={styles.panel} aria-labelledby="shift-info-title">
+                        <h2 id="shift-info-title" className={styles.panelTitle}>Información del turno</h2>
+                        <dl className={styles.dl}>
+                            <div><dt>Caja</dt><dd>{shift.register?.name || `Caja #${shift.cashRegisterId || shift.id}`}</dd></div>
+                            <div><dt>Cajero</dt><dd>{shift.user?.name || 'N/D'}</dd></div>
+                            <div><dt>Inicio</dt><dd>{new Date(shift.startDate).toLocaleString()}</dd></div>
+                            {shift.endDate && <div><dt>Cierre</dt><dd>{new Date(shift.endDate).toLocaleString()}</dd></div>}
+                            <div><dt>Duración</dt><dd>{formatDuration(shift.startDate, shift.endDate || undefined)}</dd></div>
+                        </dl>
+                    </section>
 
-                    {/* Quick Summary */}
-                    <Card title="Resumen Rápido">
-                        <div className="quick-summary">
-                            <div className="summary-row">
-                                <span>Total Movimientos</span>
-                                <span className="summary-value">{shift.movements?.length || 0}</span>
-                            </div>
-                            <div className="summary-row">
-                                <span>Ingresos</span>
-                                <span className="summary-value text-green">+{formatMoney(Number(summary?.totalIn || 0))}</span>
-                            </div>
-                            <div className="summary-row">
-                                <span>Egresos</span>
-                                <span className="summary-value text-red">-{formatMoney(Number(summary?.totalOut || 0))}</span>
-                            </div>
-                            <div className="summary-row total">
-                                <span>Balance</span>
-                                <span className={`summary-value ${(summary?.totalIn || 0) - (summary?.totalOut || 0) >= 0 ? 'text-green' : 'text-red'}`}>
-                                    {formatMoney((summary?.totalIn || 0) - (summary?.totalOut || 0))}
-                                </span>
-                            </div>
-                        </div>
-                    </Card>
+                    {!isOpen && (arqueoBills.length > 0 || arqueoCoins.length > 0) && (
+                        <section className={styles.panel} aria-labelledby="shift-arqueo-title">
+                            <h2 id="shift-arqueo-title" className={styles.panelTitle}>Arqueo detallado</h2>
+                            <dl className={styles.dl}>
+                                {arqueoBills.map(b => (
+                                    <div key={`view-bill-${b.denomination}`}>
+                                        <dt>{symbol} {b.denomination} × {b.count}</dt>
+                                        <dd>{formatMoney(b.denomination * b.count)}</dd>
+                                    </div>
+                                ))}
+                                {arqueoCoins.map(c => (
+                                    <div key={`view-coin-${c.denomination}`}>
+                                        <dt>{symbol} {formatNumber(c.denomination)} × {c.count}</dt>
+                                        <dd>{formatMoney(c.denomination * c.count)}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        </section>
+                    )}
 
                     {!isOpen && (
-                        <>
-                            {(() => {
-                                const arqueoBills = arqueoDetails?.counts?.bills ?? [];
-                                const arqueoCoins = arqueoDetails?.counts?.coins ?? [];
-                                if (arqueoBills.length === 0 && arqueoCoins.length === 0) return null;
-                                return (
-                                <Card title="Arqueo Detallado">
-                                    <div className="arqueo-breakdown-list">
-                                        {arqueoBills.map((b) => (
-                                            <div key={`view-bill-${b.denomination}`} className="info-row">
-                                                <span>{symbol} {b.denomination} × {b.count}</span>
-                                                <span>{formatMoney(b.denomination * b.count)}</span>
-                                            </div>
-                                        ))}
-                                        {arqueoCoins.map((c) => (
-                                            <div key={`view-coin-${c.denomination}`} className="info-row">
-                                                <span>{symbol} {c.denomination.toFixed(2)} × {c.count}</span>
-                                                <span>{formatMoney(c.denomination * c.count)}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </Card>
-                                );
-                            })()}
-
-                            <Card title="Resultado del Cierre">
-                                <div className="closing-info">
-                                    <div className="info-row">
-                                        <span>Esperado:</span>
-                                        <span>{isBlindCashier ? 'Oculto hasta validar' : formatMoney(Number(summary?.expectedAmount || 0))}</span>
-                                    </div>
-                                    <div className="info-row">
-                                        <span>Real:</span>
-                                        <span>{formatMoney(Number(shift.endAmount))}</span>
-                                    </div>
-                                    <div className={`info-row difference ${Number(shift.difference) >= 0 ? 'positive' : 'negative'}`}>
-                                        <span>Diferencia:</span>
-                                        <span>{formatMoney(Number(shift.difference))}</span>
-                                    </div>
-                                    {shift.notes && (
-                                        <div className="closing-notes">
-                                            <strong>Notas:</strong>
-                                            <p>{shift.notes}</p>
-                                        </div>
-                                    )}
+                        <section className={styles.panel} aria-labelledby="shift-result-title">
+                            <h2 id="shift-result-title" className={styles.panelTitle}>Resultado del cierre</h2>
+                            <dl className={styles.dl}>
+                                <div><dt>Esperado</dt><dd>{closedExpected}</dd></div>
+                                <div><dt>Real</dt><dd>{money(shift.endAmount)}</dd></div>
+                                <div>
+                                    <dt>Diferencia</dt>
+                                    <dd className={shift.difference == null ? undefined : Number(shift.difference) >= 0 ? styles.amountIn : styles.amountOut}>
+                                        {money(shift.difference)}
+                                    </dd>
                                 </div>
-                            </Card>
-                        </>
+                            </dl>
+                            {shift.notes && (
+                                <p className={styles.notes}><strong>Notas:</strong> {shift.notes}</p>
+                            )}
+                        </section>
                     )}
-                </div>
+                </aside>
             </div>
 
-            {/* Movement Sidebar */}
-            <Sidebar
+            {/* Registrar ingreso / retiro */}
+            <FullScreenModal
                 isOpen={isMovementSidebarOpen}
                 onClose={() => setIsMovementSidebarOpen(false)}
                 title={movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
+                subtitle={`Turno #${shift.id}`}
+                dirty={!!movementForm.amount || !!movementForm.description}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
+                        <Button type="submit" form="cash-movement-form" variant="primary" disabled={submittingMovement} loading={submittingMovement}>
+                            {movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content">
-                    <form onSubmit={handleAddMovement} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <div className="modal-section">
-                                <div className="modal-section-header">
-                                    <FileText size={18} />
-                                    <h3>Información del Documento</h3>
-                                </div>
-                                <div className="modal-form-row">
-                                    <Input
-                                        label="Fecha Documento"
-                                        type="date"
-                                        variant="modal"
-                                        value={movementForm.documentDate}
-                                        onChange={(e) => setMovementForm({ ...movementForm, documentDate: e.target.value })}
-                                    />
-                                    <Select
-                                        variant="modal"
-                                        label="Tipo Documento"
-                                        options={DOCUMENT_TYPES}
-                                        value={DOCUMENT_TYPES.find(dt => dt.value === movementForm.documentType) || null}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setMovementForm({ ...movementForm, documentType: option?.value || '' })}
-                                        placeholder="Seleccionar..."
-                                        isSearchable={false}
-                                    />
-                                </div>
+                <form id="cash-movement-form" onSubmit={handleAddMovement} className={styles.form}>
+                    <FormSection title="Información del documento">
+                        <FormGrid>
+                            <Field label="Fecha documento" htmlFor="movement-document-date">
+                                <DateInput
+                                    id="movement-document-date"
+                                    value={movementForm.documentDate}
+                                    onChange={(e) => setMovementForm({ ...movementForm, documentDate: e.target.value })}
+                                />
+                            </Field>
+                            <Field label="Tipo de documento" htmlFor="movement-document-type">
+                                <AppSelect<string>
+                                    inputId="movement-document-type"
+                                    options={DOCUMENT_TYPES}
+                                    value={movementForm.documentType || null}
+                                    onChange={(v) => setMovementForm({ ...movementForm, documentType: v || '' })}
+                                    placeholder="Seleccionar..."
+                                />
+                            </Field>
+                            <Field label="Número de documento" htmlFor="movement-document-number">
                                 <Input
-                                    label="Número de Documento"
-                                    variant="modal"
+                                    id="movement-document-number"
                                     value={movementForm.documentNumber}
                                     onChange={(e) => setMovementForm({ ...movementForm, documentNumber: e.target.value })}
                                     placeholder="Ej: FAC-001, REC-2026-001"
                                 />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+
+                    {movementType === 'OUT' && (
+                        <FormSection title="Proveedor">
+                            <div className={styles.supplierRow}>
+                                <div className={styles.supplierSelect}>
+                                    <Field label="Proveedor" htmlFor="movement-supplier">
+                                        <AppSelect<string>
+                                            inputId="movement-supplier"
+                                            options={movementOptions}
+                                            value={movementForm.supplierId}
+                                            onChange={(v) => setMovementForm({ ...movementForm, supplierId: v || '' })}
+                                        />
+                                    </Field>
+                                </div>
+                                {canCreateSupplier && (
+                                    <Button icon={Plus} onClick={() => setIsNewSupplierModalOpen(true)}>Nuevo proveedor</Button>
+                                )}
                             </div>
+                        </FormSection>
+                    )}
 
-                            {movementType === 'OUT' && (
-                                <div className="modal-section">
-                                    <div className="modal-section-header">
-                                        <Building2 size={18} />
-                                        <h3>Proveedor</h3>
-                                    </div>
-                                    {(() => {
-                                        const supplier = suppliers.find(s => s.id.toString() === movementForm.supplierId);
-                                        return (
-                                            <div className="modal-form-row" style={{ alignItems: 'flex-end' }}>
-                                                <div style={{ flex: 1 }}>
-                                                    <Select
-                                                        variant="modal"
-                                                        label="Seleccionar Proveedor"
-                                                        options={[{ value: '', label: 'Sin proveedor' }, ...suppliers.map(s => ({ value: s.id.toString(), label: s.name }))]}
-                                                        value={supplier ? { value: movementForm.supplierId, label: supplier.name } : { value: '', label: 'Sin proveedor' }}
-                                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setMovementForm({ ...movementForm, supplierId: option?.value || '' })}
-                                                    />
-                                                </div>
-                                                {canCreateSupplier && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="secondary"
-                                                        onClick={() => setIsNewSupplierModalOpen(true)}
-                                                        className="add-supplier-btn"
-                                                        style={{ width: '42px', height: '42px', padding: 0, marginBottom: '2px' }}
-                                                    >
-                                                        <Plus size={16} />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            )}
-
-                            <div className="modal-section">
-                                <div className="modal-section-header">
-                                    <Banknote size={18} />
-                                    <h3>Monto y Descripción</h3>
-                                </div>
+                    <FormSection title="Monto y descripción">
+                        <FormGrid columns="1fr">
+                            <Field label="Monto" htmlFor="movement-amount" required>
                                 <Input
-                                    label="Monto"
-                                    variant="modal"
+                                    id="movement-amount"
                                     type="number"
+                                    inputMode="decimal"
+                                    prefix={symbol}
                                     value={movementForm.amount}
                                     onChange={(e) => setMovementForm({ ...movementForm, amount: e.target.value })}
                                     min={0}
                                     step="0.01"
                                     required
                                 />
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="movement-description">Descripción</label>
-                                    <textarea
-                                        id="movement-description"
-                                        className="modal-textarea"
-                                        rows={3}
-                                        value={movementForm.description}
-                                        onChange={(e) => setMovementForm({ ...movementForm, description: e.target.value })}
-                                        placeholder="Describe el motivo del movimiento..."
-                                        required
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsMovementSidebarOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit">
-                                {movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
-            </Sidebar>
+                            </Field>
+                            <Field label="Descripción" htmlFor="movement-description" required>
+                                <Textarea
+                                    id="movement-description"
+                                    rows={3}
+                                    value={movementForm.description}
+                                    onChange={(e) => setMovementForm({ ...movementForm, description: e.target.value })}
+                                    placeholder="Describe el motivo del movimiento..."
+                                    required
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+                </form>
+            </FullScreenModal>
 
-            {/* Arqueo de Caja (Close Shift) Sidebar */}
-            <Sidebar
+            {/* Arqueo de caja (cierre de turno) */}
+            <FullScreenModal
                 isOpen={isCloseModalOpen}
                 onClose={() => setIsCloseModalOpen(false)}
                 title="Cierre de Turno"
+                subtitle={`Turno #${shift.id} · ${shift.register?.name || `Caja #${shift.cashRegisterId || shift.id}`}`}
+                tabs={[{ id: 'NIO', label: 'Córdobas' }, { id: 'USD', label: 'Dólares' }]}
+                activeTab={arqueoTab}
+                onTabChange={(id) => setArqueoTab(id as 'NIO' | 'USD')}
+                dirty={totalCounted > 0 || !!closeNotes.trim()}
+                dirtyMessage="El arqueo no se ha guardado. Si cierras ahora se perderá el conteo."
+                aside={
+                    <div className={styles.asideStack}>
+                        <section className={styles.panel} aria-labelledby="arqueo-summary-title">
+                            <h2 id="arqueo-summary-title" className={styles.panelTitle}>Conciliación</h2>
+                            <dl className={styles.dl}>
+                                <div>
+                                    <dt>Esperado</dt>
+                                    <dd>{isBlindCashier ? 'Oculto' : money(closePreview?.expectedAmount ?? summary?.expectedAmount)}</dd>
+                                </div>
+                                <div><dt>Contado</dt><dd>{formatMoney(totalCounted)}</dd></div>
+                                <div>
+                                    <dt>Diferencia</dt>
+                                    <dd className={closePreview ? (closeDiffPositive ? styles.amountIn : styles.amountOut) : undefined}>
+                                        {!closePreview
+                                            ? 'Pendiente validar'
+                                            : isBlindCashier
+                                                ? closeStatusLabel
+                                                : `${effectiveDifference >= 0 ? '+' : ''}${formatMoney(effectiveDifference)}`}
+                                    </dd>
+                                </div>
+                            </dl>
+                        </section>
+                        <div className={styles.messages}>
+                            {!closePreview && (
+                                <p className={styles.message}>Valida el arqueo para revisar diferencia y habilitar el cierre.</p>
+                            )}
+                            {closePreview?.requiresNote && (
+                                <p className={styles.message} role="alert">
+                                    Debes registrar una observación para cerrar con diferencia dentro de tolerancia.
+                                </p>
+                            )}
+                            {closePreview?.exceedsTolerance && !canForceClose && (
+                                <p className={styles.message} role="alert">
+                                    La diferencia excede la tolerancia oficial de {formatMoney(closeTolerance)}. Un supervisor (administrador) debe autorizar el cierre.
+                                </p>
+                            )}
+                            {closePreview?.exceedsTolerance && canForceClose && (
+                                <p className={styles.message} role="alert">
+                                    Puedes forzar el cierre como administrador si agregas una observación.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                }
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
+                        <Button onClick={handlePreviewClose} loading={previewLoading}>
+                            {previewLoading ? 'Validando...' : 'Validar arqueo'}
+                        </Button>
+                        <Button type="submit" form="cash-close-form" variant="primary" icon={Lock} disabled={closeSubmitDisabled}>
+                            {closeSubmitLabel}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="arqueo-sidebar">
-                    {/* Summary Cards */}
-                    <div className="arqueo-summary-cards">
-                        <div className="arqueo-summary-card">
-                            <Wallet size={18} />
-                            <div>
-                                <span className="label">Esperado</span>
-                                <span className="value">
-                                    {isBlindCashier && !closePreview ? 'Oculto' : formatMoney(Number(closePreview?.expectedAmount ?? (summary?.expectedAmount || 0)))}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="arqueo-summary-card highlight">
-                            <Banknote size={18} />
-                            <div>
-                                <span className="label">Contado</span>
-                                <span className="value">{formatMoney(totalCounted)}</span>
-                            </div>
-                        </div>
-                        <div className={`arqueo-summary-card ${effectiveDifference >= 0 ? 'positive' : 'negative'}`}>
-                            {effectiveDifference >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-                            <div>
-                                <span className="label">Diferencia</span>
-                                <span className="value">
-                                    {closePreview ? `${effectiveDifference >= 0 ? '+' : ''}${formatMoney(effectiveDifference)}` : 'Pendiente validar'}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Currency Tabs */}
-                    <div className="arqueo-tabs">
-                        <button
-                            type="button"
-                            className={`arqueo-tab ${arqueoTab === 'NIO' ? 'active' : ''}`}
-                            onClick={() => setArqueoTab('NIO')}
-                        >
-                            <Banknote size={16} />
-                            Córdobas
-                        </button>
-                        <button
-                            type="button"
-                            className={`arqueo-tab usd ${arqueoTab === 'USD' ? 'active' : ''}`}
-                            onClick={() => setArqueoTab('USD')}
-                        >
-                            <DollarSign size={16} />
-                            Dólares
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleCloseShift} className="arqueo-form-sidebar">
-                        {/* Córdobas Tab Content */}
-                        {arqueoTab === 'NIO' && (
-                            <div className="arqueo-tab-content">
-                                {/* Bills */}
-                                <div className="arqueo-denomination-section">
-                                    <div className="denomination-header">
-                                        <Banknote size={16} />
-                                        <span>Billetes</span>
-                                        <span className="denomination-total">{formatMoney(Object.entries(billsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0))}</span>
-                                    </div>
-                                    <div className="denomination-list">
-                                        {BILL_DENOMINATIONS.map(den => (
-                                            <div key={`bill-${den}`} className="denomination-item">
-                                                <span className="den-value">{symbol} {den}</span>
-                                                <span className="den-times">×</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    className="den-input-compact"
-                                                    value={billsCount[den] || ''}
-                                                    onChange={(e) => setBillsCount({
-                                                        ...billsCount,
-                                                        [den]: parseInt(e.target.value) || 0
-                                                    })}
-                                                    placeholder="0"
-                                                />
-                                                <span className={`den-subtotal ${billsCount[den] > 0 ? 'has-value' : ''}`}>
-                                                    = {formatMoney(den * (billsCount[den] || 0))}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Coins */}
-                                <div className="arqueo-denomination-section">
-                                    <div className="denomination-header">
-                                        <Coins size={16} />
-                                        <span>Monedas</span>
-                                        <span className="denomination-total">{formatMoney(Object.entries(coinsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0))}</span>
-                                    </div>
-                                    <div className="denomination-list">
-                                        {COIN_DENOMINATIONS.map(den => (
-                                            <div key={`coin-${den}`} className="denomination-item">
-                                                <span className="den-value">{symbol} {den}</span>
-                                                <span className="den-times">×</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    className="den-input-compact"
-                                                    value={coinsCount[den] || ''}
-                                                    onChange={(e) => setCoinsCount({
-                                                        ...coinsCount,
-                                                        [den]: parseInt(e.target.value) || 0
-                                                    })}
-                                                    placeholder="0"
-                                                />
-                                                <span className={`den-subtotal ${coinsCount[den] > 0 ? 'has-value' : ''}`}>
-                                                    = {formatMoney(den * (coinsCount[den] || 0))}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* USD Tab Content */}
-                        {arqueoTab === 'USD' && (
-                            <div className="arqueo-tab-content usd">
-                                {/* Exchange Rate */}
-                                <div className="exchange-rate-bar">
-                                    <label>Tipo de Cambio:</label>
-                                    <div className="exchange-rate-input-wrapper">
-                                        <span>1 USD =</span>
-                                        <input
-                                            type="number"
-                                            className="exchange-rate-input"
-                                            value={exchangeRate}
-                                            onChange={(e) => setExchangeRate(parseFloat(e.target.value) || DEFAULT_EXCHANGE_RATE)}
-                                            step="0.01"
-                                            min="1"
-                                        />
-                                        <span>NIO</span>
-                                    </div>
-                                </div>
-
-                                {/* USD Bills */}
-                                <div className="arqueo-denomination-section usd">
-                                    <div className="denomination-header usd">
-                                        <DollarSign size={16} />
-                                        <span>Billetes USD</span>
-                                        <span className="denomination-total usd">$ {formatCurrency(totalUSD)}</span>
-                                    </div>
-                                    <div className="denomination-list">
-                                        {USD_BILL_DENOMINATIONS.map(den => (
-                                            <div key={`usd-${den}`} className="denomination-item">
-                                                <span className="den-value usd">$ {den}</span>
-                                                <span className="den-times">×</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    className="den-input-compact"
-                                                    value={usdBillsCount[den] || ''}
-                                                    onChange={(e) => setUsdBillsCount({
-                                                        ...usdBillsCount,
-                                                        [den]: parseInt(e.target.value) || 0
-                                                    })}
-                                                    placeholder="0"
-                                                />
-                                                <span className={`den-subtotal usd ${usdBillsCount[den] > 0 ? 'has-value' : ''}`}>
-                                                    = $ {formatCurrency(den * (usdBillsCount[den] || 0))}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Conversion Summary */}
+                <form id="cash-close-form" onSubmit={handleCloseShift} className={styles.form}>
+                    {arqueoTab === 'NIO' ? (
+                        <>
+                            <FormSection title={`Billetes · ${formatMoney(billsTotal)}`}>
+                                {renderDenominations('bill', 'Billetes', BILL_DENOMINATIONS, billsCount, setBillsCount, symbol, formatMoney, (den) => `Cantidad de billetes de ${symbol} ${den}`)}
+                            </FormSection>
+                            <FormSection title={`Monedas · ${formatMoney(coinsTotal)}`}>
+                                {renderDenominations('coin', 'Monedas', COIN_DENOMINATIONS, coinsCount, setCoinsCount, symbol, formatMoney, (den) => `Cantidad de monedas de ${symbol} ${den}`)}
+                            </FormSection>
+                        </>
+                    ) : (
+                        <>
+                            <FormSection title="Tipo de cambio">
+                                <Field label="1 USD equivale a (NIO)" htmlFor="arqueo-exchange-rate">
+                                    <Input
+                                        id="arqueo-exchange-rate"
+                                        type="number"
+                                        inputMode="decimal"
+                                        value={exchangeRate}
+                                        onChange={(e) => setExchangeRate(parseFloat(e.target.value) || DEFAULT_EXCHANGE_RATE)}
+                                        step="0.01"
+                                        min="1"
+                                    />
+                                </Field>
+                            </FormSection>
+                            <FormSection title={`Billetes USD · $ ${formatCurrency(totalUSD)}`}>
+                                {renderDenominations('usd', 'Billetes USD', USD_BILL_DENOMINATIONS, usdBillsCount, setUsdBillsCount, '$', (v) => `$ ${formatCurrency(v)}`, (den) => `Cantidad de billetes USD de ${den}`)}
                                 {totalUSD > 0 && (
-                                    <div className="usd-conversion-summary">
-                                        <div className="conversion-row">
-                                            <span>Total USD:</span>
-                                            <strong>$ {formatCurrency(totalUSD)}</strong>
-                                        </div>
-                                        <div className="conversion-row highlight">
-                                            <span>Equivalente en {symbol}:</span>
-                                            <strong>{formatMoney(totalUSDinCordobas)}</strong>
-                                        </div>
-                                    </div>
+                                    <dl className={styles.dl}>
+                                        <div><dt>Total USD</dt><dd>$ {formatCurrency(totalUSD)}</dd></div>
+                                        <div><dt>Equivalente en {symbol}</dt><dd>{formatMoney(totalUSDinCordobas)}</dd></div>
+                                    </dl>
                                 )}
-                            </div>
-                        )}
-
-                        {/* Notes Section */}
-                        <div className="arqueo-notes-compact">
-                            <label>
-                                <FileText size={14} />
-                                Observaciones
-                            </label>
-                            <textarea
-                                className="arqueo-notes-textarea"
+                            </FormSection>
+                        </>
+                    )}
+                    <FormSection title="Observaciones del cierre">
+                        <Field label="Observaciones" htmlFor="arqueo-notes">
+                            <Textarea
+                                id="arqueo-notes"
                                 rows={2}
                                 value={closeNotes}
                                 onChange={(e) => setCloseNotes(e.target.value)}
                                 placeholder="Notas del cierre..."
                             />
-                        </div>
+                        </Field>
+                    </FormSection>
+                </form>
+            </FullScreenModal>
 
-                        {/* Actions */}
-                        <div className="arqueo-actions-sidebar">
-                            {!closePreview && (
-                                <p className="arqueo-error-message">
-                                    Valida el arqueo para revisar diferencia y habilitar el cierre.
-                                </p>
-                            )}
-                            {closePreview?.requiresNote && (
-                                <p className="arqueo-error-message">
-                                    Debes registrar una observación para cerrar con diferencia dentro de tolerancia.
-                                </p>
-                            )}
-                            {closePreview?.exceedsTolerance && !canForceClose && (
-                                <p className="arqueo-error-message">
-                                    La diferencia excede la tolerancia oficial de {formatMoney(closeTolerance)}.
-                                </p>
-                            )}
-                            {closePreview?.exceedsTolerance && canForceClose && (
-                                <p className="arqueo-error-message">
-                                    Puedes forzar el cierre como administrador si agregas una observación.
-                                </p>
-                            )}
-                            {showLegacyExactMatchWarning && (
-                                <p className="arqueo-error-message">
-                                    ⚠️ No puede cerrar el turno con diferencia. El arqueo debe cuadrar exactamente.
-                                </p>
-                            )}
-                            <Button type="button" variant="ghost" onClick={() => setIsCloseModalOpen(false)} fullWidth>
-                                Cancelar
-                            </Button>
-                            <Button type="button" variant="ghost" onClick={handlePreviewClose} disabled={previewLoading} fullWidth>
-                                {previewLoading ? 'Validando...' : 'Validar Arqueo'}
-                            </Button>
-                            <Button
-                                type="submit"
-                                variant="primary"
-                                disabled={
-                                    !closePreview ||
-                                    (closePreview.requiresNote && !closeNotes.trim()) ||
-                                    (closePreview.exceedsTolerance && (!canForceClose || !closeNotes.trim()))
-                                }
-                                fullWidth
-                            >
-                                <Lock size={16} />
-                                {closePreview?.exceedsTolerance && canForceClose ? 'Forzar Cierre' : 'Cerrar Turno'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
-            </Sidebar>
-
-            {/* New Supplier Sidebar */}
-            <Sidebar
+            {/* Nuevo proveedor desde un retiro */}
+            <FullScreenModal
                 isOpen={isNewSupplierModalOpen}
                 onClose={() => setIsNewSupplierModalOpen(false)}
                 title="Nuevo Proveedor"
+                dirty={Object.values(newSupplierForm).some(Boolean)}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
+                        <Button type="submit" form="cash-supplier-form" variant="primary">Guardar</Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content">
-                    <form onSubmit={async (e) => {
+                <form
+                    id="cash-supplier-form"
+                    className={styles.form}
+                    onSubmit={async (e) => {
                         e.preventDefault();
                         if (!canCreateSupplier) {
                             showWarning('Solo administradores pueden registrar nuevos proveedores.');
@@ -1244,72 +947,69 @@ export default function CashShiftPage() {
                             setIsNewSupplierModalOpen(false);
                         } catch (error) {
                             console.error('Error creating supplier:', error);
-                            showError('Error al crear proveedor');
+                            showError(getApiErrorMessage(error, 'Error al crear proveedor'));
                         }
-                    }} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            <Input
-                                label="Nombre Empresa"
-                                variant="modal"
-                                value={newSupplierForm.name}
-                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, name: e.target.value })}
-                                required
-                                autoFocus
-                            />
-                            <Input
-                                label="Contacto Principal"
-                                variant="modal"
-                                value={newSupplierForm.contact}
-                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, contact: e.target.value })}
-                            />
-                            <div className="modal-form-row">
+                    }}
+                >
+                    <FormSection title="Datos del proveedor">
+                        <FormGrid>
+                            <Field label="Nombre empresa" htmlFor="supplier-name" required>
                                 <Input
-                                    label="Teléfono"
-                                    variant="modal"
+                                    id="supplier-name"
+                                    value={newSupplierForm.name}
+                                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, name: e.target.value })}
+                                    required
+                                    autoFocus
+                                />
+                            </Field>
+                            <Field label="Contacto principal" htmlFor="supplier-contact">
+                                <Input
+                                    id="supplier-contact"
+                                    value={newSupplierForm.contact}
+                                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, contact: e.target.value })}
+                                />
+                            </Field>
+                            <Field label="Teléfono" htmlFor="supplier-phone">
+                                <Input
+                                    id="supplier-phone"
                                     value={newSupplierForm.phone}
                                     onChange={(e) => setNewSupplierForm({ ...newSupplierForm, phone: e.target.value })}
                                 />
+                            </Field>
+                            <Field label="Email" htmlFor="supplier-email">
                                 <Input
-                                    label="Email"
-                                    variant="modal"
+                                    id="supplier-email"
                                     type="email"
                                     value={newSupplierForm.email}
                                     onChange={(e) => setNewSupplierForm({ ...newSupplierForm, email: e.target.value })}
                                 />
-                            </div>
-                            <Input
-                                label="Dirección"
-                                variant="modal"
-                                value={newSupplierForm.address}
-                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, address: e.target.value })}
-                            />
-                            <Input
-                                label="RUC / NIT"
-                                variant="modal"
-                                value={newSupplierForm.taxId}
-                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, taxId: e.target.value })}
-                            />
-                            <Input
-                                label="Tipo de Insumo/Servicio"
-                                variant="modal"
-                                value={newSupplierForm.supplyType}
-                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, supplyType: e.target.value })}
-                                placeholder="Ej: Verduras, Carnes, Mantenimiento"
-                            />
-                        </div>
-                        <div className="modal-footer">
-                            <Button type="button" variant="ghost" onClick={() => setIsNewSupplierModalOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit">
-                                Guardar
-                            </Button>
-                        </div>
-                    </form>
-                </div>
-            </Sidebar>
-        </div>
+                            </Field>
+                            <Field label="Dirección" htmlFor="supplier-address">
+                                <Input
+                                    id="supplier-address"
+                                    value={newSupplierForm.address}
+                                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, address: e.target.value })}
+                                />
+                            </Field>
+                            <Field label="RUC / NIT" htmlFor="supplier-tax-id">
+                                <Input
+                                    id="supplier-tax-id"
+                                    value={newSupplierForm.taxId}
+                                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, taxId: e.target.value })}
+                                />
+                            </Field>
+                            <Field label="Tipo de insumo o servicio" htmlFor="supplier-supply-type">
+                                <Input
+                                    id="supplier-supply-type"
+                                    value={newSupplierForm.supplyType}
+                                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, supplyType: e.target.value })}
+                                    placeholder="Ej: Verduras, Carnes, Mantenimiento"
+                                />
+                            </Field>
+                        </FormGrid>
+                    </FormSection>
+                </form>
+            </FullScreenModal>
+        </PageContent>
     );
 }
-
-

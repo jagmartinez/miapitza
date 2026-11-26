@@ -4,6 +4,8 @@ import autoTable from 'jspdf-autotable';
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { HrBenefitsError } from './hr-benefits.error';
+import { getCurrencyCode } from '../utils/currency';
+import { frozenPayrollCoverageForDateChange } from './hr-employment-records.service';
 
 type Input = Record<string, unknown>;
 type Scope = { companyId: number; actorId: number };
@@ -282,6 +284,14 @@ export function completedCalendarMonths(hireDate: Date, at: Date): number {
   return Math.max(0, months);
 }
 
+/** Single tenure rule shared by loan-request validation and the self-service loan policy view. */
+export function isLoanTenureEligible(
+  policy: Pick<LoanPolicyTerms, 'loanMinTenureMonths'>,
+  tenureMonths: number
+): boolean {
+  return tenureMonths >= policy.loanMinTenureMonths;
+}
+
 export async function validateLoanTerms(
   companyId: number,
   employeeId: number,
@@ -307,7 +317,7 @@ export async function validateLoanTerms(
   });
   if (!employee) throw new HrBenefitsError('Empleado no encontrado');
   const tenure = completedCalendarMonths(employee.hireDate, at);
-  if (tenure < policy.loanMinTenureMonths)
+  if (!isLoanTenureEligible(policy, tenure))
     throw new HrBenefitsError(
       `La política exige ${policy.loanMinTenureMonths} meses de antigüedad`,
       409,
@@ -360,6 +370,54 @@ export async function validateLoanPolicy(
   const policy = await activeBenefitPolicy(companyId, at, db);
   await validateLoanTerms(companyId, employeeId, requested, installments, at, policy, db);
   return policy;
+}
+
+/**
+ * Current loan limits and eligibility for one employee, built on the same rules as validateLoanTerms.
+ * `eligible` covers tenure/policy availability only. Payment capacity and current compensation
+ * (HR_LOAN_CAPACITY_POLICY, HR_LOAN_COMPENSATION_REQUIRED) are re-validated by the server at request time.
+ */
+export async function loanPolicyView(
+  companyId: number,
+  employeeId: number,
+  at: Date = new Date(),
+  db: Prisma.TransactionClient | typeof prisma = prisma
+) {
+  let policy: Awaited<ReturnType<typeof activeBenefitPolicy>> | null = null;
+  try {
+    policy = await activeBenefitPolicy(companyId, at, db);
+  } catch (error) {
+    if (!(error instanceof HrBenefitsError) || error.code !== 'HR_BENEFITS_POLICY_REQUIRED')
+      throw error;
+  }
+  const employee = await db.employee.findFirst({
+    where: { id: employeeId, companyId },
+    select: { hireDate: true },
+  });
+  if (!employee) throw new HrBenefitsError('Empleado no encontrado');
+  const tenureMonths = completedCalendarMonths(employee.hireDate, at);
+  if (!policy)
+    return {
+      currency: getCurrencyCode(),
+      maxAmount: null,
+      maxInstallments: null,
+      maxPaymentPercent: null,
+      minTenureMonths: null,
+      eligible: false,
+      ineligibleReason: 'HR_LOAN_POLICY_DISABLED' as const,
+      tenureMonths,
+    };
+  const eligible = isLoanTenureEligible(policy, tenureMonths);
+  return {
+    currency: policy.currency,
+    maxAmount: policy.loanMaxAmount.toFixed(2),
+    maxInstallments: policy.loanMaxInstallments,
+    maxPaymentPercent: policy.loanMaxPaymentPercent.toNumber(),
+    minTenureMonths: policy.loanMinTenureMonths,
+    eligible,
+    ineligibleReason: eligible ? null : ('HR_LOAN_TENURE_POLICY' as const),
+    tenureMonths,
+  };
 }
 
 export class HrBenefitPolicyService {
@@ -1027,6 +1085,21 @@ export class HrEmploymentSettlementService {
       });
       if (changed.count !== 1)
         throw new HrBenefitsError('La liquidación cambió concurrentemente', 409);
+      if (action === 'pay') {
+        const frozenRun = await frozenPayrollCoverageForDateChange(tx, {
+          companyId: scope.companyId,
+          userId: row.user.id,
+          field: 'terminationDate',
+          previous: row.employee.terminationDate,
+          next: row.terminationDate,
+        });
+        if (frozenRun)
+          throw new HrBenefitsError(
+            `La fecha de terminación cambiaría la cobertura congelada de la nómina ${frozenRun.code} (${frozenRun.status}); anule esa corrida antes de pagar la liquidación`,
+            409,
+            'HR_SETTLEMENT_PAYROLL_COVERAGE_FROZEN'
+          );
+      }
       if (action === 'pay')
         await tx.employee.update({
           where: { id: row.employeeId },

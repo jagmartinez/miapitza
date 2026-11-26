@@ -1,5 +1,7 @@
+import { formatNumber } from '@/ui';
 import React, { memo, useRef } from 'react';
 import type { MenuItem } from '../types';
+import type { StockBadge } from '../utils/stockAvailability';
 
 interface POSProductCardProps {
     item: MenuItem;
@@ -7,11 +9,16 @@ interface POSProductCardProps {
     onContextMenu: (e: React.MouseEvent, item: MenuItem) => void;
     onQuantityEdit?: (item: MenuItem) => void;
     currencySymbol?: string;
+    /** Formateador de moneda de la compañía; tiene prioridad sobre currencySymbol. */
+    formatMoney?: (amount: unknown) => string;
+    /** Aviso de existencia (servicio de solo lectura); solo informa, nunca bloquea la venta. Ausente = sin dato. */
+    /** Informational stock badge; never blocks selling. */
+    stockBadge?: StockBadge | null;
 }
 
 const LONG_PRESS_MS = 500;
 
-const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, currencySymbol = '$' }: POSProductCardProps) => {
+const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, currencySymbol = '$', formatMoney = (amount: unknown) => `${currencySymbol}${formatNumber(Number(amount))}`, stockBadge }: POSProductCardProps) => {
     const hasImage = item.images && item.images.length > 0;
     const backgroundImage = hasImage ? `url(${item.images?.[0]?.imageUrl})` : 'none';
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,8 +56,17 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
 
     return (
         <div
-            className={`product-card-new ${hasImage ? 'has-image' : ''}`}
+            className={`product-card-new ${hasImage ? 'has-image' : ''} ${stockBadge ? 'has-stock-badge' : ''}`}
             onClick={handleClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+                // Keyboard activation adds one unit, like a single tap (no double-tap edit).
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onClick(item);
+                }
+            }}
             onContextMenu={(e) => onContextMenu(e, item)}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
@@ -62,9 +78,17 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
                     style={{ backgroundImage }}
                 />
             )}
+            {stockBadge ? (
+                <span
+                    className={`pos-stock-badge pos-stock-badge--${stockBadge.tone}`}
+                    title="Disponibilidad estimada en la bodega de venta (no bloquea la venta)"
+                >
+                    {stockBadge.label}
+                </span>
+            ) : null}
             <div className="product-info-overlay">
                 <div className="product-name-new">{item.name}</div>
-                <div className="product-price-new">{currencySymbol}{Number(item.price).toFixed(2)}</div>
+                <div className="product-price-new">{formatMoney(Number(item.price))}</div>
             </div>
         </div>
     );
@@ -73,7 +97,10 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
         prevProps.item.name === nextProps.item.name &&
         prevProps.item.price === nextProps.item.price &&
         prevProps.item.images?.[0]?.imageUrl === nextProps.item.images?.[0]?.imageUrl &&
-        prevProps.currencySymbol === nextProps.currencySymbol;
+        prevProps.currencySymbol === nextProps.currencySymbol &&
+        prevProps.formatMoney === nextProps.formatMoney &&
+        prevProps.stockBadge?.label === nextProps.stockBadge?.label &&
+        prevProps.stockBadge?.tone === nextProps.stockBadge?.tone;
 });
 
 export default POSProductCard;

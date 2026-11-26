@@ -10,26 +10,27 @@ const benefits = read('../../pages/hr/BenefitsManagement.tsx');
 const payroll = read('../../pages/hr/PayrollManagement.tsx');
 const payrollWorkspace = read('./payroll-operation-workspace.tsx');
 const profile = read('../../pages/Profile.tsx');
-const layout = read('../Layout.tsx');
+// El menú vive en navigation/navConfig.ts y el acceso al perfil en la barra superior.
+const layout = read('../Layout.tsx') + read('../../navigation/navConfig.ts') + read('../../ui/layout/Topbar.tsx');
 const legal = read('../../pages/hr/PayrollLegalSettings.tsx');
 const legalConfiguration = read('./PayrollRuleConfigurationPanel.tsx');
 const concepts = read('./PayrollPaymentConceptCatalogEditor.tsx');
 const companies = read('../../pages/Companies.tsx');
 const payrollClient = read('./payrollClient.ts');
 const adminCss = read('../../pages/hr/admin-tables.css');
-const layoutCss = read('../Layout.css');
+const layoutCss = read('../../ui/layout/layout.css');
 
 describe('reconstrucción RH: criterios de aceptación integrados', () => {
   it('administra asistencia, permisos y prestaciones desde tablas con acciones por fila', () => {
     [attendance, leave, benefits, payroll].forEach((source) => {
-      expect(source).toContain('inventory-header-new');
-      expect(source).toContain('inventory-table');
-      expect(source).toContain('<Pagination');
+      expect(source).toContain('<PageHeader');
+      expect(source).toContain('<DataTable');
+      expect(source).toContain("pagination={{ mode: 'client' }}");
       expect(source).toContain('table-action-btn');
     });
     [attendance, leave, benefits].forEach((source) => {
-      expect(source).toContain('hr-admin-table');
-      expect(source).toContain('<table');
+      expect(source).toContain('hr-admin-empty');
+      expect(source).toContain('columns={[');
       expect(source).toMatch(/Acci[oó]n(?:es)?/);
     });
     expect(attendance).toContain("setActiveTable('DAY')");
@@ -40,13 +41,14 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
     expect(benefits).not.toContain('Selecciona un registro');
   });
 
-  it('presenta nómina como registro operativo, autoabre una corrida y entrega reportes y colillas', () => {
-    expect(payroll).toContain('payroll-run-table');
-    expect(payroll).toContain('<th scope="col">Acciones</th>');
+  it('presenta nómina como registro operativo, abre cada corrida en su propia vista y entrega reportes y colillas', () => {
+    expect(payroll).toContain('<DataTable<HrPayrollRun>');
+    expect(payroll).toContain("header: 'Acciones'");
     expect(payroll).toContain('Buscar código o periodo');
     expect(payroll).toContain('filteredRuns');
-    expect(payroll).toContain('autoOpenedRunKey');
-    expect(payroll).toContain('void openWorkspace(latest)');
+    expect(payroll).toContain("params.set('corrida'");
+    expect(payroll).toContain('Volver a corridas');
+    expect(payroll).not.toContain('autoOpenedRunKey');
     expect(payroll).toContain("exportSpecificRun(run, 'xlsx')");
     expect(payroll).toContain('downloadRunReceiptBatch(run)');
     expect(payroll).toMatch(/Intl\.DateTimeFormat\('es-NI'|toLocaleDateString\('es-NI'/);
@@ -60,8 +62,9 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
     expect(layout).not.toContain("section: 'Mi portal RH'");
     expect(layout).not.toContain("to: '/profile?tab=hr'");
     expect(layout).toContain('Perfil y Mi RH');
-    expect(profile).toContain("{ id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' }");
-    expect(profile).toContain("setSearchParams(tab === 'info' ? {} : { tab }");
+    expect(profile).toContain('id="profile-sec-hr"');
+    expect(profile).toContain('Mi RH</h2>');
+    expect(profile).toContain("setSearchParams(tab === 'resumen' ? {} : { tab }");
     expect(profile).toContain('selectVacationBalance');
     expect(profile).toContain('Saldo de vacaciones');
     ['/rh/mi-portal/horario', '/rh/marcaje', '/rh/mi-portal/gestion?tab=OVERTIME', '/rh/mi-portal/gestion?tab=LEAVE', '/rh/mi-portal/nomina']
@@ -71,19 +74,20 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
   it('no oculta registros por el límite de una página del servidor y conserva semántica accesible', () => {
     [attendance, leave, payroll].forEach((source) => {
       expect(source).toContain('collectAllPages');
-      expect(source).toContain('aria-controls=');
+      // <HrTabs> renders aria-controls for each tab, so either form keeps tabs wired to their panels.
+      expect(source).toMatch(/aria-controls=|<HrTabs/);
       expect(source).toContain('role="tabpanel"');
-      expect(source).toContain('scope="col"');
+      expect(source).toContain('columns={[');
     });
-    expect(attendanceReview).toContain('inventory-table');
+    expect(attendanceReview).toContain('<DataTable');
     expect(attendanceReview).not.toContain('hr-attendance-events');
   });
 
   it('expande el menú colapsado con hover o teclado sin reemplazar la navegación móvil', () => {
-    expect(layoutCss).toContain('.sidebar.collapsed:is(:hover, :focus-within)');
+    expect(layoutCss).toContain('.ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within)');
     expect(layoutCss).toContain('@media (min-width: 769px)');
-    expect(layoutCss).toContain('@media (max-width: 768px)');
-    expect(adminCss).toContain('.table-action-btn.btn');
+    expect(layoutCss).toContain('@media (max-width: 767px)');
+    expect(adminCss).toContain('.table-action-btn.ui-button');
     expect(adminCss).toContain('scrollbar-gutter: stable');
   });
 

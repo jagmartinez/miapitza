@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { User } from '../types';
-import { canCreatePayment, canOperateKitchenLineItems, canReversePayment, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole, hasPermission } from './authz';
+import { canCreatePayment, canDeliverOrder, canOperateKitchenLineItems, canReversePayment, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole, hasPermission } from './authz';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
     id: 1,
@@ -33,6 +33,18 @@ describe('authz utils', () => {
 
         expect(getUserRoleNames(user)).toEqual(['COCINA']);
         expect(getPrimaryRoleName(user)).toBe('COCINA');
+    });
+
+    it('treats an explicit empty roles array as an authoritative revocation', () => {
+        const revoked = buildUser({
+            roles: [],
+            userRoles: [{ role: { id: 2, name: 'ADMIN' } }],
+            role: { id: 2, name: 'ADMIN' },
+        });
+
+        expect(getUserRoleNames(revoked)).toEqual([]);
+        expect(hasAnyRole(revoked, ['ADMIN'])).toBe(false);
+        expect(getPrimaryRoleName(revoked)).toBe('');
     });
 
     it('uses the explicit user color before the role fallback', () => {
@@ -78,5 +90,19 @@ describe('authz utils', () => {
         });
 
         expect(canReversePayment(customRole)).toBe(true);
+    });
+
+    it('shows delivery only to users with the effective orders.deliver permission', () => {
+        const allowed = buildUser({
+            role: { id: 9, name: 'DESPACHO' },
+            permissions: ['orders.deliver'],
+        });
+        const deniedAdmin = buildUser({
+            role: { id: 2, name: 'ADMIN' },
+            permissions: ['orders.view'],
+        });
+
+        expect(canDeliverOrder(allowed)).toBe(true);
+        expect(canDeliverOrder(deniedAdmin)).toBe(false);
     });
 });

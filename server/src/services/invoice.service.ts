@@ -1,8 +1,20 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import prisma from '../utils/prisma';
 import { DEFAULT_COMPANY_SETTINGS, SettingService, validateConfiguredFiscalTaxId } from './setting.service';
+import { reconcileTableGroupForTable } from './table-group.service';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
+import { releasePromotionReservationForOrder, reservePromotionUsageForOrder } from './promotion.service';
+
+export interface InvoiceListFilters {
+    branchId?: number;
+    startDate?: Date;
+    endDate?: Date;
+    search?: string;
+    page?: number;
+    limit?: number;
+}
 
 export interface InvoiceData {
     orderId: number;
@@ -12,7 +24,12 @@ export interface InvoiceData {
     customerFiscalAddress?: string;
     customerEmail?: string;
     customerPhone?: string;
-    items: Array<{ orderItemId?: number; name: string; quantity: number; price: number; subtotal: number }>;
+    /**
+     * `discount` (optional) = part of the invoice discount attributed to the
+     * line by a per-item / combo / happy-hour promotion. Credit notes return
+     * it with the line; any unattributed remainder is allocated proportionally.
+     */
+    items: Array<{ orderItemId?: number; name: string; quantity: number; price: number; subtotal: number; discount?: number }>;
     grossSubtotal: number;
     discount: number;
     subtotal: number;
@@ -86,6 +103,13 @@ function assertInvoiceReconciles(data: InvoiceData, label: string): void {
         if (moneyCents(item.price * item.quantity) !== moneyCents(item.subtotal)) {
             throw new Error(`${label} totals do not reconcile`);
         }
+        if (item.discount !== undefined && (!Number.isFinite(item.discount) || item.discount < 0 || moneyCents(item.discount) > moneyCents(item.subtotal))) {
+            throw new Error(`${label} totals do not reconcile`);
+        }
+    }
+    const attributedDiscount = data.items.reduce((sum, item) => sum + moneyCents(item.discount ?? 0), 0);
+    if (attributedDiscount > moneyCents(data.discount)) {
+        throw new Error(`${label} totals do not reconcile`);
     }
     const grossSubtotal = data.items.reduce((sum, item) => sum + item.subtotal, 0);
     const netSubtotal = Math.max(0, data.grossSubtotal - data.discount);
@@ -132,6 +156,7 @@ export function deserializeInvoiceSnapshot(snapshot: Prisma.JsonValue): InvoiceD
                 quantity: finiteNumber(item.quantity, `items[${index}].quantity`),
                 price: finiteNumber(item.price, `items[${index}].price`),
                 subtotal: finiteNumber(item.subtotal, `items[${index}].subtotal`),
+                ...(item.discount == null ? {} : { discount: finiteNumber(item.discount, `items[${index}].discount`) }),
             };
         }),
         grossSubtotal: finiteNumber(raw.grossSubtotal, 'grossSubtotal'),
@@ -191,12 +216,17 @@ function buildInvoiceData(
         customerFiscalAddress: order.customerFiscalAddress || undefined,
         customerEmail: order.customerEmail || undefined,
         customerPhone: order.customerPhone || undefined,
-        items: order.items.map((item) => ({
+        // Kitchen-voided rows stay on the order with quantity 0 for audit and
+        // KDS display only; fiscal documents list billable lines.
+        items: order.items.filter((item) => item.quantity > 0).map((item) => ({
             orderItemId: item.id,
             name: item.menuItem.name,
             quantity: item.quantity,
             price: finiteNumber(item.price, 'item.price'),
             subtotal: finiteNumber(item.subtotal, 'item.subtotal'),
+            ...(moneyCents(Number(item.promotionDiscount ?? 0)) > 0
+                ? { discount: finiteNumber(item.promotionDiscount, 'item.promotionDiscount') }
+                : {}),
         })),
         grossSubtotal: itemSubtotal,
         discount,
@@ -227,19 +257,38 @@ function buildInvoiceData(
 
 export class InvoiceService {
     /**
-     * Issues once under an order row lock and persists the exact rendering
-     * payload together with the fiscal number. Concurrent retries return the
-     * first snapshot and never consume another sequence number.
+     * Freezes the payable account without consuming the fiscal sequence.
+     * Replays return the same immutable snapshot; the real invoice is issued
+     * only after the order reaches PAID.
      */
-    static async generateInvoice(orderId: number, companyId: number): Promise<InvoiceData> {
+    static async generatePreInvoice(orderId: number, companyId: number, actorUserId: number): Promise<InvoiceData> {
+        if (!Number.isInteger(actorUserId) || actorUserId <= 0) {
+            throw new Error('Invalid invoice actor');
+        }
+        const candidate = await prisma.order.findFirst({
+            where: { id: orderId, companyId },
+            select: { id: true, tableId: true },
+        });
+        if (!candidate) throw new Error('Order not found or unauthorized');
+        const candidateTableId = candidate.tableId ?? null;
         const settings = await SettingService.getAll(companyId);
 
-        return prisma.$transaction(async (tx) => {
-            const locked = await tx.$queryRaw<Array<{ id: number }>>`
+        return transactionWithP2034Retry(async (tx) => {
+            if (candidateTableId !== null) {
+                const lockedTable = await tx.$queryRaw<Array<{ id: number }>>`
+                    SELECT \`id\` FROM \`Table\`
+                    WHERE \`id\` = ${candidateTableId} AND \`companyId\` = ${companyId}
+                    FOR UPDATE`;
+                if (lockedTable.length === 0) {
+                    throw new Error('La mesa asociada a la orden ya no está disponible');
+                }
+            }
+
+            const lockedOrder = await tx.$queryRaw<Array<{ id: number }>>`
                 SELECT \`id\` FROM \`Order\`
                 WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
                 FOR UPDATE`;
-            if (locked.length === 0) throw new Error('Order not found or unauthorized');
+            if (lockedOrder.length === 0) throw new Error('Order not found or unauthorized');
 
             const order = await tx.order.findUnique({
                 where: { id: orderId },
@@ -248,11 +297,307 @@ export class InvoiceService {
             if (!order || order.companyId !== companyId) {
                 throw new Error('Order not found or unauthorized');
             }
+            if ((order.tableId ?? null) !== candidateTableId) {
+                throw new Error('La mesa asociada a la orden cambió durante la emisión; vuelva a intentarlo');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: actorUserId, companyId, status: 'ACTIVE' },
+                select: { id: true },
+            });
+            if (!actor) throw new Error('Invalid invoice actor for this company');
+            if (order.invoiceSnapshot !== null || order.invoiceNumber) {
+                throw new Error('La factura fiscal ya fue emitida; use la opción de reimpresión');
+            }
+
+            if (order.preInvoiceSnapshot !== null) {
+                if (!order.preInvoicedAt) {
+                    throw new Error('Pre-invoice snapshot exists without an issuance timestamp');
+                }
+                const persisted = deserializeInvoiceSnapshot(order.preInvoiceSnapshot);
+                if (persisted.orderId !== order.id || persisted.invoiceNumber !== `PREF-ORD-${order.id}`) {
+                    throw new Error('Pre-invoice snapshot does not match its order');
+                }
+                if (order.tableId) {
+                    await reconcileTableGroupForTable(
+                        tx,
+                        companyId,
+                        order.tableId,
+                        actor.id,
+                        `Prefactura de orden ${order.id} reimpresa; cuenta pendiente de pago`,
+                    );
+                }
+                return persisted;
+            }
+            if (order.preInvoicedAt) {
+                throw new Error('Pre-invoice timestamp exists without a snapshot');
+            }
+
+            const totalCents = Math.round(finiteNumber(order.total, 'total') * 100);
+            if (
+                order.status === 'CANCELLED'
+                || order.financialStatus === 'PAID'
+                || totalCents <= 0
+                || !order.items.some((item) => Number(item.quantity) !== 0)
+            ) {
+                throw new Error('Solo se puede emitir una prefactura para una orden activa, pendiente de pago, con productos y total mayor a cero');
+            }
+
+            // Claim the promotion use now (atomic, limit-respecting) so the
+            // account can always be settled even across partial payments.
+            await reservePromotionUsageForOrder(tx, {
+                companyId,
+                orderId: order.id,
+                discountCode: order.discountCode,
+                userId: actor.id,
+            });
+
+            const preInvoicedAt = new Date();
+            const preInvoice = buildInvoiceData(
+                order,
+                `PREF-ORD-${order.id}`,
+                preInvoicedAt,
+                settings,
+            );
+            await tx.order.update({
+                where: { id: order.id },
+                data: {
+                    preInvoicedAt,
+                    preInvoiceSnapshot: serializeInvoiceSnapshot(preInvoice),
+                },
+            });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'PRE_INVOICE_ISSUED',
+                    userId: actor.id,
+                    details: {
+                        reference: preInvoice.invoiceNumber,
+                        financialStatus: order.financialStatus,
+                        tableId: order.tableId,
+                    },
+                },
+            });
+            if (order.tableId) {
+                await reconcileTableGroupForTable(
+                    tx,
+                    companyId,
+                    order.tableId,
+                    actor.id,
+                    `Prefactura de orden ${order.id} emitida; cuenta pendiente de pago`,
+                );
+            }
+            return preInvoice;
+        });
+    }
+
+    /**
+     * Reopens a non-fiscal prefactura so late additions can be included in the
+     * same commercial order. Fiscal invoices and any account with payments are
+     * intentionally outside this counterflow.
+     */
+    static async reversePreInvoice(
+        orderId: number,
+        companyId: number,
+        actorUserId: number,
+        reasonInput: unknown,
+    ) {
+        if (!Number.isInteger(actorUserId) || actorUserId <= 0) {
+            throw new Error('Invalid invoice actor');
+        }
+        const reason = typeof reasonInput === 'string' ? reasonInput.trim() : '';
+        if (reason.length < 3 || reason.length > 500) {
+            throw new Error('El motivo para revertir la prefactura debe tener entre 3 y 500 caracteres');
+        }
+        const candidate = await prisma.order.findFirst({
+            where: { id: orderId, companyId },
+            select: { id: true, tableId: true },
+        });
+        if (!candidate) throw new Error('Order not found or unauthorized');
+        const candidateTableId = candidate.tableId ?? null;
+
+        return transactionWithP2034Retry(async (tx) => {
+            if (candidateTableId !== null) {
+                const lockedTable = await tx.$queryRaw<Array<{ id: number }>>`
+                    SELECT \`id\` FROM \`Table\`
+                    WHERE \`id\` = ${candidateTableId} AND \`companyId\` = ${companyId}
+                    FOR UPDATE`;
+                if (lockedTable.length === 0) {
+                    throw new Error('La mesa asociada a la orden ya no está disponible');
+                }
+            }
+            const lockedOrder = await tx.$queryRaw<Array<{ id: number }>>`
+                SELECT \`id\` FROM \`Order\`
+                WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
+                FOR UPDATE`;
+            if (lockedOrder.length === 0) throw new Error('Order not found or unauthorized');
+
+            const order = await tx.order.findUnique({
+                where: { id: orderId },
+                select: {
+                    id: true,
+                    companyId: true,
+                    tableId: true,
+                    status: true,
+                    financialStatus: true,
+                    preInvoicedAt: true,
+                    preInvoiceSnapshot: true,
+                    discountCode: true,
+                    invoiceNumber: true,
+                    invoicedAt: true,
+                    invoiceSnapshot: true,
+                    payments: {
+                        where: { status: 'ACTIVE' },
+                        select: { id: true },
+                    },
+                },
+            });
+            if (!order || order.companyId !== companyId) {
+                throw new Error('Order not found or unauthorized');
+            }
+            if ((order.tableId ?? null) !== candidateTableId) {
+                throw new Error('La mesa asociada a la orden cambió durante la reversión; vuelva a intentarlo');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: actorUserId, companyId, status: 'ACTIVE' },
+                select: { id: true },
+            });
+            if (!actor) throw new Error('Invalid invoice actor for this company');
+            if (order.invoiceNumber || order.invoicedAt || order.invoiceSnapshot !== null) {
+                throw new Error('La factura fiscal ya fue emitida y la prefactura no puede revertirse');
+            }
+            if (!order.preInvoicedAt || order.preInvoiceSnapshot === null) {
+                throw new Error('La orden no tiene una prefactura emitida para revertir');
+            }
+            if (
+                order.status === 'CANCELLED'
+                || order.financialStatus !== 'UNPAID'
+                || order.payments.length > 0
+            ) {
+                throw new Error('La prefactura solo puede revertirse antes de registrar cualquier pago');
+            }
+
+            const previous = deserializeInvoiceSnapshot(order.preInvoiceSnapshot);
+            const reversedAt = new Date();
+            await tx.order.update({
+                where: { id: order.id },
+                data: {
+                    preInvoicedAt: null,
+                    preInvoiceSnapshot: Prisma.DbNull,
+                },
+            });
+            // discountCode cannot change while pre-invoiced, so an order
+            // without a code never holds a reservation.
+            if (order.discountCode) {
+                await releasePromotionReservationForOrder(tx, {
+                    companyId,
+                    orderId: order.id,
+                    userId: actor.id,
+                    reason: 'Prefactura revertida',
+                });
+            }
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'PRE_INVOICE_REVERSED',
+                    userId: actor.id,
+                    details: {
+                        reference: previous.invoiceNumber,
+                        reason,
+                        reversedAt: reversedAt.toISOString(),
+                        tableId: order.tableId,
+                    },
+                },
+            });
+            if (order.tableId) {
+                await reconcileTableGroupForTable(
+                    tx,
+                    companyId,
+                    order.tableId,
+                    actor.id,
+                    `Prefactura de orden ${order.id} revertida para agregar productos`,
+                );
+            }
+            return {
+                orderId: order.id,
+                preInvoicedAt: null,
+                reversedAt,
+                reason,
+            };
+        });
+    }
+
+    /**
+     * Issues once under the shared Table -> Order lock order and persists the
+     * exact rendering payload together with the fiscal number. Concurrent
+     * retries return the first snapshot and never consume another sequence.
+     */
+    static async generateInvoice(orderId: number, companyId: number, actorUserId: number): Promise<InvoiceData> {
+        if (!Number.isInteger(actorUserId) || actorUserId <= 0) {
+            throw new Error('Invalid invoice actor');
+        }
+        // Preflight outside the transaction avoids creating a repeatable-read
+        // snapshot before the locking reads below.
+        const candidate = await prisma.order.findFirst({
+            where: { id: orderId, companyId },
+            select: { id: true, tableId: true },
+        });
+        if (!candidate) throw new Error('Order not found or unauthorized');
+        const candidateTableId = candidate.tableId ?? null;
+        const settings = await SettingService.getAll(companyId);
+
+        return transactionWithP2034Retry(async (tx) => {
+            // Every table/order mutation follows the Table -> Order lock order
+            // used by order creation.
+            if (candidateTableId !== null) {
+                const lockedTable = await tx.$queryRaw<Array<{ id: number }>>`
+                    SELECT \`id\` FROM \`Table\`
+                    WHERE \`id\` = ${candidateTableId} AND \`companyId\` = ${companyId}
+                    FOR UPDATE`;
+                if (lockedTable.length === 0) {
+                    throw new Error('La mesa asociada a la orden ya no está disponible');
+                }
+            }
+
+            const lockedOrder = await tx.$queryRaw<Array<{ id: number }>>`
+                SELECT \`id\` FROM \`Order\`
+                WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
+                FOR UPDATE`;
+            if (lockedOrder.length === 0) throw new Error('Order not found or unauthorized');
+
+            const order = await tx.order.findUnique({
+                where: { id: orderId },
+                include: invoiceOrderInclude,
+            });
+            if (!order || order.companyId !== companyId) {
+                throw new Error('Order not found or unauthorized');
+            }
+            if ((order.tableId ?? null) !== candidateTableId) {
+                throw new Error('La mesa asociada a la orden cambió durante la emisión; vuelva a intentarlo');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: actorUserId, companyId, status: 'ACTIVE' },
+                select: { id: true },
+            });
+            if (!actor) throw new Error('Invalid invoice actor for this company');
+
             if (order.invoiceSnapshot !== null) {
                 if (!order.invoiceNumber) throw new Error('Invoice snapshot exists without an invoice number');
                 const persisted = deserializeInvoiceSnapshot(order.invoiceSnapshot);
                 if (persisted.orderId !== order.id || persisted.invoiceNumber !== order.invoiceNumber) {
                     throw new Error('Invoice snapshot does not match its order');
+                }
+                if (order.tableId) {
+                    await reconcileTableGroupForTable(
+                        tx,
+                        companyId,
+                        order.tableId,
+                        actor.id,
+                        `Factura ${order.invoiceNumber} ya emitida; cuenta de mesa conciliada sin liberarla antes del pago`,
+                    );
                 }
                 return persisted;
             }
@@ -263,8 +608,11 @@ export class InvoiceService {
             // persisted line, discount, tax, tip and total snapshot and fails
             // closed if upstream pricing did not leave them reconciled.
             const totalCents = Math.round(finiteNumber(order.total, 'total') * 100);
-            if (order.status === 'CANCELLED' || totalCents <= 0 || order.items.length === 0) {
+            if (order.status === 'CANCELLED' || totalCents <= 0 || !order.items.some((item) => Number(item.quantity) !== 0)) {
                 throw new Error('Solo se puede emitir una factura para una orden activa, con productos y total mayor a cero');
+            }
+            if (order.financialStatus !== 'PAID') {
+                throw new Error('La factura fiscal original solo se emite después del pago total');
             }
 
             let invoiceNumber = order.invoiceNumber;
@@ -292,8 +640,102 @@ export class InvoiceService {
                     invoiceFiscalStatus: 'ISSUED',
                 },
             });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'INVOICE_ISSUED',
+                    userId: actor.id,
+                    details: {
+                        invoiceNumber,
+                        previousStatus: order.status,
+                        financialStatus: order.financialStatus,
+                        tableId: order.tableId,
+                    },
+                },
+            });
+            if (order.tableId) {
+                await reconcileTableGroupForTable(
+                    tx,
+                    companyId,
+                    order.tableId,
+                    actor.id,
+                    `Factura ${invoiceNumber} emitida; cuenta pendiente de pago`,
+                );
+            }
             return invoiceData;
         });
+    }
+
+    /**
+     * Paginated fiscal invoice history. `search` matches invoice number,
+     * customer name or customer tax id (NIT/RUC). Totals cover both the
+     * returned page and the whole filtered set so the UI never extrapolates
+     * revenue from a single page.
+     */
+    static async listInvoices(companyId: number, filters: InvoiceListFilters = {}) {
+        const where: Prisma.OrderWhereInput = { companyId, invoiceNumber: { not: null } };
+        if (filters.branchId) where.branchId = filters.branchId;
+        if (filters.startDate || filters.endDate) {
+            where.invoicedAt = {
+                ...(filters.startDate ? { gte: filters.startDate } : {}),
+                ...(filters.endDate ? { lte: filters.endDate } : {}),
+            };
+        }
+        const search = filters.search?.trim().slice(0, 100);
+        if (search) {
+            where.OR = [
+                { invoiceNumber: { contains: search } },
+                { customerName: { contains: search } },
+                { customerTaxId: { contains: search } },
+            ];
+        }
+
+        const page = Number.isInteger(filters.page) && filters.page! > 0 ? filters.page! : 1;
+        const limit = Math.min(Number.isInteger(filters.limit) && filters.limit! > 0 ? filters.limit! : 20, 200);
+
+        const [rows, total, aggregate, cancelledAggregate] = await Promise.all([
+            prisma.order.findMany({
+                where,
+                include: {
+                    branch: { select: { id: true, name: true, code: true } },
+                    user: { select: { id: true, name: true } },
+                    payments: { include: { paymentMethod: { select: { id: true, name: true } } } },
+                    fiscalCreditNotes: {
+                        select: { id: true, number: true, status: true, issuedAt: true },
+                        orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+                        take: 1
+                    },
+                    fiscalInvoiceCancellation: { select: { id: true, cancelledAt: true, reason: true } }
+                },
+                orderBy: [{ invoicedAt: 'desc' }, { id: 'desc' }],
+                skip: (page - 1) * limit,
+                take: limit
+            }),
+            prisma.order.count({ where }),
+            prisma.order.aggregate({ where, _sum: { total: true } }),
+            prisma.order.aggregate({ where: { AND: [where, { invoiceFiscalStatus: 'CANCELLED' }] }, _sum: { total: true } }),
+        ]);
+
+        const data = rows.map(({ fiscalCreditNotes, ...order }) => ({
+            ...order,
+            fiscalCreditNote: fiscalCreditNotes[0] || null
+        }));
+        const pageTotal = data.reduce((sum, order) => sum.add(new Prisma.Decimal(order.total)), new Prisma.Decimal(0));
+        const aggregateTotal = new Prisma.Decimal(aggregate._sum.total ?? 0);
+        const cancelledTotal = new Prisma.Decimal(cancelledAggregate._sum.total ?? 0);
+
+        return {
+            data,
+            pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+            totals: {
+                pageTotal: pageTotal.toNumber(),
+                aggregateTotal: aggregateTotal.toNumber(),
+                // Fiscally cancelled invoices are listed but are not revenue.
+                aggregateNetTotal: aggregateTotal.sub(cancelledTotal).toNumber(),
+            }
+        };
     }
 
     /** Pure read. It never assigns a number or reconstructs mutable data. */

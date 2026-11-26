@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { CompanyService } from '../services/company.service';
 import { getErrorMessage } from '../utils/error';
+import { ROLES } from '../constants/roles';
 import { assertPlatformOperator, isPlatformOperator, resolveActingCompanyId, TenantScopeError } from '../utils/tenant-scope';
 
 export class CompanyController {
@@ -54,6 +55,11 @@ export class CompanyController {
         try {
             const id = parseInt(req.params.id, 10);
             const companyId = await resolveActingCompanyId(req.user!, id);
+            // Suspending/reactivating a tenant is a platform decision; a tenant
+            // ADMIN deactivating its own company would lock out every user.
+            if (req.body?.active !== undefined && req.user!.role !== ROLES.SUPERADMIN) {
+                return next({ statusCode: 403, message: 'Solo un SUPERADMIN puede activar o suspender la empresa' });
+            }
             const company = await CompanyService.update(companyId, req.body, req.user!.userId);
             res.json({
                 success: true,

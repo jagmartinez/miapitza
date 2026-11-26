@@ -1,0 +1,64 @@
+
+
+.action-btn-mini {
+    padding: 8px;
+    border-radius: var(--radius-md);
+    color: var(--ui-text-muted);
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
+}
+
+.action-btn-mini:hover {
+    background: var(--ui-surface-2);
+    color: var(--ui-primary);
+}
+
+.dark .action-btn-mini:hover {
+    background: var(--ui-text);
+}
+
+.action-btn-mini.edit:hover {
+    background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
+    color: var(--ui-primary);
+}
+
+.action-btn-mini.delete:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+    color: var(--ui-danger);
+}
+
+.action-btn-mini.delete:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.action-btn-mini.pdf {
+    background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
+    color: var(--ui-primary);
+    text-decoration: none;
+}
+
+.action-btn-mini.pdf:hover {
+    background: var(--ui-primary);
+    color: white;
+}
+
+.action-btn-mini.payment {
+    color: var(--ui-primary);
+    border-color: color-mix(in srgb, var(--ui-primary) 30%, transparent);
+    background: color-mix(in srgb, var(--ui-primary) 8%, transparent);
+}
+
+.action-btn-mini.payment:hover {
+    background: color-mix(in srgb, var(--ui-primary) 15%, transparent);
+}
+
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}

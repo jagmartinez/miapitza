@@ -11,6 +11,8 @@ router.use(authMiddleware);
 
 router.get('/', BranchController.getAll);
 router.get('/:id', validate(s.idParam), BranchController.getById);
+router.get('/:id/warehouse-routes', validate(s.idParam), BranchController.getWarehouseRoutes);
+router.put('/:id/warehouse-routes', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), BranchController.replaceWarehouseRoutes);
 router.post('/', requireRole(...ADMINS), validate(s.createBranch), BranchController.create);
 router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.updateBranch), BranchController.update);
 router.delete('/:id', requireRole(...ADMINS), validate(s.idParam), BranchController.delete);

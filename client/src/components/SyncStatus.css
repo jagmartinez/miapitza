@@ -3,8 +3,8 @@
     bottom: 16px;
     right: 16px;
     z-index: 1000;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     min-width: 260px;
@@ -21,7 +21,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .sync-status-summary {
@@ -41,17 +41,17 @@
 }
 
 .sync-badge-error {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--ui-danger) 15%, transparent);
+    color: var(--ui-danger);
 }
 
 .sync-badge-pending {
-    background: rgba(245, 158, 11, 0.15);
-    color: #f59e0b;
+    background: color-mix(in srgb, var(--ui-warning) 15%, transparent);
+    color: var(--ui-warning);
 }
 
 .sync-status-details {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--ui-border);
     padding: 8px;
 }
 
@@ -67,7 +67,7 @@
     padding: 6px 8px;
     border-radius: 4px;
     margin-bottom: 4px;
-    background: rgba(239, 68, 68, 0.05);
+    background: color-mix(in srgb, var(--ui-danger) 5%, transparent);
 }
 
 .sync-failed-info {
@@ -82,12 +82,12 @@
     font-weight: 600;
     font-size: 11px;
     text-transform: uppercase;
-    color: var(--color-text-muted);
+    color: var(--ui-text-muted);
 }
 
 .sync-failed-method {
     font-size: 12px;
-    color: var(--color-text);
+    color: var(--ui-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -95,7 +95,7 @@
 
 .sync-failed-error {
     font-size: 11px;
-    color: #ef4444;
+    color: var(--ui-danger);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -103,7 +103,7 @@
 
 .sync-failed-retries {
     font-size: 11px;
-    color: var(--color-text-muted);
+    color: var(--ui-text-muted);
     flex-shrink: 0;
     margin-left: 8px;
 }
@@ -111,7 +111,7 @@
 .sync-failed-more {
     text-align: center;
     font-size: 11px;
-    color: var(--color-text-muted);
+    color: var(--ui-text-muted);
     padding: 4px;
 }
 
@@ -136,12 +136,12 @@
 }
 
 .sync-retry-btn {
-    background: #2563eb;
+    background: var(--ui-primary);
     color: white;
 }
 
 .sync-retry-btn:hover {
-    background: #1d4ed8;
+    background: var(--ui-primary-hover);
 }
 
 .sync-retry-btn:disabled {
@@ -150,14 +150,14 @@
 }
 
 .sync-clear-btn {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    color: var(--color-text);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text);
 }
 
 .sync-clear-btn:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+    color: var(--ui-danger);
 }
 
 @keyframes spin {

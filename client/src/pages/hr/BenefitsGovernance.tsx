@@ -1,22 +1,17 @@
+import { DataTable, PageHeader, FullScreenModal, StatCard, AppSelect, Button } from '@/ui';
 import { useCallback, useEffect, useState } from 'react';
 import {
   BadgeDollarSign,
   Copy,
   Eye,
   FileDown,
-  Gavel,
   Pencil,
   Plus,
   RefreshCw,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import Button from '../../components/Button';
-import PageHeader from '../../components/PageHeader';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import Pagination from '../../components/Pagination';
-import Sidebar from '../../components/Sidebar';
-import HrReactSelect from '../../components/hr/HrReactSelect';
 import { benefitsGovernanceClient } from '../../components/hr/benefitsGovernanceClient';
 import { getBenefitsErrorMessage } from '../../components/hr/benefitsClient';
 import { hrClient } from '../../components/hr/hrClient';
@@ -404,19 +399,30 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
     }));
 
   if (loading) return <LoadingSpinner />;
+  const activePolicy = policies.find((row) => row.status === 'ACTIVE');
+  const draftSettlements = settlements.filter((row) => row.status === 'DRAFT').length;
   return (
     <div className={`benefits-governance-page${embedded ? ' is-embedded' : ''}`}>
       {!embedded && (
         <PageHeader
-          title="Liquidaciones y políticas"
-          subtitle="Administra cierres laborales, viáticos y préstamos con versiones, soportes y trazabilidad."
-          icon={Gavel}
-          actions={
+        title="Liquidaciones y políticas"
+        description="Administra cierres laborales, viáticos y préstamos con versiones, soportes y trazabilidad."
+        actions={
             <Button variant="secondary" onClick={() => void load()}>
               <RefreshCw size={16} /> Actualizar
             </Button>
           }
-        />
+      />
+      )}
+      {!embedded && (!activePolicy || draftSettlements > 0) && (
+        <section className="hr-kpi-row" aria-label="Indicadores de liquidaciones y políticas">
+          {!activePolicy && (
+            <StatCard tone="danger" label="Política activa" value="—" context="Sin versión publicada de viáticos y préstamos." action={{ label: 'Ver políticas', onClick: () => setTab('POLICIES') }} />
+          )}
+          {draftSettlements > 0 && (
+            <StatCard tone="warning" label="Borradores en página" value={String(draftSettlements)} context="Liquidaciones sin enviar." action={{ label: 'Ver liquidaciones', onClick: () => setTab('SETTLEMENTS') }} />
+          )}
+        </section>
       )}
       <nav className="governance-tabs" aria-label="Secciones" role="tablist">
         <button
@@ -462,35 +468,32 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 />
                 <label>
                   <span>Estado</span>
-                  <HrReactSelect
+                  <AppSelect<string>
+                    options={[
+                      { value: '', label: 'Todos' },
+                      ...Object.entries(statusLabel)
+                        .filter(([value]) => !['ACTIVE', 'RETIRED'].includes(value))
+                        .map(([value, label]) => ({ value: String(value), label: label })),
+                    ]}
                     aria-label="Filtrar liquidaciones por estado"
                     value={settlementStatus}
-                    onChange={(event) => {
-                      setSettlementStatus(event.target.value);
+                    onChange={(next) => {
+                      setSettlementStatus(next ?? '');
                       setPage(1);
                     }}
-                  >
-                    <option value="">Todos</option>
-                    {Object.entries(statusLabel)
-                      .filter(([value]) => !['ACTIVE', 'RETIRED'].includes(value))
-                      .map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                  </HrReactSelect>
+                    isClearable={false}
+                  />
                 </label>
-                <Button onClick={() => setShowSettlement(true)}>
+                <Button variant="primary" onClick={() => setShowSettlement(true)}>
                   <Plus size={17} /> Nueva liquidación
                 </Button>
               </div>
             </div>
-            <Sidebar
-              isOpen={showSettlement}
-              onClose={() => setShowSettlement(false)}
-              title="Nueva liquidación"
-              width="large"
-            >
+            <FullScreenModal
+        isOpen={showSettlement}
+        onClose={() => setShowSettlement(false)}
+        title="Nueva liquidación"
+      >
               <section
                 className="premium-modal-content governance-form governance-sidebar-form"
                 aria-label="Nueva liquidación"
@@ -499,22 +502,20 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 <div className="governance-grid">
                   <label>
                     Empleado
-                    <HrReactSelect
-                      value={previewInput.userId}
-                      onChange={(event) =>
+                    <AppSelect<string>
+                      options={[
+                        { value: String(0), label: 'Seleccione' },
+                        ...users.map((user) => ({ value: String(user.id), label: user.name })),
+                      ]}
+                      value={String(previewInput.userId)}
+                      onChange={(next) =>
                         setPreviewInput((value) => ({
                           ...value,
-                          userId: Number(event.target.value),
+                          userId: Number(next ?? ''),
                         }))
                       }
-                    >
-                      <option value={0}>Seleccione</option>
-                      {users.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name}
-                        </option>
-                      ))}
-                    </HrReactSelect>
+                      isClearable={false}
+                    />
                   </label>
                   <label>
                     Fecha de terminación
@@ -531,21 +532,23 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </label>
                   <label>
                     Tipo de salida
-                    <HrReactSelect
+                    <AppSelect<string>
+                      options={[
+                        { value: 'RESIGNATION', label: 'Renuncia' },
+                        { value: 'DISMISSAL', label: 'Despido' },
+                        { value: 'MUTUAL_AGREEMENT', label: 'Mutuo acuerdo' },
+                        { value: 'CONTRACT_END', label: 'Fin de contrato' },
+                        { value: 'OTHER', label: 'Otro' },
+                      ]}
                       value={settlementMeta.exitType}
-                      onChange={(event) =>
+                      onChange={(next) =>
                         setSettlementMeta((value) => ({
                           ...value,
-                          exitType: event.target.value as SettlementExitType,
+                          exitType: (next ?? '') as SettlementExitType,
                         }))
                       }
-                    >
-                      <option value="RESIGNATION">Renuncia</option>
-                      <option value="DISMISSAL">Despido</option>
-                      <option value="MUTUAL_AGREEMENT">Mutuo acuerdo</option>
-                      <option value="CONTRACT_END">Fin de contrato</option>
-                      <option value="OTHER">Otro</option>
-                    </HrReactSelect>
+                      isClearable={false}
+                    />
                   </label>
                   <label>
                     Días de salario pendientes
@@ -655,7 +658,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     </label>
                   </>
                 )}
-                <Button disabled={busy || !previewInput.userId} onClick={() => void runPreview()}>
+                <Button variant="primary" disabled={busy || !previewInput.userId} onClick={() => void runPreview()}>
                   Calcular vista previa
                 </Button>
                 {preview && (
@@ -671,28 +674,20 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         {item}
                       </p>
                     ))}
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Concepto</th>
-                          <th>Base</th>
-                          <th>Fuente</th>
-                          <th className="hr-amount-cell">Monto</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {preview.suggestedLines.map((line, index) => (
-                          <tr key={`${line.type}-${index}`}>
-                            <td>{line.concept}</td>
-                            <td>{line.formulaBasis}</td>
-                            <td>{line.sourceReference}</td>
-                            <td className="hr-amount-cell">
-                              {preview.currency} {line.amount}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <DataTable
+                ariaLabel="Líneas sugeridas de la liquidación"
+                rows={preview.suggestedLines.map((line, index) => ({ line, index }))}
+                rowKey={({ line, index }) => `${line.type}-${index}`}
+                pagination={{ mode: 'client' }}
+                minWidth="40rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Concepto', render: ({ line }) => <>{line.concept}</> },
+                  { key: 'c1', header: 'Base', render: ({ line }) => <>{line.formulaBasis}</> },
+                  { key: 'c2', header: 'Fuente', render: ({ line }) => <>{line.sourceReference}</> },
+                  { key: 'c3', header: 'Monto', render: ({ line }) => <>{preview.currency} {line.amount}</> },
+                ]}
+              />
                     {preview.canSubmit && (
                       <div className="governance-grid">
                         <label>
@@ -733,7 +728,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         </label>
                       </div>
                     )}
-                    <Button
+                    <Button variant="primary"
                       disabled={
                         !preview.canSubmit ||
                         !settlementMeta.cause ||
@@ -748,48 +743,29 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </div>
                 )}
               </section>
-            </Sidebar>
+            </FullScreenModal>
             <div className="governance-table-wrap pr-table-card">
-              <table className="hr-admin-table inventory-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Código</th>
-                    <th scope="col">Empleado</th>
-                    <th scope="col">Salida</th>
-                    <th scope="col">Estado</th>
-                    <th scope="col" className="hr-amount-cell">Neto</th>
-                    <th scope="col">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {settlements.length === 0 ? (
-                    <tr>
-                      <td colSpan={6}>
-                        <div className="hr-admin-empty">
+              <DataTable
+                ariaLabel="Liquidaciones"
+                rows={settlements}
+                rowKey={(row) => row.id}
+                pagination={{ mode: 'server', page: pagination.page, pageSize: pagination.pageSize, total: pagination.total, onChange: (nextPage) => setPage(nextPage) }}
+                pageSizeOptions={[pagination.pageSize]}
+                minWidth="48rem"
+                empty={<div className="hr-admin-empty">
                           <strong>No hay liquidaciones en este filtro</strong>
                           <span>Crea una liquidación o cambia la búsqueda.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    settlements.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.code}</td>
-                        <td>
-                          {row.employee.legalName}
-                          <small>{row.employee.employeeCode}</small>
-                        </td>
-                        <td>{row.terminationDate.slice(0, 10)}</td>
-                        <td>
-                          <span className={`governance-status ${row.status.toLowerCase()}`}>
+                        </div>}
+                columns={[
+                  { key: 'c0', header: 'Código', render: (row) => <>{row.code}</> },
+                  { key: 'c1', header: 'Empleado', render: (row) => (<>{row.employee.legalName}
+                          <small>{row.employee.employeeCode}</small></>) },
+                  { key: 'c2', header: 'Salida', render: (row) => <>{row.terminationDate.slice(0, 10)}</> },
+                  { key: 'c3', header: 'Estado', render: (row) => (<span className={`governance-status ${row.status.toLowerCase()}`}>
                             {statusLabel[row.status]}
-                          </span>
-                        </td>
-                        <td className="hr-amount-cell">
-                          {row.currency} {row.netPay}
-                        </td>
-                        <td>
-                          <div className="table-actions">
+                          </span>) },
+                  { key: 'c4', header: 'Neto', render: (row) => <>{row.currency} {row.netPay}</> },
+                  { key: 'c5', header: 'Acciones', render: (row) => (<div className="table-actions">
                             <Button
                               className="table-action-btn"
                               size="sm"
@@ -821,21 +797,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                                 <Pencil size={16} />
                               </Button>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-              <Pagination
-                page={pagination.page}
-                totalPages={pagination.totalPages}
-                totalItems={pagination.total}
-                pageSize={pagination.pageSize}
-                onPageChange={setPage}
-                alwaysShow
-                emptyLabel="Sin liquidaciones"
+                          </div>) },
+                ]}
               />
             </div>
           </>
@@ -849,38 +812,39 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               <div className="governance-toolbar-actions">
                 <label>
                   <span>Estado</span>
-                  <HrReactSelect
+                  <AppSelect<string>
+                    options={[
+                      { value: '', label: 'Todos' },
+                      { value: 'DRAFT', label: 'Borrador' },
+                      { value: 'ACTIVE', label: 'Activa' },
+                      { value: 'RETIRED', label: 'Retirada' },
+                    ]}
                     aria-label="Filtrar políticas por estado"
                     value={policyStatus}
-                    onChange={(event) => {
-                      setPolicyStatus(event.target.value);
+                    onChange={(next) => {
+                      setPolicyStatus(next ?? '');
                       setPolicyPage(1);
                     }}
-                  >
-                    <option value="">Todos</option>
-                    <option value="DRAFT">Borrador</option>
-                    <option value="ACTIVE">Activa</option>
-                    <option value="RETIRED">Retirada</option>
-                  </HrReactSelect>
+                    isClearable={false}
+                  />
                 </label>
-                <Button onClick={() => openPolicyEditor()}>
+                <Button variant="primary" onClick={() => openPolicyEditor()}>
                   <Plus size={17} /> Nueva versión
                 </Button>
               </div>
             </div>
-            <Sidebar
-              isOpen={showPolicy}
-              onClose={() => {
+            <FullScreenModal
+        isOpen={showPolicy}
+        onClose={() => {
                 setShowPolicy(false);
                 setEditingPolicy(null);
               }}
-              title={
+        title={
                 editingPolicy
                   ? `Editar política v${editingPolicy.version}`
                   : 'Nueva política de beneficios'
               }
-              width="large"
-            >
+      >
               <section className="premium-modal-content governance-form governance-sidebar-form">
                 <h3>{editingPolicy ? 'Ajustar versión borrador' : 'Configurar nueva versión'}</h3>
                 <div className="governance-grid">
@@ -1011,80 +975,60 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 </label>
                 <h4>Categorías de viático</h4>
                 <div className="governance-form-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Código</th>
-                        <th>Nombre</th>
-                        <th>Tope diario</th>
-                        <th>Desde</th>
-                        <th>Hasta</th>
-                        <th>Soporte</th>
-                        <th>Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {policy.travelCategories.map((category, index) => (
-                        <tr key={index}>
-                          <td>
-                            <input
+                  <DataTable
+                ariaLabel="Categorías de viático"
+                rows={policy.travelCategories.map((category, index) => ({ category, index }))}
+                rowKey={({ index }) => index}
+                pagination={{ mode: 'client' }}
+                minWidth="56rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Código', render: ({ category, index }) => (<><input
                               aria-label={`Código de categoría ${index + 1}`}
                               value={category.code}
                               onChange={(event) =>
                                 updateCategory(index, 'code', event.target.value.toUpperCase())
                               }
-                            />
-                          </td>
-                          <td>
-                            <input
+                            /></>) },
+                  { key: 'c1', header: 'Nombre', render: ({ category, index }) => (<><input
                               aria-label={`Nombre de categoría ${index + 1}`}
                               value={category.name}
                               onChange={(event) =>
                                 updateCategory(index, 'name', event.target.value)
                               }
-                            />
-                          </td>
-                          <td>
-                            <input
+                            /></>) },
+                  { key: 'c2', header: 'Tope diario', render: ({ category, index }) => (<><input
                               aria-label={`Tope diario de categoría ${index + 1}`}
                               value={category.dailyLimit}
                               onChange={(event) =>
                                 updateCategory(index, 'dailyLimit', event.target.value)
                               }
-                            />
-                          </td>
-                          <td>
-                            <input
+                            /></>) },
+                  { key: 'c3', header: 'Desde', render: ({ category, index }) => (<><input
                               aria-label={`Hora inicial de categoría ${index + 1}`}
                               type="time"
                               value={category.allowedAfter ?? ''}
                               onChange={(event) =>
                                 updateCategory(index, 'allowedAfter', event.target.value)
                               }
-                            />
-                          </td>
-                          <td>
-                            <input
+                            /></>) },
+                  { key: 'c4', header: 'Hasta', render: ({ category, index }) => (<><input
                               aria-label={`Hora final de categoría ${index + 1}`}
                               type="time"
                               value={category.allowedBefore ?? ''}
                               onChange={(event) =>
                                 updateCategory(index, 'allowedBefore', event.target.value)
                               }
-                            />
-                          </td>
-                          <td>
-                            <input
+                            /></>) },
+                  { key: 'c5', header: 'Soporte', render: ({ category, index }) => (<><input
                               aria-label={`Exigir soporte en categoría ${index + 1}`}
                               type="checkbox"
                               checked={category.requiresEvidence}
                               onChange={(event) =>
                                 updateCategory(index, 'requiresEvidence', event.target.checked)
                               }
-                            />
-                          </td>
-                          <td>
-                            <Button
+                            /></>) },
+                  { key: 'c6', header: 'Acción', render: ({ index }) => (<Button
                               className="table-action-btn danger"
                               variant="ghost"
                               size="sm"
@@ -1101,12 +1045,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                               }
                             >
                               <Trash2 size={15} />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            </Button>) },
+                ]}
+              />
                 </div>
                 <div className="row-actions">
                   <Button
@@ -1123,7 +1064,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   >
                     <Plus size={15} /> Categoría
                   </Button>
-                  <Button
+                  <Button variant="primary"
                     disabled={
                       busy ||
                       !policy.sourceReference ||
@@ -1136,53 +1077,30 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   </Button>
                 </div>
               </section>
-            </Sidebar>
+            </FullScreenModal>
             <div className="governance-table-wrap pr-table-card">
-              <table className="hr-admin-table inventory-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Versión</th>
-                    <th scope="col">Vigencia</th>
-                    <th scope="col">Estado</th>
-                    <th scope="col">Viáticos</th>
-                    <th scope="col">Préstamos</th>
-                    <th scope="col">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {policies.length === 0 ? (
-                    <tr>
-                      <td colSpan={6}>
-                        <div className="hr-admin-empty">
+              <DataTable
+                ariaLabel="Políticas de beneficios"
+                rows={policies}
+                rowKey={(row) => row.id}
+                pagination={{ mode: 'server', page: policyPagination.page, pageSize: policyPagination.pageSize, total: policyPagination.total, onChange: (nextPage) => setPolicyPage(nextPage) }}
+                pageSizeOptions={[policyPagination.pageSize]}
+                minWidth="48rem"
+                empty={<div className="hr-admin-empty">
                           <strong>No hay políticas en este filtro</strong>
                           <span>Crea una versión o cambia el estado seleccionado.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    policies.map((row) => (
-                      <tr key={row.id}>
-                        <td>
-                          v{row.version}
-                          <small>{row.sourceReference}</small>
-                        </td>
-                        <td>
-                          {row.effectiveFrom.slice(0, 10)}
-                          {row.effectiveTo ? ` — ${row.effectiveTo.slice(0, 10)}` : ''}
-                        </td>
-                        <td>
-                          <span className={`governance-status ${row.status.toLowerCase()}`}>
+                        </div>}
+                columns={[
+                  { key: 'c0', header: 'Versión', render: (row) => (<>v{row.version}
+                          <small>{row.sourceReference}</small></>) },
+                  { key: 'c1', header: 'Vigencia', render: (row) => (<>{row.effectiveFrom.slice(0, 10)}
+                          {row.effectiveTo ? ` — ${row.effectiveTo.slice(0, 10)}` : ''}</>) },
+                  { key: 'c2', header: 'Estado', render: (row) => (<span className={`governance-status ${row.status.toLowerCase()}`}>
                             {statusLabel[row.status] ?? row.status}
-                          </span>
-                        </td>
-                        <td>
-                          {row.travelCategories.length} categorías · {row.travelMaxDays} días
-                        </td>
-                        <td>
-                          Tope {row.currency} {row.loanMaxAmount} · {row.loanMaxInstallments} cuotas
-                        </td>
-                        <td>
-                          <div className="table-actions">
+                          </span>) },
+                  { key: 'c3', header: 'Viáticos', render: (row) => <>{row.travelCategories.length} categorías · {row.travelMaxDays} días</> },
+                  { key: 'c4', header: 'Préstamos', render: (row) => <>Tope {row.currency} {row.loanMaxAmount} · {row.loanMaxInstallments} cuotas</> },
+                  { key: 'c5', header: 'Acción', render: (row) => (<div className="table-actions">
                             {row.status === 'DRAFT' && (
                               <Button
                                 className="table-action-btn"
@@ -1223,34 +1141,20 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                                 <ShieldCheck size={16} />
                               </Button>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-              <Pagination
-                page={policyPagination.page}
-                totalPages={policyPagination.totalPages}
-                totalItems={policyPagination.total}
-                pageSize={policyPagination.pageSize}
-                onPageChange={setPolicyPage}
-                alwaysShow
-                emptyLabel="Sin políticas"
+                          </div>) },
+                ]}
               />
             </div>
           </>
         )}
       </section>
-      <Sidebar
+      <FullScreenModal
         isOpen={Boolean(editingSettlement && draftSettlement)}
         onClose={() => {
           setEditingSettlement(null);
           setDraftSettlement(null);
         }}
         title={editingSettlement ? `Editar ${editingSettlement.code}` : 'Editar liquidación'}
-        width="large"
       >
         {editingSettlement && draftSettlement && (
           <section
@@ -1264,22 +1168,22 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             <div className="governance-grid">
               <label>
                 Tipo de salida
-                <HrReactSelect
+                <AppSelect<string>
+                  options={[
+                    { value: 'RESIGNATION', label: 'Renuncia' },
+                    { value: 'DISMISSAL', label: 'Despido' },
+                    { value: 'MUTUAL_AGREEMENT', label: 'Mutuo acuerdo' },
+                    { value: 'CONTRACT_END', label: 'Fin de contrato' },
+                    { value: 'OTHER', label: 'Otro' },
+                  ]}
                   value={draftSettlement.exitType}
-                  onChange={(event) =>
+                  onChange={(next) =>
                     setDraftSettlement((value) =>
-                      value
-                        ? { ...value, exitType: event.target.value as SettlementExitType }
-                        : value
+                      value ? { ...value, exitType: (next ?? '') as SettlementExitType } : value
                     )
                   }
-                >
-                  <option value="RESIGNATION">Renuncia</option>
-                  <option value="DISMISSAL">Despido</option>
-                  <option value="MUTUAL_AGREEMENT">Mutuo acuerdo</option>
-                  <option value="CONTRACT_END">Fin de contrato</option>
-                  <option value="OTHER">Otro</option>
-                </HrReactSelect>
+                  isClearable={false}
+                />
               </label>
               <label>
                 Fecha de terminación
@@ -1349,71 +1253,58 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             </div>
             <h4>Conceptos de liquidación</h4>
             <div className="governance-form-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">Tipo</th>
-                    <th scope="col">Concepto</th>
-                    <th scope="col">Base/fórmula</th>
-                    <th scope="col">Fuente</th>
-                    <th scope="col" className="hr-amount-cell">Monto</th>
-                    <th scope="col">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {draftSettlement.lines.map((line, index) => (
-                    <tr key={`${index}-${line.type}`}>
-                      <td>
-                        <HrReactSelect
-                          aria-label={`Tipo de concepto ${index + 1}`}
-                          value={line.type}
-                          onChange={(event) => updateDraftLine(index, 'type', event.target.value)}
-                        >
-                          <option value="EARNED_SALARY">Salario</option>
-                          <option value="VACATION">Vacaciones</option>
-                          <option value="AGUINALDO">Aguinaldo</option>
-                          <option value="INDEMNITY">Indemnización</option>
-                          <option value="OTHER_EARNING">Otro ingreso</option>
-                          <option value="DEDUCTION">Deducción</option>
-                        </HrReactSelect>
-                      </td>
-                      <td>
-                        <input
+              <DataTable
+                ariaLabel="Conceptos de liquidación"
+                rows={draftSettlement.lines.map((line, index) => ({ line, index }))}
+                rowKey={({ line, index }) => `${index}-${line.type}`}
+                pagination={{ mode: 'client' }}
+                minWidth="48rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Tipo', render: ({ line, index }) => (<AppSelect<string>
+                                                                               options={[
+                                                                                 { value: 'EARNED_SALARY', label: 'Salario' },
+                                                                                 { value: 'VACATION', label: 'Vacaciones' },
+                                                                                 { value: 'AGUINALDO', label: 'Aguinaldo' },
+                                                                                 { value: 'INDEMNITY', label: 'Indemnización' },
+                                                                                 { value: 'OTHER_EARNING', label: 'Otro ingreso' },
+                                                                                 { value: 'DEDUCTION', label: 'Deducción' },
+                                                                               ]}
+                                                                               aria-label={`Tipo de concepto ${index + 1}`}
+                                                                               value={line.type}
+                                                                               onChange={(next) =>
+                                                                                 updateDraftLine(index, 'type', next ?? '')
+                                                                               }
+                                                                               isClearable={false}
+                                                                             />) },
+                  { key: 'c1', header: 'Concepto', render: ({ line, index }) => (<><input
                           aria-label={`Concepto ${index + 1}`}
                           value={line.concept}
                           onChange={(event) =>
                             updateDraftLine(index, 'concept', event.target.value)
                           }
-                        />
-                      </td>
-                      <td>
-                        <input
+                        /></>) },
+                  { key: 'c2', header: 'Base/fórmula', render: ({ line, index }) => (<><input
                           aria-label={`Base del concepto ${index + 1}`}
                           value={line.formulaBasis}
                           onChange={(event) =>
                             updateDraftLine(index, 'formulaBasis', event.target.value)
                           }
-                        />
-                      </td>
-                      <td>
-                        <input
+                        /></>) },
+                  { key: 'c3', header: 'Fuente', render: ({ line, index }) => (<><input
                           aria-label={`Fuente del concepto ${index + 1}`}
                           value={line.sourceReference}
                           onChange={(event) =>
                             updateDraftLine(index, 'sourceReference', event.target.value)
                           }
-                        />
-                      </td>
-                      <td className="hr-amount-cell">
-                        <input
+                        /></>) },
+                  { key: 'c4', header: 'Monto', render: ({ line, index }) => (<><input
                           className="hr-money-input"
                           aria-label={`Monto del concepto ${index + 1}`}
                           value={line.amount}
                           onChange={(event) => updateDraftLine(index, 'amount', event.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <Button
+                        /></>) },
+                  { key: 'c5', header: 'Acción', render: ({ index }) => (<Button
                           className="table-action-btn danger"
                           variant="ghost"
                           size="sm"
@@ -1434,12 +1325,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                           }
                         >
                           <Trash2 size={15} />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </Button>) },
+                ]}
+              />
             </div>
             <div className="row-actions">
               <Button
@@ -1493,7 +1381,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               >
                 Cancelar
               </Button>
-              <Button
+              <Button variant="primary"
                 disabled={
                   busy ||
                   !draftAdjustmentReason.trim() ||
@@ -1510,15 +1398,14 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             </div>
           </section>
         )}
-      </Sidebar>
-      <Sidebar
+      </FullScreenModal>
+      <FullScreenModal
         isOpen={Boolean(selectedSettlement)}
         onClose={() => {
           setSelectedSettlement(null);
           setSettlementAction(null);
         }}
         title={selectedSettlement ? `Liquidación ${selectedSettlement.code}` : 'Liquidación'}
-        width="large"
       >
         {selectedSettlement && (
           <div className="premium-modal-content governance-detail">
@@ -1540,29 +1427,20 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             <p>
               <strong>Justificación:</strong> {selectedSettlement.justification}
             </p>
-            <table>
-              <thead>
-                <tr>
-                  <th>Concepto</th>
-                  <th>Base/fuente</th>
-                  <th className="hr-amount-cell">Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedSettlement.lines.map((line, index) => (
-                  <tr key={`${line.type}-${index}`}>
-                    <td>{line.concept}</td>
-                    <td>
-                      {line.formulaBasis}
-                      <small>{line.sourceReference}</small>
-                    </td>
-                    <td className="hr-amount-cell">
-                      {selectedSettlement.currency} {line.amount}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable
+                ariaLabel="Conceptos de la liquidación seleccionada"
+                rows={selectedSettlement.lines.map((line, index) => ({ line, index }))}
+                rowKey={({ line, index }) => `${line.type}-${index}`}
+                pagination={{ mode: 'client' }}
+                minWidth="40rem"
+                empty={'Sin registros'}
+                columns={[
+                  { key: 'c0', header: 'Concepto', render: ({ line }) => <>{line.concept}</> },
+                  { key: 'c1', header: 'Base/fuente', render: ({ line }) => (<>{line.formulaBasis}
+                      <small>{line.sourceReference}</small></>) },
+                  { key: 'c2', header: 'Monto', render: ({ line }) => <>{selectedSettlement.currency} {line.amount}</> },
+                ]}
+              />
             <div className="governance-total">
               <span>Neto a pagar</span>
               <strong>
@@ -1614,7 +1492,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   >
                     Cancelar
                   </Button>
-                  <Button
+                  <Button variant="primary"
                     disabled={
                       busy ||
                       !actionConfirmed ||
@@ -1663,12 +1541,11 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             )}
           </div>
         )}
-      </Sidebar>
-      <Sidebar
+      </FullScreenModal>
+      <FullScreenModal
         isOpen={Boolean(policyToActivate)}
         onClose={() => setPolicyToActivate(null)}
         title="Activar política"
-        width="large"
       >
         {policyToActivate && (
           <div className="premium-modal-content governance-detail">
@@ -1690,7 +1567,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               <Button variant="ghost" onClick={() => setPolicyToActivate(null)}>
                 Cancelar
               </Button>
-              <Button
+              <Button variant="primary"
                 disabled={busy || !policyActivationConfirmed}
                 onClick={() => {
                   setBusy(true);
@@ -1716,7 +1593,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             </div>
           </div>
         )}
-      </Sidebar>
+      </FullScreenModal>
     </div>
   );
 }

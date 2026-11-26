@@ -1,4 +1,10 @@
+import path from 'node:path';
 import mysql, { RowDataPacket } from 'mysql2/promise';
+import {
+    compareMigrationLedger,
+    loadExpectedMigrations,
+    type MigrationLedgerRow,
+} from '../src/utils/migration-ledger';
 
 type CountRow = RowDataPacket & { count: number | string };
 
@@ -17,12 +23,16 @@ async function main() {
     const connection = await mysql.createConnection({ uri: databaseUrl });
     try {
         await connection.query('START TRANSACTION READ ONLY');
-        const [migrationRows] = await connection.query<RowDataPacket[]>(`
-            SELECT migration_name, finished_at, rolled_back_at,
+        const [migrationRows] = await connection.query<Array<RowDataPacket & MigrationLedgerRow>>(`
+            SELECT migration_name, checksum, finished_at, rolled_back_at,
                    finished_at IS NOT NULL AND rolled_back_at IS NULL AS succeeded
             FROM _prisma_migrations
             ORDER BY started_at
         `);
+        const migrationLedger = compareMigrationLedger(
+            loadExpectedMigrations(path.resolve(__dirname, 'migrations')),
+            migrationRows,
+        );
         const [columns] = await connection.query<RowDataPacket[]>(`
             SELECT TABLE_NAME, COLUMN_NAME
             FROM information_schema.COLUMNS
@@ -77,15 +87,46 @@ async function main() {
             WHERE name LIKE 'hr.%' OR name LIKE 'orders.%' OR name LIKE 'invoices.%' OR name LIKE 'payments.%'
             ORDER BY name
         `);
+        const unpaidTableAccountOnAvailableTable = await count(connection, `
+            SELECT COUNT(*) AS count
+            FROM \`Order\` o
+            JOIN \`Table\` t
+              ON t.id = o.tableId
+             AND t.companyId = o.companyId
+            WHERE t.status = 'AVAILABLE'
+              AND o.status IN ('OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED')
+              AND o.financialStatus IN ('UNPAID', 'PARTIAL')
+        `);
+        const [unpaidTableAccountSamples] = await connection.query<RowDataPacket[]>(`
+            SELECT
+                o.id AS orderId,
+                o.branchId,
+                o.tableId,
+                o.status AS orderStatus,
+                o.financialStatus,
+                o.invoiceFiscalStatus,
+                t.activeTableGroupId
+            FROM \`Order\` o
+            JOIN \`Table\` t
+              ON t.id = o.tableId
+             AND t.companyId = o.companyId
+            WHERE t.status = 'AVAILABLE'
+              AND o.status IN ('OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED')
+              AND o.financialStatus IN ('UNPAID', 'PARTIAL')
+            ORDER BY o.id
+            LIMIT 50
+        `);
 
         const successfulMigrations = migrationRows.filter((row) => row.succeeded);
         const result = {
             migrations: {
                 historyRows: migrationRows.length,
+                expected: migrationLedger.expected,
                 successful: successfulMigrations.length,
                 rolledBack: migrationRows.filter((row) => row.rolled_back_at !== null).length,
                 unresolved: migrationRows.filter((row) => row.finished_at === null && row.rolled_back_at === null).length,
                 latestSuccessful: successfulMigrations.slice(-5).map((row) => row.migration_name),
+                issues: migrationLedger.issues,
             },
             deployedColumns: columns.map((row) => `${row.TABLE_NAME}.${row.COLUMN_NAME}`),
             invariants: {
@@ -113,6 +154,18 @@ async function main() {
                         ELSE 'UNPAID'
                     END
                 `),
+                unpaidTableAccountOnAvailableTable,
+                unpaidTableAccountOnAvailableTableSamples: unpaidTableAccountSamples.map((row) => ({
+                    orderId: Number(row.orderId),
+                    branchId: Number(row.branchId),
+                    tableId: Number(row.tableId),
+                    orderStatus: row.orderStatus,
+                    financialStatus: row.financialStatus,
+                    invoiceFiscalStatus: row.invoiceFiscalStatus,
+                    activeTableGroupId: row.activeTableGroupId === null
+                        ? null
+                        : Number(row.activeTableGroupId),
+                })),
                 zeroCostMenuProductIds: zeroCostMenu.map((row) => Number(row.id)),
                 zeroCostProductionProductIds: zeroCostProduction.map((row) => Number(row.id)),
                 positiveStockZeroCostProductIds: positiveStockZeroCost.map((row) => Number(row.id)),
@@ -125,6 +178,9 @@ async function main() {
             },
         };
         console.log(JSON.stringify(result));
+        if (migrationLedger.issues.length > 0 || unpaidTableAccountOnAvailableTable > 0) {
+            process.exitCode = 1;
+        }
         await connection.rollback();
     } finally {
         await connection.end();

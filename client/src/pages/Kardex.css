@@ -2,31 +2,7 @@
     padding: var(--spacing-xl);
     max-width: 1700px;
     margin: 0 auto;
-    color: var(--color-text);
-}
-
-/* Header */
-.kardex-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-xl);
-}
-
-.kardex-header h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--color-text);
-    margin: 0;
-}
-
-.kardex-header .header-subtitle {
-    color: var(--color-text-secondary);
-    font-size: 14px;
-    margin-top: var(--spacing-xs);
+    color: var(--ui-text);
 }
 
 /* Back Button */
@@ -35,10 +11,10 @@
     align-items: center;
     gap: var(--spacing-xs);
     padding: 8px 16px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
     border-radius: 8px;
-    color: var(--color-text);
+    color: var(--ui-text);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -47,14 +23,14 @@
 }
 
 .kardex-back-button:hover {
-    background: var(--color-background);
-    border-color: var(--color-neutral-400);
+    background: var(--ui-bg);
+    border-color: var(--ui-text-muted);
 }
 
 /* Filters */
 .kardex-filters {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
     border-radius: 12px;
     padding: var(--spacing-lg);
     margin-bottom: var(--spacing-xl);
@@ -79,22 +55,22 @@
     gap: var(--spacing-xs);
     font-size: 13px;
     font-weight: 600;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
 }
 
 .date-filter input[type="date"] {
     padding: 10px 12px;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--ui-border);
     border-radius: 8px;
     font-size: 14px;
-    background: var(--color-background);
-    color: var(--color-text);
+    background: var(--ui-bg);
+    color: var(--ui-text);
     transition: all 0.2s;
 }
 
 .date-filter input[type="date"]:focus {
     outline: none;
-    border-color: var(--color-primary);
+    border-color: var(--ui-primary);
 }
 
 /* Balance Cards Row */
@@ -112,8 +88,8 @@
     flex-direction: column;
     padding: var(--spacing-lg);
     border-radius: var(--radius-lg);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
     transition: all var(--transition-fast);
     position: relative;
     overflow: hidden;
@@ -136,41 +112,41 @@
 }
 
 .balance-card.opening::before {
-    background: var(--color-neutral-400);
+    background: var(--ui-text-muted);
 }
 
 .balance-card.total-in::before {
-    background: var(--color-success);
+    background: var(--ui-success);
 }
 
 .balance-card.total-out::before {
-    background: var(--color-danger);
+    background: var(--ui-danger);
 }
 
 .balance-card.closing::before {
-    background: var(--color-primary);
+    background: var(--ui-primary);
 }
 
 .balance-card.opening {
-    background: rgba(148, 163, 184, 0.05);
+    background: color-mix(in srgb, var(--ui-primary) 5%, transparent);
 }
 
 .balance-card.total-in {
-    background: rgba(34, 197, 94, 0.05);
+    background: color-mix(in srgb, var(--ui-success) 5%, transparent);
 }
 
 .balance-card.total-out {
-    background: rgba(239, 68, 68, 0.05);
+    background: color-mix(in srgb, var(--ui-danger) 5%, transparent);
 }
 
 .balance-card.closing {
-    background: rgba(37, 99, 235, 0.05);
+    background: color-mix(in srgb, var(--ui-primary) 5%, transparent);
 }
 
 .balance-label {
     font-size: 11px;
     font-weight: 800;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.8px;
     margin-bottom: 8px;
@@ -180,29 +156,29 @@
 .balance-value {
     font-size: 24px;
     font-weight: 800;
-    color: var(--color-text);
+    color: var(--ui-text);
     line-height: 1.2;
 }
 
 .balance-cost {
     font-size: 14px;
     font-weight: 700;
-    color: var(--color-success);
+    color: var(--ui-success);
     margin-top: 4px;
 }
 
 .balance-value.in {
-    color: var(--color-success);
+    color: var(--ui-success);
 }
 
 .balance-value.out {
-    color: var(--color-danger);
+    color: var(--ui-danger);
 }
 
 /* Table Container */
 .kardex-table-container {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
     border-radius: 12px;
     overflow: hidden;
     margin-bottom: var(--spacing-lg);
@@ -214,7 +190,7 @@
 }
 
 .kardex-table thead {
-    background: var(--color-background);
+    background: var(--ui-bg);
 }
 
 .kardex-table th {
@@ -222,10 +198,10 @@
     text-align: left;
     font-size: 12px;
     font-weight: 700;
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    border-bottom: 2px solid var(--color-border);
+    border-bottom: 2px solid var(--ui-border);
 }
 
 .kardex-table th.text-right {
@@ -233,18 +209,18 @@
 }
 
 .kardex-table tbody tr {
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--ui-border);
     transition: background-color 0.2s;
 }
 
 .kardex-table tbody tr:hover {
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: color-mix(in srgb, var(--ui-surface) 3%, transparent);
 }
 
 .kardex-table td {
     padding: var(--spacing-md);
     font-size: 14px;
-    color: var(--color-text);
+    color: var(--ui-text);
 }
 
 .kardex-table td.text-right {
@@ -265,32 +241,32 @@
 }
 
 .movement-type.in {
-    background: rgba(34, 197, 94, 0.1);
-    color: var(--color-success);
+    background: color-mix(in srgb, var(--ui-success) 10%, transparent);
+    color: var(--ui-success);
 }
 
 .movement-type.out {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--color-danger);
+    background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+    color: var(--ui-danger);
 }
 
 .movement-type.adjustment {
-    background: rgba(59, 130, 246, 0.1);
-    color: var(--color-info);
+    background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
+    color: var(--ui-primary);
 }
 
 .movement-type.transfer {
-    background: rgba(245, 158, 11, 0.1);
-    color: var(--color-warning);
+    background: color-mix(in srgb, var(--ui-warning) 10%, transparent);
+    color: var(--ui-warning);
 }
 
 .movement-in {
-    color: var(--color-success);
+    color: var(--ui-success);
     font-weight: 600;
 }
 
 .movement-out {
-    color: var(--color-danger);
+    color: var(--ui-danger);
     font-weight: 600;
 }
 
@@ -301,7 +277,7 @@
     align-items: center;
     justify-content: center;
     padding: var(--spacing-3xl);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     text-align: center;
 }
 
@@ -338,24 +314,9 @@
     }
 }
 
-/* Pagination */
-.kardex-pagination {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-lg);
-    padding: var(--spacing-md);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-top: none;
-    border-bottom-left-radius: var(--radius-lg);
-    border-bottom-right-radius: var(--radius-lg);
-    margin-top: -1px;
-}
-
 .pagination-info {
     font-size: 0.9rem;
-    color: var(--color-text-muted);
+    color: var(--ui-text-muted);
     font-weight: 500;
 }
 
@@ -363,12 +324,4 @@
     margin-left: var(--spacing-xs);
     font-size: 0.8rem;
     opacity: 0.7;
-}
-
-@media (max-width: 768px) {
-    .kardex-pagination {
-        flex-direction: column;
-        gap: var(--spacing-sm);
-        padding: var(--spacing-lg) var(--spacing-md);
-    }
 }

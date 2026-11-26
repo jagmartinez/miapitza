@@ -1,13 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-    Library, Plus, Trash2, Edit2,
+    Plus, Trash2, Edit2,
     ClipboardList, FileText, BadgeDollarSign
 } from 'lucide-react';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { cateringAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -15,7 +12,10 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import { useCurrency } from '../hooks/useCurrency';
+import { Button, DataTable, FullScreenModal, PageHeader, formatNumber, type Column } from '@/ui';
 import './CateringMod.css';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 
 interface CateringServiceRow {
     id: number;
@@ -28,7 +28,7 @@ interface CateringServiceRow {
 const marginPct = (s: { internalCost: number; salePrice: number }) =>
     s.salePrice > 0 ? ((s.salePrice - s.internalCost) / s.salePrice) * 100 : 0;
 const marginColor = (pct: number) =>
-    pct >= 50 ? 'var(--color-success)' : pct >= 20 ? 'var(--color-warning)' : 'var(--color-danger)';
+    pct >= 50 ? 'var(--ui-success)' : pct >= 20 ? 'var(--ui-warning)' : 'var(--ui-danger)';
 export default function CateringServices() {
     const { user } = useAuth();
     const { formatMoney: money } = useCurrency();
@@ -59,7 +59,7 @@ export default function CateringServices() {
             setServices(response.data.data);
         } catch (error) {
             console.error('Error loading services:', error);
-            showError('No se pudieron cargar los servicios de catering.');
+            showError(getApiErrorMessage(error, 'No se pudieron cargar los servicios de catering'));
         } finally {
             setLoading(false);
         }
@@ -138,7 +138,7 @@ export default function CateringServices() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error saving service:', error);
-            showError('No se pudo guardar el servicio de catering.');
+            showError(getApiErrorMessage(error, 'No se pudo guardar el servicio de catering'));
         } finally {
             setSaving(false);
         }
@@ -155,6 +155,7 @@ export default function CateringServices() {
             loadServices();
         } catch (error) {
             console.error('Error deleting service:', error);
+            notifyError(error, 'No se pudo eliminar el servicio de catering');
         }
     };
 
@@ -165,19 +166,19 @@ export default function CateringServices() {
 
     return (
         <div className="catering-page">
-            <div className="catering-header">
-                <div>
-                    <h1><Library size={32} /> Catálogo de Servicios</h1>
-                    <p className="catering-subtitle">Gestiona servicios, costos y precios de catering</p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <ViewToggle value={viewMode} onChange={setViewMode} />
-                    <Button onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
-                        <Plus size={20} />
-                        Nuevo Servicio
-                    </Button>
-                </div>
-            </div>
+            <PageHeader
+                title="Catálogo de Servicios"
+                description="Gestiona servicios, costos y precios de catering"
+                actions={
+                    <div className="ui-page-actions">
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        <Button variant="primary" onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
+                            <Plus size={20} />
+                            Nuevo Servicio
+                        </Button>
+                    </div>
+                }
+            />
 
             <div className="catering-filters">
                 <div className="filter-right-section" style={{ width: '100%', maxWidth: '400px' }}>
@@ -202,10 +203,11 @@ export default function CateringServices() {
                     <p>No hay servicios registrados en el catálogo</p>
                 </div>
             ) : viewMode === 'table' ? (
-                <CatalogTable<CateringServiceRow>
+                <DataTable<CateringServiceRow>
+                    ariaLabel="Servicios de catering"
                     rows={filteredServices}
                     rowKey={(s) => s.id}
-                    resetKey={searchQuery}
+                    resetKey={`${searchQuery}-${filteredServices.length}`}
                     columns={[
                         {
                             key: 'name',
@@ -217,13 +219,13 @@ export default function CateringServices() {
                                 </div>
                             )
                         },
-                        { key: 'cost', header: 'Costo', align: 'right', render: (s) => money(s.internalCost) },
-                        { key: 'sale', header: 'Venta', align: 'right', render: (s) => <span style={{ color: 'var(--color-success)' }}>{money(s.salePrice)}</span> },
-                        { key: 'margin', header: 'Margen', align: 'right', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{m.toFixed(1)}%</span>; } },
+                        { key: 'cost', header: 'Costo', type: 'number', render: (s) => money(s.internalCost) },
+                        { key: 'sale', header: 'Venta', type: 'number', render: (s) => <span style={{ color: 'var(--ui-success)' }}>{money(s.salePrice)}</span> },
+                        { key: 'margin', header: 'Margen', type: 'number', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{formatNumber(m, 1)}%</span>; } },
                         ...(canManageCatering ? [{
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right' as const,
+                            type: 'number',
                             render: (s: CateringServiceRow) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => handleOpenSidebar(s)} title="Editar"><Edit2 size={16} /></button>
@@ -231,7 +233,7 @@ export default function CateringServices() {
                                 </div>
                             )
                         }] : [])
-                    ] as CatalogColumn<CateringServiceRow>[]}
+                    ] as Column<CateringServiceRow>[]}
                 />
             ) : (
                 <div className="catalog-cards" style={{ marginTop: '24px' }}>
@@ -245,8 +247,8 @@ export default function CateringServices() {
                                 </div>
                                 <div className="catalog-card-rows">
                                     <div className="catalog-card-row"><span className="label">Costo</span><span className="value">{money(service.internalCost)}</span></div>
-                                    <div className="catalog-card-row"><span className="label">Venta</span><span className="value" style={{ color: 'var(--color-success)' }}>{money(service.salePrice)}</span></div>
-                                    <div className="catalog-card-row"><span className="label">Margen</span><span className="value" style={{ color: marginColor(m) }}>{m.toFixed(1)}%</span></div>
+                                    <div className="catalog-card-row"><span className="label">Venta</span><span className="value" style={{ color: 'var(--ui-success)' }}>{money(service.salePrice)}</span></div>
+                                    <div className="catalog-card-row"><span className="label">Margen</span><span className="value" style={{ color: marginColor(m) }}>{formatNumber(m, 1)}%</span></div>
                                 </div>
                                 {canManageCatering && (
                                     <div className="catalog-card-actions">
@@ -260,11 +262,10 @@ export default function CateringServices() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={editingService ? `Editar: ${editingService.name}` : 'Nuevo Servicio de Catering'}
-                width="normal"
             >
                 <div className="premium-modal-content catering-modal-content catering-service-modal-content">
                     <div className="modal-tabs" role="tablist" aria-label="Secciones del servicio de catering">
@@ -392,7 +393,7 @@ export default function CateringServices() {
                                             </div>
                                             <div className="summary-item highlighted">
                                                 <span className="label">Margen %</span>
-                                                <span className="value">{((parseFloat(formData.salePrice) - parseFloat(formData.internalCost)) / parseFloat(formData.salePrice) * 100).toFixed(1)}%</span>
+                                                <span className="value">{formatNumber((parseFloat(formData.salePrice) - parseFloat(formData.internalCost)) / parseFloat(formData.salePrice) * 100, 1)}%</span>
                                             </div>
                                         </div>
                                     </div>
@@ -402,13 +403,13 @@ export default function CateringServices() {
 
                         <div className="modal-footer">
                             <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={!canManageCatering || saving}>
+                            <Button variant="primary" type="submit" disabled={!canManageCatering || saving}>
                             {saving ? 'Guardando...' : editingService ? 'Actualizar Servicio' : 'Guardar Servicio'}
                             </Button>
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

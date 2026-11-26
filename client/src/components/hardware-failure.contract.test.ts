@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import cameraSource from './hr/CameraCapture.tsx?raw';
 import geolocationSource from './hr/GeolocationCapture.tsx?raw';
 import printerSource from './TicketPrintModal.tsx?raw';
-import tableBillSource from './TableOrdersModal.tsx?raw';
+import tablesSource from '../pages/Tables.tsx?raw';
 import kitchenSource from '../pages/Kitchen.tsx?raw';
 import cashShiftSource from '../pages/CashShift.tsx?raw';
 
@@ -11,7 +11,9 @@ describe('Browser hardware fail-closed contracts', () => {
   it('releases camera tracks and never fabricates a capture after denial/failure', () => {
     expect(cameraSource).toContain("getTracks().forEach((track) => track.stop())");
     expect(cameraSource).toContain('onCaptureRef.current(null)');
-    expect(cameraSource).toContain("name === 'NotAllowedError'");
+    // Denial/insecure/missing camera guidance lives in attendanceRules.cameraErrorMessage
+    // (covered by biometricGuidance.test.ts); the component must route failures through it.
+    expect(cameraSource).toContain('setError(cameraErrorMessage(name))');
     expect(cameraSource).toContain("phase: 'READY'");
     expect(cameraSource).toContain('El giro se validará al confirmar.');
     expect(cameraSource).not.toMatch(/localStorage|sessionStorage|indexedDB/);
@@ -32,7 +34,10 @@ describe('Browser hardware fail-closed contracts', () => {
   });
 
   it('never fails silently when a secondary print popup is blocked', () => {
-    for (const source of [tableBillSource, kitchenSource, cashShiftSource]) {
+    expect(tablesSource).toContain("const invoiceWindow = window.open('', '_blank')");
+    expect(tablesSource).toContain('if (!invoiceWindow)');
+    expect(tablesSource).toMatch(/showError\('No se pudo abrir la factura/);
+    for (const source of [kitchenSource, cashShiftSource]) {
       expect(source).toContain("if (!printWindow)");
       expect(source).toMatch(/showError\('No se pudo abrir/);
     }

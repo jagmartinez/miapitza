@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from cryptography.exceptions import InvalidTag
 
 from app.crypto import TemplateCipher
 from app.errors import BiometricError
@@ -19,7 +20,7 @@ def test_template_cipher_detects_tampering() -> None:
     assert np.allclose(restored, embedding)
     mutation_index = len(encrypted) // 2
     replacement = "A" if encrypted[mutation_index] != "A" else "B"
-    with pytest.raises(Exception):
+    with pytest.raises((InvalidTag, ValueError)):
         cipher.decrypt("template", "model", encrypted[:mutation_index] + replacement + encrypted[mutation_index + 1 :])
 
 
@@ -81,6 +82,45 @@ def test_enrollment_is_idempotent_and_tenant_scoped(tmp_path: Path) -> None:
     assert np.allclose(store.load(template_ref=first, tenant_ref="tenant-a", subject_ref="user-1"), embedding)
     with pytest.raises(BiometricError, match="Plantilla no encontrada"):
         store.load(template_ref=first, tenant_ref="tenant-b", subject_ref="user-1")
+
+
+def test_template_load_returns_authoritative_model_metadata(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    embedding = np.asarray([1.0, 0.0], dtype=np.float32)
+    template_ref = store.enroll(
+        tenant_ref="tenant-a",
+        subject_ref="user-1",
+        challenge_ref="challenge-model",
+        model_name="model-v1",
+        embedding=embedding,
+        retention_days=10,
+        evidence_fingerprint="evidence-model",
+    )
+
+    loaded = store.load_record(
+        template_ref=template_ref,
+        tenant_ref="tenant-a",
+        subject_ref="user-1",
+    )
+
+    assert loaded.model_name == "model-v1"
+    assert np.allclose(loaded.embedding, embedding)
+
+
+def test_idempotent_enrollment_rejects_a_model_change(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    arguments = {
+        "tenant_ref": "tenant-a",
+        "subject_ref": "user-1",
+        "challenge_ref": "same-challenge",
+        "embedding": np.asarray([1.0, 0.0], dtype=np.float32),
+        "retention_days": 10,
+        "evidence_fingerprint": "same-evidence",
+    }
+    store.enroll(model_name="model-v1", **arguments)
+
+    with pytest.raises(BiometricError, match="otro modelo"):
+        store.enroll(model_name="model-v2", **arguments)
 
 
 def test_reenrollment_keeps_previous_template_until_explicit_revoke(tmp_path: Path) -> None:

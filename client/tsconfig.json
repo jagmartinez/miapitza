@@ -20,7 +20,13 @@
         "strict": true,
         "noUnusedLocals": true,
         "noUnusedParameters": true,
-        "noFallthroughCasesInSwitch": true
+        "noFallthroughCasesInSwitch": true,
+        "baseUrl": ".",
+        "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
+        "paths": {
+            "@/ui": ["src/ui/index.ts"],
+            "@/ui/*": ["src/ui/*"]
+        }
     },
     "include": [
         "src"

@@ -1,7 +1,31 @@
 import type { DocumentType, Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SettingService } from './setting.service';
+import { CashError } from './cash-errors';
 import { zonedDateKey } from '../utils/timezone';
+import {
+    CashMovementReportService,
+    summarizeCashMovements
+} from './cash-movement-report.service';
+
+const MANUAL_MOVEMENT_FIELDS = new Set([
+    'type',
+    'amount',
+    'description',
+    'reference',
+    'documentDate',
+    'documentType',
+    'documentNumber',
+    'supplierId'
+]);
+
+const RESERVED_CASH_REFERENCE_PREFIXES = [
+    'PAY-',
+    'CAT-PAY-',
+    'REV-PAY-',
+    'REV-CAT-PAY-',
+    'CN-REF-'
+];
 
 export class CashShiftService {
     static async getAll(companyId: number, filters?: {
@@ -118,7 +142,13 @@ export class CashShiftService {
             throw new Error('Cash shift not found');
         }
 
-        return shift;
+        const movements = await CashMovementReportService.enrichForReport(
+            shift.movements,
+            companyId,
+            shift.cashRegister.branch.id
+        );
+
+        return { ...shift, movements };
     }
 
     static async open(companyId: number, branchId: number, data: {
@@ -166,18 +196,21 @@ export class CashShiftService {
                     cashRegisterId: data.cashRegisterId,
                     companyId,
                     endDate: null
-                }
+                },
+                include: { user: { select: { id: true, name: true } } }
             });
 
             if (activeShift) {
-                throw new Error('Esta caja ya tiene un turno abierto');
+                throw new CashError('Esta caja ya tiene un turno abierto', 409, 'CASH_REGISTER_OCCUPIED', {
+                    occupiedBy: activeShift.user ? { id: activeShift.user.id, name: activeShift.user.name } : null
+                });
             }
 
             const userActiveShift = await tx.cashShift.findFirst({
                 where: { userId: data.userId, companyId, endDate: null },
                 select: { id: true }
             });
-            if (userActiveShift) throw new Error('El usuario ya tiene un turno de caja abierto');
+            if (userActiveShift) throw new CashError('El usuario ya tiene un turno de caja abierto', 409, 'CASH_SHIFT_ALREADY_OPEN');
 
             return await tx.cashShift.create({
                 data: {
@@ -201,6 +234,24 @@ export class CashShiftService {
                 }
             });
         });
+    }
+
+    /** endAmount of the last CLOSED shift of a register (company + branch scoped), or null. */
+    static async getSuggestedFloat(companyId: number, branchId: number, cashRegisterId: number) {
+        const last = await prisma.cashShift.findFirst({
+            where: {
+                companyId,
+                cashRegisterId,
+                endDate: { not: null },
+                endAmount: { not: null },
+                cashRegister: { branchId }
+            },
+            orderBy: { endDate: 'desc' },
+            select: { id: true, endAmount: true }
+        });
+        return last && last.endAmount !== null
+            ? { suggested: Number(last.endAmount), fromShiftId: last.id }
+            : { suggested: null, fromShiftId: null };
     }
 
     static async getActiveShiftByUser(userId: number, companyId: number) {
@@ -279,7 +330,13 @@ export class CashShiftService {
         documentType?: string;
         documentNumber?: string;
         supplierId?: number;
-    }) {
+    }, actorId?: number) {
+        const unknownFields = Object.keys(data as Record<string, unknown>)
+            .filter((field) => !MANUAL_MOVEMENT_FIELDS.has(field));
+        if (unknownFields.length > 0) {
+            throw new Error(`Campos no permitidos en movimiento manual: ${unknownFields.join(', ')}`);
+        }
+
         // Validate amount and type
         if (!Number.isFinite(data.amount) || data.amount <= 0) {
             throw new Error('El monto debe ser mayor a 0');
@@ -287,6 +344,20 @@ export class CashShiftService {
         const amount = Math.round(data.amount * 100) / 100;
         if (!['IN', 'OUT'].includes(data.type)) {
             throw new Error('Tipo de movimiento inválido');
+        }
+        if (data.reference !== undefined && typeof data.reference !== 'string') {
+            throw new Error('La referencia debe ser una cadena de texto');
+        }
+        const normalizedReference = data.reference?.trim() || undefined;
+        if (normalizedReference && normalizedReference.length > 191) {
+            throw new Error('La referencia no puede exceder 191 caracteres');
+        }
+        const upperReference = normalizedReference?.toUpperCase();
+        if (
+            upperReference
+            && RESERVED_CASH_REFERENCE_PREFIXES.some((prefix) => upperReference.startsWith(prefix))
+        ) {
+            throw new Error('La referencia utiliza un namespace reservado para movimientos automáticos');
         }
 
         // If a supplier is referenced, it must belong to this company.
@@ -304,12 +375,16 @@ export class CashShiftService {
             type: data.type,
             amount,
             description: data.description,
-            reference: data.reference
+            reference: normalizedReference
         };
 
         // Add optional document fields
         if (data.documentDate) {
-            createData.documentDate = new Date(data.documentDate);
+            const documentDate = new Date(data.documentDate);
+            if (Number.isNaN(documentDate.getTime())) {
+                throw new Error('La fecha del documento no es válida');
+            }
+            createData.documentDate = documentDate;
         }
         if (data.documentType) {
             const docTypes: DocumentType[] = [
@@ -319,9 +394,10 @@ export class CashShiftService {
                 'NOTA_CREDITO',
                 'NOTA_DEBITO'
             ];
-            if (docTypes.includes(data.documentType as DocumentType)) {
-                createData.documentType = data.documentType as DocumentType;
+            if (!docTypes.includes(data.documentType as DocumentType)) {
+                throw new Error('Tipo de documento inválido');
             }
+            createData.documentType = data.documentType as DocumentType;
         }
         if (data.documentNumber) {
             createData.documentNumber = data.documentNumber;
@@ -332,9 +408,13 @@ export class CashShiftService {
 
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${shiftId} AND companyId = ${companyId} FOR UPDATE`;
-            const shift = await tx.cashShift.findFirst({ where: { id: shiftId, companyId }, select: { endDate: true } });
+            const shift = await tx.cashShift.findFirst({ where: { id: shiftId, companyId }, select: { endDate: true, closedById: true } });
             if (!shift) throw new Error('Turno de caja no encontrado');
-            if (shift.endDate) throw new Error('No se pueden agregar movimientos a turnos cerrados');
+            if (shift.endDate) {
+                throw new CashError('No se pueden agregar movimientos a turnos cerrados', 409, 'CASH_SHIFT_ALREADY_CLOSED', {
+                    closedByMe: actorId !== undefined && shift.closedById === actorId
+                });
+            }
             return tx.cashMovement.create({
                 data: createData,
                 include: { supplier: { select: { id: true, name: true } } }
@@ -358,6 +438,72 @@ export class CashShiftService {
         throw new Error('El libro de caja es inmutable; registre un movimiento compensatorio en lugar de eliminarlo');
     }
 
+    /**
+     * Sales of a shift by payment method, plus the discounts and tips of the orders paid in it. Payments carry no shift id,
+     * so they are matched by the shift's cashier and window [start, end) (an open shift runs to now), scoped to the shift's
+     * branch and company. Cash uses the same net figure as the drawer; OTHER methods count with transfers. Not blind data:
+     * every role gets it. Each order counts once for discounts and tips, even when its bill was split in several payments.
+     */
+    static async salesBreakdown(
+        shift: { userId: number; startDate: Date; endDate: Date | null; cashRegister: { branchId: number } },
+        companyId: number,
+        cashSales: number,
+        opts: { orderTotals?: boolean } = {}
+    ) {
+        const payments = await prisma.payment.findMany({
+            where: {
+                registeredById: shift.userId,
+                status: 'ACTIVE',
+                createdAt: { gte: shift.startDate, ...(shift.endDate ? { lt: shift.endDate } : { lte: new Date() }) },
+                order: { companyId, branchId: shift.cashRegister.branchId }
+            },
+            select: { orderId: true, methodType: true, amount: true, order: { select: { discount: true, tipAmount: true } } }
+        });
+        const sumOf = (...types: string[]) =>
+            payments.filter((p) => types.includes(p.methodType)).reduce((n, p) => n + Math.round(Number(p.amount) * 100), 0) / 100;
+        const orders = new Map<number, { discount: number; tip: number }>();
+        for (const p of payments) {
+            if (!orders.has(p.orderId)) {
+                orders.set(p.orderId, {
+                    discount: Math.round(Number(p.order?.discount ?? 0) * 100),
+                    tip: Math.round(Number(p.order?.tipAmount ?? 0) * 100)
+                });
+            }
+        }
+        // An order's discount and tip are counted once, in the shift of the cashier who registered the order's LAST active
+        // payment, and only when that payment falls inside this shift's window. The cashier check keeps two overlapping
+        // shifts (two registers open at once) from both counting a bill split between them. Only the report asks for these.
+        let counted = [...orders.values()];
+        if (opts.orderTotals && orders.size > 0) {
+            const all = await prisma.payment.findMany({
+                where: { orderId: { in: [...orders.keys()] }, status: 'ACTIVE' },
+                orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+                select: { orderId: true, createdAt: true, registeredById: true }
+            });
+            const lastByOrder = new Map<number, { createdAt: Date; registeredById: number | null }>();
+            for (const row of all) if (!lastByOrder.has(row.orderId)) lastByOrder.set(row.orderId, row);
+            counted = [...lastByOrder.entries()]
+                .filter(([, last]) => {
+                    const at = last.createdAt;
+                    return last.registeredById === shift.userId && at >= shift.startDate && (shift.endDate ? at < shift.endDate : true);
+                })
+                .map(([orderId]) => orders.get(orderId))
+                .filter((o): o is { discount: number; tip: number } => !!o);
+        }
+        const totalOf = (key: 'discount' | 'tip') => counted.reduce((n, o) => n + o[key], 0) / 100;
+        return {
+            salesByMethod: {
+                cash: cashSales,
+                card: sumOf('CARD'),
+                transfer: sumOf('BANK_TRANSFER', 'OTHER'),
+                // distinct orders paid: the legs of a split bill count once
+                paymentCount: orders.size
+            },
+            discounts: totalOf('discount'),
+            tips: totalOf('tip')
+        };
+    }
+
     // Get shift summary
     static async getShiftSummary(shiftId: number, companyId: number) {
         const shift = await prisma.cashShift.findFirst({
@@ -365,7 +511,8 @@ export class CashShiftService {
             include: {
                 movements: true,
                 cashRegister: true,
-                user: true
+                // Never expose the full User row (passwordHash, PIN, ...).
+                user: { select: { id: true, name: true } }
             }
         });
 
@@ -373,39 +520,28 @@ export class CashShiftService {
             throw new Error('Cash shift not found');
         }
 
-        const movementsIn = shift.movements.filter((m) => m.type === 'IN');
-        const movementsOut = shift.movements.filter((m) => m.type === 'OUT');
-
-        const totalIn = movementsIn.reduce((sum, m) => sum + Number(m.amount), 0);
-        const totalOut = movementsOut.reduce((sum, m) => sum + Number(m.amount), 0);
-
-        // Cash sales are correlated by immutable POS/Catering payment references;
-        // never infer them from free-text descriptions.
-        const grossSalesCash = movementsIn
-            .filter((m) => m.reference?.startsWith('PAY-') || m.reference?.startsWith('CAT-PAY-'))
-            .reduce((sum, m) => sum + Number(m.amount), 0);
-        const cashRefunds = movementsOut
-            .filter((m) =>
-                m.reference?.startsWith('REV-PAY-')
-                || m.reference?.startsWith('CN-REF-')
-                || m.reference?.startsWith('REV-CAT-PAY-')
-            )
-            .reduce((sum, m) => sum + Number(m.amount), 0);
-        const totalSalesCash = grossSalesCash - cashRefunds;
-
-        const expectedBalance = Number(shift.startAmount) + totalIn - totalOut;
+        // Keep presentation categories and the authoritative balance on the
+        // same cents-based classification. Free-text descriptions never decide
+        // whether a movement is a sale, refund or manual entry.
+        const movementSummary = summarizeCashMovements(shift.movements);
+        const startAmountCents = Math.round(Number(shift.startAmount) * 100);
+        const expectedBalanceCents = startAmountCents
+            + Math.round(movementSummary.totalIn * 100)
+            - Math.round(movementSummary.totalOut * 100);
+        const expectedBalance = expectedBalanceCents / 100;
         const actualBalance = shift.endAmount !== null ? Number(shift.endAmount) : null;
-        const difference = actualBalance !== null ? actualBalance - expectedBalance : null;
+        const difference = actualBalance !== null
+            ? (Math.round(actualBalance * 100) - expectedBalanceCents) / 100
+            : null;
+
+        const { salesByMethod } = await CashShiftService.salesBreakdown(shift, companyId, movementSummary.totalSalesCash);
 
         return {
             shift,
             summary: {
                 startAmount: Number(shift.startAmount),
-                totalIn,
-                totalOut,
-                totalSalesCash,
-                grossSalesCash,
-                cashRefunds,
+                ...movementSummary,
+                salesByMethod,
                 expectedBalance,
                 expectedAmount: expectedBalance, // Alias for frontend compatibility
                 actualBalance,

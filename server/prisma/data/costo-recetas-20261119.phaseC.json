@@ -1,0 +1,2299 @@
+{
+ "schemaVersion": 1,
+ "phase": "C",
+ "companyId": 1,
+ "source": {
+  "file": "COSTO RECETAS.xlsx",
+  "sha256": "09cab7d96b62bb75c69df8723bead0c69e7e7389dea2aea7b8cbf78a7b10d765",
+  "asOfDate": "2026-06-21",
+  "reviewedAt": "2026-11-19",
+  "dependsOn": "costo-recetas-20261119.phaseB.json (debe estar aplicado)",
+  "decisions": [
+   "Se crean 16 MenuItem inactivos (price 0, PREPARED, branchId null) de la marca 1 Forno Fiery (decision del negocio; menuDefaults.brandId)",
+   "Categorias: Focaccias 13 (existe), Pastas Frescas 14 (existe), \"Otros\" se crea (no hay equivalente: Extras/Kids Menu son otra cosa)",
+   "12 intermedios nuevos RCP-000017..028 (categoria Produccion 26), BOM v1 ACTIVE; costo = BOM / rendimiento en base",
+   "FRESA CONGELADA y SAZONADOR DE POLLO no se crean aqui: los crea la fase A2 (se resuelven por nombre, activos, base g); costo esperado 0.25/g y 0.499811/g",
+   "Agua de proceso 404 no entra en BOMs nuevos (el cierre de produccion exige stock de componentes); costo 0, rendimientos sin cambio",
+   "Empanizador = intermedio (dato del negocio): harina 625 \"Harina\" de uso general 2 lb, pimienta molida 551 40 g, sazonador 40 g, sal 601 20 g; rinde 1008 g",
+   "Ossobuco: intermedio nuevo \"Ossobuco braseado\"; CON-000022 (carne cruda en lb) no se toca",
+   "Pimentones macerados: sin intermedio (el Excel no tiene subreceta); linea directa MORRON 523 0.6 und = 120 g (200 g/und)",
+   "Papas fritas: sin intermedio (se frien al momento); lineas directas 581/565/601 170/10/10 g (Fiery Melt 85/5/5)",
+   "Provolone 539: 0.532417 -> 0.686317/g (Excel INGREDIENTES O60/O62/O65, pieza 5 lb a 1556.54)",
+   "Agua de proceso en BOM 10 (Masa integral) y 13 (Te preparado): nuevas versiones v2 sin 404 en costo-recetas-20261119.phaseB2.json (script de fase B)",
+   "Pesto: focaccias y pastas usan Pesto sandwich (el Excel referencia L112); Quesadilla Capresse usa 402 pesto pizza",
+   "Pan focaccia: harina 177 Napoli (precio que usa el Excel; 516 HARINA FOCACCIA es la alternativa)",
+   "onz = 28.3495 g (porciones redondeadas a g: 1 onz 28 g, 2 onz 57 g, 3 onz 85 g, 6 onz 170 g); \"N*450\" del Excel = N lb; gramos tecleados se respetan",
+   "Errores Excel corregidos: pepinillo (g x costo/onz), cebolla caramelizada y miel mostaza (onz x costo/g), crema de parmesano =H+I, chipotle con precio de vinagre balsamico",
+   "Empaques, servilletas y cubiertos omitidos; recargos (mantenimiento, logistica, mano de obra, bolsas) fuera del BOM",
+   "Manteca liquida 565 (base g) en 10 g para \"10 ml\" (su costo/g coincide con el costo/ml del Excel)",
+   "Lechuga escarola 525 (base unidad): 30 g = 30/280 und"
+  ]
+ },
+ "conventions": {
+  "onz": 28.3495,
+  "lb": 453.592,
+  "costTolerancePct": 0.5,
+  "intermediateCostRounding": 6
+ },
+ "preconditions": {
+  "phaseB": [
+   {
+    "productId": 403,
+    "sku": "RCP-000001",
+    "activeVersion": 2,
+    "yieldQty": 12473.78,
+    "cost": 0.155751
+   },
+   {
+    "productId": 406,
+    "sku": "RCP-000010",
+    "activeVersion": 2,
+    "yieldQty": 5896.696,
+    "cost": 0.288812
+   },
+   {
+    "productId": 402,
+    "sku": "RCP-000002",
+    "activeVersion": 2,
+    "yieldQty": 1842.7175,
+    "cost": 0.337919
+   },
+   {
+    "productId": 374,
+    "sku": "PRD-000002",
+    "activeVersion": 2,
+    "yieldQty": 7,
+    "cost": 5.072898
+   },
+   {
+    "productId": 401,
+    "sku": "RCP-000003",
+    "activeVersion": 1,
+    "yieldQty": 3855.532,
+    "cost": 0.170967
+   },
+   {
+    "productId": 373,
+    "sku": "PRD-000001",
+    "activeVersion": 1,
+    "yieldQty": 1051.785,
+    "cost": 0.559282
+   },
+   {
+    "productId": 405,
+    "sku": "RCP-000009",
+    "activeVersion": 1,
+    "yieldQty": 2834.95,
+    "cost": 0.160646
+   }
+  ]
+ },
+ "categories": [
+  {
+   "key": "FOCACCIAS",
+   "id": 13,
+   "name": "Focaccias"
+  },
+  {
+   "key": "PASTAS",
+   "id": 14,
+   "name": "Pastas Frescas"
+  },
+  {
+   "key": "OTROS",
+   "id": null,
+   "name": "Otros",
+   "create": {
+    "description": "Categoría de menú",
+    "sortOrder": 20,
+    "showInMenu": true,
+    "showInInventory": false
+   }
+  }
+ ],
+ "menuDefaults": {
+  "active": false,
+  "price": 0,
+  "type": "PREPARED",
+  "branchId": null,
+  "brandId": 1
+ },
+ "productCosts": [
+  {
+   "productId": 539,
+   "sku": "CCI-E84124CA3A",
+   "name": "QUESO PROVOLONE",
+   "baseUnit": "g",
+   "oldCost": 0.532417,
+   "newCost": 0.686317,
+   "excelRow": "INGREDIENTES!O60/O62/O65",
+   "conversionPath": "pieza 5 lb a 1556.54 C$ (40 porciones de 56.25 g) -> 1556.54 / 2267.96 g; el Excel usa este costo (0.69) en Beef al Forno; J62 241.5/lb queda descartado"
+  }
+ ],
+ "externalProducts": [
+  {
+   "key": "FRESA_CONGELADA",
+   "name": "FRESA CONGELADA",
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "source": "phaseA2",
+   "expectedCost": 0.244444,
+   "excelRow": "INGREDIENTES!203",
+   "excelUnitCost": 0.244444,
+   "conversionPath": "Excel L203 =J203/(450*5) = 550/2250 = 0.244444/g (valor adoptado por la fase A2)"
+  },
+  {
+   "key": "SAZONADOR_POLLO",
+   "name": "SAZONADOR DE POLLO",
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "source": "phaseA2",
+   "expectedCost": 0.499811,
+   "excelRow": "INGREDIENTES!76",
+   "excelUnitCost": 0.4998110355253212,
+   "conversionPath": "Excel L76 0.4998110355 C$/g (bolsa 150 g segun negocio; J76 396.75 sin contenido)"
+  }
+ ],
+ "newProducts": [
+  {
+   "key": "PAN_FOCACCIA",
+   "sku": "RCP-000017",
+   "name": "Pan focaccia",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "unidad",
+   "baseUnitId": 18,
+   "storageType": "PERISHABLE",
+   "expectedCost": 4.108604,
+   "note": null
+  },
+  {
+   "key": "STRACCIATELLA",
+   "sku": "RCP-000018",
+   "name": "Stracciatella",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.207033,
+   "note": null
+  },
+  {
+   "key": "ROMESCO",
+   "sku": "RCP-000019",
+   "name": "Romesco",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.302829,
+   "note": null
+  },
+  {
+   "key": "CEBOLLA_CARAMELIZADA",
+   "sku": "RCP-000020",
+   "name": "Cebolla caramelizada",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.131401,
+   "note": null
+  },
+  {
+   "key": "PESTO_SANDWICH",
+   "sku": "RCP-000021",
+   "name": "Pesto sándwich",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.316979,
+   "note": null
+  },
+  {
+   "key": "CREMA_PARMESANO",
+   "sku": "RCP-000022",
+   "name": "Crema de parmesano",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.269528,
+   "note": "Excel J142:J146 =H+I corregido a =H*I: lote 497.03 (7.65/onz), no 1336.31"
+  },
+  {
+   "key": "OSSOBUCO",
+   "sku": "RCP-000023",
+   "name": "Ossobuco braseado",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.453275,
+   "note": "Producto nuevo; CON-000022 OSSOBUCO (carne cruda, lb) no se toca"
+  },
+  {
+   "key": "TOMATE_ROSTIZADO",
+   "sku": "RCP-000024",
+   "name": "Tomate rostizado",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.118485,
+   "note": null
+  },
+  {
+   "key": "BERENJENA_ROSTIZADA",
+   "sku": "RCP-000025",
+   "name": "Berenjena rostizada",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.18065,
+   "note": null
+  },
+  {
+   "key": "SALSA_CHIPOTLE",
+   "sku": "RCP-000026",
+   "name": "Salsa chipotle",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.124826,
+   "note": null
+  },
+  {
+   "key": "MIEL_MOSTAZA",
+   "sku": "RCP-000027",
+   "name": "Miel mostaza",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.169361,
+   "note": null
+  },
+  {
+   "key": "EMPANIZADOR",
+   "sku": "RCP-000028",
+   "name": "Empanizador",
+   "type": "INTERMEDIATE",
+   "categoryId": 26,
+   "baseUnit": "g",
+   "baseUnitId": 9,
+   "storageType": "PERISHABLE",
+   "expectedCost": 0.118479,
+   "note": null
+  }
+ ],
+ "productUnits": [
+  {
+   "productKey": "PAN_FOCACCIA",
+   "unit": "unidad",
+   "unitId": 18,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "STRACCIATELLA",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "ROMESCO",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "CEBOLLA_CARAMELIZADA",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "PESTO_SANDWICH",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "CREMA_PARMESANO",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "OSSOBUCO",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "TOMATE_ROSTIZADO",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "BERENJENA_ROSTIZADA",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "SALSA_CHIPOTLE",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "MIEL_MOSTAZA",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  },
+  {
+   "productKey": "EMPANIZADOR",
+   "unit": "g",
+   "unitId": 9,
+   "conversionFactor": 1,
+   "isDefault": true
+  }
+ ],
+ "productionRecipes": [
+  {
+   "key": "PAN_FOCACCIA",
+   "productKey": "PAN_FOCACCIA",
+   "name": "Receta de Pan focaccia",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F308:I318",
+   "yield": {
+    "qty": 42,
+    "unit": "unidad",
+    "unitId": 18,
+    "excel": "42 unidades"
+   },
+   "components": [
+    {
+     "productId": 177,
+     "qty": 3500,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Harina 3500 gr (costo Excel = HARINA PIZZA NAPOLI 0.029044/g)",
+     "productName": "Harina Napoli",
+     "lineCost": 100.850543
+    },
+    {
+     "productId": 226,
+     "qty": 185,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Aceite de oliva 185 (Excel \"gr\" costeado por ml)",
+     "productName": "ACEITE DE OLIVA",
+     "lineCost": 50.328226
+    },
+    {
+     "productId": 397,
+     "qty": 70,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Miel 70 gr",
+     "productName": "Miel envase de mesa",
+     "lineCost": 9.03756
+    },
+    {
+     "productId": 601,
+     "qty": 55,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Sal 55 gr",
+     "productName": "Sal (base g)",
+     "lineCost": 1.455025
+    },
+    {
+     "productId": 511,
+     "qty": 55,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Levadura 55 gr",
+     "productName": "LEVADURA",
+     "lineCost": 10.89
+    }
+   ],
+   "expected": {
+    "batchCost": 172.561354,
+    "unitCost": 4.108604,
+    "perOz": null,
+    "excelBatchCorrected": 173.378,
+    "excelPerBase": 4.128048,
+    "pctVsExcel": -0.47
+   }
+  },
+  {
+   "key": "STRACCIATELLA",
+   "productKey": "STRACCIATELLA",
+   "name": "Receta de Stracciatella",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F56:I67",
+   "yield": {
+    "qty": 3345.241,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "118 onz x 28.3495"
+   },
+   "components": [
+    {
+     "productId": 42,
+     "qty": 900,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Quesillo 900 gr (tecleado)",
+     "productName": "QUESILLO",
+     "lineCost": 297.675
+    },
+    {
+     "productId": 551,
+     "qty": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Pimienta 10 gr",
+     "productName": "PIMIENTA MOLIDA",
+     "lineCost": 13.38648
+    },
+    {
+     "productId": 601,
+     "qty": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Sal 10 gr",
+     "productName": "Sal (base g)",
+     "lineCost": 0.26455
+    },
+    {
+     "productId": 540,
+     "qty": 600,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Leche 600 ml",
+     "productName": "LECHE (base ml)",
+     "lineCost": 33.8442
+    },
+    {
+     "productId": 18,
+     "qty": 900,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Crema acida 900 gr (tecleado)",
+     "productName": "CREMA ACIDA",
+     "lineCost": 109.304333
+    },
+    {
+     "productId": 398,
+     "qty": 900,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Mozzarella fresco 900 gr",
+     "productName": "Mozzarella fresco para receta",
+     "lineCost": 238.0995
+    }
+   ],
+   "expected": {
+    "batchCost": 692.574063,
+    "unitCost": 0.207033,
+    "perOz": 5.869282,
+    "excelBatchCorrected": 696.8902,
+    "excelPerBase": 0.208323,
+    "pctVsExcel": -0.62
+   }
+  },
+  {
+   "key": "ROMESCO",
+   "productKey": "ROMESCO",
+   "name": "Receta de Romesco",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F46:I54",
+   "yield": {
+    "qty": 5443.104,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "192 onz x 28.3495 (rendimiento sospechoso, ver refuta-subrecetas)"
+   },
+   "components": [
+    {
+     "productId": 545,
+     "qty": 7500,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Mayonesa 7500 gr",
+     "productName": "MAYONESA (base g)",
+     "lineCost": 1043.505
+    },
+    {
+     "productId": 162,
+     "qty": 300,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Ajo 300 gr",
+     "productName": "AJO",
+     "lineCost": 64.827
+    },
+    {
+     "productId": 523,
+     "qty": 13.5,
+     "unit": "unidad",
+     "unitId": 18,
+     "excel": "Morron 2700 gr = 13.5 und (Excel 40 C$/und = 0.2/g -> 200 g/und)",
+     "productName": "MORRON",
+     "lineCost": 540
+    }
+   ],
+   "expected": {
+    "batchCost": 1648.332,
+    "unitCost": 0.302829,
+    "perOz": 8.585051,
+    "excelBatchCorrected": 1648.8369,
+    "excelPerBase": 0.302922,
+    "pctVsExcel": -0.03
+   }
+  },
+  {
+   "key": "CEBOLLA_CARAMELIZADA",
+   "productKey": "CEBOLLA_CARAMELIZADA",
+   "name": "Receta de Cebolla caramelizada",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F32:J42",
+   "yield": {
+    "qty": 7080,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "7080 gr"
+   },
+   "components": [
+    {
+     "productId": 166,
+     "qty": 20,
+     "unit": "lb",
+     "unitId": 1,
+     "excel": "Cebolla =20*450 -> 20 lb",
+     "productName": "CEBOLLA AMARILLA",
+     "lineCost": 640
+    },
+    {
+     "productId": 234,
+     "qty": 1200,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Azucar 1200 gr",
+     "productName": "AZUCAR",
+     "lineCost": 49.676962
+    },
+    {
+     "productId": 551,
+     "qty": 80,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Pimienta 80 gr",
+     "productName": "PIMIENTA MOLIDA",
+     "lineCost": 107.09184
+    },
+    {
+     "productId": 226,
+     "qty": 250,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Aceite oliva 250 ml",
+     "productName": "ACEITE DE OLIVA",
+     "lineCost": 68.011116
+    },
+    {
+     "productId": 513,
+     "qty": 150,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Vinagre balsamico 150 ml",
+     "productName": "VINAGRE BALSAMICO (base ml)",
+     "lineCost": 65.54145
+    }
+   ],
+   "expected": {
+    "batchCost": 930.321368,
+    "unitCost": 0.131401,
+    "perOz": 3.725153,
+    "excelBatchCorrected": 931.1677,
+    "excelPerBase": 0.131521,
+    "pctVsExcel": -0.09
+   }
+  },
+  {
+   "key": "PESTO_SANDWICH",
+   "productKey": "PESTO_SANDWICH",
+   "name": "Receta de Pesto sándwich",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F70:I86",
+   "yield": {
+    "qty": 1842.7175,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "65 onz x 28.3495 (mismo criterio que pesto pizza en fase B)"
+   },
+   "components": [
+    {
+     "productId": 370,
+     "qty": 500,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Albahaca 500 gr",
+     "productName": "Albahaca",
+     "lineCost": 187.393
+    },
+    {
+     "productId": 512,
+     "qty": 200,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Queso parmesano 200 gr",
+     "productName": "QUESO PARMESANO (base g)",
+     "lineCost": 120.0784
+    },
+    {
+     "productId": 226,
+     "qty": 1000,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Aceite de oliva 1000 ml",
+     "productName": "ACEITE DE OLIVA",
+     "lineCost": 272.044463
+    },
+    {
+     "productId": 162,
+     "qty": 20,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Ajo 20 gr",
+     "productName": "AJO",
+     "lineCost": 4.3218
+    },
+    {
+     "productId": 601,
+     "qty": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Sal 10 gr",
+     "productName": "Sal (base g)",
+     "lineCost": 0.26455
+    }
+   ],
+   "expected": {
+    "batchCost": 584.102213,
+    "unitCost": 0.316979,
+    "perOz": 8.986196,
+    "excelBatchCorrected": 585.6339,
+    "excelPerBase": 0.31781,
+    "pctVsExcel": -0.26
+   }
+  },
+  {
+   "key": "CREMA_PARMESANO",
+   "productKey": "CREMA_PARMESANO",
+   "name": "Receta de Crema de parmesano",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F140:J150",
+   "yield": {
+    "qty": 1842.7175,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "65 onz x 28.3495"
+   },
+   "components": [
+    {
+     "productId": 512,
+     "qty": 450,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Queso parmesano 450 gr",
+     "productName": "QUESO PARMESANO (base g)",
+     "lineCost": 270.1764
+    },
+    {
+     "productId": 406,
+     "qty": 453.592,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Ricotta casera 16 onz",
+     "productName": "Queso Ricotta producido",
+     "lineCost": 131.002813
+    },
+    {
+     "productId": 19,
+     "qty": 450,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Crema dulce 450 gr (tecleado)",
+     "productName": "CREMA DULCE",
+     "lineCost": 59.535
+    },
+    {
+     "productId": 551,
+     "qty": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Pimienta 10 gr",
+     "productName": "PIMIENTA MOLIDA",
+     "lineCost": 13.38648
+    },
+    {
+     "productId": 540,
+     "qty": 400,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Leche 400 ml",
+     "productName": "LECHE (base ml)",
+     "lineCost": 22.5628
+    }
+   ],
+   "expected": {
+    "batchCost": 496.663493,
+    "unitCost": 0.269528,
+    "perOz": 7.640984,
+    "excelBatchCorrected": 497.0321,
+    "excelPerBase": 0.269728,
+    "pctVsExcel": -0.07
+   }
+  },
+  {
+   "key": "OSSOBUCO",
+   "productKey": "OSSOBUCO",
+   "name": "Receta de Ossobuco braseado",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F107:J122",
+   "yield": {
+    "qty": 4620,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "=42*110 gr"
+   },
+   "components": [
+    {
+     "productId": 566,
+     "qty": 7257.472,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Caracu 16 lb",
+     "productName": "CARACU",
+     "lineCost": 1311.998531
+    },
+    {
+     "productId": 527,
+     "qty": 1350,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Zanahoria 1350 gr (tecleado)",
+     "productName": "ZANAHORA",
+     "lineCost": 74.4066
+    },
+    {
+     "productId": 166,
+     "qty": 900,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Cebolla 900 gr (tecleado)",
+     "productName": "CEBOLLA AMARILLA",
+     "lineCost": 63.504
+    },
+    {
+     "productId": 526,
+     "qty": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excel": "Apio 1 moño",
+     "productName": "APIO",
+     "lineCost": 55
+    },
+    {
+     "productId": 517,
+     "qty": 1000,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Vino Closs 1 litro",
+     "productName": "VINO CLOSS (base ml)",
+     "lineCost": 267.921
+    },
+    {
+     "productId": 403,
+     "qty": 1984.465,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Salsa roja 70 onz",
+     "productName": "Salsa roja",
+     "lineCost": 309.082408
+    },
+    {
+     "productId": 601,
+     "qty": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Sal 10 gr",
+     "productName": "Sal (base g)",
+     "lineCost": 0.26455
+    },
+    {
+     "productId": 162,
+     "qty": 30,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Ajo 30 gr",
+     "productName": "AJO",
+     "lineCost": 6.4827
+    },
+    {
+     "productId": 52,
+     "qty": 60,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Aceite vegetal 60 ml",
+     "productName": "ACEITE VEGETAL MAZOLA",
+     "lineCost": 5.4714
+    }
+   ],
+   "expected": {
+    "batchCost": 2094.131189,
+    "unitCost": 0.453275,
+    "perOz": 12.85012,
+    "excelBatchCorrected": 2029.6487,
+    "excelPerBase": 0.439318,
+    "pctVsExcel": 3.18
+   }
+  },
+  {
+   "key": "TOMATE_ROSTIZADO",
+   "productKey": "TOMATE_ROSTIZADO",
+   "name": "Receta de Tomate rostizado",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F165:I174",
+   "yield": {
+    "qty": 1775,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "1775 gr"
+   },
+   "components": [
+    {
+     "productId": 174,
+     "qty": 2250,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Tomate 2250 gr (tecleado)",
+     "productName": "TOMATE CRIOLLO",
+     "lineCost": 173.64375
+    },
+    {
+     "productId": 551,
+     "qty": 15,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Pimienta 15 gr",
+     "productName": "PIMIENTA MOLIDA",
+     "lineCost": 20.07972
+    },
+    {
+     "productId": 601,
+     "qty": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Sal 10 gr",
+     "productName": "Sal (base g)",
+     "lineCost": 0.26455
+    },
+    {
+     "productId": 226,
+     "qty": 60,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Aceite oliva 60 ml",
+     "productName": "ACEITE DE OLIVA",
+     "lineCost": 16.322668
+    }
+   ],
+   "expected": {
+    "batchCost": 210.310688,
+    "unitCost": 0.118485,
+    "perOz": 3.358991,
+    "excelBatchCorrected": 211.8293,
+    "excelPerBase": 0.11934,
+    "pctVsExcel": -0.72
+   }
+  },
+  {
+   "key": "BERENJENA_ROSTIZADA",
+   "productKey": "BERENJENA_ROSTIZADA",
+   "name": "Receta de Berenjena rostizada",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F176:I185",
+   "yield": {
+    "qty": 1100,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "1100 gr"
+   },
+   "components": [
+    {
+     "productId": 524,
+     "qty": 5,
+     "unit": "unidad",
+     "unitId": 18,
+     "excel": "Berenjena 5 und",
+     "productName": "BERENJENA (base unidad)",
+     "lineCost": 150
+    },
+    {
+     "productId": 226,
+     "qty": 125,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Aceite oliva 125 ml",
+     "productName": "ACEITE DE OLIVA",
+     "lineCost": 34.005558
+    },
+    {
+     "productId": 601,
+     "qty": 50,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Sal 50 gr",
+     "productName": "Sal (base g)",
+     "lineCost": 1.32275
+    },
+    {
+     "productId": 551,
+     "qty": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Pimienta 10 gr",
+     "productName": "PIMIENTA MOLIDA",
+     "lineCost": 13.38648
+    }
+   ],
+   "expected": {
+    "batchCost": 198.714788,
+    "unitCost": 0.18065,
+    "perOz": 5.121337,
+    "excelBatchCorrected": 198.8322,
+    "excelPerBase": 0.180757,
+    "pctVsExcel": -0.06
+   }
+  },
+  {
+   "key": "SALSA_CHIPOTLE",
+   "productKey": "SALSA_CHIPOTLE",
+   "name": "Receta de Salsa chipotle",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F198:I208",
+   "yield": {
+    "qty": 4150,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "4150 gr (sospechoso: ~3.6 kg de insumos)"
+   },
+   "components": [
+    {
+     "productId": 545,
+     "qty": 3055,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Mayonesa 3055 gr",
+     "productName": "MAYONESA (base g)",
+     "lineCost": 425.05437
+    },
+    {
+     "productId": 556,
+     "qty": 210,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Chipotle adobado 210 gr",
+     "productName": "LATA DE CHIPOTLE",
+     "lineCost": 81.13644
+    },
+    {
+     "productId": 234,
+     "qty": 200,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Azucar 200 gr",
+     "productName": "AZUCAR",
+     "lineCost": 8.279494
+    },
+    {
+     "productId": 552,
+     "qty": 100,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Vinagre blanco 100 ml (Excel usa precio de balsamico; corregido)",
+     "productName": "VINAGRE BLANCO (base ml)",
+     "lineCost": 3.5558
+    }
+   ],
+   "expected": {
+    "batchCost": 518.026104,
+    "unitCost": 0.124826,
+    "perOz": 3.538755,
+    "excelBatchCorrected": 518.024,
+    "excelPerBase": 0.124825,
+    "pctVsExcel": 0
+   }
+  },
+  {
+   "key": "MIEL_MOSTAZA",
+   "productKey": "MIEL_MOSTAZA",
+   "name": "Receta de Miel mostaza",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "subrecetas!F188:J197",
+   "yield": {
+    "qty": 380,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "380 gr"
+   },
+   "components": [
+    {
+     "productId": 545,
+     "qty": 250,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Mayonesa 250 gr",
+     "productName": "MAYONESA (base g)",
+     "lineCost": 34.7835
+    },
+    {
+     "productId": 550,
+     "qty": 30,
+     "unit": "ml",
+     "unitId": 14,
+     "excel": "Mostaza 30 (base ml)",
+     "productName": "MOSTAZA (base ml)",
+     "lineCost": 3.27645
+    },
+    {
+     "productId": 551,
+     "qty": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Pimienta 10 gr",
+     "productName": "PIMIENTA MOLIDA",
+     "lineCost": 13.38648
+    },
+    {
+     "productId": 397,
+     "qty": 100,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Miel 100 gr",
+     "productName": "Miel envase de mesa",
+     "lineCost": 12.9108
+    }
+   ],
+   "expected": {
+    "batchCost": 64.35723,
+    "unitCost": 0.169361,
+    "perOz": 4.8013,
+    "excelBatchCorrected": 64.4644,
+    "excelPerBase": 0.169643,
+    "pctVsExcel": -0.17
+   }
+  },
+  {
+   "key": "EMPANIZADOR",
+   "productKey": "EMPANIZADOR",
+   "name": "Receta de Empanizador",
+   "version": 1,
+   "status": "ACTIVE",
+   "excelRows": "negocio 2026-11-19 (Excel otros!F21 sin costo)",
+   "yield": {
+    "qty": 1008,
+    "unit": "g",
+    "unitId": 9,
+    "excel": "1008 g (dato del negocio)"
+   },
+   "components": [
+    {
+     "productId": 625,
+     "qty": 907.184,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Harina 2 lb (Harina 625 de uso general, no Napoli)",
+     "productName": "Harina",
+     "lineCost": 45.3592
+    },
+    {
+     "productId": 551,
+     "qty": 40,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Pimienta 40 g",
+     "productName": "PIMIENTA MOLIDA",
+     "lineCost": 53.54592
+    },
+    {
+     "newKey": "SAZONADOR_POLLO",
+     "qty": 40,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Sazonador de pollo 40 g",
+     "productName": "SAZONADOR DE POLLO (nuevo)",
+     "lineCost": 19.99244
+    },
+    {
+     "productId": 601,
+     "qty": 20,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "Sal 20 g",
+     "productName": "Sal (base g)",
+     "lineCost": 0.5291
+    }
+   ],
+   "expected": {
+    "batchCost": 119.42666,
+    "unitCost": 0.118479,
+    "perOz": 3.35882,
+    "excelBatchCorrected": null,
+    "excelPerBase": null,
+    "pctVsExcel": null
+   }
+  }
+ ],
+ "menuItems": [
+  {
+   "key": "BEEF_AL_FORNO",
+   "name": "Beef al Forno",
+   "categoryKey": "FOCACCIAS",
+   "excelSheet": "Foccacias",
+   "excelRows": "5-17",
+   "excelName": "BEEF AL FORNO",
+   "excelOriginal": 139.18,
+   "lines": [
+    {
+     "productId": 509,
+     "quantity": 125,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 61.91,
+     "excel": "Roast Beef 125 gr",
+     "productName": "ROAS BEEF PORCION",
+     "lineCost": 61.91
+    },
+    {
+     "productId": 539,
+     "quantity": 56,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 38.64,
+     "excel": "Provolone 56 gr",
+     "productName": "QUESO PROVOLONE",
+     "lineCost": 38.433752
+    },
+    {
+     "newKey": "CEBOLLA_CARAMELIZADA",
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 7.89,
+     "excel": "cebolla caramelizada 60 gr",
+     "lineCost": 7.88406
+    },
+    {
+     "newKey": "ROMESCO",
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 17.16,
+     "excel": "Romesco 2 onz",
+     "lineCost": 17.261253
+    },
+    {
+     "productId": 372,
+     "quantity": 25,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 9.44,
+     "excel": "Arugula 25 gr",
+     "productName": "Rúcula",
+     "lineCost": 9.36965
+    },
+    {
+     "newKey": "PAN_FOCACCIA",
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 4.13,
+     "excel": "Pan focaccia 1 und",
+     "lineCost": 4.108604
+    }
+   ],
+   "notes": "Empaques (papel cera, barquillo, envase 1 onz, servilletas) omitidos; en el Excel valen 0",
+   "cost": {
+    "expected": 138.97,
+    "excelOriginal": 139.18,
+    "excelCorrected": 139.17,
+    "pctVsExcelCorrected": -0.15
+   }
+  },
+  {
+   "key": "COTTO_STRACCIATELLA",
+   "name": "Cotto & Stracciatella",
+   "categoryKey": "FOCACCIAS",
+   "excelSheet": "Foccacias",
+   "excelRows": "19-27",
+   "excelName": "COTTO & STRACCIATELLA",
+   "excelOriginal": 116.72,
+   "lines": [
+    {
+     "newKey": "PAN_FOCACCIA",
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 4.13,
+     "excel": "Pan Foccacia 1 und",
+     "lineCost": 4.108604
+    },
+    {
+     "productId": 506,
+     "quantity": 125,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 55.56,
+     "excel": "Jamon Cotto 125 gr",
+     "productName": "JAMON COTTO PIERNA",
+     "lineCost": 55.115625
+    },
+    {
+     "newKey": "STRACCIATELLA",
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 11.81,
+     "excel": "Stracciatella 2 onz",
+     "lineCost": 11.800881
+    },
+    {
+     "newKey": "PESTO_SANDWICH",
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 18.02,
+     "excel": "Pesto Sandwich 2 onz",
+     "lineCost": 18.067803
+    },
+    {
+     "productId": 266,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 23.33,
+     "excel": "Marañon 30 gr",
+     "productName": "SEMILLAS DE MARAÑON",
+     "lineCost": 23.1525
+    },
+    {
+     "productId": 397,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 3.87,
+     "excel": "Miel 30 gr",
+     "productName": "Miel envase de mesa",
+     "lineCost": 3.87324
+    }
+   ],
+   "cost": {
+    "expected": 116.12,
+    "excelOriginal": 116.72,
+    "excelCorrected": 116.72,
+    "pctVsExcelCorrected": -0.52
+   }
+  },
+  {
+   "key": "FIERY_MELT",
+   "name": "Fiery Melt",
+   "categoryKey": "FOCACCIAS",
+   "excelSheet": "Foccacias",
+   "excelRows": "30-36",
+   "excelName": "FIERY MELT",
+   "excelOriginal": 62.12,
+   "lines": [
+    {
+     "newKey": "OSSOBUCO",
+     "quantity": 110,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 48.32,
+     "excel": "Ossobuco 110 gr",
+     "lineCost": 49.86025
+    },
+    {
+     "newKey": "CEBOLLA_CARAMELIZADA",
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 7.46,
+     "excel": "Cebolla caramelizada 2 onz (Excel 0.26: onz x costo/g)",
+     "lineCost": 7.489857
+    },
+    {
+     "newKey": "CREMA_PARMESANO",
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 7.646648,
+     "excel": "Crema de parmesano 1 onz (Excel sin costo; corregido 7.65/onz)",
+     "lineCost": 7.546784
+    },
+    {
+     "productId": 581,
+     "quantity": 85,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 12.72,
+     "excel": "Papas fritas 0.5 porcion: papa 3 onz",
+     "productName": "PAPA 3/8",
+     "lineCost": 12.71464
+    },
+    {
+     "productId": 565,
+     "quantity": 5,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 0.67,
+     "excel": "Papas fritas 0.5 porcion: manteca 5 ml",
+     "productName": "MANTECA LIQUIDA",
+     "lineCost": 0.67329
+    },
+    {
+     "productId": 601,
+     "quantity": 5,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 0.13,
+     "excel": "Papas fritas 0.5 porcion: sal 5 g",
+     "productName": "Sal (base g)",
+     "lineCost": 0.132275
+    }
+   ],
+   "notes": "El Excel no lista pan focaccia en este plato (confirmar con cocina)",
+   "cost": {
+    "expected": 78.42,
+    "excelOriginal": 62.12,
+    "excelCorrected": 76.95,
+    "pctVsExcelCorrected": 1.91
+   }
+  },
+  {
+   "key": "FOCACCIA_MEDITERRANEA",
+   "name": "Focaccia Mediterránea",
+   "categoryKey": "FOCACCIAS",
+   "excelSheet": "Foccacias",
+   "excelRows": "38-47",
+   "excelName": "FOCACCIA MEDITERRANEA",
+   "excelOriginal": 97.72,
+   "lines": [
+    {
+     "newKey": "TOMATE_ROSTIZADO",
+     "quantity": 120,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 14.32,
+     "excel": "Tomate rostizado 120 gr",
+     "lineCost": 14.2182
+    },
+    {
+     "newKey": "BERENJENA_ROSTIZADA",
+     "quantity": 120,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 21.69,
+     "excel": "Berenjena rostizada 120 gr",
+     "lineCost": 21.678
+    },
+    {
+     "productId": 523,
+     "quantity": 0.6,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 24,
+     "excel": "Pimentones macerados 120 gr = 0.6 morron (200 g/und; sin subreceta en el Excel)",
+     "productName": "MORRON",
+     "lineCost": 24
+    },
+    {
+     "newKey": "STRACCIATELLA",
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 11.81,
+     "excel": "Stracciatella 2 onz",
+     "lineCost": 11.800881
+    },
+    {
+     "newKey": "PESTO_SANDWICH",
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 18.02,
+     "excel": "Pesto sandwich 2 onz",
+     "lineCost": 18.067803
+    },
+    {
+     "productId": 400,
+     "quantity": 5,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 3.75,
+     "excel": "Reduccion de balsamico 5 gr",
+     "productName": "Reducción de balsámico para receta",
+     "lineCost": 3.75
+    },
+    {
+     "newKey": "PAN_FOCACCIA",
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 4.13,
+     "excel": "Pan focaccia 1 und",
+     "lineCost": 4.108604
+    }
+   ],
+   "cost": {
+    "expected": 97.62,
+    "excelOriginal": 97.72,
+    "excelCorrected": 97.72,
+    "pctVsExcelCorrected": -0.1
+   }
+  },
+  {
+   "key": "EL_CLASICO",
+   "name": "El Clásico",
+   "categoryKey": "FOCACCIAS",
+   "excelSheet": "Foccacias",
+   "excelRows": "49-57",
+   "excelName": "EL CLASICO",
+   "excelOriginal": 177.83,
+   "lines": [
+    {
+     "newKey": "PAN_FOCACCIA",
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 4.13,
+     "excel": "Pan focaccia 1 und",
+     "lineCost": 4.108604
+    },
+    {
+     "productId": 535,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 65.12,
+     "excel": "Salami Genoa 70 gr",
+     "productName": "SALAMI GENOA",
+     "lineCost": 64.59992
+    },
+    {
+     "productId": 506,
+     "quantity": 125,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 55.56,
+     "excel": "Jamon Cotto 125 gr",
+     "productName": "JAMON COTTO PIERNA",
+     "lineCost": 55.115625
+    },
+    {
+     "productId": 586,
+     "quantity": 45,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 36.46,
+     "excel": "Flor de Latte 45 gr",
+     "productName": "FIOR DI LATTE",
+     "lineCost": 36.460215
+    },
+    {
+     "productId": 372,
+     "quantity": 20,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 7.56,
+     "excel": "Arugula 20 gr",
+     "productName": "Rúcula",
+     "lineCost": 7.49572
+    },
+    {
+     "newKey": "PESTO_SANDWICH",
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 9.01,
+     "excel": "Pesto Sandwich \"und 1\" = 1 onz",
+     "lineCost": 8.875412
+    }
+   ],
+   "cost": {
+    "expected": 176.66,
+    "excelOriginal": 177.83,
+    "excelCorrected": 177.84,
+    "pctVsExcelCorrected": -0.67
+   }
+  },
+  {
+   "key": "COTTO_TARTUFO",
+   "name": "Cotto & Tartufo",
+   "categoryKey": "FOCACCIAS",
+   "excelSheet": "Foccacias",
+   "excelRows": "59-65",
+   "excelName": "COTTO & TARTUFO",
+   "excelOriginal": 132.12,
+   "lines": [
+    {
+     "productId": 506,
+     "quantity": 125,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 55.56,
+     "excel": "Jamon Cotto 125 gr",
+     "productName": "JAMON COTTO PIERNA",
+     "lineCost": 55.115625
+    },
+    {
+     "newKey": "STRACCIATELLA",
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 11.81,
+     "excel": "Stracciatella 2 onz",
+     "lineCost": 11.800881
+    },
+    {
+     "productId": 265,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 60.62,
+     "excel": "Salsa Tartufata 30 gr",
+     "productName": "SALSA TARTUFATA",
+     "lineCost": 60.62478
+    },
+    {
+     "newKey": "PAN_FOCACCIA",
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 4.13,
+     "excel": "Pan focaccia 1 und",
+     "lineCost": 4.108604
+    }
+   ],
+   "cost": {
+    "expected": 131.65,
+    "excelOriginal": 132.12,
+    "excelCorrected": 132.12,
+    "pctVsExcelCorrected": -0.36
+   }
+  },
+  {
+   "key": "DULCE_PECADO",
+   "name": "Dulce Pecado",
+   "categoryKey": "FOCACCIAS",
+   "excelSheet": "Foccacias",
+   "excelRows": "67-74",
+   "excelName": "DULCE PECADO",
+   "excelOriginal": 57.6,
+   "lines": [
+    {
+     "productId": 560,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 25.3,
+     "excel": "Nutella 40 gr",
+     "productName": "NUTELLA (base g)",
+     "lineCost": 25.29772
+    },
+    {
+     "newKey": "FRESA_CONGELADA",
+     "quantity": 50,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 12.22,
+     "excel": "Fresa congelada 50 gr",
+     "lineCost": 12.2222
+    },
+    {
+     "productId": 406,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 8.17,
+     "excel": "Ricotta casera 1 onz",
+     "productName": "Queso Ricotta producido",
+     "lineCost": 8.086736
+    },
+    {
+     "productId": 266,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 7.78,
+     "excel": "Marañon 10 gr",
+     "productName": "SEMILLAS DE MARAÑON",
+     "lineCost": 7.7175
+    },
+    {
+     "newKey": "PAN_FOCACCIA",
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 4.13,
+     "excel": "Pan focaccia 1 und",
+     "lineCost": 4.108604
+    }
+   ],
+   "cost": {
+    "expected": 57.43,
+    "excelOriginal": 57.6,
+    "excelCorrected": 57.6,
+    "pctVsExcelCorrected": -0.29
+   }
+  },
+  {
+   "key": "CHEESEBURGER",
+   "name": "Cheeseburger",
+   "categoryKey": "OTROS",
+   "excelSheet": "otros",
+   "excelRows": "3-15",
+   "excelName": "CHEESEBURGER",
+   "excelOriginal": 274.61,
+   "lines": [
+    {
+     "productId": 186,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 97.75,
+     "excel": "Carne hamburguesa 170 gr",
+     "productName": "CARNE HAMBURGUESA",
+     "lineCost": 96.975942
+    },
+    {
+     "productId": 546,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 14.33,
+     "excel": "Pan hamburguesa 1 und",
+     "productName": "PAN PARA HAMBURGUESA",
+     "lineCost": 14.333333
+    },
+    {
+     "productId": 515,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 3.99,
+     "excel": "Pepinillo 10 gr (Excel 113.25: g x costo/onz)",
+     "productName": "PEPINILLO (base g)",
+     "lineCost": 3.99462
+    },
+    {
+     "productId": 525,
+     "quantity": 0.107143,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 2.57,
+     "excel": "Lechuga escarola 30 gr = 30/280 und",
+     "productName": "LECHUGA ESCAROLA VERDE",
+     "lineCost": 2.571432
+    },
+    {
+     "productId": 166,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 0.71,
+     "excel": "Cebolla 10 gr",
+     "productName": "CEBOLLA AMARILLA",
+     "lineCost": 0.7056
+    },
+    {
+     "productId": 174,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 2.33,
+     "excel": "Tomate 30 gr",
+     "productName": "TOMATE CRIOLLO",
+     "lineCost": 2.31525
+    },
+    {
+     "productId": 218,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 5.75,
+     "excel": "Queso amarillo 1 lasca",
+     "productName": "QUESO AMARILLO",
+     "lineCost": 5.749201
+    },
+    {
+     "newKey": "SALSA_CHIPOTLE",
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 4.03,
+     "excel": "Salsa chipotle 30 gr",
+     "lineCost": 3.74478
+    },
+    {
+     "productId": 563,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 6.82,
+     "excel": "Salsa ketchup 60 gr",
+     "productName": "KETCHUP",
+     "lineCost": 6.81756
+    },
+    {
+     "productId": 581,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 25.44,
+     "excel": "Papas fritas 1 porcion: papa 6 onz",
+     "productName": "PAPA 3/8",
+     "lineCost": 25.42928
+    },
+    {
+     "productId": 565,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 1.35,
+     "excel": "Papas fritas 1 porcion: manteca 10 ml",
+     "productName": "MANTECA LIQUIDA",
+     "lineCost": 1.34658
+    },
+    {
+     "productId": 601,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 0.27,
+     "excel": "Papas fritas 1 porcion: sal 10 g",
+     "productName": "Sal (base g)",
+     "lineCost": 0.26455
+    }
+   ],
+   "cost": {
+    "expected": 164.25,
+    "excelOriginal": 274.61,
+    "excelCorrected": 165.34,
+    "pctVsExcelCorrected": -0.66
+   }
+  },
+  {
+   "key": "CHICKEN_FINGERS",
+   "name": "Chicken Fingers",
+   "categoryKey": "OTROS",
+   "excelSheet": "otros",
+   "excelRows": "18-25",
+   "excelName": "CHIKEN FINGERS",
+   "excelOriginal": 71.29,
+   "lines": [
+    {
+     "productId": 505,
+     "quantity": 200,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 42.2,
+     "excel": "Pollo 200 gr",
+     "productName": "PECHUGA DE POLLO",
+     "lineCost": 41.8682
+    },
+    {
+     "newKey": "EMPANIZADOR",
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 7.11,
+     "excel": "Empanizador 60 gr (Excel sin costo; referencia = costo de la receta del negocio)",
+     "lineCost": 7.10874
+    },
+    {
+     "productId": 540,
+     "quantity": 30,
+     "unit": "ml",
+     "unitId": 14,
+     "excelLineCorrected": 1.69,
+     "excel": "Leche 30 ml",
+     "productName": "LECHE (base ml)",
+     "lineCost": 1.69221
+    },
+    {
+     "newKey": "MIEL_MOSTAZA",
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 9.62,
+     "excel": "Miel mostaza 2 onz (Excel 0.34: onz x costo/g)",
+     "lineCost": 9.653577
+    },
+    {
+     "productId": 581,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 25.44,
+     "excel": "Papas fritas 1 porcion: papa 6 onz",
+     "productName": "PAPA 3/8",
+     "lineCost": 25.42928
+    },
+    {
+     "productId": 565,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 1.35,
+     "excel": "Papas fritas 1 porcion: manteca 10 ml",
+     "productName": "MANTECA LIQUIDA",
+     "lineCost": 1.34658
+    },
+    {
+     "productId": 601,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 0.27,
+     "excel": "Papas fritas 1 porcion: sal 10 g",
+     "productName": "Sal (base g)",
+     "lineCost": 0.26455
+    }
+   ],
+   "cost": {
+    "expected": 87.36,
+    "excelOriginal": 71.29,
+    "excelCorrected": 87.68,
+    "pctVsExcelCorrected": -0.36
+   }
+  },
+  {
+   "key": "QUESADILLA_POLLO",
+   "name": "Quesadilla de Pollo",
+   "categoryKey": "OTROS",
+   "excelSheet": "otros",
+   "excelRows": "28-34",
+   "excelName": "QUESADILLA DE POLLO",
+   "excelOriginal": 55.75,
+   "lines": [
+    {
+     "productId": 224,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 6.67,
+     "excel": "Tortilla de harina 1 und",
+     "productName": "TORTILLA QUESADILLA",
+     "lineCost": 6.666667
+    },
+    {
+     "productId": 399,
+     "quantity": 85,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 20.7,
+     "excel": "Mozzarella rallado 3 onz",
+     "productName": "Queso mozzarella para receta",
+     "lineCost": 20.686025
+    },
+    {
+     "productId": 505,
+     "quantity": 100,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 21.1,
+     "excel": "Pollo 100 gr",
+     "productName": "PECHUGA DE POLLO",
+     "lineCost": 20.9341
+    },
+    {
+     "productId": 18,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 7.29,
+     "excel": "Crema acida 60 gr",
+     "productName": "CREMA ACIDA",
+     "lineCost": 7.286956
+    }
+   ],
+   "cost": {
+    "expected": 55.57,
+    "excelOriginal": 55.75,
+    "excelCorrected": 55.76,
+    "pctVsExcelCorrected": -0.33
+   }
+  },
+  {
+   "key": "QUESADILLA_CAPRESSE",
+   "name": "Quesadilla Capresse",
+   "categoryKey": "OTROS",
+   "excelSheet": "otros",
+   "excelRows": "37-45",
+   "excelName": "QUESADILLA CAPRESSE",
+   "excelOriginal": 67.09,
+   "lines": [
+    {
+     "productId": 224,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18,
+     "excelLineCorrected": 6.67,
+     "excel": "Tortilla de harina 1 und",
+     "productName": "TORTILLA QUESADILLA",
+     "lineCost": 6.666667
+    },
+    {
+     "productId": 399,
+     "quantity": 85,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 20.7,
+     "excel": "Mozzarella rallado 3 onz",
+     "productName": "Queso mozzarella para receta",
+     "lineCost": 20.686025
+    },
+    {
+     "productId": 396,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 19.64,
+     "excel": "Hongos 30 gr",
+     "productName": "Hongos frescos para receta",
+     "lineCost": 19.63581
+    },
+    {
+     "productId": 18,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 7.29,
+     "excel": "Crema acida 60 gr",
+     "productName": "CREMA ACIDA",
+     "lineCost": 7.286956
+    },
+    {
+     "productId": 371,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 8,
+     "excel": "Tomate cherry 40 gr",
+     "productName": "Tomate cherry",
+     "lineCost": 8
+    },
+    {
+     "productId": 402,
+     "quantity": 14,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 4.8,
+     "excel": "Pesto pizza 0.5 onz",
+     "productName": "Salsa pesto",
+     "lineCost": 4.730866
+    }
+   ],
+   "cost": {
+    "expected": 67.01,
+    "excelOriginal": 67.09,
+    "excelCorrected": 67.1,
+    "pctVsExcelCorrected": -0.14
+   }
+  },
+  {
+   "key": "MOZZARELLA_STICKS",
+   "name": "Mozzarella Sticks",
+   "categoryKey": "OTROS",
+   "excelSheet": "otros",
+   "excelRows": "48-52",
+   "excelName": "MOZZAERLLA STICKSS",
+   "excelOriginal": 94.5,
+   "lines": [
+    {
+     "productId": 20,
+     "quantity": 180,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 93.15,
+     "excel": "Palitos de mozzarella 180 gr",
+     "productName": "DEDOS DE QUESO MOZZARELA",
+     "lineCost": 92.428087
+    },
+    {
+     "productId": 565,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 1.35,
+     "excel": "Manteca liquida 10 ml",
+     "productName": "MANTECA LIQUIDA",
+     "lineCost": 1.34658
+    }
+   ],
+   "cost": {
+    "expected": 93.77,
+    "excelOriginal": 94.5,
+    "excelCorrected": 94.5,
+    "pctVsExcelCorrected": -0.77
+   }
+  },
+  {
+   "key": "FRENCH_FRIES",
+   "name": "French Fries",
+   "categoryKey": "OTROS",
+   "excelSheet": "otros",
+   "excelRows": "56-61",
+   "excelName": "FRENCH FRIES",
+   "excelOriginal": 32.47,
+   "lines": [
+    {
+     "productId": 581,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 25.44,
+     "excel": "Papas 6 onz",
+     "productName": "PAPA 3/8",
+     "lineCost": 25.42928
+    },
+    {
+     "productId": 565,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 1.35,
+     "excel": "Manteca liquida 10 ml",
+     "productName": "MANTECA LIQUIDA",
+     "lineCost": 1.34658
+    },
+    {
+     "productId": 563,
+     "quantity": 50,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 5.68,
+     "excel": "Salsa ketchup 50 gr",
+     "productName": "KETCHUP",
+     "lineCost": 5.6813
+    }
+   ],
+   "cost": {
+    "expected": 32.46,
+    "excelOriginal": 32.47,
+    "excelCorrected": 32.47,
+    "pctVsExcelCorrected": -0.04
+   }
+  },
+  {
+   "key": "ONION_RINGS",
+   "name": "Onion Rings",
+   "categoryKey": "OTROS",
+   "excelSheet": "otros",
+   "excelRows": "64-68",
+   "excelName": "ONION RINGS",
+   "excelOriginal": 86.76,
+   "lines": [
+    {
+     "productId": 12,
+     "quantity": 180,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 80.04,
+     "excel": "Aros de cebolla 180 gr",
+     "productName": "AROS DE CEBOLLA",
+     "lineCost": 79.41969
+    },
+    {
+     "newKey": "SALSA_CHIPOTLE",
+     "quantity": 50,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 6.72,
+     "excel": "Salsa chipotle 50 gr",
+     "lineCost": 6.2413
+    }
+   ],
+   "cost": {
+    "expected": 85.66,
+    "excelOriginal": 86.76,
+    "excelCorrected": 86.76,
+    "pctVsExcelCorrected": -1.27
+   }
+  },
+  {
+   "key": "PASTA_EVENTO",
+   "name": "Pasta Evento",
+   "categoryKey": "PASTAS",
+   "excelSheet": "pastas",
+   "excelRows": "3-11",
+   "excelName": "PASTA EVENTO",
+   "excelOriginal": 378.51,
+   "lines": [
+    {
+     "productId": 210,
+     "quantity": 150,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 135,
+     "excel": "Ravioli 150 gr",
+     "productName": "PASTA RAVIOLI",
+     "lineCost": 133.95375
+    },
+    {
+     "newKey": "PESTO_SANDWICH",
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 54.06,
+     "excel": "Salsa pesto 6 onz (Excel costea PESTO SANDWICH L112)",
+     "lineCost": 53.88643
+    },
+    {
+     "productId": 373,
+     "quantity": 180,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 100.67,
+     "excel": "Chorizo italiano 180 gr",
+     "productName": "Carne Della Nonna",
+     "lineCost": 100.67076
+    },
+    {
+     "productId": 396,
+     "quantity": 120,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 78.54,
+     "excel": "Hongos 120 gr",
+     "productName": "Hongos frescos para receta",
+     "lineCost": 78.54324
+    }
+   ],
+   "notes": "Empaque 26 onz (7.84) y cubiertos (2.40) omitidos",
+   "cost": {
+    "expected": 367.05,
+    "excelOriginal": 378.51,
+    "excelCorrected": 368.27,
+    "pctVsExcelCorrected": -0.33
+   }
+  },
+  {
+   "key": "LINGUINI_PESTO_POLLO",
+   "name": "Linguini pesto, pollo y hongos",
+   "categoryKey": "PASTAS",
+   "excelSheet": "pastas",
+   "excelRows": "13-20",
+   "excelName": "(sin titulo)",
+   "excelOriginal": null,
+   "lines": [
+    {
+     "productId": 541,
+     "quantity": 150,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 55,
+     "excel": "Linguini 150 gr",
+     "productName": "LINGUINI",
+     "lineCost": 54.56445
+    },
+    {
+     "newKey": "PESTO_SANDWICH",
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 54.06,
+     "excel": "Salsa pesto 6 onz (Excel costea PESTO SANDWICH L112)",
+     "lineCost": 53.88643
+    },
+    {
+     "productId": 505,
+     "quantity": 180,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 37.98,
+     "excel": "Pollo 180 gr",
+     "productName": "PECHUGA DE POLLO",
+     "lineCost": 37.68138
+    },
+    {
+     "productId": 396,
+     "quantity": 120,
+     "unit": "g",
+     "unitId": 9,
+     "excelLineCorrected": 78.54,
+     "excel": "Hongos 120 gr",
+     "productName": "Hongos frescos para receta",
+     "lineCost": 78.54324
+    }
+   ],
+   "notes": "Bloque sin titulo ni total; empaque y cubiertos omitidos",
+   "cost": {
+    "expected": 224.68,
+    "excelOriginal": null,
+    "excelCorrected": 225.58,
+    "pctVsExcelCorrected": -0.4
+   }
+  }
+ ],
+ "outOfScope": [
+  "Pan focaccia del MenuItem 29 \"Focaccia\" (focaccia entera) no se modifica",
+  "Rendimientos sospechosos (romesco 192 onz, chipotle 4150 g, pesto 65 onz) se adoptan tal cual del Excel; confirmar con cocina",
+  "Precios de venta y activacion de los platos: decision del negocio"
+ ],
+ "builderBlockers": []
+}

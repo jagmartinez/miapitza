@@ -2,11 +2,50 @@
     position: fixed;
     top: 80px;
     right: 24px;
-    z-index: 9999;
+    /* Above modals/confirm dialogs (≤ 10000) and the tablet bottom nav (1050). */
+    z-index: 10001;
     display: flex;
     flex-direction: column;
     gap: 12px;
     pointer-events: none;
+    max-height: calc(100vh - 100px);
+    overflow: hidden;
+}
+
+/* Tablets/phones: bottom-anchored above the fixed bottom nav and the
+   "sin conexión" pill, so notices are within reach and never covered. */
+@media (max-width: 1024px) {
+    .toast-container {
+        top: auto;
+        right: 12px;
+        left: 12px;
+        bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+        align-items: center;
+        flex-direction: column-reverse;
+        max-height: calc(100dvh - 160px);
+    }
+
+    .toast-stack {
+        width: 100%;
+        align-items: center;
+        flex-direction: column-reverse;
+    }
+
+    .toast {
+        width: 100%;
+        min-width: 0;
+        max-width: 560px;
+    }
+}
+
+.toast-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.toast-stack:empty {
+    display: none;
 }
 
 .toast {
@@ -14,14 +53,16 @@
     align-items: center;
     gap: 12px;
     padding: 14px 16px;
-    background: var(--color-surface);
+    background: var(--ui-surface);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     min-width: 300px;
-    max-width: 400px;
+    max-width: 420px;
     pointer-events: all;
+    color: var(--ui-text);
+    border: 1px solid var(--ui-border);
     transition: all 0.3s ease;
-    border-left: 4px solid;
+    border-left: 5px solid;
 }
 
 .toast-visible {
@@ -59,35 +100,35 @@
 }
 
 .toast-success {
-    border-left-color: var(--color-success);
+    border-left-color: var(--ui-success);
 }
 
 .toast-success .toast-icon {
-    color: var(--color-success);
+    color: var(--ui-success);
 }
 
 .toast-error {
-    border-left-color: var(--color-danger);
+    border-left-color: var(--ui-danger);
 }
 
 .toast-error .toast-icon {
-    color: var(--color-danger);
+    color: var(--ui-danger);
 }
 
 .toast-warning {
-    border-left-color: var(--color-warning);
+    border-left-color: var(--ui-warning);
 }
 
 .toast-warning .toast-icon {
-    color: var(--color-warning);
+    color: var(--ui-warning);
 }
 
 .toast-info {
-    border-left-color: var(--color-primary);
+    border-left-color: var(--ui-primary);
 }
 
 .toast-info .toast-icon {
-    color: var(--color-primary);
+    color: var(--ui-primary);
 }
 
 .toast-icon {
@@ -97,8 +138,35 @@
 .toast-message {
     flex: 1;
     font-size: 14px;
-    color: var(--color-text);
+    line-height: 1.4;
+    color: var(--ui-text);
     font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+.toast-count {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 700;
+    background: var(--ui-surface-2);
+    color: var(--ui-text-muted);
+}
+
+/* Tinted backgrounds keep the type recognisable without relying on the stripe alone. */
+.toast-error { background: color-mix(in srgb, var(--ui-danger) 10%, var(--ui-surface)); }
+.toast-warning { background: color-mix(in srgb, var(--ui-warning) 12%, var(--ui-surface)); }
+.toast-success { background: color-mix(in srgb, var(--ui-success) 10%, var(--ui-surface)); }
+
+@media (prefers-reduced-motion: reduce) {
+    .toast,
+    .toast-visible,
+    .toast-hidden {
+        animation: none;
+        transition: none;
+    }
 }
 
 .toast-close {
@@ -106,7 +174,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--color-text-tertiary);
+    color: var(--ui-text-muted);
     padding: 4px;
     border-radius: 4px;
     transition: all 0.2s;
@@ -115,7 +183,17 @@
     justify-content: center;
 }
 
+.toast-close:focus-visible {
+    outline: 2px solid var(--ui-primary);
+    outline-offset: 2px;
+}
+
+.toast-close {
+    min-width: 32px;
+    min-height: 32px;
+}
+
 .toast-close:hover {
-    background: var(--color-surface-hover);
-    color: var(--color-text-secondary);
+    background: var(--ui-surface-2);
+    color: var(--ui-text-muted);
 }

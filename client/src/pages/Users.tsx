@@ -1,15 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import Select from '../components/Select';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import PageHeader from '../components/PageHeader';
 import ViewToggle from '../components/ViewToggle';
-import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
 import type { User, Branch, Company, UserAccountType } from '../types';
-import type { SingleValue } from 'react-select';
 
 interface UserSavePayload {
     name: string;
@@ -29,7 +23,11 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
+import { createLatestRequestGuard } from '../utils/latestRequest';
 import './Users.css';
+import { AppSelect, Button, DataTable, Field, FullScreenModal, LoadErrorState, PageHeader, type Column } from '@/ui';
+import { getApiErrorMessage } from '../utils/apiError';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
     return payload as unknown as Record<string, unknown>;
@@ -47,6 +45,9 @@ export default function Users() {
     const [companies, setCompanies] = useState<Company[]>([]);
     const [availableRoles, setAvailableRoles] = useState<{ id: number; name: string }[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const lastRequestedCompanyId = useRef<string | undefined>(undefined);
+    const loadRequestGuard = useRef(createLatestRequestGuard());
 
     // Filter States
     const [searchQuery, setSearchQuery] = useState('');
@@ -85,26 +86,42 @@ export default function Users() {
         { value: 'INACTIVE', label: 'Inactivos' }
     ];
 
+    const accountTypeOptions: Array<{ value: UserAccountType; label: string }> = [
+        { value: 'INTERNAL', label: 'Interno · ligado a personal' },
+        { value: 'EXTERNAL', label: 'Externo · solo acceso al sistema' },
+    ];
+    const accountStatusOptions = [
+        { value: 'ACTIVE', label: 'Activo' },
+        { value: 'INACTIVE', label: 'Inactivo' },
+    ];
+
     const loadData = useCallback(async (companyId?: string, isInitial = false) => {
+        const requestId = loadRequestGuard.current.begin();
         try {
+            lastRequestedCompanyId.current = companyId;
             if (isInitial) setLoading(true);
             const [usersRes, branchesRes, rolesRes] = await Promise.all([
                 usersAPI.getAll(isSuperAdmin ? { companyId } : undefined),
                 branchesAPI.getAll(isSuperAdmin ? { companyId } : undefined),
                 rolesAPI.getAll(isSuperAdmin ? { companyId } : undefined)
             ]);
+            if (!loadRequestGuard.current.isCurrent(requestId)) return;
             setUsers(usersRes.data.data);
             setBranches(branchesRes.data.data);
             setAvailableRoles(rolesRes.data.data || []);
 
             if (isSuperAdmin && companies.length === 0) {
                 const compRes = await companiesAPI.getAll();
+                if (!loadRequestGuard.current.isCurrent(requestId)) return;
                 setCompanies(compRes.data.data);
             }
+            setLoadError(null);
         } catch (error) {
+            if (!loadRequestGuard.current.isCurrent(requestId)) return;
             console.error('Error loading data:', error);
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar los usuarios y sus catálogos (la consulta y las acciones quedan bloqueadas hasta reintentar)'));
         } finally {
-            if (isInitial) setLoading(false);
+            if (loadRequestGuard.current.isCurrent(requestId)) setLoading(false);
         }
     }, [companies.length, isSuperAdmin]);
 
@@ -325,17 +342,16 @@ export default function Users() {
         return colors[roleName] || '#6B7280';
     };
 
-    if (loading) return <div className="users-loading">Cargando usuarios...</div>;
+    if (loading && users.length === 0) return <div className="users-loading">Cargando usuarios...</div>;
 
     return (
         <div className="users-page">
             <PageHeader
                 title="Gestión de Usuarios"
-                icon={UsersIcon}
                 actions={
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button onClick={() => handleOpenSidebar()}>
+                        <Button variant="primary" onClick={() => handleOpenSidebar()} disabled={Boolean(loadError)}>
                             <Plus size={20} />
                             Nuevo Usuario
                         </Button>
@@ -343,14 +359,22 @@ export default function Users() {
                 }
             />
 
+            {loadError && (
+                <LoadErrorState
+                    message={loadError}
+                    onRetry={() => { void loadData(lastRequestedCompanyId.current, true); }}
+                />
+            )}
+
             {/* Filters */}
-            <div className="users-filters">
+            {!loadError && <div className="users-filters">
                 {/* Search */}
                 <div className="search-container">
                     <input
                         type="text"
                         className="search-input"
                         placeholder="Buscar por nombre, usuario o email..."
+                        aria-label="Buscar usuarios"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -358,29 +382,18 @@ export default function Users() {
 
                 {/* Role Filter */}
                 <div className="filter-group-container">
-                    <Select
-                        options={roleOptions}
-                        value={roleOptions.find(opt => opt.value === roleFilter)}
-                        onChange={(opt: SingleValue<{ value: string; label: string }>) => opt && setRoleFilter(opt.value)}
-                        placeholder="Filtrar por Rol"
-                        isSearchable={false}
-                    />
+                    <AppSelect isClearable={false} options={roleOptions} value={roleFilter} onChange={(v) => { if (v) setRoleFilter(String(v)); }} placeholder="Filtrar por Rol" />
                 </div>
 
                 <div className="filter-group-container">
-                    <Select
-                        options={statusOptions}
-                        value={statusOptions.find(opt => opt.value === statusFilter)}
-                        onChange={(opt: SingleValue<{ value: string; label: string }>) => opt && setStatusFilter(opt.value)}
-                        placeholder="Estado"
-                        isSearchable={false}
-                    />
+                    <AppSelect isClearable={false} options={statusOptions} value={statusFilter} onChange={(v) => { if (v) setStatusFilter(String(v)); }} placeholder="Estado" />
                 </div>
-            </div>
+            </div>}
 
             {/* Table view */}
-            {viewMode === 'table' && filteredUsers.length > 0 && (
-                <CatalogTable<User>
+            {!loadError && viewMode === 'table' && filteredUsers.length > 0 && (
+                <DataTable<User>
+                    ariaLabel="Listado de usuarios"
                     rows={filteredUsers}
                     rowKey={(u) => u.id}
                     resetKey={`${searchQuery}|${roleFilter}|${statusFilter}`}
@@ -443,7 +456,7 @@ export default function Users() {
                         {
                             key: 'actions',
                             header: 'Acciones',
-                            align: 'right',
+                            type: 'actions',
                             render: (u) => (
                                 <div className="catalog-table-actions">
                                     <button className="catalog-action-btn" onClick={() => handleOpenSidebar(u)} title="Editar">
@@ -457,19 +470,19 @@ export default function Users() {
                                 </div>
                             )
                         }
-                    ] as CatalogColumn<User>[]}
+                    ] as Column<User>[]}
                 />
             )}
 
             {/* Users Grid */}
-            {viewMode === 'cards' && filteredUsers.length > 0 && (
+            {!loadError && viewMode === 'cards' && filteredUsers.length > 0 && (
                 <div className="users-grid">
                     {filteredUsers.map(user => {
                         const userAllRoles = user.userRoles
                             ? user.userRoles.map(ur => ur.role.name)
                             : [user.role?.name || ''];
                         return (
-                        <div key={user.id} className="user-card" onClick={() => handleOpenSidebar(user)}>
+                        <div key={user.id} className="user-card" role="button" tabIndex={0} aria-label={`Editar usuario ${user.name}`} onClick={() => handleOpenSidebar(user)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(user))}>
                             {/* Role Badges */}
                             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', position: 'absolute', top: '12px', right: '12px', zIndex: 1 }}>
                                 {userAllRoles.map((rn, i) => (
@@ -490,7 +503,7 @@ export default function Users() {
                                 <div className="user-card-info">
                                     <h3 className="user-name">{user.name}</h3>
                                     {user.color && (
-                                        <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: user.color, marginLeft: '6px', verticalAlign: 'middle', border: '1px solid var(--color-neutral-300)' }} />
+                                        <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: user.color, marginLeft: '6px', verticalAlign: 'middle', border: '1px solid var(--ui-border)' }} />
                                     )}
                                 </div>
                             </div>
@@ -543,7 +556,7 @@ export default function Users() {
                 </div>
             )}
 
-            {filteredUsers.length === 0 && (
+            {!loadError && filteredUsers.length === 0 && (
                 <div className="users-empty">
                     <UsersIcon size={64} />
                     <h3>No se encontraron usuarios</h3>
@@ -551,7 +564,7 @@ export default function Users() {
                 </div>
             )}
 
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => { setIsSidebarOpen(false); setActiveTab('perfil'); }}
                 title={editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
@@ -633,7 +646,7 @@ export default function Users() {
                                             {editingUser ? "Nueva Contraseña (dejar en blanco para no cambiar)" : "Contraseña"}
                                         </label>
                                         <div style={{ position: 'relative' }}>
-                                            <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
+                                            <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ui-text-muted)' }} />
                                             <input
                                                 id="user-password"
                                                 type="password"
@@ -660,44 +673,25 @@ export default function Users() {
 
                                     {isSuperAdmin && !editingUser && (
                                         <div className="modal-input-group">
-                                            <Select
-                                                variant="modal"
-                                                label="Empresa"
-                                                placeholder="Seleccionar Empresa"
-                                                options={companies.map(c => ({ value: c.id, label: c.name }))}
-                                                value={(() => {
+                                            <Field label="Empresa" htmlFor="sel-660" required>
+<AppSelect isClearable={false} inputId="sel-660" options={companies.map(c => ({ value: c.id, label: c.name }))} value={((() => {
                                                     const c = companies.find(co => co.id.toString() === formData.companyId);
                                                     return c ? { value: c.id, label: c.name } : null;
-                                                })()}
-                                                onChange={(option: SingleValue<{ value: number; label: string }>) => {
+                                                })())?.value ?? null} onChange={(__v) => { const option = (companies.map(c => ({ value: c.id, label: c.name }))).find((o) => o.value === __v) ?? null; 
                                                     if (!option) return;
                                                     const cid = String(option.value);
                                                     setFormData({ ...formData, companyId: cid, branchId: '' });
                                                     loadData(cid);
-                                                }}
-                                                required
-                                            />
+                                                }} placeholder="Seleccionar Empresa" />
+</Field>
                                         </div>
                                     )}
 
                                     <div className="modal-input-group">
-                                        <Select
-                                            variant="modal"
-                                            label="Tipo de cuenta"
-                                            options={formData.accountType === 'INTERNAL'
-                                                ? [{ value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }]
-                                                : [{ value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' }]}
-                                            value={formData.accountType === 'INTERNAL'
-                                                ? { value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }
-                                                : { value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' }}
-                                            onChange={(option: SingleValue<{ value: UserAccountType; label: string }>) => {
-                                                if (!option) return;
-                                                setFormData({ ...formData, accountType: option.value });
-                                            }}
-                                            isDisabled
-                                            isSearchable={false}
-                                        />
-                                        <small style={{ color: 'var(--color-neutral-500)', lineHeight: 1.45 }}>
+                                        <Field label="Tipo de cuenta" htmlFor="sel-681">
+<AppSelect isClearable={false} inputId="sel-681" options={accountTypeOptions.filter((o) => o.value === formData.accountType)} value={formData.accountType} onChange={() => undefined} isDisabled />
+</Field>
+                                        <small style={{ color: 'var(--ui-text-muted)', lineHeight: 1.45 }}>
                                             {formData.accountType === 'INTERNAL'
                                                 ? editingUser?.employee
                                                     ? `Vinculado al expediente ${editingUser.employee.employeeCode || editingUser.employee.employeeNumber || `#${editingUser.employee.id}`} · ${editingUser.employee.status}.`
@@ -715,9 +709,9 @@ export default function Users() {
                                                     <label key={r.id} style={{
                                                         display: 'flex', alignItems: 'center', gap: '6px',
                                                         padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                                                        background: isChecked ? getRoleColor(r.name) + '20' : 'var(--color-background)',
-                                                        border: `1.5px solid ${isChecked ? getRoleColor(r.name) : 'var(--color-border)'}`,
-                                                        color: 'var(--color-text)',
+                                                        background: isChecked ? getRoleColor(r.name) + '20' : 'var(--ui-bg)',
+                                                        border: `1.5px solid ${isChecked ? getRoleColor(r.name) : 'var(--ui-border)'}`,
+                                                        color: 'var(--ui-text)',
                                                         fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
                                                         transition: 'all 0.15s ease'
                                                     }}>
@@ -745,21 +739,9 @@ export default function Users() {
                                     </div>
 
                                     <div className="modal-form-row">
-                                        <Select
-                                            variant="modal"
-                                            label="Estado de Cuenta"
-                                            options={[
-                                                { value: 'ACTIVE', label: 'Activo' },
-                                                { value: 'INACTIVE', label: 'Inactivo' }
-                                            ]}
-                                            value={{
-                                                value: formData.status,
-                                                label: formData.status === 'ACTIVE' ? 'Activo' : 'Inactivo'
-                                            }}
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, status: option.value })}
-                                            isDisabled={!editingUser}
-                                            isSearchable={false}
-                                        />
+                                        <Field label="Estado de Cuenta" htmlFor="sel-745">
+<AppSelect isClearable={false} inputId="sel-745" options={accountStatusOptions} value={formData.status} onChange={(v) => { if (v) setFormData({ ...formData, status: String(v) as typeof formData.status }); }} isDisabled={!editingUser} />
+</Field>
 
                                         <div className="modal-input-group">
                                             <label className="modal-input-label" htmlFor="user-color"><Palette size={14} style={{ marginRight: 4 }} />Color Identificador</label>
@@ -771,12 +753,12 @@ export default function Users() {
                                                     onChange={e => setFormData({ ...formData, color: e.target.value })}
                                                     style={{ width: '40px', height: '36px', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: 0 }}
                                                 />
-                                                <span style={{ fontSize: '0.85rem', color: 'var(--color-neutral-500)' }}>
+                                                <span style={{ fontSize: '0.85rem', color: 'var(--ui-text-muted)' }}>
                                                     {formData.color || 'Sin color'}
                                                 </span>
                                                 {formData.color && (
                                                     <button type="button" onClick={() => setFormData({ ...formData, color: '' })}
-                                                        style={{ fontSize: '0.75rem', color: 'var(--color-error)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                                        style={{ fontSize: '0.75rem', color: 'var(--ui-danger)', background: 'none', border: 'none', cursor: 'pointer' }}>
                                                         Quitar
                                                     </button>
                                                 )}
@@ -796,9 +778,9 @@ export default function Users() {
                                                             <label key={b.id} style={{
                                                                 display: 'flex', alignItems: 'center', gap: '6px',
                                                                 padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                                                                background: isChecked ? 'color-mix(in srgb, var(--color-primary) 18%, transparent)' : 'var(--color-background)',
-                                                                border: `1.5px solid ${isChecked ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                                                                color: isChecked ? 'var(--color-primary)' : 'var(--color-text)',
+                                                                background: isChecked ? 'color-mix(in srgb, var(--ui-primary) 18%, transparent)' : 'var(--ui-bg)',
+                                                                border: `1.5px solid ${isChecked ? 'var(--ui-primary)' : 'var(--ui-border)'}`,
+                                                                color: isChecked ? 'var(--ui-primary)' : 'var(--ui-text)',
                                                                 fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
                                                             }}>
                                                                 <input
@@ -818,36 +800,33 @@ export default function Users() {
                                                         );
                                                     })}
                                                 </div>
-                                                <small style={{ color: 'var(--color-neutral-500)' }}>El usuario solo verá información de su sucursal activa. El superadmin rota la sucursal activa entre las permitidas.</small>
+                                                <small style={{ color: 'var(--ui-text-muted)' }}>El usuario solo verá información de su sucursal activa. El superadmin rota la sucursal activa entre las permitidas.</small>
                                             </div>
 
-                                            <Select
-                                                variant="modal"
-                                                label="Sucursal activa"
-                                                placeholder="Ninguna (Global / Superadmin)"
-                                                options={[
+                                            <Field label="Sucursal activa" htmlFor="sel-821">
+<AppSelect isClearable={false} inputId="sel-821" options={[
                                                     { value: '', label: 'Ninguna (Global / Superadmin)' },
                                                     ...branches
                                                         .filter(b => formData.branchIds.includes(b.id.toString()))
                                                         .map(b => ({ value: b.id.toString(), label: b.name }))
-                                                ]}
-                                                value={formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Ninguna (Global / Superadmin)' }}
-                                                onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, branchId: option.value })}
-                                            />
+                                                ]} value={(formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Ninguna (Global / Superadmin)' })?.value ?? null} onChange={(__v) => { const option = ([
+                                                    { value: '', label: 'Ninguna (Global / Superadmin)' },
+                                                    ...branches
+                                                        .filter(b => formData.branchIds.includes(b.id.toString()))
+                                                        .map(b => ({ value: b.id.toString(), label: b.name }))
+                                                ]).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, branchId: option.value }); }} placeholder="Ninguna (Global / Superadmin)" />
+</Field>
                                         </>
                                     ) : (
-                                        <Select
-                                            variant="modal"
-                                            label="Sucursal activa"
-                                            placeholder="Seleccionar sucursal"
-                                            options={[
+                                        <Field label="Sucursal activa" htmlFor="sel-836">
+<AppSelect isClearable={false} inputId="sel-836" options={[
                                                 { value: '', label: 'Sin sucursal' },
                                                 ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
-                                            ]}
-                                            value={formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Sin sucursal' }}
-                                            onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, branchId: option.value })}
-                                            isDisabled={!!editingUser}
-                                        />
+                                            ]} value={(formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Sin sucursal' })?.value ?? null} onChange={(__v) => { const option = ([
+                                                { value: '', label: 'Sin sucursal' },
+                                                ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
+                                            ]).find((o) => o.value === __v) ?? null; return option && setFormData({ ...formData, branchId: option.value }); }} placeholder="Seleccionar sucursal" isDisabled={!!editingUser} />
+</Field>
                                     )}
                                 </div>
                             )}
@@ -863,7 +842,7 @@ export default function Users() {
                         </div>
                     </form>
                 </div>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

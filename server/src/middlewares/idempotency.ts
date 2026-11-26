@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
+import { auth } from './auth';
 
 const RESPONSE_TTL_MS = 24 * 60 * 60 * 1000;
 const PROCESSING_TTL_MS = 2 * 60 * 1000;
@@ -21,7 +21,9 @@ function extractAuthToken(req: Request): string | null {
     if (!cookieHeader) return null;
     for (const rawCookie of cookieHeader.split(';')) {
         const [name, ...valueParts] = rawCookie.trim().split('=');
-        if (name === 'auth_token' && valueParts.length) return valueParts.join('=');
+        if (name === 'auth_token' && valueParts.length) {
+            return decodeURIComponent(valueParts.join('='));
+        }
     }
     return null;
 }
@@ -35,17 +37,51 @@ function credentialNamespace(prefix: string, credential: string): string {
     return `${prefix}:${crypto.createHash('sha256').update(credential).digest('hex').slice(0, 60)}`;
 }
 
-function resolveNamespace(req: Request): string {
-    if (req.user?.companyId) return `c:${req.user.companyId}`;
+/**
+ * Session-issuing / session-ending auth routes (see routes/auth.routes.ts).
+ * Their responses carry or clear a credential, so they are never stored or
+ * replayed (a replay could hand back a revoked or other-device token), and
+ * pre-auth must not 401 a stale Bearer before the client can log back in.
+ */
+const SESSION_AUTH_PATHS = new Set([
+    '/auth/login', '/auth/pin-login', '/auth/device-login',
+    '/auth/logout', '/auth/change-password',
+]);
+
+export function isSessionAuthPath(originalUrl: string): boolean {
+    let path = originalUrl.split('?')[0].toLowerCase().replace(/\/+/g, '/').replace(/\/+$/, '');
+    path = path.replace(/^\/api(\/v\d+)?(?=\/|$)/, '');
+    return SESSION_AUTH_PATHS.has(path) || path === '/auth/sessions' || path.startsWith('/auth/sessions/');
+}
+
+/**
+ * Routes whose body carries a credential (PINs). Their request fingerprint
+ * would be a crackable hash of the PIN and a replay would bypass the lockout
+ * counters, so they are never stored nor replayed.
+ */
+export function isCredentialBearingPath(originalUrl: string): boolean {
+    let path = originalUrl.split('?')[0].toLowerCase().replace(/\/+/g, '/').replace(/\/+$/, '');
+    path = path.replace(/^\/api(\/v\d+)?(?=\/|$)/, '');
+    return path === '/auth/me/pin' || /^\/orders\/[^/]+\/discount\/authorize$/.test(path);
+}
+
+export function resolveIdempotencyNamespace(req: Request): string {
     const token = extractAuthToken(req);
-    const secret = process.env.JWT_SECRET;
-    if (token && secret) {
-        try {
-            const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { companyId?: number };
-            if (decoded.companyId) return `c:${decoded.companyId}`;
-        } catch {
-            // Authentication middleware remains authoritative; isolate invalid tokens below.
-        }
+    if (token && req.user && req.authContextValidated === true) {
+        const authorizationContext = JSON.stringify({
+            userId: req.user.userId,
+            companyId: req.user.companyId,
+            branchId: req.user.branchId ?? null,
+            role: req.user.role,
+            roles: [...req.user.roles].sort(),
+            permissions: [...req.user.permissions].sort(),
+            accountType: req.user.accountType ?? null,
+        });
+        // Identity, not session: shared tablets swap users by PIN (new token per
+        // login) and the kitchen tablet silently re-logs in, so an offline retry
+        // after re-login must still replay. Rejected/revoked tokens never get here:
+        // preAuthenticateIdempotentRequest runs auth() before any replay.
+        return credentialNamespace('s', `${req.user.companyId}:${req.user.userId}\0${authorizationContext}`);
     }
     if (token) return credentialNamespace('t', token);
     // API-key auth runs on the route after this global middleware. Hash the
@@ -62,6 +98,22 @@ function resolveNamespace(req: Request): string {
         || singleHeader(req, 'x-webhook-signature');
     if (webhookSignature) return credentialNamespace('w', webhookSignature);
     return 'anon';
+}
+
+/**
+ * Authenticate JWT/cookie requests before a completed idempotency record can
+ * short-circuit route middleware. API-key/webhook routes remain route-owned.
+ */
+export function preAuthenticateIdempotentRequest(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+) {
+    const key = req.headers['x-idempotency-key'];
+    if (!key || req.method === 'GET' || isSessionAuthPath(req.originalUrl) || !extractAuthToken(req)) {
+        return next();
+    }
+    return auth(req, res, next);
 }
 
 function canonicalize(value: unknown): unknown {
@@ -82,12 +134,17 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
     }
     const key = rawKey;
     if (!key || req.method === 'GET') return next();
+    if (isSessionAuthPath(req.originalUrl) || isCredentialBearingPath(req.originalUrl)) return next();
     if (key.length > 191) {
         res.status(400).json({ success: false, message: 'Clave de idempotencia demasiado larga' });
         return;
     }
+    // Never replay before the credential's authoritative route middleware has
+    // run. JWT/cookie requests are pre-authenticated by app.ts. API-key and
+    // signed-webhook routes keep their route/domain idempotency instead.
+    if (req.authContextValidated !== true || !req.user) return next();
 
-    const namespace = resolveNamespace(req);
+    const namespace = resolveIdempotencyNamespace(req);
     const path = req.originalUrl.split('?')[0].replace(/\/+$/, '') || '/';
     const scope = `${req.method.toUpperCase()}:${path}`;
     const fingerprint = crypto.createHash('sha256')
@@ -110,7 +167,7 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
         });
         if (!existing) return next(error);
         if (existing.fingerprint !== fingerprint) {
-            res.status(409).json({ success: false, message: 'Clave de idempotencia reutilizada con una solicitud diferente' });
+            res.status(409).json({ success: false, code: 'IDEMPOTENCY_MISMATCH', message: 'Clave de idempotencia reutilizada con una solicitud diferente' });
             return;
         }
         if (existing.status === 'COMPLETED' && existing.expiresAt > now && existing.httpStatus !== null) {
@@ -118,7 +175,7 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
             return;
         }
         if (existing.expiresAt > now) {
-            res.status(409).json({ success: false, message: 'Solicitud duplicada en proceso' });
+            res.status(409).json({ success: false, code: 'IDEMPOTENCY_IN_PROGRESS', message: 'Solicitud duplicada en proceso' });
             return;
         }
         const claimed = await prisma.idempotencyRecord.updateMany({
@@ -126,7 +183,7 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
             data: { fingerprint, status: 'PROCESSING', httpStatus: null, response: Prisma.JsonNull, expiresAt: new Date(now.getTime() + PROCESSING_TTL_MS) }
         });
         if (claimed.count !== 1) {
-            res.status(409).json({ success: false, message: 'Solicitud duplicada en proceso' });
+            res.status(409).json({ success: false, code: 'IDEMPOTENCY_IN_PROGRESS', message: 'Solicitud duplicada en proceso' });
             return;
         }
         record = { ...existing, fingerprint };

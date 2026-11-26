@@ -1,0 +1,167 @@
+/* Celdas, píldoras y acciones de fila compartidas por los catálogos. */
+
+/* Stacked main cell: title + secondary line (e.g. name + RUC/phone) */
+.catalog-cell-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.catalog-cell-stack .cell-title {
+    font-weight: 600;
+    color: var(--ui-text);
+    line-height: 1.25;
+}
+
+.catalog-cell-stack .cell-sub {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--ui-text-muted);
+}
+
+/* Status pill */
+.catalog-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.catalog-pill.ok {
+    background: var(--ui-success-soft);
+    color: var(--ui-success);
+}
+
+.catalog-pill.danger {
+    background: var(--ui-danger-soft);
+    color: var(--ui-danger);
+}
+
+.catalog-pill.warning {
+    background: var(--ui-warning-soft);
+    color: var(--ui-warning);
+}
+
+.catalog-pill.neutral {
+    background: var(--ui-bg);
+    color: var(--ui-text-muted);
+}
+
+.dark .catalog-pill.ok {
+    background: color-mix(in srgb, var(--ui-success) 15%, transparent);
+    color: var(--ui-success);
+}
+
+.dark .catalog-pill.danger {
+    background: color-mix(in srgb, var(--ui-danger) 15%, transparent);
+    color: var(--ui-danger);
+}
+
+.dark .catalog-pill.warning {
+    background: color-mix(in srgb, var(--ui-warning) 15%, transparent);
+    color: var(--ui-warning);
+}
+
+/* Row action buttons */
+.catalog-table-actions {
+    display: inline-flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.catalog-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-surface);
+    color: var(--ui-text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.catalog-action-btn:hover {
+    color: var(--ui-primary);
+    border-color: var(--ui-primary);
+}
+
+.catalog-action-btn.danger:hover {
+    color: var(--ui-danger);
+    border-color: var(--ui-danger);
+}
+
+.catalog-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ── Generic catalog cards (for views without bespoke cards) ── */
+.catalog-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.catalog-card {
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.catalog-card:hover {
+    border-color: var(--ui-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.catalog-card .catalog-card-title {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--ui-text);
+}
+
+.catalog-card .catalog-card-sub {
+    font-size: 0.82rem;
+    color: var(--ui-text-muted);
+}
+
+.catalog-card .catalog-card-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.catalog-card .catalog-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.85rem;
+}
+
+.catalog-card .catalog-card-row .label {
+    color: var(--ui-text-muted);
+}
+
+.catalog-card .catalog-card-row .value {
+    font-weight: 600;
+    color: var(--ui-text);
+}
+
+.catalog-card .catalog-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--ui-border);
+}

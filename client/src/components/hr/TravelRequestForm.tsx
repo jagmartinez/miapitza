@@ -1,8 +1,7 @@
-import HrReactSelect from './HrReactSelect';
+import { AppSelect, Button } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { MapPin, ShieldCheck } from 'lucide-react';
-import Button from '../Button';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrTravelRequestPayload } from '../../types/hr-benefits';
@@ -62,7 +61,7 @@ export default function TravelRequestForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={!online || saving || !confirmed}>
+          <Button variant="primary" type="submit" disabled={!online || saving || !confirmed}>
             {saving ? 'Guardando…' : 'Crear borrador'}
           </Button>
         </>
@@ -71,40 +70,38 @@ export default function TravelRequestForm({
       {!selfService && (
         <label>
           Persona
-          <HrReactSelect
-            required
-            value={form.userId ?? ''}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, userId: Number(event.target.value) }))
+          <AppSelect<string>
+            options={[
+              { value: '', label: 'Selecciona una persona' },
+              ...users.map((user) => ({
+                value: String(user.id),
+                label: user.name ?? user.username,
+              })),
+            ]}
+            value={String(form.userId ?? '')}
+            onChange={(next) =>
+              setForm((current) => ({ ...current, userId: Number(next ?? '') }))
             }
-          >
-            <option value="">Selecciona una persona</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name ?? user.username}
-              </option>
-            ))}
-          </HrReactSelect>
+            isClearable={false}
+          />
         </label>
       )}
       <label>
         Sucursal de origen
-        <HrReactSelect
-          value={form.branchId ?? ''}
-          onChange={(event) =>
+        <AppSelect<string>
+          options={[
+            { value: '', label: 'Sin sucursal específica' },
+            ...branches.map((branch) => ({ value: String(branch.id), label: branch.name })),
+          ]}
+          value={String(form.branchId ?? '')}
+          onChange={(next) =>
             setForm((current) => ({
               ...current,
-              branchId: event.target.value ? Number(event.target.value) : undefined,
+              branchId: (next ?? '') ? Number(next ?? '') : undefined,
             }))
           }
-        >
-          <option value="">Sin sucursal específica</option>
-          {branches.map((branch) => (
-            <option key={branch.id} value={branch.id}>
-              {branch.name}
-            </option>
-          ))}
-        </HrReactSelect>
+          isClearable={false}
+        />
       </label>
       <label className="span-full">
         Destino
@@ -145,13 +142,15 @@ export default function TravelRequestForm({
       </label>
       <label>
         Moneda
-        <HrReactSelect
+        <AppSelect<string>
+          options={[
+            { value: 'NIO', label: 'NIO — Córdoba' },
+            { value: 'USD', label: 'USD — Dólar' },
+          ]}
           value={form.currency}
-          onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
-        >
-          <option value="NIO">NIO — Córdoba</option>
-          <option value="USD">USD — Dólar</option>
-        </HrReactSelect>
+          onChange={(next) => setForm((current) => ({ ...current, currency: next ?? '' }))}
+          isClearable={false}
+        />
       </label>
       <label>
         Estimado solicitado

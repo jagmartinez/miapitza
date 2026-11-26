@@ -1,23 +1,20 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import Select from '../components/Select';
 import { productsAPI, unitsAPI } from '../services/api';
-import Button from '../components/Button';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
 import {
-    ArrowLeft, Layers, Package as PackageIcon, Ruler,
+    ArrowLeft, Package as PackageIcon, Ruler,
     Weight, Beaker, Hash, Wand2, Trash2, Star, StarOff, Info
 } from 'lucide-react';
 import type { Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
-import type { SingleValue } from 'react-select';
 import './Inventory.css';
 import './UnitsOfMeasure.css';
 import './ProductUnitSettings.css';
+import { AppSelect, Field, Button, PageHeader } from '@/ui';
 
-type StrOption = SingleValue<{ value: string; label: string }>;
 
 interface EditableAllowedUnit {
     unitId: number;
@@ -151,7 +148,7 @@ export default function ProductUnitSettings() {
         ];
     }, []);
 
-    const handleChangeBaseUnit = (option: StrOption) => {
+    const handleChangeBaseUnit = (option: { value: string; label: string } | null) => {
         const nextBaseUnitId = option?.value || '';
         setBaseUnitId(nextBaseUnitId);
         const parsedBase = Number(nextBaseUnitId);
@@ -315,30 +312,28 @@ export default function ProductUnitSettings() {
 
     return (
         <div className="inventory-page product-units-page">
-            <div className="inventory-header-new">
-                <div className="header-title-section">
-                    <button type="button" className="units-back-btn" onClick={() => navigate('/inventory')}>
-                        <ArrowLeft size={20} />
-                        Volver a Inventario
-                    </button>
-                    <h1><Layers size={32} /> Conversiones del producto</h1>
-                    <p className="header-subtitle">
-                        <PackageIcon size={14} /> {product.name}
-                        {product.sku ? ` · ${product.sku}` : ''}
-                    </p>
-                </div>
-                <div className="puc-header-actions">
-                    <Button variant="secondary" onClick={() => navigate('/units-of-measure')}>
-                        <Ruler size={18} />
-                        Catálogo de unidades
-                    </Button>
-                    {canMutate && (
-                        <Button onClick={handleSave} disabled={saving}>
-                            {saving ? 'Guardando...' : 'Guardar conversiones'}
+            <PageHeader
+                title="Conversiones del producto"
+                breadcrumb={['Inventario']}
+                description={`${product.name}${product.sku ? ` · ${product.sku}` : ''}`}
+                actions={(
+                    <>
+                        <Button variant="ghost" onClick={() => navigate('/inventory')}>
+                            <ArrowLeft size={18} />
+                            Volver a Inventario
                         </Button>
-                    )}
-                </div>
-            </div>
+                        <Button variant="secondary" onClick={() => navigate('/units-of-measure')}>
+                            <Ruler size={18} />
+                            Catálogo de unidades
+                        </Button>
+                        {canMutate && (
+                            <Button variant="primary" onClick={handleSave} disabled={saving}>
+                                {saving ? 'Guardando...' : 'Guardar conversiones'}
+                            </Button>
+                        )}
+                    </>
+                )}
+            />
 
             <div className="puc-intro">
                 <Info size={18} />
@@ -358,7 +353,7 @@ export default function ProductUnitSettings() {
                 <div className="units-empty-page">
                     <Ruler size={48} />
                     <p>Primero debes crear unidades en el catálogo.</p>
-                    <Button onClick={() => navigate('/units-of-measure')}>Ir a Unidades de Medida</Button>
+                    <Button variant="primary" onClick={() => navigate('/units-of-measure')}>Ir a Unidades de Medida</Button>
                 </div>
             ) : (
                 <div className="puc-grid">
@@ -371,17 +366,16 @@ export default function ProductUnitSettings() {
                             </div>
                         </div>
                         <div className="puc-base-card">
-                            <Select
-                                variant="modal"
-                                label="Unidad base interna"
-                                options={baseOptions}
-                                value={baseUnit
-                                    ? { value: String(baseUnit.id), label: `${baseUnit.name} (${baseUnit.abbreviation}) · ${TYPE_LABEL[baseUnit.measurementType]}` }
-                                    : null}
-                                onChange={handleChangeBaseUnit}
-                                placeholder="Selecciona la unidad base..."
-                                isDisabled={!canMutate}
-                            />
+                            <Field label="Unidad base interna" htmlFor="puc-base-unit">
+                                <AppSelect
+                                    inputId="puc-base-unit"
+                                    options={baseOptions}
+                                    value={baseUnit ? String(baseUnit.id) : null}
+                                    onChange={(v) => handleChangeBaseUnit(baseOptions.find((o) => o.value === v) ?? null)}
+                                    placeholder="Selecciona la unidad base..."
+                                    isDisabled={!canMutate}
+                                />
+                            </Field>
                             {baseUnit && (
                                 <div className="puc-base-summary">
                                     {(() => {
@@ -415,15 +409,9 @@ export default function ProductUnitSettings() {
 
                         {canMutate && (
                             <div className="puc-add-row">
-                                <Select
-                                    variant="modal"
-                                    options={addOptions}
-                                    value={newAllowedUnitId
+                                <AppSelect isClearable={false} options={addOptions} value={(newAllowedUnitId
                                         ? addOptions.find((o) => o.value === newAllowedUnitId) || null
-                                        : null}
-                                    onChange={(option: StrOption) => setNewAllowedUnitId(option?.value || '')}
-                                    placeholder="Selecciona una unidad para agregar..."
-                                />
+                                        : null)?.value ?? null} onChange={(__v) => { const option = (addOptions).find((o) => o.value === __v) ?? null; return setNewAllowedUnitId(option?.value || ''); }} placeholder="Selecciona una unidad para agregar..." />
                                 <Button type="button" variant="primary" onClick={handleAddAllowedUnit} disabled={!newAllowedUnitId}>
                                     Agregar unidad
                                 </Button>

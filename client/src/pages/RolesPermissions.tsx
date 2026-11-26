@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { rolesAPI, permissionsAPI } from '../services/api';
-import Button from '../components/Button';
-import Sidebar from '../components/Sidebar';
-import { Plus, Edit, Trash2, Shield } from 'lucide-react';
+import { Plus, Edit, Trash2 } from 'lucide-react';
 import { describePermission } from '../utils/permissionCatalog';
-import './RolesPermissions.css';
+import styles from './RolesPermissions.module.css';
+import { Button, Checkbox, DataTable, Field, FormSection, FullScreenModal, Input, PageHeader, Textarea, type Column } from '@/ui';
 
 interface PermissionRow {
     id: number;
@@ -52,7 +53,7 @@ export default function RolesPermissions() {
             setRoles(rolesRes.data.data);
             setPermissions(permissionsRes.data.data);
         } catch (error) {
-            console.error('Error loading data:', error);
+            notifyError(error, 'No se pudieron cargar los roles y permisos');
         } finally {
             setLoading(false);
         }
@@ -85,7 +86,7 @@ export default function RolesPermissions() {
             loadData();
         } catch (error) {
             console.error('Error saving role:', error);
-            showError('Error al guardar el rol');
+            showError(getApiErrorMessage(error, 'Error al guardar el rol'));
         }
     };
 
@@ -115,140 +116,135 @@ export default function RolesPermissions() {
         }));
     };
 
-    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)' }}>Cargando...</div>;
+    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--ui-text-muted)' }}>Cargando...</div>;
+
+    const columns: Column<RoleRow>[] = [
+        {
+            key: 'name',
+            header: 'Rol',
+            render: (role) => (
+                <div>
+                    <strong>{role.name}</strong>
+                    <div className={styles.muted}>{role.description || 'Sin descripción'}</div>
+                </div>
+            ),
+        },
+        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, render: (role) => role._count?.users || 0 },
+        { key: 'permissions', header: 'Permisos', type: 'number', decimals: 0, render: (role) => role.permissions?.length || 0 },
+        {
+            key: 'summary',
+            header: 'Capacidades',
+            render: (role) => {
+                const list = role.permissions || [];
+                if (list.length === 0) return <span className={styles.muted}>Sin permisos asignados</span>;
+                return (
+                    <div className={styles.badges}>
+                        {list.slice(0, 3).map((perm) => (
+                            <span key={perm.id} className={styles.badge} title={perm.name}>{describePermission(perm.name, perm.description).label}</span>
+                        ))}
+                        {list.length > 3 && <span className={styles.badge}>+{list.length - 3} más</span>}
+                    </div>
+                );
+            },
+        },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (role) => (
+                <div className={styles.actions}>
+                    <Button variant="ghost" onClick={() => handleOpenSidebar(role)} aria-label={`Editar ${role.name}`}>
+                        <Edit size={15} /> Editar
+                    </Button>
+                    {isSuperAdmin && (
+                        <Button variant="ghost" onClick={() => handleDelete(role.id)} aria-label={`Eliminar ${role.name}`}>
+                            <Trash2 size={15} /> Eliminar
+                        </Button>
+                    )}
+                </div>
+            ),
+        },
+    ];
 
     return (
-        <div className="roles-permissions-page">
-            <div className="rp-header">
-                <div>
-                    <h1><Shield size={28} /> Roles y Permisos</h1>
-                    <p>Gestiona los roles del sistema y sus capacidades</p>
-                </div>
-                <Button onClick={() => handleOpenSidebar()}>
-                    <Plus size={18} /> Nuevo Rol
-                </Button>
-            </div>
+        <div>
+            <PageHeader
+                title="Roles y Permisos"
+                description="Gestiona los roles del sistema y sus capacidades"
+                actions={(
+                    <Button variant="primary" onClick={() => handleOpenSidebar()}>
+                        <Plus size={18} /> Nuevo Rol
+                    </Button>
+                )}
+            />
 
-            <div className="roles-grid">
-                {roles.map(role => (
-                    <div key={role.id} className="role-card-new">
-                        <div className="role-card-header">
-                            <div className={`role-icon ${role.name.toLowerCase()}`}>
-                                <Shield size={22} />
-                            </div>
-                            <div className="role-info">
-                                <h3>{role.name}</h3>
-                                <p>{role.description || 'Sin descripción'}</p>
-                            </div>
-                        </div>
+            <DataTable<RoleRow>
+                columns={columns}
+                rows={roles}
+                rowKey={(role) => role.id}
+                ariaLabel="Listado de roles"
+                pagination={{ mode: 'client' }}
+            />
 
-                        <div className="role-card-body">
-                            <div className="role-stats">
-                                <div className="role-stat">
-                                    <span className="role-stat-label">Usuarios</span>
-                                    <span className="role-stat-value">{role._count?.users || 0}</span>
-                                </div>
-                                <div className="role-stat">
-                                    <span className="role-stat-label">Permisos</span>
-                                    <span className="role-stat-value">{role.permissions?.length || 0}</span>
-                                </div>
-                            </div>
-
-                            <div className="role-permissions">
-                                {role.permissions?.slice(0, 3).map((perm) => (
-                                    <span key={perm.id} className="perm-badge" title={perm.name}>{describePermission(perm.name, perm.description).label}</span>
-                                ))}
-                                {(role.permissions?.length || 0) > 3 && (
-                                    <span className="perm-badge more">+{(role.permissions?.length || 0) - 3} más</span>
-                                )}
-                                {(!role.permissions || role.permissions.length === 0) && (
-                                    <span className="perm-badge more">Sin permisos asignados</span>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="role-card-actions">
-                            <button className="role-action-btn" onClick={() => handleOpenSidebar(role)}>
-                                <Edit size={15} /> Editar
-                            </button>
-                            {isSuperAdmin && (
-                                <button className="role-action-btn delete" onClick={() => handleDelete(role.id)}>
-                                    <Trash2 size={15} /> Eliminar
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <Sidebar
+            <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={editingRole ? 'Editar Rol' : 'Nuevo Rol'}
             >
-                <form onSubmit={handleSubmit} className="premium-modal-content modal-form-new role-modal-content">
-                    <div className="modal-tab-content role-modal-body">
-                    <div className="modal-input-group role-form-group">
-                        <label className="modal-input-label" htmlFor="role-name">Nombre del rol</label>
-                        <input
-                            id="role-name"
-                            type="text"
-                            className="modal-standard-input"
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            placeholder="Ej: ADMIN, MESERO..."
-                            required
-                        />
-                    </div>
+                <form onSubmit={handleSubmit}>
+                    <FormSection title="Datos del rol">
+                        <Field label="Nombre del rol" htmlFor="role-name" required>
+                            <Input
+                                id="role-name"
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                placeholder="Ej: ADMIN, MESERO..."
+                                required
+                            />
+                        </Field>
+                        <Field label="Descripción" htmlFor="role-description">
+                            <Textarea
+                                id="role-description"
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                placeholder="Describe las responsabilidades del rol..."
+                            />
+                        </Field>
+                    </FormSection>
 
-                    <div className="modal-input-group role-form-group">
-                        <label className="modal-input-label" htmlFor="role-description">Descripción</label>
-                        <textarea
-                            id="role-description"
-                            className="modal-standard-input modal-textarea role-description-input"
-                            value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                            placeholder="Describe las responsabilidades del rol..."
-                        />
-                    </div>
+                    <FormSection title="Permisos" description={`${formData.permissionIds.length} seleccionados`}>
+                        {permissions.length === 0 ? (
+                            <p className={styles.muted}>No hay permisos registrados en el sistema</p>
+                        ) : (
+                            <div className={styles.permList}>
+                                {permissions.map((perm) => {
+                                    const presentation = describePermission(perm.name, perm.description);
+                                    return (
+                                        <div key={perm.id} className={styles.permItem}>
+                                            <Checkbox
+                                                label={<strong>{presentation.label}</strong>}
+                                                checked={formData.permissionIds.includes(perm.id)}
+                                                onChange={() => togglePermission(perm.id)}
+                                            />
+                                            <div className={styles.muted}>{presentation.description}</div>
+                                            <div className={styles.muted} title="Código técnico del permiso">Código: {perm.name}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </FormSection>
 
-                    <div className="modal-section role-permissions-section">
-                        <label className="rp-perms-title">Permisos</label>
-                        <div className="rp-perms-list">
-                            {permissions.length === 0 ? (
-                                <div className="rp-empty-perms">No hay permisos registrados en el sistema</div>
-                            ) : permissions.map(perm => {
-                                const presentation = describePermission(perm.name, perm.description);
-                                return (
-                                <label key={perm.id} className="rp-perm-item">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.permissionIds.includes(perm.id)}
-                                        onChange={() => togglePermission(perm.id)}
-                                    />
-                                    <div>
-                                        <div className="rp-perm-name">{presentation.label}</div>
-                                        <div className="rp-perm-desc">{presentation.description}</div>
-                                        <div className="rp-perm-desc" title="Código técnico del permiso">Código: {perm.name}</div>
-                                    </div>
-                                </label>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    </div>
-
-                    <div className="modal-footer">
+                    <div className={styles.footer}>
                         <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
                             Cancelar
                         </Button>
-                        <Button type="submit">
+                        <Button variant="primary" type="submit">
                             {editingRole ? 'Actualizar Rol' : 'Crear Rol'}
                         </Button>
                     </div>
                 </form>
-            </Sidebar>
+            </FullScreenModal>
         </div>
     );
 }

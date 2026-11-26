@@ -6,31 +6,6 @@
     margin: 0 auto;
 }
 
-/* Header */
-.categories-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-xl);
-}
-
-.categories-header h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    font-size: var(--font-size-3xl);
-    font-weight: 700;
-    color: var(--color-text);
-    margin: 0;
-    line-height: 1.2;
-}
-
-.categories-subtitle {
-    font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
-    margin: 0;
-}
-
 /* Grid / Card — base styles in index.css under the unified .entity-* system.
    Page-specific overrides only. */
 .categories-grid-new {
@@ -52,15 +27,15 @@
     color: white;
     line-height: 1;
     display: inline-block;
-    background: var(--color-success);
+    background: var(--ui-success);
 }
 
 .status-badge-new.active {
-    background: var(--color-success);
+    background: var(--ui-success);
 }
 
 .status-badge-new.inactive {
-    background: var(--color-danger);
+    background: var(--ui-danger);
 }
 
 /* Card Body — base in index.css. Category-specific tweaks only. */
@@ -71,7 +46,7 @@
 .category-name-new {
     font-size: var(--font-size-xl);
     font-weight: 700;
-    color: var(--color-text);
+    color: var(--ui-text);
     margin-top: var(--spacing-sm);
 }
 
@@ -86,7 +61,7 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
-    color: var(--color-text-secondary);
+    color: var(--ui-text-muted);
     font-size: var(--font-size-xs);
 }
 
@@ -110,13 +85,13 @@
 }
 
 .modal-toggle-card:hover {
-    border-color: var(--color-primary) !important;
+    border-color: var(--ui-primary) !important;
 }
 
 .toggle-switch {
     width: 36px;
     height: 20px;
-    background: var(--color-neutral-300);
+    background: var(--ui-border);
     border-radius: 20px;
     position: relative;
     transition: all 0.2s;
@@ -125,7 +100,7 @@
 .toggle-dot {
     width: 14px;
     height: 14px;
-    background: white;
+    background: var(--ui-surface);
     border-radius: 50%;
     position: absolute;
     top: 3px;
@@ -134,7 +109,7 @@
 }
 
 .toggle-switch:has(.toggle-dot.active) {
-    background: var(--color-primary);
+    background: var(--ui-primary);
 }
 
 .toggle-dot.active {
@@ -149,10 +124,10 @@
     justify-content: center;
     padding: var(--spacing-3xl);
     text-align: center;
-    color: var(--color-text-secondary);
-    background: var(--color-background);
+    color: var(--ui-text-muted);
+    background: var(--ui-bg);
     border-radius: var(--radius-xl);
-    border: 2px dashed var(--color-border);
+    border: 2px dashed var(--ui-border);
 }
 
 .no-categories-message svg {
@@ -173,7 +148,7 @@
     align-items: center;
     height: 50vh;
     font-size: var(--font-size-xl);
-    color: var(--color-primary);
+    color: var(--ui-primary);
     gap: var(--spacing-md);
 }
 
@@ -181,8 +156,8 @@
     content: "";
     width: 32px;
     height: 32px;
-    border: 3px solid var(--color-border);
-    border-top-color: var(--color-primary);
+    border: 3px solid var(--ui-border);
+    border-top-color: var(--ui-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
