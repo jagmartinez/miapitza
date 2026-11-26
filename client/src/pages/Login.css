@@ -136,7 +136,7 @@
     border: 1px solid color-mix(in srgb, var(--ui-primary) 20%, transparent);
     border-radius: 999px;
     background: color-mix(in srgb, var(--ui-primary) 9%, transparent);
-    color: var(--ui-primary-soft);
+    color: var(--ui-primary);
     font-size: 0.74rem;
     font-weight: 700;
     letter-spacing: 0.03em;
@@ -220,9 +220,9 @@
     padding: clamp(28px, 4vw, 42px);
     border: 1px solid var(--login-border);
     border-radius: 16px;
-    background: linear-gradient(145deg, color-mix(in srgb, var(--ui-primary) 96%, transparent), color-mix(in srgb, var(--ui-primary) 98%, transparent));
+    background: var(--login-panel);
     box-shadow:
-        0 28px 72px color-mix(in srgb, var(--ui-text) 34%, transparent),
+        0 28px 72px color-mix(in srgb, #000 22%, transparent),
         inset 0 1px 0 color-mix(in srgb, var(--ui-surface) 45%, transparent);
 }
 
@@ -325,7 +325,7 @@
     border: 1px solid color-mix(in srgb, var(--ui-primary) 18%, transparent);
     border-radius: 8px;
     outline: none;
-    background: var(--ui-overlay);
+    background: var(--login-panel-soft);
     color: var(--login-text);
     caret-color: var(--login-blue-bright);
     font-size: 0.9rem;
@@ -342,7 +342,7 @@
 
 .login-input-wrap:focus-within input {
     border-color: color-mix(in srgb, var(--ui-primary) 70%, transparent);
-    background: var(--ui-overlay);
+    background: var(--ui-surface);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-primary) 11%, transparent);
 }
 
@@ -410,7 +410,7 @@
     border: 1px solid color-mix(in srgb, var(--ui-primary) 18%, transparent);
     border-radius: 8px;
     background: linear-gradient(135deg, var(--ui-primary), var(--ui-primary-hover));
-    color: white;
+    color: var(--ui-primary-fg);
     box-shadow: 0 12px 26px color-mix(in srgb, var(--ui-primary) 24%, transparent), inset 0 1px 0 color-mix(in srgb, var(--ui-surface) 18%, transparent);
     font-size: 0.9rem;
     font-weight: 700;
