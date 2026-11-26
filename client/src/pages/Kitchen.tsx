@@ -546,7 +546,8 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                             label={soundEnabled ? 'Sonido ON' : 'Sonido OFF'}
                             onClick={() => setSoundEnabled(!soundEnabled)}
                         />
-                        <ThemeToggle />
+                        {/* /kds no tiene barra superior: el tema se cambia aquí. */}
+                        {displayMode && <ThemeToggle />}
                         {displayMode && <Button variant="secondary" icon={isFullscreen ? Minimize2 : Maximize2} onClick={() => void toggleFullscreen()}>
                             {isFullscreen ? 'Salir de pantalla' : 'Pantalla completa'}
                         </Button>}
