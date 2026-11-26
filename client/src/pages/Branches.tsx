@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { branchesAPI, hrAPI, type BranchGeofencePayload } from '../services/api';
-import ViewToggle from '../components/ViewToggle';
 import BranchWarehouseRoutes from '../components/BranchWarehouseRoutes';
-import { useViewMode } from '../hooks/useViewMode';
-import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store, AlertTriangle, LocateFixed } from 'lucide-react';
+import { Plus, Phone, Edit2, Trash2, Store, LocateFixed, Search } from 'lucide-react';
 import type { Branch } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -12,8 +10,18 @@ import { hasAnyRole } from '../utils/authz';
 import { getApiErrorMessage } from '../utils/apiError';
 import { notifyError } from '../services/notify';
 import { MIN_LOCATION_ACCURACY_M } from '../components/hr/attendanceSettingsRules';
-import './Branches.css';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, type Column, PageHeader } from '@/ui';
+import styles from './catalog.module.css';
+import {
+    AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
+    LoadErrorState, PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, Textarea, type Column,
+} from '@/ui';
+
+type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+    { value: 'ALL', label: 'Todas' },
+    { value: 'ACTIVE', label: 'Activas' },
+    { value: 'INACTIVE', label: 'Inactivas' },
+];
 
 interface BranchFormData {
     name: string;
@@ -58,10 +66,10 @@ export default function Branches() {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [statusFilter, setStatusFilter] = useState<string | null>(null);
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+    const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-    const { viewMode, setViewMode } = useViewMode('branches');
     const [formData, setFormData] = useState<BranchFormData>(() => emptyBranchForm(user?.timezone));
     const [activeTab, setActiveTab] = useState<'general' | 'ubicacion'>('general');
     const [saving, setSaving] = useState(false);
@@ -324,583 +332,356 @@ export default function Branches() {
         setActiveTab('general');
     }, [closeModal]);
 
-    const filteredBranches = statusFilter
-        ? branches.filter(b => b.status === statusFilter)
-        : branches;
+    const q = search.trim().toLowerCase();
+    const filteredBranches = branches.filter((b) => {
+        if (statusFilter !== 'ALL' && b.status !== statusFilter) return false;
+        return !q || b.name.toLowerCase().includes(q) || (b.code ?? '').toLowerCase().includes(q)
+            || (b.address ?? '').toLowerCase().includes(q);
+    });
 
+    const columns: Column<Branch>[] = [
+        {
+            key: 'name',
+            header: 'Sucursal',
+            render: (b) => (
+                <div className={styles.cellStack}>
+                    <span className={styles.cellTitle}>{b.name}</span>
+                    {b.code && <span className={styles.muted}>{b.code}</span>}
+                </div>
+            )
+        },
+        ...(isSuperAdmin ? [{
+            key: 'company',
+            header: 'Empresa',
+            accessor: (b: Branch) => b.company?.name || '—'
+        }] : []),
+        { key: 'phone', header: 'Teléfono', accessor: (b) => b.phone || '—' },
+        { key: 'address', header: 'Dirección', accessor: (b) => b.address || '—', hideBelow: 'lg' },
+        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, accessor: (b) => b._count?.users || 0 },
+        { key: 'tables', header: 'Mesas', type: 'number', decimals: 0, accessor: (b) => b._count?.tables || 0 },
+        {
+            key: 'status',
+            header: 'Estado',
+            render: (b) => (
+                <div className={styles.inline}>
+                    <Badge tone={b.status === 'ACTIVE' ? 'success' : 'neutral'} dot>{b.status === 'ACTIVE' ? 'Activa' : 'Inactiva'}</Badge>
+                    {(b._count?.warehouses ?? 0) === 0 && (
+                        <span title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno">
+                            <Badge tone="warning">Sin almacén</Badge>
+                        </span>
+                    )}
+                </div>
+            )
+        },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            render: (b) => (
+                <div className={styles.rowActions}>
+                    <IconButton size="sm" icon={Edit2} label={`Editar ${b.name}`} onClick={() => openModal(b)} />
+                    {isSuperAdmin && b.status === 'ACTIVE' && (
+                        <IconButton size="sm" icon={Trash2} label={`Desactivar ${b.name}`} onClick={() => handleDelete(b.id)} />
+                    )}
+                </div>
+            )
+        }
+    ] as Column<Branch>[];
 
-    if (loading) return <div>Cargando...</div>;
-    if (loadError) {
-        return (
-            <div className="state-placeholder" role="alert">
-                <AlertTriangle size={42} aria-hidden="true" />
-                <p>{loadError}</p>
-                <Button variant="ghost" onClick={() => void loadData()}>Reintentar</Button>
-            </div>
-        );
-    }
+    const accuracyOk = locationAccuracyM !== null && locationAccuracyM <= Number(formData.maxLocationAccuracyM || 0);
 
     return (
-        <div className="branches-page">
+        <PageContent>
             <PageHeader
-                title="Gestión de Sucursales"
-                actions={(
-                    <>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
-                        {isSuperAdmin && (
-                            <Button variant="primary" onClick={() => openModal()}>
-                                <Plus size={20} />
-                                Nueva Sucursal
-                            </Button>
-                        )}
-                    </>
-                )}
+                title="Sucursales"
+                description={`${branches.filter((b) => b.status === 'ACTIVE').length} activas · ${branches.length} registradas`}
+                actions={isSuperAdmin ? (
+                    <Button variant="primary" icon={Plus} onClick={() => openModal()}>
+                        Nueva sucursal
+                    </Button>
+                ) : undefined}
             />
 
-            {/* Filters Row */}
-            <div className="branches-filters-row">
-                <div className="branch-status-filters">
-                    <button
-                        className={`branch-status-btn ${statusFilter === null ? 'active' : ''}`}
-                        onClick={() => setStatusFilter(null)}
-                    >
-                        Todas
-                    </button>
-                    <button
-                        className={`branch-status-btn active-filter ${statusFilter === 'ACTIVE' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('ACTIVE')}
-                    >
-                        Activas
-                    </button>
-                    <button
-                        className={`branch-status-btn inactive-filter ${statusFilter === 'INACTIVE' ? 'active' : ''}`}
-                        onClick={() => setStatusFilter('INACTIVE')}
-                    >
-                        Inactivas
-                    </button>
-                </div>
-
-            </div>
-
-            {/* Table view */}
-            {viewMode === 'table' && filteredBranches.length > 0 && (
+            {loadError ? (
+                <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />
+            ) : (
                 <DataTable<Branch>
                     ariaLabel="Listado de sucursales"
                     rows={filteredBranches}
                     rowKey={(b) => b.id}
-                    resetKey={statusFilter}
-                    columns={[
-                        {
-                            key: 'name',
-                            header: 'Sucursal',
-                            render: (b) => (
-                                <div className="catalog-cell-stack">
-                                    <span className="cell-title">{b.name}</span>
-                                    {b.code && <span className="cell-sub">{b.code}</span>}
-                                    {(b._count?.warehouses ?? 0) === 0 && (
-                                        <span
-                                            className="cell-sub"
-                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--ui-warning)', fontWeight: 600 }}
-                                            title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
-                                        >
-                                            <AlertTriangle size={12} /> Sin almacén
-                                        </span>
-                                    )}
-                                </div>
-                            )
-                        },
-                        ...(isSuperAdmin ? [{
-                            key: 'company',
-                            header: 'Empresa',
-                            render: (b: Branch) => b.company?.name || '-'
-                        }] : []),
-                        { key: 'phone', header: 'Teléfono', render: (b) => b.phone || '-' },
-                        { key: 'address', header: 'Dirección', render: (b) => b.address || '-' },
-                        { key: 'users', header: 'Usuarios', type: 'number', decimals: 0, render: (b) => b._count?.users || 0 },
-                        { key: 'tables', header: 'Mesas', type: 'number', decimals: 0, render: (b) => b._count?.tables || 0 },
-                        {
-                            key: 'status',
-                            header: 'Estado',
-                            render: (b) => <span className={`catalog-pill ${b.status === 'ACTIVE' ? 'ok' : 'neutral'}`}>{b.status === 'ACTIVE' ? 'Activa' : 'Inactiva'}</span>
-                        },
-                        {
-                            key: 'actions',
-                            header: 'Acciones',
-                            type: 'actions',
-                            render: (b) => (
-                                <div className="catalog-table-actions">
-                                    <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
-                                        <Edit2 size={16} />
-                                    </button>
-                                    {isSuperAdmin && b.status === 'ACTIVE' && (
-                                        <button className="catalog-action-btn danger" onClick={() => handleDelete(b.id)} title="Desactivar">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            )
-                        }
-                    ] as Column<Branch>[]}
-                />
-            )}
-
-            {/* Enhanced Branch Grid */}
-            {viewMode === 'cards' && (
-            <div className="branches-grid-new">
-                {filteredBranches.map((branch) => (
-                    <div key={branch.id} className={`branch-card-new ${branch.status.toLowerCase()}`}>
-                        {/* Status Badge */}
-                        <div className={`status-badge-new ${branch.status.toLowerCase()}`}>
-                            {branch.status === 'ACTIVE' ? 'Activa' : 'Inactiva'}
-                        </div>
-
-                        {/* Card Body */}
-                        <div className="branch-card-body-new">
-                            <div className="branch-name-new">{branch.name}</div>
-
-                            <div className="branch-identifiers-new">
-                                <span className="branch-code-new">{branch.code}</span>
-                                {isSuperAdmin && branch.company && (
-                                    <span className="branch-company-tag-new">
-                                        <Building2 size={12} />
-                                        {branch.company.name}
-                                    </span>
-                                )}
-                                {(branch._count?.warehouses ?? 0) === 0 && (
-                                    <span
-                                        style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            padding: '2px 8px',
-                                            borderRadius: '999px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 700,
-                                            color: 'var(--ui-warning)',
-                                            background: 'color-mix(in srgb, var(--ui-warning) 15%, transparent)',
-                                            border: '1px solid var(--ui-warning)'
-                                        }}
-                                        title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
-                                    >
-                                        <AlertTriangle size={12} /> Sin almacén
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="branch-details-new">
-                                <div className="detail-item">
-                                    <MapPin size={16} />
-                                    <span>{branch.address || 'Sin dirección'}</span>
-                                </div>
-                                <div className="detail-item">
-                                    <Phone size={16} />
-                                    <span>{branch.phone || 'Sin teléfono'}</span>
-                                </div>
-                            </div>
-
-                            <div className="branch-stats-new">
-                                <div className="stat-item-new">
-                                    <span className="stat-value-new">{branch._count?.users || 0}</span>
-                                    <span className="stat-label-new">Usuarios</span>
-                                </div>
-                                <div className="stat-item-new">
-                                    <span className="stat-value-new">{branch._count?.tables || 0}</span>
-                                    <span className="stat-label-new">Mesas</span>
-                                </div>
-                                <div className="stat-item-new">
-                                    <span className="stat-value-new">{branch._count?.warehouses || 0}</span>
-                                    <span className="stat-label-new">Almacenes</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="branch-card-actions-new">
-                            <button
-                                className="action-btn-new edit"
-                                onClick={() => openModal(branch)}
-                                title="Editar"
-                            >
-                                <Edit2 size={20} />
-                                <span>Editar</span>
-                            </button>
-                            {isSuperAdmin && branch.status === 'ACTIVE' && (
-                                <button
-                                    className="action-btn-new delete"
-                                    onClick={() => handleDelete(branch.id)}
-                                    title="Desactivar"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-            )}
-
-            {filteredBranches.length === 0 && (
-                <div className="no-branches-message">
-                    <Store size={48} />
-                    <p>No hay sucursales {statusFilter ? 'con este estado' : 'registradas'}</p>
-                    {(statusFilter || isSuperAdmin) && (
-                        <Button variant="primary"
-                            onClick={() => {
-                                if (statusFilter) setStatusFilter(null);
-                                else openModal();
-                            }}
-                        >
-                            {statusFilter ? 'Ver todas' : 'Crear primera sucursal'}
-                        </Button>
+                    columns={columns}
+                    loading={loading}
+                    resetKey={`${statusFilter}|${q}`}
+                    onRowClick={(b) => { void openModal(b); }}
+                    empty={branches.length === 0 ? (
+                        <EmptyState
+                            icon={Store}
+                            title="No hay sucursales registradas"
+                            action={isSuperAdmin ? <Button variant="primary" onClick={() => openModal()}>Crear primera sucursal</Button> : undefined}
+                        />
+                    ) : 'No hay sucursales con este filtro.'}
+                    toolbar={(
+                        <TableToolbar>
+                            <Input
+                                type="search"
+                                aria-label="Buscar sucursal"
+                                placeholder="Buscar por nombre, código o dirección"
+                                prefix={<Search size={14} aria-hidden="true" />}
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                            <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+                        </TableToolbar>
                     )}
-                </div>
+                />
             )}
 
             <FullScreenModal
                 isOpen={isModalOpen}
                 onClose={handleSidebarClose}
-                title={editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
+                title={editingBranch ? 'Editar sucursal' : 'Nueva sucursal'}
+                breadcrumb={['Configuración', 'Sucursales']}
+                tabs={[
+                    { id: 'general', label: 'General' },
+                    { id: 'ubicacion', label: 'Ubicación y geocerca' },
+                ]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as 'general' | 'ubicacion')}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="branch-form" loading={saving}>
+                            {editingBranch ? 'Guardar cambios' : 'Crear sucursal'}
+                        </Button>
+                    </>
+                )}
             >
-                <div className="premium-modal-content branches-modal-content">
-                    {/* Tabs Navigation */}
-                    <div className="modal-tabs">
-                        <button
-                            type="button"
-                            className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('general')}
-                        >
-                            <Store size={18} />
-                            <span>General</span>
-                        </button>
-                        <button
-                            type="button"
-                            className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('ubicacion')}
-                        >
-                            <MapPin size={18} />
-                            <span>Ubicación</span>
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="modal-form-new">
-                        <div className="modal-tab-content">
-                            {/* 1. GENERAL TAB */}
-                            {activeTab === 'general' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <Store size={18} />
-                                        <h3>Información General</h3>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="branch-name">Nombre de la Sucursal</label>
-                                        <input
+                <form id="branch-form" onSubmit={handleSubmit} className={styles.stack}>
+                    {activeTab === 'general' && (
+                        <>
+                            <FormSection step={1} title="Información general">
+                                <FormGrid>
+                                    <Field label="Nombre de la sucursal" htmlFor="branch-name" required>
+                                        <Input
                                             id="branch-name"
-                                            type="text"
-                                            className="modal-standard-input"
                                             value={formData.name}
                                             onChange={e => setFormData({ ...formData, name: e.target.value })}
                                             placeholder="Ej: Sucursal Central"
                                             required
                                         />
-                                    </div>
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-code">Código</label>
-                                            <input
-                                                id="branch-code"
-                                                type="text"
-                                                className="modal-standard-input"
-                                                value={formData.code}
-                                                onChange={e => setFormData({ ...formData, code: e.target.value })}
-                                                placeholder="SUC-001"
-                                                required
+                                    </Field>
+                                    <Field label="Código" htmlFor="branch-code" required>
+                                        <Input
+                                            id="branch-code"
+                                            value={formData.code}
+                                            onChange={e => setFormData({ ...formData, code: e.target.value })}
+                                            placeholder="SUC-001"
+                                            required
+                                        />
+                                    </Field>
+                                    <Field label="Teléfono" htmlFor="branch-phone">
+                                        <Input
+                                            id="branch-phone"
+                                            type="tel"
+                                            prefix={<Phone size={14} aria-hidden="true" />}
+                                            value={formData.phone}
+                                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                            placeholder="2255-0000"
+                                        />
+                                    </Field>
+                                    {editingBranch && (
+                                        <Field label="Estado de la sucursal" htmlFor="branch-status">
+                                            <AppSelect<'ACTIVE' | 'INACTIVE'>
+                                                isClearable={false}
+                                                isSearchable={false}
+                                                inputId="branch-status"
+                                                options={[
+                                                    { value: 'ACTIVE', label: 'Activa' },
+                                                    { value: 'INACTIVE', label: 'Inactiva' }
+                                                ]}
+                                                value={formData.status}
+                                                onChange={(v) => setFormData({
+                                                    ...formData,
+                                                    status: v === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+                                                    ...(v === 'INACTIVE' ? { attendanceEnabled: false } : {}),
+                                                })}
                                             />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-phone">Teléfono</label>
-                                            <div style={{ position: 'relative' }}>
-                                                <Phone size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ui-text-muted)' }} />
-                                                <input
-                                                    id="branch-phone"
-                                                    type="text"
-                                                    className="modal-standard-input"
-                                                    style={{ paddingLeft: '36px' }}
-                                                    value={formData.phone}
-                                                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                                    placeholder="2255-0000"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {editingBranch && (
-                                        <Field label="Estado de Sucursal" htmlFor="sel-625">
-<AppSelect isClearable={false} inputId="sel-625" options={[
-                                                { value: 'ACTIVE', label: 'Activa' },
-                                                { value: 'INACTIVE', label: 'Inactiva' }
-                                            ]} value={(formData.status === 'ACTIVE' ? { value: 'ACTIVE', label: 'Activa' } : { value: 'INACTIVE', label: 'Inactiva' })?.value ?? null} onChange={(__v) => { const option = ([
-                                                { value: 'ACTIVE', label: 'Activa' },
-                                                { value: 'INACTIVE', label: 'Inactiva' }
-                                            ]).find((o) => o.value === __v) ?? null; return setFormData({
-                                                ...formData,
-                                                status: option?.value === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
-                                                ...(option?.value === 'INACTIVE' ? { attendanceEnabled: false } : {}),
-                                            }); }} />
-</Field>
+                                        </Field>
                                     )}
+                                </FormGrid>
+                            </FormSection>
 
-                                    {editingBranch && (() => {
-                                        const saleWarehouses = (editingBranch.warehouses ?? [])
-                                            .filter((warehouse) => !warehouse.type || warehouse.type === 'BRANCH');
-                                        const automatic = { value: 0, label: 'Automática (única bodega de sucursal)' };
-                                        const options = [
-                                            automatic,
-                                            ...saleWarehouses.map((warehouse) => ({
-                                                value: warehouse.id,
-                                                label: warehouse.code ? `${warehouse.name} (${warehouse.code})` : warehouse.name,
-                                            })),
-                                        ];
-                                        return (
-                                            <div className="modal-input-group">
-                                                <Field label="Bodega de venta predeterminada" htmlFor="branch-default-sale-warehouse">
-                                                    <AppSelect
-                                                        isClearable={false}
-                                                        inputId="branch-default-sale-warehouse"
-                                                        options={options}
-                                                        value={formData.defaultSaleWarehouseId ?? 0}
-                                                        onChange={(v) => setFormData({
-                                                            ...formData,
-                                                            defaultSaleWarehouseId: v !== null && Number(v) > 0 ? Number(v) : null,
-                                                        })}
-                                                    />
-                                                </Field>
-                                                <small style={{ color: 'var(--ui-text-muted)' }}>
-                                                    Se usa para la entrega automática y la disponibilidad del POS. Con varias bodegas y sin predeterminada, la entrega requiere elegir bodega.
-                                                </small>
-                                            </div>
-                                        );
-                                    })()}
-
-                                    {editingBranch && (
+                            {editingBranch && (() => {
+                                const saleWarehouses = (editingBranch.warehouses ?? [])
+                                    .filter((warehouse) => !warehouse.type || warehouse.type === 'BRANCH');
+                                const automatic = { value: 0, label: 'Automática (única bodega de sucursal)' };
+                                const options = [
+                                    automatic,
+                                    ...saleWarehouses.map((warehouse) => ({
+                                        value: warehouse.id,
+                                        label: warehouse.code ? `${warehouse.name} (${warehouse.code})` : warehouse.name,
+                                    })),
+                                ];
+                                return (
+                                    <FormSection step={2} title="Bodegas" description="Bodega de venta y rutas de abastecimiento.">
+                                        <FormGrid>
+                                            <Field
+                                                label="Bodega de venta predeterminada"
+                                                htmlFor="branch-default-sale-warehouse"
+                                                hint="Se usa para la entrega automática y la disponibilidad del POS. Con varias bodegas y sin predeterminada, la entrega requiere elegir bodega."
+                                            >
+                                                <AppSelect
+                                                    isClearable={false}
+                                                    inputId="branch-default-sale-warehouse"
+                                                    options={options}
+                                                    value={formData.defaultSaleWarehouseId ?? 0}
+                                                    onChange={(v) => setFormData({
+                                                        ...formData,
+                                                        defaultSaleWarehouseId: v !== null && Number(v) > 0 ? Number(v) : null,
+                                                    })}
+                                                />
+                                            </Field>
+                                        </FormGrid>
                                         <BranchWarehouseRoutes
                                             branchId={editingBranch.id}
                                             warehouses={editingBranch.warehouses ?? []}
                                             canEdit={hasAnyRole(user, ['SUPERADMIN', 'ADMIN'])}
                                         />
-                                    )}
+                                    </FormSection>
+                                );
+                            })()}
+                        </>
+                    )}
+
+                    {activeTab === 'ubicacion' && (
+                        <>
+                            <FormSection step={1} title="Dirección">
+                                <Field label="Dirección completa" htmlFor="branch-address">
+                                    <Textarea
+                                        id="branch-address"
+                                        rows={3}
+                                        value={formData.address}
+                                        onChange={e => setFormData({ ...formData, address: e.target.value })}
+                                        placeholder="Ciudad, Barrio, Calle..."
+                                    />
+                                </Field>
+                            </FormSection>
+
+                            <FormSection
+                                step={2}
+                                title="Geocerca para marcaje"
+                                description="Se validará la ubicación solo al realizar el marcaje. No se realiza seguimiento continuo ni se muestra un mapa."
+                            >
+                                {geofenceLoading && <p className={styles.muted} role="status">Cargando configuración de geocerca…</p>}
+                                <div>
+                                    <Button icon={LocateFixed} onClick={useCurrentLocation} disabled={!isSuperAdmin || locating || geofenceLoading}>
+                                        {locating ? 'Obteniendo ubicación…' : 'Usar mi ubicación'}
+                                    </Button>
                                 </div>
-                            )}
-
-                            {/* 2. UBICACION TAB */}
-                            {activeTab === 'ubicacion' && (
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <MapPin size={18} />
-                                        <h3>Dirección y geocerca</h3>
-                                    </div>
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="branch-address">Dirección Completa</label>
-                                        <textarea
-                                            id="branch-address"
-                                            className="modal-standard-input"
-                                            style={{ minHeight: '100px', paddingTop: '12px', resize: 'vertical' }}
-                                            value={formData.address}
-                                            onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                            placeholder="Ciudad, Barrio, Calle..."
+                                <FormGrid>
+                                    <Field label="Latitud" htmlFor="branch-latitude" required={!editingBranch || formData.attendanceEnabled}>
+                                        <Input
+                                            id="branch-latitude"
+                                            type="number"
+                                            step="0.0000001"
+                                            min="-90"
+                                            max="90"
+                                            value={formData.latitude}
+                                            disabled={!isSuperAdmin}
+                                            onChange={e => setFormData({ ...formData, latitude: e.target.value })}
+                                            placeholder="12.1363890"
+                                            required={!editingBranch || formData.attendanceEnabled}
                                         />
+                                    </Field>
+                                    <Field label="Longitud" htmlFor="branch-longitude" required={!editingBranch || formData.attendanceEnabled}>
+                                        <Input
+                                            id="branch-longitude"
+                                            type="number"
+                                            step="0.0000001"
+                                            min="-180"
+                                            max="180"
+                                            value={formData.longitude}
+                                            disabled={!isSuperAdmin}
+                                            onChange={e => setFormData({ ...formData, longitude: e.target.value })}
+                                            placeholder="-86.2513890"
+                                            required={!editingBranch || formData.attendanceEnabled}
+                                        />
+                                    </Field>
+                                </FormGrid>
+                                {locationAccuracyM !== null && (
+                                    <div role="status" className={styles.inline}>
+                                        <Badge tone={accuracyOk ? 'success' : 'warning'}>
+                                            Precisión reportada: ±{locationAccuracyM} m · {accuracyOk ? 'aceptable para el límite configurado' : 'supera el máximo permitido'}
+                                        </Badge>
                                     </div>
-
-                                    <div className="modal-section-header" style={{ marginTop: '8px' }}>
-                                        <LocateFixed size={18} />
-                                        <h3>Geocerca para marcaje</h3>
-                                    </div>
-
-                                    <p style={{ margin: 0, color: 'var(--ui-text-muted)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                                        Se validará la ubicación solo al realizar el marcaje. No se realiza seguimiento continuo ni se muestra un mapa.
-                                    </p>
-
-                                    {geofenceLoading && (
-                                        <div role="status" style={{ color: 'var(--ui-text-muted)', fontSize: '0.85rem' }}>
-                                            Cargando configuración de geocerca…
-                                        </div>
-                                    )}
-
-                                    <div>
-                                        <Button type="button" variant="secondary" onClick={useCurrentLocation} disabled={!isSuperAdmin || locating || geofenceLoading}>
-                                            <LocateFixed size={17} />
-                                            {locating ? 'Obteniendo ubicación…' : 'Usar mi ubicación'}
-                                        </Button>
-                                    </div>
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-latitude">Latitud</label>
-                                            <input
-                                                id="branch-latitude"
-                                                type="number"
-                                                step="0.0000001"
-                                                min="-90"
-                                                max="90"
-                                                className="modal-standard-input"
-                                                value={formData.latitude}
-                                                disabled={!isSuperAdmin}
-                                                onChange={e => setFormData({ ...formData, latitude: e.target.value })}
-                                                placeholder="12.1363890"
-                                                required={!editingBranch || formData.attendanceEnabled}
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-longitude">Longitud</label>
-                                            <input
-                                                id="branch-longitude"
-                                                type="number"
-                                                step="0.0000001"
-                                                min="-180"
-                                                max="180"
-                                                className="modal-standard-input"
-                                                value={formData.longitude}
-                                                disabled={!isSuperAdmin}
-                                                onChange={e => setFormData({ ...formData, longitude: e.target.value })}
-                                                placeholder="-86.2513890"
-                                                required={!editingBranch || formData.attendanceEnabled}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {locationAccuracyM !== null && (
-                                        <div
-                                            role="status"
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                padding: '10px 12px',
-                                                borderRadius: '8px',
-                                                border: '1px solid var(--ui-border)',
-                                                background: 'var(--ui-bg)',
-                                                color: locationAccuracyM <= Number(formData.maxLocationAccuracyM || 0)
-                                                    ? 'var(--ui-success)'
-                                                    : 'var(--ui-warning)',
-                                                fontSize: '0.85rem',
-                                            }}
-                                        >
-                                            {locationAccuracyM <= Number(formData.maxLocationAccuracyM || 0)
-                                                ? <LocateFixed size={16} />
-                                                : <AlertTriangle size={16} />}
-                                            Precisión reportada: ±{locationAccuracyM} m ·{' '}
-                                            {locationAccuracyM <= Number(formData.maxLocationAccuracyM || 0)
-                                                ? 'aceptable para el límite configurado'
-                                                : 'supera el máximo permitido'}
-                                        </div>
-                                    )}
-
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-geofence-radius">Radio de geocerca (m)</label>
-                                            <input
-                                                id="branch-geofence-radius"
-                                                type="number"
-                                                min="10"
-                                                max="10000"
-                                                step="1"
-                                                className="modal-standard-input"
-                                                value={formData.geofenceRadiusM}
-                                                disabled={!isSuperAdmin}
-                                                onChange={e => setFormData({ ...formData, geofenceRadiusM: e.target.value })}
-                                                required={formData.latitude !== '' || formData.attendanceEnabled}
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-max-accuracy">Margen máximo de error GPS (m)</label>
-                                            <input
-                                                id="branch-max-accuracy"
-                                                type="number"
-                                                min={MIN_LOCATION_ACCURACY_M}
-                                                max="5000"
-                                                step="1"
-                                                className="modal-standard-input"
-                                                value={formData.maxLocationAccuracyM}
-                                                disabled={!isSuperAdmin}
-                                                onChange={e => setFormData({ ...formData, maxLocationAccuracyM: e.target.value })}
-                                                required={formData.latitude !== '' || formData.attendanceEnabled}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {formData.attendanceEnabled && Number(formData.maxLocationAccuracyM) < 20 && (
-                                        <div className="branch-geofence-warning" role="status">
-                                            <AlertTriangle size={17} aria-hidden="true" />
-                                            <span><strong>Configuración GPS estricta.</strong> Los teléfonos normalmente no garantizan menos de 10–15 m. Usa 20–30 m como punto de partida y valida en el local.</span>
-                                        </div>
-                                    )}
-                                    {formData.attendanceEnabled && Number(formData.geofenceRadiusM) < 50 && (
-                                        <div className="branch-geofence-warning" role="status">
-                                            <AlertTriangle size={17} aria-hidden="true" />
-                                            <span><strong>Geocerca muy pequeña.</strong> Un radio menor de 50 m puede rechazar personal dentro del local por deriva GPS. El valor inicial recomendado es 100 m.</span>
-                                        </div>
-                                    )}
-
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="branch-timezone">Zona horaria IANA</label>
-                                        <input
+                                )}
+                                <FormGrid>
+                                    <Field label="Radio de geocerca (m)" htmlFor="branch-geofence-radius" required={formData.latitude !== '' || formData.attendanceEnabled}>
+                                        <Input
+                                            id="branch-geofence-radius"
+                                            type="number"
+                                            min="10"
+                                            max="10000"
+                                            step="1"
+                                            className="ui-input--number"
+                                            value={formData.geofenceRadiusM}
+                                            disabled={!isSuperAdmin}
+                                            onChange={e => setFormData({ ...formData, geofenceRadiusM: e.target.value })}
+                                            required={formData.latitude !== '' || formData.attendanceEnabled}
+                                        />
+                                    </Field>
+                                    <Field label="Margen máximo de error GPS (m)" htmlFor="branch-max-accuracy" required={formData.latitude !== '' || formData.attendanceEnabled}>
+                                        <Input
+                                            id="branch-max-accuracy"
+                                            type="number"
+                                            min={MIN_LOCATION_ACCURACY_M}
+                                            max="5000"
+                                            step="1"
+                                            className="ui-input--number"
+                                            value={formData.maxLocationAccuracyM}
+                                            disabled={!isSuperAdmin}
+                                            onChange={e => setFormData({ ...formData, maxLocationAccuracyM: e.target.value })}
+                                            required={formData.latitude !== '' || formData.attendanceEnabled}
+                                        />
+                                    </Field>
+                                    <Field label="Zona horaria IANA" htmlFor="branch-timezone" required>
+                                        <Input
                                             id="branch-timezone"
-                                            type="text"
-                                            className="modal-standard-input"
                                             value={formData.timezone}
                                             disabled={!isSuperAdmin}
                                             onChange={e => setFormData({ ...formData, timezone: e.target.value })}
                                             placeholder="America/Managua"
                                             required
                                         />
-                                    </div>
-
-                                    <label
-                                        htmlFor="branch-attendance-enabled"
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'flex-start',
-                                            gap: '10px',
-                                            padding: '12px',
-                                            border: '1px solid var(--ui-border)',
-                                            borderRadius: '10px',
-                                            background: 'var(--ui-bg)',
-                                            color: 'var(--ui-text)',
-                                            cursor: 'pointer',
-                                        }}
-                                    >
-                                        <input
-                                            id="branch-attendance-enabled"
-                                            type="checkbox"
-                                            checked={formData.attendanceEnabled}
-                                            disabled={!isSuperAdmin}
-                                            onChange={e => setFormData({ ...formData, attendanceEnabled: e.target.checked })}
-                                            style={{ marginTop: '3px', accentColor: 'var(--ui-primary)' }}
-                                        />
-                                        <span>
-                                            <strong style={{ display: 'block' }}>Habilitar validación de asistencia</strong>
-                                            <small style={{ color: 'var(--ui-text-muted)', lineHeight: 1.45 }}>
-                                                Los marcajes de esta sucursal exigirán una ubicación dentro de la geocerca y con la precisión configurada.
-                                            </small>
-                                        </span>
-                                    </label>
+                                    </Field>
+                                </FormGrid>
+                                {formData.attendanceEnabled && Number(formData.maxLocationAccuracyM) < 20 && (
+                                    <p className={styles.alert} role="status">
+                                        <strong>Configuración GPS estricta.</strong> Los teléfonos normalmente no garantizan menos de 10–15 m. Usa 20–30 m como punto de partida y valida en el local.
+                                    </p>
+                                )}
+                                {formData.attendanceEnabled && Number(formData.geofenceRadiusM) < 50 && (
+                                    <p className={styles.alert} role="status">
+                                        <strong>Geocerca muy pequeña.</strong> Un radio menor de 50 m puede rechazar personal dentro del local por deriva GPS. El valor inicial recomendado es 100 m.
+                                    </p>
+                                )}
+                                <div className={styles.cellStack}>
+                                    <Switch
+                                        id="branch-attendance-enabled"
+                                        checked={formData.attendanceEnabled}
+                                        disabled={!isSuperAdmin}
+                                        onChange={(attendanceEnabled) => setFormData({ ...formData, attendanceEnabled })}
+                                        label="Habilitar validación de asistencia"
+                                    />
+                                    <p className={styles.muted}>
+                                        Los marcajes de esta sucursal exigirán una ubicación dentro de la geocerca y con la precisión configurada.
+                                    </p>
                                 </div>
-                            )}
-                        </div>
-
-                        <div className="modal-footer">
-                            <Button variant="ghost" type="button" onClick={closeModal}>
-                                Cancelar
-                            </Button>
-                            <Button variant="primary" type="submit" disabled={saving}>
-                                {saving ? 'Guardando...' : editingBranch ? 'Guardar Cambios' : 'Crear Sucursal'}
-                            </Button>
-                        </div>
-                    </form>
-                </div>
+                            </FormSection>
+                        </>
+                    )}
+                </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }
