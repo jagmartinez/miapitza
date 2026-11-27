@@ -16,8 +16,8 @@ describe('POS fiscal customer contract', () => {
   });
 
   it('opens a semantic dialog with an isolated draft and explicit save/cancel actions', () => {
-    // Tolerante a la indentación y a CRLF: el botón vive ahora en la cabecera del ticket.
-    expect(pos).toMatch(/type="button"\s+className="header-action-btn secondary"\s+onClick=\{openFiscalCustomerModal\}/);
+    // Tolerante a la indentación y a CRLF: el botón (Button del kit) vive en la cabecera del ticket.
+    expect(pos).toMatch(/<Button\s+className="pos-target-button"\s+onClick=\{openFiscalCustomerModal\}/);
     expect(pos).toContain('onClick={openFiscalCustomerModal}');
     expect(pos).toContain('aria-haspopup="dialog"');
     expect(pos).toMatch(/setFiscalCustomerDraft\(\{\s+customerName,\s+\.\.\.fiscalCustomer,/);

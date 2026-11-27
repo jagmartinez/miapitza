@@ -10,10 +10,11 @@ import {
     Weight, Beaker, Hash, Wand2, Trash2, Star, StarOff, Info
 } from 'lucide-react';
 import type { Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
-import './Inventory.css';
-import './UnitsOfMeasure.css';
-import './ProductUnitSettings.css';
-import { AppSelect, Field, Button, PageHeader, formatNumber as formatNumberUi } from '@/ui';
+import {
+    AppSelect, Badge, Button, EmptyState, Field, FormSection, IconButton, Input, PageContent, PageHeader,
+    Skeleton, formatNumber as formatNumberUi, Tooltip,
+} from '@/ui';
+import s from './ProductUnitSettings.module.css';
 
 
 interface EditableAllowedUnit {
@@ -290,7 +291,17 @@ export default function ProductUnitSettings() {
     };
 
     if (loading) {
-        return <div className="inventory-loading">Cargando configuración...</div>;
+        return (
+            <PageContent>
+                <PageHeader title="Conversiones del producto" breadcrumb={['Inventario']} />
+                <div className={s.loading} role="status" aria-label="Cargando configuración">
+                    <Skeleton height={40} />
+                    <Skeleton height={120} />
+                    <Skeleton height={120} />
+                </div>
+                <ToastContainer toasts={toasts} onRemove={removeToast} />
+            </PageContent>
+        );
     }
 
     if (!product) return null;
@@ -307,273 +318,227 @@ export default function ProductUnitSettings() {
             label: `${unit.name} (${unit.abbreviation}) · ${TYPE_LABEL[unit.measurementType]}`
         }));
 
+    const BaseIcon = baseUnit ? TYPE_ICON[baseUnit.measurementType] : null;
+
     return (
-        <div className="inventory-page product-units-page">
+        <PageContent>
             <PageHeader
                 title="Conversiones del producto"
                 breadcrumb={['Inventario']}
                 description={`${product.name}${product.sku ? ` · ${product.sku}` : ''}`}
                 actions={(
                     <>
-                        <Button variant="ghost" onClick={() => navigate('/inventory')}>
-                            <ArrowLeft size={18} />
+                        <Button variant="ghost" icon={ArrowLeft} onClick={() => navigate('/inventory')}>
                             Volver a Inventario
                         </Button>
-                        <Button variant="secondary" onClick={() => navigate('/units-of-measure')}>
-                            <Ruler size={18} />
+                        <Button variant="secondary" icon={Ruler} onClick={() => navigate('/units-of-measure')}>
                             Catálogo de unidades
                         </Button>
                         {canMutate && (
-                            <Button variant="primary" onClick={handleSave} disabled={saving}>
-                                {saving ? 'Guardando...' : 'Guardar conversiones'}
+                            <Button variant="primary" onClick={handleSave} loading={saving}>
+                                Guardar conversiones
                             </Button>
                         )}
                     </>
                 )}
             />
 
-            <div className="puc-intro">
-                <Info size={18} />
-                <div>
-                    <strong>¿Cómo funciona?</strong>
-                    <p>
-                        Cada producto se controla en <em>una unidad base</em> (el stock se guarda en esa unidad).
-                        Las demás unidades se usan al comprar, recetar o transferir, y el sistema convierte
-                        automáticamente al guardar/descontar. La <strong>unidad base contra sí misma siempre vale 1</strong>,
-                        por eso ese campo no se edita: el peso o equivalencia se define en las otras unidades.
-                        Para crear o inhabilitar unidades del catálogo usa <Link to="/units-of-measure">Unidades de Medida</Link>.
-                    </p>
-                </div>
-            </div>
+            <p className={s.intro}>
+                <Info size={16} aria-hidden="true" />
+                <span>
+                    <strong>¿Cómo funciona?</strong>{' '}
+                    Cada producto se controla en <em>una unidad base</em> (el stock se guarda en esa unidad).
+                    Las demás unidades se usan al comprar, recetar o transferir, y el sistema convierte
+                    automáticamente al guardar/descontar. La <strong>unidad base contra sí misma siempre vale 1</strong>,
+                    por eso ese campo no se edita: el peso o equivalencia se define en las otras unidades.
+                    Para crear o inhabilitar unidades del catálogo usa <Link to="/units-of-measure">Unidades de Medida</Link>.
+                </span>
+            </p>
 
             {allUnits.length === 0 ? (
-                <div className="units-empty-page">
-                    <Ruler size={48} />
-                    <p>Primero debes crear unidades en el catálogo.</p>
-                    <Button variant="primary" onClick={() => navigate('/units-of-measure')}>Ir a Unidades de Medida</Button>
-                </div>
+                <EmptyState
+                    icon={Ruler}
+                    title="Primero debes crear unidades en el catálogo."
+                    action={<Button variant="primary" onClick={() => navigate('/units-of-measure')}>Ir a Unidades de Medida</Button>}
+                />
             ) : (
-                <div className="puc-grid">
-                    <section className="puc-section">
-                        <div className="puc-section-header">
-                            <span className="puc-step">1</span>
-                            <div>
-                                <h2>Unidad base del producto</h2>
-                                <p>El inventario interno se controla en esta unidad.</p>
-                            </div>
-                        </div>
-                        <div className="puc-base-card">
-                            <Field label="Unidad base interna" htmlFor="puc-base-unit">
-                                <AppSelect
-                                    inputId="puc-base-unit"
-                                    options={baseOptions}
-                                    value={baseUnit ? String(baseUnit.id) : null}
-                                    onChange={(v) => handleChangeBaseUnit(baseOptions.find((o) => o.value === v) ?? null)}
-                                    placeholder="Selecciona la unidad base..."
-                                    isDisabled={!canMutate}
-                                />
-                            </Field>
-                            {baseUnit && (
-                                <div className="puc-base-summary">
-                                    {(() => {
-                                        const Icon = TYPE_ICON[baseUnit.measurementType];
-                                        return <div className="puc-base-icon"><Icon size={22} /></div>;
-                                    })()}
-                                    <div>
-                                        <strong>{baseUnit.name} ({baseUnit.abbreviation})</strong>
-                                        <p>{TYPE_LABEL[baseUnit.measurementType]}</p>
-                                        {baseUnit.measurementType === 'PACKAGE' && (
-                                            <small className="puc-package-hint">
-                                                Tu base es un paquete personalizado. Para que las compras en gramos/libras
-                                                se conviertan correctamente, agrega esas unidades abajo y define
-                                                <em> cuánto pesa 1 paquete </em>en cada una (1 g = X paquetes).
-                                            </small>
-                                        )}
-                                    </div>
+                <div className={s.grid}>
+                    <FormSection step={1} title="Unidad base del producto" description="El inventario interno se controla en esta unidad.">
+                        <Field label="Unidad base interna" htmlFor="puc-base-unit">
+                            <AppSelect
+                                inputId="puc-base-unit"
+                                options={baseOptions}
+                                value={baseUnit ? String(baseUnit.id) : null}
+                                onChange={(v) => handleChangeBaseUnit(baseOptions.find((o) => o.value === v) ?? null)}
+                                placeholder="Selecciona la unidad base..."
+                                isDisabled={!canMutate}
+                            />
+                        </Field>
+                        {baseUnit && BaseIcon && (
+                            <div className={s.baseSummary}>
+                                <span className={s.unitIcon} aria-hidden="true"><BaseIcon size={18} /></span>
+                                <div>
+                                    <strong>{baseUnit.name} ({baseUnit.abbreviation})</strong>
+                                    <p className={s.muted}>{TYPE_LABEL[baseUnit.measurementType]}</p>
+                                    {baseUnit.measurementType === 'PACKAGE' && (
+                                        <p className={s.tip}>
+                                            Tu base es un paquete personalizado. Para que las compras en gramos/libras
+                                            se conviertan correctamente, agrega esas unidades abajo y define
+                                            <strong> cuánto pesa 1 paquete </strong>en cada una (1 g = X paquetes).
+                                        </p>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    </section>
-
-                    <section className="puc-section">
-                        <div className="puc-section-header">
-                            <span className="puc-step">2</span>
-                            <div>
-                                <h2>Unidades permitidas y conversiones</h2>
-                                <p>Define qué unidades acepta este producto y a cuánto equivale cada una.</p>
                             </div>
-                        </div>
+                        )}
+                    </FormSection>
 
+                    <FormSection step={2} title="Unidades permitidas y conversiones" description="Define qué unidades acepta este producto y a cuánto equivale cada una.">
                         {canMutate && (
-                            <div className="puc-add-row">
-                                <AppSelect isClearable={false} options={addOptions} value={(newAllowedUnitId
-                                        ? addOptions.find((o) => o.value === newAllowedUnitId) || null
-                                        : null)?.value ?? null} onChange={(__v) => { const option = (addOptions).find((o) => o.value === __v) ?? null; return setNewAllowedUnitId(option?.value || ''); }} placeholder="Selecciona una unidad para agregar..." />
-                                <Button type="button" variant="primary" onClick={handleAddAllowedUnit} disabled={!newAllowedUnitId}>
+                            <div className={s.addRow}>
+                                <Field label="Agregar unidad" htmlFor="puc-add-unit">
+                                    <AppSelect
+                                        inputId="puc-add-unit"
+                                        isClearable={false}
+                                        options={addOptions}
+                                        value={newAllowedUnitId || null}
+                                        onChange={(v) => setNewAllowedUnitId(v ?? '')}
+                                        placeholder="Selecciona una unidad para agregar..."
+                                    />
+                                </Field>
+                                <Button variant="primary" onClick={handleAddAllowedUnit} disabled={!newAllowedUnitId}>
                                     Agregar unidad
                                 </Button>
                             </div>
                         )}
 
-                        <div className="puc-units-list">
-                            {editableAllowedUnits.length === 0 && (
-                                <div className="puc-empty">
-                                    Selecciona arriba la unidad base. Las unidades permitidas aparecerán aquí.
-                                </div>
-                            )}
-                            {editableAllowedUnits.map((row) => {
-                                const unit = allUnits.find((u) => u.id === row.unitId);
-                                if (!unit) return null;
-                                const isBase = baseUnit?.id === unit.id;
-                                const Icon = TYPE_ICON[unit.measurementType];
-                                const suggestion = baseUnit ? suggestFactor(unit) : null;
-                                const canSuggest = !isBase && suggestion != null;
-                                return (
-                                    <div
-                                        key={unit.id}
-                                        className={`entity-card puc-unit-card ${isBase ? 'puc-unit-base' : ''}`}
-                                    >
-                                        <div className="entity-card-body puc-unit-card-body">
-                                            <div className="puc-unit-head">
-                                                <div className="puc-unit-icon"><Icon size={20} /></div>
-                                                <div className="puc-unit-headings">
-                                                    <h3 className="entity-card-title">{unit.name}</h3>
-                                                    <p className="entity-card-subtitle">
-                                                        <span className="entity-card-tag">{unit.abbreviation}</span>
-                                                        <span>{TYPE_LABEL[unit.measurementType]}</span>
-                                                    </p>
+                        {editableAllowedUnits.length === 0 ? (
+                            <EmptyState
+                                title="Sin unidades permitidas"
+                                description="Selecciona arriba la unidad base. Las unidades permitidas aparecerán aquí."
+                            />
+                        ) : (
+                            <ul className={s.unitList}>
+                                {editableAllowedUnits.map((row) => {
+                                    const unit = allUnits.find((u) => u.id === row.unitId);
+                                    if (!unit) return null;
+                                    const isBase = baseUnit?.id === unit.id;
+                                    const Icon = TYPE_ICON[unit.measurementType];
+                                    const suggestion = baseUnit ? suggestFactor(unit) : null;
+                                    const canSuggest = !isBase && suggestion != null;
+                                    const baseAbbr = baseUnit?.abbreviation || 'base';
+                                    return (
+                                        <li key={unit.id} className={s.unitRow}>
+                                            <div className={s.unitHead}>
+                                                <span className={s.unitIcon} aria-hidden="true"><Icon size={18} /></span>
+                                                <div className={s.unitTitle}>
+                                                    <strong>{unit.name}</strong>
+                                                    <span className={s.muted}>{unit.abbreviation} · {TYPE_LABEL[unit.measurementType]}</span>
                                                 </div>
-                                                <div className="puc-unit-status">
-                                                    {isBase ? (
-                                                        <span className="puc-pill base">Unidad base</span>
-                                                    ) : (
-                                                        <span className="puc-pill allowed">Permitida</span>
-                                                    )}
-                                                    {row.isDefault && (
-                                                        <span className="puc-pill default"><Star size={12} /> Por defecto</span>
-                                                    )}
+                                                <div className={s.badges}>
+                                                    {isBase ? <Badge tone="primary">Unidad base</Badge> : <Badge>Permitida</Badge>}
+                                                    {row.isDefault && <Badge tone="warning">Por defecto</Badge>}
                                                 </div>
+                                                {canMutate && (
+                                                    <div className={s.rowActions}>
+                                                        <IconButton
+                                                            icon={row.isDefault ? Star : StarOff}
+                                                            label={row.isDefault ? 'Unidad por defecto al mostrar' : 'Marcar como unidad por defecto al mostrar'}
+                                                            tooltip={row.isDefault ? 'Por defecto' : 'Hacer por defecto'}
+                                                            tone={row.isDefault ? 'primary' : 'default'}
+                                                            onClick={() => setDefault(unit.id)}
+                                                        />
+                                                        <IconButton
+                                                            icon={Trash2}
+                                                            tone="danger"
+                                                            label={isBase ? 'Cambia la unidad base para quitarla' : `Quitar ${unit.name}`}
+                                                            tooltip={isBase ? 'Cambia la unidad base para quitarla' : 'Quitar'}
+                                                            onClick={() => removeAllowedUnit(unit.id)}
+                                                            disabled={isBase}
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
 
-                                            <div className="puc-conversion-block">
-                                                {isBase ? (
-                                                    <div className="puc-base-explainer">
-                                                        <Info size={16} />
-                                                        <span>
-                                                            Es la unidad de control de stock. <strong>1 {unit.abbreviation} = 1 {unit.abbreviation}</strong>.
-                                                            No se edita: define la conversión en las otras unidades.
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <div className="puc-conv-header">
-                                                            <span className="puc-conv-label">Equivalencia</span>
-                                                            {canSuggest && canMutate && (
-                                                                <button
-                                                                    type="button"
-                                                                    className="puc-suggest-btn"
-                                                                    onClick={() => applySuggestion(unit.id)}
-                                                                    title={`Calcular desde el catálogo global (${formatNumber(suggestion!)})`}
-                                                                >
-                                                                    <Wand2 size={14} />
+                                            {isBase ? (
+                                                <p className={s.note}>
+                                                    <Info size={14} aria-hidden="true" />
+                                                    <span>
+                                                        Es la unidad de control de stock. <strong>1 {unit.abbreviation} = 1 {unit.abbreviation}</strong>.
+                                                        No se edita: define la conversión en las otras unidades.
+                                                    </span>
+                                                </p>
+                                            ) : (
+                                                <div className={s.conversion}>
+                                                    <div className={s.convHead}>
+                                                        <span className={s.convLabel}>Equivalencia</span>
+                                                        {canSuggest && canMutate && (
+                                                            <Tooltip label={`Calcular desde el catálogo global (${formatNumber(suggestion!)})`}>
+                                                                <Button variant="ghost" icon={Wand2} onClick={() => applySuggestion(unit.id)}>
                                                                     Sugerir desde catálogo
-                                                                </button>
-                                                            )}
-                                                        </div>
-
-                                                        <p className="puc-conv-hint">
-                                                            Edita cualquiera de las dos líneas, la otra se calcula automáticamente.
-                                                        </p>
-
-                                                        <div className="puc-conv-row">
-                                                            <span className="puc-conv-token">1 {unit.abbreviation}</span>
-                                                            <span className="puc-conv-eq">=</span>
-                                                            <input
+                                                                </Button>
+                                                            </Tooltip>
+                                                        )}
+                                                    </div>
+                                                    <p className={s.muted}>Edita cualquiera de las dos líneas, la otra se calcula automáticamente.</p>
+                                                    <div className={s.convGrid}>
+                                                        <Field label={`1 ${unit.abbreviation} equivale a`} htmlFor={`puc-factor-${unit.id}`}>
+                                                            <Input
+                                                                id={`puc-factor-${unit.id}`}
                                                                 type="number"
                                                                 min="0"
                                                                 step="any"
-                                                                className="modal-standard-input puc-conv-input"
+                                                                inputMode="decimal"
+                                                                className="ui-input--number"
                                                                 value={row.conversionFactor}
                                                                 onChange={(e) => handleFactorChange(unit.id, e.target.value)}
                                                                 placeholder="Ej. 0.2857"
+                                                                suffix={baseAbbr}
                                                                 disabled={!canMutate}
                                                             />
-                                                            <span className="puc-conv-token">{baseUnit?.abbreviation || 'base'}</span>
-                                                        </div>
-
-                                                        <div className="puc-conv-row puc-conv-row-inverse">
-                                                            <span className="puc-conv-token">1 {baseUnit?.abbreviation || 'base'}</span>
-                                                            <span className="puc-conv-eq">=</span>
-                                                            <input
+                                                        </Field>
+                                                        <Field label={`1 ${baseAbbr} equivale a`} htmlFor={`puc-inverse-${unit.id}`}>
+                                                            <Input
+                                                                id={`puc-inverse-${unit.id}`}
                                                                 type="number"
                                                                 min="0"
                                                                 step="any"
-                                                                className="modal-standard-input puc-conv-input"
+                                                                inputMode="decimal"
+                                                                className="ui-input--number"
                                                                 value={row.inverseFactor}
                                                                 onChange={(e) => handleInverseChange(unit.id, e.target.value)}
                                                                 placeholder="Ej. 3.5"
+                                                                suffix={unit.abbreviation}
                                                                 disabled={!canMutate}
                                                             />
-                                                            <span className="puc-conv-token">{unit.abbreviation}</span>
-                                                        </div>
-
-                                                        {baseUnit?.measurementType === 'PACKAGE' && unit.measurementType !== 'PACKAGE' && (
-                                                            <div className="puc-conv-tip">
-                                                                <Info size={14} />
-                                                                <span>
-                                                                    Como tu base es un paquete, lo más fácil es escribir en la
-                                                                    segunda línea cuánto pesa 1 paquete (ej. <strong>3.5</strong> {unit.abbreviation}).
-                                                                </span>
-                                                            </div>
+                                                        </Field>
+                                                    </div>
+                                                    {baseUnit?.measurementType === 'PACKAGE' && unit.measurementType !== 'PACKAGE' && (
+                                                        <p className={s.tip}>
+                                                            Como tu base es un paquete, lo más fácil es escribir en la
+                                                            segunda línea cuánto pesa 1 paquete (ej. <strong>3.5</strong> {unit.abbreviation}).
+                                                        </p>
+                                                    )}
+                                                    {!canSuggest && baseUnit
+                                                        && unit.measurementType !== baseUnit.measurementType
+                                                        && baseUnit.measurementType !== 'PACKAGE'
+                                                        && unit.measurementType !== 'PACKAGE' && (
+                                                            <p className={s.tip}>
+                                                                Tipos distintos ({TYPE_LABEL[unit.measurementType]} ↔ {TYPE_LABEL[baseUnit.measurementType]}).
+                                                                Define el factor manualmente según tu caso.
+                                                            </p>
                                                         )}
-                                                        {!canSuggest && baseUnit
-                                                            && unit.measurementType !== baseUnit.measurementType
-                                                            && baseUnit.measurementType !== 'PACKAGE'
-                                                            && unit.measurementType !== 'PACKAGE' && (
-                                                                <div className="puc-conv-tip">
-                                                                    <Info size={14} />
-                                                                    <span>
-                                                                        Tipos distintos ({TYPE_LABEL[unit.measurementType]} ↔ {TYPE_LABEL[baseUnit.measurementType]}).
-                                                                        Define el factor manualmente según tu caso.
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                        {canMutate && (
-                                            <div className="entity-card-actions">
-                                                <button
-                                                    type="button"
-                                                    className={`action-btn-new ${row.isDefault ? 'view' : 'edit'}`}
-                                                    onClick={() => setDefault(unit.id)}
-                                                    title="Marcar como unidad por defecto al mostrar"
-                                                >
-                                                    {row.isDefault ? <Star size={18} /> : <StarOff size={18} />}
-                                                    <span>{row.isDefault ? 'Por defecto' : 'Hacer por defecto'}</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="action-btn-new delete"
-                                                    onClick={() => removeAllowedUnit(unit.id)}
-                                                    disabled={isBase}
-                                                    title={isBase ? 'Cambia la unidad base para quitarla' : 'Quitar'}
-                                                >
-                                                    <Trash2 size={18} />
-                                                    <span>Quitar</span>
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </section>
+                                                </div>
+                                            )}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        )}
+                    </FormSection>
                 </div>
             )}
 
             <ToastContainer toasts={toasts} onRemove={removeToast} />
-        </div>
+        </PageContent>
     );
 }

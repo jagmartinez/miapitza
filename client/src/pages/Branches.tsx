@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { branchesAPI, hrAPI, type BranchGeofencePayload } from '../services/api';
-import BranchWarehouseRoutes from '../components/BranchWarehouseRoutes';
+import BranchWarehouseRoutes, { type WarehouseRoutesController } from '../components/BranchWarehouseRoutes';
 import { Plus, Phone, Pencil, Power, Store, LocateFixed, Search } from 'lucide-react';
 import type { Branch } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -97,6 +97,8 @@ export default function Branches() {
     useEffect(() => {
         void loadData();
     }, [loadData]);
+
+    const routesControllerRef = useRef<WarehouseRoutesController | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -209,6 +211,14 @@ export default function Branches() {
             }
 
             if (!savedBranch?.id) throw new Error('La API no devolvió la sucursal guardada');
+
+            const routes = routesControllerRef.current;
+            if (routes?.dirty && !(await routes.save())) {
+                await loadData();
+                setActiveTab('general');
+                showError('La sucursal se guardó, pero las rutas de bodega no. Corrígelas y vuelve a guardar.');
+                return;
+            }
 
             await loadData();
             closeModal();
@@ -395,7 +405,7 @@ export default function Branches() {
         <PageContent>
             <PageHeader
                 title="Sucursales"
-                description={`${branches.filter((b) => b.status === 'ACTIVE').length} activas · ${branches.length} registradas`}
+                description="Ubicaciones, bodegas de venta y geocerca de asistencia"
                 actions={isSuperAdmin ? (
                     <Button variant="primary" icon={Plus} onClick={() => openModal()}>
                         Nueva sucursal
@@ -547,6 +557,7 @@ export default function Branches() {
                                             branchId={editingBranch.id}
                                             warehouses={editingBranch.warehouses ?? []}
                                             canEdit={hasAnyRole(user, ['SUPERADMIN', 'ADMIN'])}
+                                            controllerRef={routesControllerRef}
                                         />
                                     </FormSection>
                                 );

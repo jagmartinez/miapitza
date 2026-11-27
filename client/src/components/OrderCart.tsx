@@ -2,7 +2,9 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { Plus, Minus, Trash2, Tag } from 'lucide-react';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { promotionsAPI } from '../services/api';
-import { AppSelect } from '@/ui';
+import {
+    AppSelect, Button, Checkbox, EmptyState, IconButton, Input, NumberInput, SegmentedControl, formatNumber,
+} from '@/ui';
 import type { MenuItem } from '../types';
 import { describePromotionSchedule, describePromotionValue, type PromotionRulesView } from '../utils/promotionRules';
 import './OrderCart.css';
@@ -79,7 +81,7 @@ export default function OrderCart({
             {!hideHeader && (
                 <div className="cart-header">
                     <h3>Orden Actual</h3>
-                    <span className="item-count">{cart.length} items</span>
+                    <span className="item-count">{formatNumber(cart.length, 0)} items</span>
                 </div>
             )}
 
@@ -90,10 +92,7 @@ export default function OrderCart({
                 tabIndex={0}
             >
                 {cart.length === 0 ? (
-                    <div className="empty-cart-message">
-                        <p>Sin productos</p>
-                        <small>Selecciona items del menú</small>
-                    </div>
+                    <EmptyState title="Sin productos" description="Selecciona items del menú" />
                 ) : (
                     cart.map(item => (
                         <div key={item.lineId} className="cart-item-compact">
@@ -101,18 +100,9 @@ export default function OrderCart({
                                 <div className="item-name-compact">{item.menuItem.name}</div>
                                 <div className="item-price-compact">{formatMoney(Number(item.price))}</div>
                                 {item.modifiers.length > 0 && (
-                                    <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <ul className="cart-item-modifiers">
                                         {item.modifiers.map(mod => (
-                                            <li
-                                                key={mod.id}
-                                                style={{
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    gap: '8px',
-                                                    fontSize: '0.78rem',
-                                                    color: 'var(--ui-text-muted)'
-                                                }}
-                                            >
+                                            <li key={mod.id}>
                                                 <span>+ {mod.name}</span>
                                                 {Number(mod.price) > 0 && (
                                                     <span>{formatMoney(Number(mod.price))}</span>
@@ -123,25 +113,27 @@ export default function OrderCart({
                                 )}
                             </div>
                             <div className="item-actions">
-                                <button
-                                    className="qty-btn-compact"
+                                <IconButton
+                                    icon={Minus}
+                                    label={`Quitar una unidad de ${item.menuItem.name}`}
+                                    tooltip="Quitar uno"
                                     onClick={() => onUpdateQuantity(item.lineId, -1)}
-                                >
-                                    <Minus size={14} />
-                                </button>
-                                <span className="qty-display">{item.quantity}</span>
-                                <button
-                                    className="qty-btn-compact"
+                                />
+                                <span className="qty-display">{formatNumber(item.quantity, 0)}</span>
+                                <IconButton
+                                    icon={Plus}
+                                    label={`Agregar una unidad de ${item.menuItem.name}`}
+                                    tooltip="Agregar uno"
                                     onClick={() => onUpdateQuantity(item.lineId, 1)}
-                                >
-                                    <Plus size={14} />
-                                </button>
-                                <button
-                                    className="remove-btn-compact"
+                                />
+                                <span className="item-actions__spacer" />
+                                <IconButton
+                                    icon={Trash2}
+                                    tone="danger"
+                                    label={`Eliminar ${item.menuItem.name}`}
+                                    tooltip="Eliminar"
                                     onClick={() => void handleRemove(item.lineId)}
-                                >
-                                    <Trash2 size={14} />
-                                </button>
+                                />
                             </div>
                             <div className="item-total-compact">
                                 {formatMoney(Number(item.price) * item.quantity)}
@@ -153,14 +145,14 @@ export default function OrderCart({
 
             <div className="cart-footer">
                 <div className="discount-control">
-                    <label>Descuento %</label>
-                    <input
-                        type="number"
-                        min="0"
-                        max="100"
+                    <label htmlFor="cart-discount">Descuento</label>
+                    <NumberInput
+                        id="cart-discount"
+                        decimals={2}
+                        min={0}
+                        suffix="%"
                         value={discount}
-                        onChange={(e) => onDiscountChange(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                        className="discount-input-compact"
+                        onChange={(value) => onDiscountChange(Math.min(100, Math.max(0, value ?? 0)))}
                     />
                 </div>
 
@@ -179,25 +171,21 @@ export default function OrderCart({
                     </div>
                     {discount > 0 && (
                         <div className="total-line discount-line">
-                            <span>Descuento ({discount}%):</span>
+                            <span>Descuento ({formatNumber(discount)}%):</span>
                             <span>-{formatMoney(discountAmount)}</span>
                         </div>
                     )}
                     <div className="total-line">
-                        <span>IVA ({taxRate}%):</span>
+                        <span>IVA ({formatNumber(taxRate)}%):</span>
                         <span>{formatMoney(tax)}</span>
                     </div>
                     {tipRate > 0 && onTipToggle && (
                         <div className="total-line tip-line">
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={tipEnabled}
-                                    onChange={(e) => onTipToggle(e.target.checked)}
-                                    style={{ accentColor: 'var(--ui-primary)' }}
-                                />
-                                <span>Propina ({tipRate}%):</span>
-                            </label>
+                            <Checkbox
+                                checked={tipEnabled}
+                                onChange={(e) => onTipToggle(e.target.checked)}
+                                label={`Propina (${formatNumber(tipRate)}%):`}
+                            />
                             <span>{formatMoney(tipAmount)}</span>
                         </div>
                     )}
@@ -267,54 +255,61 @@ function PromotionSelector({ onApply, formatMoney, branchId }: { onApply?: (code
     return (
         <div className="promo-selector">
             <div className="promo-selector-header">
-                <Tag size={14} />
+                <Tag size={14} aria-hidden="true" />
                 <span>Promoción</span>
-                <div className="promo-mode-toggle">
-                    <button type="button" className={mode === 'select' ? 'active' : ''} onClick={() => setMode('select')}>Lista</button>
-                    <button type="button" className={mode === 'manual' ? 'active' : ''} onClick={() => setMode('manual')}>Código</button>
-                </div>
+                <SegmentedControl<'select' | 'manual'>
+                    ariaLabel="Forma de elegir la promoción"
+                    size="sm"
+                    value={mode}
+                    onChange={setMode}
+                    options={[
+                        { value: 'select', label: 'Lista' },
+                        { value: 'manual', label: 'Código' },
+                    ]}
+                />
             </div>
 
             {loadError && (
-                <div style={{ fontSize: '0.78rem', color: 'var(--ui-danger, #ef4444)', margin: '4px 0' }}>
+                <p className="promo-note promo-note--error" role="alert">
                     No se pudieron cargar las promociones. Usa un código manual.
-                </div>
+                </p>
             )}
             {!loadError && !loading && promos.length === 0 && (
-                <div style={{ fontSize: '0.78rem', color: 'var(--ui-text-muted)', margin: '4px 0' }}>
+                <p className="promo-note">
                     No hay promociones activas disponibles.
-                </div>
+                </p>
             )}
 
-            {mode === 'select' ? (
-                <AppSelect
-                    inputId="cart-promo-select"
-                    aria-label="Promoción"
-                    value={selected || null}
-                    onChange={(option) => setSelected(option || '')}
-                    options={promoOptions}
-                    placeholder={loading ? 'Cargando promociones...' : 'Seleccionar promoción...'}
-                    isDisabled={loading || loadError || promos.length === 0}
-                />
-            ) : (
-                <input
-                    type="text"
-                    className="promo-manual-input"
-                    placeholder="Ingresar código..."
-                    value={manualCode}
-                    onChange={e => setManualCode(e.target.value.toUpperCase())}
-                    onKeyDown={e => { if (e.key === 'Enter') handleApply(); }}
-                />
-            )}
+            <div className="promo-selector-row">
+                {mode === 'select' ? (
+                    <AppSelect
+                        inputId="cart-promo-select"
+                        aria-label="Promoción"
+                        value={selected || null}
+                        onChange={(option) => setSelected(option || '')}
+                        options={promoOptions}
+                        placeholder={loading ? 'Cargando promociones...' : 'Seleccionar promoción...'}
+                        isDisabled={loading || loadError || promos.length === 0}
+                    />
+                ) : (
+                    <Input
+                        aria-label="Código de promoción"
+                        className="promo-manual-input"
+                        placeholder="Ingresar código..."
+                        value={manualCode}
+                        onChange={e => setManualCode(e.target.value.toUpperCase())}
+                        onKeyDown={e => { if (e.key === 'Enter') handleApply(); }}
+                    />
+                )}
 
-            <button
-                type="button"
-                className="promo-apply-btn"
-                onClick={handleApply}
-                disabled={mode === 'select' ? !selected : !manualCode}
-            >
-                Aplicar
-            </button>
+                <Button
+                    type="button"
+                    onClick={handleApply}
+                    disabled={mode === 'select' ? !selected : !manualCode}
+                >
+                    Aplicar
+                </Button>
+            </div>
         </div>
     );
 }

@@ -65,7 +65,8 @@ export function TrendChart({ buckets, current, previous, goal, format, ariaLabel
         {prev ? <li><span className="ui-chart__swatch ui-chart__swatch--muted" aria-hidden="true" />{previousLabel}</li> : null}
         {goalValue != null ? <li><span className="ui-chart__swatch ui-chart__swatch--goal" aria-hidden="true" />Meta ({format(goalValue)})</li> : null}
       </ul>
-      <table className="ui-visually-hidden">
+      <div className="ui-visually-hidden">
+        <table>
         <caption>{ariaLabel}</caption>
         <thead>
           <tr><th>Periodo</th><th>Actual</th>{prev ? <th>{previousLabel}</th> : null}</tr>
@@ -80,6 +81,7 @@ export function TrendChart({ buckets, current, previous, goal, format, ariaLabel
           ))}
         </tbody>
       </table>
+      </div>
     </figure>
   );
 }

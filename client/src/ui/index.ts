@@ -23,7 +23,7 @@ export { FormGrid } from './forms/FormGrid';
 export { DateInput } from './forms/DateInput';
 export { AppSelect } from './forms/AppSelect';
 export type { AppSelectProps, Opt } from './forms/AppSelect';
-export { appSelectStyles } from './forms/appSelectStyles';
+export { appSelectStyles, appSelectTheme } from './forms/appSelectStyles';
 export { DataTable } from './data/DataTable';
 export type { Column, ColumnType, DataTableProps, PaginationMode } from './data/DataTable';
 export { Pagination } from './data/Pagination';

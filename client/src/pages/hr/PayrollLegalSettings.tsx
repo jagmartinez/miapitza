@@ -251,7 +251,7 @@ export default function PayrollLegalSettings() {
               <span className={form.cellSub}>Centro de control legal · {companyTaxProfile.companyName}</span>
               <p className={form.help}>Administra en un solo flujo el perfil fiscal, las vigencias y los parámetros congelados que utiliza cada nómina.</p>
             </div>
-            <Button size="sm" onClick={() => navigate('/companies')}>Editar perfil fiscal</Button>
+            <Button onClick={() => navigate('/companies')}>Editar perfil fiscal</Button>
           </div>
           <dl className={form.facts}>
             <div><dt>Régimen DGI</dt><dd>{regimeLabel}</dd><dd className={form.cellSub}>{companyTaxProfile.incomeTaxWithholding ? 'Retiene IR laboral' : 'No retiene IR laboral'}</dd></div>
@@ -275,7 +275,7 @@ export default function PayrollLegalSettings() {
       {!loading && !error && companyTaxProfile && !companyTaxProfile.ready && (
         <div className={`${form.alertWarning} ${form.actions}`} role="alert">
           <span><strong>El perfil fiscal de la empresa está pendiente.</strong> Confirma régimen, retención de IR y respaldo en Empresas. Hasta entonces no se pueden validar reglas ni iniciar nuevas corridas.</span>
-          <Button variant="primary" size="sm" onClick={() => navigate('/companies')}>Completar perfil</Button>
+          <Button variant="primary" onClick={() => navigate('/companies')}>Completar perfil</Button>
         </div>
       )}
 
@@ -342,14 +342,14 @@ export default function PayrollLegalSettings() {
                 <span className={form.cellSub}><CalendarDays size={14} aria-hidden="true" /> {formatLegalDate(selectedRule.effectiveFrom)} – {formatLegalDate(selectedRule.effectiveTo).toLocaleLowerCase()}</span>
               </span>
               <span className={form.cellSub}>Fuente: {selectedRule.sourceReference}</span>
-              {selectedRule.activeConfigurationRevisionId && <div><Button type="button" size="sm" icon={Copy} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}>Clonar para editar</Button></div>}
+              {selectedRule.activeConfigurationRevisionId && <div><Button type="button" icon={Copy} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}>Clonar para editar</Button></div>}
             </div>
 
             {!selectedProfileIsCurrent && (
               <div className={form.alertWarning} role="alert">
                 <strong>El perfil fiscal de Empresa cambió después de validar esta versión.</strong> La versión activa conserva su copia histórica. Clónala para crear un borrador con el régimen y la retención vigentes.
                 <div className={form.actions}>
-                  <Button variant="primary" type="button" size="sm" icon={Copy} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}>Clonar ahora</Button>
+                  <Button variant="primary" type="button" icon={Copy} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}>Clonar ahora</Button>
                 </div>
               </div>
             )}

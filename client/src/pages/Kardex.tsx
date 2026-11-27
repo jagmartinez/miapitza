@@ -224,8 +224,8 @@ export default function Kardex() {
             && movement.originalUnit !== unitLabel
             && movement.originalQuantity != null;
         return showOriginal ? (
-            <span className={catalog.muted} style={{ display: 'block' }}>
-                ({movement.originalQuantity} {movement.originalUnit})
+            <span className={catalog.muted}>
+                ({formatNumber(num(movement.originalQuantity), 3)} {movement.originalUnit})
             </span>
         ) : null;
     };
@@ -345,13 +345,13 @@ export default function Kardex() {
                     ) },
                     { key: 'reference', header: 'Referencia' },
                     { key: 'in', header: 'Entrada', type: 'qty', render: (movement) => (
-                        <span>
+                        <span className={catalog.cellStack}>
                             {movement.in ? `${formatNumber(num(movement.in), 3)} ${unitLabel}` : '—'}
                             {movement.in ? originalHint(movement) : null}
                         </span>
                     ) },
                     { key: 'out', header: 'Salida', type: 'qty', render: (movement) => (
-                        <span>
+                        <span className={catalog.cellStack}>
                             {movement.out ? `${formatNumber(num(movement.out), 3)} ${unitLabel}` : '—'}
                             {movement.out ? originalHint(movement) : null}
                         </span>

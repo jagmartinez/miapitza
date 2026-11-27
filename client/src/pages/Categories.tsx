@@ -44,6 +44,7 @@ export default function Categories() {
 
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<CategoryRow | null>(null);
     const [formData, setFormData] = useState({
@@ -67,7 +68,9 @@ export default function Categories() {
         try {
             const res = await categoriesAPI.getAll();
             setCategories(res.data.data);
+            setLoadError(null);
         } catch (error) {
+            setLoadError('No se pudieron cargar las categorías.');
             notifyError(error, 'No se pudieron cargar las categorías');
         } finally {
             setLoading(false);
@@ -170,7 +173,7 @@ export default function Categories() {
                 </div>
             )
         },
-        { key: 'prefix', header: 'Prefijo', accessor: (c) => c.codePrefix || '—' },
+        { key: 'prefix', header: 'Prefijo', width: '1fr', accessor: (c) => c.codePrefix || '—' },
         { key: 'items', header: 'Platos', type: 'number', decimals: 0, accessor: (c) => c._count?.menuItems || 0 },
         { key: 'order', header: 'Orden', type: 'number', decimals: 0, accessor: (c) => c.sortOrder ?? 0 },
         {
@@ -225,12 +228,26 @@ export default function Categories() {
                 ) : undefined}
             />
 
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar categoría"
+                    placeholder="Buscar por nombre o prefijo"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+                <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+            </TableToolbar>
+
             <DataTable<CategoryRow>
                 ariaLabel="Listado de categorías"
                 rows={filtered}
                 rowKey={(c) => c.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => void loadData()}
                 resetKey={`${q}|${statusFilter}`}
                 onRowClick={canMutateCategory ? (c) => openModal(c) : undefined}
                 empty={categories.length === 0 ? (
@@ -240,19 +257,6 @@ export default function Categories() {
                         action={canMutateCategory ? <Button variant="primary" onClick={() => openModal()}>Crear primera categoría</Button> : undefined}
                     />
                 ) : 'Sin resultados. Ajusta o limpia los filtros.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar categoría"
-                            placeholder="Buscar por nombre o prefijo"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal

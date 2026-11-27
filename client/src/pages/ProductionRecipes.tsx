@@ -3,14 +3,14 @@ import { productionRecipesAPI, productsAPI, unitsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
     PageContent, PageHeader, Skeleton, StatCard, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
-    type Column, type Opt, type Tone, LoadErrorState,
+    type Column, type Opt, type Tone, LoadErrorState, Tooltip,
 } from '@/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
-import { FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Eye, X } from 'lucide-react';
+import { FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Eye, X, Search } from 'lucide-react';
 
 /** Columnas de la lista cuando el detalle ocupa el panel derecho (maestro-detalle). */
 const MASTER_KEYS = ['product', 'status', 'unitCost'];
@@ -20,7 +20,7 @@ import {
     type CostVariation,
 } from './recipeInsights';
 import s from './Production.module.css';
-import './ProductionRecipes.css';
+
 import { getApiErrorMessage } from '../utils/apiError';
 
 interface ComponentRow {
@@ -486,8 +486,8 @@ export default function ProductionRecipes() {
     if (loading) {
         return (
             <PageContent>
-                <PageHeader title="Recetas de producción" description="Cargando recetas…" />
-                <Skeleton height={240} />
+                <PageHeader title="Recetas de producción" description="Define recetas multinivel para productos intermedios y terminados" />
+                <div role="status" aria-label="Cargando recetas…"><Skeleton height={240} /></div>
             </PageContent>
         );
     }
@@ -545,7 +545,7 @@ export default function ProductionRecipes() {
             hideBelow: 'lg',
             render: (recipe) => {
                 const v = variationById.get(recipe.id);
-                if (!v) return <span className={s.nd} title="Sin versión anterior o sin costo calculable">N/D</span>;
+                if (!v) return <Tooltip label="Sin versión anterior o sin costo calculable"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip>;
                 const sign = v.deltaPct > 0 ? '+' : '';
                 return <span className={v.deltaPct >= COST_VARIATION_ALERT_PCT ? s.bad : undefined}>{sign}{formatPercent(v.deltaPct)}</span>;
             },
@@ -626,13 +626,13 @@ export default function ProductionRecipes() {
                         </div>
                     </div>
                     <div className={s.rowActions}>
-                        {canManage && <Button size="sm" icon={Copy} onClick={() => void handleCreateVersion(viewingRecipe)}>Nueva versión</Button>}
+                        {canManage && <Button icon={Copy} onClick={() => void handleCreateVersion(viewingRecipe)}>Nueva versión</Button>}
                         {canManage && viewingRecipe.status === 'DRAFT' && (
-                            <Button size="sm" variant="primary" icon={Pencil} onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}>
+                            <Button variant="primary" icon={Pencil} onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}>
                                 Editar receta
                             </Button>
                         )}
-                        <IconButton icon={X} size="sm" label="Cerrar detalle" onClick={() => setViewingRecipe(null)} />
+                        <IconButton icon={X} label="Cerrar detalle" tooltip="Cerrar" onClick={() => setViewingRecipe(null)} />
                     </div>
                 </header>
 
@@ -666,6 +666,8 @@ export default function ProductionRecipes() {
                         rows={componentRows}
                         rowKey={(row) => row.key}
                         minWidth="0"
+                        variant="flat"
+                        hidePaginationIfSinglePage
                         footerLabel="Total del lote"
                         empty="La receta no tiene componentes."
                         columns={[
@@ -704,9 +706,9 @@ export default function ProductionRecipes() {
                         <ul className={s.usedIn}>
                             {parents.map((parent) => (
                                 <li key={parent.id}>
-                                    <button type="button" className={s.linkButton} onClick={() => void handleView(parent)}>
+                                    <Button variant="ghost" onClick={() => void handleView(parent)}>
                                         {parent.product?.name || `Producto #${parent.productId}`} · v{parent.version}
-                                    </button>
+                                    </Button>
                                     <Badge tone={STATUS_TONE_BY_RECIPE[parent.status].tone}>{STATUS_TONE_BY_RECIPE[parent.status].label}</Badge>
                                 </li>
                             ))}
@@ -735,8 +737,6 @@ export default function ProductionRecipes() {
                 description="Define recetas multinivel para productos intermedios y terminados"
                 actions={<Button variant="primary" icon={Plus} onClick={handleOpenCreate} disabled={!canManage}>Nueva receta</Button>}
             />
-
-            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadAll(); }} />}
 
             {(risingCount > 0 || noCostCount > 0) && (
                 <div className={s.stats}>
@@ -769,20 +769,20 @@ export default function ProductionRecipes() {
             />
 
             <TableToolbar
-                actions={focus !== 'all' ? <Button size="sm" onClick={() => setFocus('all')}>Quitar filtro</Button> : undefined}
+                actions={focus !== 'all' ? <Button variant="ghost" onClick={() => setFocus('all')}>Quitar filtro</Button> : undefined}
             >
-                <div className={s.search}>
-                    <Input
-                        type="search"
-                        aria-label="Buscar receta"
-                        placeholder="Buscar por producto, SKU o receta..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
+                <Input
+                    type="search"
+                    aria-label="Buscar receta"
+                    placeholder="Buscar por producto, SKU o receta..."
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
             </TableToolbar>
 
             {/* Sin receta seleccionada la tabla usa todo el ancho; el panel aparece al elegir una fila. */}
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadAll(); }} />}
             <div className={detail ? s.masterDetail : undefined}>
                 <div className={s.master}>
                     <DataTable<ProductionRecipe>
@@ -825,8 +825,8 @@ export default function ProductionRecipes() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button variant="primary" icon={Save} onClick={() => void handleSave()} loading={saving} disabled={saving}>
-                            {saving ? 'Guardando...' : 'Guardar'}
+                        <Button variant="primary" icon={Save} onClick={() => void handleSave()} loading={saving}>
+                            Guardar
                         </Button>
                     </>
                 )}
@@ -856,6 +856,7 @@ export default function ProductionRecipes() {
                                 <Field label="Rendimiento por lote" htmlFor="pr-yield" required hint="Cantidad que produce una corrida de esta receta.">
                                     <Input
                                         id="pr-yield"
+                                        className="ui-input--number"
                                         type="number"
                                         min="0"
                                         step="0.0001"
@@ -905,6 +906,7 @@ export default function ProductionRecipes() {
                                             <div className={s.componentQty}>
                                                 <Input
                                                     type="number"
+                                                    className="ui-input--number"
                                                     min="0"
                                                     step="0.0001"
                                                     aria-label={`Cantidad del componente ${index + 1}`}
@@ -923,9 +925,9 @@ export default function ProductionRecipes() {
                                                 />
                                             </div>
                                             <div className={s.componentCost} aria-label={`Costo estimado del componente ${index + 1}`}>
-                                                {cost === null ? <span className={s.nd} title="Se calcula al completar producto, cantidad y rendimiento">N/D</span> : formatMoney(cost)}
+                                                {cost === null ? <Tooltip label="Se calcula al completar producto, cantidad y rendimiento"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip> : formatMoney(cost)}
                                             </div>
-                                            <IconButton icon={Trash2} size="sm" label="Quitar componente" onClick={() => removeRow(row.key)} />
+                                            <IconButton icon={Trash2} tone="danger" label={`Quitar componente ${index + 1}`} tooltip="Quitar componente" onClick={() => removeRow(row.key)} />
                                         </div>
                                     );
                                 })}
@@ -939,47 +941,44 @@ export default function ProductionRecipes() {
                     {activeFormTab === 'cost' && (
                         <FormSection title="Costo estimado">
                             {previewCost ? (
-                                <div className="pr-cost-panel">
-                                    <div className="pr-cost-lines">
-                                        {previewCost.lines.map((line) => (
-                                            <div key={line.componentProductId} className="pr-cost-line">
-                                                <span className="pr-cost-line-name">{line.componentName}</span>
-                                                <span className="pr-cost-line-qty">
-                                                    {formatNumber(line.quantity)} {line.unit}
-                                                </span>
-                                                <span className="pr-cost-line-total">{formatMoney(Number(line.totalCost))}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="pr-cost-totals">
-                                        <div className="pr-cost-total-row">
-                                            <span>Costo del lote</span>
-                                            <strong>{formatMoney(Number(previewCost.batchCost))}</strong>
+                                <>
+                                    <DataTable<RecipeCost['lines'][number]>
+                                        ariaLabel="Costo estimado por componente"
+                                        rows={previewCost.lines}
+                                        rowKey={(line) => line.componentProductId}
+                                        minWidth="0"
+                                        hidePaginationIfSinglePage
+                                        empty="La receta no tiene componentes."
+                                        columns={[
+                                            { key: 'name', header: 'Insumo', width: '2fr', render: (line) => <span className={s.cellTitle}>{line.componentName}</span> },
+                                            { key: 'quantity', header: 'Cantidad', type: 'qty', width: '1fr', render: (line) => `${formatNumber(line.quantity)} ${line.unit}`.trim() },
+                                            { key: 'totalCost', header: `Costo (${symbol})`, type: 'money', width: '1fr', accessor: (line) => Number(line.totalCost) },
+                                        ]}
+                                    />
+                                    <dl className={s.facts}>
+                                        <div><dt>Costo del lote</dt><dd>{formatMoney(Number(previewCost.batchCost))}</dd></div>
+                                        <div>
+                                            <dt>Costo unitario{previewCost.yieldBaseUnit ? ` (por ${previewCost.yieldBaseUnit})` : ''}</dt>
+                                            <dd>{formatMoney(Number(previewCost.unitCost))}</dd>
                                         </div>
-                                        <div className="pr-cost-total-row highlight">
-                                            <span>
-                                                Costo unitario
-                                                {previewCost.yieldBaseUnit ? ` (por ${previewCost.yieldBaseUnit})` : ''}
-                                            </span>
-                                            <strong>{formatMoney(Number(previewCost.unitCost))}</strong>
-                                        </div>
-                                    </div>
-                                </div>
+                                    </dl>
+                                </>
                             ) : previewCostError ? (
-                                <div className="pr-cost-panel" role="alert">
+                                <div role="alert">
                                     <p className={s.bad}>{previewCostError}</p>
-                                    <p className="pr-helper-text">Corrige la unidad o su factor antes de guardar.</p>
+                                    <p className={s.hint}>Corrige la unidad o su factor antes de guardar.</p>
                                 </div>
+                            ) : previewCostLoading ? (
+                                <Skeleton height={120} />
                             ) : (
-                                <div className="pr-cost-panel">
-                                    <div className="pr-cost-total-row highlight">
-                                        <span>Costo estimado</span>
-                                        <strong>{previewCostLoading ? 'Calculando…' : 'N/D'}</strong>
-                                    </div>
-                                    <p className="pr-helper-text">
+                                <>
+                                    <dl className={s.facts}>
+                                        <div><dt>Costo estimado</dt><dd>N/D</dd></div>
+                                    </dl>
+                                    <p className={s.hint}>
                                         Cálculo autoritativo con conversión a unidad base y costo operativo vigente.
                                     </p>
-                                </div>
+                                </>
                             )}
                             {!editingRecipe && (
                                 <Checkbox

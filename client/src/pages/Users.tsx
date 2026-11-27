@@ -408,7 +408,7 @@ export default function Users() {
         <PageContent>
             <PageHeader
                 title="Usuarios"
-                description={`${users.filter((u) => u.status === 'ACTIVE').length} activos · ${users.length} registrados`}
+                description="Cuentas de acceso, roles y sucursales permitidas"
                 actions={(
                     <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()} disabled={Boolean(loadError)}>
                         Nuevo usuario

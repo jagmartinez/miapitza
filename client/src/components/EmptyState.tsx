@@ -1,8 +1,9 @@
-import { ChefHat, Calendar, Clock, MapPin } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Button } from '@/ui';
 import './EmptyState.css';
 
 interface EmptyStateProps {
-    icon?: React.ReactNode;
+    icon?: ReactNode;
     title: string;
     description?: string;
     action?: {
@@ -11,61 +12,18 @@ interface EmptyStateProps {
     };
 }
 
+/** Estado vacío con icono libre (nodo). Para listas del kit usa `EmptyState` de `@/ui`. */
 export default function EmptyState({ icon, title, description, action }: EmptyStateProps) {
-    const defaultIcon = <ChefHat size={64} />;
-
     return (
-        <div className="empty-state">
-            <div className="empty-state-icon">
-                {icon || defaultIcon}
-            </div>
-            <h3 className="empty-state-title">{title}</h3>
+        <div className="empty-state" role="status">
+            {icon ? <div className="empty-state-icon">{icon}</div> : null}
+            <p className="empty-state-title">{title}</p>
             {description && <p className="empty-state-description">{description}</p>}
             {action && (
-                <button className="empty-state-action" onClick={action.onClick}>
+                <Button variant="primary" onClick={action.onClick}>
                     {action.label}
-                </button>
+                </Button>
             )}
         </div>
-    );
-}
-
-export function NoOrdersEmptyState() {
-    return (
-        <EmptyState
-            icon={<ChefHat size={64} />}
-            title="No hay ordenes"
-            description="Las nuevas ordenes apareceran aqui automaticamente"
-        />
-    );
-}
-
-export function NoReservationsEmptyState() {
-    return (
-        <EmptyState
-            icon={<Calendar size={64} />}
-            title="No hay reservaciones"
-            description="Crea una nueva reservacion para comenzar"
-        />
-    );
-}
-
-export function NoResultsEmptyState() {
-    return (
-        <EmptyState
-            icon={<Clock size={64} />}
-            title="No se encontraron resultados"
-            description="Intenta ajustar los filtros de busqueda"
-        />
-    );
-}
-
-export function NoLocationEmptyState() {
-    return (
-        <EmptyState
-            icon={<MapPin size={64} />}
-            title="No hay ubicaciones"
-            description="Agrega una nueva ubicacion para organizar tus mesas"
-        />
     );
 }

@@ -6,7 +6,7 @@ import { notifyError } from '../services/notify';
 import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    NumberInput, Textarea, formatMoney, formatNumber,
+    LoadErrorState, NumberInput, Skeleton, Textarea, formatMoney, formatNumber,
     type Column,
 } from '@/ui';
 import { Plus, Trash2, Save, CheckCircle, Package, Eye, Upload, Download } from 'lucide-react';
@@ -652,7 +652,14 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                     <p className={styles.muted}>La orden no maneja descuento ni IVA; el total es la suma de las líneas.</p>
                 </div>
             )}
-            footerStart={!isNew && (order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED') ? (
+            footerStart={isDraft && activeTab === 'data' ? (
+                <>
+                    <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla</Button>
+                    <Button icon={Upload} onClick={() => importInputRef.current?.click()} loading={importing}>
+                        Importar Excel
+                    </Button>
+                </>
+            ) : !isNew && (order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED') ? (
                 <Button icon={Package} onClick={openReceiveModal}>{order?.status === 'PARTIALLY_RECEIVED' ? 'Recibir saldo' : 'Recibir'}</Button>
             ) : undefined}
             footer={({ requestClose }) => (
@@ -662,29 +669,31 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                         <Button icon={CheckCircle} onClick={() => void handleStatusChange('ISSUED')}>Emitir</Button>
                     )}
                     {activeTab === 'receive' && (order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED') && (
-                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId || receiving} loading={receiving}>
+                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId} loading={receiving}>
                             Confirmar Recepción
                         </Button>
                     )}
                     {isDraft && (
-                        <Button variant="primary" icon={Save} type="submit" form="po-form" loading={saving} disabled={saving}>
-                            {saving ? 'Guardando...' : 'Guardar'}
+                        <Button variant="primary" icon={Save} type="submit" form="po-form" loading={saving}>
+                            Guardar
                         </Button>
                     )}
                 </>
             )}
         >
             {loading ? (
-                <p role="status">Cargando...</p>
+                <div className={styles.stack} role="status" aria-label="Cargando...">
+                    <Skeleton height={40} />
+                    <Skeleton height={160} />
+                    <Skeleton height={240} />
+                </div>
             ) : (
                 <form id="po-form" onSubmit={handleSave} className={styles.stack}>
                     {depsError && (
-                        <div className={styles.alert} role="alert">
-                            <span className={styles.inline}>
-                                No se pudieron cargar sucursales, proveedores o productos; las listas pueden estar incompletas.
-                                <Button size="sm" onClick={() => void loadDependencies()}>Reintentar</Button>
-                            </span>
-                        </div>
+                        <LoadErrorState
+                            message="No se pudieron cargar sucursales, proveedores o productos; las listas pueden estar incompletas."
+                            onRetry={() => void loadDependencies()}
+                        />
                     )}
 
                     {activeTab === 'data' && (
@@ -796,12 +805,6 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                             onChange={handleImportExcel}
                                             hidden
                                         />
-                                        <div className={styles.inline}>
-                                            <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla</Button>
-                                            <Button icon={Upload} onClick={() => importInputRef.current?.click()} disabled={importing}>
-                                                {importing ? 'Importando...' : 'Importar Excel'}
-                                            </Button>
-                                        </div>
                                         <FormGrid columns="repeat(auto-fit, minmax(min(100%, 12rem), 1fr))">
                                             <Field label="Producto" htmlFor="po-item-product">
                                                 <AppSelect

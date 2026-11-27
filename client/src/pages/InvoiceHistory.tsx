@@ -4,7 +4,7 @@ import { notifyError } from '../services/notify';
 import { Ban, CreditCard, Download, FileMinus, RotateCcw } from 'lucide-react';
 import {
     AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input, NumberInput,
-    PageContent, PageHeader, SegmentedControl, TableToolbar, Textarea, formatMoney,
+    PageContent, PageHeader, TableToolbar, Textarea, formatMoney, formatNumber,
     type Column,
 } from '@/ui';
 import { ordersAPI, invoicesAPI, settingsAPI, paymentsAPI, warehousesAPI } from '../services/api';
@@ -15,7 +15,7 @@ import { useAppToast } from '../context/ToastContext';
 import { canReversePayment, canCancelInvoice, canIssueCreditNote } from '../utils/authz';
 import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
-import styles from './compras.module.css';
+import styles from './InvoiceHistory.module.css';
 import { readServerPagination } from '../utils/serverPagination';
 import { useDebounce } from '../utils/useDebounce';
 
@@ -210,7 +210,7 @@ export default function InvoiceHistory() {
             await loadInvoices(false);
         } catch (err) {
             console.error('Error downloading invoice PDF:', err);
-            setError(getApiErrorMessage(err, 'No se pudo descargar el PDF de la factura.'));
+            showError(getApiErrorMessage(err, 'No se pudo descargar el PDF de la factura.'));
         }
     };
 
@@ -415,13 +415,58 @@ export default function InvoiceHistory() {
                     : 'Emitida'
     );
 
+    const formatPaymentDate = (value?: string | null) => {
+        const date = value ? new Date(value) : null;
+        return date && !Number.isNaN(date.getTime()) ? date.toLocaleString('es-NI') : 'No disponible';
+    };
+
+    const paymentColumns: Column<Payment>[] = [
+        { key: 'id', header: 'Pago', width: '0.7fr', render: (payment) => `#${payment.id}` },
+        { key: 'method', header: 'Método', width: '1.2fr', render: (payment) => payment.paymentMethod?.name || 'No disponible' },
+        { key: 'amount', header: `Monto (${symbol})`, width: '1fr', type: 'money', accessor: (payment) => Number(payment.amount) },
+        { key: 'payer', header: 'Pagador', width: '1.2fr', hideBelow: 'md', render: (payment) => payment.payerName || 'No indicado' },
+        { key: 'reference', header: 'Referencia', width: '1.2fr', hideBelow: 'md', render: (payment) => payment.reference || 'Sin referencia' },
+        { key: 'createdAt', header: 'Fecha', width: '1.5fr', render: (payment) => formatPaymentDate(payment.createdAt) },
+        {
+            key: 'status', header: 'Estado', width: '1.6fr', type: 'status',
+            render: (payment) => {
+                const reversed = payment.status === 'REVERSED';
+                return (
+                    <span>
+                        <Badge tone={reversed ? 'danger' : 'success'} dot>{reversed ? 'Revertido' : 'Activo'}</Badge>
+                        {reversed && (
+                            <span className={styles.muted}>
+                                {' '}{payment.reversalReason || 'Motivo no disponible'}
+                                {payment.reversedAt ? ` · ${formatPaymentDate(payment.reversedAt)}` : ''}
+                            </span>
+                        )}
+                    </span>
+                );
+            },
+        },
+        ...(mayReversePayments ? [{
+            key: 'actions', header: '', width: '0.5fr', type: 'actions' as const,
+            render: (payment: Payment) => payment.status === 'REVERSED' ? null : (
+                <IconButton
+                    size="sm"
+                    icon={RotateCcw}
+                    tone="danger"
+                    tooltip="Revertir pago"
+                    label={`Revertir pago #${payment.id}`}
+                    onClick={() => beginReversal(payment.id)}
+                    disabled={reversingPaymentId !== null}
+                />
+            ),
+        }] : []),
+    ];
+
     const columns: Column<Invoice>[] = [
         { key: 'invoiceNumber', header: 'Número', width: '1.2fr' },
         {
             key: 'date', header: 'Fecha', width: '1.3fr',
             render: (invoice) => {
                 const d = new Date(invoice.date);
-                return `${d.toLocaleDateString('es-ES')} ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+                return `${d.toLocaleDateString('es-NI')} ${d.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}`;
             },
         },
         { key: 'customer', header: 'Cliente', width: '1.4fr', hideBelow: 'md', render: (invoice) => invoice.customerName || 'Cliente General' },
@@ -469,6 +514,7 @@ export default function InvoiceHistory() {
         { value: 'all', label: 'Todas' },
     ];
 
+    const reversalPayment = payments.find((payment) => payment.id === reversalPaymentId) ?? null;
     const nonCashFiscalPayments = payments.filter((payment) => payment.paymentMethod?.type !== 'CASH');
     const fiscalDirty = fiscalReason.trim() !== '' || Object.values(externalRefundReferences).some((v) => v.trim() !== '')
         || Object.values(creditQuantities).some((v) => v > 0);
@@ -481,7 +527,7 @@ export default function InvoiceHistory() {
                     ? undefined
                     : (
                         <>
-                            {totalInvoices} facturas
+                            {formatNumber(totalInvoices, 0)} facturas
                             {aggregateAmount !== null && (
                                 <> • Total del período: <span className={styles.nowrap}>{formatMoney(aggregateAmount, symbol)}</span></>
                             )}
@@ -492,14 +538,27 @@ export default function InvoiceHistory() {
                     )}
             />
 
-            {error && (
-                <div className={styles.alert} role="alert">
-                    <span className={styles.inline}>
-                        {error}
-                        <Button size="sm" onClick={() => void loadInvoices()}>Reintentar</Button>
-                    </span>
-                </div>
-            )}
+            <TableToolbar>
+                <Field label="Período" htmlFor="invoice-period">
+                    <AppSelect<string>
+                        inputId="invoice-period"
+                        isClearable={false}
+                        options={DATE_FILTERS}
+                        value={dateFilter}
+                        onChange={(v) => setDateFilter(v ?? 'month')}
+                    />
+                </Field>
+                <Field label="Buscar" htmlFor="invoice-search">
+                    <Input
+                        id="invoice-search"
+                        type="search"
+                        aria-label="Buscar facturas por número, cliente o NIT"
+                        placeholder="Buscar por número, cliente o NIT..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </Field>
+            </TableToolbar>
 
             <DataTable
                 ariaLabel="Facturas"
@@ -510,32 +569,9 @@ export default function InvoiceHistory() {
                 resetKey={`${dateFilter}|${debouncedSearch}`}
                 pagination={{ mode: 'server', page, pageSize: PAGE_SIZE, total: totalInvoices, onChange: (nextPage) => setPage(nextPage) }}
                 pageSizeOptions={[PAGE_SIZE]}
-                empty={error
-                    ? 'No disponible: las facturas no se pudieron cargar.'
-                    : 'No se encontraron facturas pagadas en el período seleccionado. Prueba ampliar el filtro a «Este Mes» o «Todas».'}
-                toolbar={(
-                    <TableToolbar>
-                        <div className={styles.filters}>
-                            <SegmentedControl
-                                ariaLabel="Período"
-                                options={DATE_FILTERS}
-                                value={dateFilter}
-                                onChange={setDateFilter}
-                            />
-                            <div className={`${styles.filterField} ${styles.search}`}>
-                                <label htmlFor="invoice-search">Buscar</label>
-                                <Input
-                                    id="invoice-search"
-                                    type="search"
-                                    aria-label="Buscar facturas por número, cliente o NIT"
-                                    placeholder="Buscar por número, cliente o NIT..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
-                            </div>
-                        </div>
-                    </TableToolbar>
-                )}
+                error={error}
+                onRetry={() => void loadInvoices()}
+                empty="No se encontraron facturas pagadas en el período seleccionado. Prueba ampliar el filtro a «Este Mes» o «Todas»."
             />
 
             <FullScreenModal
@@ -544,121 +580,57 @@ export default function InvoiceHistory() {
                 title={`Pagos de ${selectedInvoice?.invoiceNumber || ''}`}
                 subtitle="Historial financiero inmutable de la orden. Los pagos revertidos permanecen visibles para auditoría."
                 footer={(
-                    <Button onClick={closePaymentHistory} disabled={reversingPaymentId !== null}>
+                    <Button variant="ghost" onClick={closePaymentHistory} disabled={reversingPaymentId !== null}>
                         Cerrar
                     </Button>
                 )}
             >
                 {paymentsLoading ? (
-                    <p role="status">Cargando pagos...</p>
-                ) : payments.length === 0 ? (
-                    <p className={styles.muted}>Sin pagos registrados. Esta factura no tiene movimientos de pago disponibles.</p>
+                    <p className={styles.muted} role="status">Cargando pagos...</p>
                 ) : (
-                    <div>
-                        {payments.map(payment => {
-                            const reversed = payment.status === 'REVERSED';
-                            const editingReversal = reversalPaymentId === payment.id;
-                            const paymentDate = payment.createdAt ? new Date(payment.createdAt) : null;
-                            const reversedDate = payment.reversedAt ? new Date(payment.reversedAt) : null;
-
-                            return (
-                                <article className={`${styles.paymentCard} ${reversed ? styles.reversed : ''}`} key={payment.id}>
-                                    <div className={styles.summaryRow}>
-                                        <strong>Pago #{payment.id}</strong>
-                                        <Badge tone={reversed ? 'danger' : 'success'} dot>{reversed ? 'Revertido' : 'Activo'}</Badge>
-                                    </div>
-                                    <dl className={styles.details}>
-                                        <div>
-                                            <dt>Método</dt>
-                                            <dd>{payment.paymentMethod?.name || 'No disponible'}</dd>
-                                        </div>
-                                        <div>
-                                            <dt>Monto</dt>
-                                            <dd className={styles.num}>{formatMoney(Number(payment.amount), symbol)}</dd>
-                                        </div>
-                                        <div>
-                                            <dt>Pagador</dt>
-                                            <dd>{payment.payerName || 'No indicado'}</dd>
-                                        </div>
-                                        <div>
-                                            <dt>Referencia</dt>
-                                            <dd>{payment.reference || 'Sin referencia'}</dd>
-                                        </div>
-                                        <div>
-                                            <dt>Fecha</dt>
-                                            <dd>
-                                                {paymentDate && !Number.isNaN(paymentDate.getTime())
-                                                    ? paymentDate.toLocaleString('es-NI')
-                                                    : 'No disponible'}
-                                            </dd>
-                                        </div>
-                                    </dl>
-
-                                    {reversed && (
-                                        <p className={styles.muted}>
-                                            <strong>Motivo:</strong> {payment.reversalReason || 'No disponible'}
-                                            {reversedDate && !Number.isNaN(reversedDate.getTime()) && (
-                                                <span> · Revertido el {reversedDate.toLocaleString('es-NI')}</span>
-                                            )}
-                                        </p>
-                                    )}
-
-                                    {!reversed && mayReversePayments && !editingReversal && (
-                                        <div>
-                                            <Button
-                                                variant="danger"
-                                                size="sm"
-                                                icon={RotateCcw}
-                                                onClick={() => beginReversal(payment.id)}
-                                                disabled={reversingPaymentId !== null}
-                                            >
-                                                Revertir pago
-                                            </Button>
-                                        </div>
-                                    )}
-
-                                    {!reversed && mayReversePayments && editingReversal && (
-                                        <div className={styles.stack}>
-                                            <Field label="Motivo del reverso" htmlFor={`payment-reversal-reason-${payment.id}`} required>
-                                                <Textarea
-                                                    id={`payment-reversal-reason-${payment.id}`}
-                                                    value={reversalReason}
-                                                    onChange={event => setReversalReason(event.target.value)}
-                                                    placeholder="Ej.: cobro duplicado o medio de pago incorrecto"
-                                                    maxLength={500}
-                                                    disabled={reversingPaymentId !== null}
-                                                    autoFocus
-                                                />
-                                            </Field>
-                                            <div className={styles.inline}>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        setReversalPaymentId(null);
-                                                        setReversalReason('');
-                                                    }}
-                                                    disabled={reversingPaymentId !== null}
-                                                >
-                                                    Cancelar
-                                                </Button>
-                                                <Button
-                                                    variant="danger"
-                                                    size="sm"
-                                                    icon={RotateCcw}
-                                                    onClick={() => void reversePayment(payment)}
-                                                    disabled={!reversalReason.trim() || reversingPaymentId !== null}
-                                                >
-                                                    {reversingPaymentId === payment.id ? 'Revirtiendo...' : 'Continuar'}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </article>
-                            );
-                        })}
-                    </div>
+                    <DataTable
+                        ariaLabel="Pagos de la factura"
+                        columns={paymentColumns}
+                        rows={payments}
+                        rowKey={(payment) => payment.id}
+                        empty="Sin pagos registrados. Esta factura no tiene movimientos de pago disponibles."
+                    />
                 )}
+            </FullScreenModal>
+
+            <FullScreenModal
+                isOpen={reversalPayment !== null}
+                size="compact"
+                onClose={() => { if (reversingPaymentId === null) { setReversalPaymentId(null); setReversalReason(''); } }}
+                title={`Revertir pago #${reversalPayment?.id ?? ''}`}
+                subtitle="La factura emitida se conserva; el pago queda visible para auditoría."
+                dirty={reversalReason.trim() !== '' && reversingPaymentId === null}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="ghost" onClick={requestClose} disabled={reversingPaymentId !== null}>Cancelar</Button>
+                        <Button
+                            variant="danger"
+                            icon={RotateCcw}
+                            onClick={() => reversalPayment && void reversePayment(reversalPayment)}
+                            loading={reversingPaymentId !== null}
+                            disabled={!reversalReason.trim() || reversingPaymentId !== null}
+                        >
+                            {reversingPaymentId !== null ? 'Revirtiendo...' : 'Continuar'}
+                        </Button>
+                    </>
+                )}
+            >
+                <Field label="Motivo del reverso" htmlFor="payment-reversal-reason" required>
+                    <Textarea
+                        id="payment-reversal-reason"
+                        value={reversalReason}
+                        onChange={event => setReversalReason(event.target.value)}
+                        placeholder="Ej.: cobro duplicado o medio de pago incorrecto"
+                        maxLength={500}
+                        disabled={reversingPaymentId !== null}
+                        autoFocus
+                    />
+                </Field>
             </FullScreenModal>
 
             <FullScreenModal
@@ -673,7 +645,7 @@ export default function InvoiceHistory() {
                 dirty={fiscalDirty && !fiscalProcessing}
                 footer={({ requestClose }) => (
                     <>
-                        <Button onClick={requestClose} disabled={fiscalProcessing}>Volver</Button>
+                        <Button variant="ghost" onClick={requestClose} disabled={fiscalProcessing}>Cancelar</Button>
                         <Button variant="danger" onClick={() => void submitFiscalAction()} loading={fiscalProcessing} disabled={fiscalProcessing || paymentsLoading}>
                             {fiscalProcessing ? 'Procesando…' : fiscalAction === 'CANCEL' ? 'Confirmar anulación' : 'Emitir nota de crédito'}
                         </Button>
@@ -681,7 +653,7 @@ export default function InvoiceHistory() {
                 )}
             >
                 {paymentsLoading ? (
-                    <p role="status">Validando contraflujo...</p>
+                    <p className={styles.muted} role="status">Validando contraflujo...</p>
                 ) : (
                     <div className={styles.stack}>
                         <FormSection step={1} title="Motivo">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AppSelect, DateInput, Field, PageContent, PageHeader } from '@/ui';
+import { AppSelect, DateInput, Field, LoadErrorState, PageContent, PageHeader, Skeleton, TableToolbar } from '@/ui';
 import { branchesAPI, surveysAPI } from '../services/api';
 import { monthRange, rankingMonth, type SurveyRanking, type SurveyResponseRow, type SurveyResponsesPage, type SurveySummary } from '../utils/surveyReport';
 import type { Branch } from '../types';
@@ -84,7 +84,7 @@ export default function SurveyReport() {
                 title="Encuestas NPS"
                 description="Qué opinan tus clientes: indicadores para ajustar el servicio y reconocer a tus meseros."
             />
-            <div className="survey-filters">
+            <TableToolbar>
                 <Field label="Desde" htmlFor="survey-from">
                     <DateInput id="survey-from" value={filters.dateFrom} onChange={(e) => changeFilters({ ...filters, dateFrom: e.target.value })} />
                 </Field>
@@ -100,9 +100,9 @@ export default function SurveyReport() {
                         onChange={(v) => changeFilters({ ...filters, branchId: v ?? '' })}
                     />
                 </Field>
-            </div>
-            {error && <p className="state-error" role="alert">{error}</p>}
-            {loading && <p className="state-placeholder" role="status">Cargando...</p>}
+            </TableToolbar>
+            {error && <LoadErrorState message={error} onRetry={() => changeFilters({ ...filters })} />}
+            {loading && !summary && <Skeleton height={96} />}
             {summary && !error && (
                 <div className={loading ? 'survey-loading' : undefined}>
                 <SurveyReportView

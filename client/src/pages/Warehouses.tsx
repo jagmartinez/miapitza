@@ -351,7 +351,6 @@ export default function Warehouses() {
     return (
         <PageContent>
             <ToastContainer toasts={toasts} onRemove={removeToast} />
-            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />}
 
             <PageHeader
                 title="Bodegas"
@@ -368,6 +367,8 @@ export default function Warehouses() {
                     </>
                 )}
             />
+
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />}
 
             <DataTable<Warehouse>
                 ariaLabel="Listado de bodegas"

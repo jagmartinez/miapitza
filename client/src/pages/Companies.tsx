@@ -60,6 +60,7 @@ export default function Companies() {
     const { error: showError } = useAppToast();
     const [companies, setCompanies] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -73,10 +74,12 @@ export default function Companies() {
 
     const loadCompanies = async () => {
         try {
+            setLoadError(null);
             const response = await companiesAPI.getAll();
             setCompanies(response.data.data);
         } catch (error) {
             notifyError(error, 'No se pudieron cargar las empresas');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar las empresas'));
         } finally {
             setLoading(false);
         }
@@ -201,7 +204,7 @@ export default function Companies() {
         <PageContent>
             <PageHeader
                 title="Empresas"
-                description={`${companies.filter((c) => c.active).length} activas · ${companies.length} registradas`}
+                description="Datos legales y de contacto de cada empresa"
                 actions={(
                     <Button variant="primary" icon={Plus} onClick={() => openModal()}>
                         Nueva empresa
@@ -215,6 +218,8 @@ export default function Companies() {
                 rowKey={(c) => c.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => { setLoading(true); void loadCompanies(); }}
                 resetKey={`${statusFilter}|${q}`}
                 onRowClick={(c) => openModal(c)}
                 empty={companies.length === 0 ? (

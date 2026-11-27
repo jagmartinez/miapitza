@@ -6,12 +6,12 @@ import { useAuth } from '../hooks/useAuth';
 import { cashShiftsAPI, cashArqueoAPI, suppliersAPI } from '../services/api';
 import { buildCashShiftReportHtml, getMovementAuditLabel, getMovementCategoryLabel, getMovementPaymentOrigin } from './cashShiftReport';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, Input,
-    PageContent, PageHeader, SegmentedControl, StatusBadge, TableToolbar, Textarea,
+    AppSelect, Badge, Button, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, Input,
+    LoadErrorState, PageContent, PageHeader, SegmentedControl, StatusBadge, TableToolbar, Textarea,
     formatMoney as formatMoneyUi, formatNumber,
     type Column, type Opt,
 } from '@/ui';
-import { AlertTriangle, ArrowLeft, Lock, Minus, Plus, Printer } from 'lucide-react';
+import { ArrowLeft, Lock, Minus, Plus, Printer } from 'lucide-react';
 import type { CashMovement, CashShift, Supplier } from '../types';
 import { hasAnyRole } from '../utils/authz';
 import { useAppToast } from '../context/ToastContext';
@@ -79,10 +79,7 @@ const DOCUMENT_TYPES = [
     { value: 'NOTA_DEBITO', label: 'Nota de Débito' }
 ];
 
-// Format currency with thousand separators
-const formatCurrency = (value: number): string => {
-    return value.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
+const formatCurrency = (value: number): string => formatNumber(value, 2);
 
 // Format duration
 const formatDuration = (startDate: string, endDate?: string): string => {
@@ -446,7 +443,7 @@ export default function CashShiftPage() {
     );
 
     const movementColumns: Column<CashMovement>[] = [
-        { key: 'time', header: 'Hora', width: '1fr', render: m => new Date(m.createdAt).toLocaleTimeString() },
+        { key: 'time', header: 'Hora', width: '1fr', render: m => new Date(m.createdAt).toLocaleTimeString('es-NI') },
         {
             key: 'type', header: 'Tipo', width: '1fr',
             render: m => <Badge tone={m.type === 'IN' ? 'success' : 'danger'}>{m.type === 'IN' ? 'Ingreso' : 'Egreso'}</Badge>
@@ -483,11 +480,9 @@ export default function CashShiftPage() {
                 {loading ? (
                     <p className={styles.loading} role="status">Cargando turno...</p>
                 ) : (
-                    <EmptyState
-                        icon={AlertTriangle}
-                        title="No disponible: no se pudo cargar el turno"
-                        description={loadError || 'Inténtalo de nuevo en unos segundos.'}
-                        action={<Button variant="primary" onClick={() => { setLoading(true); void loadData(); }}>Reintentar</Button>}
+                    <LoadErrorState
+                        message={`No disponible: no se pudo cargar el turno. ${loadError || 'Inténtalo de nuevo en unos segundos.'}`}
+                        onRetry={() => { setLoading(true); void loadData(); }}
                     />
                 )}
             </PageContent>
@@ -631,11 +626,10 @@ export default function CashShiftPage() {
             />
 
             {loadError && (
-                <p className={styles.notice} role="alert">
-                    <AlertTriangle size={16} aria-hidden="true" />
-                    <span>No disponible: no se pudieron actualizar los datos del turno ({loadError}). Los montos mostrados pueden estar desactualizados.</span>
-                    <Button size="sm" onClick={() => { void loadData(); }}>Reintentar</Button>
-                </p>
+                <LoadErrorState
+                    message={`No se pudieron actualizar los datos del turno (${loadError}). Los montos pueden estar desactualizados.`}
+                    onRetry={() => { void loadData(); }}
+                />
             )}
 
             <form id="cash-close-form" onSubmit={handleCloseShift} className={styles.arqueo} aria-label="Arqueo de caja">
@@ -822,6 +816,27 @@ export default function CashShiftPage() {
                     <h2 id="cash-moves-title" className={styles.cardTitle}>Movimientos del turno</h2>
                     <span className={styles.muted}>Ventas, ingresos y egresos registrados en la caja</span>
                 </div>
+                <TableToolbar>
+                    <SegmentedControl<'all' | 'IN' | 'OUT'>
+                        ariaLabel="Tipo de movimiento"
+                        value={filterType}
+                        onChange={setFilterType}
+                        options={[
+                            { value: 'all', label: `Todos (${movementCount})` },
+                            { value: 'IN', label: `Ingresos (${inCount})` },
+                            { value: 'OUT', label: `Egresos (${outCount})` }
+                        ]}
+                    />
+                    <Field label="Buscar" htmlFor="movement-search">
+                        <Input
+                            id="movement-search"
+                            type="search"
+                            placeholder="Buscar..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </Field>
+                </TableToolbar>
                 <DataTable
                     ariaLabel="Movimientos del turno"
                     columns={movementColumns}
@@ -831,27 +846,6 @@ export default function CashShiftPage() {
                     empty={searchQuery || filterType !== 'all'
                         ? 'No hay movimientos que coincidan con los filtros'
                         : 'No hay movimientos registrados'}
-                    toolbar={
-                        <TableToolbar>
-                            <SegmentedControl<'all' | 'IN' | 'OUT'>
-                                ariaLabel="Tipo de movimiento"
-                                value={filterType}
-                                onChange={setFilterType}
-                                options={[
-                                    { value: 'all', label: `Todos (${movementCount})` },
-                                    { value: 'IN', label: `Ingresos (${inCount})` },
-                                    { value: 'OUT', label: `Egresos (${outCount})` }
-                                ]}
-                            />
-                            <Input
-                                type="search"
-                                aria-label="Buscar movimientos"
-                                placeholder="Buscar..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </TableToolbar>
-                    }
                 />
             </section>
 
@@ -862,6 +856,9 @@ export default function CashShiftPage() {
                 title={movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
                 subtitle={`Turno #${shift.id}`}
                 dirty={!!movementForm.amount || !!movementForm.description}
+                footerStart={movementType === 'OUT' && canCreateSupplier ? (
+                    <Button icon={Plus} onClick={() => setIsNewSupplierModalOpen(true)}>Nuevo proveedor</Button>
+                ) : undefined}
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
@@ -903,21 +900,14 @@ export default function CashShiftPage() {
 
                     {movementType === 'OUT' && (
                         <FormSection title="Proveedor">
-                            <div className={styles.supplierRow}>
-                                <div className={styles.supplierSelect}>
-                                    <Field label="Proveedor" htmlFor="movement-supplier">
-                                        <AppSelect<string>
-                                            inputId="movement-supplier"
-                                            options={movementOptions}
-                                            value={movementForm.supplierId}
-                                            onChange={(v) => setMovementForm({ ...movementForm, supplierId: v || '' })}
-                                        />
-                                    </Field>
-                                </div>
-                                {canCreateSupplier && (
-                                    <Button icon={Plus} onClick={() => setIsNewSupplierModalOpen(true)}>Nuevo proveedor</Button>
-                                )}
-                            </div>
+                            <Field label="Proveedor" htmlFor="movement-supplier">
+                                <AppSelect<string>
+                                    inputId="movement-supplier"
+                                    options={movementOptions}
+                                    value={movementForm.supplierId}
+                                    onChange={(v) => setMovementForm({ ...movementForm, supplierId: v || '' })}
+                                />
+                            </Field>
                         </FormSection>
                     )}
 

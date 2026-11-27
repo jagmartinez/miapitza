@@ -318,7 +318,7 @@ export default function UnitsOfMeasurePage() {
         <PageContent>
             <PageHeader
                 title="Unidades de medida"
-                description={`${units.filter((u) => u.active).length} activas · ${units.length} en catálogo`}
+                description="Catálogo de unidades y su equivalencia con la unidad del sistema."
                 actions={(
                     <>
                         <Button onClick={() => navigate('/inventory')}>Ir a Inventario</Button>

@@ -1,5 +1,5 @@
-import { AppSelect, Button, Checkbox, DataTable, IconButton, Input } from '@/ui';
-import { useMemo, useState } from 'react';
+import { AppSelect, Button, Checkbox, DataTable, Field, IconButton, Input } from '@/ui';
+import { useMemo, useState, useId } from 'react';
 import { CheckCircle2, Pencil, Plus, Power, Save, X } from 'lucide-react';
 import type { HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
 import form from './hrForm.module.css';
@@ -28,6 +28,7 @@ const taxLabel = (concept: HrPayrollPaymentConceptDefinition) => concept.type ==
       : concept.incomeTaxTreatment === 'OCCASIONAL' ? 'Ocasional' : 'No sujeto';
 
 export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange }: Props) {
+  const fid = useId();
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<HrPayrollPaymentConceptDefinition | null>(null);
   const activeCount = useMemo(() => concepts.filter((concept) => concept.active).length, [concepts]);
@@ -87,8 +88,8 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
           <strong id="payment-concept-catalog-title">Conceptos de pago</strong>
           <small>{activeCount} activos de {concepts.length}. Inhabilitar conserva el histórico y evita usar el concepto en nuevas corridas.</small>
         </div>
-        <Button variant="primary" type="button" size="sm" onClick={startAdd} disabled={draft !== null}>
-          <Plus size={16} aria-hidden="true" /> Nuevo concepto
+        <Button variant="primary" type="button" onClick={startAdd} disabled={draft !== null} icon={Plus}>
+          Nuevo concepto
         </Button>
       </div>
 
@@ -96,12 +97,13 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
         <div className="hr-legal-concept-editor" role="group" aria-label={editingIndex === -1 ? 'Nuevo concepto de pago' : `Editar ${draft.name}`}>
           <div className="hr-legal-concept-editor-heading">
             <div><strong>{editingIndex === -1 ? 'Agregar concepto' : 'Editar concepto'}</strong><small>Define una vez su tratamiento legal. La corrida solo podrá elegir códigos activos.</small></div>
-            <Button type="button" size="sm" variant="ghost" onClick={cancel} aria-label="Cerrar editor"><X size={16} /></Button>
+            <IconButton icon={X} tooltip="Cerrar editor" label="Cerrar editor" onClick={cancel} />
           </div>
           <div className="hr-legal-concept-fields">
-            <label>Código<Input value={draft.code} maxLength={64} onChange={(event) => updateDraft({ code: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })} disabled={editingIndex !== -1} required /><small>{!codeIsUnique ? 'Ese código ya existe.' : 'No cambia después de crear el concepto.'}</small></label>
-            <label>Nombre<Input value={draft.name} maxLength={160} onChange={(event) => updateDraft({ name: event.target.value })} required /></label>
-            <label>Tipo<AppSelect<string>
+            <Field label="Código" htmlFor={`${fid}-codigo`} hint={!codeIsUnique ? 'Ese código ya existe.' : 'No cambia después de crear el concepto.'}><Input id={`${fid}-codigo`} value={draft.code} maxLength={64} onChange={(event) => updateDraft({ code: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })} disabled={editingIndex !== -1} required /></Field>
+            <Field label="Nombre" htmlFor={`${fid}-nombre`}><Input id={`${fid}-nombre`} value={draft.name} maxLength={160} onChange={(event) => updateDraft({ name: event.target.value })} required /></Field>
+            <Field label="Tipo" htmlFor={`${fid}-tipo`}>
+              <AppSelect<string> inputId={`${fid}-tipo`}
                          options={[
                            { value: 'INCOME', label: 'Ingreso' },
                            { value: 'DEDUCTION', label: 'Deducción' },
@@ -111,9 +113,11 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
                            changeType((next ?? '') as HrPayrollPaymentConceptDefinition['type'])
                          }
                          isClearable={false}
-                       /></label>
+                       />
+            </Field>
             {draft.type === 'INCOME' ? <>
-              <label>IR laboral<AppSelect<string>
+              <Field label="IR laboral" htmlFor={`${fid}-ir-laboral`}>
+                <AppSelect<string> inputId={`${fid}-ir-laboral`}
                                  options={[
                                    { value: 'NONE', label: 'No sujeto' },
                                    { value: 'REGULAR_FIXED', label: 'Ordinario fijo' },
@@ -131,17 +135,18 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
                                    })
                                  }
                                  isClearable={false}
-                               /></label>
+                               />
+              </Field>
               <Checkbox className="hr-legal-switch" checked={draft.socialSecurityApplicable} onChange={(event) => updateDraft({ socialSecurityApplicable: event.target.checked })} label={<><span>Forma base de INSS</span></>} />
               <Checkbox className="hr-legal-switch" checked={draft.trainingContributionApplicable} onChange={(event) => updateDraft({ trainingContributionApplicable: event.target.checked })} label={<><span>Forma base de INATEC</span></>} />
             </> : <Checkbox className="hr-legal-switch" checked={draft.incomeTaxDeductible} onChange={(event) => updateDraft({ incomeTaxDeductible: event.target.checked })} label={<><span>Deducción autorizada para IR</span></>} />}
-            <label className="span-full">Fuente o respaldo<Input value={draft.sourceReference} maxLength={500} onChange={(event) => updateDraft({ sourceReference: event.target.value })} required /></label>
+            <div className="span-full"><Field label="Fuente o respaldo" htmlFor={`${fid}-fuente-o-respaldo`}><Input id={`${fid}-fuente-o-respaldo`} value={draft.sourceReference} maxLength={500} onChange={(event) => updateDraft({ sourceReference: event.target.value })} required /></Field></div>
           </div>
-          <div className="hr-legal-concept-editor-actions"><Button type="button" variant="ghost" onClick={cancel}>Cancelar</Button><Button variant="primary" type="button" onClick={save} disabled={!draftReady}><Save size={16} /> Guardar concepto</Button></div>
+          <div className="hr-legal-concept-editor-actions"><Button type="button" variant="ghost" onClick={cancel}>Cancelar</Button><Button variant="primary" type="button" onClick={save} disabled={!draftReady} icon={Save}>Guardar concepto</Button></div>
         </div>
       )}
 
-      <div className="hr-legal-readonly-table-wrap hr-legal-concept-table-wrap">
+      <div>
         <DataTable
                 ariaLabel="Catálogo de conceptos de pago"
                 rows={concepts.map((concept, index) => ({ concept, index }))}

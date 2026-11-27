@@ -1,56 +1,18 @@
-import { useEffect, useState, Fragment, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { reportsAPI, reservationsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
-import { reportsAPI, reservationsAPI, productsAPI } from '../services/api';
-import { hasAnyRole } from '../utils/authz';
-import { getOrderStatusLabel } from '../utils/orderStatus';
-import { activateOnKeyboard } from '../utils/keyboardActivation';
-import type { Order } from '../types';
-import { ADMIN } from '../constants/roles';
 import { useCurrency } from '../hooks/useCurrency';
-import { AppSelect, FullScreenModal, formatNumber } from '@/ui';
-import { Heatmap, ParetoBars } from '@/ui/charts';
-import { toPareto, binScatter } from './dashboardCharts';
-import EmptyState from '../components/EmptyState';
-import { LoadingOverlay } from '../components/LoadingSpinner';
+import { getOrderStatusLabel } from '../utils/orderStatus';
+import type { Order } from '../types';
 import {
-    DollarSign,
-    Users,
-    Package,
-    Clock,
-    Calendar,
-    ChevronRight,
-    Utensils,
-    CreditCard,
-    Ticket,
-    Activity,
-    Award,
-    AlertCircle,
-    AlertTriangle,
-    ChefHat,
-    Timer,
-    Flame,
-    Warehouse,
-    TrendingDown,
-    ArrowUpDown,
-    Wallet,
-    FileText,
-    CalendarCheck,
-    ClipboardList
-} from 'lucide-react';
+    Badge, Button, DataTable, FullScreenModal, LoadErrorState, PageContent, PageHeader, Skeleton, StatCard,
+    formatNumber, toneFor, type Column, type Tone,
+} from '@/ui';
+import { RESERVATION_STATUS } from './dashboard/reservationStatus';
 import './Dashboard.css';
 
 interface ApiResponse {
     data: { data: unknown };
-}
-
-interface DashboardStats {
-    todaySales: number;
-    activeOrders: number;
-    pendingPurchaseOrders: number;
-    occupancyRate?: number;
-    averageTicket?: number;
-    settledOrdersCount?: number;
 }
 
 interface TopProduct {
@@ -58,32 +20,7 @@ interface TopProduct {
     name: string;
     totalQuantity: number;
     totalRevenue: number;
-    category: string;
-}
-
-interface IncomeDataPoint {
-    name: string;
-    value: number;
-    fill: string;
-}
-
-interface ScatterDataPoint {
-    waitTime?: number;
-    tip?: number;
-    dwellTime?: number;
-    spend?: number;
-}
-
-interface HeatmapPoint {
-    day: string;
-    hour: number;
-    value: number;
-}
-
-interface RadarDataPoint {
-    subject: string;
-    A: number;
-    B: number;
+    category?: string;
 }
 
 interface RecentOrder {
@@ -91,28 +28,6 @@ interface RecentOrder {
     table: string;
     total: number;
     status: string;
-    waiter?: string;
-    createdAt?: string;
-    items?: OrderItemSummary[];
-    customerName?: string;
-}
-
-interface OrderItemSummary {
-    id?: number;
-    menuItemId?: number;
-    name: string;
-    quantity: number;
-    price: number;
-    subtotal?: number;
-}
-
-interface RecentInvoice {
-    id: number;
-    time: string;
-    amount: number;
-    status: string;
-    paymentMethod?: string;
-    customer?: string;
 }
 
 interface ReservationSummary {
@@ -122,9 +37,6 @@ interface ReservationSummary {
     name: string;
     pax: number;
     status: string;
-    phone?: string;
-    table?: string;
-    notes?: string;
 }
 
 interface UpcomingReservation {
@@ -133,32 +45,6 @@ interface UpcomingReservation {
     date: string;
     peopleCount: number;
     status: string;
-    phone?: string;
-    notes?: string;
-}
-
-interface MyStats {
-    role: string;
-    salesToday?: number;
-    ordersToday?: number;
-    avgTicket?: number;
-    topProduct?: string;
-    pendingOrders?: number;
-    readyOrders?: number;
-    dishesToday?: number;
-    lowStockCount?: number;
-    criticalCount?: number;
-    pendingPOs?: number;
-    invoicesToday?: number;
-    kitchenQueue?: KitchenQueueItem[];
-    topDishes?: TopDishItem[];
-    lowStockProducts?: LowStockProduct[];
-    topConsumed?: ConsumedProduct[];
-    recentMovements?: MovementItem[];
-    myOrders?: RecentOrder[];
-    topProducts?: TopProduct[];
-    activeShift?: ActiveShiftInfo;
-    paymentBreakdown?: PaymentBreakdownItem[];
 }
 
 interface KitchenQueueItem {
@@ -208,1213 +94,481 @@ interface PaymentBreakdownItem {
     total: number;
 }
 
+interface MyStats {
+    role: string;
+    salesToday?: number;
+    ordersToday?: number;
+    avgTicket?: number;
+    topProduct?: string;
+    pendingOrders?: number;
+    readyOrders?: number;
+    lowStockCount?: number;
+    criticalCount?: number;
+    pendingPOs?: number;
+    kitchenQueue?: KitchenQueueItem[];
+    topDishes?: TopDishItem[];
+    lowStockProducts?: LowStockProduct[];
+    topConsumed?: ConsumedProduct[];
+    recentMovements?: MovementItem[];
+    myOrders?: RecentOrder[];
+    topProducts?: TopProduct[];
+    activeShift?: ActiveShiftInfo;
+    paymentBreakdown?: PaymentBreakdownItem[];
+}
+
+const REQUEST_TIMEOUT_MS = 5000;
+const PAGE_SIZE = 5;
+
+const withTimeout = <T,>(promise: Promise<T>) =>
+    Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Request timeout')), REQUEST_TIMEOUT_MS))]);
+
+const orderStatusLabel = (status: string) =>
+    getOrderStatusLabel(status.toUpperCase().replace(/-/g, '_') as Order['status']);
+
+const KITCHEN_STATUS: Record<string, { label: string; tone: Tone }> = {
+    sent_to_kitchen: { label: 'En cocina', tone: 'warning' },
+    ready: { label: 'Lista', tone: 'success' },
+};
+
+/** Bloque plano con título: sin caja propia, la tabla del kit es la única superficie. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+    return (
+        <section className="dashboard-section" aria-label={title}>
+            <h2 className="dashboard-section__title">{title}</h2>
+            {children}
+        </section>
+    );
+}
 
 export default function Dashboard() {
-    const navigate = useNavigate();
     const { user } = useAuth();
     const { formatMoney: formatCurrency } = useCurrency();
-    const isAdmin = hasAnyRole(user, ADMIN);
-    const [stats, setStats] = useState({
-        todaySales: 0,
-        activeOrders: 0,
-        pendingPurchaseOrders: 0
-    });
-    /** True only after at least one successful KPI fetch — avoids painting fake zeros as success. */
-    const [statsHydrated, setStatsHydrated] = useState(false);
-    const statsHydratedRef = useRef(false);
-    const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
-    const [incomeData, setIncomeData] = useState<IncomeDataPoint[]>([]);
-    const [scatterTipsData, setScatterTipsData] = useState<ScatterDataPoint[]>([]);
-    const [scatterSpendData, setScatterSpendData] = useState<ScatterDataPoint[]>([]);
-    const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
-    const [radarData, setRadarData] = useState<RadarDataPoint[]>([]);
-    const [recentInvoices, setRecentInvoices] = useState<RecentInvoice[]>([]);
-    const [todaysReservations, setTodaysReservations] = useState<ReservationSummary[]>([]);
-    const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
     const [myStats, setMyStats] = useState<MyStats | null>(null);
+    const [reservations, setReservations] = useState<ReservationSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [currentTime, setCurrentTime] = useState(new Date());
-
-    // Individual period states for BI charts
-    type ChartPeriod = 'today' | 'week' | 'month' | 'year';
-    const [incomePeriod, setIncomePeriod] = useState<ChartPeriod>('month');
-    const [tipsPeriod, setTipsPeriod] = useState<ChartPeriod>('week');
-    const [spendPeriod, setSpendPeriod] = useState<ChartPeriod>('week');
-    const [heatmapPeriod, setHeatmapPeriod] = useState<ChartPeriod>('week');
-    const [radarPeriod, setRadarPeriod] = useState<ChartPeriod>('week');
-    const [treemapCategory, setTreemapCategory] = useState<{ value: string; label: string }>({ value: 'all', label: 'Todas las Categorías' });
-
-    // Period labels for display
-    const periodLabels: Record<ChartPeriod, string> = {
-        today: 'Hoy',
-        week: 'Sem',
-        month: 'Mes',
-        year: 'Año'
-    };
-
-    // Period Selector Component
-    const PeriodSelector = ({ value, onChange }: { value: ChartPeriod; onChange: (p: ChartPeriod) => void }) => (
-        <div className="period-selector">
-            {(['today', 'week', 'month', 'year'] as ChartPeriod[]).map(p => (
-                <button
-                    key={p}
-                    className={`period-btn ${value === p ? 'active' : ''}`}
-                    onClick={() => onChange(p)}
-                >
-                    {periodLabels[p]}
-                </button>
-            ))}
-        </div>
-    );
-
-    // Pagination states for widgets
-    const [ordersPage, setOrdersPage] = useState(0);
-    const [invoicesPage, setInvoicesPage] = useState(0);
-    const [reservationsPage, setReservationsPage] = useState(0);
-    const WIDGET_PAGE_SIZE = 5;
-
-    // Modal states
-    const [selectedProduct, setSelectedProduct] = useState<TopProduct | null>(null);
     const [selectedOrder, setSelectedOrder] = useState<RecentOrder | null>(null);
-    const [selectedInvoice, setSelectedInvoice] = useState<RecentInvoice | null>(null);
-    const [selectedReservation, setSelectedReservation] = useState<ReservationSummary | null>(null);
-    const [stockAlerts, setStockAlerts] = useState<{ name: string }[]>([]);
-
-    const formatOrderStatus = (status: string) => {
-        const normalized = status.toUpperCase().replace(/-/g, '_') as Order['status'];
-        return getOrderStatusLabel(normalized);
-    };
 
     const loadData = useCallback(async () => {
+        setLoadError(null);
         try {
-            setLoadError(null);
-            const timeout = (ms: number) => new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Request timeout')), ms)
-            );
-
-            // Personal dashboard for non-admin roles
-            if (!isAdmin) {
-                const [myStatsRes, reservationsRes] = await Promise.allSettled([
-                    Promise.race([reportsAPI.getMyStats(), timeout(5000)]),
-                    Promise.race([reservationsAPI.getUpcoming(7), timeout(5000)]),
-                ]);
-                if (myStatsRes.status === 'fulfilled') setMyStats((myStatsRes.value as ApiResponse).data.data as MyStats);
-                else setLoadError('No se pudieron cargar las estadísticas del panel.');
-                if (reservationsRes.status === 'fulfilled') {
-                    const reservations = ((reservationsRes.value as ApiResponse).data.data as UpcomingReservation[]) || [];
-                    const mapped: ReservationSummary[] = reservations.map((reservation) => ({
-                        id: reservation.id,
-                        day: new Date(reservation.date).toLocaleDateString('es-MX', { weekday: 'short' }),
-                        time: new Date(reservation.date).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-                        name: reservation.customerName,
-                        pax: reservation.peopleCount,
-                        status: reservation.status,
-                        phone: reservation.phone,
-                        notes: reservation.notes
-                    }));
-                    setTodaysReservations(mapped);
-                }
-                setLoading(false);
-                return;
-            }
-
-            // Full BI dashboard for admin roles
-            const [statsRes, topProductsRes, ordersRes, invoicesRes, reservationsRes, incomeRes, heatmapRes, radarRes, trendsRes, lowStockRes] = await Promise.allSettled([
-                Promise.race([reportsAPI.getDashboardStats(), timeout(5000)]),
-                Promise.race([reportsAPI.getTopProducts(undefined, 40), timeout(5000)]),
-                Promise.race([reportsAPI.getRecentOrders(undefined, 50), timeout(5000)]),
-                Promise.race([reportsAPI.getRecentInvoices(undefined, 50, true), timeout(5000)]),
-                Promise.race([reportsAPI.getTodaysReservations(undefined, 7), timeout(5000)]),
-                Promise.race([reportsAPI.getIncomeBreakdown(incomePeriod), timeout(5000)]),
-                Promise.race([reportsAPI.getOccupancyHeatmap(heatmapPeriod), timeout(5000)]),
-                Promise.race([reportsAPI.getShiftEvaluation(radarPeriod), timeout(5000)]),
-                Promise.race([reportsAPI.getServiceTrends(tipsPeriod, spendPeriod), timeout(5000)]),
-                Promise.race([productsAPI.getLowStock(), timeout(5000)]),
+            const [myStatsRes, reservationsRes] = await Promise.allSettled([
+                withTimeout(reportsAPI.getMyStats()),
+                withTimeout(reservationsAPI.getUpcoming(7)),
             ]);
-
-            if (statsRes.status === 'fulfilled') {
-                const data = (statsRes.value as ApiResponse).data.data as DashboardStats;
-                setStats(data);
-                setStatsHydrated(true);
-                statsHydratedRef.current = true;
-            }
-            // On KPI failure: keep last good values (or unhydrated state). Never paint fake zeros as success.
-
-            if (topProductsRes.status === 'fulfilled') {
-                setTopProducts((topProductsRes.value as ApiResponse).data.data as TopProduct[]);
-            } else if (topProductsRes.status === 'rejected') setTopProducts([]);
-
-            if (ordersRes.status === 'fulfilled') {
-                setRecentOrders((ordersRes.value as ApiResponse).data.data as RecentOrder[]);
-            } else if (ordersRes.status === 'rejected') setRecentOrders([]);
-
-            if (invoicesRes.status === 'fulfilled') {
-                setRecentInvoices((invoicesRes.value as ApiResponse).data.data as RecentInvoice[]);
-            } else if (invoicesRes.status === 'rejected') setRecentInvoices([]);
-
+            if (myStatsRes.status === 'fulfilled') setMyStats((myStatsRes.value as ApiResponse).data.data as MyStats);
+            else setLoadError('No se pudieron cargar las estadísticas del panel.');
             if (reservationsRes.status === 'fulfilled') {
-                setTodaysReservations((reservationsRes.value as ApiResponse).data.data as ReservationSummary[]);
-            } else if (reservationsRes.status === 'rejected') setTodaysReservations([]);
-
-            if (incomeRes.status === 'fulfilled') {
-                setIncomeData((incomeRes.value as ApiResponse).data.data as IncomeDataPoint[]);
-            } else if (incomeRes.status === 'rejected') setIncomeData([]);
-
-            if (heatmapRes.status === 'fulfilled') {
-                setHeatmapData((heatmapRes.value as ApiResponse).data.data as HeatmapPoint[]);
-            } else if (heatmapRes.status === 'rejected') setHeatmapData([]);
-
-            if (radarRes.status === 'fulfilled') {
-                setRadarData((radarRes.value as ApiResponse).data.data as RadarDataPoint[]);
-            } else if (radarRes.status === 'rejected') setRadarData([]);
-
-            if (trendsRes.status === 'fulfilled') {
-                const data = (trendsRes.value as ApiResponse).data.data as { tips: ScatterDataPoint[]; spend: ScatterDataPoint[] };
-                setScatterTipsData(data.tips);
-                setScatterSpendData(data.spend);
-            } else if (trendsRes.status === 'rejected') {
-                setScatterTipsData([]);
-                setScatterSpendData([]);
+                const upcoming = ((reservationsRes.value as ApiResponse).data.data as UpcomingReservation[]) || [];
+                setReservations(upcoming.map((reservation) => ({
+                    id: reservation.id,
+                    day: new Date(reservation.date).toLocaleDateString('es-MX', { weekday: 'short' }),
+                    time: new Date(reservation.date).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+                    name: reservation.customerName,
+                    pax: reservation.peopleCount,
+                    status: reservation.status,
+                })));
             }
-
-            if (lowStockRes.status === 'fulfilled') {
-                const items = (lowStockRes.value as ApiResponse).data.data as { name: string }[];
-                setStockAlerts(items || []);
-            } else if (lowStockRes.status === 'rejected') {
-                setStockAlerts([]);
-            }
-
-            const widgetResults: Array<{ name: string; result: PromiseSettledResult<unknown> }> = [
-                { name: 'indicadores', result: statsRes }, { name: 'productos', result: topProductsRes },
-                { name: 'órdenes', result: ordersRes }, { name: 'facturas', result: invoicesRes },
-                { name: 'reservaciones', result: reservationsRes }, { name: 'ingresos', result: incomeRes },
-                { name: 'demanda horaria', result: heatmapRes }, { name: 'turnos', result: radarRes },
-                { name: 'tendencias', result: trendsRes }, { name: 'inventario', result: lowStockRes }
-            ];
-            const failedWidgets = widgetResults.filter(({ result }) => result.status === 'rejected').map(({ name }) => name);
-            if (failedWidgets.length > 0) {
-                const kpiFailed = failedWidgets.includes('indicadores');
-                setLoadError(
-                    kpiFailed && !statsHydratedRef.current
-                        ? `No se pudieron cargar: ${failedWidgets.join(', ')}. Los indicadores no muestran valores hasta reintentar.`
-                        : `No se pudieron actualizar: ${failedWidgets.join(', ')}. Los componentes afectados se muestran vacíos o con el último valor válido.`
-                );
-            }
-
         } catch {
             setLoadError('No se pudieron cargar los datos del panel.');
         } finally {
             setLoading(false);
         }
-    }, [heatmapPeriod, incomePeriod, isAdmin, radarPeriod, spendPeriod, tipsPeriod]);
+    }, []);
 
     useEffect(() => {
         void loadData();
     }, [loadData]);
-
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-        return () => clearInterval(timer);
-    }, []);
-
-    const occupancyRate = (stats as DashboardStats).occupancyRate || 0;
-    const averageTicket = (stats as DashboardStats).averageTicket || 0;
-    const settledOrdersCount = (stats as DashboardStats).settledOrdersCount || 0;
-    const kpisUnavailable = Boolean(loadError?.includes('indicadores')) && !statsHydrated;
-    const formatKpiMoney = (value: number) => (kpisUnavailable ? '—' : formatCurrency(Number(value)));
-    const formatKpiNumber = (value: number, suffix = '') => (kpisUnavailable ? '—' : `${formatNumber(value)}${suffix}`);
-
-    if (loading) {
-        return <LoadingOverlay text="Cargando panel..." />;
-    }
 
     const retryLoad = () => {
         setLoading(true);
         void loadData();
     };
 
-    if (loadError && !isAdmin && !myStats) {
+    const money = useCallback((value: unknown) => formatCurrency(Number(value) || 0), [formatCurrency]);
+
+    // ── Columnas reutilizables ──
+    const orderColumns: Column<RecentOrder>[] = useMemo(() => [
+        { key: 'id', header: 'Orden', width: '0.8fr' },
+        { key: 'table', header: 'Mesa', width: '1fr' },
+        { key: 'total', header: 'Total', width: '1fr', align: 'right', render: (row) => money(row.total) },
+        {
+            key: 'status', header: 'Estado', width: '1.2fr',
+            render: (row) => <Badge tone={toneFor(row.status.toUpperCase())} dot>{orderStatusLabel(row.status)}</Badge>,
+        },
+    ], [money]);
+
+    const kitchenColumns: Column<KitchenQueueItem>[] = useMemo(() => [
+        { key: 'id', header: 'Orden', width: '0.8fr' },
+        { key: 'table', header: 'Mesa', width: '1fr', render: (row) => `Mesa ${row.table}` },
+        { key: 'items', header: 'Platos', width: '0.8fr', type: 'number', decimals: 0 },
+        { key: 'elapsed', header: 'Min', headerTitle: 'Minutos en cola', width: '0.8fr', type: 'number', decimals: 0 },
+        {
+            key: 'status', header: 'Estado', width: '1.2fr',
+            render: (row) => {
+                const meta = KITCHEN_STATUS[row.status] ?? { label: 'Lista', tone: 'success' as Tone };
+                return <Badge tone={meta.tone} dot>{meta.label}</Badge>;
+            },
+        },
+    ], []);
+
+    const dishColumns: Column<TopDishItem>[] = [
+        { key: 'name', header: 'Plato', width: '1.6fr' },
+        { key: 'totalQuantity', header: 'Pedidos', width: '1fr', type: 'number', decimals: 0 },
+    ];
+
+    const productColumns: Column<TopProduct>[] = useMemo(() => [
+        { key: 'name', header: 'Producto', width: '1.6fr' },
+        { key: 'totalQuantity', header: 'Vendidos', width: '1fr', type: 'number', decimals: 0 },
+        { key: 'totalRevenue', header: 'Ingreso', width: '1fr', align: 'right', render: (row) => money(row.totalRevenue) },
+    ], [money]);
+
+    const lowStockColumns: Column<LowStockProduct>[] = [
+        { key: 'name', header: 'Producto', width: '1.6fr' },
+        {
+            key: 'current', header: 'Existencia', width: '1.2fr', align: 'right',
+            render: (row) => (
+                <span className={row.current === 0 ? 'dashboard-stock dashboard-stock--out' : 'dashboard-stock dashboard-stock--low'}>
+                    {formatNumber(row.current)} {row.unit}
+                </span>
+            ),
+        },
+        { key: 'min', header: 'Mínimo', width: '1fr', type: 'number' },
+    ];
+
+    const consumedColumns: Column<ConsumedProduct>[] = [
+        { key: 'name', header: 'Producto', width: '1.6fr' },
+        { key: 'consumed', header: 'Consumo', width: '1.2fr', align: 'right', render: (row) => `${formatNumber(row.consumed)} ${row.unit}` },
+    ];
+
+    const movementColumns: Column<MovementItem>[] = [
+        { key: 'product', header: 'Producto', width: '1.6fr' },
+        { key: 'reason', header: 'Motivo', width: '1.2fr', render: (row) => row.reason || row.type },
+        {
+            key: 'quantity', header: 'Cantidad', width: '1.2fr', align: 'right',
+            render: (row) => (
+                <span className={row.type === 'IN' ? 'dashboard-stock dashboard-stock--in' : 'dashboard-stock dashboard-stock--out'}>
+                    {row.type === 'IN' ? '+' : '-'}{formatNumber(row.quantity)} {row.unit}
+                </span>
+            ),
+        },
+    ];
+
+    const paymentColumns: Column<PaymentBreakdownItem>[] = useMemo(() => [
+        { key: 'method', header: 'Método', width: '1.6fr' },
+        { key: 'total', header: 'Total', width: '1fr', align: 'right', render: (row) => money(row.total) },
+    ], [money]);
+
+    const reservationColumns: Column<ReservationSummary>[] = [
+        { key: 'when', header: 'Cuándo', width: '1fr', render: (row) => [row.day, row.time].filter(Boolean).join(' ') },
+        { key: 'name', header: 'Cliente', width: '1.6fr' },
+        { key: 'pax', header: 'Personas', width: '0.8fr', type: 'number', decimals: 0 },
+        { key: 'status', header: 'Estado', width: '1fr', render: (row) => <Badge tone={toneFor(row.status.toUpperCase())} dot>{RESERVATION_STATUS[row.status] ?? row.status}</Badge> },
+    ];
+
+    if (loading) {
         return (
-            <div className="dashboard">
-                <div className="dashboard-load-error">
-                    <AlertTriangle size={48} />
-                    <h2>Error al cargar el panel</h2>
-                    <p>{loadError}</p>
-                    <button type="button" className="dashboard-retry-btn" onClick={retryLoad}>
-                        Reintentar
-                    </button>
+            <PageContent>
+                <PageHeader title="Mi panel" description="Cargando tu resumen del día…" />
+                <div className="dashboard-skeleton" aria-busy="true">
+                    <Skeleton height={96} />
+                    <Skeleton height={96} />
+                    <Skeleton height={240} />
                 </div>
-            </div>
+            </PageContent>
         );
     }
 
-    // ═══════════════════════════════════════════════════
-    // ROLE-SPECIFIC DASHBOARDS (non-admin)
-    // ═══════════════════════════════════════════════════
+    if (loadError && !myStats) {
+        return (
+            <PageContent>
+                <PageHeader title="Mi panel" />
+                <LoadErrorState message={loadError} onRetry={retryLoad} />
+            </PageContent>
+        );
+    }
 
-    /** Shared header for personal dashboards */
-    const PersonalHeader = ({ title, subtitle }: { title: string; subtitle: string }) => (
-        <header className="dashboard-header-hero">
-            <div className="header-greeting">
-                <h1>{title}</h1>
-                <p className="subtitle">{subtitle}</p>
-            </div>
-            <div className="header-actions-wrapper">
-                <div className="header-meta-group">
-                    <div className="header-time">
-                        <Clock size={16} className="text-primary" />
-                        <span>{currentTime.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
-                        <div className="divider-v"></div>
-                        <Calendar size={16} className="text-secondary" />
-                        <span className="date-text">{currentTime.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</span>
-                    </div>
-                </div>
-            </div>
-        </header>
+    const stats: MyStats = myStats ?? { role: '' };
+    const role = stats.role;
+    const greeting = user?.name ? `Hola, ${user.name}` : undefined;
+
+    const reservationsSection = (
+        <Section title="Reservas próximas">
+            <DataTable
+                ariaLabel="Reservas próximas"
+                columns={reservationColumns}
+                rows={reservations}
+                rowKey={(row) => row.id}
+                defaultPageSize={PAGE_SIZE}
+                pageSizeOptions={[PAGE_SIZE, 10, 20]}
+                hidePaginationIfSinglePage
+                empty="Sin reservas próximas"
+            />
+        </Section>
     );
 
-    // ── COCINA DASHBOARD ──
-    if (!isAdmin && myStats?.role === 'COCINA') {
-        return (
-            <div className="dashboard">
-                <PersonalHeader title="Cocina" subtitle={`Chef ${user?.name}`} />
-                <div className="bento-grid final-layout">
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-orange"><Flame size={20} className="text-orange" /></div><span className="stat-percentage warning">Pendientes</span></div>
-                        <div className="stat-body"><h3>En Cola</h3><div className="stat-number">{myStats.pendingOrders || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-green"><ChefHat size={20} className="text-green" /></div><span className="stat-percentage positive">Listas</span></div>
-                        <div className="stat-body"><h3>Para Entregar</h3><div className="stat-number">{myStats.readyOrders || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-primary"><Utensils size={20} className="text-primary" /></div><span className="stat-percentage neutral">Hoy</span></div>
-                        <div className="stat-body"><h3>Platos Preparados</h3><div className="stat-number">{myStats.dishesToday || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-purple"><Timer size={20} className="text-purple" /></div><span className="stat-percentage neutral">Cola</span></div>
-                        <div className="stat-body"><h3>Órdenes en Cocina</h3><div className="stat-number">{(myStats.pendingOrders || 0) + (myStats.readyOrders || 0)}</div></div>
-                    </div>
+    const stockCard = (low: number | undefined) => (
+        <StatCard
+            label="Stock bajo"
+            value={formatNumber(low ?? 0, 0)}
+            tone={(low ?? 0) > 0 ? 'warning' : 'success'}
+            context={(low ?? 0) > 0 ? 'Productos bajo el mínimo: conviene reponer' : 'Inventario sobre el mínimo'}
+            action={(low ?? 0) > 0 ? { label: 'Ver inventario', to: '/inventory' } : undefined}
+        />
+    );
 
-                    {/* Kitchen Queue */}
-                    <div className="bento-item orders-section" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Cola de Cocina</h3><ChefHat size={16} className="text-warning" /></div>
-                        <div className="orders-list">
-                            {(!myStats.kitchenQueue || myStats.kitchenQueue.length === 0) ? (
-                                <div className="dashboard-widget-empty">
-                                    <EmptyState
-                                        icon={<ChefHat size={32} />}
-                                        title="Sin órdenes en cola"
-                                    />
-                                </div>
-                            ) : myStats.kitchenQueue.map((ord: KitchenQueueItem) => (
-                                <div key={ord.id} className="ord-row">
-                                    <div className="ord-meta">
-                                        <span className="ord-id">{ord.id}</span>
-                                        <span className="ord-table">Mesa {ord.table}</span>
-                                    </div>
-                                    <div className="ord-right">
-                                        <span className="ord-total">{ord.items} platos</span>
-                                        <span className="ord-total" style={{ opacity: 0.7 }}>{ord.elapsed} min</span>
-                                        <span className={`ord-status status-${ord.status}`}>{ord.status === 'sent_to_kitchen' ? 'EN COCINA' : 'LISTA'}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+    const kitchenCards = (
+        <>
+            <StatCard
+                label="En cola"
+                value={formatNumber(stats.pendingOrders ?? 0, 0)}
+                tone={(stats.pendingOrders ?? 0) > 0 ? 'warning' : 'neutral'}
+                context="Órdenes pendientes de preparar"
+                action={{ label: 'Abrir cocina', to: '/kitchen' }}
+            />
+            <StatCard
+                label="Para entregar"
+                value={formatNumber(stats.readyOrders ?? 0, 0)}
+                tone={(stats.readyOrders ?? 0) > 0 ? 'success' : 'neutral'}
+                context="Listas esperando al mesero"
+            />
+        </>
+    );
 
-                    {/* Top Dishes Today */}
-                    <div className="bento-item top-products-compact" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Platos Más Solicitados Hoy</h3><Award size={16} className="text-warning" /></div>
-                        <div className="leaderboard-compact-list">
-                            {(myStats.topDishes || []).map((p: TopDishItem, i: number) => (
-                                <div key={p.menuItemId} className="lb-compact-row">
-                                    <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{formatNumber(p.totalQuantity, 0)} pedidos</span></div>
-                                </div>
-                            ))}
-                            {(!myStats.topDishes || myStats.topDishes.length === 0) && <div className="widget-empty">Sin datos aún</div>}
-                        </div>
-                    </div>
-                </div>
-            </div>
+    const topDishesSection = (
+        <Section title="Platos más solicitados hoy">
+            <DataTable
+                ariaLabel="Platos más solicitados hoy"
+                columns={dishColumns}
+                rows={stats.topDishes ?? []}
+                rowKey={(row) => row.menuItemId}
+                defaultPageSize={PAGE_SIZE}
+                hidePaginationIfSinglePage
+                empty="Sin datos aún"
+            />
+        </Section>
+    );
+
+    const consumedSection = (
+        <Section title="Más consumidos (semana)">
+            <DataTable
+                ariaLabel="Más consumidos de la semana"
+                columns={consumedColumns}
+                rows={stats.topConsumed ?? []}
+                rowKey={(row) => row.name}
+                defaultPageSize={PAGE_SIZE}
+                hidePaginationIfSinglePage
+                empty="Sin datos"
+            />
+        </Section>
+    );
+
+    let title = 'Mi panel';
+    let cards: ReactNode;
+    let body: ReactNode;
+
+    if (role === 'COCINA') {
+        title = 'Panel de cocina';
+        cards = kitchenCards;
+        body = (
+            <>
+                <Section title="Cola de cocina">
+                    <DataTable
+                        ariaLabel="Cola de cocina"
+                        columns={kitchenColumns}
+                        rows={stats.kitchenQueue ?? []}
+                        rowKey={(row) => row.id}
+                        defaultPageSize={PAGE_SIZE}
+                        pageSizeOptions={[PAGE_SIZE, 10, 20]}
+                        hidePaginationIfSinglePage
+                        empty="Sin órdenes en cola"
+                    />
+                </Section>
+                {topDishesSection}
+            </>
+        );
+    } else if (role === 'CHEF') {
+        title = 'Panel de chef';
+        cards = (
+            <>
+                {kitchenCards}
+                {stockCard(stats.lowStockCount)}
+            </>
+        );
+        body = (
+            <>
+                <Section title="Ingredientes con stock bajo">
+                    <DataTable
+                        ariaLabel="Ingredientes con stock bajo"
+                        columns={lowStockColumns}
+                        rows={stats.lowStockProducts ?? []}
+                        rowKey={(row) => row.name}
+                        defaultPageSize={PAGE_SIZE}
+                        hidePaginationIfSinglePage
+                        empty="Inventario OK"
+                    />
+                </Section>
+                {consumedSection}
+                {topDishesSection}
+            </>
+        );
+    } else if (role === 'BODEGA') {
+        title = 'Panel de bodega';
+        cards = (
+            <>
+                {stockCard(stats.lowStockCount)}
+                <StatCard
+                    label="Sin existencia"
+                    value={formatNumber(stats.criticalCount ?? 0, 0)}
+                    tone={(stats.criticalCount ?? 0) > 0 ? 'danger' : 'success'}
+                    context={(stats.criticalCount ?? 0) > 0 ? 'Productos agotados: riesgo de faltante' : 'Sin productos agotados'}
+                    action={(stats.criticalCount ?? 0) > 0 ? { label: 'Ver inventario', to: '/inventory' } : undefined}
+                />
+                <StatCard
+                    label="OCs pendientes"
+                    value={formatNumber(stats.pendingPOs ?? 0, 0)}
+                    tone={(stats.pendingPOs ?? 0) > 0 ? 'warning' : 'neutral'}
+                    context="Órdenes de compra por recibir o aprobar"
+                    action={(stats.pendingPOs ?? 0) > 0 ? { label: 'Ver órdenes de compra', to: '/purchase-orders' } : undefined}
+                />
+            </>
+        );
+        body = (
+            <>
+                <Section title="Productos con stock bajo">
+                    <DataTable
+                        ariaLabel="Productos con stock bajo"
+                        columns={lowStockColumns}
+                        rows={stats.lowStockProducts ?? []}
+                        rowKey={(row) => row.name}
+                        defaultPageSize={PAGE_SIZE}
+                        pageSizeOptions={[PAGE_SIZE, 10, 20]}
+                        hidePaginationIfSinglePage
+                        empty="Todo el inventario está bien"
+                    />
+                </Section>
+                {consumedSection}
+                <Section title="Últimos movimientos">
+                    <DataTable
+                        ariaLabel="Últimos movimientos de inventario"
+                        columns={movementColumns}
+                        rows={stats.recentMovements ?? []}
+                        rowKey={(row) => `${row.product}-${row.type}-${row.quantity}-${row.reason ?? ''}`}
+                        defaultPageSize={PAGE_SIZE}
+                        hidePaginationIfSinglePage
+                        empty="Sin movimientos recientes"
+                    />
+                </Section>
+            </>
+        );
+    } else if (role === 'CAJERO') {
+        title = 'Panel de caja';
+        const shift = stats.activeShift;
+        cards = (
+            <>
+                <StatCard
+                    label="Mis ventas hoy"
+                    value={money(stats.salesToday)}
+                    tone="primary"
+                    context={`${formatNumber(stats.ordersToday ?? 0, 0)} órdenes cobradas · ticket promedio ${money(stats.avgTicket)}`}
+                />
+                {shift ? (
+                    <StatCard
+                        label="Efectivo en caja"
+                        value={money(shift.cashAccumulated)}
+                        tone="success"
+                        context={`${shift.registerName} · apertura ${money(shift.startAmount)} a las ${new Date(shift.startDate).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`}
+                    />
+                ) : (
+                    <StatCard
+                        label="Turno de caja"
+                        value="Sin turno"
+                        tone="warning"
+                        context="No hay turno activo: ábrelo para poder cobrar"
+                        action={{ label: 'Ir a Caja', to: '/cash-registers' }}
+                    />
+                )}
+            </>
+        );
+        body = (
+            <>
+                <Section title="Métodos de pago hoy">
+                    <DataTable
+                        ariaLabel="Métodos de pago hoy"
+                        columns={paymentColumns}
+                        rows={stats.paymentBreakdown ?? []}
+                        rowKey={(row) => row.method}
+                        defaultPageSize={PAGE_SIZE}
+                        hidePaginationIfSinglePage
+                        empty="Sin pagos hoy"
+                    />
+                </Section>
+                {reservationsSection}
+            </>
+        );
+    } else {
+        cards = (
+            <StatCard
+                label="Mis ventas hoy"
+                value={money(stats.salesToday)}
+                tone="primary"
+                context={`${formatNumber(stats.ordersToday ?? 0, 0)} órdenes · ticket promedio ${money(stats.avgTicket)}${stats.topProduct ? ` · top: ${stats.topProduct}` : ''}`}
+            />
+        );
+        body = (
+            <>
+                <Section title="Mis órdenes activas">
+                    <DataTable
+                        ariaLabel="Mis órdenes activas"
+                        columns={orderColumns}
+                        rows={stats.myOrders ?? []}
+                        rowKey={(row) => row.id}
+                        defaultPageSize={PAGE_SIZE}
+                        pageSizeOptions={[PAGE_SIZE, 10, 20]}
+                        hidePaginationIfSinglePage
+                        empty="Sin órdenes activas"
+                        onRowClick={setSelectedOrder}
+                    />
+                </Section>
+                <Section title="Mi top 5">
+                    <DataTable
+                        ariaLabel="Mi top 5 de productos"
+                        columns={productColumns}
+                        rows={stats.topProducts ?? []}
+                        rowKey={(row) => row.menuItemId}
+                        defaultPageSize={PAGE_SIZE}
+                        hidePaginationIfSinglePage
+                        empty="Sin datos aún"
+                    />
+                </Section>
+                {reservationsSection}
+            </>
         );
     }
-
-    // ── CHEF DASHBOARD (kitchen + inventory) ──
-    if (!isAdmin && myStats?.role === 'CHEF') {
-        return (
-            <div className="dashboard">
-                <PersonalHeader title="Chef" subtitle={`${user?.name} — Jefe de Cocina`} />
-                <div className="bento-grid final-layout">
-                    {/* Kitchen KPIs */}
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-orange"><Flame size={20} className="text-orange" /></div><span className="stat-percentage warning">Pendientes</span></div>
-                        <div className="stat-body"><h3>En Cola</h3><div className="stat-number">{myStats.pendingOrders || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-green"><ChefHat size={20} className="text-green" /></div><span className="stat-percentage positive">Listas</span></div>
-                        <div className="stat-body"><h3>Para Entregar</h3><div className="stat-number">{myStats.readyOrders || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-primary"><Utensils size={20} className="text-primary" /></div><span className="stat-percentage neutral">Hoy</span></div>
-                        <div className="stat-body"><h3>Platos Preparados</h3><div className="stat-number">{myStats.dishesToday || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-purple"><AlertTriangle size={20} className="text-purple" /></div><span className="stat-percentage warning">Alerta</span></div>
-                        <div className="stat-body"><h3>Stock Bajo</h3><div className="stat-number">{myStats.lowStockCount || 0}</div></div>
-                    </div>
-
-                    {/* Top Dishes Today */}
-                    <div className="bento-item top-products-compact" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Platos Más Solicitados Hoy</h3><Award size={16} className="text-warning" /></div>
-                        <div className="leaderboard-compact-list">
-                            {(myStats.topDishes || []).map((p: TopDishItem, i: number) => (
-                                <div key={p.menuItemId} className="lb-compact-row">
-                                    <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{formatNumber(p.totalQuantity, 0)} pedidos</span></div>
-                                </div>
-                            ))}
-                            {(!myStats.topDishes || myStats.topDishes.length === 0) && <div className="widget-empty">Sin datos aún</div>}
-                        </div>
-                    </div>
-
-                    {/* Low Stock Alerts */}
-                    <div className="bento-item orders-section" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Ingredientes con Stock Bajo</h3><AlertTriangle size={16} className="text-danger" /></div>
-                        <div className="orders-list">
-                            {(!myStats.lowStockProducts || myStats.lowStockProducts.length === 0) ? (
-                                <div className="widget-empty">Inventario OK</div>
-                            ) : myStats.lowStockProducts.map((p: LowStockProduct, i: number) => (
-                                <div key={i} className="ord-row">
-                                    <div className="ord-meta"><span className="ord-id">{p.name}</span></div>
-                                    <div className="ord-right">
-                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--ui-danger)' : 'var(--ui-warning)' }}>{p.current} {p.unit}</span>
-                                        <span className="ord-total" style={{ opacity: 0.5 }}>min: {p.min}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Top Consumed This Week */}
-                    <div className="bento-item top-products-compact" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Más Consumidos (Semana)</h3><Warehouse size={16} className="text-secondary" /></div>
-                        <div className="leaderboard-compact-list">
-                            {(myStats.topConsumed || []).map((p: ConsumedProduct, i: number) => (
-                                <div key={i} className="lb-compact-row">
-                                    <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{p.consumed} {p.unit}</span></div>
-                                </div>
-                            ))}
-                            {(!myStats.topConsumed || myStats.topConsumed.length === 0) && <div className="widget-empty">Sin datos</div>}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // ── BODEGA DASHBOARD ──
-    if (!isAdmin && myStats?.role === 'BODEGA') {
-        return (
-            <div className="dashboard">
-                <PersonalHeader title="Bodega" subtitle={`${user?.name} — Inventario`} />
-                <div className="bento-grid final-layout">
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-orange"><AlertTriangle size={20} className="text-orange" /></div><span className="stat-percentage warning">Alerta</span></div>
-                        <div className="stat-body"><h3>Stock Bajo</h3><div className="stat-number">{myStats.lowStockCount || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-primary"><TrendingDown size={20} className="text-primary" /></div><span className="stat-percentage neutral">Crítico</span></div>
-                        <div className="stat-body"><h3>Sin Stock</h3><div className="stat-number">{myStats.criticalCount || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-purple"><ArrowUpDown size={20} className="text-purple" /></div><span className="stat-percentage neutral">Recientes</span></div>
-                        <div className="stat-body"><h3>Movimientos</h3><div className="stat-number">{myStats.recentMovements?.length || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-green"><ClipboardList size={20} className="text-green" /></div><span className="stat-percentage neutral">OCs</span></div>
-                        <div className="stat-body"><h3>OCs Pendientes</h3><div className="stat-number">{myStats.pendingPOs || 0}</div></div>
-                    </div>
-
-                    {/* Low Stock Products */}
-                    <div className="bento-item orders-section" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Productos con Stock Bajo</h3><AlertTriangle size={16} className="text-danger" /></div>
-                        <div className="orders-list">
-                            {(!myStats.lowStockProducts || myStats.lowStockProducts.length === 0) ? (
-                                <div className="widget-empty">Todo el inventario está bien</div>
-                            ) : myStats.lowStockProducts.map((p: LowStockProduct, i: number) => (
-                                <div key={i} className="ord-row">
-                                    <div className="ord-meta"><span className="ord-id">{p.name}</span></div>
-                                    <div className="ord-right">
-                                        <span className="ord-total" style={{ color: p.current === 0 ? 'var(--ui-danger)' : 'var(--ui-warning)' }}>
-                                            {p.current} {p.unit}
-                                        </span>
-                                        <span className="ord-total" style={{ opacity: 0.5 }}>min: {p.min}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Top Consumed This Week */}
-                    <div className="bento-item top-products-compact">
-                        <div className="section-header"><h3>Más Consumidos (Semana)</h3><Warehouse size={16} className="text-warning" /></div>
-                        <div className="leaderboard-compact-list">
-                            {(myStats.topConsumed || []).map((p: ConsumedProduct, i: number) => (
-                                <div key={i} className="lb-compact-row">
-                                    <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{p.consumed} {p.unit}</span></div>
-                                </div>
-                            ))}
-                            {(!myStats.topConsumed || myStats.topConsumed.length === 0) && <div className="widget-empty">Sin datos</div>}
-                        </div>
-                    </div>
-
-                    {/* Recent Movements */}
-                    <div className="bento-item invoices-section" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Últimos Movimientos</h3><ArrowUpDown size={16} className="text-secondary" /></div>
-                        <div className="invoices-list">
-                            {(myStats.recentMovements || []).slice(0, 8).map((m: MovementItem, i: number) => (
-                                <div key={i} className="invoice-row">
-                                    <div className="invoice-info">
-                                        <span className="inv-id">{m.product}</span>
-                                        <span className="inv-meta">{m.reason || m.type}</span>
-                                    </div>
-                                    <div className="invoice-right">
-                                        <span className="inv-amount" style={{ color: m.type === 'IN' ? 'var(--ui-success)' : 'var(--ui-danger)' }}>
-                                            {m.type === 'IN' ? '+' : '-'}{formatNumber(m.quantity)} {m.unit}
-                                        </span>
-                                        <span className={`inv-status status-${m.type === 'IN' ? 'paid' : 'cancelled'}`}>{m.type}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // ── CAJERO DASHBOARD ──
-    if (!isAdmin && myStats?.role === 'CAJERO') {
-        return (
-            <div className="dashboard">
-                <PersonalHeader title="Mi Caja" subtitle={`${user?.name} — Cajero`} />
-                <div className="bento-grid final-layout">
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-primary"><DollarSign size={20} className="text-primary" /></div><span className="stat-percentage neutral">Hoy</span></div>
-                        <div className="stat-body"><h3>Mis Ventas</h3><div className="stat-number">{formatCurrency(myStats.salesToday || 0)}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-orange"><Ticket size={20} className="text-orange" /></div><span className="stat-percentage neutral">Hoy</span></div>
-                        <div className="stat-body"><h3>Ticket Promedio</h3><div className="stat-number">{formatCurrency(myStats.avgTicket || 0)}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-green"><FileText size={20} className="text-green" /></div><span className="stat-percentage neutral">Hoy</span></div>
-                        <div className="stat-body"><h3>Facturas Emitidas</h3><div className="stat-number">{myStats.invoicesToday || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-purple"><ClipboardList size={20} className="text-purple" /></div><span className="stat-percentage neutral">Hoy</span></div>
-                        <div className="stat-body"><h3>Órdenes Cobradas</h3><div className="stat-number">{myStats.ordersToday || 0}</div></div>
-                    </div>
-
-                    {/* Active Shift Info */}
-                    <div className="bento-item orders-section" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Turno Activo</h3><Wallet size={16} className="text-primary" /></div>
-                        <div className="orders-list">
-                            {myStats.activeShift ? (
-                                <>
-                                    <div className="ord-row">
-                                        <div className="ord-meta"><span className="ord-id">Caja</span></div>
-                                        <div className="ord-right"><span className="ord-total">{myStats.activeShift.registerName}</span></div>
-                                    </div>
-                                    <div className="ord-row">
-                                        <div className="ord-meta"><span className="ord-id">Monto Apertura</span></div>
-                                        <div className="ord-right"><span className="ord-total">{formatCurrency(myStats.activeShift.startAmount)}</span></div>
-                                    </div>
-                                    <div className="ord-row">
-                                        <div className="ord-meta"><span className="ord-id">Efectivo Acumulado</span></div>
-                                        <div className="ord-right"><span className="ord-total" style={{ color: 'var(--ui-success)' }}>{formatCurrency(myStats.activeShift.cashAccumulated)}</span></div>
-                                    </div>
-                                    <div className="ord-row">
-                                        <div className="ord-meta"><span className="ord-id">Apertura</span></div>
-                                        <div className="ord-right"><span className="ord-total" style={{ opacity: 0.7 }}>{new Date(myStats.activeShift.startDate).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span></div>
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="widget-empty">Sin turno activo — abre uno desde Caja</div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Payment Breakdown */}
-                    <div className="bento-item top-products-compact" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Métodos de Pago Hoy</h3><CreditCard size={16} className="text-warning" /></div>
-                        <div className="leaderboard-compact-list">
-                            {(myStats.paymentBreakdown || []).map((p: PaymentBreakdownItem, i: number) => (
-                                <div key={i} className="lb-compact-row">
-                                    <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.method}</span></div>
-                                    <span className="lb-revenue-right">{formatCurrency(p.total)}</span>
-                                </div>
-                            ))}
-                            {(!myStats.paymentBreakdown || myStats.paymentBreakdown.length === 0) && <div className="widget-empty">Sin pagos hoy</div>}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // ── MESERO / HOST / DEFAULT DASHBOARD ──
-    if (!isAdmin && myStats) {
-        return (
-            <div className="dashboard">
-                <PersonalHeader title="Mi Panel" subtitle={`Bienvenido, ${user?.name}`} />
-                <div className="bento-grid final-layout">
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-primary"><DollarSign size={20} className="text-primary" /></div><span className="stat-percentage neutral">Hoy</span></div>
-                        <div className="stat-body"><h3>Mis Ventas</h3><div className="stat-number">{formatCurrency(myStats.salesToday || 0)}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-orange"><ClipboardList size={20} className="text-orange" /></div><span className="stat-percentage neutral">Hoy</span></div>
-                        <div className="stat-body"><h3>Mis Órdenes</h3><div className="stat-number">{myStats.ordersToday || 0}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-purple"><Activity size={20} className="text-purple" /></div><span className="stat-percentage neutral">Prom.</span></div>
-                        <div className="stat-body"><h3>Ticket Promedio</h3><div className="stat-number">{formatCurrency(myStats.avgTicket || 0)}</div></div>
-                    </div>
-                    <div className="bento-item stat-card-modern">
-                        <div className="stat-header"><div className="stat-icon-bg bg-green"><Award size={20} className="text-green" /></div><span className="stat-percentage neutral">Top</span></div>
-                        <div className="stat-body"><h3>Mi Producto Top</h3><div className="stat-number" style={{ fontSize: 'var(--font-size-lg)' }}>{myStats.topProduct || 'Ninguno'}</div></div>
-                    </div>
-
-                    <div className="bento-item orders-section" style={{ gridColumn: 'span 2' }}>
-                        <div className="section-header"><h3>Mis Órdenes Activas</h3><ClipboardList size={16} className="text-primary" /></div>
-                        <div className="orders-list">
-                            {(!myStats.myOrders || myStats.myOrders.length === 0) ? (
-                                <div className="dashboard-widget-empty">
-                                    <EmptyState
-                                        icon={<ClipboardList size={32} />}
-                                        title="Sin órdenes activas"
-                                    />
-                                </div>
-                            ) : myStats.myOrders.map((ord: RecentOrder) => (
-                                <div key={ord.id} className="ord-row clickable" role="button" tabIndex={0} aria-label={`Ver orden ${ord.id}`} onClick={() => setSelectedOrder(ord)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedOrder(ord))}>
-                                    <div className="ord-meta"><span className="ord-id">{ord.id}</span><span className="ord-table">{ord.table}</span></div>
-                                    <div className="ord-right"><span className="ord-total">{formatCurrency(ord.total)}</span><span className={`ord-status status-${ord.status}`}>{ord.status}</span></div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="bento-item top-products-compact">
-                        <div className="section-header"><h3>Mi Top 5</h3><Award size={16} className="text-warning" /></div>
-                        <div className="leaderboard-compact-list">
-                            {(myStats.topProducts || []).map((p: TopProduct, i: number) => (
-                                <div key={p.menuItemId} className="lb-compact-row">
-                                    <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{formatNumber(p.totalQuantity, 0)} vendidos</span></div>
-                                    <span className="lb-revenue-right">{formatCurrency(p.totalRevenue)}</span>
-                                </div>
-                            ))}
-                            {(!myStats.topProducts || myStats.topProducts.length === 0) && <div className="widget-empty">Sin datos aún</div>}
-                        </div>
-                    </div>
-
-                    <div className="bento-item reservations-section">
-                        <div className="section-header"><h3>Reservas Próximas</h3><CalendarCheck size={16} className="text-primary" /></div>
-                        <div className="reservations-list">
-                            {todaysReservations.length === 0 ? (
-                                <div className="dashboard-widget-empty">
-                                    <EmptyState
-                                        icon={<CalendarCheck size={32} />}
-                                        title="Sin reservas próximas"
-                                    />
-                                </div>
-                            ) : todaysReservations.slice(0, 5).map(res => (
-                                <div key={res.id} className="res-row">
-                                    <div className="res-time">{res.day || res.time}</div>
-                                    <div className="res-info"><span className="res-name">{res.name}</span></div>
-                                    <div className={`res-badge badge-${res.status}`}>{res.pax}p</div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                <FullScreenModal isOpen={!!selectedOrder} onClose={() => setSelectedOrder(null)} title="Detalle de Orden">
-                    {selectedOrder && (
-                        <div className="detail-modal-content">
-                            <div className="detail-header-section"><h3 className="detail-main-title">{selectedOrder.id}</h3><span className="detail-main-value">{formatCurrency(selectedOrder.total)}</span></div>
-                            <div className="detail-row"><span className="detail-label">Mesa</span><span className="detail-value">{selectedOrder.table}</span></div>
-                            <div className="detail-row"><span className="detail-label">Estado</span><span className={`detail-badge status-${selectedOrder.status}`}>{selectedOrder.status}</span></div>
-                        </div>
-                    )}
-                </FullScreenModal>
-            </div>
-        );
-    }
-
-    // ═══════════════════════════════════════════════════
-    // FULL BI DASHBOARD (admin roles)
-    // ═══════════════════════════════════════════════════
 
     return (
-        <div className="dashboard">
-            {/* Header with Command Bar */}
-            <header className="dashboard-header-hero">
-                <div className="header-greeting">
-                    <h1>Business Intelligence</h1>
-                    <p className="subtitle">Análisis estratégico de operación</p>
-                </div>
+        <PageContent>
+            <PageHeader title={title} description={greeting} />
+            {loadError ? <LoadErrorState message={loadError} onRetry={retryLoad} /> : null}
+            <div className="dashboard-kpis">{cards}</div>
+            <div className="dashboard-grid">{body}</div>
 
-                <div className="header-actions-wrapper">
-                    <div className="command-bar">
-                        <button className="cmd-btn" onClick={() => navigate('/tables')} title="Centro operativo de mesas">
-                            <CreditCard size={18} /> <span className="cmd-label">Mesas</span>
-                        </button>
-                        <button className="cmd-btn" onClick={() => navigate('/kitchen')} title="Cocina">
-                            <ChefHat size={18} /> <span className="cmd-label">Cocina</span>
-                        </button>
-                        <button className="cmd-btn" onClick={() => navigate('/inventory')} title="Inventario">
-                            <Package size={18} /> <span className="cmd-label">Stock</span>
-                        </button>
-                        <button className="cmd-btn" onClick={() => navigate('/users')} title="Personal">
-                            <Users size={18} /> <span className="cmd-label">Staff</span>
-                        </button>
-                    </div>
-
-                    <div className="header-meta-group">
-                        {stockAlerts.length > 0 && (
-                            <div className="compact-alert-ticker" role="button" tabIndex={0} onClick={() => navigate('/inventory')} onKeyDown={(event) => activateOnKeyboard(event, () => navigate('/inventory'))} title="Ver inventario con stock bajo">
-                                <AlertCircle size={16} className="text-danger" />
-                                <span className="ticker-label text-danger">Stock bajo</span>
-                                <span className="ticker-count">{stockAlerts.length}</span>
-                                <span className="ticker-message">
-                                    {stockAlerts.length === 1 ? 'producto requiere atención' : 'productos requieren atención'}
-                                </span>
-                                <ChevronRight size={14} />
-                            </div>
-                        )}
-
-                        <div className="header-time">
-                            <Clock size={16} className="text-primary" />
-                            <span>{currentTime.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
-                            <div className="divider-v"></div>
-                            <Calendar size={16} className="text-secondary" />
-                            <span className="date-text">{currentTime.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</span>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            {loadError && (
-                <div className="dashboard-error-banner" role="alert">
-                    <AlertTriangle size={20} />
-                    <span>{loadError}</span>
-                    <button type="button" className="dashboard-retry-btn" onClick={retryLoad}>
-                        Reintentar
-                    </button>
-                </div>
-            )}
-
-            <div className="bento-grid final-layout">
-
-                {/* --- ROW 1: KPI CARDS --- */}
-                <div className="bento-item stat-card-modern">
-                    <div className="stat-header">
-                        <div className="stat-icon-bg bg-primary"><DollarSign size={20} className="text-primary" /></div>
-                    </div>
-                    <div className="stat-body">
-                        <h3>Ventas</h3>
-                        <div className="stat-number">{formatKpiMoney(Number(stats.todaySales))}</div>
-                    </div>
-                </div>
-                <div className="bento-item stat-card-modern">
-                    <div className="stat-header">
-                        <div className="stat-icon-bg bg-orange"><Ticket size={20} className="text-orange" /></div>
-                    </div>
-                    <div className="stat-body">
-                        <h3>Ticket Prom.</h3>
-                        <div className="stat-number">{formatKpiMoney(averageTicket)}</div>
-                    </div>
-                </div>
-                <div className="bento-item stat-card-modern">
-                    <div className="stat-header">
-                        <div className="stat-icon-bg bg-purple"><Activity size={20} className="text-purple" /></div>
-                    </div>
-                    <div className="stat-body">
-                        <h3>Ocupación</h3>
-                        <div className="stat-number">{formatKpiNumber(occupancyRate, '%')}</div>
-                        {!kpisUnavailable && (
-                            <div className="occupancy-bar"><div className="occupancy-fill" style={{ width: `${occupancyRate}%` }}></div></div>
-                        )}
-                    </div>
-                </div>
-                <div className="bento-item stat-card-modern">
-                    <div className="stat-header">
-                        <div className="stat-icon-bg bg-green"><Users size={20} className="text-green" /></div>
-                    </div>
-                    <div className="stat-body">
-                        <h3>Órdenes cobradas</h3>
-                        <div className="stat-number">{formatKpiNumber(settledOrdersCount)}</div>
-                    </div>
-                </div>
-
-                {/* --- ROW 2: TRAFFIC & PERFORMANCE (Heatmap + Radar) --- */}
-
-                <div className="bento-item heatmap-section">
-                    <div className="section-header mb-large">
-                        <h3>Demanda relativa por hora</h3>
-                        <PeriodSelector value={heatmapPeriod} onChange={setHeatmapPeriod} />
-                    </div>
-                    <div className="heatmap-container">
-                        <div className="heatmap-grid mode-7-10">
-                            <div className="hm-cell-header"></div>
-                            {[12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map(h => (
-                                <div key={h} className="hm-cell-header">{h}h</div>
-                            ))}
-                            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => (
-                                <Fragment key={d}>
-                                    <div key={`label-${d}`} className="hm-cell-row-label">{d}</div>
-                                    {[12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map(h => {
-                                        const point = heatmapData.find(p => p.day === d && p.hour === h) || { value: 0 };
-                                        const opacity = Math.max(0.1, point.value / 100);
-                                        return (
-                                            <div
-                                                key={`${d}-${h}`}
-                                                className="hm-cell"
-                                                style={{ backgroundColor: `rgba(99, 102, 241, ${opacity})` }}
-                                                title={`${d} ${h}:00 - ${point.value}% del pico del período`}
-                                            ></div>
-                                        )
-                                    })}
-                                </Fragment>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bento-item radar-section">
-                    <div className="section-header mb-large">
-                        <h3>Evaluación de Turnos</h3>
-                        <PeriodSelector value={radarPeriod} onChange={setRadarPeriod} />
-                    </div>
-                    <div className="chart-wrapper">
-                        <Heatmap
-                            rows={[
-                                { label: 'Turno A', values: radarData.map((r) => r.A) },
-                                { label: 'Turno B', values: radarData.map((r) => r.B) },
-                            ]}
-                            columns={radarData.map((r) => r.subject)}
-                            format={(v) => formatNumber(v, 0)}
-                            ariaLabel="Evaluación de turnos por indicador"
-                        />
-                        <div className="chart-legend-center">
-                            <span>Índice relativo (mejor turno = 100)</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* --- ROW 3: FINANCIAL BREAKDOWN (Bar Chart + Horizontal Bar) --- */}
-
-                <div className="bento-item waterfall-section">
-                    <div className="section-header mb-large">
-                        <h3>Venta bruta por categoría</h3>
-                        <PeriodSelector value={incomePeriod} onChange={setIncomePeriod} />
-                    </div>
-                    <div className="chart-wrapper">
-                        <ParetoBars
-                            items={toPareto(incomeData.map((d) => ({ name: d.name, value: d.value })), Math.max(12, incomeData.length))}
-                            format={(v) => formatCurrency(v)}
-                            ariaLabel="Venta bruta por categoría con porcentaje acumulado"
-                        />
-                    </div>
-                </div>
-
-                <div className="bento-item treemap-section">
-                    <div className="section-header mb-large">
-                        <h3>Demanda histórica por producto</h3>
-                        <div className="treemap-filters" style={{ width: '250px' }}>
-                            <AppSelect
-                                aria-label="Categoría de producto"
-                                size="sm"
-                                isClearable={false}
-                                value={treemapCategory.value}
-                                onChange={(val) => {
-                                    if (val == null) return;
-                                    setTreemapCategory({ value: val, label: val === 'all' ? 'Todas las Categorías' : val });
-                                }}
-                                options={[
-                                    { value: 'all', label: 'Todas las Categorías' },
-                                    ...Array.from(new Set(topProducts?.map(p => p.category) || []))
-                                        .filter(cat => cat && cat !== 'N/A')
-                                        .map(cat => ({ value: cat, label: cat }))
-                                ]}
-                            />
-                        </div>
-                    </div>
-                    <div className="chart-wrapper">
-                        <ParetoBars
-                            items={toPareto(
-                                (topProducts || [])
-                                    .filter(p => treemapCategory.value === 'all' || p.category === treemapCategory.value)
-                                    .map(p => ({ name: p.name, value: Number(p.totalQuantity || 0) })),
-                                15,
-                            )}
-                            format={(v) => `${formatNumber(v, 0)} unidades`}
-                            ariaLabel="Demanda histórica por producto con porcentaje acumulado"
-                        />
-                    </div>
-                </div>
-
-
-                {/* --- ROW 4: TRENDS (Scatter) --- */}
-                <div className="bento-item chart-section scatter-section-large">
-                    <div className="section-header mb-large">
-                        <h3>Servicio vs Propina</h3>
-                        <PeriodSelector value={tipsPeriod} onChange={setTipsPeriod} />
-                    </div>
-                    <Heatmap
-                        {...binScatter(scatterTipsData as Array<Record<string, number | undefined>>, 'waitTime', 'tip', (n) => formatNumber(n, 1), 6, (n) => formatCurrency(n))}
-                        format={(v) => `${formatNumber(v, 0)} mesas`}
-                        ariaLabel="Mesas por tiempo de espera (min, columnas) y propina (filas)"
-                        caption="Columnas: tiempo de espera (min). Filas: propina."
-                    />
-                </div>
-
-                <div className="bento-item chart-section scatter-section-large">
-                    <div className="section-header mb-large">
-                        <h3>Gasto vs Permanencia</h3>
-                        <PeriodSelector value={spendPeriod} onChange={setSpendPeriod} />
-                    </div>
-                    <Heatmap
-                        {...binScatter(scatterSpendData as Array<Record<string, number | undefined>>, 'dwellTime', 'spend', (n) => formatNumber(n, 1), 6, (n) => formatCurrency(n))}
-                        format={(v) => `${formatNumber(v, 0)} mesas`}
-                        ariaLabel="Mesas por permanencia (min, columnas) y consumo (filas)"
-                        caption="Columnas: permanencia (min). Filas: consumo."
-                    />
-                </div>
-
-                {/* --- ROW 5: OPERATIONS (Top 5, Active Orders, Today Invoices, Upcoming Reservations) --- */}
-                {/* 1. Top 5 Products */}
-                <div className="bento-item top-products-compact">
-                    <div className="section-header">
-                        <h3>Top 5</h3>
-                        <Award size={16} className="text-warning" />
-                    </div>
-                    <div className="leaderboard-compact-list">
-                        {topProducts.slice(0, 5).map((p, i) => (
-                            <div key={p.menuItemId} className="lb-compact-row clickable" role="button" tabIndex={0} aria-label={`Ver producto ${p.name}`} onClick={() => setSelectedProduct(p)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedProduct(p))}>
-                                <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                <div className="lb-info">
-                                    <span className="lb-name">{p.name}</span>
-                                    <span className="lb-sub">{formatNumber(p.totalQuantity, 0)} vendidos</span>
-                                </div>
-                                {p.totalRevenue && <span className="lb-revenue-right">{formatCurrency(p.totalRevenue)}</span>}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* 2. Active Orders */}
-                <div className="bento-item orders-section">
-                    <div className="section-header">
-                        <h3>Ordenes Activas</h3>
-                        <ClipboardList size={16} className="text-primary" />
-                    </div>
-                    <div className="orders-list">
-                        {recentOrders.length === 0 ? (
-                            <div className="dashboard-widget-empty">
-                                <EmptyState
-                                    icon={<ClipboardList size={32} />}
-                                    title="Sin órdenes activas"
-                                />
-                            </div>
-                        ) : recentOrders.slice(ordersPage * WIDGET_PAGE_SIZE, (ordersPage + 1) * WIDGET_PAGE_SIZE).map(ord => (
-                            <div key={ord.id} className="ord-row clickable" role="button" tabIndex={0} aria-label={`Ver orden ${ord.id}`} onClick={() => setSelectedOrder(ord)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedOrder(ord))}>
-                                <div className="ord-meta">
-                                    <span className="ord-id">{ord.id}</span>
-                                    <span className="ord-table">{ord.table}</span>
-                                </div>
-                                <div className="ord-right">
-                                    <span className="ord-total">{formatCurrency(ord.total)}</span>
-                                    <span className={`ord-status status-${ord.status}`}>{formatOrderStatus(ord.status)}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    {recentOrders.length > WIDGET_PAGE_SIZE && (
-                        <div className="widget-pagination">
-                            <button disabled={ordersPage === 0} onClick={() => setOrdersPage(p => p - 1)}>&lsaquo;</button>
-                            <span>{ordersPage + 1}/{Math.ceil(recentOrders.length / WIDGET_PAGE_SIZE)}</span>
-                            <button disabled={(ordersPage + 1) * WIDGET_PAGE_SIZE >= recentOrders.length} onClick={() => setOrdersPage(p => p + 1)}>&rsaquo;</button>
-                        </div>
-                    )}
-                </div>
-
-                {/* 3. Today's Invoices */}
-                <div className="bento-item invoices-section">
-                    <div className="section-header">
-                        <h3>Facturas Hoy</h3>
-                        <FileText size={16} className="text-secondary" />
-                    </div>
-                    <div className="invoices-list">
-                        {recentInvoices.length === 0 ? (
-                            <div className="dashboard-widget-empty">
-                                <EmptyState
-                                    icon={<FileText size={32} />}
-                                    title="Sin facturas hoy"
-                                />
-                            </div>
-                        ) : recentInvoices.slice(invoicesPage * WIDGET_PAGE_SIZE, (invoicesPage + 1) * WIDGET_PAGE_SIZE).map(inv => (
-                            <div key={inv.id} className="invoice-row clickable" role="button" tabIndex={0} aria-label={`Ver factura ${inv.id}`} onClick={() => setSelectedInvoice(inv)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedInvoice(inv))}>
-                                <div className="invoice-info">
-                                    <span className="inv-id">{inv.id}</span>
-                                    <span className="inv-meta">{inv.time}</span>
-                                </div>
-                                <div className="invoice-right">
-                                    <span className="inv-amount">{formatCurrency(inv.amount)}</span>
-                                    <span className={`inv-status status-${inv.status}`}>{inv.status}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    {recentInvoices.length > WIDGET_PAGE_SIZE && (
-                        <div className="widget-pagination">
-                            <button disabled={invoicesPage === 0} onClick={() => setInvoicesPage(p => p - 1)}>&lsaquo;</button>
-                            <span>{invoicesPage + 1}/{Math.ceil(recentInvoices.length / WIDGET_PAGE_SIZE)}</span>
-                            <button disabled={(invoicesPage + 1) * WIDGET_PAGE_SIZE >= recentInvoices.length} onClick={() => setInvoicesPage(p => p + 1)}>&rsaquo;</button>
-                        </div>
-                    )}
-                </div>
-
-                {/* 4. Upcoming Reservations (7 days) */}
-                <div className="bento-item reservations-section">
-                    <div className="section-header">
-                        <h3>Reservas</h3>
-                        <CalendarCheck size={16} className="text-primary" />
-                    </div>
-                    <div className="reservations-list">
-                        {todaysReservations.length === 0 ? (
-                            <div className="dashboard-widget-empty">
-                                <EmptyState
-                                    icon={<CalendarCheck size={32} />}
-                                    title="Sin reservas próximas"
-                                />
-                            </div>
-                        ) : todaysReservations.slice(reservationsPage * WIDGET_PAGE_SIZE, (reservationsPage + 1) * WIDGET_PAGE_SIZE).map(res => (
-                            <div key={res.id} className="res-row clickable" role="button" tabIndex={0} aria-label={`Ver reservación ${res.id}`} onClick={() => setSelectedReservation(res)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedReservation(res))}>
-                                <div className="res-time">{res.day || res.time}</div>
-                                <div className="res-info">
-                                    <span className="res-name">{res.name}</span>
-                                </div>
-                                <div className={`res-badge badge-${res.status}`}>
-                                    {res.pax}p
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    {todaysReservations.length > WIDGET_PAGE_SIZE && (
-                        <div className="widget-pagination">
-                            <button disabled={reservationsPage === 0} onClick={() => setReservationsPage(p => p - 1)}>&lsaquo;</button>
-                            <span>{reservationsPage + 1}/{Math.ceil(todaysReservations.length / WIDGET_PAGE_SIZE)}</span>
-                            <button disabled={(reservationsPage + 1) * WIDGET_PAGE_SIZE >= todaysReservations.length} onClick={() => setReservationsPage(p => p + 1)}>&rsaquo;</button>
-                        </div>
-                    )}
-                </div>
-
-            </div>
-
-            {/* Detail Modals */}
-            {/* Product Detail Modal */}
-            <FullScreenModal
-                isOpen={!!selectedProduct}
-                onClose={() => setSelectedProduct(null)}
-                title="Detalle del Producto"
-            >
-                {selectedProduct && (
-                    <div className="detail-modal-content">
-                        <div className="detail-header-section">
-                            <h3 className="detail-main-title">{selectedProduct.name}</h3>
-                            <span className="detail-main-value">{formatCurrency(selectedProduct.totalRevenue || 0)}</span>
-                        </div>
-                        <div className="detail-stats-grid">
-                            <div className="detail-stat">
-                                <span className="detail-stat-value">{formatNumber(selectedProduct.totalQuantity, 0)}</span>
-                                <span className="detail-stat-label">Unidades Vendidas</span>
-                            </div>
-                            <div className="detail-stat">
-                                <span className="detail-stat-value">{formatCurrency((selectedProduct.totalRevenue || 0) / (selectedProduct.totalQuantity || 1))}</span>
-                                <span className="detail-stat-label">Precio Promedio</span>
-                            </div>
-                        </div>
-                        {selectedProduct.category && (
-                            <div className="detail-row">
-                                <span className="detail-label">Categoría</span>
-                                <span className="detail-value">{selectedProduct.category}</span>
-                            </div>
-                        )}
-                        <div className="detail-row">
-                            <span className="detail-label">Posición en Ranking</span>
-                            <span className="detail-value font-bold">Top {topProducts.findIndex(p => p.menuItemId === selectedProduct.menuItemId) + 1}</span>
-                        </div>
-                        <div className="detail-note">
-                            <span>💡 Este producto está generando buenos ingresos. Considere destacarlo en el menú.</span>
-                        </div>
-                    </div>
-                )}
-            </FullScreenModal>
-
-            {/* Order Detail Modal */}
             <FullScreenModal
                 isOpen={!!selectedOrder}
                 onClose={() => setSelectedOrder(null)}
-                title="Detalle de Orden"
+                title="Detalle de orden"
+                subtitle={selectedOrder ? `Orden ${selectedOrder.id}` : undefined}
+                size="compact"
+                footer={({ requestClose }) => <Button onClick={requestClose}>Cerrar</Button>}
             >
                 {selectedOrder && (
-                    <div className="detail-modal-content">
-                        <div className="detail-header-section">
-                            <h3 className="detail-main-title">{selectedOrder.id}</h3>
-                            <span className="detail-main-value">{formatCurrency(selectedOrder.total)}</span>
-                        </div>
-                        <div className="detail-stats-grid">
-                            <div className="detail-stat">
-                                <span className="detail-stat-value">{selectedOrder.table}</span>
-                                <span className="detail-stat-label">Mesa</span>
-                            </div>
-                            <div className="detail-stat">
-                                <span className="detail-stat-value">{selectedOrder.items?.length || 0}</span>
-                                <span className="detail-stat-label">Items</span>
-                            </div>
-                        </div>
-                        <div className="detail-row">
-                            <span className="detail-label">Estado</span>
-                            <span className={`detail-badge status-${selectedOrder.status}`}>{formatOrderStatus(selectedOrder.status)}</span>
-                        </div>
-                        {selectedOrder.waiter && (
-                            <div className="detail-row">
-                                <span className="detail-label">Mesero</span>
-                                <span className="detail-value">{selectedOrder.waiter}</span>
-                            </div>
-                        )}
-                        {selectedOrder.createdAt && (
-                            <div className="detail-row">
-                                <span className="detail-label">Creada</span>
-                                <span className="detail-value">{new Date(selectedOrder.createdAt).toLocaleString('es-MX')}</span>
-                            </div>
-                        )}
-                        {selectedOrder.items && selectedOrder.items.length > 0 && (
-                            <div className="detail-items-section">
-                                <h4>Items del Pedido</h4>
-                                <div className="detail-items-list">
-                                    {selectedOrder.items.map((item: OrderItemSummary) => (
-                                        <div key={item.id || item.menuItemId} className="detail-item-row">
-                                            <span>{item.quantity}x {item.name}</span>
-                                            <span>{formatCurrency(item.subtotal ?? item.price * item.quantity)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                        <div className="detail-note">
-                            <span>📦 Tiempo estimado de preparación: 15-20 min</span>
-                        </div>
-                    </div>
+                    <dl className="dashboard-detail">
+                        <div><dt>Mesa</dt><dd>{selectedOrder.table}</dd></div>
+                        <div><dt>Estado</dt><dd><Badge tone={toneFor(selectedOrder.status.toUpperCase())} dot>{orderStatusLabel(selectedOrder.status)}</Badge></dd></div>
+                        <div><dt>Total</dt><dd className="dashboard-detail__num">{money(selectedOrder.total)}</dd></div>
+                    </dl>
                 )}
             </FullScreenModal>
-
-            {/* Invoice Detail Modal */}
-            <FullScreenModal
-                isOpen={!!selectedInvoice}
-                onClose={() => setSelectedInvoice(null)}
-                title="Detalle de Factura"
-            >
-                {selectedInvoice && (
-                    <div className="detail-modal-content">
-                        <div className="detail-header-section">
-                            <h3 className="detail-main-title">{selectedInvoice.id}</h3>
-                            <span className="detail-main-value">{formatCurrency(selectedInvoice.amount)}</span>
-                        </div>
-                        <div className="detail-stats-grid">
-                            <div className="detail-stat">
-                                <span className="detail-stat-value">{selectedInvoice.time}</span>
-                                <span className="detail-stat-label">Hora de Emisión</span>
-                            </div>
-                            <div className="detail-stat">
-                                <span className={`detail-stat-badge status-${selectedInvoice.status}`}>{selectedInvoice.status}</span>
-                                <span className="detail-stat-label">Estado</span>
-                            </div>
-                        </div>
-                        {selectedInvoice.paymentMethod && (
-                            <div className="detail-row">
-                                <span className="detail-label">Método de Pago</span>
-                                <span className="detail-value">{selectedInvoice.paymentMethod}</span>
-                            </div>
-                        )}
-                        {selectedInvoice.customer && (
-                            <div className="detail-row">
-                                <span className="detail-label">Cliente</span>
-                                <span className="detail-value">{selectedInvoice.customer}</span>
-                            </div>
-                        )}
-                        <div className="detail-note">
-                            <span>🧾 Factura generada automáticamente. Disponible para reimpresión.</span>
-                        </div>
-                    </div>
-                )}
-            </FullScreenModal>
-
-            {/* Reservation Detail Modal */}
-            <FullScreenModal
-                isOpen={!!selectedReservation}
-                onClose={() => setSelectedReservation(null)}
-                title="Detalle de Reserva"
-            >
-                {selectedReservation && (
-                    <div className="detail-modal-content">
-                        <div className="detail-header-section">
-                            <h3 className="detail-main-title">{selectedReservation.name}</h3>
-                            <span className="detail-main-value">{selectedReservation.pax}p</span>
-                        </div>
-                        <div className="detail-stats-grid">
-                            <div className="detail-stat">
-                                <span className="detail-stat-value">{selectedReservation.time}</span>
-                                <span className="detail-stat-label">Hora</span>
-                            </div>
-                            <div className="detail-stat">
-                                <span className={`detail-stat-badge badge-${selectedReservation.status}`}>{selectedReservation.status}</span>
-                                <span className="detail-stat-label">Estado</span>
-                            </div>
-                        </div>
-                        {selectedReservation.phone && (
-                            <div className="detail-row">
-                                <span className="detail-label">Teléfono</span>
-                                <span className="detail-value">{selectedReservation.phone}</span>
-                            </div>
-                        )}
-                        {selectedReservation.table && (
-                            <div className="detail-row">
-                                <span className="detail-label">Mesa Asignada</span>
-                                <span className="detail-value font-bold">{selectedReservation.table}</span>
-                            </div>
-                        )}
-                        {selectedReservation.notes && (
-                            <div className="detail-row">
-                                <span className="detail-label">Notas</span>
-                                <span className="detail-value">{selectedReservation.notes}</span>
-                            </div>
-                        )}
-                        <div className="detail-note">
-                            <span>🗓️ Recuerde confirmar la reserva 1 hora antes de la llegada del cliente.</span>
-                        </div>
-                    </div>
-                )}
-            </FullScreenModal>
-        </div >
+        </PageContent>
     );
 }

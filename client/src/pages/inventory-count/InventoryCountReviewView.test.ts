@@ -50,8 +50,9 @@ describe('InventoryCountReview list', () => {
         expect(html).toContain('Cocina');
         expect(html).toContain('Ana');
         expect(html).toContain('En revisión');
-        expect(html).toContain('count-badge-warning');
-        expect(html).toContain('-C$ 10.00');
+        expect(html).toContain('ui-badge--warning');
+        expect(html).toContain('Valor neto (C$)');
+        expect(html).toContain('-10.00');
         expect(html).toContain('3/4');
         expect(html).toMatch(/app-select__single-value[^>]*>En revisión</);
     });
@@ -64,9 +65,10 @@ describe('InventoryCountReview detail', () => {
         expect(html).toContain('10.00 L');
         expect(html).toContain('8.00 L');
         expect(html).toContain('-2.00');
-        expect(html).toContain('-C$ 40.00');
+        expect(html).toContain('Valor (C$)');
+        expect(html).toContain('-40.00');
         expect(html).toContain('+1.00');
-        expect(html).toContain('+C$ 30.00');
+        expect(html).toContain('+30.00');
     });
 
     it('Solo diferencias toggle hides zero-diff lines', () => {

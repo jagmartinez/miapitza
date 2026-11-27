@@ -1,5 +1,5 @@
-import { Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
-import { useState } from 'react';
+import { Button, Checkbox, DateInput, Field, Input, Textarea } from '@/ui';
+import { useState, useId } from 'react';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import HrMoneyInput from './HrMoneyInput';
 import HrModalFormShell from './HrModalFormShell';
@@ -50,6 +50,7 @@ export default function BenefitsTransitionForm({
   onSubmit,
   onCancel,
 }: BenefitsTransitionFormProps) {
+  const fid = useId();
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
@@ -119,41 +120,41 @@ export default function BenefitsTransitionForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Volver
           </Button>
-          <Button
+          <Button loading={saving}
             type="submit"
             variant={sensitive ? 'danger' : 'primary'}
             disabled={!online || saving || !confirmed || !reason.trim() || (asksAmount && !proposedAmount) || (asksReference && !operationReference.trim())}
           >
-            {saving ? 'Registrando…' : LABELS[action]}
+            {LABELS[action]}
           </Button>
         </>
       }
     >
-      <label>
-        Fecha efectiva
-        <DateInput
+      <Field label="Fecha efectiva" htmlFor={`${fid}-fecha-efectiva`}>
+        <DateInput id={`${fid}-fecha-efectiva`}
          
           value={effectiveDate}
           onChange={(event) => setEffectiveDate(event.target.value)}
           required
         />
-      </label>
+      </Field>
       {asksAmount && (
-        <label>
-          {action === 'REGISTER_PAYMENT' ? 'Monto recibido' : 'Monto propuesto para aprobación'}
-          <HrMoneyInput
+        <Field
+          label={action === 'REGISTER_PAYMENT' ? 'Monto recibido' : 'Monto propuesto para aprobación'}
+          htmlFor={`${fid}-monto`}
+          hint="El servidor devolverá el monto aplicado y el saldo resultante."
+        >
+          <HrMoneyInput id={`${fid}-monto`}
             value={proposedAmount}
             onValueChange={setProposedAmount}
             required
           />
-          <small>El servidor devolverá el monto aplicado y el saldo resultante.</small>
-        </label>
+        </Field>
       )}
       {resource === 'LOAN' && isApproval && (
         <>
-          <label>
-            Número de cuotas propuesto
-            <Input
+          <Field label="Número de cuotas propuesto" htmlFor={`${fid}-numero-de-cuotas-propuesto`}>
+            <Input id={`${fid}-numero-de-cuotas-propuesto`}
               type="number"
               min="1"
               max="120"
@@ -161,39 +162,40 @@ export default function BenefitsTransitionForm({
               onChange={(event) => setInstallmentCount(event.target.value)}
               required
             />
-          </label>
-          <label>
-            Primera cuota propuesta
-            <DateInput
+          </Field>
+          <Field label="Primera cuota propuesta" htmlFor={`${fid}-primera-cuota-propuesta`}>
+            <DateInput id={`${fid}-primera-cuota-propuesta`}
              
               value={firstDueDate}
               onChange={(event) => setFirstDueDate(event.target.value)}
               required
             />
-          </label>
+          </Field>
         </>
       )}
       {asksReference && (
-        <label className="span-full">
-          Referencia de operación
-          <Input
-            value={operationReference}
-            onChange={(event) => setOperationReference(event.target.value)}
-            maxLength={160}
+        <div className="span-full">
+          <Field label="Referencia de operación" htmlFor={`${fid}-referencia-de-operacion`}>
+            <Input id={`${fid}-referencia-de-operacion`}
+              value={operationReference}
+              onChange={(event) => setOperationReference(event.target.value)}
+              maxLength={160}
+              required
+            />
+          </Field>
+        </div>
+      )}
+      <div className="span-full">
+        <Field label="Motivo obligatorio" htmlFor={`${fid}-motivo-obligatorio`}>
+          <Textarea id={`${fid}-motivo-obligatorio`}
+            rows={5}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={900}
             required
           />
-        </label>
-      )}
-      <label className="span-full">
-        Motivo obligatorio
-        <Textarea
-          rows={5}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          maxLength={900}
-          required
-        />
-      </label>
+        </Field>
+      </div>
       <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           <ShieldCheck size={17} aria-hidden="true" /> Confirmo <strong>{LABELS[action]}</strong>{' '}

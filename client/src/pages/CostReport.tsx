@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, settingsAPI } from '../services/api';
-import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatCurrency, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { Search } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
 import catalog from './catalog.module.css';
 import {
-    AppSelect, Button, DataTable, DateInput, EmptyState, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar,
-    formatNumber, type Column, type Tone,
+    AppSelect, Button, DataTable, DateInput, PageContent, PageHeader, StatCard, TableToolbar,
+    formatNumber, formatPercent, type Column, type Tone,
 } from '@/ui';
 
 interface CategoryOption {
@@ -130,14 +130,13 @@ export default function CostReport() {
                     {' '}no tienen cantidad/costo en UOM base. El total monetario sí las incluye, pero se excluyen del desglose por producto para no reinterpretar unidades.
                 </p>
             )}
-            {error && <LoadErrorState message={error} onRetry={() => { void loadReport(); }} />}
 
             {summary && (
                 <div className={catalog.kpiGrid}>
                     <StatCard
                         label="Margen bruto"
                         tone={marginTone}
-                        value={`${formatNumber(summary.grossMargin)} %`}
+                        value={formatPercent(summary.grossMargin)}
                         context={`Ingresos ${formatCurrency(summary.totalRevenue, settings)} − costo de ventas ${formatCurrency(summary.estimatedCOGS, settings)} · compras del período ${formatCurrency(summary.totalPurchaseCost, settings)}`}
                     />
                 </div>
@@ -148,11 +147,13 @@ export default function CostReport() {
                 rows={products}
                 rowKey={(p) => p.productId}
                 loading={loading}
+                error={error}
+                onRetry={() => { void loadReport(); }}
                 defaultPageSize={PAGE_SIZE}
                 pageSizeOptions={[10, 20, 50, 100]}
                 resetKey={`${filters.dateFrom}|${filters.dateTo}|${filters.branchId}|${filters.categoryId}|${filters.supplierId}`}
                 footerLabel={`Total de la página · ${products.length} productos`}
-                empty={<EmptyState title="Sin datos para los filtros seleccionados" />}
+                empty="Sin datos para los filtros seleccionados"
                 toolbar={(
                     <TableToolbar actions={(
                         <Button variant="primary" icon={Search} onClick={loadReport} loading={loading}>Aplicar filtros</Button>
@@ -194,9 +195,9 @@ export default function CostReport() {
                     ) },
                     { key: 'category', header: 'Categoría', render: (p) => p.categoryName || '—' },
                     { key: 'qty', header: 'Cant. comprada', type: 'qty', render: (p) => `${formatNumber(p.totalQuantity)} ${p.unit}` },
-                    { key: 'totalCost', header: 'Costo total', type: 'money', total: true, accessor: (p) => p.totalCost },
-                    { key: 'avg', header: 'Costo unit. prom.', type: 'money', render: (p) => formatCurrency(p.avgUnitCost, settings) },
-                    { key: 'current', header: 'Costo actual', type: 'money', render: (p) => formatCurrency(p.currentAvgCost, settings) },
+                    { key: 'totalCost', header: `Costo total (${getCurrencySymbol(settings)})`, type: 'money', total: true, accessor: (p) => p.totalCost },
+                    { key: 'avg', header: `Costo unit. prom. (${getCurrencySymbol(settings)})`, headerTitle: 'Costo unitario promedio del período', type: 'money', accessor: (p) => p.avgUnitCost },
+                    { key: 'current', header: `Costo actual (${getCurrencySymbol(settings)})`, type: 'money', accessor: (p) => p.currentAvgCost },
                 ] as Column<(typeof products)[number]>[]}
             />
         </PageContent>

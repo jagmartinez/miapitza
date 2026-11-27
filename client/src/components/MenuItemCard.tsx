@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Edit2, Trash2, Utensils, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import type { MenuItem } from '../types';
+import { Button, IconButton } from '@/ui';
 import { useCurrency } from '../hooks/useCurrency';
+import './MenuItemCard.css';
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -45,28 +47,24 @@ export default function MenuItemCard({
             <img
               src={displayImage}
               alt={item.name}
-              className="item-main-image"
+              className={`item-main-image ${onImageClick ? 'is-zoomable' : ''}`.trim()}
               onClick={(e) => {
                 if (onImageClick) {
                   e.stopPropagation();
                   onImageClick(item, currentImageIndex);
                 }
               }}
-              style={{ cursor: onImageClick ? 'zoom-in' : 'pointer' }}
             />
 
             {hasMultipleImages && (
               <>
-                <button className="img-nav-btn prev" onClick={prevImage}>
-                  <ChevronLeft size={16} />
-                </button>
-                <button className="img-nav-btn next" onClick={nextImage}>
-                  <ChevronRight size={16} />
-                </button>
+                <IconButton size="sm" icon={ChevronLeft} className="item-image-nav item-image-nav--prev" label="Imagen anterior" onClick={prevImage} />
+                <IconButton size="sm" icon={ChevronRight} className="item-image-nav item-image-nav--next" label="Imagen siguiente" onClick={nextImage} />
                 <div className="img-dots">
                   {images.map((_, idx) => (
                     <div
                       key={idx}
+                      aria-hidden="true"
                       className={`img-dot ${idx === currentImageIndex ? 'active' : ''}`}
                     />
                   ))}
@@ -75,12 +73,12 @@ export default function MenuItemCard({
             )}
           </>
         ) : (
-          <Utensils size={40} className="item-placeholder-icon" />
+          <Utensils size={40} className="item-placeholder-icon" aria-hidden="true" />
         )}
       </div>
 
       <div className="menu-item-content">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div className="menu-item-card__title-row">
           <h3 className="item-name">{item.name}</h3>
           <span className="item-price-tag">{formatMoney(Number(item.price))}</span>
         </div>
@@ -88,44 +86,41 @@ export default function MenuItemCard({
       </div>
 
       <div className="menu-card-actions">
-        <button
-          type="button"
-          className="menu-action-btn view"
+        <Button
+          variant="ghost"
+          icon={Eye}
+          className="menu-card__action"
           aria-label={`Ver detalle de ${item.name}`}
-          title="Ver detalle"
           onClick={(e) => {
             e.stopPropagation();
             onClick(item);
           }}
         >
-          <Eye size={20} />
-          <span>Ver</span>
-        </button>
-        <button
-          type="button"
-          className="menu-action-btn edit"
+          Ver
+        </Button>
+        <Button
+          variant="ghost"
+          icon={Edit2}
+          className="menu-card__action menu-card__action--edit"
           aria-label={`Editar ${item.name}`}
-          title="Editar"
           onClick={(e) => {
             e.stopPropagation();
             onEdit(item);
           }}
         >
-          <Edit2 size={20} />
-          <span>Editar</span>
-        </button>
-        <button
-          type="button"
-          className="menu-action-btn delete"
-          aria-label={`Eliminar ${item.name}`}
-          title="Eliminar"
+          Editar
+        </Button>
+        <IconButton
+          icon={Trash2}
+          tone="danger"
+          className="menu-card__action menu-card__action--delete"
+          label={`Eliminar ${item.name}`}
+          tooltip="Eliminar"
           onClick={(e) => {
             e.stopPropagation();
             onDelete(item);
           }}
-        >
-          <Trash2 size={20} />
-        </button>
+        />
       </div>
     </div>
   );

@@ -9,9 +9,9 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Pencil, Trash2,
-    Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
+    Activity, ShoppingBag, Layers, FileText,
     Upload, Download, FileSpreadsheet, Search, Printer,
-    FlaskConical, Box, Eye
+    Eye
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import { formatCurrency, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
@@ -19,7 +19,6 @@ import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
 import { resolveEffectiveUnitCost, type ProductCostResolution } from '../utils/productCost';
 import { newIdempotencyKey } from '../utils/idempotency';
-import './Inventory.css';
 import s from './Inventory.module.css';
 import { computeInventoryKpis } from '../utils/inventoryKpis';
 import { buildWarehouseBreakdown, type WarehouseStockInput } from '../utils/inventoryWarehouses';
@@ -27,7 +26,7 @@ import { buildInventoryCountSheetHtml } from '../utils/inventoryCountSheet';
 import catalog from './catalog.module.css';
 import {
     AppSelect, Button, Checkbox, Tabs, Field, FormGrid, FormSection, FullScreenModal, Badge, DataTable, EmptyState, IconButton, Input, PageContent,
-    PageHeader, StatCard, TableToolbar, Textarea, formatNumber, formatPercent, type Column,
+    PageHeader, StatCard, TableToolbar, Textarea, Tooltip, formatNumber, formatPercent, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -982,31 +981,6 @@ export default function Inventory() {
                 )}
                 toolbar={(
                     <div className={s.toolbarStack}>
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar producto"
-                            placeholder="Buscar por código o producto"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                        />
-                        <AppSelect
-                            aria-label="Filtrar por categoría"
-                            isClearable={false}
-                            options={categoryFilterOptions}
-                            value={selectedCategory}
-                            onChange={(v) => setSelectedCategory(v || 'all')}
-                        />
-                        <AppSelect
-                            aria-label="Filtrar por almacenamiento"
-                            isClearable={false}
-                            isSearchable={false}
-                            options={storageFilterOptions}
-                            value={storageFilter}
-                            onChange={(v) => setStorageFilter(v || 'all')}
-                        />
-                    </TableToolbar>
                         <Tabs
                             ariaLabel="Filtrar por tipo"
                             active={filter}
@@ -1020,6 +994,31 @@ export default function Inventory() {
                                 { id: 'low', label: 'Stock bajo' },
                             ]}
                         />
+                        <TableToolbar>
+                            <Input
+                                type="search"
+                                aria-label="Buscar producto"
+                                placeholder="Buscar por código o producto"
+                                prefix={<Search size={14} aria-hidden="true" />}
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                            />
+                            <AppSelect
+                                aria-label="Filtrar por categoría"
+                                isClearable={false}
+                                options={categoryFilterOptions}
+                                value={selectedCategory}
+                                onChange={(v) => setSelectedCategory(v || 'all')}
+                            />
+                            <AppSelect
+                                aria-label="Filtrar por almacenamiento"
+                                isClearable={false}
+                                isSearchable={false}
+                                options={storageFilterOptions}
+                                value={storageFilter}
+                                onChange={(v) => setStorageFilter(v || 'all')}
+                            />
+                        </TableToolbar>
                     </div>
                 )}
                 columns={[
@@ -1055,33 +1054,24 @@ export default function Inventory() {
                 ] as Column<ProductInventory>[]}
             />
 
-            {/* Product Form Sidebar */}
             <FullScreenModal
                 isOpen={Boolean(viewingProduct)}
                 onClose={() => setViewingProduct(null)}
                 title="Detalle del Producto"
+                footerStart={viewingProduct ? ({ requestClose }) => (
+                    <Button variant="ghost" onClick={requestClose}>Cerrar</Button>
+                ) : undefined}
                 footer={viewingProduct ? (
-                    <div className="inventory-detail-footer">
-                        <Button type="button" variant="ghost" onClick={() => setViewingProduct(null)}>
-                            Cerrar
+                    <>
+                        <Button icon={FileText} onClick={() => navigate(`/kardex?productId=${viewingProduct.id}`)}>
+                            Ver Kardex
                         </Button>
-                        <div className="inventory-detail-footer-actions">
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => navigate(`/kardex?productId=${viewingProduct.id}`)}
-                            >
-                                <FileText size={16} />
-                                Ver Kardex
+                        {canMutateProduct && (
+                            <Button variant="primary" icon={Pencil} onClick={handleEditFromDetail}>
+                                Editar Producto
                             </Button>
-                            {canMutateProduct && (
-                                <Button type="button" variant="primary" onClick={handleEditFromDetail}>
-                                    <Pencil size={16} />
-                                    Editar Producto
-                                </Button>
-                            )}
-                        </div>
-                    </div>
+                        )}
+                    </>
                 ) : undefined}
             >
                 {viewingProduct && (() => {
@@ -1096,114 +1086,78 @@ export default function Inventory() {
                     const stockLevel = minStock > 0 ? Math.max(0, Math.min(100, (stock / minStock) * 100)) : 100;
 
                     return (
-                        <div className="inventory-detail" data-testid="inventory-product-detail">
-                            <div className="inventory-detail-hero">
-                                <div className="inventory-detail-hero-main">
-                                    <div className="inventory-detail-icon" aria-hidden="true">
-                                        <Package size={28} />
-                                    </div>
-                                    <div className="inventory-detail-identity">
-                                        <span className="inventory-detail-eyebrow">Ficha de inventario</span>
-                                        <h3>{viewingProduct.name}</h3>
-                                        <div className="inventory-detail-meta">
-                                            {viewingProduct.sku && <span className="inventory-detail-badge sku">SKU {viewingProduct.sku}</span>}
-                                            <div className="inventory-detail-status-row">
-                                                <span className={`inventory-detail-badge ${viewingProduct.active ? 'active' : 'inactive'}`}>
-                                                    {viewingProduct.active ? 'Activo' : 'Inactivo'}
-                                                </span>
-                                                <span className={`inventory-detail-badge ${isLow ? 'warning' : 'ok'}`}>
-                                                    {isLow ? 'Requiere reposición' : 'Stock saludable'}
-                                                </span>
-                                            </div>
-                                        </div>
+                        <div className={s.detail} data-testid="inventory-product-detail">
+                            <div className={s.detailHead}>
+                                <div className={s.detailIdentity}>
+                                    <p className={s.eyebrow}>Ficha de inventario</p>
+                                    <h3 className={s.detailTitle}>{viewingProduct.name}</h3>
+                                    <div className={s.badges}>
+                                        {viewingProduct.sku && <Badge>SKU {viewingProduct.sku}</Badge>}
+                                        <Badge tone={viewingProduct.active ? 'success' : 'neutral'}>
+                                            {viewingProduct.active ? 'Activo' : 'Inactivo'}
+                                        </Badge>
+                                        <Badge tone={isLow ? 'warning' : 'success'} dot>
+                                            {isLow ? 'Requiere reposición' : 'Stock saludable'}
+                                        </Badge>
                                     </div>
                                 </div>
-                                <div className="inventory-detail-stock-summary">
-                                    <span>Existencia actual</span>
-                                    <strong className={isLow ? 'warning' : ''}>
-                                        {formatNumber(stock)}
-                                        <small>{unit}</small>
+                                <div className={s.stockSummary}>
+                                    <span className={s.factLabel}>Existencia actual</span>
+                                    <strong className={`${s.stockValue} ${isLow ? s.warn : ''}`.trim()}>
+                                        {formatNumber(stock)} <small>{unit}</small>
                                     </strong>
-                                    <div className="inventory-detail-stock-track" aria-hidden="true">
-                                        <span className={isLow ? 'warning' : ''} style={{ width: `${stockLevel}%` }} />
+                                    <div className={s.stockTrack} aria-hidden="true">
+                                        <span className={isLow ? s.warnFill : undefined} style={{ width: `${stockLevel}%` }} />
                                     </div>
-                                    <small>Mínimo configurado: {formatNumber(minStock)} {unit}</small>
+                                    <small className={s.cellSub}>Mínimo configurado: {formatNumber(minStock)} {unit}</small>
                                 </div>
                             </div>
 
-                            <section className="inventory-detail-section">
-                                <div className="modal-section-header">
-                                    <Box size={18} />
-                                    <h3>Perfil del producto</h3>
-                                </div>
-                                <div className="inventory-detail-profile-grid">
-                                    <div className="inventory-detail-profile-item">
-                                        <Layers size={18} aria-hidden="true" />
-                                        <div><span>Tipo</span><strong>{PRODUCT_TYPE_LABELS[viewingProduct.type]}</strong></div>
-                                    </div>
-                                    <div className="inventory-detail-profile-item">
-                                        <ShoppingBag size={18} aria-hidden="true" />
-                                        <div><span>Categoría</span><strong>{category}</strong></div>
-                                    </div>
-                                    <div className="inventory-detail-profile-item">
-                                        <FlaskConical size={18} aria-hidden="true" />
-                                        <div><span>Unidad de referencia</span><strong>{unit}</strong></div>
-                                    </div>
-                                    <div className="inventory-detail-profile-item">
-                                        <Truck size={18} aria-hidden="true" />
-                                        <div><span>Almacenamiento</span><strong>{storageLabel}</strong></div>
-                                    </div>
-                                </div>
-                            </section>
+                            <FormSection title="Perfil del producto">
+                                <dl className={s.facts}>
+                                    <div><dt>Tipo</dt><dd>{PRODUCT_TYPE_LABELS[viewingProduct.type]}</dd></div>
+                                    <div><dt>Categoría</dt><dd>{category}</dd></div>
+                                    <div><dt>Unidad de referencia</dt><dd>{unit}</dd></div>
+                                    <div><dt>Almacenamiento</dt><dd>{storageLabel}</dd></div>
+                                </dl>
+                            </FormSection>
 
-                            <section className="inventory-detail-section">
-                                <div className="modal-section-header">
-                                    <DollarSign size={18} />
-                                    <h3>Costos y precio</h3>
-                                </div>
-                                <div className="inventory-detail-finance">
-                                    <div className="inventory-detail-effective-cost">
-                                        <div>
-                                            <span>Costo efectivo para recetas</span>
-                                            <strong>{costQuality.known ? formatUnitCost(costQuality.value, settings) : 'N/D'}</strong>
-                                        </div>
-                                        <span className="inventory-detail-cost-source">
+                            <FormSection title="Costos y precio">
+                                <dl className={s.facts}>
+                                    <div>
+                                        <dt>Costo efectivo para recetas</dt>
+                                        <dd className={s.numeric}>{costQuality.known ? formatUnitCost(costQuality.value, settings) : 'N/D'}</dd>
+                                        <dd className={s.cellSub}>
                                             {costQuality.source === 'AVERAGE'
                                                 ? 'Promedio ponderado'
                                                 : costQuality.source === 'REFERENCE' ? 'Costo de referencia' : 'Costo no confirmado'}
-                                        </span>
+                                        </dd>
                                     </div>
-                                    <dl className="inventory-detail-finance-breakdown">
-                                        <div><dt>Referencia</dt><dd>{viewingProduct.referenceCostKnown || Number(viewingProduct.cost) > 0 ? formatUnitCost(Number(viewingProduct.cost), settings) : 'N/D'}</dd></div>
-                                        <div><dt>Última compra</dt><dd>{formatLastPurchaseCost(viewingProduct, settings)}</dd></div>
-                                        <div><dt>Precio de venta</dt><dd>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd></div>
-                                    </dl>
-                                    <p className="inventory-detail-finance-note">
-                                        {!costQuality.known
-                                            ? 'El producto no tiene un costo confirmado. Las salidas se bloquearan hasta corregir esta anomalia.'
-                                            : hasTransactionalCost
-                                            ? 'El costo efectivo proviene del promedio ponderado de las compras recibidas.'
-                                            : 'Mientras no existan compras recibidas, las recetas utilizan el costo de referencia.'}
-                                    </p>
-                                </div>
-                            </section>
+                                    <div><dt>Referencia</dt><dd className={s.numeric}>{viewingProduct.referenceCostKnown || Number(viewingProduct.cost) > 0 ? formatUnitCost(Number(viewingProduct.cost), settings) : 'N/D'}</dd></div>
+                                    <div><dt>Última compra</dt><dd className={s.numeric}>{formatLastPurchaseCost(viewingProduct, settings)}</dd></div>
+                                    <div><dt>Precio de venta</dt><dd className={s.numeric}>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd></div>
+                                </dl>
+                                <p className={costQuality.known ? s.note : `${s.note} ${s.warn}`}>
+                                    {!costQuality.known
+                                        ? 'El producto no tiene un costo confirmado. Las salidas se bloquearan hasta corregir esta anomalia.'
+                                        : hasTransactionalCost
+                                        ? 'El costo efectivo proviene del promedio ponderado de las compras recibidas.'
+                                        : 'Mientras no existan compras recibidas, las recetas utilizan el costo de referencia.'}
+                                </p>
+                            </FormSection>
 
-                            <section className="inventory-detail-section inventory-detail-operational-note">
-                                <Activity size={18} aria-hidden="true" />
-                                <div>
-                                    <strong>Alcance de existencias</strong>
-                                    <p>Las cantidades corresponden solamente a las sucursales y almacenes permitidos para tu usuario.</p>
-                                </div>
-                            </section>
+                            <p className={s.note}>
+                                <Activity size={16} aria-hidden="true" />
+                                <span>
+                                    <strong>Alcance de existencias.</strong>{' '}
+                                    Las cantidades corresponden solamente a las sucursales y almacenes permitidos para tu usuario.
+                                </span>
+                            </p>
 
                             {viewingProduct.observation && (
-                                <section className="inventory-detail-section">
-                                    <div className="modal-section-header">
-                                        <FileText size={18} />
-                                        <h3>Observaciones</h3>
-                                    </div>
-                                    <p className="inventory-detail-observation">{viewingProduct.observation}</p>
-                                </section>
+                                <FormSection title="Observaciones">
+                                    <p className={s.observation}>{viewingProduct.observation}</p>
+                                </FormSection>
                             )}
                         </div>
                     );
@@ -1324,7 +1278,7 @@ export default function Inventory() {
                                 </FormGrid>
                                 {allUnits.length === 0 && (
                                     <div>
-                                        <Button size="sm" variant="ghost" onClick={() => navigate('/units-of-measure')}>Gestionar unidades de medida</Button>
+                                        <Button variant="ghost" onClick={() => navigate('/units-of-measure')}>Gestionar unidades de medida</Button>
                                     </div>
                                 )}
                                 <Field label="Observación" htmlFor="inventory-observation">
@@ -1593,10 +1547,11 @@ export default function Inventory() {
                 title="Importar productos desde Excel"
                 breadcrumb={['Inventario', 'Productos']}
                 subtitle="Los SKU existentes se actualizan; los nuevos se crean. Usa la plantilla para el formato correcto."
+                footerStart={<Button variant="ghost" icon={Download} onClick={handleDownloadTemplate}>Descargar plantilla</Button>}
                 footer={({ requestClose }) => (
                     <>
                         <Button onClick={requestClose}>Cancelar</Button>
-                        {importValidation && (
+                        {importValidation ? (
                             <Button
                                 variant="primary"
                                 onClick={handleImportConfirm}
@@ -1604,6 +1559,10 @@ export default function Inventory() {
                                 disabled={importValidation.summary.valid === 0}
                             >
                                 {`Confirmar importación (${importValidation.summary.valid})`}
+                            </Button>
+                        ) : (
+                            <Button variant="primary" onClick={handleImportValidate} loading={importLoading} disabled={!importFile}>
+                                Validar archivo
                             </Button>
                         )}
                     </>
@@ -1624,38 +1583,34 @@ export default function Inventory() {
                                 setImportShowErrorsOnly(false);
                             }}
                         />
-                        <button
-                            type="button"
-                            className={`${s.fileZone}${importFile ? ` ${s.fileZoneReady}` : ''}`}
-                            onClick={() => importFileInputRef.current?.click()}
-                        >
+                        <div className={`${s.fileZone}${importFile ? ` ${s.fileZoneReady}` : ''}`}>
                             <FileSpreadsheet size={28} aria-hidden="true" />
-                            <strong>{importFile ? importFile.name : 'Haz clic para elegir un archivo Excel'}</strong>
+                            <strong>{importFile ? importFile.name : 'Elige un archivo Excel'}</strong>
                             <span className={catalog.muted}>
                                 {importFile
                                     ? `${formatNumber(importFile.size / 1024, 1)} KB · .xlsx / .xls`
                                     : 'Formatos aceptados: .xlsx, .xls'}
                             </span>
-                        </button>
-                        <div className={catalog.inline}>
-                            <Button icon={Download} onClick={handleDownloadTemplate}>Descargar plantilla</Button>
-                            <Button variant="primary" onClick={handleImportValidate} loading={importLoading} disabled={!importFile}>
-                                Validar archivo
+                            <Button icon={Upload} onClick={() => importFileInputRef.current?.click()}>
+                                {importFile ? 'Cambiar archivo' : 'Elegir archivo'}
                             </Button>
                         </div>
                     </FormSection>
 
                     {importValidation && (
                         <FormSection step={2} title="Validación" description="Revisa las filas antes de confirmar.">
-                            <div className={catalog.kpiGrid}>
-                                <StatCard label="Válidos" value={formatNumber(importValidation.summary.valid, 0)} tone="success" context={`De ${formatNumber(importValidation.summary.totalRows, 0)} filas · ${formatNumber(importValidation.summary.newProducts, 0)} nuevos, el resto actualiza productos existentes`} />
-                                <StatCard
-                                    label="Con errores"
-                                    value={formatNumber(importValidation.summary.invalid, 0)}
-                                    tone={importValidation.summary.invalid > 0 ? 'danger' : 'neutral'}
-                                    context={importValidation.summary.invalid > 0 ? 'No se importan; corrige el archivo y vuelve a validar' : 'Todas las filas se pueden importar'}
-                                />
-                            </div>
+                            <p className={s.importSummary} role="status">
+                                <Badge tone="success" dot>{`${formatNumber(importValidation.summary.valid, 0)} válidos`}</Badge>
+                                <span>{`De ${formatNumber(importValidation.summary.totalRows, 0)} filas · ${formatNumber(importValidation.summary.newProducts, 0)} nuevos, el resto actualiza productos existentes`}</span>
+                                {importValidation.summary.invalid > 0 ? (
+                                    <>
+                                        <Badge tone="danger" dot>{`${formatNumber(importValidation.summary.invalid, 0)} con errores`}</Badge>
+                                        <span>No se importan; corrige el archivo y vuelve a validar</span>
+                                    </>
+                                ) : (
+                                    <span>Todas las filas se pueden importar</span>
+                                )}
+                            </p>
                             <DataTable
                                 ariaLabel="Vista previa de importación"
                                 rows={filteredImportItems}
@@ -1664,7 +1619,7 @@ export default function Inventory() {
                                 pageSizeOptions={[25, 50, 100]}
                                 resetKey={`${importSearch}|${importShowErrorsOnly}`}
                                 rowTone={(item) => (item.isValid ? undefined : 'danger')}
-                                empty={<EmptyState title="No hay filas que coincidan con el filtro." />}
+                                empty="No hay filas que coincidan con el filtro."
                                 toolbar={(
                                     <TableToolbar>
                                         <Input
@@ -1694,7 +1649,7 @@ export default function Inventory() {
                                     { key: 'status', header: 'Estado', type: 'status', render: (item) => (
                                         item.isValid
                                             ? <Badge tone="success">OK</Badge>
-                                            : <span title={item.errors.join(', ')}><Badge tone="danger">{item.errors[0]}</Badge></span>
+                                            : <Tooltip label={item.errors.join(', ')}><span tabIndex={0}><Badge tone="danger">{item.errors[0]}</Badge></span></Tooltip>
                                     ) },
                                 ] as Column<(typeof filteredImportItems)[number]>[]}
                             />

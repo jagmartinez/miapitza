@@ -31,6 +31,7 @@ export default function Brands() {
 
     const [brands, setBrands] = useState<MenuBrand[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editing, setEditing] = useState<MenuBrand | null>(null);
     const [formData, setFormData] = useState({
@@ -47,7 +48,9 @@ export default function Brands() {
         try {
             const res = await menuBrandsAPI.getAll();
             setBrands(res.data.data);
+            setLoadError(null);
         } catch (error) {
+            setLoadError('No se pudieron cargar las marcas.');
             notifyError(error, 'No se pudieron cargar las marcas');
         } finally {
             setLoading(false);
@@ -188,12 +191,31 @@ export default function Brands() {
                 ) : undefined}
             />
 
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar marca"
+                    placeholder="Buscar marca"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+                <SegmentedControl
+                    ariaLabel="Estado"
+                    options={STATUS_OPTIONS}
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                />
+            </TableToolbar>
+
             <DataTable<MenuBrand>
                 ariaLabel="Listado de marcas"
                 rows={filtered}
                 rowKey={(b) => b.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => void loadData()}
                 resetKey={`${q}|${statusFilter}`}
                 onRowClick={canMutate ? (b) => openModal(b) : undefined}
                 empty={brands.length === 0 ? (
@@ -203,24 +225,6 @@ export default function Brands() {
                         action={canMutate ? <Button variant="primary" onClick={() => openModal()}>Crear primera marca</Button> : undefined}
                     />
                 ) : 'Sin resultados. Ajusta o limpia los filtros.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar marca"
-                            placeholder="Buscar marca"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <SegmentedControl
-                            ariaLabel="Estado"
-                            options={STATUS_OPTIONS}
-                            value={statusFilter}
-                            onChange={setStatusFilter}
-                        />
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal

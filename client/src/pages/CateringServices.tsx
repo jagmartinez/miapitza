@@ -34,6 +34,7 @@ export default function CateringServices() {
     const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [services, setServices] = useState<CateringServiceRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingService, setEditingService] = useState<CateringServiceRow | null>(null);
@@ -51,8 +52,10 @@ export default function CateringServices() {
             setLoading(true);
             const response = await cateringAPI.getAllServices();
             setServices(response.data.data);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading services:', error);
+            setLoadError('No se pudieron cargar los servicios de catering.');
             showError(getApiErrorMessage(error, 'No se pudieron cargar los servicios de catering'));
         } finally {
             setLoading(false);
@@ -207,27 +210,30 @@ export default function CateringServices() {
                 )}
             />
 
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar en el catálogo"
+                    placeholder="Buscar en el catálogo"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </TableToolbar>
+
             <DataTable<CateringServiceRow>
                 ariaLabel="Servicios de catering"
                 rows={filteredServices}
                 rowKey={(s) => s.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => void loadServices()}
                 resetKey={searchQuery}
                 onRowClick={canManageCatering ? (s) => handleOpenSidebar(s) : undefined}
-                empty={<EmptyState icon={ClipboardList} title="No hay servicios registrados en el catálogo" />}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar en el catálogo"
-                            placeholder="Buscar en el catálogo"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </TableToolbar>
-                )}
+                empty={services.length === 0
+                    ? <EmptyState icon={ClipboardList} title="No hay servicios registrados en el catálogo" />
+                    : 'Sin resultados. Ajusta la búsqueda.'}
             />
 
             <FullScreenModal

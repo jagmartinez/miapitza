@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode, useId } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { formatHrNumber } from '../../utils/hrDisplay';
 import {
@@ -10,10 +10,7 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
-import {
-  Button, DataTable, DateInput, EmptyState, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs,
-  Textarea,
-} from '@/ui';
+import { Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs, Textarea } from '@/ui';
 import form from '../../components/hr/hrForm.module.css';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
@@ -77,6 +74,7 @@ type CancelPanel =
 type WorkforceWorkspace = 'ATTENDANCE' | 'REQUESTS' | 'BALANCES';
 
 export default function MyWorkforce() {
+  const fid = useId();
   const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab')?.toUpperCase();
   const online = useWorkforceOnline();
@@ -292,7 +290,7 @@ export default function MyWorkforce() {
         <div className={`${form.alertWarning} ${form.actions}`} role="status">
           <AlertTriangle size={16} aria-hidden="true" />
           <span>{partialWarning}</span>
-          <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar sección</Button>
+          <Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar sección</Button>
         </div>
       )}
 
@@ -363,7 +361,7 @@ export default function MyWorkforce() {
                   pagination={{ mode: 'client' }}
                   minWidth="64rem"
                   toolbar={(
-                    <TableToolbar actions={<Button variant="primary" size="sm" icon={Plus} onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>Horas extra</Button>}>
+                    <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>Horas extra</Button>}>
                       <span className={form.help}>Minutos calculados por el servidor, no por este dispositivo.</span>
                     </TableToolbar>
                   )}
@@ -507,7 +505,7 @@ export default function MyWorkforce() {
                         `${entry.type} · ${formatHrNumber(entry.amount)} ${entry.unit}`,
                         entry.reason,
                         `${entry.effectiveDate} · ${entry.reference ?? `#${entry.id}`}`,
-                        entry.resultingBalance != null ? <strong>{entry.resultingBalance} {entry.unit}</strong> : null,
+                        entry.resultingBalance != null ? <strong className="hr-money">{formatHrNumber(entry.resultingBalance)} {entry.unit}</strong> : null,
                       ))}
                     </ul>
                   )}
@@ -586,22 +584,23 @@ export default function MyWorkforce() {
               <Button type="button" variant="ghost" onClick={() => setCancelPanel(null)}>
                 Volver
               </Button>
-              <Button type="submit" variant="danger" disabled={!online || saving || !cancelReason.trim()}>
-                {saving ? 'Cancelando…' : 'Confirmar cancelación'}
+              <Button loading={saving} type="submit" variant="danger" disabled={!online || saving || !cancelReason.trim()}>
+                Confirmar cancelación
               </Button>
             </>
           }
         >
-          <label className="span-full">
-            Razón de cancelación
-            <Textarea
-              rows={5}
-              maxLength={700}
-              value={cancelReason}
-              onChange={(event) => setCancelReason(event.target.value)}
-              required
-            />
-          </label>
+          <div className="span-full">
+            <Field label="Razón de cancelación" htmlFor={`${fid}-razon-de-cancelacion`}>
+              <Textarea id={`${fid}-razon-de-cancelacion`}
+                rows={5}
+                maxLength={700}
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+                required
+              />
+            </Field>
+          </div>
         </HrModalFormShell>
       </FullScreenModal>
     </PageContent>

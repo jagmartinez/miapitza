@@ -250,9 +250,9 @@ export default function PayrollOperationWorkspace({
       </section>
       <section className="payroll-operation-payslip">
         <div className="payroll-operation-detail-heading"><Receipt size={18} aria-hidden="true" /><div><h4>Colilla de pago</h4><small>{row.receipt ? 'Documento publicado' : 'Pendiente de publicación'}</small></div></div>
-        {row.receipt ? <><strong className="payroll-operation-payslip-net">Neto pagado: {moneyOrND(row.receipt.currency, row.receipt.netPay)}</strong><p>Disponible para el colaborador en Mi RH.</p><Button size="sm" variant="secondary" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy}><Download size={14} /> Descargar colilla PDF</Button></> : <p>Se genera automáticamente cuando se registra el pago de la corrida.</p>}
+        {row.receipt ? <><strong className="payroll-operation-payslip-net">Neto pagado: {moneyOrND(row.receipt.currency, row.receipt.netPay)}</strong><p>Disponible para el colaborador en Mi RH. Descárgala desde el pie de este detalle.</p></> : <p>Se genera automáticamente cuando se registra el pago de la corrida.</p>}
       </section>
-      {row.statutory && <details className="payroll-operation-statutory"><summary>Traza de INSS e IR</summary><div><Line label="Base INSS" note={`Configuración #${row.statutory.configurationRevisionId}`} amount={moneyOrND(currency, row.statutory.inssBase)} /><Line label="INSS laboral" note={`Método ${row.statutory.methodVersion}`} amount={moneyOrND(currency, row.statutory.employeeInss)} /><Line label="Proyección anual IR" note={`${row.statutory.elapsedFiscalMonths}/12 meses fiscales`} amount={moneyOrND(currency, row.statutory.annualProjection)} /><Line label="IR retenido" note={row.statutory.incomeTaxMethod} amount={moneyOrND(currency, row.statutory.currentIncomeTaxWithheld)} /><p>Tramo efectivo: {row.statutory.bracketSnapshot?.effective ? `${row.statutory.bracketSnapshot.effective.lowerBound} a ${row.statutory.bracketSnapshot.effective.upperBound ?? 'en adelante'} · tasa ${formatPercent(Number(row.statutory.bracketSnapshot.effective.rate) * 100)}` : 'sin retención aplicable'}.</p><small>Histórico {row.statutory.historyFingerprint} · cálculo {formatDateTime(row.statutory.createdAt)}</small><span className="sr-only">Compensación fija {row.statutory.fixedCompensationAmount}</span></div></details>}
+      {row.statutory && <details className="payroll-operation-statutory"><summary>Traza de INSS e IR</summary><div><Line label="Base INSS" note={`Configuración #${row.statutory.configurationRevisionId}`} amount={moneyOrND(currency, row.statutory.inssBase)} /><Line label="INSS laboral" note={`Método ${row.statutory.methodVersion}`} amount={moneyOrND(currency, row.statutory.employeeInss)} /><Line label="Proyección anual IR" note={`${row.statutory.elapsedFiscalMonths}/12 meses fiscales`} amount={moneyOrND(currency, row.statutory.annualProjection)} /><Line label="IR retenido" note={row.statutory.incomeTaxMethod} amount={moneyOrND(currency, row.statutory.currentIncomeTaxWithheld)} /><p>Tramo efectivo: {row.statutory.bracketSnapshot?.effective ? `${moneyOrND(currency, row.statutory.bracketSnapshot.effective.lowerBound)} a ${row.statutory.bracketSnapshot.effective.upperBound == null ? 'en adelante' : moneyOrND(currency, row.statutory.bracketSnapshot.effective.upperBound)} · tasa ${formatPercent(Number(row.statutory.bracketSnapshot.effective.rate) * 100)}` : 'sin retención aplicable'}.</p><small>Histórico {row.statutory.historyFingerprint} · cálculo {formatDateTime(row.statutory.createdAt)}</small><span className="sr-only">Compensación fija {row.statutory.fixedCompensationAmount}</span></div></details>}
     </div>
   );
 
@@ -344,7 +344,7 @@ export default function PayrollOperationWorkspace({
                 actions={(
                   <>
                     <span className={form.cellSub} aria-live="polite">{filteredRows.length} de {rows.length} colaborador(es)</span>
-                    {run.status === 'CALCULATED' && <Button size="sm" icon={Plus} onClick={onAddComponent} disabled={!online || busy}>Agregar ingreso o deducción</Button>}
+                    {run.status === 'CALCULATED' && <Button icon={Plus} onClick={onAddComponent} disabled={!online || busy}>Agregar ingreso o deducción</Button>}
                   </>
                 )}
               >
@@ -366,7 +366,7 @@ export default function PayrollOperationWorkspace({
                 />
               </TableToolbar>
             )}
-            minWidth="72rem"
+            minWidth="64rem"
             rowTone={(row) => (row.anomalies.some((item) => item.blocking) ? 'danger' : undefined)}
             empty={<EmptyState title="No hay colaboradores que coincidan con los filtros." />}
             columns={[
@@ -401,6 +401,9 @@ export default function PayrollOperationWorkspace({
             onClose={() => setExpandedUserId(null)}
             breadcrumb={['Nómina', run.code]}
             title={detailRow ? `Detalle de pago: ${detailRow.name}` : 'Detalle de pago'}
+            footer={detailRow?.receipt ? (
+              <Button variant="primary" icon={Download} onClick={() => onDownloadReceipt(detailRow.receipt!.id)} disabled={!online || busy}>Descargar colilla PDF</Button>
+            ) : undefined}
           >
             {detailRow && renderDetail(detailRow)}
           </FullScreenModal>

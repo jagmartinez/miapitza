@@ -6,7 +6,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
 import { formatLocalDateInput } from '../utils/dateInput';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, PageContent, PageHeader, Skeleton, StatCard, TableToolbar,
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, LoadErrorState, PageContent, PageHeader, Skeleton, StatCard, TableToolbar,
     formatNumber, formatPercent,
     type Column, type Opt, type Tone,
 } from '@/ui';
@@ -188,8 +188,8 @@ export default function ProductionDashboard() {
             width: '1fr',
             render: (o) => <Badge tone={STATUS_META[o.status]?.tone ?? 'neutral'}>{STATUS_META[o.status]?.label || o.status}</Badge>,
         },
-        { key: 'planned', header: 'Plan.', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.plannedQuantity)} ${unitOf(o)}` },
-        { key: 'produced', header: 'Prod.', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.producedQuantity)} ${unitOf(o)}` },
+        { key: 'planned', header: 'Plan.', headerTitle: 'Planificado', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.plannedQuantity)} ${unitOf(o)}` },
+        { key: 'produced', header: 'Prod.', headerTitle: 'Producido', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.producedQuantity)} ${unitOf(o)}` },
         {
             key: 'realCost',
             header: `Costo real (${symbol})`,
@@ -211,38 +211,22 @@ export default function ProductionDashboard() {
             />
 
             <TableToolbar>
-                <div className={s.filter}>
-                    <Field label="Desde" htmlFor="pd-from">
-                        <DateInput id="pd-from" value={dateFrom} max={dateTo} onChange={(e) => setDateFrom(e.target.value)} />
-                    </Field>
-                </div>
-                <div className={s.filter}>
-                    <Field label="Hasta" htmlFor="pd-to">
-                        <DateInput id="pd-to" value={dateTo} min={dateFrom} max={todayStr()} onChange={(e) => setDateTo(e.target.value)} />
-                    </Field>
-                </div>
+                <DateInput id="pd-from" aria-label="Desde" title="Desde" value={dateFrom} max={dateTo} onChange={(e) => setDateFrom(e.target.value)} />
+                <DateInput id="pd-to" aria-label="Hasta" title="Hasta" value={dateTo} min={dateFrom} max={todayStr()} onChange={(e) => setDateTo(e.target.value)} />
                 {isAdmin && branches.length > 0 && (
-                    <div className={s.filter}>
-                        <Field label="Sucursal" htmlFor="pd-branch">
-                            <AppSelect<string>
-                                inputId="pd-branch"
-                                options={branchOptions}
-                                value={branchId}
-                                onChange={(v) => setBranchId(v ?? 'all')}
-                                isClearable={false}
-                            />
-                        </Field>
-                    </div>
+                    <AppSelect<string>
+                        aria-label="Sucursal"
+                        inputId="pd-branch"
+                        options={branchOptions}
+                        value={branchId}
+                        onChange={(v) => setBranchId(v ?? 'all')}
+                        isClearable={false}
+                    />
                 )}
             </TableToolbar>
 
             {branchWarning && <div className={s.banner} role="status">{branchWarning}</div>}
-            {error && (
-                <div className={s.banner} role="alert">
-                    <span>{error}</span>
-                    <Button size="sm" onClick={() => void load()}>Reintentar</Button>
-                </div>
-            )}
+            {error && <LoadErrorState message={error} onRetry={() => void load()} />}
 
             {loading ? (
                 <Skeleton height={240} />
@@ -330,7 +314,9 @@ export default function ProductionDashboard() {
                             rows={data.topProduced}
                             rowKey={(p) => p.productId}
                             minWidth="40rem"
-                            empty={<EmptyState title="Sin datos" />}
+                            variant="flat"
+                            hidePaginationIfSinglePage
+                            empty="Sin datos"
                         />
                     </section>
 
@@ -369,6 +355,8 @@ export default function ProductionDashboard() {
                                 rows={data.topOperators}
                                 rowKey={(op) => op.userId}
                                 minWidth="24rem"
+                                variant="flat"
+                                hidePaginationIfSinglePage
                                 empty={<EmptyState icon={Users} title="Sin producción por operario en el período" />}
                             />
                         </section>
@@ -382,14 +370,16 @@ export default function ProductionDashboard() {
                             rows={data.topConsumed}
                             rowKey={(c) => c.componentProductId}
                             minWidth="32rem"
-                            empty={<EmptyState title="Sin consumos registrados" />}
+                            variant="flat"
+                            hidePaginationIfSinglePage
+                            empty="Sin consumos registrados"
                         />
                     </section>
 
                     <section className={s.panel} aria-label="Órdenes recientes">
                         <header className={s.panelHead}>
                             <h3>Órdenes recientes</h3>
-                            <Button size="sm" variant="ghost" onClick={() => navigate('/production-orders')}>Ver todas</Button>
+                            <Button variant="ghost" onClick={() => navigate('/production-orders')}>Ver todas</Button>
                         </header>
                         <DataTable<RecentRow>
                             ariaLabel="Órdenes recientes"
@@ -397,6 +387,8 @@ export default function ProductionDashboard() {
                             rows={data.recentOrders}
                             rowKey={(o) => o.id}
                             minWidth="40rem"
+                            variant="flat"
+                            hidePaginationIfSinglePage
                             onRowClick={() => navigate('/production-orders')}
                             empty={
                                 <EmptyState

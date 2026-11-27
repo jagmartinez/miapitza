@@ -31,12 +31,6 @@
     min-width: 0;
 }
 
-.segmentWrap {
-    display: flex;
-    min-width: 0;
-    overflow-x: auto;
-}
-
 .hiddenFile {
     position: absolute;
     width: 1px;
@@ -57,11 +51,9 @@
     background: var(--ui-surface);
     color: var(--ui-text);
     font: inherit;
-    cursor: pointer;
     text-align: center;
 }
 
-.fileZone:hover,
 .fileZoneReady {
     border-color: var(--ui-primary);
     background: var(--ui-primary-soft);
@@ -69,3 +61,45 @@
 
 .cellStack { display: flex; flex-direction: column; min-width: 0; }
 .cellSub { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+
+/* ===== Detalle del producto ===== */
+.detail { display: flex; flex-direction: column; gap: var(--ui-space-6); }
+.detail > :global(.ui-form-section) { padding-top: var(--ui-space-5); border-top: 1px solid var(--ui-border); }
+.detailHead { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--ui-space-5); }
+.detailIdentity { display: flex; flex-direction: column; gap: var(--ui-space-2); min-width: 0; flex: 1 1 18rem; }
+.eyebrow { margin: 0; font-size: 12px; font-weight: 600; color: var(--ui-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.detailTitle { margin: 0; font-size: 20px; font-weight: 700; color: var(--ui-text); overflow-wrap: anywhere; }
+.badges { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
+.stockSummary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-1);
+    flex: 0 1 16rem;
+    min-width: 12rem;
+    padding-left: var(--ui-space-5);
+    border-left: 1px solid var(--ui-border);
+}
+.factLabel { font-size: 12px; color: var(--ui-text-muted); }
+.stockValue { font-size: 24px; font-weight: 700; color: var(--ui-text); font-variant-numeric: tabular-nums; }
+.stockValue small { font-size: 13px; font-weight: 500; color: var(--ui-text-muted); }
+.warn { color: var(--ui-warning); }
+.stockTrack { height: 6px; border-radius: 999px; background: var(--ui-surface-2); overflow: hidden; }
+.stockTrack > span { display: block; height: 100%; background: var(--ui-success); }
+.stockTrack > .warnFill { background: var(--ui-warning); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: var(--ui-space-4); margin: 0; }
+.facts > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.facts dt { font-size: 12px; color: var(--ui-text-muted); }
+.facts dd { margin: 0; font-size: 14px; font-weight: 600; color: var(--ui-text); overflow-wrap: anywhere; }
+.facts dd.cellSub { font-weight: 400; font-size: var(--ui-text-xs); color: var(--ui-text-muted); }
+.numeric { font-variant-numeric: tabular-nums; }
+.note { display: flex; gap: var(--ui-space-2); align-items: flex-start; margin: 0; font-size: 13px; color: var(--ui-text-muted); line-height: 1.5; }
+.note svg { flex: none; margin-top: 2px; color: var(--ui-primary); }
+.note strong { color: var(--ui-text); }
+.note.warn { color: var(--ui-warning); }
+.observation { margin: 0; white-space: pre-wrap; color: var(--ui-text); font-size: 14px; }
+
+@media (max-width: 640px) {
+    .stockSummary { flex-basis: 100%; padding-left: 0; padding-top: var(--ui-space-4); border-left: 0; border-top: 1px solid var(--ui-border); }
+}
+
+.importSummary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2) var(--ui-space-3); margin: 0; font-size: 13px; color: var(--ui-text-muted); }

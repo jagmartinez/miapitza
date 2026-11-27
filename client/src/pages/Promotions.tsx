@@ -102,6 +102,7 @@ export default function Promotions() {
     const { error: showError } = useAppToast();
     const [promotions, setPromotions] = useState<PromotionRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editing, setEditing] = useState<PromotionRow | null>(null);
     const [initialDates, setInitialDates] = useState<PromotionDateFields | null>(null);
@@ -125,7 +126,11 @@ export default function Promotions() {
         try {
             const res = await promotionsAPI.getAll(false); // Get all, including inactive
             setPromotions(res.data.data || []);
-        } catch (e) { console.error(e); }
+            setLoadError(null);
+        } catch (e) {
+            console.error(e);
+            setLoadError('No se pudieron cargar las promociones.');
+        }
         finally { setLoading(false); }
     };
 
@@ -286,7 +291,7 @@ export default function Promotions() {
                 </div>
             )
         },
-        { key: 'type', header: 'Tipo', accessor: (p) => promotionTypeLabel(p.type) },
+        { key: 'type', header: 'Tipo', width: '1fr', accessor: (p) => promotionTypeLabel(p.type) },
         { key: 'value', header: 'Valor', type: 'number', render: (p) => describePromotionValue(p, formatMoney) },
         {
             key: 'scope',
@@ -347,30 +352,31 @@ export default function Promotions() {
                 )}
             />
 
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar promoción"
+                    placeholder="Buscar por nombre o código"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+                <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+            </TableToolbar>
+
             <DataTable<PromotionRow>
                 ariaLabel="Promociones"
                 rows={filteredPromotions}
                 rowKey={(p) => p.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => void loadData()}
                 resetKey={`${q}|${statusFilter}`}
                 onRowClick={(p) => handleOpen(p)}
                 empty={promotions.length === 0
                     ? <EmptyState icon={Ticket} title="No hay promociones creadas" />
                     : 'No hay promociones con este filtro.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar promoción"
-                            placeholder="Buscar por nombre o código"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal
@@ -400,7 +406,7 @@ export default function Promotions() {
                         <FormSection step={1} title="Identidad de la promoción" description="Código que el cajero ingresa y nombre visible.">
                             <FormGrid>
                                 <Field label="Código" htmlFor="promo-code" required>
-                                    <Input id="promo-code" value={formData.code} style={{ textTransform: 'uppercase', fontFamily: 'monospace' }}
+                                    <Input id="promo-code" value={formData.code} className={styles.mono}
                                         onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="PROMO10" required autoFocus />
                                 </Field>
                                 <Field label="Nombre" htmlFor="promo-name" required>
@@ -611,7 +617,6 @@ export default function Promotions() {
                                     {WEEKDAYS.map((day) => (
                                         <Button
                                             key={day.value}
-                                            size="sm"
                                             title={day.label}
                                             variant={rules.weekdays.includes(day.value) ? 'primary' : 'secondary'}
                                             aria-pressed={rules.weekdays.includes(day.value)}

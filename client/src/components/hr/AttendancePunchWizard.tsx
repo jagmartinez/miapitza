@@ -178,13 +178,13 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                 )}
                 <div className="hr-result-actions">
                     {hasScheduleIssue && onViewSchedule && (
-                        <Button type="button" variant="ghost" onClick={onViewSchedule}><Clock3 size={17} /> Ver mi horario</Button>
+                        <Button type="button" variant="ghost" onClick={onViewSchedule} icon={Clock3}>Ver mi horario</Button>
                     )}
                     {result.decision === 'REVIEW_REQUIRED' && onRequestCorrection && (
                         <Button type="button" variant="ghost" onClick={onRequestCorrection}>Ver seguimiento</Button>
                     )}
-                    <Button type="button" variant={result.decision === 'REJECTED' ? 'primary' : 'secondary'} onClick={restart}>
-                        <RefreshCw size={17} /> {result.decision === 'REJECTED' ? 'Intentar nuevamente' : 'Volver al marcaje'}
+                    <Button type="button" variant={result.decision === 'REJECTED' ? 'primary' : 'secondary'} onClick={restart} icon={RefreshCw}>
+                        {result.decision === 'REJECTED' ? 'Intentar nuevamente' : 'Volver al marcaje'}
                     </Button>
                 </div>
             </section>
@@ -237,8 +237,8 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                                 </small>
                             )}
                             {today.blockingIssue && <small>No se creó una salida automática ni se abrió una jornada nueva.</small>}
-                            {today.blockingIssue && onRequestCorrection && <Button type="button" variant="secondary" size="sm" onClick={onRequestCorrection}>Solicitar corrección</Button>}
-                            {!today.blockingIssue && missingSchedule && onViewSchedule && <Button type="button" variant="secondary" size="sm" onClick={onViewSchedule}>Ver mi horario</Button>}
+                            {today.blockingIssue && onRequestCorrection && <Button type="button" variant="secondary" onClick={onRequestCorrection}>Solicitar corrección</Button>}
+                            {!today.blockingIssue && missingSchedule && onViewSchedule && <Button type="button" variant="secondary" onClick={onViewSchedule}>Ver mi horario</Button>}
                         </div>
                     </div>
                 )}
@@ -293,7 +293,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
             </div>
             <div className="hr-wizard-actions">
                 <Button type="button" variant="ghost" onClick={restart} disabled={submitting}>Cancelar intento</Button>
-                <Button variant="primary" type="button" onClick={() => void submit()} disabled={submitting || !biometricReady || !locationReady}>{submitting ? 'Validando rostro y ubicación…' : `Confirmar ${ATTENDANCE_ACTION_LABELS[action].toLowerCase()}`}</Button>
+                <Button loading={submitting} variant="primary" type="button" onClick={() => void submit()} disabled={submitting || !biometricReady || !locationReady}>{`Confirmar ${ATTENDANCE_ACTION_LABELS[action].toLowerCase()}`}</Button>
             </div>
         </section>
     );

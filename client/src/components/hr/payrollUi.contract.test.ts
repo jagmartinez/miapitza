@@ -190,7 +190,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(css).toContain('@media (max-width: 760px)');
     expect(mine).toContain('styles.layout');
     expect(operationCss).toContain('@media (max-width: 760px)');
-    expect(operationCss).toContain('background: var(--ui-surface)');
+    expect(operationCss).toContain('border-left: 1px solid var(--payroll-border)');
     expect(operationCss).not.toContain('var(--surface, #fff)');
   });
 

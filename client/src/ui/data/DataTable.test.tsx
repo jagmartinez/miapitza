@@ -52,6 +52,36 @@ describe('DataTable', () => {
     expect(screen.getByText('0 resultados')).toBeInTheDocument();
   });
 
+  it('sin empty propio muestra EmptyState "Sin resultados"; un string también usa EmptyState', () => {
+    const { unmount } = render(<DataTable columns={cols} rows={[]} rowKey={(r) => r.id} ariaLabel="T" />);
+    expect(within(screen.getByRole('table')).getByRole('status')).toHaveTextContent('Sin resultados');
+    unmount();
+    render(<DataTable columns={cols} rows={[]} rowKey={(r) => r.id} ariaLabel="T" empty="No hay platos" />);
+    expect(within(screen.getByRole('table')).getByRole('status')).toHaveTextContent('No hay platos');
+  });
+
+  it('error muestra LoadErrorState con reintentar y oculta totales y paginación', async () => {
+    const onRetry = vi.fn();
+    render(<DataTable columns={cols} rows={makeRows(3)} rowKey={(r) => r.id} ariaLabel="T" error="No se pudo cargar" onRetry={onRetry} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('No se pudo cargar');
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('rowgroup')).toHaveLength(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('align right en columna con render propio y variant flat', () => {
+    const c: Column<Row>[] = [{ key: 'x', header: 'X', align: 'right', render: () => 'C$ 10.00' }];
+    const { container } = render(<DataTable columns={c} rows={makeRows(1)} rowKey={(r) => r.id} ariaLabel="T" variant="flat" />);
+    expect(screen.getByText('C$ 10.00')).toHaveClass('ui-cell--align-right');
+    expect(container.firstChild).toHaveClass('ui-datatable--flat');
+  });
+
+  it('hidePaginationIfSinglePage oculta la paginación si todo cabe en una página', () => {
+    render(<DataTable columns={cols} rows={makeRows(3)} rowKey={(r) => r.id} ariaLabel="T" hidePaginationIfSinglePage />);
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
   it('total: true suma solo la página visible', async () => {
     render(<DataTable columns={cols} rows={makeRows(60)} rowKey={(r) => r.id} ariaLabel="T" footerLabel="Total página" />);
     await userEvent.click(screen.getByRole('button', { name: 'Página 2' }));

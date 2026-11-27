@@ -95,7 +95,7 @@ export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: 
                 <div className={`${styles.alertDanger} ${styles.actions}`} role="alert">
                     <ShieldAlert size={16} aria-hidden="true" />
                     <span>{error}</span>
-                    <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void load()}>Recargar</Button>
+                    <Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Recargar</Button>
                 </div>
             )}
             {message && <div className={styles.alertSuccess} role="status">{message}</div>}

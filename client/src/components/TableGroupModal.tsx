@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Armchair, Link2, Search } from 'lucide-react';
 import type { Table } from '../types';
-import { AppSelect, Button, Field, FullScreenModal, Textarea } from '@/ui';
+import {
+    AppSelect, Badge, Button, Checkbox, Field, FormGrid, FormSection, FullScreenModal, Input, Textarea, formatNumber,
+} from '@/ui';
 import './TableGroupModal.css';
 
 export type TableGroupFormData =
@@ -104,6 +106,8 @@ export default function TableGroupModal({
         });
     };
 
+    const dirty = !submitting && (editing ? hasChanges : memberTableIds.length > 0 || reason.trim().length > 0);
+
     return (
         <FullScreenModal
             isOpen={isOpen}
@@ -112,40 +116,32 @@ export default function TableGroupModal({
             subtitle={editing
                 ? 'Marca exactamente las mesas que permanecerán unidas. Las cuentas y productos no se moverán.'
                 : 'Cada mesa conserva sus sillas y su cuenta. El mapa las mostrará como un solo grupo ocupado.'}
-            footer={<>
-                <Button type="button" variant="ghost" disabled={submitting} onClick={onClose}>Cancelar</Button>
-                <Button type="button" variant="primary" disabled={!canSubmit} onClick={submit}>
-                    {submitting
-                        ? editing ? 'Guardando…' : 'Uniendo…'
-                        : groupTableCount < 2
-                            ? 'Debe quedar otra mesa'
-                            : editing && !hasChanges
-                                ? 'Sin cambios'
-                                : editing ? `Guardar ${groupTableLabel}` : `Unir ${groupTableLabel}`}
-                </Button>
-            </>}
+            dirty={dirty}
+            footer={({ requestClose }) => (
+                <>
+                    <Button type="button" variant="secondary" disabled={submitting} onClick={requestClose}>Cancelar</Button>
+                    <Button type="button" variant="primary" disabled={!canSubmit} loading={submitting} onClick={submit}>
+                        {submitting
+                            ? editing ? 'Guardando…' : 'Uniendo…'
+                            : groupTableCount < 2
+                                ? 'Debe quedar otra mesa'
+                                : editing && !hasChanges
+                                    ? 'Sin cambios'
+                                    : editing ? `Guardar ${groupTableLabel}` : `Unir ${groupTableLabel}`}
+                    </Button>
+                </>
+            )}
         >
             <div className="table-group-form">
                 {primary && (
                     <div className="table-group-route" aria-label="Vista previa de la unión">
-                        <div className="table-group-primary-card">
+                        <div className="table-group-route__side">
                             <small>Mesa principal — referencia visual</small>
                             <strong>Mesa {primary.number}</strong>
-                            <span><Armchair size={15} /> {primary.capacity} {primary.capacity === 1 ? 'silla' : 'sillas'}</span>
-                            {editing && <div className="table-group-primary-select">
-                                <Field label="Principal del grupo" htmlFor="table-group-primary">
-                                    <AppSelect<number>
-                                        inputId="table-group-primary"
-                                        options={selectedTables.map((table) => ({ value: table.id, label: `Mesa ${table.number}` }))}
-                                        value={primary.id}
-                                        isClearable={false}
-                                        onChange={(value) => value !== null && setPrimaryTableId(value)}
-                                    />
-                                </Field>
-                            </div>}
+                            <span><Armchair size={15} aria-hidden="true" /> {formatNumber(primary.capacity, 0)} {primary.capacity === 1 ? 'silla' : 'sillas'}</span>
                         </div>
-                        <span className="table-group-link-icon"><Link2 size={22} /></span>
-                        <div className="table-group-total-card">
+                        <Link2 size={20} aria-hidden="true" className="table-group-route__link" />
+                        <div className="table-group-route__side">
                             <small>Grupo resultante</small>
                             <strong>{groupTableLabel}</strong>
                             <span>{totalCapacity} sillas = {totalCapacity} comensales</span>
@@ -153,52 +149,72 @@ export default function TableGroupModal({
                     </div>
                 )}
 
-                <div className="table-group-selection-summary" aria-live="polite">
-                    <strong>{groupTableCount < 2 ? 'El grupo necesita otra mesa' : `Selección exacta: ${groupTableLabel}`}</strong>
-                    <span>
-                        {primary ? `Principal: Mesa ${primary.number}` : 'Sin mesa principal'}
-                        {additionalTables.map((table) => ` + Mesa ${table.number}`).join('')}
-                    </span>
-                    <small>{totalCapacity} sillas = {totalCapacity} comensales</small>
-                </div>
+                {editing && primary && (
+                    <FormGrid>
+                        <Field label="Principal del grupo" htmlFor="table-group-primary">
+                            <AppSelect<number>
+                                inputId="table-group-primary"
+                                options={selectedTables.map((table) => ({ value: table.id, label: `Mesa ${table.number}` }))}
+                                value={primary.id}
+                                isClearable={false}
+                                onChange={(value) => value !== null && setPrimaryTableId(value)}
+                            />
+                        </Field>
+                    </FormGrid>
+                )}
 
-                <fieldset className="table-group-members">
-                    <legend>{editing ? 'Mesas que permanecerán unidas' : 'Mesas que se acercarán a la principal'}</legend>
-                    <label className="table-group-search">
-                        <Search size={17} aria-hidden="true" />
-                        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por mesa o salón" />
-                    </label>
-                    <div className="table-group-grid">
-                        {eligible.map((table) => {
-                            const selected = editing ? desiredIds.includes(table.id) : memberTableIds.includes(table.id);
-                            const currentMember = Boolean(activeGroup && activeGroup.memberTableIds.includes(table.id));
-                            return (
-                                <label key={table.id} className={`${selected ? 'selected' : ''} ${currentMember ? 'current-member' : ''}`}>
-                                    <input
-                                        type="checkbox"
-                                        aria-label={`${selected ? 'Quitar' : 'Agregar'} mesa ${table.number} del grupo`}
-                                        checked={selected}
-                                        disabled={!selected && memberTableIds.length >= (editing ? 20 : 19)}
-                                        onChange={(event) => toggleMember(table.id, event.target.checked)}
-                                    />
-                                    <span>
-                                        <strong>Mesa {table.number}</strong>
-                                        <small>{table.location || 'Salón principal'} · {table.capacity} sillas</small>
-                                        <em>{table.id === primary?.id ? 'Principal del grupo' : currentMember ? 'Integrante actual' : table.activeOrderCount ? 'Con cuenta activa' : 'Sin cuenta'}</em>
-                                    </span>
-                                </label>
-                            );
-                        })}
-                        {eligible.length === 0 && <div className="table-group-empty">No hay mesas compatibles disponibles.</div>}
-                    </div>
-                </fieldset>
+                <FormSection
+                    title={editing ? 'Mesas que permanecerán unidas' : 'Mesas que se acercarán a la principal'}
+                    description={`${primary ? `Principal: Mesa ${primary.number}` : 'Sin mesa principal'}${additionalTables.map((table) => ` + Mesa ${table.number}`).join('')}`}
+                >
+                    <p className="table-group-summary" aria-live="polite">
+                        <strong>{groupTableCount < 2 ? 'El grupo necesita otra mesa' : `Selección exacta: ${groupTableLabel}`}</strong>
+                        <span>{totalCapacity} sillas = {totalCapacity} comensales</span>
+                    </p>
+                    <Input
+                        type="search"
+                        prefix={<Search size={16} aria-hidden="true" />}
+                        aria-label="Buscar mesas"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Buscar por mesa o salón"
+                    />
+                    {eligible.length === 0 ? (
+                        <p className="table-group-empty">No hay mesas compatibles disponibles.</p>
+                    ) : (
+                        <ul className="table-group-grid">
+                            {eligible.map((table) => {
+                                const selected = editing ? desiredIds.includes(table.id) : memberTableIds.includes(table.id);
+                                const currentMember = Boolean(activeGroup && activeGroup.memberTableIds.includes(table.id));
+                                const roleLabel = table.id === primary?.id ? 'Principal del grupo' : currentMember ? 'Integrante actual' : table.activeOrderCount ? 'Con cuenta activa' : 'Sin cuenta';
+                                return (
+                                    <li key={table.id} className={selected ? 'is-selected' : undefined}>
+                                        <Checkbox
+                                            aria-label={`${selected ? 'Quitar' : 'Agregar'} mesa ${table.number} del grupo`}
+                                            checked={selected}
+                                            disabled={!selected && memberTableIds.length >= (editing ? 20 : 19)}
+                                            onChange={(event) => toggleMember(table.id, event.target.checked)}
+                                            label={(
+                                                <span className="table-group-grid__label">
+                                                    <strong>Mesa {table.number}</strong>
+                                                    <small>{table.location || 'Salón principal'} · {formatNumber(table.capacity, 0)} sillas</small>
+                                                    <Badge tone={table.id === primary?.id ? 'primary' : currentMember ? 'success' : 'neutral'}>{roleLabel}</Badge>
+                                                </span>
+                                            )}
+                                        />
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </FormSection>
 
-                <div className="table-group-callout">
+                <p className="table-group-callout">
                     <strong>{editing ? 'Editar la unión no mezcla las cuentas' : 'Unión física, no financiera'}</strong>
                     <span>{editing
                         ? 'Una mesa retirada conserva su pedido y quedará ocupada si aún tiene una cuenta activa.'
                         : 'Las cuentas no se mezclan hasta usar “Consolidar”. Después podrás emitir la factura y cobrar.'}</span>
-                </div>
+                </p>
 
                 <Field label={editing ? 'Motivo del cambio' : 'Motivo (opcional)'} htmlFor="table-group-reason">
                     <Textarea id="table-group-reason" rows={3} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={editing ? 'Ej.: retirar una mesa agregada por error' : 'Ej.: grupo de 10 comensales'} />

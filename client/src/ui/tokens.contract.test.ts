@@ -27,3 +27,35 @@ it('ya no define alias --color-* y conserva los alias de diálogo', () => {
   expect(css).not.toMatch(/--color-[a-z-]+:/);
   expect(css).toMatch(/--dialog-accent:\s*var\(--ui-primary\)/);
 });
+
+it('los CSS del kit usan solo tokens: sin hex, rgb/hsl ni white/black literales fuera de tokens.css', async () => {
+  const { readdirSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = fileURLToPath(new URL('.', import.meta.url));
+  const files: string[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const f = join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else if (e.name.endsWith('.css') && e.name !== 'tokens.css') files.push(f);
+    }
+  };
+  walk(root);
+  const LITERAL = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(|:\s*(?:white|black)\b|\s(?:white|black)\s*[;,)]/i;
+  const offenders = files.flatMap((f) =>
+    readFileSync(f, 'utf8')
+      .split(/\r?\n/)
+      .filter((l) => LITERAL.test(l.replace(/white-space:[^;]+;/g, '')))
+      .map((l) => `${f}: ${l.trim()}`),
+  );
+  expect(offenders).toEqual([]);
+});
+
+it('define los tokens de sombra, foco y texto sobre color en ambos temas', () => {
+  const css = read('./tokens.css');
+  const root = block(css, ':root'); const dark = block(css, '.dark');
+  for (const t of ['--ui-shadow-overlay', '--ui-focus-ring', '--ui-danger-fg', '--ui-success-fg']) {
+    expect(root).toContain(`${t}:`);
+    expect(dark).toContain(`${t}:`);
+  }
+});

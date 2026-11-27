@@ -36,12 +36,12 @@ const base = (): SurveyReportViewProps => ({
 const html = (p: SurveyReportViewProps) => renderToStaticMarkup(createElement(SurveyReportView, p));
 
 describe('SurveyReportView', () => {
-    it('shows NPS, responses and four area averages for the period', () => {
+    it('shows NPS with its context and four area averages for the period', () => {
         const out = html(base());
-        expect(out).toContain('kpi-success');
-        for (const label of ['NPS', 'Respuestas', 'Atención', 'Comida', 'Tiempo de espera', 'Ambiente']) expect(out).toContain(label);
+        expect(out).toContain('ui-statcard--success');
+        for (const label of ['NPS', 'Atención', 'Comida', 'Tiempo de espera', 'Ambiente']) expect(out).toContain(label);
         expect(out).toContain('>55<');
-        expect(out).toContain('>20<');
+        expect(out).toContain('20 respuestas');
         expect(out).toContain('4.6');
     });
 

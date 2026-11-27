@@ -62,8 +62,8 @@ export default function PayrollReceiptBreakdown({
         </div>
         <div className="hr-receipt-header-actions">
           <PayrollStatusPill status={receipt.status} />
-          <Button variant="primary" onClick={onDownload} disabled={!online || downloading}>
-            <Download size={16} /> {downloading ? 'Preparando PDF…' : 'Descargar PDF'}
+          <Button loading={downloading} icon={Download} variant="primary" onClick={onDownload} disabled={!online || downloading}>
+            Descargar PDF
           </Button>
         </div>
       </header>

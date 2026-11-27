@@ -31,8 +31,16 @@ const asDate = (value: string) => new Date(`${value}T00:00:00Z`);
 const formatDay = (value: string) => longDayFormatter.format(asDate(value));
 const time = (value: string) => value.slice(0, 5);
 
-const FALLBACK_SHIFT_COLORS = ['#2563EB', '#0F766E', '#A16207', '#7C3AED', '#BE123C', '#0369A1'] as const;
-const UNCONFIGURED_SHIFT_COLOR = '#64748B';
+/** Colores de respaldo (turnos sin color guardado) con tokens del design system; el color de la jornada es dato del usuario. */
+const FALLBACK_SHIFT_COLORS = [
+    'var(--ui-primary)',
+    'color-mix(in srgb, var(--ui-primary) 50%, var(--ui-success))',
+    'var(--ui-warning)',
+    'color-mix(in srgb, var(--ui-primary) 50%, var(--ui-danger))',
+    'var(--ui-danger)',
+    'var(--ui-success)',
+] as const;
+const UNCONFIGURED_SHIFT_COLOR = 'var(--ui-text-muted)';
 const HEX_COLOR = /^#[0-9A-F]{6}$/;
 
 function shiftTemplateName(item: HrScheduleShift): string | null {

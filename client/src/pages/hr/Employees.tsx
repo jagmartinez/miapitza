@@ -401,7 +401,7 @@ export default function Employees() {
                     onRowClick={setPreview}
                     pagination={{ mode: 'server', page, pageSize: 25, total: totalItems, onChange: (nextPage) => setPage(nextPage) }}
                     pageSizeOptions={[25]}
-                    minWidth="72rem"
+                    minWidth="64rem"
                     resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
                 />
             ) : loading ? (

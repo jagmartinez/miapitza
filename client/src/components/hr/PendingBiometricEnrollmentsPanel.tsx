@@ -101,7 +101,7 @@ export default function PendingBiometricEnrollmentsPanel({ online, branchId }: P
       group="Biometría"
       title="Registros faciales pendientes de aprobación"
       description="El primer registro facial de cada empleado lo aprueba RRHH. Después de aprobado, el empleado puede volver a enrolarse y marcar sin nueva aprobación."
-      actions={<Button variant="ghost" size="sm" icon={RefreshCw} onClick={() => void load()} disabled={loading}>Actualizar pendientes</Button>}
+      actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading}>Actualizar pendientes</Button>}
     >
       <HrSettingsBlock>
         {loading && <p className={form.help} role="status">Cargando registros pendientes…</p>}

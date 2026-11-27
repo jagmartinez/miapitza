@@ -7,15 +7,12 @@ describe('operational UX contracts', () => {
     it('keeps the main shell fluid and centers every routed view at 1700px', () => {
         const shellSource = read('../ui/layout/AppShell.tsx');
         const layoutStyles = read('../ui/layout/layout.css');
-        const dashboardStyles = read('./Dashboard.css');
 
         expect(layoutStyles).toContain('.ui-shell__main {');
         expect(layoutStyles).toContain('min-width: 0');
         expect(shellSource).toContain('<div className="ui-shell__inner">');
         expect(layoutStyles).toContain('.ui-shell__inner {');
         expect(layoutStyles).toContain('max-width: 1700px');
-        expect(dashboardStyles).toContain('max-width: 1700px');
-        expect(dashboardStyles).toContain('margin: 0 auto');
     });
 
     it('renders Mesas inside the normal shell (rail + topbar) as in the approved mockup', () => {
@@ -69,18 +66,21 @@ describe('operational UX contracts', () => {
 
         expect(source).not.toContain('catering-event-intro');
         expect(source).not.toContain('animate-slide-in');
-        expect(source).toContain('modal-content-group catering-event-section');
-        expect(source).toContain('catering-info-layout');
+        // Formulario con el kit: Field/FormSection, sin inputs ni clases modal-* heredadas.
+        expect(source).toContain('<FormSection');
+        expect(source).toContain('<Field');
+        expect(source).not.toMatch(/modal-(standard-input|input-group|form-row|content-group)/);
+        expect(source).not.toMatch(/<(input|textarea|select)[\s>]/);
         expect(source).not.toContain('width="wide"');
         expect(source).toContain('<FullScreenModal');
-        expect(source).toContain('aria-label="Verificar inventario"');
+        expect(source).toContain('Verificar inventario');
         // El pie fijo de FullScreenModal envía el formulario del evento (sin premium-modal-content).
         expect(source).not.toContain('premium-modal-content');
         expect(source).toContain('form="catering-event-form" loading={savingEvent}');
         expect(styles).not.toContain('--catering-control-height: 46px');
-        expect(styles).toContain('.catering-event-section');
-        expect(styles).toContain('minmax(180px, .7fr) minmax(260px, 1.3fr)');
         expect(styles).not.toContain('.catering-section-heading');
+        // Solo tokens: sin hex/rgb literales ni white.
+        expect(styles).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|(?<![-\w])white(?![-\w])/);
     });
 
     it('keeps menu view and edit as separate actions with recipe-style detail', () => {
@@ -88,7 +88,7 @@ describe('operational UX contracts', () => {
 
         expect(source).toContain('title="Detalle del Plato"');
         expect(source).toContain('data-testid="menu-item-detail"');
-        expect(source).toContain('inventory-detail-hero');
+        expect(source).not.toContain('inventory-detail-');
         expect(source).toContain('handleOpenDetail(item)');
         expect(source).not.toContain('title="Ver / Editar"');
     });

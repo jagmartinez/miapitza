@@ -189,7 +189,7 @@ export default function AttendanceReview() {
             {lookupsError && (
                 <div className={`${form.alertDanger} ${form.actions}`} role="alert">
                     <AlertTriangle size={16} aria-hidden="true" /><span>{lookupsError}</span>
-                    <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void loadLookups()}>Reintentar catálogos</Button>
+                    <Button variant="ghost" icon={RefreshCw} onClick={() => void loadLookups()}>Reintentar catálogos</Button>
                 </div>
             )}
 

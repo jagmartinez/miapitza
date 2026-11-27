@@ -3,7 +3,7 @@ import { productionOrdersAPI, productsAPI, warehousesAPI, branchesAPI } from '..
 import {
     AppSelect, Badge, Button, Checkbox, ConfirmDialog, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
     PageContent, PageHeader, SegmentedControl, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
-    type Column, type Opt, type Tone, LoadErrorState,
+    type Column, type Opt, type Tone, LoadErrorState, Tooltip,
 } from '@/ui';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAuth } from '../hooks/useAuth';
@@ -11,7 +11,7 @@ import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import {
     Factory, Plus, Eye, CheckCircle, CheckCircle2, Ban, Play, Clock, Calculator,
-    AlertTriangle, Save, Info
+    AlertTriangle, Save, Info, Search
 } from 'lucide-react';
 import type {
     ProductionOrder, ProductionOrderItem, ProductionOrderStatus, ProductionPreview, ProductionRequirementLine, Product, Warehouse, Branch
@@ -377,8 +377,8 @@ export default function ProductionOrders() {
     if (loading) {
         return (
             <PageContent>
-                <PageHeader title="Órdenes de producción" description="Cargando órdenes…" />
-                <Skeleton height={240} />
+                <PageHeader title="Órdenes de producción" description="Produce intermedios y terminados consumiendo insumos del inventario" />
+                <div role="status" aria-label="Cargando órdenes…"><Skeleton height={240} /></div>
             </PageContent>
         );
     }
@@ -398,7 +398,7 @@ export default function ProductionOrders() {
         },
         {
             key: 'planned',
-            header: 'Cant. planificada',
+            header: 'Planificado',
             type: 'qty',
             width: '1.2fr',
             hideBelow: 'md',
@@ -406,7 +406,7 @@ export default function ProductionOrders() {
         },
         {
             key: 'produced',
-            header: 'Cant. producida',
+            header: 'Producido',
             type: 'qty',
             width: '1.2fr',
             hideBelow: 'md',
@@ -414,7 +414,7 @@ export default function ProductionOrders() {
         },
         {
             key: 'yield',
-            header: 'Rendimiento',
+            header: 'Rend.',
             type: 'percent',
             width: '1fr',
             hideBelow: 'md',
@@ -432,12 +432,12 @@ export default function ProductionOrders() {
         },
         {
             key: 'estimated',
-            header: `Costo estimado (${symbol})`,
+            header: `Costo est. (${symbol})`,
             type: 'money',
             width: '1.1fr',
             total: true,
             accessor: (order) => (order.status === 'FINISHED' ? Number(order.estimatedCost) || 0 : 0),
-            render: (order) => (Number(order.estimatedCost) > 0 ? formatNumber(order.estimatedCost) : <span className={s.nd} title="Sin costo estimado calculado">N/D</span>),
+            render: (order) => (Number(order.estimatedCost) > 0 ? formatNumber(order.estimatedCost) : <Tooltip label="Sin costo estimado calculado"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip>),
         },
         {
             key: 'real',
@@ -448,7 +448,7 @@ export default function ProductionOrders() {
             accessor: (order) => (order.status === 'FINISHED' ? Number(order.realCost) || 0 : 0),
             render: (order) => {
                 if (order.status !== 'FINISHED') return <span className={s.nd}>-</span>;
-                return Number(order.realCost) > 0 ? formatNumber(order.realCost) : <span className={s.nd} title="La orden no registró costo real">N/D</span>;
+                return Number(order.realCost) > 0 ? formatNumber(order.realCost) : <Tooltip label="La orden no registró costo real"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip>;
             },
         },
         {
@@ -464,12 +464,11 @@ export default function ProductionOrders() {
             },
         },
         { key: 'date', header: 'Fecha', type: 'date', width: '1fr', hideBelow: 'lg', render: (order) => formatDate(order.date) },
-        { key: 'user', header: 'Responsable', width: '1.2fr', hideBelow: 'lg', render: (order) => order.user?.name ?? '-' },
         {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '136px',
+            width: '112px',
             render: (order) => (
                 <div className={s.rowActions}>
                     <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${order.code}`} onClick={() => void handleOpenDetail(order.id)} />
@@ -493,7 +492,7 @@ export default function ProductionOrders() {
                 <div className={s.cellStack}>
                     <span>{line.componentName}</span>
                     {!line.sufficient && line.producible && (
-                        <span className={s.cellSub} title="Este insumo se puede producir con una orden de producción">Se puede producir</span>
+                        <Tooltip label="Este insumo se puede producir con una orden de producción"><span tabIndex={0} className={s.cellSub}>Se puede producir</span></Tooltip>
                     )}
                 </div>
             ),
@@ -540,6 +539,7 @@ export default function ProductionOrders() {
             render: (item) => (
                 <Input
                     type="number"
+                    className="ui-input--number"
                     min={0}
                     step="any"
                     aria-label={`Consumo real de ${item.componentProduct?.name ?? item.componentProductId}`}
@@ -558,9 +558,7 @@ export default function ProductionOrders() {
                 actions={<Button variant="primary" icon={Plus} onClick={handleOpenCreate} disabled={!canManage}>Nueva producción</Button>}
             />
 
-            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadOrders(); }} />}
-
-            {(overrun || yieldInfo) && (
+            {!loadError && (overrun || yieldInfo) && (
                 <div className={s.stats}>
                     {overrun && (
                         <StatCard
@@ -581,6 +579,9 @@ export default function ProductionOrders() {
                 </div>
             )}
 
+            {loadError ? (
+                <LoadErrorState message={loadError} onRetry={() => { void loadOrders(); }} />
+            ) : (
             <DataTable<ProductionOrder>
                 ariaLabel="Órdenes de producción"
                 columns={columns}
@@ -594,6 +595,7 @@ export default function ProductionOrders() {
                             <Input
                                 type="search"
                                 aria-label="Buscar orden"
+                                prefix={<Search size={14} aria-hidden="true" />}
                                 placeholder="Buscar por código o producto..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -610,13 +612,14 @@ export default function ProductionOrders() {
                             />
                         </TableToolbar>
                         <div className={s.segmentWrap}>
-                            <SegmentedControl ariaLabel="Filtrar por estado" size="sm" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTERS} />
+                            <SegmentedControl ariaLabel="Filtrar por estado" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTERS} />
                         </div>
                     </div>
                 )}
                 onRowClick={(order) => void handleOpenDetail(order.id)}
                 empty={<EmptyState icon={Factory} title="No se encontraron órdenes de producción" />}
             />
+            )}
 
             <FullScreenModal
                 isOpen={isSidebarOpen}
@@ -625,19 +628,14 @@ export default function ProductionOrders() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button variant="primary" icon={Save} loading={creating} disabled={creating} onClick={() => void handleCreate()}>
-                            {creating ? 'Creando...' : 'Crear orden'}
+                        <Button variant="primary" icon={Save} loading={creating} onClick={() => void handleCreate()}>
+                            Crear orden
                         </Button>
                     </>
                 )}
             >
                 <div className={s.form}>
-                    {formError && (
-                        <div className={s.banner} role="alert">
-                            <span>{formError}</span>
-                            <Button size="sm" onClick={() => void loadFormDependencies()}>Reintentar</Button>
-                        </div>
-                    )}
+                    {formError && <LoadErrorState message={formError} onRetry={() => void loadFormDependencies()} />}
                     <FormSection title="Datos de la producción">
                         <FormGrid>
                             <Field label="Producto a producir" htmlFor="prod-product" required>
@@ -672,6 +670,7 @@ export default function ProductionOrders() {
                             <Field label="Cantidad a producir" htmlFor="prod-quantity" required hint="En la unidad base del producto">
                                 <Input
                                     id="prod-quantity"
+                                    className="ui-input--number"
                                     type="number"
                                     min={0.001}
                                     step="any"
@@ -697,9 +696,10 @@ export default function ProductionOrders() {
                                 variant="ghost"
                                 icon={Calculator}
                                 onClick={() => { void runPreview(); }}
-                                disabled={previewLoading || !createForm.productId || !createForm.warehouseId}
+                                loading={previewLoading}
+                                disabled={!createForm.productId || !createForm.warehouseId}
                             >
-                                {previewLoading ? 'Calculando...' : 'Calcular insumos'}
+                                Calcular insumos
                             </Button>
                         </div>
 
@@ -733,6 +733,7 @@ export default function ProductionOrders() {
                                     rows={preview.requirements}
                                     rowKey={(line) => line.componentProductId}
                                     minWidth="32rem"
+                                    hidePaginationIfSinglePage
                                     rowTone={(line) => (line.sufficient ? undefined : 'danger')}
                                 />
 
@@ -828,7 +829,8 @@ export default function ProductionOrders() {
                                 rows={detailOrder.items}
                                 rowKey={(item) => item.id}
                                 minWidth="36rem"
-                                empty={<EmptyState title="Sin insumos registrados" />}
+                                hidePaginationIfSinglePage
+                                empty="Sin insumos registrados"
                             />
                         </FormSection>
                     </div>
@@ -843,8 +845,8 @@ export default function ProductionOrders() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button variant="primary" icon={CheckCircle} loading={finishing} disabled={finishing} onClick={() => void handleFinish()}>
-                            {finishing ? 'Finalizando...' : 'Finalizar producción'}
+                        <Button variant="primary" icon={CheckCircle} loading={finishing} onClick={() => void handleFinish()}>
+                            Finalizar producción
                         </Button>
                     </>
                 )}
@@ -861,6 +863,7 @@ export default function ProductionOrders() {
                                 >
                                     <Input
                                         id="finish-produced"
+                                        className="ui-input--number"
                                         type="number"
                                         min={0.001}
                                         step="any"
@@ -878,7 +881,8 @@ export default function ProductionOrders() {
                                 rows={finishOrder.items}
                                 rowKey={(item) => item.id}
                                 minWidth="32rem"
-                                empty={<EmptyState title="Sin insumos registrados" />}
+                                hidePaginationIfSinglePage
+                                empty="Sin insumos registrados"
                             />
                         </FormSection>
 
@@ -907,7 +911,7 @@ export default function ProductionOrders() {
                 isOpen={!!cancelOrder}
                 title={cancelOrder ? `Anular ${cancelOrder.code}` : 'Anular orden'}
                 tone="danger"
-                confirmLabel={cancelling ? 'Anulando...' : 'Anular orden'}
+                confirmLabel="Anular orden"
                 loading={cancelling}
                 onCancel={() => setCancelOrder(null)}
                 onConfirm={() => void handleCancel()}

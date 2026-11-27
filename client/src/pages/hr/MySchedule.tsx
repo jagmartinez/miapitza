@@ -97,7 +97,7 @@ export default function MySchedule() {
                     <IconButton icon={ChevronLeft} label="Semana anterior" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={acknowledgingId !== null} />
                     <strong>{weekLabel(weekStart)}</strong>
                     <IconButton icon={ChevronRight} label="Semana siguiente" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={acknowledgingId !== null} />
-                    <Button size="sm" variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || acknowledgingId !== null}>Hoy</Button>
+                    <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || acknowledgingId !== null}>Hoy</Button>
                 </div>
             </TableToolbar>
 

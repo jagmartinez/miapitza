@@ -497,9 +497,9 @@ export default function BenefitsManagement() {
                 description={search ? 'Prueba otro código, empleado o detalle.' : 'Cambia el estado o crea un nuevo registro.'}
                 action={(
                   <>
-                    {search && <Button size="sm" variant="ghost" onClick={() => setSearch('')}>Limpiar búsqueda</Button>}
-                    {status && <Button size="sm" variant="ghost" onClick={() => setStatus('')}>Mostrar todos</Button>}
-                    <Button variant="primary" size="sm" icon={Plus} onClick={() => setCreatePanel(tab)} disabled={!online}>{newLabel}</Button>
+                    {search && <Button variant="ghost" onClick={() => setSearch('')}>Limpiar búsqueda</Button>}
+                    {status && <Button variant="ghost" onClick={() => setStatus('')}>Mostrar todos</Button>}
+                    <Button variant="primary" icon={Plus} onClick={() => setCreatePanel(tab)} disabled={!online}>{newLabel}</Button>
                   </>
                 )}
               />

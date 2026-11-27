@@ -3,7 +3,7 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { useParams, useNavigate } from 'react-router-dom';
 import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, menuBrandsAPI, productionReportsAPI } from '../services/api';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, Input, LoadErrorState, PageContent, PageHeader, Switch,
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, Input, LoadErrorState, PageContent, PageHeader, Switch, TableToolbar,
     formatMoney, formatNumber, formatPercent, getUiPrefs, type Column, type Tone,
 } from '@/ui';
 import { ParetoBars } from '@/ui/charts';
@@ -1151,7 +1151,14 @@ function ReportViewer({ reportId }: { reportId: string }) {
                 </div>
             )}
 
-            <div className="reports-filters" role="group" aria-label="Filtros del reporte">
+            <TableToolbar
+                actions={(
+                    <>
+                        <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>
+                        <Button icon={Search} loading={loading} onClick={loadReport}>Aplicar filtros</Button>
+                    </>
+                )}
+            >
                 {hasDates && (
                     <>
                         <Field label="Desde" htmlFor="rep-from">
@@ -1226,13 +1233,7 @@ function ReportViewer({ reportId }: { reportId: string }) {
                     />
                 )}
 
-                <div className="reports-filters__actions">
-                    <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>
-                    <Button onClick={loadReport} disabled={loading}>
-                        <Search size={16} aria-hidden="true" /> {loading ? 'Cargando…' : 'Aplicar filtros'}
-                    </Button>
-                </div>
-            </div>
+            </TableToolbar>
 
             {error && !loading ? <LoadErrorState message={error} onRetry={loadReport} /> : null}
 
@@ -1297,7 +1298,7 @@ function ReportViewer({ reportId }: { reportId: string }) {
                     loading={loading}
                     resetKey={`${reportId}|${JSON.stringify(filters)}`}
                     footerLabel="Total de la página"
-                    minWidth={`${Math.max(48, columns.length * 9)}rem`}
+                    minWidth="0"
                 />
             ) : null}
 

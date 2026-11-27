@@ -1,16 +1,15 @@
-/* ===== TABLES PAGE REDESIGN ===== */
+/* ===== Mesas: lista administrativa, mosaico operativo y plano ===== */
 
 .tables-page {
-    padding: 0;
+    box-sizing: border-box;
     max-width: 1700px;
+    min-width: 0;
     margin: 0 auto;
+    padding: 0;
 }
 
-.tables-page--map,
-.tables-page--ops {
-    box-sizing: border-box;
-    min-width: 0;
-}
+/* La lista y el mosaico usan el ancho de contenido; solo el plano ocupa todo el alto disponible. */
+.tables-page:not(.tables-page--map) { min-width: 0; }
 
 /* El plano editable ocupa el ancho del área de contenido (el riel de navegación queda visible). */
 .tables-page--map .table-map-shell {
@@ -18,53 +17,12 @@
     min-height: 32rem;
 }
 
-.tables-page--list {
-    box-sizing: border-box;
-    min-width: 0;
-}
-
-.tables-filters-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--spacing-sm, 8px) var(--spacing-md, 12px);
-    margin-bottom: var(--spacing-md, 12px);
-    min-width: 0;
-}
-
-.tables-branch-filter {
-    flex: 1 1 14rem;
-    min-width: 0;
-    max-width: 22rem;
-}
-
-.table-map-utility-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-}
-
 .tables-loading {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 50vh;
-    font-size: var(--font-size-xl);
+    min-height: 50vh;
     color: var(--ui-text-muted);
-}
-
-.table-map-branch-required {
-    min-height: 260px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-xl);
-    border: 2px dashed var(--ui-border);
-    border-radius: var(--radius-xl);
-    color: var(--ui-text-muted);
-    background: var(--ui-surface);
-    text-align: center;
 }
 
 .table-pos-workspace {
@@ -80,12 +38,6 @@
     height: 100dvh;
 }
 
-/* La lista usa PageContent para el espaciado; solo el plano es de pantalla completa. */
-.tables-page:not(.tables-page--map) {
-    padding: 0;
-    min-width: 0;
-}
-
 /* The embedded POS workspace (z-index 1400) covers the app shell; every design-system layer
    (modals, select menus, toasts) opened from inside it must stack above it, e.g. the fiscal
    customer dialog and the modifier selector. */
@@ -95,7 +47,7 @@ body:has(.table-pos-workspace) {
     --ui-z-toast: 1800;
 }
 
-/* ===== Mesas (mockup): encabezado, indicadores, mosaico de mesas y panel "Detalle de mesa" ===== */
+/* Vista operativa: encabezado → filtros (sucursal, zona) → mosaico/plano + panel "Detalle de mesa". */
 .tables-ops {
     display: flex;
     flex-direction: column;
@@ -103,35 +55,11 @@ body:has(.table-pos-workspace) {
     min-width: 0;
 }
 
-.tables-ops__header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: var(--ui-space-3);
-    min-width: 0;
-}
+.tables-ops > .ui-pageheader,
+.tables-ops > .ui-toolbar { margin-bottom: 0; }
 
-.tables-ops__title {
-    display: flex;
-    flex: 1 1 13rem;
-    flex-direction: column;
-    gap: var(--ui-space-1);
-    min-width: 0;
-}
-
-.tables-ops__title h1 {
-    margin: 0;
-    font-size: var(--ui-text-2xl);
-    font-weight: 600;
-    letter-spacing: -.01em;
-    color: var(--ui-text);
-}
-
-.tables-ops__title p {
-    margin: 0;
-    font-size: var(--ui-text-md);
-    color: var(--ui-text-muted);
-}
+/* La zona puede tener muchos salones: la barra se desplaza dentro de su espacio. */
+.ui-toolbar__filters > .tables-zone-filter { flex: 0 1 auto; max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
 
 .tables-ops .salon-cards { margin-bottom: 0; }
 
@@ -203,11 +131,11 @@ body:has(.table-pos-workspace) {
     gap: var(--ui-space-3);
 }
 
-[data-state='AVAILABLE'] { --tile-tone: var(--ui-success); }
-[data-state='OCCUPIED'] { --tile-tone: var(--ui-primary); }
-[data-state='PENDING_PAYMENT'] { --tile-tone: var(--ui-warning); }
-[data-state='RESERVED'] { --tile-tone: var(--ui-text-muted); }
-[data-state='OUT_OF_SERVICE'] { --tile-tone: var(--ui-danger); }
+:is(.tables-legend li, .tables-tile)[data-state='AVAILABLE'] { --tile-tone: var(--ui-success); }
+:is(.tables-legend li, .tables-tile)[data-state='OCCUPIED'] { --tile-tone: var(--ui-primary); }
+:is(.tables-legend li, .tables-tile)[data-state='PENDING_PAYMENT'] { --tile-tone: var(--ui-warning); }
+:is(.tables-legend li, .tables-tile)[data-state='RESERVED'] { --tile-tone: var(--ui-text-muted); }
+:is(.tables-legend li, .tables-tile)[data-state='OUT_OF_SERVICE'] { --tile-tone: var(--ui-danger); }
 
 .tables-tile {
     display: flex;
@@ -226,7 +154,7 @@ body:has(.table-pos-workspace) {
 }
 
 .tables-tile:hover { border-color: var(--ui-primary); }
-.tables-tile:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+.tables-tile:focus-visible { outline: none; box-shadow: var(--ui-focus-ring); }
 .tables-tile[data-state='OCCUPIED'] { background: var(--ui-primary-soft); }
 .tables-tile[data-state='PENDING_PAYMENT'] { background: var(--ui-warning-soft); }
 .tables-tile[data-state='RESERVED'] { border-style: dashed; border-color: var(--ui-text-muted); background: var(--ui-surface-2); }
@@ -235,7 +163,7 @@ body:has(.table-pos-workspace) {
 .tables-tile[aria-pressed='true'] {
     border: 2px solid var(--ui-primary);
     padding: calc(var(--ui-space-3) - 1px);
-    box-shadow: 0 0 0 3px var(--ui-primary-soft);
+    box-shadow: var(--ui-focus-ring);
 }
 
 .tables-tile__top { display: flex; flex-wrap: nowrap; align-items: baseline; justify-content: space-between; gap: 0 var(--ui-space-2); }
@@ -269,12 +197,6 @@ body:has(.table-pos-workspace) {
 .tables-tile__foot .is-slow { color: var(--ui-warning); font-weight: 600; }
 .tables-tile__amount { margin-left: auto; font-weight: 600; color: var(--ui-text); white-space: nowrap; }
 .tables-tile__foot > :first-child { white-space: nowrap; }
-
-@media (max-width: 640px) {
-    .tables-ops__header > * { flex: 1 1 100%; }
-    .tables-ops__header .ui-segmented { overflow-x: auto; }
-    .tables-ops__header .table-map-utility-controls { flex: 0 1 auto; }
-}
 
 /* Vista Plano: el mapa ocupa toda la altura disponible bajo la barra superior; el detalle solo aparece con una mesa elegida. */
 .tables-page--map { max-width: none; }

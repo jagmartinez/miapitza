@@ -86,7 +86,7 @@ describe('RH and Catering UI design-system contract', () => {
     expect(modalShell).toContain('aria-label={ariaLabel}');
     expect(modalStyles).toContain('font-family: inherit');
     expect(modalStyles).toContain('font-size: 14px');
-    expect(modalStyles).toContain('min-height: 42px');
+    expect(modalStyles).toContain('min-height: var(--ui-control-md)');
   });
 
   it('normalizes monetary input while presenting thousands separators and right alignment', () => {

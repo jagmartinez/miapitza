@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import { reportsAPI, ordersAPI, productsAPI } from '../../services/api';
-import { DataTable, EmptyState, LoadErrorState, Skeleton, StatCard, formatMoney, formatNumber, formatPercent, type Column } from '@/ui';
+import { Button, DataTable, EmptyState, LoadErrorState, Skeleton, StatCard, formatMoney, formatNumber, formatPercent, type Column } from '@/ui';
 import { useSection } from './useSection';
+import { RESERVATION_STATUS } from './reservationStatus';
 
 interface LiveStats {
     todaySales: number;
@@ -16,9 +17,6 @@ interface ReservationRow { id: number; day?: string; time: string; name: string;
 interface LowStockItem { name: string }
 
 const KITCHEN_STATUSES = ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'];
-const RESERVATION_STATUS: Record<string, string> = {
-    PENDING: 'Pendiente', CONFIRMED: 'Confirmada', SEATED: 'Sentada', COMPLETED: 'Completada', CANCELLED: 'Cancelada', NO_SHOW: 'No se presentó',
-};
 
 interface AttentionItem { id: string; text: string; action: { label: string; to: string } }
 
@@ -108,7 +106,7 @@ export function LiveOperations() {
             {failed.length > 0 ? (
                 <div className="bi-notice" role="status">
                     <span>No disponible: {failed.join(', ')}. Se excluye de lo que requiere atención.</span>
-                    <button type="button" className="bi-link" onClick={() => { stats.reload(); kitchen.reload(); reservations.reload(); lowStock.reload(); }}>Reintentar</button>
+                    <Button variant="ghost" size="sm" onClick={() => { stats.reload(); kitchen.reload(); reservations.reload(); lowStock.reload(); }}>Reintentar</Button>
                 </div>
             ) : null}
 
@@ -138,6 +136,7 @@ export function LiveOperations() {
                         rows={reservations.data ?? []}
                         rowKey={(r) => r.id}
                         ariaLabel="Próximas reservas"
+                        variant="flat"
                         empty={<EmptyState title="Sin reservas próximas" />}
                         minWidth="0"
                     />

@@ -10,7 +10,6 @@ import LanguageSelector from './LanguageSelector';
 import NetworkStatus from './NetworkStatus';
 import MobileBottomNav from './MobileBottomNav';
 import SyncStatus from './SyncStatus';
-import '../components/SyncStatus.css';
 import { AppShell, IconButton, Topbar } from '@/ui';
 import { NAV_GROUPS, activeNavId, visibleNav } from '../navigation/navConfig';
 import { getUserAccentColor } from '../utils/authz';

@@ -1,5 +1,5 @@
 import { formatHrNumber } from '../../utils/hrDisplay';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useId } from 'react';
 import { Tags,
   AlertTriangle,
   Ban,
@@ -12,10 +12,7 @@ import { Tags,
   RefreshCw,
   SlidersHorizontal,
 } from 'lucide-react';
-import {
-  AppSelect, Button, Checkbox, DataTable, DateInput, EmptyState, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, SegmentedControl,
-  StatCard, TableToolbar, Tabs, Textarea,
-} from '@/ui';
+import { AppSelect, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, SegmentedControl, StatCard, TableToolbar, Tabs, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import LeaveCalendarGrid from '../../components/hr/LeaveCalendarGrid';
@@ -93,6 +90,7 @@ type RequestAction = { item: HrLeaveRequest; kind: 'decide' | 'cancel' } | null;
 type LeaveTable = 'REQUESTS' | 'CALENDAR' | 'BALANCES' | 'TYPES' | 'HISTORY';
 
 export default function LeaveManagement() {
+  const fid = useId();
   const online = useWorkforceOnline();
   const { success: showSuccess, error: showError } = useAppToast();
   const initialRange = monthRange();
@@ -363,7 +361,6 @@ export default function LeaveManagement() {
             {!loading && !error && activeTable === 'CALENDAR' && (
               <SegmentedControl<'grid' | 'list'>
                 ariaLabel="Vista del calendario"
-                size="sm"
                 options={[{ value: 'grid', label: 'Calendario' }, { value: 'list', label: 'Lista' }]}
                 value={calendarView}
                 onChange={setCalendarView}
@@ -409,7 +406,7 @@ export default function LeaveManagement() {
                 pagination={{ mode: 'client' }}
                 minWidth="56rem"
                 rowTone={(item) => (focusedRequestId === item.id ? 'primary' : undefined)}
-                empty={<EmptyState title="No hay solicitudes en este periodo" description="Puedes registrar una solicitud en nombre de un empleado." action={<Button variant="primary" size="sm" onClick={() => setPanel('request')} disabled={!online} aria-label="Crear ausencia"><Plus size={15} /> Nueva solicitud</Button>} />}
+                empty={<EmptyState title="No hay solicitudes en este periodo" description="Puedes registrar una solicitud en nombre de un empleado." action={<Button variant="primary" onClick={() => setPanel('request')} disabled={!online} aria-label="Crear ausencia" icon={Plus}>Nueva solicitud</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', width: '1.6fr', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
                   { key: 'c1', header: 'Tipo', width: '1fr', render: (item) => <>{item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}</> },
@@ -429,7 +426,7 @@ export default function LeaveManagement() {
                 rowKey={(entry) => entry.id}
                 pagination={{ mode: 'client' }}
                 minWidth="56rem"
-                empty={<EmptyState title="No hay ausencias aprobadas" description="Amplía el rango de fechas o revisa las solicitudes pendientes." action={<Button size="sm" variant="ghost" onClick={() => setActiveTable('REQUESTS')}>Ver solicitudes</Button>} />}
+                empty={<EmptyState title="No hay ausencias aprobadas" description="Amplía el rango de fechas o revisa las solicitudes pendientes." action={<Button variant="ghost" onClick={() => setActiveTable('REQUESTS')}>Ver solicitudes</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Fecha', render: (entry) => <strong>{dateLabel(entry.date)}</strong> },
                   { key: 'c1', header: 'Empleado', render: (entry) => <>{entry.user?.name ?? `Usuario #${entry.userId}`}</> },
@@ -448,8 +445,8 @@ export default function LeaveManagement() {
                 rows={balances}
                 rowKey={(balance) => balance.id}
                 pagination={{ mode: 'client' }}
-                minWidth="72rem"
-                empty={<EmptyState title="No hay saldos configurados" description="Registra un ajuste inicial para comenzar el control." action={<Button variant="primary" size="sm" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button>} />}
+                minWidth="64rem"
+                empty={<EmptyState title="No hay saldos configurados" description="Registra un ajuste inicial para comenzar el control." action={<Button variant="primary" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', width: '1.6fr', render: (balance) => <strong>{balance.user?.name ?? `Usuario #${balance.userId}`}</strong> },
                   { key: 'c1', header: 'Tipo', render: (balance) => <>{balance.leaveType?.name ?? 'Vacaciones'}</> },
@@ -471,7 +468,7 @@ export default function LeaveManagement() {
                 rowKey={(type) => type.id}
                 pagination={{ mode: 'client' }}
                 minWidth="64rem"
-                empty={<EmptyState title="No hay tipos de ausencia" description="Crea vacaciones, permisos, subsidios u otras políticas." action={<Button variant="primary" size="sm" onClick={() => openType()} disabled={!online}><Plus size={15} /> Crear tipo</Button>} />}
+                empty={<EmptyState title="No hay tipos de ausencia" description="Crea vacaciones, permisos, subsidios u otras políticas." action={<Button variant="primary" onClick={() => openType()} disabled={!online} icon={Plus}>Crear tipo</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Nombre', width: '2fr', render: (type) => <span className={form.cellStack}><span className={form.cellTitle}>{type.name}</span><span className={form.cellSub}>{type.description || 'Sin descripción'}</span></span> },
                   { key: 'c1', header: 'Código', render: (type) => <code>{type.code}</code> },
@@ -492,7 +489,7 @@ export default function LeaveManagement() {
                 rowKey={(entry) => entry.id}
                 pagination={{ mode: 'client' }}
                 minWidth="64rem"
-                empty={<EmptyState title="No hay movimientos" description="Los devengos, usos y ajustes aparecerán aquí." action={<Button size="sm" variant="ghost" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button>} />}
+                empty={<EmptyState title="No hay movimientos" description="Los devengos, usos y ajustes aparecerán aquí." action={<Button variant="ghost" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Fecha', render: (entry) => <>{dateLabel(entry.effectiveDate)}</> },
                   { key: 'c1', header: 'Empleado', render: (entry) => <>{users.find((user) => user.id === entry.userId)?.name ?? `Usuario #${entry.userId}`}</> },
@@ -545,15 +542,14 @@ export default function LeaveManagement() {
                 <Button type="button" variant="ghost" onClick={() => setPanel(null)}>
                   Cancelar
                 </Button>
-                <Button variant="primary" type="submit" disabled={!online || saving}>
-                  {saving ? 'Guardando…' : 'Guardar tipo'}
+                <Button loading={saving} variant="primary" type="submit" disabled={!online || saving}>
+                  Guardar tipo
                 </Button>
               </>
             }
           >
-            <label>
-              Código
-              <Input
+            <Field label="Código" htmlFor={`${fid}-codigo`}>
+              <Input id={`${fid}-codigo`}
                 value={typeForm.code}
                 onChange={(event) =>
                   setTypeForm((current) => ({
@@ -563,20 +559,18 @@ export default function LeaveManagement() {
                 }
                 required
               />
-            </label>
-            <label>
-              Nombre
-              <Input
+            </Field>
+            <Field label="Nombre" htmlFor={`${fid}-nombre`}>
+              <Input id={`${fid}-nombre`}
                 value={typeForm.name}
                 onChange={(event) =>
                   setTypeForm((current) => ({ ...current, name: event.target.value }))
                 }
                 required
               />
-            </label>
-            <label>
-              Unidad
-              <AppSelect<string>
+            </Field>
+            <Field label="Unidad" htmlFor={`${fid}-unidad`}>
+              <AppSelect<string> inputId={`${fid}-unidad`}
                 options={[
                   { value: 'DAYS', label: 'Días' },
                   { value: 'HOURS', label: 'Horas' },
@@ -591,17 +585,18 @@ export default function LeaveManagement() {
                 }
                 isClearable={false}
               />
-            </label>
-            <label className="span-full">
-              Descripción
-              <Textarea
-                rows={3}
-                value={typeForm.description}
-                onChange={(event) =>
-                  setTypeForm((current) => ({ ...current, description: event.target.value }))
-                }
-              />
-            </label>
+            </Field>
+            <div className="span-full">
+              <Field label="Descripción" htmlFor={`${fid}-descripcion`}>
+                <Textarea id={`${fid}-descripcion`}
+                  rows={3}
+                  value={typeForm.description}
+                  onChange={(event) =>
+                    setTypeForm((current) => ({ ...current, description: event.target.value }))
+                  }
+                />
+              </Field>
+            </div>
             <div className={`${form.checkGrid} span-full`}>
               <Checkbox checked={typeForm.paid}
                   onChange={(event) =>
@@ -644,6 +639,7 @@ export default function LeaveManagement() {
                 </Button>
                 <Button variant="primary"
                   type="submit"
+                  loading={saving}
                   disabled={
                     !online ||
                     saving ||
@@ -652,14 +648,13 @@ export default function LeaveManagement() {
                     !adjustment.reason.trim()
                   }
                 >
-                  {saving ? 'Registrando…' : 'Registrar ajuste'}
+                  Registrar ajuste
                 </Button>
               </>
             }
           >
-            <label>
-              Usuario
-              <AppSelect<string>
+            <Field label="Usuario" htmlFor={`${fid}-usuario`}>
+              <AppSelect<string> inputId={`${fid}-usuario`}
                 options={[
                   { value: '', label: 'Seleccionar…' },
                   ...users.map((user) => ({ value: String(user.id), label: user.name })),
@@ -674,10 +669,9 @@ export default function LeaveManagement() {
                 }
                 isClearable={false}
               />
-            </label>
-            <label>
-              Saldo objetivo
-              <AppSelect<string>
+            </Field>
+            <Field label="Saldo objetivo" htmlFor={`${fid}-saldo-objetivo`}>
+              <AppSelect<string> inputId={`${fid}-saldo-objetivo`}
                 options={[
                   { value: '', label: 'Resolver en servidor' },
                   ...balances
@@ -698,10 +692,9 @@ export default function LeaveManagement() {
                 }}
                 isClearable={false}
               />
-            </label>
-            <label>
-              Fecha efectiva
-              <DateInput
+            </Field>
+            <Field label="Fecha efectiva" htmlFor={`${fid}-fecha-efectiva`}>
+              <DateInput id={`${fid}-fecha-efectiva`}
                
                 value={adjustment.effectiveDate}
                 onChange={(event) =>
@@ -709,10 +702,9 @@ export default function LeaveManagement() {
                 }
                 required
               />
-            </label>
-            <label>
-              Cantidad con signo
-              <Input
+            </Field>
+            <Field label="Cantidad con signo" htmlFor={`${fid}-cantidad-con-signo`}>
+              <Input id={`${fid}-cantidad-con-signo`}
                 type="number"
                 step="0.01"
                 value={adjustment.amount}
@@ -721,10 +713,9 @@ export default function LeaveManagement() {
                 }
                 required
               />
-            </label>
-            <label>
-              Unidad
-              <AppSelect<string>
+            </Field>
+            <Field label="Unidad" htmlFor={`${fid}-unidad-2`}>
+              <AppSelect<string> inputId={`${fid}-unidad-2`}
                 options={[
                   { value: 'DAYS', label: 'Días' },
                   { value: 'HOURS', label: 'Horas' },
@@ -739,28 +730,28 @@ export default function LeaveManagement() {
                 }
                 isClearable={false}
               />
-            </label>
-            <label>
-              Referencia
-              <Input
+            </Field>
+            <Field label="Referencia" htmlFor={`${fid}-referencia`}>
+              <Input id={`${fid}-referencia`}
                 value={adjustment.reference}
                 onChange={(event) =>
                   setAdjustment((current) => ({ ...current, reference: event.target.value }))
                 }
               />
-            </label>
-            <label className="span-full">
-              Razón obligatoria
-              <Textarea
-                rows={4}
-                maxLength={700}
-                value={adjustment.reason}
-                onChange={(event) =>
-                  setAdjustment((current) => ({ ...current, reason: event.target.value }))
-                }
-                required
-              />
-            </label>
+            </Field>
+            <div className="span-full">
+              <Field label="Razón obligatoria" htmlFor={`${fid}-razon-obligatoria`}>
+                <Textarea id={`${fid}-razon-obligatoria`}
+                  rows={4}
+                  maxLength={700}
+                  value={adjustment.reason}
+                  onChange={(event) =>
+                    setAdjustment((current) => ({ ...current, reason: event.target.value }))
+                  }
+                  required
+                />
+              </Field>
+            </div>
             <div className={`${form.alertWarning} span-full`}>
               <AlertTriangle size={18} />
               <span>
@@ -789,14 +780,13 @@ export default function LeaveManagement() {
           footer={
             <>
               <Button type="button" variant="ghost" onClick={() => setRequestAction(null)}>Volver</Button>
-              <Button variant="primary" type="submit" disabled={!online || saving || !actionReason.trim()}>{saving ? 'Registrando…' : 'Confirmar'}</Button>
+              <Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !actionReason.trim()}>Confirmar</Button>
             </>
           }
         >
           {requestAction?.kind === 'decide' && (
-            <label>
-              Decisión
-              <AppSelect<string>
+            <Field label="Decisión" htmlFor={`${fid}-decision`}>
+              <AppSelect<string> inputId={`${fid}-decision`}
                 options={[
                   { value: 'APPROVED', label: 'Aprobar' },
                   { value: 'REJECTED', label: 'Rechazar' },
@@ -805,18 +795,19 @@ export default function LeaveManagement() {
                 onChange={(next) => setDecision((next ?? '') as HrDecision)}
                 isClearable={false}
               />
-            </label>
+            </Field>
           )}
-          <label className="span-full">
-            Razón obligatoria
-            <Textarea
-              rows={5}
-              maxLength={700}
-              value={actionReason}
-              onChange={(event) => setActionReason(event.target.value)}
-              required
-            />
-          </label>
+          <div className="span-full">
+            <Field label="Razón obligatoria" htmlFor={`${fid}-razon-obligatoria-2`}>
+              <Textarea id={`${fid}-razon-obligatoria-2`}
+                rows={5}
+                maxLength={700}
+                value={actionReason}
+                onChange={(event) => setActionReason(event.target.value)}
+                required
+              />
+            </Field>
+          </div>
           <p className="hr-form-help span-full">
             La decisión no se infiere al guardar ni al enviar; queda registrada como una transición
             separada.

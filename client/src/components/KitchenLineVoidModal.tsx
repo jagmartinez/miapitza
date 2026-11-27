@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AppSelect, Button, Field, FullScreenModal, Input, Textarea } from '@/ui';
+import { AppSelect, Button, Field, FullScreenModal, NumberInput, Textarea } from '@/ui';
 import api, { warehousesAPI } from '../services/api';
 import { useAppToast } from '../context/ToastContext';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -112,18 +112,20 @@ export default function KitchenLineVoidModal({ isOpen, order, initialItemId, onC
             title={order ? `Anular línea · Orden #${order.id}` : 'Anular línea'}
             subtitle="La anulación registra la merma de lo preparado y recalcula la cuenta."
             size="compact"
-            footer={(
-                <div className="line-void-actions">
-                    <Button variant="secondary" onClick={onClose} disabled={submitting}>Cerrar</Button>
+            dirty={reason.trim().length > 0 && !submitting}
+            footer={({ requestClose }) => (
+                <>
+                    <Button variant="secondary" onClick={requestClose} disabled={submitting}>Cerrar</Button>
                     <Button
                         variant="danger"
                         onClick={() => void submit()}
+                        loading={submitting}
                         disabled={submitting || Boolean(blocker) || !selected}
                         data-testid="confirm-line-void"
                     >
                         {submitting ? 'Anulando…' : 'Anular y registrar merma'}
                     </Button>
-                </div>
+                </>
             )}
         >
             <div className="line-void-form">
@@ -152,15 +154,16 @@ export default function KitchenLineVoidModal({ isOpen, order, initialItemId, onC
                             />
                         </Field>
                         <Field label="Cantidad a anular" htmlFor="line-void-quantity">
-                            <Input
+                            <NumberInput
                                 id="line-void-quantity"
-                                type="number"
-                                inputMode="numeric"
+                                decimals={0}
                                 min={1}
-                                max={selected ? Number(selected.quantity) : 1}
                                 value={quantity}
                                 disabled={!selected}
-                                onChange={(event) => setQuantity(Math.trunc(Number(event.target.value) || 0))}
+                                onChange={(value) => {
+                                    const max = selected ? Number(selected.quantity) : 1;
+                                    setQuantity(Math.min(max, Math.max(0, Math.trunc(value ?? 0))));
+                                }}
                                 aria-label="Cantidad a anular"
                             />
                         </Field>

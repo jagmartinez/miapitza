@@ -455,6 +455,7 @@ export default function BiDashboard() {
                                         {rows.length > 0 ? (
                                             <DataTable
                                                 ariaLabel="Margen por canal"
+                                                variant="flat"
                                                 rows={rows}
                                                 rowKey={(r) => r.channel}
                                                 minWidth="0"
@@ -517,6 +518,7 @@ export default function BiDashboard() {
                         ) : (
                             <DataTable
                                 ariaLabel="Comparativo de sucursales"
+                                variant="flat"
                                 columns={branchColumns}
                                 rows={branchRows.data ?? []}
                                 rowKey={(r) => r.branchId}

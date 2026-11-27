@@ -1,10 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useId } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, Plus, Scale, Search } from 'lucide-react';
-import {
-  AppSelect, Badge, Button, DataTable, DateInput, EmptyState, formatMoney, formatNumber, formatPercent, FullScreenModal, IconButton, Input, LoadErrorState, PageContent,
-  PageHeader, StatCard, TableToolbar, Tabs, Textarea,
-} from '@/ui';
+import { AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, formatMoney, formatNumber, formatPercent, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -97,6 +94,7 @@ function periodDefaults(): HrPayrollPeriodPayload {
 }
 
 export default function PayrollManagement() {
+  const fid = useId();
   const navigate = useNavigate();
   const online = usePayrollOnline();
   const { confirm } = useConfirmDialog();
@@ -408,7 +406,7 @@ export default function PayrollManagement() {
               icon={Calculator}
               title="No encontramos esta corrida"
               description="Puede haber sido filtrada o ya no existe. Vuelve al registro para elegir otra."
-              action={<Button size="sm" variant="secondary" icon={ArrowLeft} onClick={closeRun}>Volver a corridas</Button>}
+              action={<Button variant="secondary" icon={ArrowLeft} onClick={closeRun}>Volver a corridas</Button>}
             />
           )}
         </div>
@@ -487,8 +485,8 @@ export default function PayrollManagement() {
           <AlertTriangle size={16} aria-hidden="true" />
           <span>{activeRules.length === 0 ? 'Para crear corridas necesitas una regla legal activa.' : 'Primero crea el periodo que deseas pagar.'}</span>
           {activeRules.length === 0
-            ? <Button size="sm" variant="secondary" onClick={() => rules.length ? navigate(`/rh/nomina/configuracion-legal?ruleId=${rules[0].id}`) : setCreatePanel({ kind: 'rule' })}>{rules.length ? 'Configurar regla' : 'Crear regla base'}</Button>
-            : <Button size="sm" variant="secondary" onClick={() => setCreatePanel({ kind: 'period' })}>Crear periodo</Button>}
+            ? <Button variant="secondary" onClick={() => rules.length ? navigate(`/rh/nomina/configuracion-legal?ruleId=${rules[0].id}`) : setCreatePanel({ kind: 'rule' })}>{rules.length ? 'Configurar regla' : 'Crear regla base'}</Button>
+            : <Button variant="secondary" onClick={() => setCreatePanel({ kind: 'period' })}>Crear periodo</Button>}
         </div>
       )}
 
@@ -522,7 +520,7 @@ export default function PayrollManagement() {
               <EmptyState
                 title="No hay corridas que coincidan con los filtros."
                 description={runs.length === 0 ? 'Crea una corrida para iniciar el cálculo, revisión y pago.' : 'Prueba otro código, periodo o estado.'}
-                action={runs.length === 0 ? <Button variant="primary" size="sm" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button> : undefined}
+                action={runs.length === 0 ? <Button variant="primary" onClick={() => setCreatePanel({ kind: 'run', runKind: activeKind })} disabled={!operationReady}>Crear primera corrida</Button> : undefined}
               />
             )}
             columns={[
@@ -565,12 +563,12 @@ export default function PayrollManagement() {
         {createPanel?.kind === 'component' && selected && <PayrollComponentForm users={lookups.users ?? []} concepts={selectedPaymentConcepts} incomeTaxApplicability={selectedIncomeTaxApplicability} online={online} saving={saving} onSubmit={saveComponent} onCancel={() => { componentOperationKey.current = null; setCreatePanel(null); }} />}
         {createPanel?.kind === 'rule' && <PayrollRuleForm initial={createPanel.rule} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={saveRule} onCancel={() => setCreatePanel(null)} />}
         {createPanel?.kind === 'period' && (
-          <HrModalFormShell ariaLabel="Crear periodo de nómina" tabLabel="1. Periodo" sectionTitle="Define las fechas que se pagarán" icon={<FilePlus2 size={18} />} formClassName="hr-payroll-form" notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(event) => void savePeriod(event)} footer={<><Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>Cancelar</Button><Button variant="primary" type="submit" disabled={!online || saving || !periodForm.code.trim() || !periodForm.reason.trim()}>{saving ? 'Creando…' : 'Crear y continuar'}</Button></>}>
-            <label>Código<Input value={periodForm.code} onChange={(event) => setPeriodForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="2026-Q15" required /></label>
-            <label>Desde<DateInput value={periodForm.dateFrom} onChange={(event) => setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))} required /></label>
-            <label>Hasta<DateInput min={periodForm.dateFrom} value={periodForm.dateTo} onChange={(event) => setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))} required /></label>
-            <label>Fecha de pago<DateInput min={periodForm.dateTo} value={periodForm.payDate} onChange={(event) => setPeriodForm((current) => ({ ...current, payDate: event.target.value }))} required /></label>
-            <label className="span-full">Motivo de apertura<Textarea rows={4} value={periodForm.reason} onChange={(event) => setPeriodForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Ej. Nómina ordinaria de la segunda quincena" required /></label>
+          <HrModalFormShell ariaLabel="Crear periodo de nómina" tabLabel="1. Periodo" sectionTitle="Define las fechas que se pagarán" icon={<FilePlus2 size={18} />} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(event) => void savePeriod(event)} footer={<><Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>Cancelar</Button><Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !periodForm.code.trim() || !periodForm.reason.trim()}>Crear y continuar</Button></>}>
+            <Field label="Código" htmlFor={`${fid}-codigo`}><Input id={`${fid}-codigo`} value={periodForm.code} onChange={(event) => setPeriodForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="2026-Q15" required /></Field>
+            <Field label="Desde" htmlFor={`${fid}-desde`}><DateInput id={`${fid}-desde`} value={periodForm.dateFrom} onChange={(event) => setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))} required /></Field>
+            <Field label="Hasta" htmlFor={`${fid}-hasta`}><DateInput id={`${fid}-hasta`} min={periodForm.dateFrom} value={periodForm.dateTo} onChange={(event) => setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))} required /></Field>
+            <Field label="Fecha de pago" htmlFor={`${fid}-fecha-de-pago`}><DateInput id={`${fid}-fecha-de-pago`} min={periodForm.dateTo} value={periodForm.payDate} onChange={(event) => setPeriodForm((current) => ({ ...current, payDate: event.target.value }))} required /></Field>
+            <div className="span-full"><Field label="Motivo de apertura" htmlFor={`${fid}-motivo-de-apertura`}><Textarea id={`${fid}-motivo-de-apertura`} rows={4} value={periodForm.reason} onChange={(event) => setPeriodForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Ej. Nómina ordinaria de la segunda quincena" required /></Field></div>
           </HrModalFormShell>
         )}
         {createPanel?.kind === 'run' && <PayrollRunForm kind={createPanel.runKind} periods={periods} rules={rules} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(payload) => saveRun(createPanel.runKind, payload)} onCancel={() => setCreatePanel(null)} />}

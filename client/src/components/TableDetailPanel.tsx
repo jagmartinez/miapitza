@@ -1,15 +1,23 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
-    Receipt, Loader2, Undo2, AlertTriangle, Link2, X, ChefHat,
+    Receipt, Undo2, AlertTriangle, Link2, X, ChefHat,
 } from 'lucide-react';
 import type { ActiveTableConsolidation, Order, OrderItem, Table } from '../types';
-import { AppSelect, Button, Field, IconButton, Textarea, formatNumber } from '@/ui';
+import { AppSelect, Badge, Button, Field, IconButton, Spinner, Textarea, formatNumber, type Tone } from '@/ui';
 import { isVoidableOrderLine, isVoidedOrderLine, orderLineVoidBlocker } from '../utils/orderLineVoid';
 import { getOrderStatusLabel } from '../utils/orderStatus';
-import { tableTileState } from '../utils/tableTileState';
+import { tableTileState, type TableTileKey } from '../utils/tableTileState';
 import { useCurrency } from '../hooks/useCurrency';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import styles from './TableDetailPanel.module.css';
+
+const TILE_TONE: Record<TableTileKey, Tone> = {
+    AVAILABLE: 'success',
+    OCCUPIED: 'primary',
+    PENDING_PAYMENT: 'warning',
+    RESERVED: 'neutral',
+    OUT_OF_SERVICE: 'danger',
+};
 
 interface TableDetailPanelProps {
     table: Table | null;
@@ -252,7 +260,7 @@ export default function TableDetailPanel({
                 <Button type="button" variant="secondary" className={styles.touch} disabled={busy} onClick={onCancel}>
                     Cancelar
                 </Button>
-                <Button type="submit" variant="danger" className={styles.touch} icon={busy ? Loader2 : Undo2} disabled={busy || value.trim().length < 3}>
+                <Button type="submit" variant="danger" className={styles.touch} icon={Undo2} loading={busy} disabled={busy || value.trim().length < 3}>
                     {busy ? 'Revirtiendo…' : 'Confirmar reverso'}
                 </Button>
             </div>
@@ -271,8 +279,8 @@ export default function TableDetailPanel({
             <header className={styles.head}>
                 <div className={styles.titleRow}>
                     <h2 className={styles.title}>Mesa {table.number}</h2>
-                    <span className={styles.state} data-state={state.key}>{state.label}</span>
-                    <IconButton icon={X} label="Cerrar detalle de mesa" onClick={onClose} className={styles.close} />
+                    <Badge tone={TILE_TONE[state.key]} dot>{state.label}</Badge>
+                    <IconButton icon={X} label="Cerrar detalle de mesa" tooltip="Cerrar" onClick={onClose} className={styles.close} />
                 </div>
                 <span className={styles.meta}>{meta}</span>
             </header>
@@ -289,7 +297,7 @@ export default function TableDetailPanel({
 
             {canConsolidate && loadingConsolidation && (
                 <section className={styles.banner} role="status" aria-live="polite">
-                    <Loader2 className={styles.spin} size={18} aria-hidden="true" />
+                    <Spinner size={16} label="Verificando consolidación" />
                     <span>Verificando si existe una consolidación activa…</span>
                 </section>
             )}
@@ -323,7 +331,7 @@ export default function TableDetailPanel({
                         El estado ACTIVE no garantiza que el reverso siga siendo posible.
                     </p>
                     {consolidationReversalError && (
-                        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+                        <div className={styles.inlineError} role="alert">
                             <AlertTriangle size={18} aria-hidden="true" />
                             <div>
                                 <strong>El reverso no se completó</strong>
@@ -365,8 +373,8 @@ export default function TableDetailPanel({
 
             <div className={styles.body} aria-busy={loading} role="region" aria-label="Órdenes activas">
                 {loading ? (
-                    <div className={styles.loadingState} role="status">
-                        <Loader2 className={styles.spin} size={28} aria-hidden="true" />
+                    <div className={styles.loadingState}>
+                        <Spinner size={24} label="Cargando pedido" />
                         <p>Cargando pedido…</p>
                     </div>
                 ) : orders.length === 0 ? (
@@ -378,9 +386,9 @@ export default function TableDetailPanel({
                                 <strong>Orden #{order.id}</strong>
                                 <span>{getOrderStatusLabel(order.status)}</span>
                                 {order.invoiceNumber ? (
-                                    <span className={styles.docTag}><Receipt size={12} aria-hidden="true" /> {order.invoiceNumber}</span>
+                                    <Badge tone="success"><Receipt size={12} aria-hidden="true" /> {order.invoiceNumber}</Badge>
                                 ) : order.preInvoicedAt ? (
-                                    <span className={styles.docTag}><Receipt size={12} aria-hidden="true" /> Pre-cuenta emitida</span>
+                                    <Badge tone="success"><Receipt size={12} aria-hidden="true" /> Pre-cuenta emitida</Badge>
                                 ) : null}
                             </div>
                             <ul className={styles.lines}>

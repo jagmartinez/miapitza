@@ -25,7 +25,7 @@
 .hr-schedule-matrix-row > * { min-width: 0; border-right: 1px solid var(--ui-border); }
 .hr-schedule-matrix-row > *:last-child { border-right: 0; }
 
-.hr-schedule-matrix-row.is-header { position: sticky; top: 0; z-index: 1; background: var(--ui-surface-2); }
+.hr-schedule-matrix-row.is-header { position: sticky; top: 0; z-index: 1; background: var(--ui-surface); }
 .hr-schedule-matrix-row.is-header > div {
     display: flex; flex-direction: column; justify-content: center; gap: 2px;
     padding: var(--ui-space-2) var(--ui-space-3);

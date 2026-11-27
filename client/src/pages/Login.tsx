@@ -11,7 +11,7 @@ import {
     UtensilsCrossed,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { Button, Input } from '../ui';
+import { Button, Field, IconButton, Input } from '@/ui';
 import './Login.css';
 
 /** Traduce los mensajes del servidor a español claro. */
@@ -88,8 +88,7 @@ export default function Login() {
 
                         {!needs2FA && (
                             <>
-                                <div className="login__field">
-                                    <label htmlFor="username">Usuario</label>
+                                <Field label="Usuario" htmlFor="username">
                                     <Input
                                         id="username"
                                         name="username"
@@ -105,26 +104,22 @@ export default function Login() {
                                         aria-invalid={Boolean(error)}
                                         aria-describedby={describedBy}
                                     />
-                                </div>
+                                </Field>
 
-                                <div className="login__field">
-                                    <label htmlFor="password">Contraseña</label>
+                                <Field label="Contraseña" htmlFor="password">
                                     <Input
                                         id="password"
                                         name="password"
                                         type={showPassword ? 'text' : 'password'}
                                         prefix={<LockKeyhole size={16} aria-hidden="true" />}
                                         suffix={
-                                            <button
-                                                type="button"
-                                                className="login__reveal"
-                                                onClick={() => setShowPassword((v) => !v)}
-                                                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                                                title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                                            <IconButton
+                                                size="sm"
+                                                icon={showPassword ? EyeOff : Eye}
+                                                label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                                                 aria-pressed={showPassword}
-                                            >
-                                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                            </button>
+                                                onClick={() => setShowPassword((v) => !v)}
+                                            />
                                         }
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
@@ -134,13 +129,12 @@ export default function Login() {
                                         aria-invalid={Boolean(error)}
                                         aria-describedby={describedBy}
                                     />
-                                </div>
+                                </Field>
                             </>
                         )}
 
                         {needs2FA && (
-                            <div className="login__field">
-                                <label htmlFor="twoFactorCode">Código de verificación</label>
+                            <Field label="Código de verificación" htmlFor="twoFactorCode">
                                 <Input
                                     id="twoFactorCode"
                                     name="twoFactorCode"
@@ -158,7 +152,7 @@ export default function Login() {
                                     autoComplete="one-time-code"
                                     aria-describedby={describedBy}
                                 />
-                            </div>
+                            </Field>
                         )}
 
                         <Button
@@ -173,13 +167,13 @@ export default function Login() {
                         </Button>
 
                         {needs2FA && (
-                            <button
-                                type="button"
+                            <Button
+                                variant="ghost"
                                 className="login__link"
                                 onClick={() => { setNeeds2FA(false); setTwoFactorCode(''); setError(''); }}
                             >
                                 Usar otra cuenta
-                            </button>
+                            </Button>
                         )}
                     </form>
                 </div>

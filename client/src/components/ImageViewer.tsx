@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useDialogA11y } from '../hooks/useDialogA11y';
+import { IconButton } from '@/ui';
 import './ImageViewer.css';
 
 interface ImageViewerProps {
@@ -62,9 +63,7 @@ export default function ImageViewer({ images, initialIndex = 0, isOpen, onClose 
                 tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
             >
-                <button type="button" className="viewer-close-btn" onClick={onClose} aria-label="Cerrar visor de imagen">
-                    <X size={24} aria-hidden="true" />
-                </button>
+                <IconButton icon={X} label="Cerrar visor de imagen" tooltip="Cerrar" className="viewer-close-btn" onClick={onClose} />
                 <img
                     src={images[currentIndex]}
                     alt={`Imagen ${currentIndex + 1} de ${images.length}`}
@@ -73,12 +72,8 @@ export default function ImageViewer({ images, initialIndex = 0, isOpen, onClose 
 
                 {images.length > 1 && (
                     <>
-                        <button type="button" className="viewer-nav-btn prev" onClick={handlePrev} aria-label="Imagen anterior">
-                            <ChevronLeft size={32} aria-hidden="true" />
-                        </button>
-                        <button type="button" className="viewer-nav-btn next" onClick={handleNext} aria-label="Imagen siguiente">
-                            <ChevronRight size={32} aria-hidden="true" />
-                        </button>
+                        <IconButton icon={ChevronLeft} label="Imagen anterior" tooltip="Anterior" className="viewer-nav-btn prev" onClick={handlePrev} />
+                        <IconButton icon={ChevronRight} label="Imagen siguiente" tooltip="Siguiente" className="viewer-nav-btn next" onClick={handleNext} />
                         <div className="viewer-counter">
                             {currentIndex + 1} / {images.length}
                         </div>

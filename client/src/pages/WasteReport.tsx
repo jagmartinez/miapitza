@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { notifyError } from '../services/notify';
 import api, { unitsAPI } from '../services/api';
-import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatCurrency, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
 import { Search, Save } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
 import { formatLocalDateInput } from '../utils/dateInput';
@@ -301,7 +301,7 @@ const WasteReport: React.FC = () => {
                             />
                         </Field>
                     </FormSection>
-                    <div className={catalog.inline} style={{ justifyContent: 'flex-end' }}>
+                    <div className={catalog.rowActions}>
                         <Button variant="primary" type="submit" icon={Save} loading={loading}>
                             Registrar merma
                         </Button>
@@ -359,7 +359,7 @@ const WasteReport: React.FC = () => {
                             { key: 'date', header: 'Fecha', type: 'date' },
                             { key: 'product', header: 'Producto' },
                             { key: 'quantity', header: 'Cantidad', type: 'qty', render: (entry) => `${formatNumber(entry.quantity)} ${entry.unit}` },
-                            { key: 'cost', header: 'Costo', type: 'money', total: true, accessor: (entry) => entry.cost },
+                            { key: 'cost', header: `Costo (${getCurrencySymbol(settings)})`, type: 'money', total: true, accessor: (entry) => entry.cost },
                             { key: 'reason', header: 'Razón' },
                             { key: 'warehouse', header: 'Almacén', hideBelow: 'lg' },
                             { key: 'user', header: 'Responsable' },
@@ -373,13 +373,14 @@ const WasteReport: React.FC = () => {
                                 ariaLabel="Merma por razón"
                                 rows={report.byReason}
                                 rowKey={(item) => item.reason}
-                                empty={<EmptyState title="Sin datos para los filtros seleccionados" />}
+                                hidePaginationIfSinglePage
+                                empty="Sin datos para los filtros seleccionados"
                                 columns={[
                                     { key: 'reason', header: 'Razón' },
                                     { key: 'count', header: 'Entradas', type: 'number', decimals: 0 },
                                     { key: 'quantity', header: 'Unidades', type: 'qty' },
                                     { key: 'unit', header: 'Unidad' },
-                                    { key: 'cost', header: 'Costo', type: 'money', render: (item) => formatCurrency(item.cost, settings) },
+                                    { key: 'cost', header: `Costo (${getCurrencySymbol(settings)})`, type: 'money', accessor: (item) => item.cost },
                                 ] as Column<(typeof report.byReason)[number]>[]}
                             />
                         </FormSection>

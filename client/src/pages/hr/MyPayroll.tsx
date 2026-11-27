@@ -112,7 +112,7 @@ export default function MyPayroll() {
       key: 'netPay',
       header: 'Neto',
       width: '1fr',
-      type: 'number',
+      type: 'money',
       render: (receipt) => formatHrMoney(receipt.currency, receipt.netPay),
     },
     { key: 'status', header: 'Estado', width: '0.9fr', render: (receipt) => <PayrollStatusPill status={receipt.status} /> },
@@ -176,7 +176,7 @@ export default function MyPayroll() {
                 title="No hay recibos publicados para los filtros seleccionados."
                 action={
                   kind || year !== String(currentYear) ? (
-                    <Button size="sm" variant="ghost" onClick={() => { setKind(''); setYear(String(currentYear)); }}>
+                    <Button variant="ghost" onClick={() => { setKind(''); setYear(String(currentYear)); }}>
                       Ver recibos del año actual
                     </Button>
                   ) : undefined

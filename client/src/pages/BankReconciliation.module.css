@@ -1,0 +1,36 @@
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: var(--ui-space-4);
+  min-width: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-4);
+  min-width: 0;
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: var(--ui-space-1);
+  min-width: 0;
+}
+
+.muted {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+
+.checkList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-1);
+  max-height: 14rem;
+  overflow-y: auto;
+  padding: var(--ui-space-2) 0;
+  border-block: 1px solid var(--ui-border);
+}

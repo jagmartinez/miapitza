@@ -4,13 +4,13 @@ import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import {
     Badge, Button, Checkbox, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    NumberInput, PageContent, PageHeader, StatCard, TableToolbar, Tabs, Textarea, formatMoney,
+    EmptyState, LoadErrorState, NumberInput, PageContent, PageHeader, StatCard, TableToolbar, Tabs, Textarea, formatMoney,
     type Column,
 } from '@/ui';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { Ban, CheckCircle2, Plus, Search } from 'lucide-react';
-import styles from './compras.module.css';
+import styles from './BankReconciliation.module.css';
 import { getApiErrorMessage } from '../utils/apiError';
 
 function errorMessage(error: unknown): string {
@@ -70,7 +70,13 @@ const BankReconciliation: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [statusLoadError, setStatusLoadError] = useState<string | null>(null);
+    const [pendingLoading, setPendingLoading] = useState(true);
+    const [depositsLoading, setDepositsLoading] = useState(true);
     const [pendingLoadError, setPendingLoadError] = useState<string | null>(null);
+    const [reverseTarget, setReverseTarget] = useState<BankDeposit | null>(null);
+    const [reverseReason, setReverseReason] = useState('');
+    const [isReconcileOpen, setIsReconcileOpen] = useState(false);
+    const [reconcileReference, setReconcileReference] = useState('');
     const [depositsLoadError, setDepositsLoadError] = useState<string | null>(null);
 
     const [dateRange, setDateRange] = useState({
@@ -116,6 +122,7 @@ const BankReconciliation: React.FC = () => {
 
     const loadPendingReconciliations = useCallback(async () => {
         setPendingLoadError(null);
+        setPendingLoading(true);
         try {
             const response = await api.get('/advanced/reconciliation/pending');
             setPending(response.data.data || []);
@@ -124,11 +131,14 @@ const BankReconciliation: React.FC = () => {
             const message = 'No se pudieron cargar los turnos pendientes: ' + errorMessage(error);
             setPendingLoadError(message);
             showError(message);
+        } finally {
+            setPendingLoading(false);
         }
     }, [showError]);
 
     const loadDeposits = useCallback(async () => {
         setDepositsLoadError(null);
+        setDepositsLoading(true);
         try {
             const response = await api.get('/advanced/reconciliation/deposits');
             setDeposits(response.data.data || []);
@@ -137,6 +147,8 @@ const BankReconciliation: React.FC = () => {
             const message = 'No se pudo cargar el historial de depósitos: ' + errorMessage(error);
             setDepositsLoadError(message);
             showError(message);
+        } finally {
+            setDepositsLoading(false);
         }
     }, [showError]);
 
@@ -186,13 +198,16 @@ const BankReconciliation: React.FC = () => {
         }
     };
 
-    const handleReverseDeposit = async (deposit: BankDeposit) => {
-        const reason = prompt(`Motivo para revertir el depósito ${deposit.reference}:`);
-        if (!reason?.trim()) return;
+    const handleReverseDeposit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const reason = reverseReason.trim();
+        if (!reverseTarget || !reason) return;
         setLoading(true);
         try {
-            await api.post(`/advanced/reconciliation/deposit/${deposit.id}/reverse`, { reason });
+            await api.post(`/advanced/reconciliation/deposit/${reverseTarget.id}/reverse`, { reason });
             showSuccess('Depósito revertido; sus turnos vuelven a estar pendientes');
+            setReverseTarget(null);
+            setReverseReason('');
             void loadDeposits();
             void loadPendingReconciliations();
         } catch (error: unknown) {
@@ -202,12 +217,13 @@ const BankReconciliation: React.FC = () => {
         }
     };
 
-    const handleMarkAsReconciled = async () => {
+    const handleMarkAsReconciled = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (selectedShifts.length === 0) {
             showError('Seleccione al menos un turno para conciliar');
             return;
         }
-        const reference = prompt('Ingrese la referencia del depósito bancario:');
+        const reference = reconcileReference.trim();
         if (!reference) return;
 
         setLoading(true);
@@ -218,6 +234,8 @@ const BankReconciliation: React.FC = () => {
             });
             showSuccess(`${selectedShifts.length} turno(s) marcado(s) como conciliado(s)`);
             setSelectedShifts([]);
+            setIsReconcileOpen(false);
+            setReconcileReference('');
             loadPendingReconciliations();
             loadReconciliationStatus();
         } catch (error: unknown) {
@@ -317,7 +335,7 @@ const BankReconciliation: React.FC = () => {
                     {d.status === 'ACTIVE' && (
                         <IconButton
                             icon={Ban} size="sm" tone="danger" tooltip="Anular" label="Revertir depósito" disabled={loading}
-                            onClick={() => void handleReverseDeposit(d)}
+                            onClick={() => { setReverseReason(''); setReverseTarget(d); }}
                         />
                     )}
                     {d.status === 'REVERSED' && d.reversalReason && (
@@ -348,35 +366,31 @@ const BankReconciliation: React.FC = () => {
 
             {activeTab === 'status' && (
                 <>
-                    <div className={styles.filters}>
-                        <div className={styles.filterField}>
-                            <label htmlFor="rec-from">Desde</label>
+                    <TableToolbar
+                        actions={(
+                            <Button icon={Search} loading={loading} onClick={() => void loadReconciliationStatus()} disabled={loading}>
+                                {loading ? 'Cargando...' : 'Consultar'}
+                            </Button>
+                        )}
+                    >
+                        <Field label="Desde" htmlFor="rec-from">
                             <DateInput
                                 id="rec-from"
                                 value={dateRange.startDate}
                                 onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
                             />
-                        </div>
-                        <div className={styles.filterField}>
-                            <label htmlFor="rec-to">Hasta</label>
+                        </Field>
+                        <Field label="Hasta" htmlFor="rec-to">
                             <DateInput
                                 id="rec-to"
                                 value={dateRange.endDate}
                                 onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
                             />
-                        </div>
-                        <Button icon={Search} loading={loading} onClick={() => void loadReconciliationStatus()} disabled={loading}>
-                            {loading ? 'Cargando...' : 'Consultar'}
-                        </Button>
-                    </div>
+                        </Field>
+                    </TableToolbar>
 
                     {statusLoadError && (
-                        <div className={styles.alert} role="alert">
-                            <span className={styles.inline}>
-                                {statusLoadError}
-                                <Button size="sm" onClick={() => void loadReconciliationStatus()}>Reintentar</Button>
-                            </span>
-                        </div>
+                        <LoadErrorState message={statusLoadError} onRetry={() => void loadReconciliationStatus()} />
                     )}
 
                     {status && !statusLoadError && (
@@ -404,20 +418,21 @@ const BankReconciliation: React.FC = () => {
                     )}
 
                     {!status && !loading && !statusLoadError && (
-                        <p className={styles.muted}>No hay datos disponibles para el período seleccionado.</p>
+                        <EmptyState title="No hay datos disponibles para el período seleccionado." />
                     )}
                 </>
             )}
 
             {activeTab === 'pending' && (
                 <>
-                    {pendingLoadError && (
-                        <div className={styles.alert} role="alert">
-                            <span className={styles.inline}>
-                                {pendingLoadError}
-                                <Button size="sm" onClick={() => void loadPendingReconciliations()}>Reintentar</Button>
-                            </span>
-                        </div>
+                    {selectedShifts.length > 0 && (
+                        <TableToolbar
+                            actions={(
+                                <Button variant="primary" icon={CheckCircle2} onClick={() => { setReconcileReference(''); setIsReconcileOpen(true); }} disabled={loading}>
+                                    Marcar {selectedShifts.length} como conciliado(s)
+                                </Button>
+                            )}
+                        />
                     )}
                     <DataTable
                         ariaLabel="Turnos pendientes de conciliación"
@@ -425,39 +440,26 @@ const BankReconciliation: React.FC = () => {
                         rows={pendingLoadError ? [] : pending}
                         rowKey={(shift) => shift.shiftId}
                         resetKey={pending.length}
-                        empty={pendingLoadError ? 'No disponible: los turnos pendientes no se pudieron cargar.' : 'No hay turnos pendientes de conciliación.'}
-                        toolbar={(
-                            <TableToolbar
-                                actions={selectedShifts.length > 0 ? (
-                                    <Button variant="primary" icon={CheckCircle2} onClick={handleMarkAsReconciled} disabled={loading}>
-                                        Marcar {selectedShifts.length} como conciliado(s)
-                                    </Button>
-                                ) : undefined}
-                            >
-                                <span className={styles.muted}>Turnos pendientes de conciliación</span>
-                            </TableToolbar>
-                        )}
+                        loading={pendingLoading}
+                        error={pendingLoadError}
+                        onRetry={() => void loadPendingReconciliations()}
+                        empty="No hay turnos pendientes de conciliación."
                     />
                 </>
             )}
 
             {activeTab === 'deposit' && (
                 <>
-                    {depositsLoadError && (
-                        <div className={styles.alert} role="alert">
-                            <span className={styles.inline}>
-                                {depositsLoadError}
-                                <Button size="sm" onClick={() => void loadDeposits()}>Reintentar</Button>
-                            </span>
-                        </div>
-                    )}
                     <DataTable
                         ariaLabel="Historial de depósitos"
                         columns={depositColumns}
                         rows={depositsLoadError ? [] : deposits}
                         rowKey={(d) => d.id}
                         resetKey={deposits.length}
-                        empty={depositsLoadError ? 'No disponible: el historial de depósitos no se pudo cargar.' : 'Sin depósitos registrados.'}
+                        loading={depositsLoading}
+                        error={depositsLoadError}
+                        onRetry={() => void loadDeposits()}
+                        empty="Sin depósitos registrados."
                     />
                 </>
             )}
@@ -469,7 +471,7 @@ const BankReconciliation: React.FC = () => {
                 dirty={depositDirty}
                 footer={({ requestClose }) => (
                     <>
-                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
                         <Button variant="primary" type="submit" form="deposit-form" loading={loading} disabled={loading}>
                             {loading ? 'Guardando...' : 'Registrar depósito'}
                         </Button>
@@ -533,12 +535,69 @@ const BankReconciliation: React.FC = () => {
                                         key={shift.shiftId}
                                         checked={selectedShifts.includes(shift.shiftId)}
                                         onChange={() => toggleShiftSelection(shift.shiftId)}
-                                        label={`${new Date(shift.date).toLocaleDateString()} — ${shift.cashRegister} — ${money(shift.endAmount)}`}
+                                        label={`${new Date(shift.date).toLocaleDateString('es-NI')} — ${shift.cashRegister} — ${money(shift.endAmount)}`}
                                     />
                                 ))}
                             </div>
                         </FormSection>
                     )}
+                </form>
+            </FullScreenModal>
+            <FullScreenModal
+                isOpen={reverseTarget !== null}
+                size="compact"
+                onClose={() => setReverseTarget(null)}
+                title="Revertir depósito"
+                subtitle={reverseTarget ? `Referencia ${reverseTarget.reference}` : undefined}
+                dirty={reverseReason.trim() !== ''}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
+                        <Button variant="danger" type="submit" form="reverse-deposit-form" loading={loading} disabled={loading || !reverseReason.trim()}>
+                            Revertir depósito
+                        </Button>
+                    </>
+                )}
+            >
+                <form id="reverse-deposit-form" onSubmit={(e) => void handleReverseDeposit(e)}>
+                    <Field label="Motivo del reverso" htmlFor="reverse-deposit-reason" required>
+                        <Textarea
+                            id="reverse-deposit-reason"
+                            value={reverseReason}
+                            onChange={(e) => setReverseReason(e.target.value)}
+                            maxLength={500}
+                            autoFocus
+                        />
+                    </Field>
+                </form>
+            </FullScreenModal>
+
+            <FullScreenModal
+                isOpen={isReconcileOpen}
+                size="compact"
+                onClose={() => setIsReconcileOpen(false)}
+                title="Marcar turnos como conciliados"
+                subtitle={`${selectedShifts.length} turno(s) seleccionado(s)`}
+                dirty={reconcileReference.trim() !== ''}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="reconcile-form" loading={loading} disabled={loading || !reconcileReference.trim()}>
+                            Marcar como conciliados
+                        </Button>
+                    </>
+                )}
+            >
+                <form id="reconcile-form" onSubmit={(e) => void handleMarkAsReconciled(e)}>
+                    <Field label="Referencia del depósito bancario" htmlFor="reconcile-reference" required>
+                        <Input
+                            id="reconcile-reference"
+                            value={reconcileReference}
+                            onChange={(e) => setReconcileReference(e.target.value)}
+                            placeholder="Número de boleta o referencia"
+                            autoFocus
+                        />
+                    </Field>
                 </form>
             </FullScreenModal>
         </PageContent>

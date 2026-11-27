@@ -58,23 +58,27 @@ export default function Suppliers() {
     const [searchTerm, setSearchTerm] = useState('');
     const [supplyTypeFilter, setSupplyTypeFilter] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Price history
     const [showPriceHistory, setShowPriceHistory] = useState(false);
     const [priceHistorySupplier, setPriceHistorySupplier] = useState<Supplier | null>(null);
     const [priceHistory, setPriceHistory] = useState<PriceHistoryRow[]>([]);
     const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
+    const [priceHistoryError, setPriceHistoryError] = useState<string | null>(null);
     const [settings, setSettings] = useState<CurrencySettings>({});
 
     const viewPriceHistory = async (supplier: Supplier) => {
         setPriceHistorySupplier(supplier);
         setPriceHistoryLoading(true);
+        setPriceHistoryError(null);
         setShowPriceHistory(true);
         try {
             const res = await suppliersAPI.getPriceHistory(supplier.id);
             setPriceHistory(res.data.data || []);
         } catch (err) {
-            notifyError(err, 'No se pudo cargar el historial de precios');
+            setPriceHistory([]);
+            setPriceHistoryError(getApiErrorMessage(err, 'No se pudo cargar el historial de precios'));
         } finally {
             setPriceHistoryLoading(false);
         }
@@ -88,11 +92,12 @@ export default function Suppliers() {
     }, []);
 
     const loadSuppliers = async () => {
+        setLoadError(null);
         try {
             const res = await suppliersAPI.getAll();
             setSuppliers(res.data.data);
         } catch (error) {
-            notifyError(error, 'No se pudieron cargar los proveedores');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar los proveedores'));
         } finally {
             setLoading(false);
         }
@@ -223,7 +228,7 @@ export default function Suppliers() {
         <PageContent>
             <PageHeader
                 title="Proveedores"
-                description={`${suppliers.length} proveedores registrados`}
+                description="Proveedores, contactos e historial de precios de compra."
                 actions={canManageSupplier ? (
                     <Button variant="primary" icon={Plus} onClick={() => handleOpenModal()}>
                         Nuevo proveedor
@@ -237,6 +242,8 @@ export default function Suppliers() {
                 rowKey={(s) => s.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => { setLoading(true); void loadSuppliers(); }}
                 resetKey={`${searchTerm}|${supplyTypeFilter}`}
                 onRowClick={canManageSupplier ? (s) => handleOpenModal(s) : undefined}
                 empty={(
@@ -353,6 +360,8 @@ export default function Suppliers() {
                     ariaLabel="Historial de precios"
                     rows={priceHistory}
                     loading={priceHistoryLoading}
+                    error={priceHistoryError}
+                    onRetry={priceHistorySupplier ? () => { void viewPriceHistory(priceHistorySupplier); } : undefined}
                     rowKey={(item) => `${item.purchaseOrderId}-${item.productName}-${item.date}`}
                     columns={priceColumns}
                     empty="No hay historial de precios para este proveedor"

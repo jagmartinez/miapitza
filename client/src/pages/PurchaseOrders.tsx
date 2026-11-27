@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
 import api from '../services/api';
 import {
-    AppSelect, Badge, Button, Checkbox, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal,
-    IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea,
+    AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, Skeleton,
+    IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea, Tooltip,
     formatMoney, formatNumber,
     type Column, LoadErrorState,
 } from '@/ui';
@@ -15,7 +15,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, FileDown, Download, DollarSign, RotateCcw, Trash2, Undo2, Pencil, PackageCheck } from 'lucide-react';
+import { Plus, Eye, Zap, FileDown, Download, DollarSign, RotateCcw, Trash2, Undo2, Pencil, PackageCheck, Search } from 'lucide-react';
 import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
@@ -24,7 +24,6 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { BANK_OPTIONS } from '../constants/purchaseOrderOptions';
 import type { AutoPurchaseSuggestion, Branch, PurchaseOrder, PurchaseOrderPayment, Supplier } from '../types';
 import styles from './compras.module.css';
-import './purchase-legacy.css';
 
 type PoSuggestionRow = AutoPurchaseSuggestion & {
     unit?: string;
@@ -564,9 +563,9 @@ export default function PurchaseOrders() {
                 <span className={styles.cellStack}>
                     <Badge tone={STATUS_TONE[o.status] ?? 'neutral'} dot>{STATUS_LABEL[o.status] ?? o.status}</Badge>
                     {purchaseOrderDateVisibility(o, { startDate, endDate, statusFilter }).outOfRange && (
-                        <span className={styles.muted} title="Fuera del rango de fechas: se muestra porque tiene saldo pendiente de recibir">
-                            Saldo pendiente · fuera del rango
-                        </span>
+                        <Tooltip label="Fuera del rango de fechas: se muestra porque tiene saldo pendiente de recibir">
+                            <span className={styles.muted} tabIndex={0}>Saldo pendiente · fuera del rango</span>
+                        </Tooltip>
                     )}
                 </span>
             ),
@@ -636,7 +635,6 @@ export default function PurchaseOrders() {
         { key: 'cost', header: `Estimado (${symbol})`, width: '1fr', type: 'money', accessor: (s) => Number(s.estimatedCost) || 0 },
     ];
 
-    if (loading) return <div role="status">Cargando órdenes de compra...</div>;
 
     const balance = paymentModalOrder ? purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0) : 0;
     const paymentFormAmount = paymentForm.amount === '' ? null : Number(paymentForm.amount);
@@ -648,8 +646,8 @@ export default function PurchaseOrders() {
                 description="Compras a proveedores, recepción y pagos."
                 actions={(
                     <>
-                        <Button icon={Zap} onClick={loadAutoSuggestions} disabled={loadingSuggestions || !canManagePurchaseOrders}>
-                            {loadingSuggestions ? 'Cargando...' : 'Auto-Generar'}
+                        <Button icon={Zap} onClick={loadAutoSuggestions} loading={loadingSuggestions} disabled={!canManagePurchaseOrders}>
+                            Auto-Generar
                         </Button>
                         <Button icon={FileDown} onClick={() => setIsImportSidebarOpen(true)} disabled={!canManagePurchaseOrders}>
                             Carga Masiva
@@ -663,7 +661,7 @@ export default function PurchaseOrders() {
 
             {ordersLoadError && <LoadErrorState message={ordersLoadError} onRetry={() => { void loadOrders(); }} />}
 
-            {(orders.length > 0 || !ordersLoadError) && (
+            {!loading && (orders.length > 0 || !ordersLoadError) && (
                 <div className={styles.kpiGrid}>
                     <StatCard
                         label="Comprometido sin recibir"
@@ -691,42 +689,35 @@ export default function PurchaseOrders() {
                 columns={orderColumns}
                 rows={filteredOrders}
                 rowKey={(o) => o.id}
+                loading={loading}
                 resetKey={`${statusFilter}|${searchQuery}|${startDate}|${endDate}`}
                 onRowClick={canManagePurchaseOrders ? (o) => handleOpenForm(o.id) : undefined}
                 empty="No se encontraron órdenes de compra"
                 toolbar={(
-                    <TableToolbar>
-                        <div className={styles.filters}>
-                            <SegmentedControl
-                                ariaLabel="Estado de la orden"
-                                options={STATUS_OPTIONS}
-                                value={statusFilter}
-                                onChange={setStatusFilter}
-                            />
-                            <div className={styles.filterField}>
-                                <label htmlFor="po-from">Desde</label>
-                                <DateInput id="po-from" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                            </div>
-                            <div className={styles.filterField}>
-                                <label htmlFor="po-to">Hasta</label>
-                                <DateInput id="po-to" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-                            </div>
-                            {(startDate || endDate) && (
-                                <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); }}>
-                                    Quitar fechas
-                                </Button>
-                            )}
-                            <div className={`${styles.filterField} ${styles.search}`}>
-                                <label htmlFor="po-search">Buscar</label>
-                                <Input
-                                    id="po-search"
-                                    type="search"
-                                    placeholder="Buscar por ID, proveedor o factura..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                            </div>
-                        </div>
+                    <TableToolbar
+                        actions={(startDate || endDate) ? (
+                            <Button variant="ghost" onClick={() => { setStartDate(''); setEndDate(''); }}>
+                                Quitar fechas
+                            </Button>
+                        ) : undefined}
+                    >
+                        <Input
+                            id="po-search"
+                            type="search"
+                            aria-label="Buscar orden"
+                            placeholder="Buscar por ID, proveedor o factura..."
+                            prefix={<Search size={14} aria-hidden="true" />}
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        <SegmentedControl
+                            ariaLabel="Estado de la orden"
+                            options={STATUS_OPTIONS}
+                            value={statusFilter}
+                            onChange={setStatusFilter}
+                        />
+                        <DateInput id="po-from" aria-label="Desde" title="Desde" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                        <DateInput id="po-to" aria-label="Hasta" title="Hasta" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                     </TableToolbar>
                 )}
             />
@@ -746,9 +737,10 @@ export default function PurchaseOrders() {
                             variant="primary"
                             type="submit"
                             form="po-suggestions-form"
-                            disabled={creatingAutoPurchaseOrder || selectedSuggestions.length === 0}
+                            loading={creatingAutoPurchaseOrder}
+                            disabled={selectedSuggestions.length === 0}
                         >
-                            {creatingAutoPurchaseOrder ? 'Creando...' : 'Crear borrador'}
+                            Crear borrador
                         </Button>
                     </>
                 )}
@@ -786,21 +778,23 @@ export default function PurchaseOrders() {
                                 resetKey={suggestionSearch}
                                 empty="No hay sugerencias que coincidan con la búsqueda."
                                 toolbar={(
-                                    <TableToolbar>
-                                        <div className={styles.filters}>
-                                            <div className={`${styles.filterField} ${styles.search}`}>
-                                                <label htmlFor="po-suggestion-search">Buscar</label>
-                                                <Input
-                                                    id="po-suggestion-search"
-                                                    type="search"
-                                                    placeholder="Buscar producto o almacén..."
-                                                    value={suggestionSearch}
-                                                    onChange={(e) => setSuggestionSearch(e.target.value)}
-                                                />
-                                            </div>
-                                            <Button variant="ghost" onClick={handleSelectUrgentSuggestions}>Seleccionar urgentes</Button>
-                                            <Button variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>Limpiar</Button>
-                                        </div>
+                                    <TableToolbar
+                                        actions={(
+                                            <>
+                                                <Button variant="ghost" onClick={handleSelectUrgentSuggestions}>Seleccionar urgentes</Button>
+                                                <Button variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>Limpiar</Button>
+                                            </>
+                                        )}
+                                    >
+                                        <Input
+                                            id="po-suggestion-search"
+                                            type="search"
+                                            aria-label="Buscar sugerencia"
+                                            placeholder="Buscar producto o almacén..."
+                                            prefix={<Search size={14} aria-hidden="true" />}
+                                            value={suggestionSearch}
+                                            onChange={(e) => setSuggestionSearch(e.target.value)}
+                                        />
                                     </TableToolbar>
                                 )}
                             />
@@ -839,21 +833,40 @@ export default function PurchaseOrders() {
                 ]}
                 activeTab={paymentTab}
                 onTabChange={(id) => setPaymentTab(id as 'register' | 'history')}
-                footer={({ requestClose }) => (
-                    <>
-                        <Button onClick={requestClose}>Cancelar</Button>
-                        {paymentTab === 'register' && paymentModalOrder && (
-                            <Button
-                                variant="primary"
-                                loading={savingPayment}
-                                disabled={savingPayment || balance <= 0}
-                                onClick={handleSubmitPayment}
-                            >
-                                {savingPayment ? 'Registrando...' : 'Registrar Pago'}
-                            </Button>
-                        )}
-                    </>
-                )}
+                footer={({ requestClose }) => {
+                    const reversalPayment = paymentTab === 'history' && reversalPaymentId !== null
+                        ? paymentHistory.find((p) => p.id === reversalPaymentId) ?? null
+                        : null;
+                    return (
+                        <>
+                            {reversalPayment ? (
+                                <Button onClick={() => setReversalPaymentId(null)} disabled={reversingPayment}>Cancelar reverso</Button>
+                            ) : (
+                                <Button onClick={requestClose}>Cancelar</Button>
+                            )}
+                            {paymentTab === 'register' && paymentModalOrder && (
+                                <Button
+                                    variant="primary"
+                                    loading={savingPayment}
+                                    disabled={balance <= 0}
+                                    onClick={handleSubmitPayment}
+                                >
+                                    Registrar Pago
+                                </Button>
+                            )}
+                            {reversalPayment && (
+                                <Button
+                                    variant="danger"
+                                    loading={reversingPayment}
+                                    disabled={!reversalReason.trim()}
+                                    onClick={() => handleReversePayment(reversalPayment)}
+                                >
+                                    Confirmar reverso
+                                </Button>
+                            )}
+                        </>
+                    );
+                }}
             >
                 {paymentModalOrder && (
                     <div className={styles.stack}>
@@ -930,9 +943,12 @@ export default function PurchaseOrders() {
                         ) : (
                             <FormSection title="Abonos registrados">
                                 {loadingPaymentHistory ? (
-                                    <p className={styles.muted}>Cargando abonos...</p>
+                                    <div className={styles.stack} role="status" aria-label="Cargando abonos...">
+                                        <Skeleton height={56} />
+                                        <Skeleton height={56} />
+                                    </div>
                                 ) : paymentHistory.length === 0 ? (
-                                    <p className={styles.muted}>Sin abonos registrados para esta orden.</p>
+                                    <EmptyState title="Sin abonos registrados para esta orden." />
                                 ) : (
                                     <div>
                                         {paymentHistory.map((payment) => (
@@ -955,7 +971,7 @@ export default function PurchaseOrders() {
                                                 {canDeletePurchaseOrders && payment.status !== 'REVERSED' && reversalPaymentId !== payment.id && (
                                                     <div>
                                                         <Button
-                                                            size="sm" icon={Undo2}
+                                                            variant="ghost" icon={Undo2}
                                                             onClick={() => { setReversalPaymentId(payment.id); setReversalReason(''); }}
                                                         >
                                                             Revertir abono
@@ -963,24 +979,21 @@ export default function PurchaseOrders() {
                                                     </div>
                                                 )}
                                                 {reversalPaymentId === payment.id && (
-                                                    <div className={styles.stack}>
+                                                    <Field
+                                                        label="Motivo del reverso"
+                                                        htmlFor={`payment-reversal-reason-${payment.id}`}
+                                                        hint="Obligatorio. Confirma el reverso con el botón del pie."
+                                                        required
+                                                    >
                                                         <Textarea
-                                                            aria-label="Motivo del reverso"
+                                                            id={`payment-reversal-reason-${payment.id}`}
                                                             rows={2}
                                                             value={reversalReason}
                                                             onChange={(event) => setReversalReason(event.target.value)}
                                                             placeholder="Motivo obligatorio del reverso"
                                                             disabled={reversingPayment}
                                                         />
-                                                        <div className={styles.inline}>
-                                                            <Button variant="ghost" onClick={() => setReversalPaymentId(null)} disabled={reversingPayment}>
-                                                                Cancelar
-                                                            </Button>
-                                                            <Button variant="danger" onClick={() => handleReversePayment(payment)} disabled={reversingPayment || !reversalReason.trim()}>
-                                                                {reversingPayment ? 'Revirtiendo...' : 'Confirmar reverso'}
-                                                            </Button>
-                                                        </div>
-                                                    </div>
+                                                    </Field>
                                                 )}
                                             </div>
                                         ))}

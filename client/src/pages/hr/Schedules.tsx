@@ -509,7 +509,7 @@ export default function Schedules() {
             {lookupsError && (
                 <div className={`${form.alertDanger} ${form.actions}`} role="alert">
                     <AlertTriangle size={16} aria-hidden="true" /><span>{lookupsError}</span>
-                    <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void loadLookups()}>Reintentar catálogos</Button>
+                    <Button variant="ghost" icon={RefreshCw} onClick={() => void loadLookups()}>Reintentar catálogos</Button>
                 </div>
             )}
             {fromCache && (
@@ -535,7 +535,7 @@ export default function Schedules() {
             {loadWarnings.length > 0 && (
                 <div className={`${form.alertWarning} ${form.actions}`} role="alert">
                     <span>{loadWarnings.join(' ')}</span>
-                    <Button size="sm" variant="ghost" icon={RefreshCw} disabled={mutationBusy} onClick={() => void loadWeek()}>Reintentar auxiliares</Button>
+                    <Button variant="ghost" icon={RefreshCw} disabled={mutationBusy} onClick={() => void loadWeek()}>Reintentar auxiliares</Button>
                 </div>
             )}
             {hasActiveFilters && primarySchedule && (
@@ -562,7 +562,7 @@ export default function Schedules() {
                     <IconButton icon={ChevronLeft} label="Semana anterior" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={filtersLocked} />
                     <strong>{weekLabel(weekStart)}</strong>
                     <IconButton icon={ChevronRight} label="Semana siguiente" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={filtersLocked} />
-                    <Button size="sm" variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || filtersLocked}>Hoy</Button>
+                    <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || filtersLocked}>Hoy</Button>
                 </div>
                 <AppSelect<string> aria-label="Sucursal" placeholder="Todas las sucursales" isClearable options={branchOptions} value={branchId || null} onChange={(value) => setBranchId(value ?? '')} isDisabled={filtersLocked} />
                 <AppSelect<string> aria-label="Usuario" placeholder="Todos los usuarios" isClearable options={userOptions} value={userId || null} onChange={(value) => setUserId(value ?? '')} isDisabled={filtersLocked} />

@@ -46,17 +46,6 @@
   font-weight: 600;
 }
 
-.state {
-  font-size: var(--ui-text-xs);
-  font-weight: 600;
-  color: var(--ui-primary);
-}
-
-.state[data-state='AVAILABLE'] { color: var(--ui-success); }
-.state[data-state='PENDING_PAYMENT'] { color: var(--ui-warning); }
-.state[data-state='RESERVED'] { color: var(--ui-text-muted); }
-.state[data-state='OUT_OF_SERVICE'] { color: var(--ui-danger); }
-
 .close { flex: none; }
 
 .meta {
@@ -94,14 +83,6 @@
 }
 
 .orderHead strong { color: var(--ui-text); }
-
-.docTag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--ui-success);
-  font-weight: 600;
-}
 
 .lines { list-style: none; margin: 0; padding: 0; }
 
@@ -157,7 +138,7 @@
 }
 
 .grandTotal dt { color: var(--ui-text); font-weight: 600; }
-.grandTotal dd { font-size: var(--ui-text-xl, 1.25rem); font-weight: 700; }
+.grandTotal dd { font-size: var(--ui-text-lg); font-weight: 700; }
 
 .spacer { flex: 1; }
 
@@ -208,15 +189,10 @@
   align-items: center;
   gap: var(--ui-space-3);
   min-width: 0;
-  margin: var(--ui-space-3) var(--ui-space-4) 0;
   padding: var(--ui-space-3) var(--ui-space-4);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface-2);
+  border-bottom: 1px solid var(--ui-border);
   color: var(--ui-text);
 }
-
-.banner .banner { margin: 0; }
 
 .banner[data-block] { flex-direction: column; align-items: stretch; }
 
@@ -236,7 +212,22 @@
 
 .bannerHead { display: flex; align-items: center; gap: var(--ui-space-3); }
 
-.bannerError { border-color: var(--ui-danger); background: var(--ui-danger-soft); }
+/* Errores: franja de color, sin caja dentro de otra caja. */
+.bannerError { box-shadow: inset 3px 0 0 var(--ui-danger); color: var(--ui-danger); }
+.bannerError strong { color: var(--ui-danger); }
+
+.inlineError {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-2) var(--ui-space-3);
+  padding-left: var(--ui-space-3);
+  border-left: 3px solid var(--ui-danger);
+  color: var(--ui-danger);
+}
+
+.inlineError > div { display: flex; flex: 1 1 14rem; flex-direction: column; gap: 2px; min-width: 0; }
+.inlineError strong { color: var(--ui-danger); }
 
 .reversalForm { display: flex; min-width: 0; flex-direction: column; gap: var(--ui-space-3); padding-top: var(--ui-space-3); }
 
@@ -251,9 +242,4 @@
 }
 
 .loadingState p { margin: 0; }
-
-.spin { animation: tableDetailSpin 1s linear infinite; }
-
-@keyframes tableDetailSpin { to { transform: rotate(360deg); } }
-
 .invoiceSelector { min-width: 0; }

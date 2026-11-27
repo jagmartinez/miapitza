@@ -13,9 +13,11 @@
 .ui-button--secondary:hover:not(:disabled) { background: var(--ui-surface-2); }
 .ui-button--ghost { background: transparent; color: var(--ui-text); }
 .ui-button--ghost:hover:not(:disabled) { background: var(--ui-surface-2); }
-.ui-button--danger { background: var(--ui-danger); color: var(--ui-primary-fg); }
+.ui-button--danger { background: var(--ui-danger); color: var(--ui-danger-fg); }
 .ui-button--danger:hover:not(:disabled) { filter: brightness(.92); }
 .ui-button:disabled, .ui-icon-button:disabled { opacity: .55; cursor: not-allowed; }
+.ui-button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+.ui-button > svg { flex: none; }
 
 .ui-icon-button { background: transparent; color: var(--ui-text-muted); padding: 0; }
 .ui-icon-button:hover:not(:disabled) { background: var(--ui-surface-2); color: var(--ui-text); }

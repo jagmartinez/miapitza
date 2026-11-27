@@ -1,5 +1,5 @@
-import { AppSelect, Button, DateInput, Input, Textarea } from '@/ui';
-import { useState, type ReactNode } from 'react';
+import { AppSelect, Button, DateInput, Field, Input, Textarea } from '@/ui';
+import { useState, type ReactNode, useId } from 'react';
 import { CalendarDays } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
@@ -24,6 +24,7 @@ export default function LeaveRequestForm({
   onCancel,
   notice,
 }: LeaveRequestFormProps) {
+  const fid = useId();
   const [userId, setUserId] = useState('');
   const [leaveTypeId, setLeaveTypeId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -70,7 +71,7 @@ export default function LeaveRequestForm({
               Cancelar
             </Button>
           )}
-          <Button variant="primary"
+          <Button variant="primary" loading={saving}
             type="submit"
             disabled={
               !online ||
@@ -84,15 +85,14 @@ export default function LeaveRequestForm({
               halfDayDurationInvalid
             }
           >
-            {saving ? 'Guardando…' : 'Crear borrador'}
+            Crear borrador
           </Button>
         </>
       }
     >
       {users && (
-        <label>
-          Usuario
-          <AppSelect<string>
+        <Field label="Usuario" htmlFor={`${fid}-usuario`}>
+          <AppSelect<string> inputId={`${fid}-usuario`}
             options={[
               { value: '', label: 'Seleccionar…' },
               ...users.map((user) => ({
@@ -104,11 +104,10 @@ export default function LeaveRequestForm({
             onChange={(next) => setUserId(next ?? '')}
             isClearable={false}
           />
-        </label>
+        </Field>
       )}
-      <label>
-        Tipo de ausencia
-        <AppSelect<string>
+      <Field label="Tipo de ausencia" htmlFor={`${fid}-tipo-de-ausencia`}>
+        <AppSelect<string> inputId={`${fid}-tipo-de-ausencia`}
           options={[
             { value: '', label: 'Seleccionar…' },
             ...leaveTypes
@@ -122,10 +121,9 @@ export default function LeaveRequestForm({
           onChange={(next) => setLeaveTypeId(next ?? '')}
           isClearable={false}
         />
-      </label>
-      <label>
-        Desde
-        <DateInput
+      </Field>
+      <Field label="Desde" htmlFor={`${fid}-desde`}>
+        <DateInput id={`${fid}-desde`}
          
           value={startDate}
           onChange={(event) => {
@@ -134,20 +132,18 @@ export default function LeaveRequestForm({
           }}
           required
         />
-      </label>
-      <label>
-        Hasta
-        <DateInput
+      </Field>
+      <Field label="Hasta" htmlFor={`${fid}-hasta`}>
+        <DateInput id={`${fid}-hasta`}
          
           min={startDate || undefined}
           value={endDate}
           onChange={(event) => setEndDate(event.target.value)}
           required
         />
-      </label>
-      <label>
-        Fracción
-        <AppSelect<string>
+      </Field>
+      <Field label="Fracción" htmlFor={`${fid}-fraccion`}>
+        <AppSelect<string> inputId={`${fid}-fraccion`}
           options={[
             { value: 'FULL_DAY', label: 'Día completo' },
             { value: 'HALF_DAY', label: 'Medio día' },
@@ -157,42 +153,41 @@ export default function LeaveRequestForm({
           onChange={(next) => setFraction((next ?? '') as HrLeaveFraction)}
           isClearable={false}
         />
-      </label>
+      </Field>
       {(fraction === 'HOURS' || fraction === 'HALF_DAY') && (
         <>
-          <label>
-            Hora inicial del permiso
-            <Input
+          <Field label="Hora inicial del permiso" htmlFor={`${fid}-hora-inicial-del-permiso`}>
+            <Input id={`${fid}-hora-inicial-del-permiso`}
               type="time"
               value={startTime}
               onChange={(event) => setStartTime(event.target.value)}
               required
             />
-          </label>
-          <label>
-            Hora final del permiso
-            <Input
+          </Field>
+          <Field label="Hora final del permiso" htmlFor={`${fid}-hora-final-del-permiso`}>
+            <Input id={`${fid}-hora-final-del-permiso`}
               type="time"
               value={endTime}
               onChange={(event) => setEndTime(event.target.value)}
               required
             />
-          </label>
+          </Field>
         </>
       )}
       {halfDayDurationInvalid && (
         <p className="hr-form-help span-full">Medio día debe cubrir exactamente 4 horas.</p>
       )}
-      <label className="span-full">
-        Motivo
-        <Textarea
-          rows={4}
-          maxLength={700}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          required
-        />
-      </label>
+      <div className="span-full">
+        <Field label="Motivo" htmlFor={`${fid}-motivo`}>
+          <Textarea id={`${fid}-motivo`}
+            rows={4}
+            maxLength={700}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            required
+          />
+        </Field>
+      </div>
       <p className="hr-form-help span-full">
         La duración, elegibilidad y afectación del saldo las determina el servidor según el tipo y
         la política vigente.

@@ -65,7 +65,8 @@
 }
 
 .leave-calendar-head {
-  background: var(--ui-surface-2);
+  background: var(--ui-surface);
+  color: var(--ui-text-muted);
   font-weight: 600;
 }
 
@@ -104,10 +105,6 @@
   background: var(--ui-surface);
 }
 
-.leave-calendar-grid .leave-calendar-head.leave-calendar-name {
-  background: var(--ui-surface-2);
-}
-
 .leave-calendar-grid [role='rowheader'].leave-calendar-name {
   display: block;
   line-height: 30px;
@@ -116,7 +113,7 @@
 }
 
 .leave-calendar-grid .leave-calendar-total {
-  background: var(--ui-surface-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .leave-calendar-grid .leave-calendar-empty {
@@ -124,11 +121,11 @@
 }
 
 .leave-calendar-grid .is-sunday {
-  background: rgba(148, 163, 184, 0.14);
+  background: color-mix(in srgb, var(--ui-text-muted) 14%, transparent);
 }
 
 .leave-calendar-grid .is-saturday {
-  background: rgba(148, 163, 184, 0.07);
+  background: color-mix(in srgb, var(--ui-text-muted) 7%, transparent);
 }
 
 .leave-calendar-cell.has-leave {

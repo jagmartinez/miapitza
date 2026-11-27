@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { Table } from '../types';
-import { FullScreenModal } from '@/ui';
+import { Badge, Button, EmptyState, FullScreenModal, Input, TableToolbar, formatNumber } from '@/ui';
 import './TableSelectionModal.css';
 
 interface TableSelectionModalProps {
@@ -37,77 +37,66 @@ export default function TableSelectionModal({
     const availableTables = filteredTables.filter(t => t.status === 'AVAILABLE');
     const occupiedTables = filteredTables.filter(t => t.status === 'OCCUPIED');
 
+    const renderTable = (table: Table, occupied: boolean) => (
+        <li key={table.id}>
+            <button
+                type="button"
+                className={`table-pick ${occupied ? 'is-occupied' : ''}`.trim()}
+                onClick={() => {
+                    onSelectTable(table);
+                    onClose();
+                }}
+            >
+                <span className="table-pick__number">Mesa {table.number}</span>
+                <span className="table-pick__capacity">{formatNumber(table.capacity, 0)} personas</span>
+                {occupied && <Badge tone="warning" dot>Ocupada</Badge>}
+            </button>
+        </li>
+    );
+
     return (
-        <FullScreenModal isOpen onClose={onClose} title="Seleccionar Mesa">
-            <div className="table-selection-modal-content">
-                <div className="table-selection-modal-toolbar">
-                    <div className="table-selection-search">
-                        <Search size={18} className="table-selection-search-icon" aria-hidden="true" />
-                        <input
-                            type="text"
-                            className="table-selection-search-input"
-                            placeholder="Filtrar por nombre o ubicación de mesa..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            autoFocus
-                        />
-                    </div>
-                </div>
+        <FullScreenModal
+            isOpen
+            onClose={onClose}
+            title="Seleccionar Mesa"
+            footer={({ requestClose }) => <Button variant="secondary" onClick={requestClose}>Cancelar</Button>}
+        >
+            <div className="table-pick-content">
+                <TableToolbar>
+                    <Input
+                        type="search"
+                        prefix={<Search size={16} aria-hidden="true" />}
+                        aria-label="Filtrar mesas"
+                        placeholder="Filtrar por nombre o ubicación de mesa..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        autoFocus
+                    />
+                </TableToolbar>
 
-                <div className="table-selection-modal-body">
-                    {filteredTables.length === 0 && (
-                        <div className="table-selection-empty">
-                            {searchQuery.trim()
-                                ? <>No hay mesas que coincidan con &quot;{searchQuery}&quot;</>
-                                : 'No hay otra mesa disponible para seleccionar.'}
-                        </div>
-                    )}
+                {filteredTables.length === 0 && (
+                    <EmptyState
+                        title={searchQuery.trim() ? `No hay mesas que coincidan con "${searchQuery}"` : 'No hay otra mesa disponible para seleccionar.'}
+                    />
+                )}
 
-                    {availableTables.length > 0 && (
-                        <div className="table-section">
-                            <h3 className="section-title">Mesas Disponibles</h3>
-                            <div className="tables-grid-modal">
-                                {availableTables.map(table => (
-                                    <button
-                                        key={table.id}
-                                        type="button"
-                                        className="table-card available"
-                                        onClick={() => {
-                                            onSelectTable(table);
-                                            onClose();
-                                        }}
-                                    >
-                                        <div className="table-number-large">Mesa {table.number}</div>
-                                        <div className="table-capacity">{table.capacity} personas</div>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                {availableTables.length > 0 && (
+                    <section className="table-pick-section" aria-label="Mesas Disponibles">
+                        <h3 className="table-pick-section__title">Mesas Disponibles</h3>
+                        <ul className="table-pick-grid">
+                            {availableTables.map((table) => renderTable(table, false))}
+                        </ul>
+                    </section>
+                )}
 
-                    {occupiedTables.length > 0 && (
-                        <div className="table-section">
-                            <h3 className="section-title">Mesas Ocupadas</h3>
-                            <div className="tables-grid-modal">
-                                {occupiedTables.map(table => (
-                                    <button
-                                        key={table.id}
-                                        type="button"
-                                        className="table-card occupied"
-                                        onClick={() => {
-                                            onSelectTable(table);
-                                            onClose();
-                                        }}
-                                    >
-                                        <div className="table-number-large">Mesa {table.number}</div>
-                                        <div className="table-capacity">{table.capacity} personas</div>
-                                        <div className="occupied-badge">Ocupada</div>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
+                {occupiedTables.length > 0 && (
+                    <section className="table-pick-section" aria-label="Mesas Ocupadas">
+                        <h3 className="table-pick-section__title">Mesas Ocupadas</h3>
+                        <ul className="table-pick-grid">
+                            {occupiedTables.map((table) => renderTable(table, true))}
+                        </ul>
+                    </section>
+                )}
             </div>
         </FullScreenModal>
     );

@@ -253,7 +253,7 @@ export default function ScheduleShiftForm({
                         <div className={`${styles.alertDanger} ${styles.actions}`} role="alert">
                             <span>{templateLoadError}</span>
                             {onRetryTemplates && (
-                                <Button type="button" size="sm" variant="ghost" onClick={onRetryTemplates}>
+                                <Button type="button" variant="ghost" onClick={onRetryTemplates}>
                                     Reintentar jornadas
                                 </Button>
                             )}
@@ -279,7 +279,7 @@ export default function ScheduleShiftForm({
                             <Clock3 size={16} aria-hidden="true" />
                             <span>No hay jornadas activas compatibles con la sucursal y el puesto de este trabajador.</span>
                             {onConfigureTemplates && (
-                                <Button type="button" size="sm" variant="secondary" onClick={onConfigureTemplates}>
+                                <Button type="button" variant="secondary" onClick={onConfigureTemplates}>
                                     Configurar jornadas
                                 </Button>
                             )}

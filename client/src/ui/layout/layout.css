@@ -4,11 +4,11 @@
   position: sticky; top: 0; align-self: flex-start; height: 100vh; width: 240px; flex: none;
   display: flex; flex-direction: column; background: var(--ui-surface); border-right: 1px solid var(--ui-border);
 }
-.ui-shell.is-collapsed .ui-shell__rail { width: 64px; transition: width var(--ui-motion-fast, 150ms) ease; }
+.ui-shell.is-collapsed .ui-shell__rail { width: 64px; transition: width var(--ui-motion-fast) ease; }
 .ui-navrail:not(.is-expanded) .ui-navrail__text { display: none; }
 @media (min-width: 769px) {
   /* El riel colapsado se expande sobre el contenido con hover o con foco de teclado, sin mover la página. */
-  .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) { width: 240px; margin-right: -176px; z-index: 30; box-shadow: var(--ui-shadow-overlay, 0 12px 32px rgba(0,0,0,.18)); }
+  .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) { width: 240px; margin-right: -176px; z-index: 30; box-shadow: var(--ui-shadow-overlay); }
   .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) .ui-navrail__text { display: inline; }
   .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) .ui-navrail__item { justify-content: flex-start; padding: 0 var(--ui-space-3); }
   .ui-shell.is-collapsed .ui-shell__rail:is(:hover, :focus-within) .ui-navrail__group-label { position: static; width: auto; height: auto; clip: auto; }
@@ -48,8 +48,9 @@
 .ui-pageheader { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-4); margin-bottom: var(--ui-space-5); }
 .ui-pageheader__crumb { margin: 0 0 var(--ui-space-1); font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
 .ui-pageheader__title { margin: 0; font-size: var(--ui-text-2xl); font-weight: 700; color: var(--ui-text); }
+.ui-pageheader__text { min-width: 0; }
 .ui-pageheader__desc { margin: var(--ui-space-1) 0 0; font-size: var(--ui-text-md); color: var(--ui-text-muted); }
-.ui-pageheader__actions { display: flex; gap: var(--ui-space-2); flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.ui-pageheader__actions { display: flex; align-items: center; gap: var(--ui-space-2); flex-wrap: wrap; min-width: 0; max-width: 100%; }
 /* Las páginas a veces agrupan sus acciones en un contenedor propio: también debe acomodarse en varias líneas. */
 .ui-pageheader__actions > * { flex-wrap: wrap; max-width: 100%; min-width: 0; }
 .ui-pagecontent { width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--ui-space-5); }
@@ -65,13 +66,16 @@
 .ui-statcard__action { align-self: flex-start; margin-top: var(--ui-space-2); padding: 0; border: 0; background: none; color: var(--ui-primary); font: inherit; font-size: var(--ui-text-sm); font-weight: 600; cursor: pointer; text-decoration: none; }
 .ui-statcard__action:hover { text-decoration: underline; }
 
-.ui-tabs { display: flex; gap: var(--ui-space-1); border-bottom: 1px solid var(--ui-border); overflow-x: auto; }
-.ui-tabs__tab { display: inline-flex; align-items: center; gap: var(--ui-space-2); min-height: 40px; padding: 0 var(--ui-space-4); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ui-text-muted); font: inherit; font-size: var(--ui-text-md); cursor: pointer; white-space: nowrap; }
+/* El divisor es una sombra interior: el subrayado activo (2px) queda encima sin que overflow lo recorte. */
+.ui-tabs { display: flex; gap: var(--ui-space-1); box-shadow: inset 0 -1px 0 var(--ui-border); overflow-x: auto; }
+.ui-tabs__tab { display: inline-flex; align-items: center; gap: var(--ui-space-2); min-height: 44px; padding: 0 var(--ui-space-4); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ui-text-muted); font: inherit; font-size: var(--ui-text-md); font-weight: 500; cursor: pointer; white-space: nowrap; }
 .ui-tabs__tab:hover:not(:disabled) { color: var(--ui-text); }
 .ui-tabs__tab.is-active { color: var(--ui-primary); border-bottom-color: var(--ui-primary); font-weight: 600; }
 .ui-tabs__tab:disabled { opacity: .5; cursor: not-allowed; }
 .ui-tabs__tab:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: -2px; }
-.ui-tabs__badge { padding: 0 var(--ui-space-2); border-radius: 999px; background: var(--ui-surface-2); font-size: var(--ui-text-xs); }
+.ui-tabs__badge { padding: 0 var(--ui-space-2); border-radius: 999px; background: var(--ui-surface-2); color: var(--ui-text-muted); font-size: var(--ui-text-xs); font-weight: 600; }
+.ui-tabs__tab.is-active .ui-tabs__badge { background: var(--ui-primary-soft); color: var(--ui-primary); }
+
 
 @media (max-width: 767px) {
   .ui-shell__rail { display: none; }
@@ -80,11 +84,13 @@
   .ui-topbar { gap: var(--ui-space-2); min-width: 0; }
   .ui-topbar__search { flex: 1 1 0; min-width: 0; }
   .ui-topbar__crumb { display: none; }
+  .ui-pageheader { gap: var(--ui-space-3); margin-bottom: var(--ui-space-4); }
+  .ui-pageheader__title { font-size: var(--ui-text-lg); }
   .ui-topbar__controls { gap: var(--ui-space-1); flex: none; }
   /* El idioma se cambia desde Perfil › Preferencias en pantallas angostas. */
   .ui-topbar__controls .language-selector-wrapper { display: none; }
 }
-.ui-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.ui-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); min-width: 0; }
 
 /* Menú de cuenta en el avatar (perfil y cerrar sesión). */
 .ui-topbar__account { position: relative; }

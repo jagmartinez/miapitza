@@ -120,7 +120,7 @@ describe('CashShift (migrado al design system)', () => {
         await userEvent.click(screen.getByRole('button', { name: /Egresos/ }));
         const table = screen.getByRole('table', { name: 'Movimientos del turno' });
         expect(within(table).getAllByRole('row')).toHaveLength(3);
-        await userEvent.type(screen.getByRole('searchbox', { name: 'Buscar movimientos' }), 'Movimiento 2');
+        await userEvent.type(screen.getByRole('searchbox', { name: 'Buscar' }), 'Movimiento 2');
         expect(within(table).getAllByRole('row')).toHaveLength(2);
     });
 

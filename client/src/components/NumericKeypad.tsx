@@ -1,20 +1,16 @@
-import { useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
-import { useDialogA11y } from '../hooks/useDialogA11y';
+import { useEffect, useRef, useState } from 'react';
+import { Delete } from 'lucide-react';
+import { Button, FullScreenModal } from '@/ui';
 import './NumericKeypad.css';
 
 interface NumericKeypadProps {
     onConfirm: (quantity: number) => void;
     onClose: () => void;
     initialValue?: number;
-    closeOnOverlayClick?: boolean;
 }
 
-export default function NumericKeypad({ onConfirm, onClose, initialValue = 1, closeOnOverlayClick = false }: NumericKeypadProps) {
+export default function NumericKeypad({ onConfirm, onClose, initialValue = 1 }: NumericKeypadProps) {
     const [display, setDisplay] = useState(initialValue.toString());
-    const dialogRef = useRef<HTMLDivElement>(null);
-    const { titleId } = useDialogA11y(true, onClose, dialogRef);
 
     const handleNumber = (num: string) => {
         if (display === '0') {
@@ -43,67 +39,65 @@ export default function NumericKeypad({ onConfirm, onClose, initialValue = 1, cl
         }
     };
 
-    const handleKeyPress = (e: React.KeyboardEvent) => {
+    const handleKeyPress = (e: KeyboardEvent) => {
         if (e.key >= '0' && e.key <= '9') {
             handleNumber(e.key);
         } else if (e.key === 'Enter') {
+            // Enter sobre un botón enfocado (p. ej. Cancelar) ejecuta ese botón, no la confirmación.
+            if ((e.target as HTMLElement).closest('button')) return;
             handleConfirm();
         } else if (e.key === 'Backspace') {
             handleBackspace();
         }
     };
 
-    return createPortal(
-        <div className="keypad-overlay" onClick={closeOnOverlayClick ? onClose : undefined}>
-            <div
-                ref={dialogRef}
-                className="keypad-container"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
-                tabIndex={-1}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={handleKeyPress}
-            >
-                <div className="keypad-header">
-                    <div className="keypad-heading">
-                        <h3 id={titleId}>Cantidad</h3>
-                    </div>
-                    <button type="button" onClick={onClose} className="keypad-close" aria-label="Cerrar selector de cantidad">
-                        <X size={20} aria-hidden="true" />
-                    </button>
-                </div>
+    // El diálogo del kit enfoca su propio contenedor: el teclado se escucha a nivel de documento.
+    const keyHandlerRef = useRef(handleKeyPress);
+    keyHandlerRef.current = handleKeyPress;
+    useEffect(() => {
+        const listener = (e: KeyboardEvent) => keyHandlerRef.current(e);
+        document.addEventListener('keydown', listener);
+        return () => document.removeEventListener('keydown', listener);
+    }, []);
 
+    return (
+        <FullScreenModal
+            isOpen
+            size="compact"
+            title="Cantidad"
+            onClose={onClose}
+            footer={({ requestClose }) => (
+                <>
+                    <Button variant="secondary" onClick={requestClose}>Cancelar</Button>
+                    <Button variant="primary" onClick={handleConfirm}>Confirmar</Button>
+                </>
+            )}
+        >
+            <div className="keypad-container">
                 <output className="keypad-display" aria-live="polite" aria-label={`Cantidad ${display}`}>{display}</output>
 
                 <div className="keypad-grid">
                     {[7, 8, 9, 4, 5, 6, 1, 2, 3].map(num => (
-                        <button
+                        <Button
                             key={num}
-                            type="button"
+                            size="lg"
+                            variant="secondary"
                             aria-label={`Agregar ${num}`}
                             onClick={() => handleNumber(num.toString())}
                             className="keypad-btn"
                         >
                             {num}
-                        </button>
+                        </Button>
                     ))}
-                    <button type="button" onClick={handleClear} className="keypad-btn keypad-clear" aria-label="Limpiar cantidad">
+                    <Button size="lg" variant="secondary" onClick={handleClear} className="keypad-btn keypad-btn--muted" aria-label="Limpiar cantidad">
                         C
-                    </button>
-                    <button type="button" onClick={() => handleNumber('0')} className="keypad-btn" aria-label="Agregar 0">
+                    </Button>
+                    <Button size="lg" variant="secondary" onClick={() => handleNumber('0')} className="keypad-btn" aria-label="Agregar 0">
                         0
-                    </button>
-                    <button type="button" onClick={handleBackspace} className="keypad-btn keypad-backspace" aria-label="Borrar último dígito">
-                        ⌫
-                    </button>
+                    </Button>
+                    <Button size="lg" variant="secondary" icon={Delete} onClick={handleBackspace} className="keypad-btn keypad-btn--muted" aria-label="Borrar último dígito" />
                 </div>
-
-                <button type="button" onClick={handleConfirm} className="keypad-confirm">
-                    Confirmar
-                </button>
             </div>
-        </div>,
-        document.body,
+        </FullScreenModal>
     );
 }

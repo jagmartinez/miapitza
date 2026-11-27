@@ -122,3 +122,10 @@
 /* Resumen en línea (en lugar de tarjetas de solo sumas). */
 .summaryLine { display: flex; flex-wrap: wrap; gap: var(--ui-space-2) var(--ui-space-5); margin: 0; padding: var(--ui-space-3) 0; border-top: 1px solid var(--ui-border); border-bottom: 1px solid var(--ui-border); color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
 .summaryLine strong { color: var(--ui-text); font-variant-numeric: tabular-nums; }
+
+/* Códigos en mayúsculas con tipografía monoespaciada (campo Código). */
+.mono,
+.mono input {
+  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  text-transform: uppercase;
+}

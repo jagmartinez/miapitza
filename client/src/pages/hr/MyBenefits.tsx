@@ -318,7 +318,7 @@ export default function MyBenefits() {
               <EmptyState
                 icon={WalletCards}
                 title={tab === 'TRAVEL' ? 'Aún no tienes viáticos registrados.' : tab === 'LOAN' ? 'Aún no tienes préstamos registrados.' : 'No tienes deducciones asignadas.'}
-                action={tab !== 'DEDUCTION' ? <Button variant="primary" size="sm" icon={Plus} onClick={() => setPanel(tab)} disabled={!online}>{tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button> : undefined}
+                action={tab !== 'DEDUCTION' ? <Button variant="primary" icon={Plus} onClick={() => setPanel(tab)} disabled={!online}>{tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button> : undefined}
               />
             )}
           />

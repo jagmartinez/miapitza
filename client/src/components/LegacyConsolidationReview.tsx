@@ -4,7 +4,7 @@ import type {
     LegacyTableConsolidationCandidate,
     LegacyTableConsolidationInventory,
 } from '../types';
-import { Button } from '@/ui';
+import { Button, Drawer, Field, LoadErrorState, Textarea } from '@/ui';
 import './LegacyConsolidationReview.css';
 
 interface LegacyConsolidationReviewProps {
@@ -59,11 +59,13 @@ export default function LegacyConsolidationReview({
         }
     }, [editingCandidateKey, inventory]);
 
-    const submitReview = async (
-        event: React.FormEvent,
-        candidate: LegacyTableConsolidationCandidate,
-    ) => {
-        event.preventDefault();
+    const cancelEditing = () => {
+        setEditingCandidateKey(null);
+        setNote('');
+        setValidationError(null);
+    };
+
+    const submitReview = async (candidate: LegacyTableConsolidationCandidate) => {
         const trimmedNote = note.trim();
         if (trimmedNote.length < 5) {
             setValidationError('Describe la revisión con al menos 5 caracteres.');
@@ -76,10 +78,15 @@ export default function LegacyConsolidationReview({
         }
     };
 
+    const editingCandidate = inventory?.candidates.find(
+        (candidate) => candidate.candidateKey === editingCandidateKey && !candidate.currentEvidenceReviewed,
+    ) ?? null;
+    const isMarking = editingCandidate !== null && markingCandidateKey === editingCandidate.candidateKey;
+
     if (loading) {
         return (
             <div className="legacy-review-state" role="status" aria-live="polite">
-                <Loader2 className="button-spinner" size={22} />
+                <Loader2 className="animate-spin" size={22} aria-hidden="true" />
                 <strong>Analizando consolidaciones históricas…</strong>
                 <span>Se comparan auditorías, órdenes, vínculos y evidencia persistida.</span>
             </div>
@@ -88,14 +95,7 @@ export default function LegacyConsolidationReview({
 
     if (error) {
         return (
-            <div className="legacy-review-state error" role="alert">
-                <AlertTriangle size={22} aria-hidden="true" />
-                <strong>No se pudo cargar el inventario histórico</strong>
-                <span>{error}</span>
-                <Button type="button" variant="secondary" onClick={onRetry}>
-                    Reintentar
-                </Button>
-            </div>
+            <LoadErrorState message={error} onRetry={onRetry} />
         );
     }
 
@@ -139,8 +139,6 @@ export default function LegacyConsolidationReview({
             ) : (
                 <div className="legacy-review-candidates">
                     {inventory.candidates.map((candidate) => {
-                        const isEditing = editingCandidateKey === candidate.candidateKey;
-                        const isMarking = markingCandidateKey === candidate.candidateKey;
                         return (
                             <article
                                 key={candidate.candidateKey}
@@ -199,58 +197,7 @@ export default function LegacyConsolidationReview({
                                     </div>
                                 )}
 
-                                {!candidate.currentEvidenceReviewed && (isEditing ? (
-                                    <form
-                                        className="legacy-review-form"
-                                        onSubmit={(event) => void submitReview(event, candidate)}
-                                    >
-                                        <label htmlFor={`legacy-review-note-${candidate.candidateKey}`}>
-                                            Nota de revisión obligatoria
-                                        </label>
-                                        <textarea
-                                            id={`legacy-review-note-${candidate.candidateKey}`}
-                                            value={note}
-                                            minLength={5}
-                                            maxLength={1000}
-                                            rows={4}
-                                            required
-                                            disabled={isMarking}
-                                            onChange={(event) => {
-                                                setNote(event.target.value);
-                                                if (validationError) setValidationError(null);
-                                            }}
-                                            placeholder={
-                                                candidate.classification === 'NOT_REVERSIBLE'
-                                                    ? 'Documenta por qué se reconoce sin reverso automático'
-                                                    : 'Documenta la evidencia externa que aún debe obtenerse'
-                                            }
-                                        />
-                                        {validationError && <span role="alert">{validationError}</span>}
-                                        <div>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                disabled={isMarking}
-                                                onClick={() => {
-                                                    setEditingCandidateKey(null);
-                                                    setNote('');
-                                                    setValidationError(null);
-                                                }}
-                                            >
-                                                Cancelar
-                                            </Button>
-                                            <Button
-                                                type="submit"
-                                                variant="primary"
-                                                disabled={isMarking || note.trim().length < 5}
-                                            >
-                                                {isMarking
-                                                    ? <><Loader2 className="button-spinner" size={17} /> Registrando…</>
-                                                    : 'Registrar revisión sin reversar'}
-                                            </Button>
-                                        </div>
-                                    </form>
-                                ) : (
+                                {!candidate.currentEvidenceReviewed && (
                                     <Button
                                         type="button"
                                         variant="secondary"
@@ -265,12 +212,61 @@ export default function LegacyConsolidationReview({
                                             ? 'Registrar nueva revisión de la evidencia actual'
                                             : 'Registrar revisión'}
                                     </Button>
-                                ))}
+                                )}
                             </article>
                         );
                     })}
                 </div>
             )}
+            <Drawer
+                isOpen={editingCandidate !== null}
+                onClose={() => { if (!isMarking) cancelEditing(); }}
+                title="Registrar revisión"
+                footer={(
+                    <>
+                        <Button type="button" variant="ghost" disabled={isMarking} onClick={cancelEditing}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="primary"
+                            loading={isMarking}
+                            disabled={note.trim().length < 5}
+                            onClick={() => editingCandidate && void submitReview(editingCandidate)}
+                        >
+                            {isMarking ? 'Registrando…' : 'Registrar revisión sin reversar'}
+                        </Button>
+                    </>
+                )}
+            >
+                {editingCandidate && (
+                    <Field
+                        label="Nota de revisión obligatoria"
+                        htmlFor={`legacy-review-note-${editingCandidate.candidateKey}`}
+                        error={validationError ?? undefined}
+                        required
+                    >
+                        <Textarea
+                            id={`legacy-review-note-${editingCandidate.candidateKey}`}
+                            value={note}
+                            minLength={5}
+                            maxLength={1000}
+                            rows={6}
+                            required
+                            disabled={isMarking}
+                            onChange={(event) => {
+                                setNote(event.target.value);
+                                if (validationError) setValidationError(null);
+                            }}
+                            placeholder={
+                                editingCandidate.classification === 'NOT_REVERSIBLE'
+                                    ? 'Documenta por qué se reconoce sin reverso automático'
+                                    : 'Documenta la evidencia externa que aún debe obtenerse'
+                            }
+                        />
+                    </Field>
+                )}
+            </Drawer>
         </div>
     );
 }

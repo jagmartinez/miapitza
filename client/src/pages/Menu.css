@@ -3,29 +3,26 @@
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--spacing-lg);
+  gap: var(--ui-space-5);
 }
-
 
 /* Card Visuals */
 .menu-item-card {
   background: var(--ui-surface);
-  border-radius: var(--radius-xl);
+  border-radius: var(--ui-radius-lg);
   overflow: hidden;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
   border: 2px solid var(--ui-border);
   cursor: pointer;
   display: flex;
   flex-direction: column;
 }
 
-
 .menu-item-card:hover {
   transform: translateY(-4px);
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--ui-shadow-overlay);
 }
-
 
 .item-visual-container {
   position: relative;
@@ -38,12 +35,10 @@
   justify-content: center;
 }
 
-
 .item-placeholder-icon {
   color: var(--ui-border);
   opacity: 0.5;
 }
-
 
 .item-main-image {
   width: 100%;
@@ -52,46 +47,14 @@
 }
 
 
-.img-nav-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
-  box-shadow: var(--shadow-md);
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0.9;
-  transition: all 0.2s;
-  color: var(--ui-text);
-  z-index: 2;
-}
 
 
-.img-nav-btn:hover {
-  background: white;
-  transform: translateY(-50%) scale(1.1);
-  opacity: 1;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--ui-text) 25%, transparent);
-}
 
 
-.img-nav-btn.prev {
-  left: 8px;
-}
 
 
-.img-nav-btn.next {
-  right: 8px;
-}
 
 
-/* Removed .item-visual-container:hover .img-nav-btn rule as we want them always visible */
 
 .img-dots {
   position: absolute;
@@ -102,7 +65,6 @@
   gap: 4px;
 }
 
-
 .img-dot {
   width: 6px;
   height: 6px;
@@ -111,21 +73,18 @@
   transition: background 0.2s;
 }
 
-
 .img-dot.active {
-  background: white;
+  background: var(--ui-primary-fg);
   transform: scale(1.2);
 }
 
-
 /* Menu Item Content */
 .menu-item-content {
-  padding: var(--spacing-md);
+  padding: var(--ui-space-4);
   flex: 1;
   display: flex;
   flex-direction: column;
 }
-
 
 .item-name {
   font-size: 1.125rem;
@@ -135,13 +94,11 @@
   line-height: 1.3;
 }
 
-
 .item-price-tag {
   font-size: 1.25rem;
   font-weight: 800;
   color: var(--ui-primary);
 }
-
 
 .item-description {
   font-size: 13px;
@@ -156,7 +113,6 @@
   -webkit-box-orient: vertical;
 }
 
-
 /* Menu Card Actions Bar (EXACT CATERING STYLE) */
 .menu-card-actions {
   display: flex;
@@ -166,108 +122,24 @@
 }
 
 
-.menu-action-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  /* Vertical Stack */
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 10px 4px;
-  border: none;
-  background: transparent;
-  color: var(--ui-text-muted);
-  /* Muted text */
-  font-weight: 700;
-  font-size: 8.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-right: 1px solid color-mix(in srgb, var(--ui-surface) 8%, transparent);
-  /* Vertical Separator */
-}
 
 
-.menu-action-btn:last-child {
-  border-right: none;
-}
 
 
-.menu-action-btn svg {
-  width: 20px;
-  height: 20px;
-  opacity: 0.8;
-}
 
 
-.menu-action-btn:hover {
-  background: color-mix(in srgb, var(--ui-surface) 3%, transparent);
-  color: var(--ui-primary-fg);
-}
 
 
-.menu-action-btn:hover svg {
-  opacity: 1;
-  transform: scale(1.1);
-}
 
 
-.menu-action-btn.delete {
-  flex: 0 0 60px;
-  /* Fixed width for delete icon */
-}
 
-
-.menu-action-btn.delete:hover {
-  color: var(--ui-danger);
-  background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
-}
-
-
-/* Section Headers */
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid var(--ui-border);
-}
-
-
-.section-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ui-text);
-  letter-spacing: -0.02em;
-}
-
-
-.section-header.sub {
-  border-bottom: 1px solid var(--ui-border);
-  padding-bottom: 8px;
-  margin-bottom: 12px;
-}
-
-
-.section-header.sub h4 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ui-text);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
 
 
 @media (max-width: 768px) {
   /* Grid: single column for full-width cards */
     .menu-grid {
       grid-template-columns: 1fr;
-      gap: var(--spacing-md);
+      gap: var(--ui-space-4);
     }
   
   
@@ -278,7 +150,7 @@
       grid-template-rows: 1fr auto;
       min-height: 130px;
       border-width: 1px;
-      border-radius: var(--radius-lg);
+      border-radius: var(--ui-radius-lg);
     }
   
   
@@ -300,7 +172,7 @@
     .menu-item-content {
       grid-row: 1;
       grid-column: 2;
-      padding: var(--spacing-md);
+      padding: var(--ui-space-4);
       gap: 4px;
       min-width: 0;
       overflow: hidden;
@@ -354,37 +226,20 @@
     }
   
   
-    .menu-action-btn {
-      padding: 10px 4px !important;
-      font-size: 10px !important;
-      flex-direction: row !important;
-      gap: 4px !important;
-      border-right: 1px solid var(--ui-border);
-      color: var(--ui-text-muted);
-    }
-  
-  
-    .menu-action-btn:last-child {
-      border-right: none;
-    }
-  
-  
-    .menu-action-btn svg {
-      width: 14px !important;
-      height: 14px !important;
-    }
-  
-  
-    .menu-action-btn span {
-      font-size: 10px;
-    }
-  
-  
-    .menu-action-btn.delete {
-      flex: 0 0 44px !important;
-    }
-}
 
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+}
 
 @media (max-width: 480px) {
   /* Smaller card for tiny phones */
@@ -395,7 +250,7 @@
   
   
     .menu-item-content {
-      padding: var(--spacing-sm);
+      padding: var(--ui-space-3);
     }
   
   
@@ -409,398 +264,13 @@
     }
   
   
-    .menu-action-btn {
-      padding: 8px 2px !important;
-    }
+
   
   
-    .menu-action-btn span {
-      display: none;
-    }
+
   
   
-    .menu-action-btn.delete {
-      flex: 0 0 36px !important;
-    }
+
 }
-
-
-.recipe-ingredient-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--ui-border);
-  background: var(--ui-surface);
-  transition: background 0.2s;
-}
-
-
-.recipe-ingredient-row:last-child {
-  border-bottom: none;
-}
-
-
-.recipe-ingredient-row:hover {
-  background: var(--ui-bg);
-}
-
-
-.recipe-ingredient-name {
-  flex: 1 1 150px;
-  min-width: 120px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-
-.recipe-unit-error {
-  display: block;
-  margin-top: 2px;
-  color: var(--ui-danger);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-
-.recipe-ingredient-quantity {
-  flex: 0 0 82px;
-  width: 82px;
-  text-align: right;
-}
-
-
-.recipe-ingredient-unit {
-  flex: 0 1 145px;
-  min-width: 115px;
-}
-
-
-.recipe-ingredient-measure {
-  color: var(--ui-text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-
-.recipe-ingredient-cost {
-  flex: 0 0 90px;
-  text-align: right;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-
-@media (max-width: 640px) {
-  .recipe-ingredient-row {
-      flex-wrap: wrap;
-    }
-  
-  
-    .recipe-ingredient-name {
-      flex-basis: calc(100% - 36px);
-    }
-  
-  
-    .recipe-ingredient-quantity,
-  .recipe-ingredient-unit {
-      flex: 1 1 110px;
-      width: auto;
-    }
-  
-  
-    .recipe-ingredient-cost {
-      margin-left: auto;
-    }
-}
-
-
-/* ── Modifiers admin modal ── */
-.modifier-group-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-
-.modifier-group-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--ui-border);
-  background: var(--ui-surface);
-  color: var(--ui-text);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-
-.modifier-group-chip:hover {
-  border-color: var(--ui-primary);
-}
-
-
-.modifier-group-chip.active {
-  background: var(--ui-primary);
-  border-color: var(--ui-primary);
-  color: var(--ui-primary-fg);
-}
-
-
-.modifier-group-chip-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text) 12%, transparent);
-  font-size: 11px;
-}
-
-
-.modifier-group-chip.active .modifier-group-chip-count {
-  background: color-mix(in srgb, var(--ui-surface) 25%, transparent);
-}
-
-
-.modifier-empty-hint {
-  font-size: 13px;
-  color: var(--ui-text-muted);
-}
-
-
-.modifier-list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  overflow: hidden;
-  margin-bottom: 16px;
-}
-
-
-.modifier-list-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--ui-border);
-  background: var(--ui-surface);
-}
-
-
-.modifier-list-row:last-child {
-  border-bottom: none;
-}
-
-
-.modifier-list-main {
-  display: flex;
-  flex-direction: column;
-  min-width: 120px;
-}
-
-
-.modifier-list-name {
-  font-weight: 600;
-  color: var(--ui-text);
-}
-
-
-.modifier-list-price {
-  font-size: 12px;
-  color: var(--ui-primary);
-  font-weight: 600;
-}
-
-
-.modifier-list-link {
-  flex: 1;
-}
-
-
-.modifier-link-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--ui-text);
-  background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
-  border-radius: 6px;
-  padding: 3px 8px;
-}
-
-
-.modifier-link-tag.muted {
-  color: var(--ui-text-muted);
-  background: transparent;
-}
-
-
-.modifier-list-actions {
-  display: flex;
-  gap: 6px;
-}
-
-
-/* Read-only catalog detail reuses the same information hierarchy as Detalle de la Receta. */
-.menu-item-detail .inventory-detail-finance-breakdown {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-
-.menu-detail-component-list {
-  display: grid;
-  gap: 8px;
-}
-
-
-.menu-detail-component {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) minmax(120px, auto) minmax(130px, auto);
-  align-items: center;
-  gap: 12px;
-  padding: 11px 13px;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-surface);
-}
-
-
-.menu-detail-component-index {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--ui-primary) 14%, var(--ui-surface));
-  color: var(--ui-primary);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-
-.menu-detail-component > div,
-.menu-detail-number {
-  min-width: 0;
-}
-
-
-.menu-detail-component > div > span,
-.menu-detail-price-grid span {
-  display: block;
-  margin-bottom: 3px;
-  color: var(--ui-text-muted);
-  font-size: 11px;
-}
-
-
-.menu-detail-component strong {
-  overflow-wrap: anywhere;
-  color: var(--ui-text);
-  font-size: 13px;
-}
-
-
-.menu-detail-number {
-  text-align: right;
-}
-
-
-.menu-detail-price-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-
-.menu-detail-price-grid > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 11px 13px;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-surface);
-}
-
-
-.menu-detail-price-grid span {
-  margin: 0;
-}
-
-
-.menu-detail-price-grid strong {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-
-.menu-detail-gallery {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-
-.menu-detail-gallery button {
-  overflow: hidden;
-  aspect-ratio: 4 / 3;
-  padding: 0;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-bg);
-  cursor: zoom-in;
-}
-
-
-.menu-detail-gallery img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform var(--transition-fast);
-}
-
-
-.menu-detail-gallery button:hover img {
-  transform: scale(1.04);
-}
-
-
-@media (max-width: 680px) {
-  .menu-detail-component {
-      grid-template-columns: 30px minmax(0, 1fr);
-    }
-  
-  
-    .menu-detail-number {
-      grid-column: 2;
-      text-align: left;
-    }
-  
-  
-    .menu-detail-price-grid,
-  .menu-item-detail .inventory-detail-finance-breakdown {
-      grid-template-columns: 1fr;
-    }
-  
-  
-    .menu-detail-gallery {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
 
 /* CHEF (and others) can open items in read-only; hide grid card mutations */
-.menu-readonly .menu-card-actions .menu-action-btn.edit,
-.menu-readonly .menu-card-actions .menu-action-btn.delete {
-  display: none;
-}

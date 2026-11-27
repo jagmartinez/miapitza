@@ -1,248 +1,38 @@
-.table-selection-modal-content {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    height: min(680px, 72vh);
-}
+.table-pick-content { display: flex; flex-direction: column; gap: var(--ui-space-5); min-width: 0; }
+.table-pick-content > .ui-toolbar { margin-bottom: 0; }
 
-.table-selection-modal-toolbar {
-    padding: var(--spacing-md) var(--spacing-xl) var(--spacing-md);
-    border-bottom: 1px solid var(--dialog-panel-border, var(--ui-border));
-    flex-shrink: 0;
-}
+.table-pick-section { display: flex; flex-direction: column; gap: var(--ui-space-3); }
+.table-pick-section__title { margin: 0; font-size: var(--ui-text-md); font-weight: 600; color: var(--ui-text); }
 
-.table-selection-search {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.table-selection-search-icon {
-    position: absolute;
-    left: 12px;
-    color: var(--ui-text-muted);
-    pointer-events: none;
-}
-
-.table-selection-search-input {
-    width: 100%;
-    padding: 10px 12px 10px 40px;
-    border: 1px solid var(--dialog-panel-border, var(--ui-border));
-    border-radius: var(--radius-lg);
-    font-size: 14px;
-    color: var(--ui-text);
-    background: var(--ui-bg);
-    box-sizing: border-box;
-}
-
-.table-selection-search-input:focus {
-    outline: none;
-    border-color: var(--ui-primary);
-    box-shadow: 0 0 0 3px var(--dialog-focus-ring, color-mix(in srgb, var(--ui-primary) 10%, transparent));
-}
-
-.table-selection-modal-body {
-    padding: var(--spacing-xl);
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    scrollbar-width: thin;
-    scrollbar-color: var(--ui-border) transparent;
-}
-
-.table-selection-modal-body::-webkit-scrollbar {
-    width: 6px;
-}
-
-.table-selection-modal-body::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.table-selection-modal-body::-webkit-scrollbar-thumb {
-    background: var(--ui-border);
-    border-radius: 3px;
-}
-
-.table-selection-modal-body::-webkit-scrollbar-thumb:hover {
-    background: var(--ui-text-muted);
-}
-
-.table-selection-empty {
-    text-align: center;
-    color: var(--ui-text-muted);
-    font-size: 14px;
-    padding: var(--spacing-xl) 0;
-}
-
-.table-section {
-    margin-bottom: var(--spacing-2xl);
-}
-
-.table-section:last-child {
-    margin-bottom: 0;
-}
-
-.section-title {
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--ui-text-muted);
-    margin-bottom: var(--spacing-lg);
-}
-
-.tables-grid-modal {
+.table-pick-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: var(--spacing-lg);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr));
+    gap: var(--ui-space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
-.table-card {
-    position: relative;
-    padding: var(--spacing-xl);
-    border: 2px solid var(--ui-border);
-    background: var(--ui-surface);
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    min-height: 120px;
+.table-pick {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-}
-
-.table-card:hover {
-    border-color: var(--ui-text-muted);
-}
-
-.table-card.available {
-    border-color: var(--ui-success);
-    background: color-mix(in srgb, var(--ui-success) 5%, transparent);
-}
-
-.table-card.available:hover {
-    border-color: var(--ui-success);
-    background: color-mix(in srgb, var(--ui-success) 10%, transparent);
-}
-
-.table-card.occupied {
-    border-color: var(--ui-warning);
-    background: color-mix(in srgb, var(--ui-warning) 5%, transparent);
-}
-
-.table-card.occupied:hover {
-    border-color: var(--ui-warning);
-    background: color-mix(in srgb, var(--ui-warning) 10%, transparent);
-}
-
-.table-number-large {
-    font-size: var(--font-size-xl);
-    font-weight: 700;
+    align-items: flex-start;
+    gap: var(--ui-space-1);
+    width: 100%;
+    min-height: 5.5rem;
+    padding: var(--ui-space-3);
+    border: 1px solid var(--ui-border);
+    border-left: 4px solid var(--ui-success);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
     color: var(--ui-text);
-    margin-bottom: var(--spacing-xs);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
 }
 
-.table-capacity {
-    font-size: var(--font-size-sm);
-    color: var(--ui-text-muted);
-}
-
-.occupied-badge {
-    position: absolute;
-    top: var(--spacing-sm);
-    right: var(--spacing-sm);
-    padding: 2px 8px;
-    background: var(--ui-warning);
-    color: var(--ui-primary-fg);
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-}
-
-@media (max-width: 768px) {
-    .table-selection-modal-content {
-        height: min(720px, 76dvh);
-    }
-
-    .table-selection-modal-toolbar {
-        padding: var(--spacing-sm) var(--spacing-md) var(--spacing-sm);
-    }
-
-    .table-selection-modal-body {
-        padding: var(--spacing-md);
-    }
-
-    .tables-grid-modal {
-        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-        gap: var(--spacing-sm);
-    }
-
-    .table-card {
-        padding: var(--spacing-md) var(--spacing-sm);
-        padding-top: 24px;
-        /* extra room for occupied badge */
-        min-height: 100px;
-    }
-
-    .table-card:hover {
-        transform: none;
-    }
-
-    .table-number-large {
-        font-size: var(--font-size-base);
-        word-break: break-word;
-        text-align: center;
-        line-height: 1.2;
-    }
-
-    .table-capacity {
-        font-size: var(--font-size-xs);
-    }
-
-    /* Make the occupied badge smaller and not overlap text */
-    .occupied-badge {
-        top: 4px;
-        right: 4px;
-        padding: 2px 6px;
-        font-size: 9px;
-        line-height: 1;
-        border-radius: var(--radius-sm);
-    }
-
-    .section-title {
-        font-size: var(--font-size-base);
-        margin-bottom: var(--spacing-md);
-    }
-
-    .table-section {
-        margin-bottom: var(--spacing-lg);
-    }
-}
-
-@media (max-width: 480px) {
-    .tables-grid-modal {
-        grid-template-columns: repeat(3, 1fr);
-        gap: var(--spacing-xs);
-    }
-
-    .table-card {
-        padding: 22px 4px 8px;
-        min-height: 84px;
-    }
-
-    .table-number-large {
-        font-size: 0.85rem;
-        font-weight: 700;
-    }
-
-    .table-capacity {
-        font-size: 10px;
-    }
-
-    .occupied-badge {
-        top: 3px;
-        right: 3px;
-        padding: 1px 5px;
-        font-size: 8px;
-    }
-}
+.table-pick.is-occupied { border-left-color: var(--ui-warning); }
+.table-pick:hover { border-color: var(--ui-primary); }
+.table-pick:focus-visible { outline: none; box-shadow: var(--ui-focus-ring); }
+.table-pick__number { font-size: var(--ui-text-lg); font-weight: 700; }
+.table-pick__capacity { font-size: var(--ui-text-sm); color: var(--ui-text-muted); }

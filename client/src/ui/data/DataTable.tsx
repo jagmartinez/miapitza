@@ -5,6 +5,8 @@ import { Skeleton } from '../primitives/Skeleton';
 import type { Tone } from '../primitives/statusTone';
 import { columnTemplate, columnsMinWidth } from './columnTemplate';
 import { Pagination } from './Pagination';
+import { EmptyState } from './EmptyState';
+import { LoadErrorState } from './LoadErrorState';
 import { getRowsPerPage } from '../prefs/userPrefs';
 import { useTablePagination } from './useTablePagination';
 import './data.css';
@@ -23,6 +25,8 @@ export interface Column<T> {
   total?: boolean;
   sortable?: boolean;
   hideBelow?: 'md' | 'lg';
+  /** Alineación explícita; por defecto los tipos numéricos van a la derecha y el resto a la izquierda. */
+  align?: 'left' | 'center' | 'right';
 }
 export type PaginationMode =
   | { mode: 'client' }
@@ -37,7 +41,15 @@ export interface DataTableProps<T> {
   defaultPageSize?: number;
   resetKey?: unknown;
   loading?: boolean;
+  /** Texto (se muestra con EmptyState) o nodo propio cuando no hay filas. */
   empty?: ReactNode;
+  /** Mensaje de error de carga: reemplaza las filas por LoadErrorState y oculta totales y paginación. */
+  error?: string | null;
+  onRetry?(): void;
+  /** 'card' (por defecto) dibuja borde y fondo; 'flat' para tablas dentro de un bloque que ya tiene caja. */
+  variant?: 'card' | 'flat';
+  /** Oculta la paginación cuando todas las filas caben en una página (tablas cortas de detalle). */
+  hidePaginationIfSinglePage?: boolean;
   toolbar?: ReactNode;
   footerLabel?: ReactNode;
   onRowClick?(row: T): void;
@@ -90,7 +102,8 @@ function cellClass<T>(c: Column<T>): string {
     'ui-cell',
     isNumeric(c) ? 'ui-cell--numeric' : '',
     c.type === 'actions' ? 'ui-cell--actions' : '',
-      ]
+    c.align ? `ui-cell--align-${c.align}` : '',
+  ]
     .filter(Boolean)
     .join(' ');
 }
@@ -108,6 +121,10 @@ export function DataTable<T>({
   resetKey,
   loading,
   empty,
+  error,
+  onRetry,
+  variant = 'card',
+  hidePaginationIfSinglePage = false,
   toolbar,
   footerLabel,
   onRowClick,
@@ -140,7 +157,9 @@ export function DataTable<T>({
   // `max()` no acepta números sin unidad: '0' se pasa como '0px'.
   const tableMinWidth = `max(${/^\d+(\.\d+)?$/.test(minWidth) ? `${minWidth}px` : minWidth}, ${columnsMinWidth(columns)}px)`;
   const labelOf = (c: Column<T>) => (stacked && typeof c.header === 'string' ? c.header : undefined);
-  const hasTotals = columns.some((c) => c.total);
+  const hasTotals = columns.some((c) => c.total) && !error;
+  const emptyNode = empty == null || typeof empty === 'string' ? <EmptyState title={(empty as string | undefined) ?? 'Sin resultados'} /> : empty;
+  const showPagination = !error && !(hidePaginationIfSinglePage && pg.total <= pg.pageSize && pg.page === 1);
 
   const activate = (row: T, e: MouseEvent | KeyboardEvent) => {
     if ((e.target as HTMLElement).closest(INTERACTIVE)) return;
@@ -148,7 +167,7 @@ export function DataTable<T>({
   };
 
   return (
-    <div className="ui-datatable">
+    <div className={variant === 'flat' ? 'ui-datatable ui-datatable--flat' : 'ui-datatable'}>
       {toolbar}
       <div className="ui-datatable__scroll">
         <table
@@ -167,7 +186,13 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {error && !loading ? (
+              <tr className="ui-table__empty">
+                <td>
+                  <LoadErrorState message={error} onRetry={onRetry} />
+                </td>
+              </tr>
+            ) : loading ? (
               Array.from({ length: 5 }, (_, i) => (
                 <tr key={`sk${i}`} style={gridStyle}>
                   {columns.map((c) => (
@@ -179,7 +204,7 @@ export function DataTable<T>({
               ))
             ) : visible.length === 0 ? (
               <tr className="ui-table__empty">
-                <td>{empty ?? 'Sin resultados'}</td>
+                <td>{emptyNode}</td>
               </tr>
             ) : (
               visible.map((row) => {
@@ -230,7 +255,7 @@ export function DataTable<T>({
           ) : null}
         </table>
       </div>
-      <Pagination {...pg} pageSizeOptions={pageSizeOptions} label={`Paginación de ${ariaLabel}`} />
+      {showPagination ? <Pagination {...pg} pageSizeOptions={pageSizeOptions} label={`Paginación de ${ariaLabel}`} /> : null}
     </div>
   );
 }

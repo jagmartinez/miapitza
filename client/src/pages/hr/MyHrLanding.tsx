@@ -166,7 +166,7 @@ export default function MyHrLanding() {
                   ? 'No pudimos cargar el resumen. Tus secciones siguen disponibles desde los accesos de abajo.'
                   : 'Parte del resumen no está disponible. Puedes abrir cada sección para reintentarla.'}
               </span>
-              <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar</Button>
+              <Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar</Button>
             </div>
           )}
 
@@ -202,7 +202,7 @@ export default function MyHrLanding() {
                 <span className={form.cellTitle}>{action.title}</span>
                 <span className={form.cellSub}>{action.text}</span>
               </span>
-              <Button size="sm" variant="ghost" icon={action.icon} onClick={() => navigate(action.to)}>Abrir</Button>
+              <Button variant="ghost" icon={action.icon} onClick={() => navigate(action.to)}>Abrir</Button>
             </li>
           ))}
         </ul>

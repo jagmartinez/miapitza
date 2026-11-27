@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useId } from 'react';
 import {
   AlertTriangle,
   CalendarClock,
@@ -10,10 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
-import {
-  AppSelect, Button, DataTable, DateInput, EmptyState, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs,
-  Textarea,
-} from '@/ui';
+import { AppSelect, Button, DataTable, DateInput, EmptyState, Field, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -85,6 +82,7 @@ type DecisionPanel =
 type AttendanceTable = 'DAY' | 'INCIDENTS' | 'CORRECTIONS' | 'OVERTIME' | 'PERIODS';
 
 export default function AttendanceManagement() {
+  const fid = useId();
   const online = useWorkforceOnline();
   const { success: showSuccess, error: showError } = useAppToast();
   const [date, setDate] = useState(today());
@@ -331,17 +329,17 @@ export default function AttendanceManagement() {
                 rows={summaries}
                 rowKey={(summary) => summary.id}
                 pagination={{ mode: 'client' }}
-                minWidth="80rem"
-                empty={<EmptyState title="No hay jornadas para este filtro" description="Cambia la fecha, sucursal o empleado y actualiza la consulta." action={<Button size="sm" variant="ghost" onClick={() => void load()}><RefreshCw size={15} /> Actualizar</Button>} />}
+                minWidth="64rem"
+                empty={<EmptyState title="No hay jornadas para este filtro" description="Cambia la fecha, sucursal o empleado y actualiza la consulta." action={<Button variant="ghost" onClick={() => void load()} icon={RefreshCw}>Actualizar</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (summary) => <span className={form.cellStack}><span className={form.cellTitle}>{summary.user?.name ?? `Usuario #${summary.userId}`}</span><span className={form.cellSub}>{summary.incidentCount ? `${summary.incidentCount} incidencia(s)` : 'Sin incidencias'}</span></span> },
                   { key: 'c1', header: 'Sucursal', render: (summary) => <>{summary.branch?.name ?? 'Sin sucursal'}</> },
-                  { key: 'c2', header: 'Programado', render: (summary) => <>{summary.scheduledMinutes ?? 0} min</> },
-                  { key: 'c3', header: 'Trabajado', render: (summary) => <>{summary.ordinaryMinutes} min</> },
-                  { key: 'c4', header: 'Descanso', render: (summary) => <>{summary.breakMinutes} min</> },
-                  { key: 'c5', header: 'Tardanza', render: (summary) => <span className={summary.lateMinutes > 0 ? form.cellWarning : undefined}>{summary.lateMinutes} min</span> },
-                  { key: 'c6', header: 'Salida antes', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? form.cellWarning : undefined}>{summary.earlyDepartureMinutes} min</span> },
-                  { key: 'c7', header: 'Extra', render: (summary) => <>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</> },
+                  { key: 'c2', header: 'Programado', align: 'right', render: (summary) => <>{summary.scheduledMinutes ?? 0} min</> },
+                  { key: 'c3', header: 'Trabajado', align: 'right', render: (summary) => <>{summary.ordinaryMinutes} min</> },
+                  { key: 'c4', header: 'Descanso', align: 'right', render: (summary) => <>{summary.breakMinutes} min</> },
+                  { key: 'c5', header: 'Tardanza', align: 'right', render: (summary) => <span className={summary.lateMinutes > 0 ? form.cellWarning : undefined}>{summary.lateMinutes} min</span> },
+                  { key: 'c6', header: 'Salida antes', align: 'right', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? form.cellWarning : undefined}>{summary.earlyDepartureMinutes} min</span> },
+                  { key: 'c7', header: 'Extra', align: 'right', render: (summary) => <>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</> },
                   { key: 'c8', header: 'Estado', render: (summary) => <>{summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : 'Sin periodo'}</> },
                   { key: 'c9', header: 'Acciones', width: '100px', type: 'actions', render: (summary) => <div className={form.rowActions}><IconButton size="sm" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} tooltip="Corregir" label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`} icon={Pencil} /><IconButton size="sm" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} tooltip="Horas extra" label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`} icon={Clock3} /></div> },
                 ]}
@@ -355,7 +353,7 @@ export default function AttendanceManagement() {
                 rowKey={(incident) => incident.id}
                 pagination={{ mode: 'client' }}
                 minWidth="48rem"
-                empty={<EmptyState title="No hay incidencias" description="Las jornadas del filtro actual están al día." action={<Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
+                empty={<EmptyState title="No hay incidencias" description="Las jornadas del filtro actual están al día." action={<Button variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (incident) => <strong>{incident.user?.name ?? `Usuario #${incident.userId}`}</strong> },
                   { key: 'c1', header: 'Fecha', render: (incident) => <>{dateLabel(incident.date)}</> },
@@ -374,7 +372,7 @@ export default function AttendanceManagement() {
                 rowKey={(item) => item.id}
                 pagination={{ mode: 'client' }}
                 minWidth="48rem"
-                empty={<EmptyState title="No hay correcciones" description="Cuando alguien solicite un ajuste aparecerá aquí." action={<Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
+                empty={<EmptyState title="No hay correcciones" description="Cuando alguien solicite un ajuste aparecerá aquí." action={<Button variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
                   { key: 'c1', header: 'Solicitada', render: (item) => <>{displayDateTime(item.createdAt)}</> },
@@ -393,12 +391,12 @@ export default function AttendanceManagement() {
                 rowKey={(item) => item.id}
                 pagination={{ mode: 'client' }}
                 minWidth="56rem"
-                empty={<EmptyState title="No hay solicitudes de horas extra" description="Puedes registrar una desde la jornada de un empleado." action={<Button size="sm" variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
+                empty={<EmptyState title="No hay solicitudes de horas extra" description="Puedes registrar una desde la jornada de un empleado." action={<Button variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
                   { key: 'c1', header: 'Fecha', render: (item) => <>{dateLabel(item.date)}</> },
-                  { key: 'c2', header: 'Solicitado', render: (item) => <>{item.requestedMinutes} min</> },
-                  { key: 'c3', header: 'Aprobado', render: (item) => <>{item.approvedMinutes ?? '—'}</> },
+                  { key: 'c2', header: 'Solicitado', align: 'right', render: (item) => <>{item.requestedMinutes} min</> },
+                  { key: 'c3', header: 'Aprobado', align: 'right', render: (item) => <>{item.approvedMinutes ?? '—'}</> },
                   { key: 'c4', header: 'Motivo', render: (item) => <>{item.reason}</> },
                   { key: 'c5', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
                   { key: 'c6', header: 'Acción', width: '100px', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><IconButton size="sm" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} tooltip="Revisar" label={`Revisar horas extra de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
@@ -419,13 +417,13 @@ export default function AttendanceManagement() {
                 rowKey={(period) => period.id}
                 pagination={{ mode: 'client' }}
                 minWidth="64rem"
-                empty={<EmptyState title="No hay periodos" description="Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina." action={<Button variant="primary" size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button>} />}
+                empty={<EmptyState title="No hay periodos" description="Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina." action={<Button variant="primary" icon={Plus} onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}>Crear periodo</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Periodo', render: (period) => <strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong> },
-                  { key: 'c1', header: 'Empleados', render: (period) => <>{period.summaryCount ?? 0}</> },
-                  { key: 'c2', header: 'Incidencias', render: (period) => <span className={(period.unresolvedIncidentCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.unresolvedIncidentCount ?? 0}</span> },
-                  { key: 'c3', header: 'Correcciones', render: (period) => <span className={(period.pendingCorrectionCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingCorrectionCount ?? 0}</span> },
-                  { key: 'c4', header: 'Horas extra', render: (period) => <span className={(period.pendingOvertimeCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingOvertimeCount ?? 0}</span> },
+                  { key: 'c1', header: 'Empleados', align: 'right', render: (period) => <>{period.summaryCount ?? 0}</> },
+                  { key: 'c2', header: 'Incidencias', align: 'right', render: (period) => <span className={(period.unresolvedIncidentCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.unresolvedIncidentCount ?? 0}</span> },
+                  { key: 'c3', header: 'Correcciones', align: 'right', render: (period) => <span className={(period.pendingCorrectionCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingCorrectionCount ?? 0}</span> },
+                  { key: 'c4', header: 'Horas extra', align: 'right', render: (period) => <span className={(period.pendingOvertimeCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingOvertimeCount ?? 0}</span> },
                   { key: 'c5', header: 'Nómina', render: (period) => <>{period.payrollReference ?? 'No vinculada'}</> },
                   { key: 'c6', header: 'Estado', render: (period) => <><WorkforceStatusPill status={period.status} /></> },
                   { key: 'c7', header: 'Acción', width: '100px', type: 'actions', render: (period) => { const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0); return <div className={form.rowActions}>{period.status === 'CLOSED' ? <IconButton size="sm" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} tooltip="Reabrir" label={`Reabrir periodo ${period.id}`} icon={RotateCcw} /> : <IconButton size="sm" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} tooltip={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} label={`Cerrar periodo ${period.id}`} icon={LockKeyhole} />}</div>; } },
@@ -497,15 +495,14 @@ export default function AttendanceManagement() {
                 <Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>
                   Cancelar
                 </Button>
-                <Button variant="primary" type="submit" disabled={!online || saving}>
-                  {saving ? 'Creando…' : 'Crear periodo'}
+                <Button loading={saving} variant="primary" type="submit" disabled={!online || saving}>
+                  Crear periodo
                 </Button>
               </>
             }
           >
-            <label>
-              Desde
-              <DateInput
+            <Field label="Desde" htmlFor={`${fid}-desde`}>
+              <DateInput id={`${fid}-desde`}
                
                 value={periodForm.dateFrom}
                 onChange={(event) =>
@@ -513,10 +510,9 @@ export default function AttendanceManagement() {
                 }
                 required
               />
-            </label>
-            <label>
-              Hasta
-              <DateInput
+            </Field>
+            <Field label="Hasta" htmlFor={`${fid}-hasta`}>
+              <DateInput id={`${fid}-hasta`}
                
                 min={periodForm.dateFrom}
                 value={periodForm.dateTo}
@@ -525,17 +521,18 @@ export default function AttendanceManagement() {
                 }
                 required
               />
-            </label>
-            <label className="span-full">
-              Razón de apertura
-              <Textarea
-                rows={4}
-                value={periodForm.reason}
-                onChange={(event) =>
-                  setPeriodForm((current) => ({ ...current, reason: event.target.value }))
-                }
-              />
-            </label>
+            </Field>
+            <div className="span-full">
+              <Field label="Razón de apertura" htmlFor={`${fid}-razon-de-apertura`}>
+                <Textarea id={`${fid}-razon-de-apertura`}
+                  rows={4}
+                  value={periodForm.reason}
+                  onChange={(event) =>
+                    setPeriodForm((current) => ({ ...current, reason: event.target.value }))
+                  }
+                />
+              </Field>
+            </div>
           </HrModalFormShell>
         )}
       </FullScreenModal>
@@ -563,7 +560,7 @@ export default function AttendanceManagement() {
           footer={
             <>
               <Button type="button" variant="ghost" onClick={() => setDecisionPanel(null)} disabled={saving}>Cancelar</Button>
-              <Button type="submit" variant={decisionPanel?.kind === 'close' ? 'danger' : 'primary'} disabled={!online || saving || !reason.trim()}>{saving ? 'Registrando…' : 'Confirmar con auditoría'}</Button>
+              <Button loading={saving} type="submit" variant={decisionPanel?.kind === 'close' ? 'danger' : 'primary'} disabled={!online || saving || !reason.trim()}>Confirmar con auditoría</Button>
             </>
           }
         >
@@ -577,9 +574,8 @@ export default function AttendanceManagement() {
               </span>
             </div>
           ) : (
-            <label>
-              Decisión
-              <AppSelect<string>
+            <Field label="Decisión" htmlFor={`${fid}-decision`}>
+              <AppSelect<string> inputId={`${fid}-decision`}
                 options={[
                   { value: 'APPROVED', label: 'Aprobar' },
                   { value: 'REJECTED', label: 'Rechazar' },
@@ -588,12 +584,15 @@ export default function AttendanceManagement() {
                 onChange={(next) => setDecision((next ?? '') as HrDecision)}
                 isClearable={false}
               />
-            </label>
+            </Field>
           )}
           {decisionPanel?.kind === 'overtime' && decision === 'APPROVED' && (
-            <label>
-              Minutos a aprobar
-              <Input
+            <Field
+              label="Minutos a aprobar"
+              htmlFor={`${fid}-minutos-a-aprobar`}
+              hint={`Solicitados: ${decisionPanel.item.requestedMinutes} min. El servidor valida el tope final contra la jornada.`}
+            >
+              <Input id={`${fid}-minutos-a-aprobar`}
                 type="number"
                 min="0"
                 max={decisionPanel.item.requestedMinutes}
@@ -602,21 +601,19 @@ export default function AttendanceManagement() {
                 onChange={(event) => setApprovedMinutes(event.target.value)}
                 required
               />
-              <small>
-                Solicitados: {decisionPanel.item.requestedMinutes} min. El servidor valida el tope final contra la jornada.
-              </small>
-            </label>
+            </Field>
           )}
-          <label className="span-full">
-            Razón obligatoria
-            <Textarea
-              rows={5}
-              maxLength={700}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              required
-            />
-          </label>
+          <div className="span-full">
+            <Field label="Razón obligatoria" htmlFor={`${fid}-razon-obligatoria`}>
+              <Textarea id={`${fid}-razon-obligatoria`}
+                rows={5}
+                maxLength={700}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                required
+              />
+            </Field>
+          </div>
         </HrModalFormShell>
       </FullScreenModal>
     </PageContent>

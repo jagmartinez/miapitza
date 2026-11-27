@@ -368,7 +368,7 @@ export default function Biometrics() {
                     {error && !challenge && (
                         <div className={`${form.alertDanger} ${form.actions}`} role="alert" aria-live="assertive">
                             <span>{error}</span>
-                            {profile.status !== 'ACTIVE' && profile.canEnroll !== false && <Button size="sm" variant="ghost" onClick={() => void beginEnrollment()} disabled={!online}>Reintentar</Button>}
+                            {profile.status !== 'ACTIVE' && profile.canEnroll !== false && <Button variant="ghost" onClick={() => void beginEnrollment()} disabled={!online}>Reintentar</Button>}
                         </div>
                     )}
                 </>

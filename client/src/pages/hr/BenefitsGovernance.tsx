@@ -1,5 +1,5 @@
-import { AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, FullScreenModal, IconButton, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea, formatNumber, toneFor } from '@/ui';
-import { useCallback, useEffect, useState } from 'react';
+import { AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea, toneFor } from '@/ui';
+import { useCallback, useEffect, useState, useId } from 'react';
 import {
   Search,
   Copy,
@@ -28,6 +28,7 @@ import type {
   SettlementPreviewPayload,
   TravelPolicyCategory,
 } from '../../types/hr-benefits-governance';
+import { formatHrMoney } from '../../utils/hrDisplay';
 import './benefits-governance.css';
 import form from '../../components/hr/hrForm.module.css';
 
@@ -113,6 +114,7 @@ const policyPayload = (
 });
 
 export default function BenefitsGovernance({ embedded = false }: { embedded?: boolean }) {
+  const fid = useId();
   const toast = useAppToast();
   const [tab, setTab] = useState<Tab>('SETTLEMENTS');
   const [loading, setLoading] = useState(true);
@@ -402,6 +404,34 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
   if (loading) return <HrLoading />;
   const activePolicy = policies.find((row) => row.status === 'ACTIVE');
   const draftSettlements = settlements.filter((row) => row.status === 'DRAFT').length;
+  const settlementFormId = `${fid}-settlement-form`;
+  const policyFormId = `${fid}-policy-form`;
+  const draftFormId = `${fid}-draft-form`;
+  const canPreviewSettlement = !busy && Boolean(previewInput.userId);
+  const canCreateSettlement = Boolean(
+    preview?.canSubmit &&
+      settlementMeta.cause &&
+      settlementMeta.justification &&
+      settlementMeta.evidence.trim() &&
+      !busy
+  );
+  const canSavePolicy =
+    !busy &&
+    Boolean(policy.sourceReference) &&
+    Boolean(policy.reason) &&
+    !(Boolean(editingPolicy) && !policyAdjustmentReason.trim());
+  const canSaveDraft = Boolean(
+    draftSettlement &&
+      !busy &&
+      draftAdjustmentReason.trim() &&
+      draftSettlement.cause.trim() &&
+      draftSettlement.justification.trim() &&
+      draftSettlement.evidenceReferences.length > 0 &&
+      !(
+        draftSettlement.lines.some((line) => line.type === 'INDEMNITY') &&
+        !draftIndemnityJustification.trim()
+      )
+  );
   return (
     <div className={`benefits-governance-page ${form.stack}`}>
       {!embedded && (
@@ -442,43 +472,56 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         {tab === 'SETTLEMENTS' ? (
           <>
             <FullScreenModal
-        footer={
+        footer={({ requestClose }) => (
           <>
-        <Button variant="ghost" onClick={() => setShowSettlement(false)}>
-          Cancelar
-        </Button>
-        <Button variant={preview ? 'secondary' : 'primary'} disabled={busy || !previewInput.userId} onClick={() => void runPreview()}>
-          Calcular vista previa
-        </Button>
+            <Button variant="ghost" onClick={requestClose}>
+              Cancelar
+            </Button>
+            <Button
+              type={preview ? 'button' : 'submit'}
+              form={preview ? undefined : settlementFormId}
+              variant={preview ? 'secondary' : 'primary'}
+              loading={busy && !preview}
+              disabled={!canPreviewSettlement}
+              onClick={preview ? () => void runPreview() : undefined}
+            >
+              Calcular vista previa
+            </Button>
             {preview && (
-              <Button variant="primary"
-                disabled={
-                  !preview.canSubmit ||
-                  !settlementMeta.cause ||
-                  !settlementMeta.justification ||
-                  !settlementMeta.evidence.trim() ||
-                  busy
-                }
-                onClick={() => void createSettlement()}
+              <Button
+                type="submit"
+                form={settlementFormId}
+                variant="primary"
+                disabled={!canCreateSettlement}
+                loading={busy}
               >
                 Crear borrador
               </Button>
             )}
           </>
-        }
+        )}
         isOpen={showSettlement}
         onClose={() => setShowSettlement(false)}
         title="Nueva liquidación"
       >
-              <section
+              <form
+                id={settlementFormId}
+                noValidate
                 className="governance-form governance-sidebar-form"
                 aria-label="Nueva liquidación"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (preview) {
+                    if (canCreateSettlement) void createSettlement();
+                  } else if (canPreviewSettlement) {
+                    void runPreview();
+                  }
+                }}
               >
-                <h3>1. Datos y base conciliada</h3>
-                <div className="governance-grid">
-                  <label>
-                    Empleado
-                    <AppSelect<string>
+                <FormSection step={1} title="Datos y base conciliada">
+                <FormGrid>
+                  <Field label="Empleado" htmlFor={`${fid}-empleado`}>
+                    <AppSelect<string> inputId={`${fid}-empleado`}
                       options={[
                         { value: String(0), label: 'Seleccione' },
                         ...users.map((user) => ({ value: String(user.id), label: user.name })),
@@ -492,10 +535,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                       }
                       isClearable={false}
                     />
-                  </label>
-                  <label>
-                    Fecha de terminación
-                    <DateInput
+                  </Field>
+                  <Field label="Fecha de terminación" htmlFor={`${fid}-fecha-de-terminacion`}>
+                    <DateInput id={`${fid}-fecha-de-terminacion`}
                      
                       value={previewInput.terminationDate}
                       onChange={(event) =>
@@ -505,10 +547,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Tipo de salida
-                    <AppSelect<string>
+                  </Field>
+                  <Field label="Tipo de salida" htmlFor={`${fid}-tipo-de-salida`}>
+                    <AppSelect<string> inputId={`${fid}-tipo-de-salida`}
                       options={[
                         { value: 'RESIGNATION', label: 'Renuncia' },
                         { value: 'DISMISSAL', label: 'Despido' },
@@ -525,10 +566,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                       }
                       isClearable={false}
                     />
-                  </label>
-                  <label>
-                    Días de salario pendientes
-                    <Input
+                  </Field>
+                  <Field label="Días de salario pendientes" htmlFor={`${fid}-dias-de-salario-pendientes`}>
+                    <Input id={`${fid}-dias-de-salario-pendientes`}
                       type="number"
                       min="0"
                       max="31"
@@ -540,10 +580,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Monto de aguinaldo pendiente
-                    <Input
+                  </Field>
+                  <Field label="Monto de aguinaldo pendiente" htmlFor={`${fid}-monto-de-aguinaldo-pendiente`}>
+                    <Input id={`${fid}-monto-de-aguinaldo-pendiente`}
                       value={settlementMeta.aguinaldoPendingAmount}
                       onChange={(event) =>
                         setSettlementMeta((value) => ({
@@ -553,10 +592,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                       }
                       placeholder="0.00"
                     />
-                  </label>
-                  <label>
-                    Referencia de conciliación aguinaldo
-                    <Input
+                  </Field>
+                  <Field label="Referencia de conciliación aguinaldo" htmlFor={`${fid}-referencia-de-conciliacion-aguinaldo`}>
+                    <Input id={`${fid}-referencia-de-conciliacion-aguinaldo`}
                       value={settlementMeta.aguinaldoBasisReference}
                       onChange={(event) =>
                         setSettlementMeta((value) => ({
@@ -565,10 +603,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Base mensual manual (solo variable/horaria)
-                    <Input
+                  </Field>
+                  <Field label="Base mensual manual (solo variable/horaria)" htmlFor={`${fid}-base-mensual-manual-solo`}>
+                    <Input id={`${fid}-base-mensual-manual-solo`}
                       value={settlementMeta.manualOrdinaryMonthlyBase}
                       onChange={(event) =>
                         setSettlementMeta((value) => ({
@@ -577,10 +614,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Referencia de base manual
-                    <Input
+                  </Field>
+                  <Field label="Referencia de base manual" htmlFor={`${fid}-referencia-de-base-manual`}>
+                    <Input id={`${fid}-referencia-de-base-manual`}
                       value={settlementMeta.manualBaseReference}
                       onChange={(event) =>
                         setSettlementMeta((value) => ({
@@ -589,9 +625,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                </div>
-                <Checkbox className="governance-check" checked={previewInput.indemnityApplicable}
+                  </Field>
+                </FormGrid>
+                <Checkbox checked={previewInput.indemnityApplicable}
                     onChange={(event) =>
                       setPreviewInput((value) => ({
                         ...value,
@@ -601,16 +637,15 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     } label={<>Evaluar indemnización por decisión legal expresa</>} />
                 {previewInput.indemnityApplicable && (
                   <>
-                    <Checkbox className="governance-check" checked={previewInput.indemnityConfirmed ?? false}
+                    <Checkbox checked={previewInput.indemnityConfirmed ?? false}
                         onChange={(event) =>
                           setPreviewInput((value) => ({
                             ...value,
                             indemnityConfirmed: event.target.checked,
                           }))
                         } label={<>Confirmo que la causal aplica</>} />
-                    <label>
-                      Justificación legal
-                      <Textarea
+                    <Field label="Justificación legal" htmlFor={`${fid}-justificacion-legal`}>
+                      <Textarea id={`${fid}-justificacion-legal`}
                         value={settlementMeta.indemnityJustification}
                         onChange={(event) =>
                           setSettlementMeta((value) => ({
@@ -619,12 +654,12 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                           }))
                         }
                       />
-                    </label>
+                    </Field>
                   </>
                 )}
+                </FormSection>
                 {preview && (
-                  <div className="preview-panel">
-                    <h3>2. Resultado verificable</h3>
+                  <FormSection step={2} title="Resultado verificable">
                     {preview.blockers.map((item) => (
                       <p className={form.alertDanger} key={item}>
                         Bloqueo: {item}
@@ -646,14 +681,13 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   { key: 'c0', header: 'Concepto', render: ({ line }) => <>{line.concept}</> },
                   { key: 'c1', header: 'Base', render: ({ line }) => <>{line.formulaBasis}</> },
                   { key: 'c2', header: 'Fuente', render: ({ line }) => <>{line.sourceReference}</> },
-                  { key: 'c3', header: 'Monto', type: 'money', render: ({ line }) => <>{preview.currency} {formatNumber(line.amount)}</> },
+                  { key: 'c3', header: 'Monto', type: 'money', render: ({ line }) => <>{formatHrMoney(preview.currency, line.amount)}</> },
                 ]}
               />
                     {preview.canSubmit && (
-                      <div className="governance-grid">
-                        <label>
-                          Causal
-                          <Input
+                      <FormGrid>
+                        <Field label="Causal" htmlFor={`${fid}-causal`}>
+                          <Input id={`${fid}-causal`}
                             value={settlementMeta.cause}
                             onChange={(event) =>
                               setSettlementMeta((value) => ({
@@ -662,10 +696,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                               }))
                             }
                           />
-                        </label>
-                        <label>
-                          Justificación operativa
-                          <Input
+                        </Field>
+                        <Field label="Justificación operativa" htmlFor={`${fid}-justificacion-operativa`}>
+                          <Input id={`${fid}-justificacion-operativa`}
                             value={settlementMeta.justification}
                             onChange={(event) =>
                               setSettlementMeta((value) => ({
@@ -674,24 +707,25 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                               }))
                             }
                           />
-                        </label>
-                        <label className="span-2">
-                          Soportes/referencias (uno por línea)
-                          <Textarea
-                            value={settlementMeta.evidence}
-                            onChange={(event) =>
-                              setSettlementMeta((value) => ({
-                                ...value,
-                                evidence: event.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                      </div>
+                        </Field>
+                        <div className="span-full">
+                          <Field label="Soportes/referencias (uno por línea)" htmlFor={`${fid}-soportes-referencias-uno-por`}>
+                            <Textarea id={`${fid}-soportes-referencias-uno-por`}
+                              value={settlementMeta.evidence}
+                              onChange={(event) =>
+                                setSettlementMeta((value) => ({
+                                  ...value,
+                                  evidence: event.target.value,
+                                }))
+                              }
+                            />
+                          </Field>
+                        </div>
+                      </FormGrid>
                     )}
-                  </div>
+                  </FormSection>
                 )}
-              </section>
+              </form>
             </FullScreenModal>
             <p className={form.help}>Cada liquidación conserva cálculo, aprobaciones, pago y constancia PDF.</p>
             <div>
@@ -738,7 +772,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   { key: 'c1', header: 'Empleado', render: (row) => (<span className={form.cellStack}><span className={form.cellTitle}>{row.employee.legalName}</span><span className={form.cellSub}>{row.employee.employeeCode}</span></span>) },
                   { key: 'c2', header: 'Salida', render: (row) => <>{row.terminationDate.slice(0, 10)}</> },
                   { key: 'c3', header: 'Estado', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status]}</Badge>) },
-                  { key: 'c4', header: 'Neto', render: (row) => <>{row.currency} {row.netPay}</> },
+                  { key: 'c4', header: 'Neto', type: 'money', render: (row) => <>{formatHrMoney(row.currency, row.netPay)}</> },
                   { key: 'c5', header: 'Acciones', type: 'actions', width: '100px', render: (row) => (<div className={form.rowActions}>
                             <IconButton size="sm" tooltip="Ver detalle" label={`Ver y gestionar ${row.code}`} onClick={() => void benefitsGovernanceClient .settlement(row.id) .then(setSelectedSettlement) .catch((error) => toast.error( getBenefitsErrorMessage(error, 'No se pudo abrir el detalle.') ) ) } icon={Eye} />
                             {row.status === 'DRAFT' && (
@@ -752,24 +786,22 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         ) : (
           <>
             <FullScreenModal
-        footer={
+        footer={({ requestClose }) => (
           <>
-        <Button variant="ghost" onClick={() => { setShowPolicy(false); setEditingPolicy(null); }}>
-          Cancelar
-        </Button>
-        <Button variant="primary"
-          disabled={
-            busy ||
-            !policy.sourceReference ||
-            !policy.reason ||
-            (Boolean(editingPolicy) && !policyAdjustmentReason.trim())
-          }
-          onClick={() => void savePolicy()}
-        >
-          {editingPolicy ? 'Guardar ajustes' : 'Guardar borrador'}
-        </Button>
+            <Button variant="ghost" onClick={requestClose}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form={policyFormId}
+              variant="primary"
+              loading={busy}
+              disabled={!canSavePolicy}
+            >
+              {editingPolicy ? 'Guardar ajustes' : 'Guardar borrador'}
+            </Button>
           </>
-        }
+        )}
         isOpen={showPolicy}
         onClose={() => {
                 setShowPolicy(false);
@@ -781,12 +813,19 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   : 'Nueva política de beneficios'
               }
       >
-              <section className="governance-form governance-sidebar-form">
-                <h3>{editingPolicy ? 'Ajustar versión borrador' : 'Configurar nueva versión'}</h3>
-                <div className="governance-grid">
-                  <label>
-                    Vigente desde
-                    <DateInput
+              <form
+                id={policyFormId}
+                noValidate
+                className="governance-form governance-sidebar-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (canSavePolicy) void savePolicy();
+                }}
+              >
+                <FormSection title={editingPolicy ? 'Ajustar versión borrador' : 'Configurar nueva versión'}>
+                <FormGrid>
+                  <Field label="Vigente desde" htmlFor={`${fid}-vigente-desde`}>
+                    <DateInput id={`${fid}-vigente-desde`}
                      
                       min={today}
                       value={policy.effectiveFrom}
@@ -794,10 +833,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         setPolicy((value) => ({ ...value, effectiveFrom: event.target.value }))
                       }
                     />
-                  </label>
-                  <label>
-                    Moneda
-                    <Input
+                  </Field>
+                  <Field label="Moneda" htmlFor={`${fid}-moneda`}>
+                    <Input id={`${fid}-moneda`}
                       maxLength={3}
                       value={policy.currency}
                       onChange={(event) =>
@@ -807,10 +845,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Máximo días de viaje
-                    <Input
+                  </Field>
+                  <Field label="Máximo días de viaje" htmlFor={`${fid}-maximo-dias-de-viaje`}>
+                    <Input id={`${fid}-maximo-dias-de-viaje`}
                       type="number"
                       value={policy.travelMaxDays}
                       onChange={(event) =>
@@ -820,10 +857,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Antigüedad mínima préstamo (meses)
-                    <Input
+                  </Field>
+                  <Field label="Antigüedad mínima préstamo (meses)" htmlFor={`${fid}-antiguedad-minima-prestamo-meses`}>
+                    <Input id={`${fid}-antiguedad-minima-prestamo-meses`}
                       type="number"
                       value={policy.loanMinTenureMonths}
                       onChange={(event) =>
@@ -833,19 +869,17 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Tope préstamo
-                    <Input
+                  </Field>
+                  <Field label="Tope préstamo" htmlFor={`${fid}-tope-prestamo`}>
+                    <Input id={`${fid}-tope-prestamo`}
                       value={policy.loanMaxAmount}
                       onChange={(event) =>
                         setPolicy((value) => ({ ...value, loanMaxAmount: event.target.value }))
                       }
                     />
-                  </label>
-                  <label>
-                    Máximo cuotas
-                    <Input
+                  </Field>
+                  <Field label="Máximo cuotas" htmlFor={`${fid}-maximo-cuotas`}>
+                    <Input id={`${fid}-maximo-cuotas`}
                       type="number"
                       value={policy.loanMaxInstallments}
                       onChange={(event) =>
@@ -855,10 +889,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Cuota máxima sobre salario (%)
-                    <Input
+                  </Field>
+                  <Field label="Cuota máxima sobre salario (%)" htmlFor={`${fid}-cuota-maxima-sobre-salario`}>
+                    <Input id={`${fid}-cuota-maxima-sobre-salario`}
                       value={policy.loanMaxPaymentPercent}
                       onChange={(event) =>
                         setPolicy((value) => ({
@@ -867,43 +900,45 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         }))
                       }
                     />
-                  </label>
-                  <label>
-                    Fuente normativa/política
-                    <Input
+                  </Field>
+                  <Field label="Fuente normativa/política" htmlFor={`${fid}-fuente-normativa-politica`}>
+                    <Input id={`${fid}-fuente-normativa-politica`}
                       value={policy.sourceReference}
                       onChange={(event) =>
                         setPolicy((value) => ({ ...value, sourceReference: event.target.value }))
                       }
                     />
-                  </label>
-                  <label className="span-2">
-                    Motivo de la versión
-                    <Textarea
-                      value={policy.reason}
-                      onChange={(event) =>
-                        setPolicy((value) => ({ ...value, reason: event.target.value }))
-                      }
-                    />
-                  </label>
-                  {editingPolicy && (
-                    <label className="span-2">
-                      Motivo del ajuste
-                      <Textarea
-                        value={policyAdjustmentReason}
-                        onChange={(event) => setPolicyAdjustmentReason(event.target.value)}
+                  </Field>
+                  <div className="span-full">
+                    <Field label="Motivo de la versión" htmlFor={`${fid}-motivo-de-la-version`}>
+                      <Textarea id={`${fid}-motivo-de-la-version`}
+                        value={policy.reason}
+                        onChange={(event) =>
+                          setPolicy((value) => ({ ...value, reason: event.target.value }))
+                        }
                       />
-                    </label>
+                    </Field>
+                  </div>
+                  {editingPolicy && (
+                    <div className="span-full">
+                      <Field label="Motivo del ajuste" htmlFor={`${fid}-motivo-del-ajuste`}>
+                        <Textarea id={`${fid}-motivo-del-ajuste`}
+                          value={policyAdjustmentReason}
+                          onChange={(event) => setPolicyAdjustmentReason(event.target.value)}
+                        />
+                      </Field>
+                    </div>
                   )}
-                </div>
-                <Checkbox className="governance-check" checked={policy.travelEvidenceRequired}
+                </FormGrid>
+                <Checkbox checked={policy.travelEvidenceRequired}
                     onChange={(event) =>
                       setPolicy((value) => ({
                         ...value,
                         travelEvidenceRequired: event.target.checked,
                       }))
                     } label={<>Exigir soporte para todos los gastos de viático</>} />
-                <h4>Categorías de viático</h4>
+                </FormSection>
+                <FormSection title="Categorías de viático">
                 <div className="governance-form-table">
                   <DataTable
                 ariaLabel="Categorías de viático"
@@ -963,7 +998,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               />
                 </div>
                 <div className={form.actionsEnd}>
-                  <Button
+                  <Button icon={Plus}
                     variant="secondary"
                     onClick={() =>
                       setPolicy((value) => ({
@@ -975,10 +1010,11 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                       }))
                     }
                   >
-                    <Plus size={15} /> Categoría
+                    Categoría
                   </Button>
                 </div>
-              </section>
+                </FormSection>
+              </form>
             </FullScreenModal>
             <p className={form.help}>Las corridas congelan la versión vigente. Una persona crea y otra activa.</p>
             <div>
@@ -1015,7 +1051,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                           {row.effectiveTo ? ` — ${row.effectiveTo.slice(0, 10)}` : ''}</>) },
                   { key: 'c2', header: 'Estado', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status] ?? row.status}</Badge>) },
                   { key: 'c3', header: 'Viáticos', render: (row) => <>{row.travelCategories.length} categorías · {row.travelMaxDays} días</> },
-                  { key: 'c4', header: 'Préstamos', render: (row) => <>Tope {row.currency} {row.loanMaxAmount} · {row.loanMaxInstallments} cuotas</> },
+                  { key: 'c4', header: 'Préstamos', render: (row) => <>Tope {formatHrMoney(row.currency, row.loanMaxAmount)} · {row.loanMaxInstallments} cuotas</> },
                   { key: 'c5', header: 'Acción', type: 'actions', width: '136px', render: (row) => (<div className={form.rowActions}>
                             {row.status === 'DRAFT' && (
                               <IconButton size="sm" tooltip="Editar" label={`Editar versión ${row.version}`} disabled={busy} onClick={() => openPolicyEditor(row)} icon={Pencil} />
@@ -1032,28 +1068,17 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         )}
       </section>
       <FullScreenModal
-        footer={editingSettlement && draftSettlement ? (
+        footer={editingSettlement && draftSettlement ? ({ requestClose }) => (
           <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setEditingSettlement(null);
-                setDraftSettlement(null);
-              }}
-            >
+            <Button variant="ghost" onClick={requestClose}>
               Cancelar
             </Button>
-            <Button variant="primary"
-              disabled={
-                busy ||
-                !draftAdjustmentReason.trim() ||
-                !draftSettlement.cause.trim() ||
-                !draftSettlement.justification.trim() ||
-                draftSettlement.evidenceReferences.length === 0 ||
-                (draftSettlement.lines.some((line) => line.type === 'INDEMNITY') &&
-                  !draftIndemnityJustification.trim())
-              }
-              onClick={() => void saveSettlementDraft()}
+            <Button
+              type="submit"
+              form={draftFormId}
+              variant="primary"
+              loading={busy}
+              disabled={!canSaveDraft}
             >
               Guardar ajustes
             </Button>
@@ -1067,18 +1092,23 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         title={editingSettlement ? `Editar ${editingSettlement.code}` : 'Editar liquidación'}
       >
         {editingSettlement && draftSettlement && (
-          <section
+          <form
+            id={draftFormId}
+            noValidate
             className="governance-form governance-sidebar-form"
             aria-label="Editar liquidación borrador"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canSaveDraft) void saveSettlementDraft();
+            }}
           >
-            <p className={form.help}>
-              Los cambios se guardan con control de revisión. Una persona distinta deberá revisar y
-              aprobar.
-            </p>
-            <div className="governance-grid">
-              <label>
-                Tipo de salida
-                <AppSelect<string>
+            <FormSection
+              title="Datos de la liquidación"
+              description="Los cambios se guardan con control de revisión. Una persona distinta deberá revisar y aprobar."
+            >
+            <FormGrid>
+              <Field label="Tipo de salida" htmlFor={`${fid}-tipo-de-salida-2`}>
+                <AppSelect<string> inputId={`${fid}-tipo-de-salida-2`}
                   options={[
                     { value: 'RESIGNATION', label: 'Renuncia' },
                     { value: 'DISMISSAL', label: 'Despido' },
@@ -1094,10 +1124,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   }
                   isClearable={false}
                 />
-              </label>
-              <label>
-                Fecha de terminación
-                <DateInput
+              </Field>
+              <Field label="Fecha de terminación" htmlFor={`${fid}-fecha-de-terminacion-2`}>
+                <DateInput id={`${fid}-fecha-de-terminacion-2`}
                  
                   value={draftSettlement.terminationDate}
                   onChange={(event) =>
@@ -1106,10 +1135,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     )
                   }
                 />
-              </label>
-              <label>
-                Moneda
-                <Input
+              </Field>
+              <Field label="Moneda" htmlFor={`${fid}-moneda-2`}>
+                <Input id={`${fid}-moneda-2`}
                   maxLength={3}
                   value={draftSettlement.currency}
                   onChange={(event) =>
@@ -1118,10 +1146,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     )
                   }
                 />
-              </label>
-              <label>
-                Causal
-                <Input
+              </Field>
+              <Field label="Causal" htmlFor={`${fid}-causal-2`}>
+                <Input id={`${fid}-causal-2`}
                   value={draftSettlement.cause}
                   onChange={(event) =>
                     setDraftSettlement((value) =>
@@ -1129,39 +1156,42 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     )
                   }
                 />
-              </label>
-              <label className="span-2">
-                Justificación
-                <Textarea
-                  value={draftSettlement.justification}
-                  onChange={(event) =>
-                    setDraftSettlement((value) =>
-                      value ? { ...value, justification: event.target.value } : value
-                    )
-                  }
-                />
-              </label>
-              <label className="span-2">
-                Soportes/referencias (uno por línea)
-                <Textarea
-                  value={draftSettlement.evidenceReferences.join('\n')}
-                  onChange={(event) =>
-                    setDraftSettlement((value) =>
-                      value
-                        ? {
-                            ...value,
-                            evidenceReferences: event.target.value
-                              .split('\n')
-                              .map((item) => item.trim())
-                              .filter(Boolean),
-                          }
-                        : value
-                    )
-                  }
-                />
-              </label>
-            </div>
-            <h4>Conceptos de liquidación</h4>
+              </Field>
+              <div className="span-full">
+                <Field label="Justificación" htmlFor={`${fid}-justificacion`}>
+                  <Textarea id={`${fid}-justificacion`}
+                    value={draftSettlement.justification}
+                    onChange={(event) =>
+                      setDraftSettlement((value) =>
+                        value ? { ...value, justification: event.target.value } : value
+                      )
+                    }
+                  />
+                </Field>
+              </div>
+              <div className="span-full">
+                <Field label="Soportes/referencias (uno por línea)" htmlFor={`${fid}-soportes-referencias-uno-por-2`}>
+                  <Textarea id={`${fid}-soportes-referencias-uno-por-2`}
+                    value={draftSettlement.evidenceReferences.join('\n')}
+                    onChange={(event) =>
+                      setDraftSettlement((value) =>
+                        value
+                          ? {
+                              ...value,
+                              evidenceReferences: event.target.value
+                                .split('\n')
+                                .map((item) => item.trim())
+                                .filter(Boolean),
+                            }
+                          : value
+                      )
+                    }
+                  />
+                </Field>
+              </div>
+            </FormGrid>
+            </FormSection>
+            <FormSection title="Conceptos de liquidación">
             <div className="governance-form-table">
               <DataTable
                 ariaLabel="Conceptos de liquidación"
@@ -1219,7 +1249,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               />
             </div>
             <div className={form.actionsEnd}>
-              <Button
+              <Button icon={Plus}
                 variant="secondary"
                 onClick={() =>
                   setDraftSettlement((value) =>
@@ -1241,26 +1271,25 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   )
                 }
               >
-                <Plus size={15} /> Concepto
+                Concepto
               </Button>
             </div>
             {draftSettlement.lines.some((line) => line.type === 'INDEMNITY') && (
-              <label>
-                Justificación legal de indemnización
-                <Textarea
+              <Field label="Justificación legal de indemnización" htmlFor={`${fid}-justificacion-legal-de-indemnizacion`}>
+                <Textarea id={`${fid}-justificacion-legal-de-indemnizacion`}
                   value={draftIndemnityJustification}
                   onChange={(event) => setDraftIndemnityJustification(event.target.value)}
                 />
-              </label>
+              </Field>
             )}
-            <label>
-              Motivo del ajuste
-              <Textarea
+            <Field label="Motivo del ajuste" htmlFor={`${fid}-motivo-del-ajuste-2`}>
+              <Textarea id={`${fid}-motivo-del-ajuste-2`}
                 value={draftAdjustmentReason}
                 onChange={(event) => setDraftAdjustmentReason(event.target.value)}
               />
-            </label>
-          </section>
+            </Field>
+            </FormSection>
+          </form>
         )}
       </FullScreenModal>
       <FullScreenModal
@@ -1279,6 +1308,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               Cancelar
             </Button>
             <Button variant="primary"
+              loading={busy}
               disabled={
                 busy ||
                 !actionConfirmed ||
@@ -1294,7 +1324,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             <>
           {selectedSettlement.allowedActions.map((action) => (
             <Button
-              size="sm"
               variant={['REJECT', 'VOID'].includes(action) ? 'danger' : 'secondary'}
               key={action}
               disabled={busy}
@@ -1310,7 +1339,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
           ))}
           {['APPROVED', 'PAID'].includes(selectedSettlement.status) && (
             <Button
-              size="sm"
               variant="ghost"
               onClick={() =>
                 void benefitsGovernanceClient.downloadPdf(
@@ -1318,8 +1346,8 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   selectedSettlement.code
                 )
               }
-            >
-              <FileDown size={15} /> PDF
+             icon={FileDown}>
+              PDF
             </Button>
           )}
             </>
@@ -1361,13 +1389,13 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   { key: 'c0', header: 'Concepto', render: ({ line }) => <>{line.concept}</> },
                   { key: 'c1', header: 'Base/fuente', render: ({ line }) => (<>{line.formulaBasis}
                       <small>{line.sourceReference}</small></>) },
-                  { key: 'c2', header: 'Monto', type: 'money', render: ({ line }) => <>{selectedSettlement.currency} {formatNumber(line.amount)}</> },
+                  { key: 'c2', header: 'Monto', type: 'money', render: ({ line }) => <>{formatHrMoney(selectedSettlement.currency, line.amount)}</> },
                 ]}
               />
             <div className="governance-total">
               <span>Neto a pagar</span>
               <strong>
-                {selectedSettlement.currency} {selectedSettlement.netPay}
+                {formatHrMoney(selectedSettlement.currency, selectedSettlement.netPay)}
               </strong>
             </div>
             <h4>Soportes y referencias</h4>
@@ -1379,23 +1407,21 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             {settlementAction ? (
               <div className="governance-action-form">
                 <h4>{actionLabel[settlementAction] ?? settlementAction}</h4>
-                <label>
-                  Motivo
-                  <Textarea
+                <Field label="Motivo" htmlFor={`${fid}-motivo`}>
+                  <Textarea id={`${fid}-motivo`}
                     value={actionReason}
                     onChange={(event) => setActionReason(event.target.value)}
                   />
-                </label>
+                </Field>
                 {['PAY', 'VOID'].includes(settlementAction) && (
-                  <label>
-                    Referencia documental/financiera
-                    <Input
+                  <Field label="Referencia documental/financiera" htmlFor={`${fid}-referencia-documental-financiera`}>
+                    <Input id={`${fid}-referencia-documental-financiera`}
                       value={actionReference}
                       onChange={(event) => setActionReference(event.target.value)}
                     />
-                  </label>
+                  </Field>
                 )}
-                <Checkbox className="governance-check" checked={actionConfirmed}
+                <Checkbox checked={actionConfirmed}
                     onChange={(event) => setActionConfirmed(event.target.checked)} label={<>Confirmo esta decisión y su efecto en el expediente</>} />
               </div>
             ) : null}
@@ -1409,6 +1435,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             Cancelar
           </Button>
           <Button variant="primary"
+            loading={busy}
             disabled={busy || !policyActivationConfirmed}
             onClick={() => {
               setBusy(true);
@@ -1446,7 +1473,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               anterior se cerrará el día previo, sin alterar corridas históricas.
             </p>
             <p>Por segregación de funciones, quien creó esta versión no puede activarla.</p>
-            <Checkbox className="governance-check" checked={policyActivationConfirmed}
+            <Checkbox checked={policyActivationConfirmed}
                 onChange={(event) => setPolicyActivationConfirmed(event.target.checked)} label={<>Confirmo que revisé vigencia, topes, categorías y fuente</>} />
           </div>
         )}

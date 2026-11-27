@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FullScreenModal, type ModalTab } from './FullScreenModal';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Drawer } from './Drawer';
 
 function Harness({ dirty, onClose, tabs, onTabChange }: { dirty?: boolean; onClose: () => void; tabs?: ModalTab[]; onTabChange?: (id: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -125,5 +126,21 @@ describe('FullScreenModal compact', () => {
   it('adds the compact modifier for short dialogs', () => {
     render(<FullScreenModal isOpen onClose={() => {}} title="Aviso" size="compact"><p>x</p></FullScreenModal>);
     expect(screen.getByRole('dialog').className).toContain('ui-fsm--compact');
+  });
+});
+
+describe('Drawer', () => {
+  it('pie con footerStart a la izquierda y footer como función con requestClose', async () => {
+    const onClose = vi.fn();
+    render(
+      <Drawer isOpen title="Filtros" onClose={onClose} footerStart={<button>Limpiar</button>} footer={({ requestClose }) => <button onClick={requestClose}>Cancelar</button>}>
+        <p>x</p>
+      </Drawer>,
+    );
+    expect(screen.getByRole('button', { name: 'Limpiar' }).closest('.ui-drawer__footer-start')).not.toBeNull();
+    const cancel = screen.getByRole('button', { name: 'Cancelar' });
+    expect(cancel.closest('.ui-drawer__footer-end')).not.toBeNull();
+    await userEvent.click(cancel);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

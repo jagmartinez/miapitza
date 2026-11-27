@@ -1,7 +1,7 @@
 .kitchen-notification-shell {
     position: fixed;
-    top: 16px;
-    right: 18px;
+    top: var(--ui-space-4);
+    right: var(--ui-space-4);
     z-index: 900;
 }
 
@@ -11,59 +11,43 @@
     z-index: 30;
 }
 
-.kitchen-notification-shell.is-inline .kitchen-notification-trigger {
-    width: 40px;
-    height: 40px;
-    box-shadow: none;
-}
-
 .kitchen-notification-shell.is-inline .kitchen-notification-panel {
     position: absolute;
     top: 100%;
     right: 0;
 }
 
-.kitchen-notification-trigger {
-    position: relative;
-    width: 48px;
-    height: 48px;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--ui-border);
-    border-radius: 50%;
-    color: var(--ui-text);
-    background: var(--ui-surface);
-    box-shadow: var(--shadow-md);
-    cursor: pointer;
-}
+.kitchen-notification-trigger { position: relative; display: inline-flex; }
 
 .kitchen-notification-count {
     position: absolute;
-    top: -5px;
-    right: -5px;
-    min-width: 22px;
-    height: 22px;
+    top: -6px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
     padding: 0 5px;
     display: grid;
     place-items: center;
     border: 2px solid var(--ui-surface);
     border-radius: 999px;
     background: var(--ui-danger);
-    color: var(--ui-primary-fg);
-    font-size: 0.7rem;
-    font-weight: 800;
+    color: var(--ui-danger-fg);
+    font-size: var(--ui-text-2xs);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
 }
 
 .kitchen-notification-panel {
     width: min(390px, calc(100vw - 24px));
     max-height: min(650px, calc(100vh - 90px));
-    margin-top: 10px;
+    margin-top: var(--ui-space-2);
     display: flex;
     flex-direction: column;
     border: 1px solid var(--ui-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--ui-radius-lg);
     background: var(--ui-surface);
-    box-shadow: var(--shadow-xl);
+    box-shadow: var(--ui-shadow-overlay);
     overflow: hidden;
 }
 
@@ -71,13 +55,14 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px;
+    gap: var(--ui-space-2);
+    padding: var(--ui-space-3) var(--ui-space-4);
     border-bottom: 1px solid var(--ui-border);
 }
 
 .kitchen-notification-panel header div { display: grid; gap: 2px; }
-.kitchen-notification-panel header small { color: var(--ui-text-muted); }
-.kitchen-notification-panel header button { border: 0; background: transparent; color: var(--ui-text); cursor: pointer; }
+.kitchen-notification-panel header strong { color: var(--ui-text); }
+.kitchen-notification-panel header small { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
 
 .kitchen-notification-list {
     overflow: auto;
@@ -85,43 +70,31 @@
     scrollbar-width: thin;
     scrollbar-color: var(--ui-border) transparent;
 }
-.kitchen-notification-list::-webkit-scrollbar { width: 6px; }
-.kitchen-notification-list::-webkit-scrollbar-track { background: transparent; }
-.kitchen-notification-list::-webkit-scrollbar-thumb { background: var(--ui-border); border-radius: 3px; }
-.kitchen-notification-list::-webkit-scrollbar-thumb:hover { background: var(--ui-text-muted); }
-.kitchen-notification-empty { padding: 42px 16px; display: grid; place-items: center; gap: 8px; color: var(--ui-text-muted); }
 
 .kitchen-notification-item {
     display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 12px;
-    padding: 14px 16px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--ui-space-3);
+    padding: var(--ui-space-3) var(--ui-space-4);
     border-bottom: 1px solid var(--ui-border);
 }
 
-.kitchen-notification-item.status-unread { border-left: 4px solid var(--ui-primary); }
-.kitchen-notification-item p { margin: 4px 0; color: var(--ui-text); font-size: 0.9rem; }
-.kitchen-notification-item time { color: var(--ui-text-muted); font-size: 0.75rem; }
-.kitchen-notification-item > button {
-    align-self: center;
-    min-height: 44px;
-    padding: 8px 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: 1px solid var(--ui-success);
-    border-radius: var(--radius-md);
-    background: transparent;
-    color: var(--ui-success);
-    font-weight: 700;
-    cursor: pointer;
-}
-.kitchen-notification-item > button:disabled { opacity: .55; cursor: wait; }
+.kitchen-notification-item.status-unread { box-shadow: inset 3px 0 0 var(--ui-primary); }
+.kitchen-notification-item strong { color: var(--ui-text); }
+.kitchen-notification-item p { margin: var(--ui-space-1) 0; color: var(--ui-text); font-size: var(--ui-text-sm); overflow-wrap: anywhere; }
+.kitchen-notification-item time { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
 
-@media (max-width: 768px) {
-    .kitchen-notification-shell { top: 10px; right: 10px; }
+@media (max-width: 640px) {
+    .kitchen-notification-shell { top: var(--ui-space-2); right: var(--ui-space-2); }
     .kitchen-notification-shell.is-inline { top: auto; right: auto; }
-    .kitchen-notification-panel { max-height: calc(100vh - 82px); }
-    .kitchen-notification-item { grid-template-columns: 1fr; }
-    .kitchen-notification-item > button { justify-content: center; }
+    /* En teléfonos el panel se fija al ancho de la pantalla para no salirse por la izquierda. */
+    .kitchen-notification-shell.is-inline .kitchen-notification-panel {
+        position: fixed;
+        top: 4rem;
+        left: var(--ui-space-3);
+        right: var(--ui-space-3);
+        width: auto;
+    }
+    .kitchen-notification-item { grid-template-columns: minmax(0, 1fr); }
 }

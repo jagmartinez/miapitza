@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { Button, ConfirmDialog, Field, FullScreenModal, PageContent, PageHeader, Textarea } from '@/ui';
+import { Button, ConfirmDialog, Field, FullScreenModal, LoadErrorState, PageContent, PageHeader, Skeleton, Textarea } from '@/ui';
 import { branchesAPI, inventoryCountsAPI } from '../../services/api';
 import { getIdempotentAttempt, isAmbiguousMutationFailure, type IdempotentAttempt } from '../../utils/idempotency';
 import type { Branch } from '../../types';
@@ -155,10 +155,16 @@ export default function InventoryCountReview() {
                 <PageHeader
                     title={detail ? `Conteo #${detail.id}` : 'Conteo de inventario'}
                     description="Revisa las diferencias contra la existencia del sistema al momento de contar."
-                    actions={<Button variant="ghost" size="sm" icon={ArrowLeft} onClick={back}>Volver</Button>}
+                    actions={<Button variant="ghost" icon={ArrowLeft} onClick={back}>Volver</Button>}
                 />
-                {detailError && <p className="state-error" role="alert">{detailError}</p>}
-                {!detail && !detailError && <p className="state-placeholder" role="status">Cargando...</p>}
+                {detailError && <LoadErrorState message={detailError} onRetry={() => void loadDetail(openId)} />}
+                {!detail && !detailError && (
+                    <div className="count-loading" role="status" aria-label="Cargando...">
+                        <Skeleton height={20} width="60%" />
+                        <Skeleton height={88} />
+                        <Skeleton height={240} />
+                    </div>
+                )}
                 {detail && (
                     <InventoryCountDetailView
                         detail={detail}
@@ -180,14 +186,14 @@ export default function InventoryCountReview() {
                     onClose={closeDialog}
                     title="Pedir reconteo"
                     size="compact"
-                    footer={(
-                        <div className="count-dialog-actions">
-                            <Button variant="secondary" onClick={closeDialog}>Cancelar</Button>
-                            <Button variant="primary" disabled={busy || !canRecount(selected)} onClick={recount}>Pedir reconteo</Button>
-                        </div>
+                    footer={({ requestClose }) => (
+                        <>
+                            <Button variant="secondary" onClick={requestClose}>Cancelar</Button>
+                            <Button variant="primary" loading={busy} disabled={!canRecount(selected)} onClick={recount}>Pedir reconteo</Button>
+                        </>
                     )}
                 >
-                    <div className="count-dialog-field">
+                    <div className="count-dialog">
                         <p>Se devolverán {selected.length} {selected.length === 1 ? 'producto' : 'productos'} al contador.</p>
                         <Field label="Nota (opcional)" htmlFor="count-recount-note">
                             <Textarea id="count-recount-note" maxLength={500} value={text} onChange={(e) => setText(e.target.value)} />
@@ -199,14 +205,14 @@ export default function InventoryCountReview() {
                     onClose={closeDialog}
                     title="Rechazar conteo"
                     size="compact"
-                    footer={(
-                        <div className="count-dialog-actions">
-                            <Button variant="secondary" onClick={closeDialog}>Cancelar</Button>
-                            <Button variant="danger" disabled={busy || text.trim().length < REASON_MIN} onClick={reject}>Rechazar</Button>
-                        </div>
+                    footer={({ requestClose }) => (
+                        <>
+                            <Button variant="secondary" onClick={requestClose}>Cancelar</Button>
+                            <Button variant="danger" loading={busy} disabled={text.trim().length < REASON_MIN} onClick={reject}>Rechazar</Button>
+                        </>
                     )}
                 >
-                    <div className="count-dialog-field">
+                    <div className="count-dialog">
                         <Field label="Motivo" htmlFor="count-reject-reason">
                             <Textarea id="count-reject-reason" maxLength={500} value={text} onChange={(e) => setText(e.target.value)} />
                         </Field>
@@ -217,14 +223,14 @@ export default function InventoryCountReview() {
                     onClose={closeDialog}
                     title="Cancelar conteo"
                     size="compact"
-                    footer={(
-                        <div className="count-dialog-actions">
-                            <Button variant="secondary" onClick={closeDialog}>Volver</Button>
-                            <Button variant="danger" disabled={busy || text.trim().length < REASON_MIN} onClick={cancelDraft}>Cancelar conteo</Button>
-                        </div>
+                    footer={({ requestClose }) => (
+                        <>
+                            <Button variant="secondary" onClick={requestClose}>Volver</Button>
+                            <Button variant="danger" loading={busy} disabled={text.trim().length < REASON_MIN} onClick={cancelDraft}>Cancelar conteo</Button>
+                        </>
                     )}
                 >
-                    <div className="count-dialog-field">
+                    <div className="count-dialog">
                         <p>El conteo sigue en curso. Al cancelarlo se descarta lo contado y la bodega queda libre para un conteo nuevo.</p>
                         <Field label="Motivo" htmlFor="count-cancel-reason">
                             <Textarea id="count-cancel-reason" maxLength={500} value={text} onChange={(e) => setText(e.target.value)} />
@@ -250,9 +256,10 @@ export default function InventoryCountReview() {
                 title="Conteos de inventario"
                 description="Revisa los conteos ciegos enviados, pide reconteos y aprueba los ajustes."
             />
-            {listError && <p className="state-error" role="alert">{listError}</p>}
-            {loading && <p className="state-placeholder" role="status">Cargando...</p>}
             <InventoryCountListView
+                loading={loading}
+                error={listError}
+                onRetry={() => setReloadTick((t) => t + 1)}
                 items={items}
                 total={total}
                 pageSize={PAGE_SIZE}

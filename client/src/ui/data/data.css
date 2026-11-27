@@ -6,20 +6,25 @@
 .ui-table { display: block; width: 100%; border-collapse: collapse; font-size: 14px; color: var(--ui-text); }
 .ui-table thead, .ui-table tbody, .ui-table tfoot { display: block; }
 .ui-table thead tr, .ui-table tbody tr, .ui-table tfoot tr { display: grid; align-items: center; }
-.ui-table thead tr { background: var(--ui-surface-2); border-bottom: 1px solid var(--ui-border); }
+.ui-table thead tr { border-bottom: 1px solid var(--ui-border); }
+.ui-datatable--flat > .ui-datatable__scroll { background: transparent; border: 0; border-radius: 0; }
 .ui-table tbody tr { border-bottom: 1px solid var(--ui-border); min-height: 48px; }
 .ui-table tbody tr:last-child { border-bottom: 0; }
-.ui-table tfoot tr { border-top: 1px solid var(--ui-border); background: var(--ui-surface-2); font-weight: 600; }
+.ui-table tfoot tr { border-top: 1px solid var(--ui-border); font-weight: 600; }
 .ui-cell { padding: var(--ui-space-2) var(--ui-space-4); text-align: left; min-width: 0; overflow-wrap: break-word; }
 .ui-cell .ui-badge { white-space: nowrap; }
 th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); text-transform: uppercase; letter-spacing: .02em; }
 .ui-cell--numeric { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Encabezados en una sola línea: el mínimo de cada pista (columnTemplate) los hace caber; si no, se recortan con «…» y el título completo queda en el tooltip. */
 th.ui-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; padding-top: var(--ui-space-3); padding-bottom: var(--ui-space-3); }
+.ui-cell--align-left { text-align: left; }
+.ui-cell--align-center { text-align: center; }
+.ui-cell--align-right { text-align: right; }
 .ui-cell--actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--ui-space-1); }
 th.ui-cell--actions { display: block; text-align: right; }
 .ui-row--clickable { cursor: pointer; }
 .ui-row--clickable:hover { background: var(--ui-surface-2); }
+.ui-row--clickable:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: -2px; }
 .ui-row--primary { background: var(--ui-primary-soft); }
 .ui-row--success { background: var(--ui-success-soft); }
 .ui-row--warning { background: var(--ui-warning-soft); }
@@ -38,6 +43,7 @@ th.ui-cell--actions { display: block; text-align: right; }
   background: transparent; color: var(--ui-text); border: 1px solid transparent; border-radius: var(--ui-radius-md);
 }
 .ui-pagination__page:hover { background: var(--ui-surface-2); }
+.ui-pagination__page:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 1px; }
 .ui-pagination__page.is-active { background: var(--ui-primary-soft); color: var(--ui-primary); border-color: var(--ui-primary); font-weight: 600; }
 .ui-pagination__ellipsis { padding: 0 var(--ui-space-1); }
 
@@ -55,14 +61,17 @@ th.ui-cell--actions { display: block; text-align: right; }
 .ui-toolbar .ui-segmented { height: var(--ui-control-md); align-items: stretch; }
 .ui-toolbar__filters { flex: 1 1 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); min-width: 0; }
 /* Filtros contiguos a la izquierda, sin huecos: crecen hasta 18rem (buscador 24rem) y bajan de línea solo si no caben. */
-.ui-toolbar__filters > * { flex: 1 0 12.5rem; min-width: 0; max-width: 18rem; }
+.ui-toolbar__filters > *, .ui-toolbar__filters > .app-select-anchor > * { flex: 1 0 12.5rem; min-width: 0; max-width: 18rem; }
 .ui-toolbar__filters > :is(.ui-input:has(input[type="search"], input[placeholder^="Buscar"]), :has(.ui-input input[type="search"], .ui-input input[placeholder^="Buscar"])) { flex-basis: 15rem; max-width: 24rem; }
 .ui-toolbar__actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); min-width: 0; max-width: 100%; }
 .ui-toolbar__filters > [role="group"] { flex: 0 0 auto; max-width: none; }
 @media (max-width: 640px) {
   .ui-toolbar { flex-wrap: wrap; }
   .ui-toolbar__filters { flex-basis: 100%; }
-  .ui-toolbar__filters > * { flex: 1 1 100%; max-width: none; }
+  .ui-toolbar__filters > *, .ui-toolbar__filters > .app-select-anchor > * { flex: 1 1 100%; max-width: none; }
+  .ui-toolbar__actions { flex: 1 1 100%; }
+  .ui-toolbar__filters > .ui-segmented, .ui-toolbar__filters > [role="group"] { flex: 1 1 100%; max-width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .ui-toolbar .ui-segmented__btn { flex: 0 0 auto; white-space: nowrap; }
 }
 
 .ui-loaderror { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--ui-space-2) var(--ui-space-3); padding: var(--ui-space-5) var(--ui-space-3); color: var(--ui-danger); }

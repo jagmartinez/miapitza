@@ -8,10 +8,10 @@ import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
 import {
     AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, Switch, TableToolbar, Tabs, toneFor,
+    LoadErrorState, PageContent, PageHeader, Switch, TableToolbar, Tabs, toneFor,
 } from '@/ui';
 import { Zap, RefreshCw, Search, Plus, Trash2 } from 'lucide-react';
-import styles from './catalog.module.css';
+import styles from './PedidosYaIntegration.module.css';
 
 interface PYConfig {
     id?: number;
@@ -79,6 +79,11 @@ export default function PedidosYaIntegration() {
     const [menuItems, setMenuItems] = useState<MenuItemOption[]>([]);
     const [connectionStatus, setConnectionStatus] = useState<{ tested: boolean; success?: boolean; message?: string }>({ tested: false });
     const [saving, setSaving] = useState(false);
+    const [testing, setTesting] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [tabLoading, setTabLoading] = useState<Record<string, boolean>>({});
+    const [tabError, setTabError] = useState<Record<string, string | null>>({});
 
     // Mapping sidebar
     const [mappingSidebarOpen, setMappingSidebarOpen] = useState(false);
@@ -87,6 +92,7 @@ export default function PedidosYaIntegration() {
 
     const loadAll = useCallback(async () => {
         setLoading(true);
+        setLoadError(null);
         try {
             const [configRes, menuRes] = await Promise.all([
                 pedidosYaAPI.getConfig(),
@@ -99,31 +105,40 @@ export default function PedidosYaIntegration() {
                 id: mi.id, name: mi.name, price: mi.price,
             })));
         } catch (err) {
-            showError(getApiErrorMessage(err, 'No se pudo cargar la configuración de PedidosYa.'));
+            const message = getApiErrorMessage(err, 'No se pudo cargar la configuración de PedidosYa.');
+            setLoadError(message);
+            showError(message);
         }
         setLoading(false);
     }, [showError]);
 
-    const loadMappings = useCallback(async () => {
+    const loadTab = useCallback(async <T,>(key: string, fetcher: () => Promise<{ data: { data?: T[] } }>, apply: (rows: T[]) => void, fallback: string) => {
+        setTabLoading((cur) => ({ ...cur, [key]: true }));
+        setTabError((cur) => ({ ...cur, [key]: null }));
         try {
-            const res = await pedidosYaAPI.getMappings();
-            setMappings(res.data.data || []);
-        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar los mapeos.')); }
+            const res = await fetcher();
+            apply(res.data.data || []);
+        } catch (err) {
+            const message = getApiErrorMessage(err, fallback);
+            setTabError((cur) => ({ ...cur, [key]: message }));
+            showError(message);
+        } finally {
+            setTabLoading((cur) => ({ ...cur, [key]: false }));
+        }
     }, [showError]);
 
-    const loadOrderSyncs = useCallback(async () => {
-        try {
-            const res = await pedidosYaAPI.getOrderSyncs();
-            setOrderSyncs(res.data.data || []);
-        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar las órdenes sincronizadas.')); }
-    }, [showError]);
-
-    const loadWebhookLogs = useCallback(async () => {
-        try {
-            const res = await pedidosYaAPI.getWebhookLogs();
-            setWebhookLogs(res.data.data || []);
-        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar los logs del webhook.')); }
-    }, [showError]);
+    const loadMappings = useCallback(
+        () => loadTab<ProductMapping>('mappings', () => pedidosYaAPI.getMappings(), setMappings, 'No se pudieron cargar los mapeos.'),
+        [loadTab],
+    );
+    const loadOrderSyncs = useCallback(
+        () => loadTab<OrderSync>('orders', () => pedidosYaAPI.getOrderSyncs(), setOrderSyncs, 'No se pudieron cargar las órdenes sincronizadas.'),
+        [loadTab],
+    );
+    const loadWebhookLogs = useCallback(
+        () => loadTab<WebhookLog>('logs', () => pedidosYaAPI.getWebhookLogs(), setWebhookLogs, 'No se pudieron cargar los logs del webhook.'),
+        [loadTab],
+    );
 
     useEffect(() => {
         void loadAll();
@@ -153,22 +168,28 @@ export default function PedidosYaIntegration() {
     };
 
     const handleTestConnection = async () => {
+        setTesting(true);
         setConnectionStatus({ tested: false });
         try {
             const res = await pedidosYaAPI.testConnection();
             setConnectionStatus({ tested: true, ...res.data.data });
         } catch {
             setConnectionStatus({ tested: true, success: false, message: 'Error de conexión' });
+        } finally {
+            setTesting(false);
         }
     };
 
     const handleSyncMenu = async () => {
+        setSyncing(true);
         try {
             const res = await pedidosYaAPI.syncMenu();
             success(`Menú sincronizado: ${res.data.data.synced} items`);
             loadAll();
         } catch (err) {
             showError(getApiErrorMessage(err, 'Error al sincronizar menú'));
+        } finally {
+            setSyncing(false);
         }
     };
 
@@ -218,12 +239,23 @@ export default function PedidosYaIntegration() {
                         {config.lastSyncAt && <span>Última sync: {new Date(config.lastSyncAt).toLocaleString('es-NI')}</span>}
                     </span>
                 }
+                actions={activeTab === 'config' && !loading && !loadError ? (
+                    <>
+                        {isSuperAdmin && <Button icon={Zap} onClick={handleTestConnection} loading={testing}>Probar conexión</Button>}
+                        {isSuperAdmin && <Button icon={RefreshCw} onClick={handleSyncMenu} loading={syncing}>Sincronizar menú</Button>}
+                        <Button variant="primary" onClick={handleSaveConfig} loading={saving}>
+                            Guardar configuración
+                        </Button>
+                    </>
+                ) : undefined}
             />
 
             <Tabs ariaLabel="Secciones de PedidosYa" tabs={pageTabs} active={activeTab} onChange={(id) => setActiveTab(id as ActiveTab)} />
 
             {loading ? (
                 <p className={styles.muted} role="status">Cargando integración PedidosYa…</p>
+            ) : loadError ? (
+                <LoadErrorState message={loadError} onRetry={() => void loadAll()} />
             ) : (
                 <>
                     {/* ── CONFIG TAB ── */}
@@ -305,14 +337,6 @@ export default function PedidosYaIntegration() {
                                 </FormGrid>
                             </FormSection>
 
-                            <div className={styles.inline}>
-                                <Button variant="primary" onClick={handleSaveConfig} loading={saving}>
-                                    Guardar configuración
-                                </Button>
-                                {isSuperAdmin && <Button icon={Zap} onClick={handleTestConnection}>Probar conexión</Button>}
-                                {isSuperAdmin && <Button icon={RefreshCw} onClick={handleSyncMenu}>Sincronizar menú</Button>}
-                            </div>
-
                             {connectionStatus.tested && (
                                 <div role="status">
                                     <Badge tone={connectionStatus.success ? 'success' : 'danger'}>{connectionStatus.message}</Badge>
@@ -323,81 +347,96 @@ export default function PedidosYaIntegration() {
 
                     {/* ── MAPPINGS TAB ── */}
                     {activeTab === 'mappings' && (
-                        <DataTable<ProductMapping>
-                            ariaLabel="Mapeo de productos PedidosYa"
-                            rows={mappings.filter((m) => !mappingSearch ||
-                                m.externalName.toLowerCase().includes(mappingSearch.toLowerCase()) ||
-                                m.menuItem?.name.toLowerCase().includes(mappingSearch.toLowerCase()))}
-                            rowKey={(m) => m.id}
-                            minWidth="720px"
-                            resetKey={mappingSearch}
-                            empty={mappings.length === 0 ? 'No hay mapeos configurados. Los mapeos se crean automáticamente al recibir pedidos o puedes crearlos manualmente.' : 'Ningún mapeo coincide con la búsqueda.'}
-                            toolbar={(
-                                <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setMappingSidebarOpen(true)}>Nuevo mapeo</Button>}>
+                        <>
+                            <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setMappingSidebarOpen(true)}>Nuevo mapeo</Button>}>
+                                <Field label="Buscar" htmlFor="pedidosya-mapping-search">
                                     <Input
+                                        id="pedidosya-mapping-search"
                                         type="search"
-                                        aria-label="Buscar mapeo"
                                         placeholder="Buscar mapeo"
-                                        prefix={<Search size={14} aria-hidden="true" />}
+                                        prefix={<Search size={16} aria-hidden="true" />}
                                         value={mappingSearch}
                                         onChange={e => setMappingSearch(e.target.value)}
                                     />
-                                </TableToolbar>
-                            )}
-                            columns={[
-                                { key: 'externalId', header: 'ID externo', render: (m) => <code>{m.externalId}</code> },
-                                { key: 'externalName', header: 'Nombre PedidosYa' },
-                                { key: 'menuItem', header: 'Producto interno', render: (m) => m.menuItem
-                                    ? m.menuItem.name
-                                    : <Badge tone="warning">Sin mapear</Badge> },
-                                { key: 'isActive', header: 'Estado', render: (m) => (
-                                    <Badge tone={m.isActive ? 'success' : 'neutral'} dot>{m.isActive ? 'Activo' : 'Inactivo'}</Badge>
-                                ) },
-                                { key: 'actions', header: 'Acciones', type: 'actions', width: '100px', render: (m) => (
-                                    <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label="Eliminar mapeo" onClick={() => handleDeleteMapping(m.id)} />
-                                ) },
-                            ]}
-                        />
+                                </Field>
+                            </TableToolbar>
+                            <DataTable<ProductMapping>
+                                ariaLabel="Mapeo de productos PedidosYa"
+                                rows={mappings.filter((m) => !mappingSearch ||
+                                    m.externalName.toLowerCase().includes(mappingSearch.toLowerCase()) ||
+                                    m.menuItem?.name.toLowerCase().includes(mappingSearch.toLowerCase()))}
+                                rowKey={(m) => m.id}
+                                minWidth="720px"
+                                resetKey={mappingSearch}
+                                loading={tabLoading.mappings}
+                                error={tabError.mappings}
+                                onRetry={() => void loadMappings()}
+                                empty={mappings.length === 0 ? 'No hay mapeos configurados. Los mapeos se crean automáticamente al recibir pedidos o puedes crearlos manualmente.' : 'Ningún mapeo coincide con la búsqueda.'}
+                                columns={[
+                                    { key: 'externalId', header: 'ID externo', width: '1.2fr', render: (m) => <code>{m.externalId}</code> },
+                                    { key: 'externalName', header: 'Nombre PedidosYa', width: '1.6fr' },
+                                    { key: 'menuItem', header: 'Producto interno', width: '1.6fr', render: (m) => m.menuItem
+                                        ? m.menuItem.name
+                                        : <Badge tone="warning">Sin mapear</Badge> },
+                                    { key: 'isActive', header: 'Estado', width: '0.8fr', render: (m) => (
+                                        <Badge tone={m.isActive ? 'success' : 'neutral'} dot>{m.isActive ? 'Activo' : 'Inactivo'}</Badge>
+                                    ) },
+                                    { key: 'actions', header: 'Acciones', type: 'actions', width: '100px', render: (m) => (
+                                        <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label="Eliminar mapeo" onClick={() => handleDeleteMapping(m.id)} />
+                                    ) },
+                                ]}
+                            />
+                        </>
                     )}
 
                     {/* ── ORDERS TAB ── */}
                     {activeTab === 'orders' && (
-                        <DataTable<OrderSync>
-                            ariaLabel="Órdenes sincronizadas con PedidosYa"
-                            rows={orderSyncs}
-                            rowKey={(s) => s.id}
-                            minWidth="860px"
-                            empty="No hay órdenes sincronizadas todavía."
-                            toolbar={<TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={loadOrderSyncs}>Actualizar</Button>} />}
-                            columns={[
-                                { key: 'externalId', header: 'ID externo', render: (s) => <code>{s.externalId}</code> },
-                                { key: 'order', header: 'Orden interna', render: (s) => `#${s.order.id}` },
-                                { key: 'externalStatus', header: 'Estado externo', render: (s) => <Badge>{s.externalStatus || '—'}</Badge> },
-                                { key: 'internalStatus', header: 'Estado interno', render: (s) => <Badge>{s.internalStatus || '—'}</Badge> },
-                                { key: 'syncDirection', header: 'Dirección', render: (s) => s.syncDirection === 'INBOUND' ? '← Entrante' : '→ Saliente' },
-                                { key: 'total', header: 'Total', type: 'money', accessor: (s) => Number(s.order.total) },
-                                { key: 'lastSyncAt', header: 'Última sync', render: (s) => new Date(s.lastSyncAt).toLocaleString('es-NI') },
-                            ]}
-                        />
+                        <>
+                            <TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void loadOrderSyncs()}>Actualizar</Button>} />
+                            <DataTable<OrderSync>
+                                ariaLabel="Órdenes sincronizadas con PedidosYa"
+                                rows={orderSyncs}
+                                rowKey={(s) => s.id}
+                                minWidth="860px"
+                                loading={tabLoading.orders}
+                                error={tabError.orders}
+                                onRetry={() => void loadOrderSyncs()}
+                                empty="No hay órdenes sincronizadas todavía."
+                                columns={[
+                                    { key: 'externalId', header: 'ID externo', width: '1.2fr', render: (s) => <code>{s.externalId}</code> },
+                                    { key: 'order', header: 'Orden interna', width: '1fr', render: (s) => `#${s.order.id}` },
+                                    { key: 'externalStatus', header: 'Estado externo', width: '1.1fr', render: (s) => <Badge>{s.externalStatus || '—'}</Badge> },
+                                    { key: 'internalStatus', header: 'Estado interno', width: '1.1fr', render: (s) => <Badge>{s.internalStatus || '—'}</Badge> },
+                                    { key: 'syncDirection', header: 'Dirección', width: '1fr', render: (s) => s.syncDirection === 'INBOUND' ? '← Entrante' : '→ Saliente' },
+                                    { key: 'total', header: 'Total', width: '1fr', type: 'money', accessor: (s) => Number(s.order.total) },
+                                    { key: 'lastSyncAt', header: 'Última sync', width: '1.4fr', render: (s) => new Date(s.lastSyncAt).toLocaleString('es-NI') },
+                                ]}
+                            />
+                        </>
                     )}
 
                     {/* ── LOGS TAB ── */}
                     {activeTab === 'logs' && (
-                        <DataTable<WebhookLog>
-                            ariaLabel="Logs de webhook de PedidosYa"
-                            rows={webhookLogs}
-                            rowKey={(l) => l.id}
-                            minWidth="760px"
-                            empty="No hay logs de webhook. Los eventos aparecerán cuando PedidosYa envíe notificaciones."
-                            toolbar={<TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={loadWebhookLogs}>Actualizar</Button>} />}
-                            columns={[
-                                { key: 'eventType', header: 'Evento', render: (l) => <code>{l.eventType}</code> },
-                                { key: 'externalId', header: 'ID externo', render: (l) => l.externalId || '—' },
-                                { key: 'status', header: 'Estado', render: (l) => <Badge tone={toneFor(l.status)}>{l.status}</Badge> },
-                                { key: 'errorMessage', header: 'Error', render: (l) => l.errorMessage || '—' },
-                                { key: 'createdAt', header: 'Fecha', render: (l) => new Date(l.createdAt).toLocaleString('es-NI') },
-                            ]}
-                        />
+                        <>
+                            <TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void loadWebhookLogs()}>Actualizar</Button>} />
+                            <DataTable<WebhookLog>
+                                ariaLabel="Logs de webhook de PedidosYa"
+                                rows={webhookLogs}
+                                rowKey={(l) => l.id}
+                                minWidth="760px"
+                                loading={tabLoading.logs}
+                                error={tabError.logs}
+                                onRetry={() => void loadWebhookLogs()}
+                                empty="No hay logs de webhook. Los eventos aparecerán cuando PedidosYa envíe notificaciones."
+                                columns={[
+                                    { key: 'eventType', header: 'Evento', width: '1.4fr', render: (l) => <code>{l.eventType}</code> },
+                                    { key: 'externalId', header: 'ID externo', width: '1.2fr', render: (l) => l.externalId || '—' },
+                                    { key: 'status', header: 'Estado', width: '1fr', render: (l) => <Badge tone={toneFor(l.status)}>{l.status}</Badge> },
+                                    { key: 'errorMessage', header: 'Error', width: '2fr', render: (l) => l.errorMessage || '—' },
+                                    { key: 'createdAt', header: 'Fecha', width: '1.4fr', render: (l) => new Date(l.createdAt).toLocaleString('es-NI') },
+                                ]}
+                            />
+                        </>
                     )}
                 </>
             )}
@@ -410,7 +449,7 @@ export default function PedidosYaIntegration() {
                 breadcrumb={['Integraciones', 'PedidosYa']}
                 footer={({ requestClose }) => (
                     <>
-                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
                         <Button variant="primary" type="submit" form="pedidosya-mapping-form">Guardar mapeo</Button>
                     </>
                 )}

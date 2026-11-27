@@ -45,6 +45,6 @@ describe('identity surfaces UX contract', () => {
         expect(profile).toContain('to="/rh/biometria"');
         expect(profileCss).toContain('max-width: 880px');
         expect(profileCss).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))');
-        expect(profileCss).toContain('background: var(--profile-panel)');
+        expect(profileCss).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/);
     });
 });

@@ -136,7 +136,7 @@ export function ShiftTemplateCatalog({
                     icon={Palette}
                     title="No hay jornadas configuradas."
                     description="Crea una jornada reutilizable para comenzar a asignar horarios."
-                    action={canManage ? <Button variant="primary" size="sm" onClick={onCreate} disabled={disabled}>Crear la primera jornada</Button> : undefined}
+                    action={canManage ? <Button variant="primary" onClick={onCreate} disabled={disabled}>Crear la primera jornada</Button> : undefined}
                 />
             )}
         />

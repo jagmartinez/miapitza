@@ -1,5 +1,5 @@
-import { AppSelect, Button, Checkbox, DataTable, formatMoney, IconButton, Input, Textarea, formatPercent } from '@/ui';
-import { useMemo, useState } from 'react';
+import { AppSelect, Button, Checkbox, DataTable, Field, formatMoney, formatPercent, IconButton, Input, Textarea } from '@/ui';
+import { useMemo, useState, useId } from 'react';
 import {
   AlertCircle,
   BadgeCheck,
@@ -117,6 +117,7 @@ export default function PayrollRuleConfigurationPanel({
   onUpload,
   onReview,
 }: Props) {
+  const fid = useId();
   const seed = configurationSeed(revisions);
   const seedStatutory = seed?.statutory;
   const [currency, setCurrency] = useState(seed?.currency ?? 'NIO');
@@ -339,7 +340,8 @@ export default function PayrollRuleConfigurationPanel({
             <div className="hr-legal-obligation-grid">
               <fieldset>
                 <legend>INSS</legend>
-                <label>Aplicación<AppSelect<string>
+                <Field label="Aplicación" htmlFor={`${fid}-aplicacion`}>
+                  <AppSelect<string> inputId={`${fid}-aplicacion`}
                                    options={[
                                      { value: 'APPLIES', label: 'Aplica' },
                                      {
@@ -354,8 +356,10 @@ export default function PayrollRuleConfigurationPanel({
                                      )
                                    }
                                    isClearable={false}
-                                 /></label>
-                <label>Régimen INSS<AppSelect<string>
+                                 />
+                </Field>
+                <Field label="Régimen INSS" htmlFor={`${fid}-regimen-inss`}>
+                  <AppSelect<string> inputId={`${fid}-regimen-inss`}
                                      options={[
                                        { value: 'INTEGRAL', label: 'Integral' },
                                        { value: 'IVM_RP', label: 'IVM-RP' },
@@ -371,20 +375,22 @@ export default function PayrollRuleConfigurationPanel({
                                        setInssRegime((next ?? '') as typeof inssRegime)
                                      }
                                      isClearable={false}
-                                   /></label>
+                                   />
+                </Field>
                 <div className="hr-legal-rate-grid">
-                  <label>Tasa del empleado<Input aria-label="Tasa INSS del empleado en porcentaje" type="number" min="0" max="100" step="0.0001" value={inssEmployeeRate} onChange={(event) => setInssEmployeeRate(event.target.value)} suffix="%" className="ui-input--number" /><small>Se deduce al empleado.</small></label>
-                  <label>Patronal, menor al umbral<Input aria-label="Tasa INSS patronal menor al umbral en porcentaje" type="number" min="0" max="100" step="0.0001" value={inssEmployerBelow} onChange={(event) => setInssEmployerBelow(event.target.value)} suffix="%" className="ui-input--number" /></label>
-                  <label>Patronal, desde el umbral<Input aria-label="Tasa INSS patronal desde el umbral en porcentaje" type="number" min="0" max="100" step="0.0001" value={inssEmployerAtOrAbove} onChange={(event) => setInssEmployerAtOrAbove(event.target.value)} suffix="%" className="ui-input--number" /></label>
-                  <label>Umbral de empleados<Input type="number" min="1" step="1" value={inssThreshold} onChange={(event) => setInssThreshold(event.target.value)} /><small>Desde esta cantidad usa la segunda tasa patronal.</small></label>
+                  <Field label="Tasa del empleado" htmlFor={`${fid}-tasa-del-empleado`} hint="Se deduce al empleado."><Input id={`${fid}-tasa-del-empleado`} aria-label="Tasa INSS del empleado en porcentaje" type="number" min="0" max="100" step="0.0001" value={inssEmployeeRate} onChange={(event) => setInssEmployeeRate(event.target.value)} suffix="%" className="ui-input--number" /></Field>
+                  <Field label="Patronal, menor al umbral" htmlFor={`${fid}-patronal-menor-al-umbral`}><Input id={`${fid}-patronal-menor-al-umbral`} aria-label="Tasa INSS patronal menor al umbral en porcentaje" type="number" min="0" max="100" step="0.0001" value={inssEmployerBelow} onChange={(event) => setInssEmployerBelow(event.target.value)} suffix="%" className="ui-input--number" /></Field>
+                  <Field label="Patronal, desde el umbral" htmlFor={`${fid}-patronal-desde-el-umbral`}><Input id={`${fid}-patronal-desde-el-umbral`} aria-label="Tasa INSS patronal desde el umbral en porcentaje" type="number" min="0" max="100" step="0.0001" value={inssEmployerAtOrAbove} onChange={(event) => setInssEmployerAtOrAbove(event.target.value)} suffix="%" className="ui-input--number" /></Field>
+                  <Field label="Umbral de empleados" htmlFor={`${fid}-umbral-de-empleados`} hint="Desde esta cantidad usa la segunda tasa patronal."><Input id={`${fid}-umbral-de-empleados`} type="number" min="1" step="1" value={inssThreshold} onChange={(event) => setInssThreshold(event.target.value)} /></Field>
                 </div>
-                <label>Base mínima mensual (C$)<HrMoneyInput value={inssMinimumBase} onValueChange={setInssMinimumBase} required /><small>El sistema la prorratea según período y días de servicio.</small></label>
-                <label>Fuente INSS<Input value={inssReference} onChange={(event) => setInssReference(event.target.value)} maxLength={500} required /></label>
-                {inssApplicability === 'DOES_NOT_APPLY' && <label>Fundamento de excepción<Textarea value={inssException} onChange={(event) => setInssException(event.target.value)} required /></label>}
+                <Field label="Base mínima mensual (C$)" htmlFor={`${fid}-base-minima-mensual-c`} hint="El sistema la prorratea según período y días de servicio."><HrMoneyInput id={`${fid}-base-minima-mensual-c`} value={inssMinimumBase} onValueChange={setInssMinimumBase} required /></Field>
+                <Field label="Fuente INSS" htmlFor={`${fid}-fuente-inss`}><Input id={`${fid}-fuente-inss`} value={inssReference} onChange={(event) => setInssReference(event.target.value)} maxLength={500} required /></Field>
+                {inssApplicability === 'DOES_NOT_APPLY' && <Field label="Fundamento de excepción" htmlFor={`${fid}-fundamento-de-excepcion`}><Textarea id={`${fid}-fundamento-de-excepcion`} value={inssException} onChange={(event) => setInssException(event.target.value)} required /></Field>}
               </fieldset>
               <fieldset>
                 <legend>INATEC</legend>
-                <label>Aplicación<AppSelect<string>
+                <Field label="Aplicación" htmlFor={`${fid}-aplicacion-2`}>
+                  <AppSelect<string> inputId={`${fid}-aplicacion-2`}
                                    options={[
                                      { value: 'APPLIES', label: 'Aplica' },
                                      {
@@ -399,10 +405,11 @@ export default function PayrollRuleConfigurationPanel({
                                      )
                                    }
                                    isClearable={false}
-                                 /></label>
-                <label>Tasa patronal<Input aria-label="Tasa INATEC patronal en porcentaje" type="number" min="0" max="100" step="0.0001" value={inatecRate} onChange={(event) => setInatecRate(event.target.value)} suffix="%" className="ui-input--number" /><small>Es un costo patronal; no se deduce al empleado.</small></label>
-                <label>Fuente INATEC<Input value={inatecReference} onChange={(event) => setInatecReference(event.target.value)} maxLength={500} required /></label>
-                {inatecApplicability === 'DOES_NOT_APPLY' && <label>Fundamento de excepción<Textarea value={inatecException} onChange={(event) => setInatecException(event.target.value)} required /></label>}
+                                 />
+                </Field>
+                <Field label="Tasa patronal" htmlFor={`${fid}-tasa-patronal`} hint="Es un costo patronal; no se deduce al empleado."><Input id={`${fid}-tasa-patronal`} aria-label="Tasa INATEC patronal en porcentaje" type="number" min="0" max="100" step="0.0001" value={inatecRate} onChange={(event) => setInatecRate(event.target.value)} suffix="%" className="ui-input--number" /></Field>
+                <Field label="Fuente INATEC" htmlFor={`${fid}-fuente-inatec`}><Input id={`${fid}-fuente-inatec`} value={inatecReference} onChange={(event) => setInatecReference(event.target.value)} maxLength={500} required /></Field>
+                {inatecApplicability === 'DOES_NOT_APPLY' && <Field label="Fundamento de excepción" htmlFor={`${fid}-fundamento-de-excepcion-2`}><Textarea id={`${fid}-fundamento-de-excepcion-2`} value={inatecException} onChange={(event) => setInatecException(event.target.value)} required /></Field>}
                 <div className="hr-legal-impact-note"><Info size={18} aria-hidden="true" /><p><strong>Cómo impacta:</strong> INSS laboral aparece como deducción; INSS patronal e INATEC aparecen como aportes de la empresa en la corrida y sus reportes.</p></div>
               </fieldset>
             </div>
@@ -414,16 +421,16 @@ export default function PayrollRuleConfigurationPanel({
               <div><span className="hr-legal-step-label">3 · Retención</span><h3 id="legal-ir-title">Tramos progresivos de IR laboral</h3><p>La tabla es anual. El sistema proyecta el ingreso neto gravable y aplica el tramo que corresponda.</p></div>
             </header>
             <div className="hr-legal-field-grid hr-legal-period-grid">
-              <label>Semanal · períodos/año<Input type="number" min="1" max="366" value={periodsWeekly} onChange={(event) => setPeriodsWeekly(event.target.value)} /></label>
-              <label>Quincenal · períodos/año<Input type="number" min="1" max="366" value={periodsBiweekly} onChange={(event) => setPeriodsBiweekly(event.target.value)} /></label>
-              <label>Catorcenal · períodos/año<Input type="number" min="1" max="366" value={periodsFortnightly} onChange={(event) => setPeriodsFortnightly(event.target.value)} /></label>
-              <label>Mensual · períodos/año<Input type="number" min="1" max="366" value={periodsMonthly} onChange={(event) => setPeriodsMonthly(event.target.value)} /></label>
-              <label className="span-full">Fuente de la metodología IR<Input value={incomeTaxReference} onChange={(event) => setIncomeTaxReference(event.target.value)} maxLength={500} required /></label>
+              <Field label="Semanal · períodos/año" htmlFor={`${fid}-semanal-periodos-ano`}><Input id={`${fid}-semanal-periodos-ano`} type="number" min="1" max="366" value={periodsWeekly} onChange={(event) => setPeriodsWeekly(event.target.value)} /></Field>
+              <Field label="Quincenal · períodos/año" htmlFor={`${fid}-quincenal-periodos-ano`}><Input id={`${fid}-quincenal-periodos-ano`} type="number" min="1" max="366" value={periodsBiweekly} onChange={(event) => setPeriodsBiweekly(event.target.value)} /></Field>
+              <Field label="Catorcenal · períodos/año" htmlFor={`${fid}-catorcenal-periodos-ano`}><Input id={`${fid}-catorcenal-periodos-ano`} type="number" min="1" max="366" value={periodsFortnightly} onChange={(event) => setPeriodsFortnightly(event.target.value)} /></Field>
+              <Field label="Mensual · períodos/año" htmlFor={`${fid}-mensual-periodos-ano`}><Input id={`${fid}-mensual-periodos-ano`} type="number" min="1" max="366" value={periodsMonthly} onChange={(event) => setPeriodsMonthly(event.target.value)} /></Field>
+              <div className="span-full"><Field label="Fuente de la metodología IR" htmlFor={`${fid}-fuente-de-la-metodologia`}><Input id={`${fid}-fuente-de-la-metodologia`} value={incomeTaxReference} onChange={(event) => setIncomeTaxReference(event.target.value)} maxLength={500} required /></Field></div>
             </div>
             <div className="hr-legal-formula"><Calculator size={18} aria-hidden="true" /><span><strong>Fórmula por tramo:</strong> impuesto base + (renta anual − exceso) × tasa. El INSS laboral se descuenta de la renta gravable antes del cálculo.</span></div>
             <div className="hr-payroll-tax-table hr-legal-tax-table">
-              <div className="hr-legal-tax-table-heading"><div><strong>Tabla progresiva anual</strong><small>Modifica el límite superior y la tasa; los campos calculados se actualizan automáticamente.</small></div><Button type="button" size="sm" variant="ghost" onClick={addBracket}><Plus size={16} aria-hidden="true" /> Agregar tramo</Button></div>
-              <div className="table-scroll"><DataTable
+              <div className="hr-legal-tax-table-heading"><div><strong>Tabla progresiva anual</strong><small>Modifica el límite superior y la tasa; los campos calculados se actualizan automáticamente.</small></div><Button type="button" variant="ghost" onClick={addBracket} icon={Plus}>Agregar tramo</Button></div>
+              <div><DataTable
                 ariaLabel="Tramos de IR laboral"
                 rows={brackets.map((bracket, index) => ({ bracket, index }))}
                 rowKey={({ index }) => index}
@@ -432,11 +439,11 @@ export default function PayrollRuleConfigurationPanel({
                 empty={'Sin registros'}
                 columns={[
                   { key: 'c0', header: 'Tramo', render: ({ index }) => <span className="hr-legal-bracket-number">{index + 1}</span> },
-                  { key: 'c1', header: 'Desde (C$)', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Inicio tramo ${index + 1}, calculado`} value={bracket.lowerBound} onValueChange={() => undefined} readOnly /></> },
-                  { key: 'c2', header: 'Hasta (C$)', render: ({ bracket, index }) => <>{index === brackets.length - 1 ? <span className="hr-legal-open-ended">En adelante</span> : <HrMoneyInput aria-label={`Fin tramo ${index + 1}`} value={bracket.upperBound ?? ''} onValueChange={(value) => updateBracket(index, 'upperBound', value)} required />}</> },
-                  { key: 'c3', header: 'Impuesto base (C$)', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Impuesto base tramo ${index + 1}, calculado`} value={bracket.baseTax} onValueChange={() => undefined} readOnly /></> },
-                  { key: 'c4', header: 'Tasa', render: ({ bracket, index }) => <><Input aria-label={`Tasa tramo ${index + 1} en porcentaje`} type="number" min="0" max="100" step="0.0001" value={decimalRateToPercent(bracket.rate)} onChange={(event) => updateBracket(index, 'rate', percentToDecimalRate(event.target.value))} suffix="%" className="ui-input--number" /></> },
-                  { key: 'c5', header: 'Sobre exceso de (C$)', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Exceso tramo ${index + 1}, calculado`} value={bracket.excessOver} onValueChange={() => undefined} readOnly /></> },
+                  { key: 'c1', header: 'Desde (C$)', align: 'right', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Inicio tramo ${index + 1}, calculado`} value={bracket.lowerBound} onValueChange={() => undefined} readOnly /></> },
+                  { key: 'c2', header: 'Hasta (C$)', align: 'right', render: ({ bracket, index }) => <>{index === brackets.length - 1 ? <span className="hr-legal-open-ended">En adelante</span> : <HrMoneyInput aria-label={`Fin tramo ${index + 1}`} value={bracket.upperBound ?? ''} onValueChange={(value) => updateBracket(index, 'upperBound', value)} required />}</> },
+                  { key: 'c3', header: 'Impuesto base (C$)', align: 'right', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Impuesto base tramo ${index + 1}, calculado`} value={bracket.baseTax} onValueChange={() => undefined} readOnly /></> },
+                  { key: 'c4', header: 'Tasa', align: 'right', render: ({ bracket, index }) => <><Input aria-label={`Tasa tramo ${index + 1} en porcentaje`} type="number" min="0" max="100" step="0.0001" value={decimalRateToPercent(bracket.rate)} onChange={(event) => updateBracket(index, 'rate', percentToDecimalRate(event.target.value))} suffix="%" className="ui-input--number" /></> },
+                  { key: 'c5', header: 'Sobre exceso de (C$)', align: 'right', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Exceso tramo ${index + 1}, calculado`} value={bracket.excessOver} onValueChange={() => undefined} readOnly /></> },
                   { key: 'c6', header: <><span className="sr-only">Acción</span></>, type: 'actions', width: '64px', render: ({ index }) => <>{brackets.length > 2 && index > 0 && index < brackets.length - 1 && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar tramo ${index + 1}`} onClick={() => setBrackets((current) => recalculateBrackets(current.filter((_, position) => position !== index)))} />}</> },
                 ]}
               /></div>
@@ -456,33 +463,38 @@ export default function PayrollRuleConfigurationPanel({
             <summary><span><ChevronDown size={18} aria-hidden="true" /><strong>Parámetros operativos de nómina y aguinaldo</strong></span><small>Divisores, horas extra, permisos y fuentes históricas</small></summary>
             <div className="hr-legal-advanced-grid">
               <fieldset><legend>Nómina</legend><div className="hr-legal-field-grid">
-                <label>Moneda de la corrida<Input value={currency} maxLength={3} onChange={(event) => setCurrency(event.target.value.toUpperCase())} /><small>Código ISO de tres letras, por ejemplo NIO.</small></label>
-                <label>Multiplicador de hora extra<Input type="number" min="0.0001" step="0.0001" value={overtime} onChange={(event) => setOvertime(event.target.value)} /><small>2 = pago doble: salario mensual ÷ 30 ÷ 8 × 2 (mensual ÷ 120 por hora).</small></label>
-                <label>Multiplicador de feriado trabajado<Input type="number" min="1" step="0.0001" value={holidayMultiplier} onChange={(event) => setHolidayMultiplier(event.target.value)} /><small>Total sobre la hora ordinaria; 2 = pago doble (FERIADO_TRABAJADO).</small></label>
-                <label>Multiplicador de día de descanso trabajado<Input type="number" min="1" step="0.0001" value={restDayMultiplier} onChange={(event) => setRestDayMultiplier(event.target.value)} /><small>Séptimo día (Art. 64 CT); 2 = pago doble (DESCANSO_TRABAJADO). Si coincide con feriado se paga sólo el mayor.</small></label>
-                <label>Divisor semanal (minutos)<Input type="number" min="0.0001" step="0.0001" value={weekly} onChange={(event) => setWeekly(event.target.value)} /></label>
-                <label>Divisor quincenal (minutos)<Input type="number" min="0.0001" step="0.0001" value={biweekly} onChange={(event) => setBiweekly(event.target.value)} /></label>
-                <label>Divisor catorcenal (minutos)<Input type="number" min="0.0001" step="0.0001" value={fortnightly} onChange={(event) => setFortnightly(event.target.value)} /></label>
-                <label>Divisor mensual (minutos)<Input type="number" min="0.0001" step="0.0001" value={monthly} onChange={(event) => setMonthly(event.target.value)} /><small>Por defecto 30 días × 8 h = 14 400 (salario diario = mensual ÷ 30; incluye el séptimo día). También mide las ausencias que se descuentan del salario fijo.</small></label>
+                <Field label="Moneda de la corrida" htmlFor={`${fid}-moneda-de-la-corrida`} hint="Código ISO de tres letras, por ejemplo NIO."><Input id={`${fid}-moneda-de-la-corrida`} value={currency} maxLength={3} onChange={(event) => setCurrency(event.target.value.toUpperCase())} /></Field>
+                <Field label="Multiplicador de hora extra" htmlFor={`${fid}-multiplicador-de-hora-extra`} hint="2 = pago doble: salario mensual ÷ 30 ÷ 8 × 2 (mensual ÷ 120 por hora)."><Input id={`${fid}-multiplicador-de-hora-extra`} type="number" min="0.0001" step="0.0001" value={overtime} onChange={(event) => setOvertime(event.target.value)} /></Field>
+                <Field label="Multiplicador de feriado trabajado" htmlFor={`${fid}-multiplicador-de-feriado-trabajado`} hint="Total sobre la hora ordinaria; 2 = pago doble (FERIADO_TRABAJADO)."><Input id={`${fid}-multiplicador-de-feriado-trabajado`} type="number" min="1" step="0.0001" value={holidayMultiplier} onChange={(event) => setHolidayMultiplier(event.target.value)} /></Field>
+                <Field label="Multiplicador de día de descanso trabajado" htmlFor={`${fid}-multiplicador-de-dia-de`} hint="Séptimo día (Art. 64 CT); 2 = pago doble (DESCANSO_TRABAJADO). Si coincide con feriado se paga sólo el mayor."><Input id={`${fid}-multiplicador-de-dia-de`} type="number" min="1" step="0.0001" value={restDayMultiplier} onChange={(event) => setRestDayMultiplier(event.target.value)} /></Field>
+                <Field label="Divisor semanal (minutos)" htmlFor={`${fid}-divisor-semanal-minutos`}><Input id={`${fid}-divisor-semanal-minutos`} type="number" min="0.0001" step="0.0001" value={weekly} onChange={(event) => setWeekly(event.target.value)} /></Field>
+                <Field label="Divisor quincenal (minutos)" htmlFor={`${fid}-divisor-quincenal-minutos`}><Input id={`${fid}-divisor-quincenal-minutos`} type="number" min="0.0001" step="0.0001" value={biweekly} onChange={(event) => setBiweekly(event.target.value)} /></Field>
+                <Field label="Divisor catorcenal (minutos)" htmlFor={`${fid}-divisor-catorcenal-minutos`}><Input id={`${fid}-divisor-catorcenal-minutos`} type="number" min="0.0001" step="0.0001" value={fortnightly} onChange={(event) => setFortnightly(event.target.value)} /></Field>
+                <Field label="Divisor mensual (minutos)" htmlFor={`${fid}-divisor-mensual-minutos`} hint="Por defecto 30 días × 8 h = 14 400 (salario diario = mensual ÷ 30; incluye el séptimo día). También mide las ausencias que se descuentan del salario fijo."><Input id={`${fid}-divisor-mensual-minutos`} type="number" min="0.0001" step="0.0001" value={monthly} onChange={(event) => setMonthly(event.target.value)} /></Field>
               </div></fieldset>
               <fieldset><legend>Permisos pagados</legend><div className="hr-legal-field-grid">
-                <label>Minutos por día<Input type="number" min="0.0001" step="0.0001" value={leaveDay} onChange={(event) => setLeaveDay(event.target.value)} /></label>
-                <label>Minutos por hora<Input type="number" min="0.0001" step="0.0001" value={leaveHour} onChange={(event) => setLeaveHour(event.target.value)} /></label>
-                <label>Minutos por minuto<Input type="number" min="0.0001" step="0.0001" value={leaveMinute} onChange={(event) => setLeaveMinute(event.target.value)} /></label>
+                <Field label="Minutos por día" htmlFor={`${fid}-minutos-por-dia`}><Input id={`${fid}-minutos-por-dia`} type="number" min="0.0001" step="0.0001" value={leaveDay} onChange={(event) => setLeaveDay(event.target.value)} /></Field>
+                <Field label="Minutos por hora" htmlFor={`${fid}-minutos-por-hora`}><Input id={`${fid}-minutos-por-hora`} type="number" min="0.0001" step="0.0001" value={leaveHour} onChange={(event) => setLeaveHour(event.target.value)} /></Field>
+                <Field label="Minutos por minuto" htmlFor={`${fid}-minutos-por-minuto`}><Input id={`${fid}-minutos-por-minuto`} type="number" min="0.0001" step="0.0001" value={leaveMinute} onChange={(event) => setLeaveMinute(event.target.value)} /></Field>
               </div></fieldset>
               <fieldset><legend>Aguinaldo</legend><div className="hr-legal-field-grid">
-                <label className="span-full">Base de cálculo<AppSelect<string>
-                  options={[
-                    { value: 'HIGHEST_MONTH_LAST_6_MONTHS', label: 'Salario más alto de los últimos 6 meses' },
-                    { value: 'HISTORICAL_PAID_COMPONENTS', label: 'Promedio histórico (ingresos ÷ divisor)' },
-                  ]}
-                  value={aguinaldoMethod}
-                  onChange={(next) => setAguinaldoMethod((next ?? 'HIGHEST_MONTH_LAST_6_MONTHS') as typeof aguinaldoMethod)}
-                  isClearable={false}
-                /><small>El mes más alto se toma de las nóminas pagadas con las fuentes elegibles; luego se aplica el prorrateo por días de servicio.</small></label>
-                <label>Días históricos<Input type="number" min="1" max="731" value={lookbackDays} onChange={(event) => setLookbackDays(event.target.value)} /><small>Ventana de componentes pagados que alimenta el cálculo.</small></label>
-                <label>Divisor de ingreso<Input disabled={aguinaldoMethod === 'HIGHEST_MONTH_LAST_6_MONTHS'} type="number" min="0.0001" step="0.0001" value={incomeDivisor} onChange={(event) => setIncomeDivisor(event.target.value)} /></label>
-                <label>Prorrateo<AppSelect<string>
+                <div className="span-full">
+                  <Field label="Base de cálculo" htmlFor={`${fid}-base-de-calculo`} hint="El mes más alto se toma de las nóminas pagadas con las fuentes elegibles; luego se aplica el prorrateo por días de servicio.">
+                    <AppSelect<string> inputId={`${fid}-base-de-calculo`}
+                    options={[
+                      { value: 'HIGHEST_MONTH_LAST_6_MONTHS', label: 'Salario más alto de los últimos 6 meses' },
+                      { value: 'HISTORICAL_PAID_COMPONENTS', label: 'Promedio histórico (ingresos ÷ divisor)' },
+                    ]}
+                    value={aguinaldoMethod}
+                    onChange={(next) => setAguinaldoMethod((next ?? 'HIGHEST_MONTH_LAST_6_MONTHS') as typeof aguinaldoMethod)}
+                    isClearable={false}
+                  />
+                  </Field>
+                </div>
+                <Field label="Días históricos" htmlFor={`${fid}-dias-historicos`} hint="Ventana de componentes pagados que alimenta el cálculo."><Input id={`${fid}-dias-historicos`} type="number" min="1" max="731" value={lookbackDays} onChange={(event) => setLookbackDays(event.target.value)} /></Field>
+                <Field label="Divisor de ingreso" htmlFor={`${fid}-divisor-de-ingreso`}><Input id={`${fid}-divisor-de-ingreso`} disabled={aguinaldoMethod === 'HIGHEST_MONTH_LAST_6_MONTHS'} type="number" min="0.0001" step="0.0001" value={incomeDivisor} onChange={(event) => setIncomeDivisor(event.target.value)} /></Field>
+                <Field label="Prorrateo" htmlFor={`${fid}-prorrateo`}>
+                  <AppSelect<string> inputId={`${fid}-prorrateo`}
                                   options={[
                                     {
                                       value: 'SERVICE_DAYS_RATIO',
@@ -495,8 +507,9 @@ export default function PayrollRuleConfigurationPanel({
                                     setProrationMode((next ?? '') as typeof prorationMode)
                                   }
                                   isClearable={false}
-                                /></label>
-                <label className="span-full">Fuentes elegibles<Input value={eligibleSources} onChange={(event) => setEligibleSources(event.target.value)} placeholder="ORDINARY, OVERTIME" /><small>Códigos separados por coma.</small></label>
+                                />
+                </Field>
+                <div className="span-full"><Field label="Fuentes elegibles" htmlFor={`${fid}-fuentes-elegibles`} hint="Códigos separados por coma."><Input id={`${fid}-fuentes-elegibles`} value={eligibleSources} onChange={(event) => setEligibleSources(event.target.value)} placeholder="ORDINARY, OVERTIME" /></Field></div>
               </div></fieldset>
             </div>
           </details>
@@ -507,14 +520,14 @@ export default function PayrollRuleConfigurationPanel({
               <div><span className="hr-legal-step-label">5 · Respaldo</span><h3 id="legal-evidence-title">Guardar para revisión independiente</h3><p>Guardar crea una revisión inmutable; todavía no se usa en nómina hasta validarla y activarla.</p></div>
             </header>
             <div className="hr-legal-field-grid hr-legal-evidence-grid">
-              <label>Fuente general<Input value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} maxLength={500} required /></label>
-              <label>Evidencia verificada<Input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} placeholder="URL, expediente o documento interno" required /></label>
-              <label className="span-full">Motivo de esta revisión<Textarea rows={3} value={uploadReason} onChange={(event) => setUploadReason(event.target.value)} maxLength={900} required /></label>
+              <Field label="Fuente general" htmlFor={`${fid}-fuente-general`}><Input id={`${fid}-fuente-general`} value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} maxLength={500} required /></Field>
+              <Field label="Evidencia verificada" htmlFor={`${fid}-evidencia-verificada`}><Input id={`${fid}-evidencia-verificada`} value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} placeholder="URL, expediente o documento interno" required /></Field>
+              <div className="span-full"><Field label="Motivo de esta revisión" htmlFor={`${fid}-motivo-de-esta-revision`}><Textarea id={`${fid}-motivo-de-esta-revision`} rows={3} value={uploadReason} onChange={(event) => setUploadReason(event.target.value)} maxLength={900} required /></Field></div>
             </div>
             <Checkbox checked={regimeRuleConfirmed} onChange={(event) => setRegimeRuleConfirmed(event.target.checked)} label={<><span>Confirmo que el perfil fiscal empresarial mostrado y la clasificación de cada concepto son correctos.</span></>} />
             <Checkbox checked={sourceConfirmed} onChange={(event) => setSourceConfirmed(event.target.checked)} label={<><span>Confirmo que tasas, topes, bases y tramos fueron transcritos de fuentes autorizadas y vigentes.</span></>} />
             {validationIssues.length > 0 && <div className="hr-legal-validation-summary" role="alert"><AlertCircle size={20} aria-hidden="true" /><div><strong>Antes de enviar, revisa:</strong><ul>{validationIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div></div>}
-            <div className="hr-legal-submit-bar"><div><strong>{uploadReady ? 'Configuración lista para revisión' : `${validationIssues.length} ${validationIssues.length === 1 ? 'pendiente' : 'pendientes'}`}</strong><span>Después de guardar, otra persona debe validar y luego activar.</span></div><Button variant="primary" type="submit" disabled={!online || saving || !uploadReady}>{saving ? 'Guardando…' : 'Guardar y enviar a validación'}</Button></div>
+            <div className="hr-legal-submit-bar"><div><strong>{uploadReady ? 'Configuración lista para revisión' : `${validationIssues.length} ${validationIssues.length === 1 ? 'pendiente' : 'pendientes'}`}</strong><span>Después de guardar, otra persona debe validar y luego activar.</span></div><Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !uploadReady}>Guardar y enviar a validación</Button></div>
           </section>
         </form>
       ) : (
@@ -537,7 +550,7 @@ export default function PayrollRuleConfigurationPanel({
               <dl><div><dt>Cargó</dt><dd>{actorName(revision.uploadedBy)}</dd></div><div><dt>Fuente</dt><dd>{revision.sourceReference}</dd></div><div><dt>Motivo</dt><dd>{revision.uploadReason}</dd></div>{revision.reviewer && <div><dt>Revisó</dt><dd>{actorName(revision.reviewer)} · {revision.reviewReason}</dd></div>}</dl>
               <details className="hr-legal-audit-details"><summary>Ver evidencia y huella técnica</summary><div><span><strong>Evidencia:</strong> {revision.evidenceReference}</span><code title={revision.configurationHash}>SHA-256 · {revision.configurationHash}</code><small>La huella permite comprobar que los parámetros no cambiaron después de la carga.</small></div></details>
             </div>
-            {revision.status === 'UPLOADED' && rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId && <div className="hr-payroll-config-review hr-legal-review-box"><div><strong>Dictamen independiente</strong><p>Debe realizarlo una persona distinta de quien cargó la revisión.</p></div><label>Justificación del dictamen<Textarea rows={3} value={reviewReason} onChange={(event) => setReviewReasonById((current) => ({ ...current, [revision.id]: event.target.value }))} maxLength={900} /></label><Checkbox checked={reviewConfirmed} onChange={(event) => setReviewConfirmedById((current) => ({ ...current, [revision.id]: event.target.checked }))} label={<><span>Revisé tasas, tramos, conceptos, fuentes, evidencia y vigencia.</span></>} /><div><Button type="button" size="sm" variant="danger" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'REJECTED')}>Rechazar</Button><Button variant="primary" type="button" size="sm" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'VALIDATED')}><FileCheck2 size={15} aria-hidden="true" /> Validar configuración</Button></div></div>}
+            {revision.status === 'UPLOADED' && rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId && <div className="hr-payroll-config-review hr-legal-review-box"><div><strong>Dictamen independiente</strong><p>Debe realizarlo una persona distinta de quien cargó la revisión.</p></div><Field label="Justificación del dictamen" htmlFor={`${fid}-dictamen-${revision.id}`}><Textarea id={`${fid}-dictamen-${revision.id}`} rows={3} value={reviewReason} onChange={(event) => setReviewReasonById((current) => ({ ...current, [revision.id]: event.target.value }))} maxLength={900} /></Field><Checkbox checked={reviewConfirmed} onChange={(event) => setReviewConfirmedById((current) => ({ ...current, [revision.id]: event.target.checked }))} label={<><span>Revisé tasas, tramos, conceptos, fuentes, evidencia y vigencia.</span></>} /><div><Button type="button" variant="danger" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'REJECTED')}>Rechazar</Button><Button variant="primary" type="button" disabled={!online || saving || !reviewConfirmed || reviewReason.trim().length < 3} onClick={() => void review(revision, 'VALIDATED')} icon={FileCheck2}>Validar configuración</Button></div></div>}
           </article>;
         })}
       </section>
@@ -571,7 +584,7 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
 
     <section aria-labelledby="readonly-ir-title">
       <header><span className="hr-legal-section-icon"><Percent size={20} /></span><div><span className="hr-legal-step-label">Retención</span><h3 id="readonly-ir-title">Tramos anuales de IR laboral</h3><p>La nómina proyecta el ingreso neto gravable anual y aplica el tramo correspondiente.</p></div></header>
-      <div className="hr-legal-readonly-table-wrap"><DataTable
+      <div><DataTable
                 ariaLabel="Tramos de IR vigentes"
                 rows={statutory.incomeTax.brackets.map((bracket, index) => ({ bracket, index }))}
                 rowKey={({ bracket, index }) => `${bracket.lowerBound}-${index}`}
@@ -591,7 +604,7 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
 
     <section aria-labelledby="readonly-concepts-title">
       <header><span className="hr-legal-section-icon"><Users size={20} /></span><div><span className="hr-legal-step-label">Clasificación</span><h3 id="readonly-concepts-title">Qué aplica a cada ingreso y deducción</h3><p>Esta tabla responde si un concepto forma base de IR laboral, INSS o INATEC.</p></div></header>
-      <div className="hr-legal-readonly-table-wrap"><DataTable
+      <div><DataTable
                 ariaLabel="Conceptos legales vigentes"
                 rows={statutory.paymentConceptCatalog}
                 rowKey={(concept) => concept.code}
