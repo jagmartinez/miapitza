@@ -1,3 +1,4 @@
+import { formatNumber } from '../../ui/format/number';
 export interface InsightCol {
     key: string;
     header: string;
@@ -76,7 +77,7 @@ export function buildQuickRead(opts: {
     if (valid.length > 0 && total > 0 && valid.every((r) => r.value >= 0)) {
         const best = valid.reduce((a, b) => (b.value > a.value ? b : a));
         lines.push(
-            `${picked.label.header} con mayor ${picked.value.header.toLowerCase()}: ${best.name} (${format(picked.value, best.value)}, ${((best.value / total) * 100).toFixed(1)}% del total).`,
+            `${picked.label.header} con mayor ${picked.value.header.toLowerCase()}: ${best.name} (${format(picked.value, best.value)}, ${formatNumber((best.value / total) * 100)} % del total).`,
         );
     }
     const missing = items.length - valid.length;

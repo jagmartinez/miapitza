@@ -259,7 +259,7 @@
 
 .promo-mode-toggle button.active {
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .promo-select {
@@ -313,7 +313,7 @@
 .promo-apply-btn {
     padding: 8px;
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     border: none;
     border-radius: var(--radius-md);
     font-size: 12px;

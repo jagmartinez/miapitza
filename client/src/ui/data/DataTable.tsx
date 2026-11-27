@@ -3,7 +3,7 @@ import { coerceMoneyAmount } from '../../utils/currency';
 import { formatNumber, formatPercent } from '../format/number';
 import { Skeleton } from '../primitives/Skeleton';
 import type { Tone } from '../primitives/statusTone';
-import { columnTemplate } from './columnTemplate';
+import { columnTemplate, columnsMinWidth } from './columnTemplate';
 import { Pagination } from './Pagination';
 import { getRowsPerPage } from '../prefs/userPrefs';
 import { useTablePagination } from './useTablePagination';
@@ -13,6 +13,8 @@ export type ColumnType = 'text' | 'number' | 'money' | 'qty' | 'percent' | 'date
 export interface Column<T> {
   key: string;
   header: ReactNode;
+  /** Texto completo del encabezado para el tooltip cuando `header` es una abreviatura. */
+  headerTitle?: string;
   width?: string;
   type?: ColumnType;
   accessor?: (row: T) => unknown;
@@ -134,7 +136,9 @@ export function DataTable<T>({
         };
 
   const stacked = stackOnMobile && belowMd;
-  const gridStyle = stacked ? undefined : { gridTemplateColumns: columnTemplate(columns as Column<unknown>[]) };
+  const gridStyle = stacked ? undefined : { gridTemplateColumns: columnTemplate(columns) };
+  // `max()` no acepta números sin unidad: '0' se pasa como '0px'.
+  const tableMinWidth = `max(${/^\d+(\.\d+)?$/.test(minWidth) ? `${minWidth}px` : minWidth}, ${columnsMinWidth(columns)}px)`;
   const labelOf = (c: Column<T>) => (stacked && typeof c.header === 'string' ? c.header : undefined);
   const hasTotals = columns.some((c) => c.total);
 
@@ -151,12 +155,12 @@ export function DataTable<T>({
           className={stacked ? 'ui-table ui-table--stacked' : 'ui-table'}
           aria-label={ariaLabel}
           aria-busy={loading ? 'true' : undefined}
-          style={stacked ? undefined : { minWidth }}
+          style={stacked ? undefined : { minWidth: tableMinWidth }}
         >
           <thead>
             <tr style={gridStyle}>
               {columns.map((c) => (
-                <th key={c.key} scope="col" className={cellClass(c)}>
+                <th key={c.key} scope="col" className={cellClass(c)} title={c.headerTitle ?? (typeof c.header === 'string' ? c.header : undefined)}>
                   {c.header}
                 </th>
               ))}

@@ -8,7 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import {
-    AlertTriangle, Package, Plus, Edit2, Trash2,
+    AlertTriangle, Package, Plus, Pencil, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
     Upload, Download, FileSpreadsheet, Search, Printer,
     FlaskConical, Box, Eye
@@ -26,7 +26,7 @@ import { buildWarehouseBreakdown, type WarehouseStockInput } from '../utils/inve
 import { buildInventoryCountSheetHtml } from '../utils/inventoryCountSheet';
 import catalog from './catalog.module.css';
 import {
-    AppSelect, Button, Checkbox, SegmentedControl, Field, FormGrid, FormSection, FullScreenModal, Badge, DataTable, EmptyState, IconButton, Input, PageContent,
+    AppSelect, Button, Checkbox, Tabs, Field, FormGrid, FormSection, FullScreenModal, Badge, DataTable, EmptyState, IconButton, Input, PageContent,
     PageHeader, StatCard, TableToolbar, Textarea, formatNumber, formatPercent, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -59,9 +59,9 @@ function toAutoPurchaseLine(suggestion: AutoPurchaseSuggestionLine) {
 function formatSuggestionQuantity(suggestion: AutoPurchaseSuggestionLine) {
     const purchaseQuantity = Number(suggestion.purchaseQuantity);
     if (Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && suggestion.purchaseUnit) {
-        return `${Number(purchaseQuantity.toFixed(3))} ${suggestion.purchaseUnit}`;
+        return `${formatNumber(purchaseQuantity)} ${suggestion.purchaseUnit}`;
     }
-    return `${Number(Number(suggestion.suggestedQuantity).toFixed(3))}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
+    return `${formatNumber(suggestion.suggestedQuantity)}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
 }
 
 
@@ -831,9 +831,6 @@ export default function Inventory() {
         () => buildWarehouseBreakdown(warehouseStocks, products as ProductInventory[]),
         [warehouseStocks, products],
     );
-    const warehouseValueContext = warehouseBreakdown.valueByWarehouse.length > 0
-        ? warehouseBreakdown.valueByWarehouse.slice(0, 3).map((w) => `${w.name}: ${formatNumber(w.value)}`).join(' · ')
-        : 'Sin existencias valorizadas por almacén';
     const productsTruncated = products.length >= 500;
     const productsFailed = 'Productos' in loadIssues;
     const unknownCostCount = Math.max(kpis.unknownCostCount, warehouseBreakdown.unknownCostCount);
@@ -931,17 +928,11 @@ export default function Inventory() {
             <div className={catalog.kpiGrid}>
                 {productsFailed ? (
                     <>
-                        <StatCard label="Valor del inventario (C$)" value="No disponible" tone="neutral" context="No se pudieron cargar los productos" />
                         <StatCard label="Reposición requerida (C$)" value="No disponible" tone="neutral" context={[alertContext, 'No se pudieron cargar los productos'].filter(Boolean).join(' · ')} />
                         <StatCard label="Concentración del capital" value="No disponible" tone="neutral" context="No se pudieron cargar los productos" />
                     </>
                 ) : (
                     <>
-                        <StatCard
-                            label="Valor del inventario (C$)"
-                            value={loading ? '…' : formatNumber(kpis.totalValue)}
-                            context={[warehouseValueContext, unknownCostNote].filter(Boolean).join(' · ') + (productsTruncated ? ' (primeros 500 productos)' : '')}
-                        />
                         <StatCard
                             label="Reposición requerida (C$)"
                             value={loading ? '…' : formatNumber(kpis.replenishmentCost)}
@@ -1016,45 +1007,49 @@ export default function Inventory() {
                             onChange={(v) => setStorageFilter(v || 'all')}
                         />
                     </TableToolbar>
-                        <div className={s.segmentWrap}>
-                            <SegmentedControl
-                                ariaLabel="Filtrar por tipo"
-                                value={filter}
-                                onChange={setFilter}
-                                options={[
-                                    { value: 'all', label: 'Todos' },
-                                    { value: 'INGREDIENT', label: 'Ingredientes' },
-                                    { value: 'PRODUCT_FOR_SALE', label: 'Productos' },
-                                    { value: 'INTERMEDIATE', label: 'Intermedios' },
-                                    { value: 'PACKAGING', label: 'Empaques' },
-                                    { value: 'low', label: 'Stock bajo' },
-                                ]}
-                            />
-                        </div>
+                        <Tabs
+                            ariaLabel="Filtrar por tipo"
+                            active={filter}
+                            onChange={(id) => setFilter(id as typeof filter)}
+                            tabs={[
+                                { id: 'all', label: 'Todos' },
+                                { id: 'INGREDIENT', label: 'Ingredientes' },
+                                { id: 'PRODUCT_FOR_SALE', label: 'Productos' },
+                                { id: 'INTERMEDIATE', label: 'Intermedios' },
+                                { id: 'PACKAGING', label: 'Empaques' },
+                                { id: 'low', label: 'Stock bajo' },
+                            ]}
+                        />
                     </div>
                 )}
                 columns={[
-                    { key: 'sku', header: 'Código', width: 'minmax(7.5rem,.8fr)', render: (product) => product.sku || '—' },
-                    { key: 'name', header: 'Producto', width: '2.4fr', render: (product) => product.name },
-                    { key: 'category', header: 'Categoría', width: '1.2fr', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '—' },
-                    { key: 'warehouse', header: 'Bodega', width: '1.1fr', render: (product) => warehouseBreakdown.labelByProduct.get(product.id) ?? '—' },
-                    { key: 'stock', header: 'Existencia', width: '1fr', type: 'qty', accessor: (product) => product.totalStock ?? 0 },
-                    { key: 'unit', header: 'Unidad', width: '.6fr', render: (product) => product.baseUnit?.abbreviation || product.unit },
-                    { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
+                    { key: 'sku', header: 'Código', width: 'minmax(8.5rem,.8fr)', render: (product) => product.sku || '—' },
+                    { key: 'name', header: 'Producto', width: 'minmax(11rem,2.4fr)', render: (product) => (
+                        <span className={s.cellStack}>
+                            <span>{product.name}</span>
+                            {(() => {
+                                const where = warehouseBreakdown.labelByProduct.get(product.id);
+                                return where && !/^[-—]$/.test(where.trim()) ? <span className={s.cellSub}>{where}</span> : null;
+                            })()}
+                        </span>
+                    ) },
+                    { key: 'category', header: 'Categoría', width: 'minmax(8.5rem,1.1fr)', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '—' },
+                                        { key: 'stock', header: 'Existencia', width: 'minmax(8rem,1fr)', type: 'qty', accessor: (product) => product.totalStock ?? 0, render: (product) => `${formatNumber(product.totalStock ?? 0)} ${product.baseUnit?.abbreviation || product.unit || ''}`.trim() },
+                                        { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
                     { key: 'value', header: 'Valor (C$)', width: '1.2fr', type: 'money', total: true, accessor: (product) => (inventoryCostQuality(product).known ? Number(product.totalStock ?? 0) * inventoryCostQuality(product).value : null), render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
-                    { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (product) => (
+                    { key: 'status', header: 'Estado', width: '7.5rem', type: 'status', render: (product) => (
                         <Badge tone={isLowStockProduct(product.id) ? 'warning' : 'success'} dot>
                             {isLowStockProduct(product.id) ? 'Stock bajo' : 'OK'}
                         </Badge>
                     ) },
-                    { key: 'actions', header: 'Acciones', width: 'minmax(12rem, auto)', type: 'actions', render: (product) => (
+                    { key: 'actions', header: 'Acciones', width: '244px', type: 'actions', render: (product) => (
                         <div className={catalog.rowActions}>
-                            <IconButton size="sm" icon={Eye} label={`Ver detalle de ${product.name}`} onClick={() => handleViewProduct(product)} />
-                            <IconButton size="sm" icon={FileText} label={`Ver kardex de ${product.name}`} onClick={() => navigate(`/kardex?productId=${product.id}`)} />
-                            {canAdjustStock && <IconButton size="sm" icon={Activity} label={`Ajustar stock de ${product.name}`} onClick={() => handleOpenAdjustment(product)} />}
-                            {canMutateProduct && <IconButton size="sm" icon={Layers} label={`Conversiones de ${product.name}`} onClick={() => navigate(`/inventory/${product.id}/units`)} />}
-                            {canMutateProduct && <IconButton size="sm" icon={Edit2} label={`Editar ${product.name}`} onClick={() => handleOpenSidebar(product)} />}
-                            {canDeleteProduct && <IconButton size="sm" icon={Trash2} label={`Eliminar ${product.name}`} onClick={() => handleDelete(product.id)} />}
+                            <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver detalle de ${product.name}`} onClick={() => handleViewProduct(product)} />
+                            {canMutateProduct && <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${product.name}`} onClick={() => handleOpenSidebar(product)} />}
+                            <IconButton size="sm" icon={FileText} tooltip="Kardex" label={`Ver kardex de ${product.name}`} onClick={() => navigate(`/kardex?productId=${product.id}`)} />
+                            {canAdjustStock && <IconButton size="sm" icon={Activity} tooltip="Ajustar stock" label={`Ajustar stock de ${product.name}`} onClick={() => handleOpenAdjustment(product)} />}
+                            {canMutateProduct && <IconButton size="sm" icon={Layers} tooltip="Conversiones" label={`Conversiones de ${product.name}`} onClick={() => navigate(`/inventory/${product.id}/units`)} />}
+                            {canDeleteProduct && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar ${product.name}`} onClick={() => handleDelete(product.id)} />}
                         </div>
                     ) },
                 ] as Column<ProductInventory>[]}
@@ -1081,7 +1076,7 @@ export default function Inventory() {
                             </Button>
                             {canMutateProduct && (
                                 <Button type="button" variant="primary" onClick={handleEditFromDetail}>
-                                    <Edit2 size={16} />
+                                    <Pencil size={16} />
                                     Editar Producto
                                 </Button>
                             )}
@@ -1126,13 +1121,13 @@ export default function Inventory() {
                                 <div className="inventory-detail-stock-summary">
                                     <span>Existencia actual</span>
                                     <strong className={isLow ? 'warning' : ''}>
-                                        {stock.toLocaleString('es-NI', { maximumFractionDigits: 3 })}
+                                        {formatNumber(stock)}
                                         <small>{unit}</small>
                                     </strong>
                                     <div className="inventory-detail-stock-track" aria-hidden="true">
                                         <span className={isLow ? 'warning' : ''} style={{ width: `${stockLevel}%` }} />
                                     </div>
-                                    <small>Mínimo configurado: {minStock.toLocaleString('es-NI', { maximumFractionDigits: 3 })} {unit}</small>
+                                    <small>Mínimo configurado: {formatNumber(minStock)} {unit}</small>
                                 </div>
                             </div>
 
@@ -1653,8 +1648,7 @@ export default function Inventory() {
                     {importValidation && (
                         <FormSection step={2} title="Validación" description="Revisa las filas antes de confirmar.">
                             <div className={catalog.kpiGrid}>
-                                <StatCard label="Total filas" value={formatNumber(importValidation.summary.totalRows, 0)} context="Filas leídas del archivo" />
-                                <StatCard label="Válidos" value={formatNumber(importValidation.summary.valid, 0)} tone="success" context={`${formatNumber(importValidation.summary.newProducts, 0)} nuevos, el resto actualiza productos existentes`} />
+                                <StatCard label="Válidos" value={formatNumber(importValidation.summary.valid, 0)} tone="success" context={`De ${formatNumber(importValidation.summary.totalRows, 0)} filas · ${formatNumber(importValidation.summary.newProducts, 0)} nuevos, el resto actualiza productos existentes`} />
                                 <StatCard
                                     label="Con errores"
                                     value={formatNumber(importValidation.summary.invalid, 0)}

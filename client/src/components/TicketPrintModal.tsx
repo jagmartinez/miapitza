@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppSelect, Button, Field, FullScreenModal } from '@/ui';
+import { AppSelect, Button, Field, FullScreenModal, formatNumber } from '@/ui';
 import api from '../services/api';
 import { Printer } from 'lucide-react';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -57,8 +57,8 @@ interface KitchenTicketData {
   notes?: string;
 }
 
-/** Printed tickets keep the plain 2-decimal format (no thousands separator). */
-const money2 = (n: number) => n.toFixed(2);
+/** Printed tickets: 2 decimals with thousands separators. */
+const money2 = (n: number) => formatNumber(n);
 
 function ticketLoadErrorMessage(err: unknown): string {
   if (typeof err === 'object' && err !== null && 'response' in err) {

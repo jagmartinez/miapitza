@@ -135,27 +135,10 @@ export default function CostReport() {
             {summary && (
                 <div className={catalog.kpiGrid}>
                     <StatCard
-                        label="Costo total de compras"
-                        value={formatCurrency(summary.totalPurchaseCost, settings)}
-                        context={`${formatNumber(summary.purchaseOrderCount, 0)} órdenes de compra en el período`}
-                    />
-                    <StatCard
-                        label="COGS estimado"
-                        tone="warning"
-                        value={formatCurrency(summary.estimatedCOGS, settings)}
-                        context="Ledger ORD-* (receta × costo solo si no hay movimientos)"
-                    />
-                    <StatCard
-                        label="Ingresos"
-                        tone="success"
-                        value={formatCurrency(summary.totalRevenue, settings)}
-                        context="Ventas registradas en el período"
-                    />
-                    <StatCard
                         label="Margen bruto"
                         tone={marginTone}
-                        value={`${formatNumber(summary.grossMargin, 1)} %`}
-                        context="(Ingresos − COGS) / Ingresos"
+                        value={`${formatNumber(summary.grossMargin)} %`}
+                        context={`Ingresos ${formatCurrency(summary.totalRevenue, settings)} − costo de ventas ${formatCurrency(summary.estimatedCOGS, settings)} · compras del período ${formatCurrency(summary.totalPurchaseCost, settings)}`}
                     />
                 </div>
             )}

@@ -4,6 +4,7 @@ import { Eye, Plus, RefreshCw, WalletCards } from 'lucide-react';
 import {
   Button, DataTable, EmptyState, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs,
 } from '@/ui';
+import { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
@@ -306,10 +307,10 @@ export default function MyBenefits() {
               {
                 key: 'actions',
                 header: 'Acción',
-                width: '5rem',
+                width: '100px',
                 type: 'actions',
                 render: (item) => (
-                  <IconButton icon={Eye} size="sm" label={`Ver detalle de ${item.code}`} onClick={() => void openDetail({ resource: tab, item } as Selected)} />
+                  <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${item.code}`} onClick={() => void openDetail({ resource: tab, item } as Selected)} />
                 ),
               },
             ]}
@@ -470,6 +471,7 @@ export default function MyBenefits() {
         ) : null}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(panel)}
         breadcrumb={['Mi RH', 'Beneficios']}
         onClose={() => {
@@ -518,6 +520,7 @@ export default function MyBenefits() {
         )}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar acción"

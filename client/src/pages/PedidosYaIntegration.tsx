@@ -353,8 +353,8 @@ export default function PedidosYaIntegration() {
                                 { key: 'isActive', header: 'Estado', render: (m) => (
                                     <Badge tone={m.isActive ? 'success' : 'neutral'} dot>{m.isActive ? 'Activo' : 'Inactivo'}</Badge>
                                 ) },
-                                { key: 'actions', header: 'Acciones', type: 'actions', render: (m) => (
-                                    <IconButton size="sm" icon={Trash2} label="Eliminar mapeo" onClick={() => handleDeleteMapping(m.id)} />
+                                { key: 'actions', header: 'Acciones', type: 'actions', width: '100px', render: (m) => (
+                                    <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label="Eliminar mapeo" onClick={() => handleDeleteMapping(m.id)} />
                                 ) },
                             ]}
                         />

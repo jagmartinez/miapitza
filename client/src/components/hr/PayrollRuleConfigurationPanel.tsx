@@ -1,4 +1,4 @@
-import { AppSelect, Button, Checkbox, DataTable, formatMoney, Input, Textarea } from '@/ui';
+import { AppSelect, Button, Checkbox, DataTable, formatMoney, IconButton, Input, Textarea, formatPercent } from '@/ui';
 import { useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -437,7 +437,7 @@ export default function PayrollRuleConfigurationPanel({
                   { key: 'c3', header: 'Impuesto base (C$)', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Impuesto base tramo ${index + 1}, calculado`} value={bracket.baseTax} onValueChange={() => undefined} readOnly /></> },
                   { key: 'c4', header: 'Tasa', render: ({ bracket, index }) => <><Input aria-label={`Tasa tramo ${index + 1} en porcentaje`} type="number" min="0" max="100" step="0.0001" value={decimalRateToPercent(bracket.rate)} onChange={(event) => updateBracket(index, 'rate', percentToDecimalRate(event.target.value))} suffix="%" className="ui-input--number" /></> },
                   { key: 'c5', header: 'Sobre exceso de (C$)', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Exceso tramo ${index + 1}, calculado`} value={bracket.excessOver} onValueChange={() => undefined} readOnly /></> },
-                  { key: 'c6', header: <><span className="sr-only">Acción</span></>, render: ({ index }) => <>{brackets.length > 2 && index > 0 && index < brackets.length - 1 && <Button type="button" size="sm" variant="ghost" aria-label={`Eliminar tramo ${index + 1}`} onClick={() => setBrackets((current) => recalculateBrackets(current.filter((_, position) => position !== index)))}><Trash2 size={15} aria-hidden="true" /></Button>}</> },
+                  { key: 'c6', header: <><span className="sr-only">Acción</span></>, type: 'actions', width: '64px', render: ({ index }) => <>{brackets.length > 2 && index > 0 && index < brackets.length - 1 && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar tramo ${index + 1}`} onClick={() => setBrackets((current) => recalculateBrackets(current.filter((_, position) => position !== index)))} />}</> },
                 ]}
               /></div>
               {!bracketTableIsValid(brackets) && <p className="hr-legal-inline-error" role="alert"><AlertCircle size={16} aria-hidden="true" /> Los tramos deben ser continuos; “desde” y “sobre exceso” deben coincidir, y el impuesto base debe acumular el tramo anterior.</p>}
@@ -547,7 +547,7 @@ export default function PayrollRuleConfigurationPanel({
 
 function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrPayrollLegalConfiguration; revision: number }) {
   const { statutory } = configuration;
-  const pct = (value: string) => `${(Number(value) * 100).toLocaleString('es-NI', { maximumFractionDigits: 4 })}%`;
+  const pct = (value: string) => formatPercent(Number(value) * 100);
   const symbol = configuration.currency === 'USD' ? 'US$' : configuration.currency === 'NIO' ? 'C$' : configuration.currency;
   const money = (value: string | null | undefined) => (value == null || value === '' || !Number.isFinite(Number(value)) ? 'N/D' : formatMoney(value, symbol));
   const yesNo = (value: boolean) => value ? 'Sí' : 'No';

@@ -38,7 +38,7 @@ describe('Phase 4 workforce UI safety contract', () => {
   it('presents attendance and leave as table-first administrative workspaces', () => {
     expect(attendance).toContain('<DataTable');
     expect(attendance).toContain("['INCIDENTS', 'Incidencias'");
-    expect(attendance).toContain('Revisar y decidir');
+    expect(attendance).toContain('tooltip="Revisar"');
     expect(attendance).not.toContain('hr-summary-grid');
     expect(leave).toContain('<DataTable');
     expect(leave).toContain("['BALANCES', 'Saldos'");

@@ -352,9 +352,9 @@ function SessionsSection({ sessions, loading, failed, reload }: {
         { key: 'ipAddress', header: 'IP', render: (s) => s.ipAddress || 'No disponible' },
         { key: 'createdAt', header: 'Inicio', render: (s) => fmtDateTime(s.createdAt) },
         {
-            key: 'actions', header: <span className="sr-only">Acciones</span>, type: 'actions', width: '5rem',
+            key: 'actions', header: <span className="sr-only">Acciones</span>, type: 'actions', width: '100px',
             render: (s) => s.isCurrent ? null : (
-                <IconButton icon={LogOut} size="sm" label={`Cerrar sesión en ${s.device || 'navegador'}`} onClick={() => setPending({ kind: 'one', id: s.id })} />
+                <IconButton icon={LogOut} size="sm" tone="danger" tooltip="Cerrar sesión" label={`Cerrar sesión en ${s.device || 'navegador'}`} onClick={() => setPending({ kind: 'one', id: s.id })} />
             ),
         },
     ];

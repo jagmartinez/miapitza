@@ -275,3 +275,17 @@ body:has(.table-pos-workspace) {
     .tables-ops__header .ui-segmented { overflow-x: auto; }
     .tables-ops__header .table-map-utility-controls { flex: 0 1 auto; }
 }
+
+/* Vista Plano: el mapa ocupa toda la altura disponible bajo la barra superior; el detalle solo aparece con una mesa elegida. */
+.tables-page--map { max-width: none; }
+.tables-page--map .tables-ops { height: calc(100dvh - 56px - 2 * var(--ui-space-6)); min-height: 32rem; }
+.tables-page--map .tables-ops__body { flex: 1; min-height: 0; flex-wrap: nowrap; align-items: stretch; }
+.tables-page--map .tables-ops__floor { min-height: 0; }
+.tables-page--map .tables-ops__floor .table-map-shell { flex: 1; min-height: 0; }
+.tables-page--map .tables-ops__detail { flex: 0 0 22rem; position: static; max-height: none; }
+.tables-page--map .tables-ops__detail.is-idle { display: none; }
+@media (max-width: 1023px) {
+    .tables-page--map .tables-ops { height: auto; }
+    .tables-page--map .tables-ops__body { flex-wrap: wrap; }
+    .tables-page--map .tables-ops__detail { flex: 1 1 100%; }
+}

@@ -1,4 +1,4 @@
-import { AppSelect, Button, Checkbox, DataTable, Input } from '@/ui';
+import { AppSelect, Button, Checkbox, DataTable, IconButton, Input } from '@/ui';
 import { useMemo, useState } from 'react';
 import { CheckCircle2, Pencil, Plus, Power, Save, X } from 'lucide-react';
 import type { HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
@@ -156,7 +156,7 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
                   { key: 'c3', header: 'INSS', render: ({ concept }) => <>{concept.type === 'INCOME' && concept.socialSecurityApplicable ? 'Sí' : 'No'}</> },
                   { key: 'c4', header: 'INATEC', render: ({ concept }) => <>{concept.type === 'INCOME' && concept.trainingContributionApplicable ? 'Sí' : 'No'}</> },
                   { key: 'c5', header: 'Estado', render: ({ concept }) => <span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? <CheckCircle2 size={14} /> : <Power size={14} />}{concept.active ? 'Activo' : 'Inhabilitado'}</span> },
-                  { key: 'c6', header: 'Acciones', render: ({ concept, index }) => <div className="hr-legal-row-actions"><Button type="button" size="sm" variant="ghost" onClick={() => startEdit(index)} disabled={draft !== null}><Pencil size={15} /> Editar</Button><Button type="button" size="sm" variant="ghost" onClick={() => toggleActive(index)} disabled={draft !== null}><Power size={15} /> {concept.active ? 'Inhabilitar' : 'Activar'}</Button></div> },
+                  { key: 'c6', header: 'Acciones', type: 'actions', width: '100px', render: ({ concept, index }) => <div className="hr-legal-row-actions"><IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${concept.name}`} onClick={() => startEdit(index)} disabled={draft !== null} /><IconButton size="sm" icon={Power} tone={concept.active ? 'danger' : 'primary'} tooltip={concept.active ? 'Desactivar' : 'Activar'} label={`${concept.active ? 'Inhabilitar' : 'Activar'} ${concept.name}`} onClick={() => toggleActive(index)} disabled={draft !== null} /></div> },
                 ]}
               />
       </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, ChevronLeft, ChevronRight, Edit2, UserX } from 'lucide-react';
+import { Calendar, Users, Phone, Plus, CheckCircle2, Ban, ChevronLeft, ChevronRight, Pencil, UserX } from 'lucide-react';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal,
     IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, Textarea,
@@ -493,25 +493,24 @@ export default function Reservations() {
         {
             key: 'actions',
             header: 'Acciones',
-            width: '1.7fr',
+            width: '172px',
             type: 'actions',
             render: (r) => (
                 <>
+                    {canManageReservations && (r.status === 'PENDING' || r.status === 'CONFIRMED') && (
+                        <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar reservación de ${r.customerName}`} onClick={() => handleOpenSidebar(r)} />
+                    )}
                     {canManageReservations && r.status === 'PENDING' && (
-                        <>
-                            <IconButton icon={CheckCircle} label={`Confirmar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CONFIRMED')} />
-                            <IconButton icon={XCircle} label={`Cancelar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CANCELLED')} />
-                        </>
+                        <IconButton size="sm" icon={CheckCircle2} tone="primary" tooltip="Confirmar" label={`Confirmar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CONFIRMED')} />
                     )}
                     {canManageReservations && r.status === 'CONFIRMED' && (
                         <>
-                            <IconButton icon={Users} label={`Completar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'COMPLETED')} />
-                            <IconButton icon={UserX} label={`Marcar no asistió a ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'NO_SHOW')} />
-                            <IconButton icon={XCircle} label={`Cancelar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CANCELLED')} />
+                            <IconButton size="sm" icon={CheckCircle2} tone="primary" tooltip="Completar" label={`Completar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'COMPLETED')} />
+                            <IconButton size="sm" icon={UserX} tooltip="No asistió" label={`Marcar no asistió a ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'NO_SHOW')} />
                         </>
                     )}
                     {canManageReservations && (r.status === 'PENDING' || r.status === 'CONFIRMED') && (
-                        <IconButton icon={Edit2} label={`Editar reservación de ${r.customerName}`} onClick={() => handleOpenSidebar(r)} />
+                        <IconButton size="sm" icon={Ban} tone="danger" tooltip="Cancelar" label={`Cancelar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CANCELLED')} />
                     )}
                 </>
             ),

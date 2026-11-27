@@ -34,7 +34,7 @@
 .empty-state-action {
     padding: 10px 20px;
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     border: none;
     border-radius: var(--radius-md);
     font-weight: 500;

@@ -17,8 +17,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import {
-  Badge, Button, DataTable, EmptyState, FullScreenModal, IconButton, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, formatMoney, formatPercent,
-} from '@/ui';
+  Badge, Button, DataTable, EmptyState, FullScreenModal, IconButton, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, formatMoney, formatPercent, formatNumber} from '@/ui';
 import type {
   HrPayrollAction,
   HrPayrollComponent,
@@ -47,7 +46,7 @@ const ACTION_HELP: Partial<Record<HrPayrollAction, string>> = {
 };
 
 function oneDecimal(value: number): string {
-  return value.toFixed(1);
+  return formatNumber(value);
 }
 
 function moneyNumber(value?: string | null): number | null {
@@ -386,12 +385,12 @@ export default function PayrollOperationWorkspace({
               {
                 key: 'actions',
                 header: 'Acciones',
-                width: '7rem',
+                width: '100px',
                 type: 'actions',
                 render: (row) => (
                   <div className={form.rowActions}>
-                    <IconButton icon={Eye} size="sm" aria-haspopup="dialog" aria-controls={`payroll-employee-detail-${row.userId}`} label={`Ver detalle de ${row.name}`} onClick={() => setExpandedUserId(row.userId)} />
-                    {row.receipt && <IconButton icon={Download} size="sm" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy} label={`Descargar colilla de ${row.name}`} />}
+                    <IconButton icon={Eye} size="sm" tooltip="Ver detalle" aria-haspopup="dialog" aria-controls={`payroll-employee-detail-${row.userId}`} label={`Ver detalle de ${row.name}`} onClick={() => setExpandedUserId(row.userId)} />
+                    {row.receipt && <IconButton icon={Download} size="sm" tooltip="Descargar" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy} label={`Descargar colilla de ${row.name}`} />}
                   </div>
                 ),
               },

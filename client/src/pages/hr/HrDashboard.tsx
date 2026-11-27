@@ -89,26 +89,26 @@ export default function HrDashboard() {
                             context={attentionTotal == null ? 'Algún pendiente no está disponible; no se suma un total parcial.' : attentionTotal > 0 ? 'Solicitudes e incidencias pendientes de resolver.' : 'Sin pendientes.'}
                             action={attentionTotal ? { label: 'Ver pendientes', onClick: () => navigate('/rh/ausencias') } : undefined}
                         />
-                        <StatCard
+                        {!data.payroll.activeRule && <StatCard
                             label="Configuración de nómina"
                             tone={data.payroll.activeRule ? 'success' : 'warning'}
                             value={data.payroll.activeRule ? 'Lista' : 'Pendiente'}
                             context={data.payroll.activeRule ? 'Hay una regla legal activa (IR, INSS e INATEC).' : 'Falta activar IR, INSS e INATEC para calcular nómina.'}
                             action={data.payroll.activeRule ? undefined : { label: 'Configurar', onClick: () => navigate('/rh/nomina/configuracion-legal') }}
-                        />
+                        />}
                         <StatCard
                             label="Corridas en proceso"
                             value={asNumber(runsInProcess)}
                             context={runsInProcess == null ? 'El estado de las corridas no está disponible.' : `Borrador, revisión o listas para pago (${asNumber(data.payroll.approvedRuns)} listas para pago).`}
                             action={runsInProcess ? { label: 'Abrir nómina', onClick: () => navigate('/rh/nomina') } : undefined}
                         />
-                        <StatCard
-                            label="Sucursales con asistencia"
+                        {data.branches.total > 0 && data.branches.attendanceEnabled < data.branches.total && <StatCard
+                            label="Sucursales sin marcaje"
                             tone={data.branches.total > 0 && data.branches.attendanceEnabled < data.branches.total ? 'warning' : 'success'}
                             value={`${asNumber(data.branches.attendanceEnabled)} / ${asNumber(data.branches.total)}`}
-                            context="Sucursales habilitadas para marcaje."
+                            context="Sucursales con marcaje habilitado: sin marcaje no se registra asistencia ni horas extra."
                             action={data.branches.total > 0 && data.branches.attendanceEnabled < data.branches.total ? { label: 'Configurar', onClick: () => navigate('/rh/asistencia/configuracion') } : undefined}
-                        />
+                        />}
                     </section>
 
                     <div className={styles.workgrid}>

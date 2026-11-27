@@ -785,6 +785,27 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                     setProblemDescription('');
                 }}
                 title="Reportar Problema"
+                footer={(
+                    <>
+                        <button
+                            type="button"
+                            className="btn-cancel-problem"
+                            onClick={() => {
+                                setShowProblemModal(false);
+                                setProblemDescription('');
+                            }}
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            type="button"
+                            className="btn-submit-problem"
+                            onClick={submitProblemReport}
+                        >
+                            Reportar
+                        </button>
+                    </>
+                )}
             >
                 <p style={{ margin: '0 0 var(--spacing-md) 0', color: 'var(--ui-text-muted)', fontSize: 'var(--font-size-sm)' }}>
                     Orden #{selectedOrderId}
@@ -796,25 +817,6 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                     placeholder="Describe el problema con esta orden..."
                     autoFocus
                 />
-                <div className="problem-modal-actions">
-                    <button
-                        type="button"
-                        className="btn-cancel-problem"
-                        onClick={() => {
-                            setShowProblemModal(false);
-                            setProblemDescription('');
-                        }}
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        type="button"
-                        className="btn-submit-problem"
-                        onClick={submitProblemReport}
-                    >
-                        Reportar
-                    </button>
-                </div>
             </FullScreenModal>
         </div>
     );

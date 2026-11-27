@@ -16,9 +16,9 @@
 .count-pos { color: var(--ui-success); font-weight: 600; }
 .count-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: var(--font-size-sm); font-weight: 600; }
 .count-badge-neutral { background: var(--ui-border); color: var(--ui-text); }
-.count-badge-warning { background: var(--ui-warning); color: #78350f; }
-.count-badge-success { background: var(--ui-success); color: #fff; }
-.count-badge-danger { background: var(--ui-danger); color: #fff; }
+.count-badge-warning { background: var(--ui-warning); color: var(--ui-primary-fg); }
+.count-badge-success { background: var(--ui-success); color: var(--ui-primary-fg); }
+.count-badge-danger { background: var(--ui-danger); color: var(--ui-primary-fg); }
 .count-dialog-field { display: flex; flex-direction: column; gap: var(--spacing-xs); }
 .count-dialog-field textarea { width: 100%; min-height: 80px; }
 .count-dialog-actions { display: flex; justify-content: flex-end; gap: var(--spacing-sm); margin-top: var(--spacing-md); }

@@ -1243,7 +1243,7 @@
 
 .widget-pagination button:hover:not(:disabled) {
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     border-color: var(--ui-primary);
 }
 

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, FileSpreadsheet, Plus, Scale, Search } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, Plus, Scale, Search } from 'lucide-react';
 import {
-  AppSelect, Badge, Button, DataTable, DateInput, EmptyState, formatMoney, formatNumber, formatPercent, FullScreenModal, Input, LoadErrorState, PageContent,
+  AppSelect, Badge, Button, DataTable, DateInput, EmptyState, formatMoney, formatNumber, formatPercent, FullScreenModal, IconButton, Input, LoadErrorState, PageContent,
   PageHeader, StatCard, TableToolbar, Tabs, Textarea,
 } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
-import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
 import PayrollComponentForm from '../../components/hr/PayrollComponentForm';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
@@ -543,9 +543,9 @@ export default function PayrollManagement() {
                   const isSelected = selected?.id === run.id && selected.kind === run.kind;
                   return (
                     <div className={form.rowActions}>
-                      <Button size="sm" variant="ghost" onClick={() => openRun(run)} disabled={workspaceLoading} title={isSelected ? 'Corrida abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver corrida' : 'Continuar corrida'} aria-label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`} icon={Eye} />
-                      <Button size="sm" variant="ghost" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} title="Descargar reporte Excel" aria-label={`Descargar reporte de ${run.code}`} icon={FileSpreadsheet} />
-                      <Button size="sm" variant="ghost" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} title="Descargar colillas" aria-label={`Descargar colillas de ${run.code}`} icon={Download} />
+                      <IconButton size="sm" onClick={() => openRun(run)} disabled={workspaceLoading} tooltip={isSelected ? 'Abierta' : run.status === 'PAID' || run.status === 'VOID' ? 'Ver detalle' : 'Continuar'} label={`${isSelected ? 'Corrida abierta' : 'Abrir corrida'} ${run.code}`} icon={Eye} />
+                      <IconButton size="sm" onClick={() => void exportSpecificRun(run, 'xlsx')} disabled={downloading || !run.totals} tooltip="Descargar reporte" label={`Descargar reporte de ${run.code}`} icon={Download} />
+                      <IconButton size="sm" onClick={() => void downloadRunReceiptBatch(run)} disabled={downloading || run.status !== 'PAID'} tooltip="Descargar colillas" label={`Descargar colillas de ${run.code}`} icon={Download} />
                     </div>
                   );
                 },
@@ -557,6 +557,7 @@ export default function PayrollManagement() {
       </>)}
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(createPanel)}
         onClose={() => { if (!saving) { if (createPanel?.kind === 'component') componentOperationKey.current = null; setCreatePanel(null); } }}
         title={createPanel?.kind === 'rule' ? 'Nueva regla base' : createPanel?.kind === 'period' ? 'Nuevo periodo de nómina' : createPanel?.kind === 'component' ? 'Ingreso o deducción' : createPanel?.runKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'}
@@ -576,6 +577,7 @@ export default function PayrollManagement() {
       </FullScreenModal>
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(transition)}
         onClose={() => { if (!saving) { transitionOperationKey.current = null; setTransition(null); } }}
         title={transition ? ACTION_LABELS[transition.action] : 'Acción de nómina'}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getApiErrorMessage } from '../utils/apiError';
 import { notifyError } from '../services/notify';
 import { companiesAPI } from '../services/api';
-import { Plus, Building2, Edit2, CheckCircle, XCircle, FileText, Search } from 'lucide-react';
+import { Plus, Building2, Pencil, Power, FileText, Search } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
 import { resolveAssetUrl } from '../utils/assets';
 import styles from './catalog.module.css';
@@ -180,12 +180,15 @@ export default function Companies() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (c) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${c.name}`} onClick={() => openModal(c)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${c.name}`} tooltip="Editar" onClick={() => openModal(c)} />
                     <IconButton
                         size="sm"
-                        icon={c.active ? XCircle : CheckCircle}
+                        icon={Power}
+                        tone={c.active ? 'danger' : 'primary'}
+                        tooltip={c.active ? 'Desactivar' : 'Activar'}
                         label={`${c.active ? 'Desactivar' : 'Activar'} ${c.name}`}
                         onClick={() => toggleActive(c)}
                     />

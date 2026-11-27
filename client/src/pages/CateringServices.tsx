@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Edit2, ClipboardList, Search } from 'lucide-react';
+import { Plus, Trash2, Pencil, ClipboardList, Search } from 'lucide-react';
 import { cateringAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -185,10 +185,11 @@ export default function CateringServices() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (s: CateringServiceRow) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${s.name}`} onClick={() => handleOpenSidebar(s)} />
-                    <IconButton size="sm" icon={Trash2} label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${s.name}`} tooltip="Editar" onClick={() => handleOpenSidebar(s)} />
+                    <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />
                 </div>
             )
         }] : [])

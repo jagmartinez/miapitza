@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { branchesAPI, hrAPI, type BranchGeofencePayload } from '../services/api';
 import BranchWarehouseRoutes from '../components/BranchWarehouseRoutes';
-import { Plus, Phone, Edit2, Trash2, Store, LocateFixed, Search } from 'lucide-react';
+import { Plus, Phone, Pencil, Power, Store, LocateFixed, Search } from 'lucide-react';
 import type { Branch } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -377,11 +377,12 @@ export default function Branches() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (b) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${b.name}`} onClick={() => openModal(b)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${b.name}`} tooltip="Editar" onClick={() => openModal(b)} />
                     {isSuperAdmin && b.status === 'ACTIVE' && (
-                        <IconButton size="sm" icon={Trash2} label={`Desactivar ${b.name}`} onClick={() => handleDelete(b.id)} />
+                        <IconButton size="sm" icon={Power} tone="danger" tooltip="Desactivar" label={`Desactivar ${b.name}`} onClick={() => handleDelete(b.id)} />
                     )}
                 </div>
             )

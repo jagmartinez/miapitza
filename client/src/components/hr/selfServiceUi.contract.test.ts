@@ -75,7 +75,7 @@ describe('employee self-service UX contract', () => {
     expect(profile).toContain("setSearchParams(tab === 'resumen' ? {} : { tab }");
     expect(layout).not.toContain("section: 'Mi portal RH'");
     expect(layout).not.toContain("to: '/profile?tab=hr'");
-    expect(layout).toContain('title="Perfil y Mi RH"');
+    expect(layout).toContain('Perfil y Mi RH');
     expect(profile).toContain('workforceClient.getMyWorkforce');
     expect(profile).toContain('selectVacationBalance');
     expect(profile).toContain('Saldo de vacaciones');

@@ -7,13 +7,13 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { useNavigate } from 'react-router-dom';
 import { branchesAPI, cashRegistersAPI, cashShiftsAPI } from '../services/api';
-import { Wallet, Unlock, History, Plus, Search } from 'lucide-react';
+import { Wallet, Unlock, Eye, History, Plus, Search } from 'lucide-react';
 import type { Branch, CashRegister, CashShift } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import styles from './CashRegisters.module.css';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, Input,
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, IconButton, Input,
     PageHeader, SegmentedControl, formatNumber, type Column,
 } from '@/ui';
 
@@ -224,11 +224,11 @@ export default function CashRegisters() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '1fr',
+            width: '100px',
             render: (r) => r.status === 'CLOSED' ? (
-                <Button size="sm" variant="secondary" icon={Unlock} onClick={(e) => handleOpenShiftClick(e, r.id)}>Abrir Caja</Button>
+                <IconButton size="sm" icon={Unlock} tone="primary" label={`Abrir caja ${r.name}`} tooltip="Abrir caja" onClick={(e) => handleOpenShiftClick(e, r.id)} />
             ) : (
-                <Button size="sm" variant="primary" icon={History} onClick={(e) => void handleViewActiveShift(e, r.id)}>Ver Turno</Button>
+                <IconButton size="sm" icon={Eye} label={`Ver turno ${r.name}`} tooltip="Ver turno" onClick={(e) => void handleViewActiveShift(e, r.id)} />
             ),
         },
     ];

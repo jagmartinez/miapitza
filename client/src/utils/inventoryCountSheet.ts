@@ -1,3 +1,4 @@
+import { formatNumber } from '../ui/format/number';
 import type { Product } from '../types';
 
 export type CountSheetProduct = Product & { totalStock?: number };
@@ -35,8 +36,8 @@ export function buildInventoryCountSheetHtml(
                     <td>${p.name}</td>
                     <td>${p.sku || '—'}</td>
                     <td>${unit}</td>
-                    <td class="num">${stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
-                    <td class="num">${min.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
+                    <td class="num">${formatNumber(stock)}</td>
+                    <td class="num">${formatNumber(min)}</td>
                     <td class="count-col"></td>
                     <td class="obs-col"></td>
                     <td class="status-col">${isLow ? '⚠ Bajo' : 'OK'}</td>

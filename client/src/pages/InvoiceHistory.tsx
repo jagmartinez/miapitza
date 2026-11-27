@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getApiErrorMessage } from '../utils/apiError';
 import { notifyError } from '../services/notify';
-import { Download, CreditCard, RotateCcw } from 'lucide-react';
+import { Ban, CreditCard, Download, FileMinus, RotateCcw } from 'lucide-react';
 import {
-    AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, Input, NumberInput,
+    AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input, NumberInput,
     PageContent, PageHeader, SegmentedControl, TableToolbar, Textarea, formatMoney,
     type Column,
 } from '@/ui';
@@ -437,37 +437,25 @@ export default function InvoiceHistory() {
             ),
         },
         {
-            key: 'actions', header: 'Acciones', width: '3fr', type: 'actions',
+            key: 'actions', header: 'Acciones', width: '172px', type: 'actions',
             render: (invoice) => (
                 <span className={styles.rowActions}>
-                    <Button size="sm" icon={Download} onClick={() => void downloadPdf(invoice.id, invoice.invoiceNumber)}>
-                        PDF
-                    </Button>
-                    <Button variant="ghost" size="sm" icon={CreditCard} onClick={() => void openPaymentHistory(invoice)}>
-                        Pagos
-                    </Button>
+                    <IconButton size="sm" icon={Download} tooltip="Descargar PDF" label={`Descargar PDF de ${invoice.invoiceNumber}`} onClick={() => void downloadPdf(invoice.id, invoice.invoiceNumber)} />
+                    <IconButton size="sm" icon={CreditCard} tooltip="Pagos" label={`Pagos de ${invoice.invoiceNumber}`} onClick={() => void openPaymentHistory(invoice)} />
                     {invoice.fiscalStatus === 'ISSUED' && invoice.status === 'UNPAID'
                         && invoice.orderStatus !== 'DELIVERED' && mayCancelInvoice && (
-                        <Button variant="danger" size="sm" icon={RotateCcw} onClick={() => void openFiscalAction(invoice, 'CANCEL')}>
-                            Anular factura
-                        </Button>
+                        <IconButton size="sm" icon={Ban} tone="danger" tooltip="Anular" label={`Anular factura ${invoice.invoiceNumber}`} onClick={() => void openFiscalAction(invoice, 'CANCEL')} />
                     )}
                     {['ISSUED', 'PARTIALLY_CREDITED'].includes(invoice.fiscalStatus)
                         && ['PAID', 'PARTIAL'].includes(invoice.status)
                         && invoice.orderStatus === 'DELIVERED' && mayIssueCreditNote && (
-                        <Button variant="danger" size="sm" icon={RotateCcw} onClick={() => void openFiscalAction(invoice, 'CREDIT_NOTE')}>
-                            {invoice.fiscalStatus === 'PARTIALLY_CREDITED' ? 'Otra nota' : 'Nota de crédito'}
-                        </Button>
+                        <IconButton size="sm" icon={FileMinus} tone="danger" tooltip={invoice.fiscalStatus === 'PARTIALLY_CREDITED' ? 'Otra nota de crédito' : 'Nota de crédito'} label={`${invoice.fiscalStatus === 'PARTIALLY_CREDITED' ? 'Otra nota de crédito' : 'Nota de crédito'} de ${invoice.invoiceNumber}`} onClick={() => void openFiscalAction(invoice, 'CREDIT_NOTE')} />
                     )}
                     {['PARTIALLY_CREDITED', 'CREDITED'].includes(invoice.fiscalStatus) && (
-                        <Button size="sm" icon={Download} onClick={() => void downloadCounterDocument(invoice, 'CREDIT_NOTE')}>
-                            Nota de crédito
-                        </Button>
+                        <IconButton size="sm" icon={Download} tooltip="Descargar nota" label={`Descargar nota de crédito de ${invoice.invoiceNumber}`} onClick={() => void downloadCounterDocument(invoice, 'CREDIT_NOTE')} />
                     )}
                     {invoice.fiscalStatus === 'CANCELLED' && (
-                        <Button size="sm" icon={Download} onClick={() => void downloadCounterDocument(invoice, 'CANCEL')}>
-                            Constancia
-                        </Button>
+                        <IconButton size="sm" icon={Download} tooltip="Descargar constancia" label={`Descargar constancia de ${invoice.invoiceNumber}`} onClick={() => void downloadCounterDocument(invoice, 'CANCEL')} />
                     )}
                 </span>
             ),

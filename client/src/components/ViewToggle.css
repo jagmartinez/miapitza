@@ -22,7 +22,7 @@
 
 .view-toggle .view-toggle-btn:hover {
     color: var(--ui-text);
-    background: var(--ui-bg);
+    background: var(--ui-surface-2);
 }
 
 .view-toggle .view-toggle-btn.active {
@@ -32,13 +32,13 @@
 
 /* Match the default primary action height used beside catalog toggles. */
 .view-toggle.catalog-view-toggle {
-    height: 44px;
-    min-height: 44px;
+    height: var(--ui-control-md);
+    min-height: var(--ui-control-md);
     box-sizing: border-box;
 }
 
 .view-toggle.catalog-view-toggle .view-toggle-btn {
-    min-width: 42px;
+    min-width: var(--ui-control-md);
     height: 100%;
     padding-block: 0;
     box-sizing: border-box;

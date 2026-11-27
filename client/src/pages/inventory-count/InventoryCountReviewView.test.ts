@@ -61,11 +61,11 @@ describe('InventoryCountReview detail', () => {
     it('detail shows system at count, counted, diff quantity and diff value per line', () => {
         const html = renderDetail(detail());
         expect(html).toContain('Sistema al contar');
-        expect(html).toContain('10 L');
-        expect(html).toContain('8 L');
-        expect(html).toContain('-2');
+        expect(html).toContain('10.00 L');
+        expect(html).toContain('8.00 L');
+        expect(html).toContain('-2.00');
         expect(html).toContain('-C$ 40.00');
-        expect(html).toContain('+1');
+        expect(html).toContain('+1.00');
         expect(html).toContain('+C$ 30.00');
     });
 

@@ -42,7 +42,7 @@
 }
 .table-map-actions button:hover,
 .table-map-actions button.active { border-color: var(--ui-primary); color: var(--ui-primary); background: color-mix(in srgb, var(--ui-primary) 8%, var(--ui-surface)); }
-.table-map-actions button.primary { background: var(--ui-primary); border-color: var(--ui-primary); color: white; }
+.table-map-actions button.primary { background: var(--ui-primary); border-color: var(--ui-primary); color: var(--ui-primary-fg); }
 .table-map-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .table-map-actions output { min-width: 48px; text-align: center; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
 .table-map-zoom-controls { display: inline-flex; align-items: center; gap: 7px; }
@@ -79,8 +79,8 @@
 
 .table-map-workspace { min-height: 0; flex: 1; display: flex; position: relative; }
 .table-map-viewport {
-    --map-floor: #f4f6f7;
-    --map-grid: rgb(100 116 139 / 0.08);
+    --map-floor: var(--ui-bg);
+    --map-grid: color-mix(in srgb, var(--ui-text) 6%, transparent);
     min-width: 0;
     min-height: 0;
     flex: 1;
@@ -94,8 +94,7 @@
     touch-action: pan-x pan-y;
 }
 .dark .table-map-viewport {
-    --map-floor: #111827;
-    --map-grid: rgb(148 163 184 / 0.055);
+    --map-grid: color-mix(in srgb, var(--ui-text) 5%, transparent);
 }
 .table-map-canvas { position: relative; min-width: 100%; min-height: 100%; }
 .table-map-scale {
@@ -134,7 +133,7 @@
     z-index: 1;
     box-sizing: border-box;
     border: 1.5px solid color-mix(in srgb, var(--area-color) 58%, var(--ui-text-muted));
-    background: color-mix(in srgb, var(--area-color) 22%, var(--map-floor));
+    background: color-mix(in srgb, var(--area-color) 10%, var(--ui-surface));
     box-shadow: 0 1px 3px rgb(15 23 42 / 0.05);
     transform-origin: center;
     pointer-events: none;
@@ -275,14 +274,17 @@
     max-width: 100%;
     overflow: hidden;
     color: var(--ui-text);
-    font-size: clamp(12px, 1vw, 16px);
-    font-weight: 850;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.15;
+    text-align: center;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
-.map-table-status { max-width: 100%; overflow: hidden; font-size: 9px; font-weight: 800; line-height: 1.05; text-overflow: ellipsis; text-transform: uppercase; text-align: center; white-space: nowrap; }
-.map-table-capacity { font-size: 9px; line-height: 1; color: var(--ui-text-muted); white-space: nowrap; }
+.map-table-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.map-table-capacity { font-size: 11px; line-height: 1.1; color: var(--ui-text-muted); white-space: nowrap; }
 .map-resize-handle {
     position: absolute;
     right: -7px;
@@ -418,7 +420,7 @@
         font-size: 11px;
         font-weight: 750;
     }
-    .table-map-mobile-areas button.active { border-color: var(--ui-primary); color: white; background: var(--ui-primary); }
+    .table-map-mobile-areas button.active { border-color: var(--ui-primary); color: var(--ui-primary-fg); background: var(--ui-primary); }
     .table-map-viewport { scroll-behavior: smooth; }
     .map-table-number { font-size: 18px; }
     .map-table-status { font-size: 12px; }
@@ -433,7 +435,8 @@
 .table-map-insights .salon-cards { margin-bottom: 10px; }
 
 .table-map-zone-filter { min-width: 0; flex: 1 1 14rem; max-width: 100%; overflow-x: auto; }
-.map-table-consumption { font-size: 10px; font-weight: 700; color: var(--ui-text); }
+.map-table-consumption { display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 11px; font-weight: 700; line-height: 1.1; color: var(--ui-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.map-table-minutes { font-weight: 600; color: var(--table-state-color); }
 
 /* La barra del mapa reparte sus controles en varias líneas en lugar de aplastarlos. */
 .table-map-toolbar { flex-wrap: wrap; row-gap: var(--spacing-sm, 8px); }

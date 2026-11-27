@@ -123,8 +123,8 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(legalSettings).toContain('formatLegalDate');
     // Layout migrado: la versión abierta vive en un panel lateral de @/ui (sin .hr-legal-rule-toolbar ni botones con clase propia).
     expect(legalSettings).toContain('aria-label="Versión legal seleccionada"');
-    expect(legalSettings).toContain('<Eye size={15}');
-    expect(legalSettings).toContain('<Copy size={15}');
+    expect(legalSettings).toContain('icon={Eye}');
+    expect(legalSettings).toContain('icon={Copy}');
     expect(legalSettings).not.toContain('hr-legal-table-action');
   });
 

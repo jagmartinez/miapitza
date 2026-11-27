@@ -37,7 +37,7 @@ describe('operational UX contracts', () => {
 
         expect(toggleSource).toContain('view-toggle catalog-view-toggle');
         expect(toggleStyles).toContain('.view-toggle.catalog-view-toggle');
-        expect(toggleStyles).toContain('height: 44px');
+        expect(toggleStyles).toContain('height: var(--ui-control-md)');
         expect(layoutSource).not.toContain("{ to: '/kardex'");
     });
 

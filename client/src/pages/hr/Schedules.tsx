@@ -43,6 +43,7 @@ import type {
     HrShiftTemplate,
     HrWeeklySchedule,
 } from '../../types/hr-schedule';
+import { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import { getUserRoleNames, hasPermission } from '../../utils/authz';
 import './schedule.css';
 
@@ -568,7 +569,7 @@ export default function Schedules() {
                 <AppSelect<string> aria-label="Puesto" placeholder="Todos los puestos" isClearable options={positionOptions} value={jobPositionId || null} onChange={(value) => setJobPositionId(value ?? '')} isDisabled={filtersLocked} />
             </TableToolbar>
 
-            <section className={form.frame} aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
+            <section aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
                 {loading && <HrLoading text="Cargando horarios…" />}
                 {!loading && error && <LoadErrorState message={error} onRetry={() => void loadWeek()} />}
                 {!loading && !error && visibleWorkers.length === 0 && !hasShifts && (
@@ -593,6 +594,7 @@ export default function Schedules() {
                 onClose={closeEditor}
                 breadcrumb={['Recursos humanos', 'Horarios']}
                 title={editingShift ? 'Editar turno' : newShiftDefaults ? 'Asignar jornada' : 'Nuevo turno'}
+                footer={<HrModalFooterSlot />}
             >
                 <ScheduleShiftForm
                     weekStart={weekStart}

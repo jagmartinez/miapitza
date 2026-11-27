@@ -26,7 +26,7 @@ describe('team schedule planning UX', () => {
         expect(schedulePage).toContain('userId: worker.id');
         expect(schedulePage).toContain('date,');
         expect(weekView).toContain('...workersById.keys()');
-        expect(weekView).toContain('hr-schedule-empty-cell-button');
+        expect(weekView).toContain('hr-schedule-add');
         expect(weekView).toContain('Agregar turno para');
         expect(shiftForm).toContain('initialAssignment');
         expect(shiftForm).toContain('initialAssignment?.date ?? weekStart');
@@ -79,11 +79,10 @@ describe('team schedule planning UX', () => {
         expect(shiftForm).toContain('hr-shift-overnight-note');
     });
 
-    it('raises matrix typography by one pixel without changing global type tokens', () => {
-        expect(styles).toContain('font-size: calc(var(--font-size-xs) + 1px)');
-        expect(styles).toContain('font-size: calc(var(--font-size-sm) + 1px)');
-        expect(styles).toContain('font-size: 13px');
-        expect(styles).toContain('font-size: 11px');
+    it('sizes matrix typography with the design-system type tokens', () => {
+        expect(styles).toContain('font-size: var(--ui-text-xs)');
+        expect(styles).toContain('font-size: var(--ui-text-sm)');
+        expect(styles).not.toContain('--font-size-');
     });
 
     it('shows only the published team endpoint in self-service', () => {
@@ -98,7 +97,7 @@ describe('team schedule planning UX', () => {
         expect(weekView).toContain('shiftTemplateName(item)');
         expect(weekView).toContain('fallbackShiftColor');
         expect(weekView).toContain("'--shift-accent': shiftColor(item)");
-        expect(weekView).toContain('Leyenda de colores por franja de turno');
+        expect(weekView).toContain('Leyenda de colores por jornada');
         expect(weekView).toContain('turno de');
         expect(weekView).toContain('if (!templateName) return []');
         expect(weekView).toContain('Turno sin jornada configurada');

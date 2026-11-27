@@ -36,9 +36,13 @@ describe('DataTable', () => {
     expect(cell).toHaveClass('ui-cell--numeric');
   });
 
-  it('columnTemplate envuelve fr y respeta el resto', () => {
+  it('columnTemplate da a cada fr un mínimo que cabe el encabezado y respeta el resto', () => {
     expect(columnTemplate([{ width: '2.4fr' }, { width: 'minmax(8rem,1fr)' }, { width: '48px' }])).toBe(
-      'minmax(0,2.4fr) minmax(8rem,1fr) 48px',
+      'minmax(160px,2.4fr) minmax(8rem,1fr) 48px',
+    );
+    // sin canvas (jsdom): 18 caracteres * 7.6 + 32 + 4 = 173
+    expect(columnTemplate([{ header: 'Plato' }, { header: 'Vendidos (30 días)', type: 'number', width: '1fr' }])).toBe(
+      'minmax(160px,1.6fr) minmax(173px,1fr)',
     );
   });
 

@@ -30,17 +30,16 @@ describe('ProductionDashboard', () => {
   it('muestra costo real, variación y rendimiento con su contexto', async () => {
     mocks.dashboard.mockResolvedValue(dashboard(kpis()));
     render(<MemoryRouter><ProductionDashboard /></MemoryRouter>);
-    const real = await screen.findByRole('region', { name: 'Costo real' });
-    expect(real).toHaveTextContent('C$ 330.00');
-    expect(real).toHaveTextContent('Estimado C$ 300.00');
-    expect(screen.getByRole('region', { name: 'Variación de costo' })).toHaveTextContent('10.00 % frente al estimado');
+    const variation = await screen.findByRole('region', { name: 'Variación de costo' });
+    expect(variation).toHaveTextContent('10.00 % frente al estimado');
+    expect(variation).toHaveTextContent('real C$ 330.00 vs estimado C$ 300.00');
     expect(screen.getByRole('region', { name: 'Rendimiento promedio' })).toHaveTextContent('95.00 %');
   });
 
   it('sin producciones finalizadas no muestra ceros: N/D', async () => {
     mocks.dashboard.mockResolvedValue(dashboard(kpis({ realizedOrders: 0, totalRealCost: 0, totalEstimatedCost: 0, costVariance: 0, avgYieldPct: 0, avgRealOrderCost: 0, finished: 0 })));
     render(<MemoryRouter><ProductionDashboard /></MemoryRouter>);
-    expect(await screen.findByRole('region', { name: 'Costo real' })).toHaveTextContent('N/D');
+    expect(await screen.findByRole('region', { name: 'Variación de costo' })).toHaveTextContent('N/D');
     expect(screen.getByRole('region', { name: 'Rendimiento promedio' })).toHaveTextContent('N/D');
   });
 

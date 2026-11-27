@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { productionRecipesAPI, productsAPI, unitsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, SegmentedControl, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
+    PageContent, PageHeader, Skeleton, StatCard, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
     type Column, type Opt, type Tone, LoadErrorState,
 } from '@/ui';
 import { useAuth } from '../hooks/useAuth';
@@ -13,7 +13,7 @@ import { getUserRoleNames } from '../utils/authz';
 import { FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Eye, X } from 'lucide-react';
 
 /** Columnas de la lista cuando el detalle ocupa el panel derecho (maestro-detalle). */
-const MASTER_KEYS = ['product', 'version', 'status', 'unitCost'];
+const MASTER_KEYS = ['product', 'status', 'unitCost'];
 import type { ProductionRecipe, Product, UnitOfMeasure, RecipeCost } from '../types';
 import {
     COST_VARIATION_ALERT_PCT, costVariation, ingredientWeights, previousVersion, usedIn,
@@ -492,11 +492,11 @@ export default function ProductionRecipes() {
         );
     }
 
-    const statusFilters: Array<{ value: typeof statusFilter; label: string }> = [
-        { value: 'all', label: `Todas (${recipes.length})` },
-        { value: 'ACTIVE', label: `Activas (${countBy('ACTIVE')})` },
-        { value: 'DRAFT', label: `Borradores (${countBy('DRAFT')})` },
-        { value: 'INACTIVE', label: `Inactivas (${countBy('INACTIVE')})` },
+    const statusTabs: Array<{ id: typeof statusFilter; label: string; badge: number }> = [
+        { id: 'all', label: 'Todas', badge: recipes.length },
+        { id: 'ACTIVE', label: 'Activas', badge: countBy('ACTIVE') },
+        { id: 'DRAFT', label: 'Borradores', badge: countBy('DRAFT') },
+        { id: 'INACTIVE', label: 'Inactivas', badge: countBy('INACTIVE') },
     ];
 
     const columns: Column<ProductionRecipe>[] = [
@@ -507,32 +507,30 @@ export default function ProductionRecipes() {
             render: (recipe) => (
                 <div className={s.cellStack}>
                     <span className={s.cellTitle}>{recipe.product?.name || `#${recipe.productId}`}</span>
-                    {(recipe.name || recipe.product?.sku) && (
-                        <span className={s.cellSub}>{[recipe.name, recipe.product?.sku].filter(Boolean).join(' · ')}</span>
-                    )}
+                    <span className={s.cellSub}>
+                        {[recipe.product?.sku, `${recipe.components?.length ?? 0} ${(recipe.components?.length ?? 0) === 1 ? 'componente' : 'componentes'}`].filter(Boolean).join(' · ')}
+                    </span>
                 </div>
             ),
         },
-        { key: 'version', header: 'Versión', width: '0.7fr', render: (recipe) => `v${recipe.version}` },
         {
             key: 'status',
             header: 'Estado',
             width: '1fr',
             type: 'status',
-            render: (recipe) => <Badge tone={STATUS_TONE_BY_RECIPE[recipe.status].tone}>{STATUS_TONE_BY_RECIPE[recipe.status].label}</Badge>,
+            render: (recipe) => <Badge tone={STATUS_TONE_BY_RECIPE[recipe.status].tone}>{STATUS_TONE_BY_RECIPE[recipe.status].label} · v{recipe.version}</Badge>,
         },
-        { key: 'components', header: '# Componentes', type: 'number', width: '0.9fr', hideBelow: 'lg', accessor: (recipe) => recipe.components?.length ?? 0, decimals: 0 },
         {
             key: 'yield',
             header: 'Rendimiento',
-            type: 'number',
-            width: '1.2fr',
+            type: 'qty',
+            width: '1fr',
             hideBelow: 'md',
             render: (recipe) => `${formatNumber(recipe.yieldQuantity, 2)} ${displayedYieldUnit(recipe)}`,
         },
         {
             key: 'unitCost',
-            header: `Costo unitario (${symbol})`,
+            header: `Costo unit. (${symbol})`,
             type: 'money',
             width: '1.1fr',
             render: (recipe) => recipe.cost
@@ -541,9 +539,9 @@ export default function ProductionRecipes() {
         },
         {
             key: 'variation',
-            header: 'Vs. versión anterior',
+            header: 'Var. costo',
             type: 'percent',
-            width: '1.1fr',
+            width: '1fr',
             hideBelow: 'lg',
             render: (recipe) => {
                 const v = variationById.get(recipe.id);
@@ -566,21 +564,21 @@ export default function ProductionRecipes() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '11rem',
+            width: '208px',
             render: (recipe) => (
                 <div className={s.rowActions}>
-                    <IconButton icon={Eye} size="sm" label={`Ver detalle de ${recipe.product?.name || recipe.name}`} onClick={() => void handleView(recipe)} />
+                    <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${recipe.product?.name || recipe.name}`} onClick={() => void handleView(recipe)} />
                     {canManage && recipe.status === 'DRAFT' && (
-                        <IconButton icon={Pencil} size="sm" label="Editar" onClick={() => handleOpenEdit(recipe)} />
+                        <IconButton icon={Pencil} size="sm" tooltip="Editar" label="Editar" onClick={() => handleOpenEdit(recipe)} />
                     )}
                     {canManage && recipe.status !== 'ACTIVE' && (
-                        <IconButton icon={Power} size="sm" label="Activar" onClick={() => void handleSetStatus(recipe, 'ACTIVE')} />
+                        <IconButton icon={Power} size="sm" tone="primary" tooltip="Activar" label="Activar" onClick={() => void handleSetStatus(recipe, 'ACTIVE')} />
                     )}
                     {canManage && recipe.status === 'ACTIVE' && (
-                        <IconButton icon={Power} size="sm" label="Desactivar" onClick={() => void handleSetStatus(recipe, 'INACTIVE')} />
+                        <IconButton icon={Power} size="sm" tone="danger" tooltip="Desactivar" label="Desactivar" onClick={() => void handleSetStatus(recipe, 'INACTIVE')} />
                     )}
-                    {canManage && <IconButton icon={Copy} size="sm" label="Nueva versión" onClick={() => void handleCreateVersion(recipe)} />}
-                    {canDelete && <IconButton icon={Trash2} size="sm" label="Eliminar" onClick={() => void handleDelete(recipe)} />}
+                    {canManage && <IconButton icon={Copy} size="sm" tooltip="Duplicar" label="Nueva versión" onClick={() => void handleCreateVersion(recipe)} />}
+                    {canDelete && <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Eliminar" label="Eliminar" onClick={() => void handleDelete(recipe)} />}
                 </div>
             ),
         },
@@ -667,8 +665,8 @@ export default function ProductionRecipes() {
                         ariaLabel="Componentes de la receta"
                         rows={componentRows}
                         rowKey={(row) => row.key}
-                        minWidth="36rem"
-                        footerLabel="Costo total del lote"
+                        minWidth="0"
+                        footerLabel="Total del lote"
                         empty="La receta no tiene componentes."
                         columns={[
                             {
@@ -682,8 +680,7 @@ export default function ProductionRecipes() {
                                     </div>
                                 ),
                             },
-                            { key: 'quantity', header: 'Cantidad', type: 'qty', width: '1fr', accessor: (row) => row.quantity },
-                            { key: 'unit', header: 'Unidad', width: '0.7fr' },
+                            { key: 'quantity', header: 'Cantidad', type: 'qty', width: '1fr', render: (row) => `${formatNumber(row.quantity)} ${row.unit}`.trim() },
                             {
                                 key: 'unitCost', header: `Costo unit. (${symbol})`, type: 'money', width: '1fr',
                                 render: (row) => (row.unitCost === null ? 'N/D' : formatNumber(row.unitCost, row.unitCost !== 0 && Math.abs(row.unitCost) < 1 ? 4 : 2)),
@@ -694,7 +691,7 @@ export default function ProductionRecipes() {
                                 render: (row) => (row.totalCost === null ? 'N/D' : formatNumber(row.totalCost)),
                             },
                             {
-                                key: 'weight', header: 'Peso en costo', type: 'percent', width: '1fr',
+                                key: 'weight', header: '% costo', headerTitle: 'Peso del insumo en el costo del lote', type: 'percent', width: '1fr',
                                 render: (row) => (row.weight === undefined ? 'N/D' : formatPercent(row.weight)),
                             },
                         ]}
@@ -764,10 +761,16 @@ export default function ProductionRecipes() {
                 </div>
             )}
 
+            <Tabs
+                ariaLabel="Filtrar recetas por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as typeof statusFilter)}
+                tabs={statusTabs}
+            />
+
             <TableToolbar
                 actions={focus !== 'all' ? <Button size="sm" onClick={() => setFocus('all')}>Quitar filtro</Button> : undefined}
             >
-                <SegmentedControl ariaLabel="Filtrar por estado" size="sm" value={statusFilter} onChange={setStatusFilter} options={statusFilters} />
                 <div className={s.search}>
                     <Input
                         type="search"
@@ -942,7 +945,7 @@ export default function ProductionRecipes() {
                                             <div key={line.componentProductId} className="pr-cost-line">
                                                 <span className="pr-cost-line-name">{line.componentName}</span>
                                                 <span className="pr-cost-line-qty">
-                                                    {line.quantity} {line.unit}
+                                                    {formatNumber(line.quantity)} {line.unit}
                                                 </span>
                                                 <span className="pr-cost-line-total">{formatMoney(Number(line.totalCost))}</span>
                                             </div>

@@ -15,7 +15,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, FileDown, FileText, DollarSign, Undo2, Pencil, PackageCheck } from 'lucide-react';
+import { Plus, Eye, Zap, FileDown, Download, DollarSign, RotateCcw, Trash2, Undo2, Pencil, PackageCheck } from 'lucide-react';
 import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
@@ -53,9 +53,9 @@ function toAutoPurchaseLine(suggestion: PoSuggestionRow) {
 function formatSuggestionQuantity(suggestion: PoSuggestionRow) {
     const purchaseQuantity = Number(suggestion.purchaseQuantity);
     if (Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && suggestion.purchaseUnit) {
-        return `${Number(purchaseQuantity.toFixed(3))} ${suggestion.purchaseUnit}`;
+        return `${formatNumber(purchaseQuantity)} ${suggestion.purchaseUnit}`;
     }
-    return `${Number(Number(suggestion.suggestedQuantity).toFixed(3))}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
+    return `${formatNumber(suggestion.suggestedQuantity)}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
 }
 
 interface PoSuggestionsData {
@@ -572,38 +572,40 @@ export default function PurchaseOrders() {
             ),
         },
         {
-            key: 'actions', header: 'Acciones', width: '10rem', type: 'actions',
+            key: 'actions', header: 'Acciones', width: '208px', type: 'actions',
             render: (order) => (
                 <span className={styles.rowActions}>
-                    {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
-                        <IconButton
-                            icon={DollarSign} size="sm"
-                            label={order.paymentStatus === 'PAID' ? 'Ver historial de abonos' : 'Registrar pago / abono'}
-                            onClick={() => handleOpenPayment(order)}
-                        />
-                    )}
                     {canManagePurchaseOrders && (
                         <IconButton
                             icon={order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED' ? Eye : Pencil} size="sm"
+                            tooltip={order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED' ? 'Ver detalle' : 'Editar'}
                             label={order.status === 'RECEIVED' ? 'Ver detalles' : order.status === 'PARTIALLY_RECEIVED' ? 'Ver / recibir saldo' : 'Editar'}
                             onClick={() => handleOpenForm(order.id)}
                         />
                     )}
+                    {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
+                        <IconButton
+                            icon={DollarSign} size="sm"
+                            tooltip={order.paymentStatus === 'PAID' ? 'Historial' : 'Registrar pago'}
+                            label={order.paymentStatus === 'PAID' ? 'Ver historial de abonos' : 'Registrar pago / abono'}
+                            onClick={() => handleOpenPayment(order)}
+                        />
+                    )}
                     {canManagePurchaseOrders && order.status === 'PARTIALLY_RECEIVED' && (
                         <IconButton
-                            icon={PackageCheck} size="sm"
+                            icon={PackageCheck} size="sm" tooltip="Cerrar saldo"
                             label={`Cerrar saldo de la orden ${order.id} (abandonar lo pendiente)`}
                             onClick={() => void handleCloseRemaining(order)}
                         />
                     )}
                     {order.invoicePdf && (
-                        <IconButton icon={FileText} size="sm" label="Ver Factura PDF" onClick={() => void handleDownloadInvoice(order)} />
-                    )}
-                    {canDeletePurchaseOrders && order.status === 'DRAFT' && (
-                        <IconButton icon={X} size="sm" label="Eliminar borrador" onClick={() => void handleDeleteOrder(order.id)} />
+                        <IconButton icon={Download} size="sm" tooltip="Descargar factura" label="Ver Factura PDF" onClick={() => void handleDownloadInvoice(order)} />
                     )}
                     {canDeletePurchaseOrders && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
-                        <IconButton icon={Undo2} size="sm" label="Revertir recepción" onClick={() => void handleReverseReceipt(order)} />
+                        <IconButton icon={RotateCcw} size="sm" tone="danger" tooltip="Revertir" label="Revertir recepción" onClick={() => void handleReverseReceipt(order)} />
+                    )}
+                    {canDeletePurchaseOrders && order.status === 'DRAFT' && (
+                        <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Eliminar" label="Eliminar borrador" onClick={() => void handleDeleteOrder(order.id)} />
                     )}
                 </span>
             ),

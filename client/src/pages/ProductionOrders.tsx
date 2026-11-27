@@ -10,7 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import {
-    Factory, Plus, Eye, CheckCircle, Ban, Play, Clock, Calculator,
+    Factory, Plus, Eye, CheckCircle, CheckCircle2, Ban, Play, Clock, Calculator,
     AlertTriangle, Save, Info
 } from 'lucide-react';
 import type {
@@ -469,15 +469,15 @@ export default function ProductionOrders() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '8rem',
+            width: '136px',
             render: (order) => (
                 <div className={s.rowActions}>
-                    <IconButton icon={Eye} size="sm" label={`Ver detalle de ${order.code}`} onClick={() => void handleOpenDetail(order.id)} />
+                    <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${order.code}`} onClick={() => void handleOpenDetail(order.id)} />
                     {canManage && canFinish(order.status) && (
-                        <IconButton icon={CheckCircle} size="sm" label="Finalizar producción" onClick={() => void handleOpenFinish(order.id)} />
+                        <IconButton icon={CheckCircle2} size="sm" tone="primary" tooltip="Finalizar" label="Finalizar producción" onClick={() => void handleOpenFinish(order.id)} />
                     )}
                     {canManage && canCancel(order.status) && (
-                        <IconButton icon={Ban} size="sm" label="Anular orden" onClick={() => { setCancelOrder(order); setCancelReason(''); }} />
+                        <IconButton icon={Ban} size="sm" tone="danger" tooltip="Anular" label="Anular orden" onClick={() => { setCancelOrder(order); setCancelReason(''); }} />
                     )}
                 </div>
             ),

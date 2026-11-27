@@ -43,7 +43,7 @@
 
 .action-btn-mini.pdf:hover {
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .action-btn-mini.payment {

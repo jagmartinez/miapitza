@@ -252,18 +252,10 @@ export default function ProductionDashboard() {
                 <>
                     <div className={s.stats}>
                         <StatCard
-                            label="Costo real"
-                            value={hasRealized ? formatMoney(kpis.totalRealCost) : 'N/D'}
-                            context={hasRealized
-                                ? `Estimado ${formatMoney(kpis.totalEstimatedCost)} en ${formatNumber(kpis.realizedOrders, 0)} producciones realizadas.${deltaText(kpis.totalRealCost, prev?.totalRealCost) ? ` ${deltaText(kpis.totalRealCost, prev?.totalRealCost)}.` : ''}`
-                                : 'Sin producciones finalizadas en el período.'}
-                            tone="primary"
-                        />
-                        <StatCard
                             label="Variación de costo"
                             value={hasRealized ? formatMoney(kpis.costVariance) : 'N/D'}
                             context={hasRealized
-                                ? `${formatPercent(kpis.costVariancePct)} frente al estimado.${deltaText(kpis.costVariance, prev?.costVariance) ? ` ${deltaText(kpis.costVariance, prev?.costVariance)}.` : ''}`
+                                ? `${formatPercent(kpis.costVariancePct)} frente al estimado: real ${formatMoney(kpis.totalRealCost)} vs estimado ${formatMoney(kpis.totalEstimatedCost)} en ${formatNumber(kpis.realizedOrders, 0)} producciones.${deltaText(kpis.costVariance, prev?.costVariance) ? ` ${deltaText(kpis.costVariance, prev?.costVariance)}.` : ''}`
                                 : 'Requiere producciones finalizadas con costo estimado.'}
                             tone={!hasRealized ? 'neutral' : kpis.costVariance > 0 ? 'danger' : 'success'}
                             action={hasRealized && kpis.costVariance > 0 ? { label: 'Ver órdenes', onClick: () => navigate('/production-orders') } : undefined}
@@ -284,12 +276,6 @@ export default function ProductionDashboard() {
                                 : 'No hay órdenes en el período.'}
                             tone={kpis.total === 0 ? 'neutral' : kpis.completionRate >= 80 ? 'success' : kpis.completionRate >= 50 ? 'warning' : 'danger'}
                             action={kpis.activeOrders > 0 ? { label: 'Ver órdenes', onClick: () => navigate('/production-orders') } : undefined}
-                        />
-                        <StatCard
-                            label="Costo promedio por orden"
-                            value={hasRealized ? formatMoney(kpis.avgRealOrderCost) : 'N/D'}
-                            context="Costo real entre producciones realizadas."
-                            tone="neutral"
                         />
                     </div>
 

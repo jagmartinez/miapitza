@@ -6,10 +6,10 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { rolesAPI, permissionsAPI } from '../services/api';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { describePermission } from '../utils/permissionCatalog';
 import styles from './RolesPermissions.module.css';
-import { Button, Checkbox, DataTable, Field, FormSection, FullScreenModal, Input, PageHeader, Textarea, type Column } from '@/ui';
+import { Button, Checkbox, DataTable, Field, FormSection, FullScreenModal, IconButton, Input, PageHeader, Textarea, type Column } from '@/ui';
 
 interface PermissionRow {
     id: number;
@@ -151,15 +151,12 @@ export default function RolesPermissions() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (role) => (
                 <div className={styles.actions}>
-                    <Button variant="ghost" onClick={() => handleOpenSidebar(role)} aria-label={`Editar ${role.name}`}>
-                        <Edit size={15} /> Editar
-                    </Button>
+                    <IconButton size="sm" icon={Pencil} tooltip="Editar" onClick={() => handleOpenSidebar(role)} label={`Editar ${role.name}`} />
                     {isSuperAdmin && (
-                        <Button variant="ghost" onClick={() => handleDelete(role.id)} aria-label={`Eliminar ${role.name}`}>
-                            <Trash2 size={15} /> Eliminar
-                        </Button>
+                        <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" onClick={() => handleDelete(role.id)} label={`Eliminar ${role.name}`} />
                     )}
                 </div>
             ),
@@ -190,8 +187,18 @@ export default function RolesPermissions() {
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={editingRole ? 'Editar Rol' : 'Nuevo Rol'}
+                footer={
+                    <>
+                        <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button variant="primary" type="submit" form="role-form">
+                            {editingRole ? 'Actualizar Rol' : 'Crear Rol'}
+                        </Button>
+                    </>
+                }
             >
-                <form onSubmit={handleSubmit}>
+                <form id="role-form" onSubmit={handleSubmit}>
                     <FormSection title="Datos del rol">
                         <Field label="Nombre del rol" htmlFor="role-name" required>
                             <Input
@@ -234,15 +241,6 @@ export default function RolesPermissions() {
                             </div>
                         )}
                     </FormSection>
-
-                    <div className={styles.footer}>
-                        <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                            Cancelar
-                        </Button>
-                        <Button variant="primary" type="submit">
-                            {editingRole ? 'Actualizar Rol' : 'Crear Rol'}
-                        </Button>
-                    </div>
                 </form>
             </FullScreenModal>
         </div>

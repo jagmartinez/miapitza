@@ -7,9 +7,9 @@
 .ui-input {
   display: flex; align-items: center; gap: var(--ui-space-2); height: 40px; padding: 0 var(--ui-space-3);
   background: var(--ui-surface); color: var(--ui-text); border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md); min-width: 0;
+  border-radius: var(--ui-radius-md); min-width: 0; font-size: var(--ui-text-md);
 }
-.ui-input:focus-within { border-color: var(--ui-primary); box-shadow: 0 0 0 3px var(--ui-primary-soft); }
+.ui-input:focus-within { border-color: var(--ui-primary); }
 .ui-input--invalid { border-color: var(--ui-danger); }
 .ui-input__control {
   flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent;
@@ -21,11 +21,11 @@
 .ui-input--number .ui-input__control { text-align: right; font-variant-numeric: tabular-nums; }
 
 .ui-textarea {
-  width: 100%; padding: var(--ui-space-2) var(--ui-space-3); font: inherit; resize: vertical;
+  width: 100%; padding: var(--ui-space-2) var(--ui-space-3); font: inherit; font-size: var(--ui-text-md); resize: vertical;
   background: var(--ui-surface); color: var(--ui-text); border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-md);
 }
-.ui-textarea:focus { border-color: var(--ui-primary); outline: none; box-shadow: 0 0 0 3px var(--ui-primary-soft); }
+.ui-textarea:focus { border-color: var(--ui-primary); outline: none; }
 .ui-textarea--invalid { border-color: var(--ui-danger); }
 
 .ui-check { display: inline-flex; align-items: center; gap: var(--ui-space-2); font-size: 14px; color: var(--ui-text); cursor: pointer; }
@@ -33,7 +33,7 @@
 
 .ui-switch {
   display: inline-flex; align-items: center; gap: var(--ui-space-2); background: transparent; border: 0;
-  padding: 0; font: inherit; color: var(--ui-text); cursor: pointer; min-height: 32px;
+  padding: 0; font: inherit; font-size: var(--ui-text-md); color: var(--ui-text); cursor: pointer; min-height: 32px;
 }
 .ui-switch:disabled { opacity: .55; cursor: not-allowed; }
 .ui-switch__track {
@@ -69,3 +69,14 @@
 .ui-form-grid { display: grid; gap: var(--ui-space-4); }
 .app-select__description { font-size: 12px; color: var(--ui-text-muted); }
 .app-select-anchor { display: contents; }
+
+/* Autorrelleno del navegador: sin el fondo/sombra azul que pinta solo la caja interna del input. */
+.ui-input__control:-webkit-autofill,
+.ui-input__control:-webkit-autofill:hover,
+.ui-input__control:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ui-text);
+  caret-color: var(--ui-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--ui-surface) inset;
+  box-shadow: 0 0 0 1000px var(--ui-surface) inset;
+  transition: background-color 9999s ease-out 0s;
+}

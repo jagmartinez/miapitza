@@ -320,13 +320,6 @@ const WasteReport: React.FC = () => {
                                 value={formatCurrency(report.summary.totalCost, settings)}
                                 context={`${formatNumber(report.summary.totalEntries ?? report.details.length, 0)} registros · ${report.byReason[0] ? `mayor causa: ${report.byReason[0].reason}` : 'sin causas registradas'}`}
                             />
-                            <StatCard
-                                label="Cantidad física"
-                                value={report.summary.quantities.length > 0
-                                    ? report.summary.quantities.map((item) => `${formatNumber(item.quantity)} ${item.unit}`).join(' · ')
-                                    : '0'}
-                                context="Suma por unidad de medida en el período"
-                            />
                         </div>
                     )}
 

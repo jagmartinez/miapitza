@@ -1,4 +1,4 @@
-import { AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, FullScreenModal, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea, toneFor } from '@/ui';
+import { AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, FullScreenModal, IconButton, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea, formatNumber, toneFor } from '@/ui';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Search,
@@ -8,7 +8,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  ShieldCheck,
+  Power,
   Trash2,
 } from 'lucide-react';
 import HrLoading from '../../components/hr/HrLoading';
@@ -442,6 +442,30 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         {tab === 'SETTLEMENTS' ? (
           <>
             <FullScreenModal
+        footer={
+          <>
+        <Button variant="ghost" onClick={() => setShowSettlement(false)}>
+          Cancelar
+        </Button>
+        <Button variant={preview ? 'secondary' : 'primary'} disabled={busy || !previewInput.userId} onClick={() => void runPreview()}>
+          Calcular vista previa
+        </Button>
+            {preview && (
+              <Button variant="primary"
+                disabled={
+                  !preview.canSubmit ||
+                  !settlementMeta.cause ||
+                  !settlementMeta.justification ||
+                  !settlementMeta.evidence.trim() ||
+                  busy
+                }
+                onClick={() => void createSettlement()}
+              >
+                Crear borrador
+              </Button>
+            )}
+          </>
+        }
         isOpen={showSettlement}
         onClose={() => setShowSettlement(false)}
         title="Nueva liquidación"
@@ -598,9 +622,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     </label>
                   </>
                 )}
-                <Button variant="primary" disabled={busy || !previewInput.userId} onClick={() => void runPreview()}>
-                  Calcular vista previa
-                </Button>
                 {preview && (
                   <div className="preview-panel">
                     <h3>2. Resultado verificable</h3>
@@ -625,7 +646,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   { key: 'c0', header: 'Concepto', render: ({ line }) => <>{line.concept}</> },
                   { key: 'c1', header: 'Base', render: ({ line }) => <>{line.formulaBasis}</> },
                   { key: 'c2', header: 'Fuente', render: ({ line }) => <>{line.sourceReference}</> },
-                  { key: 'c3', header: 'Monto', render: ({ line }) => <>{preview.currency} {line.amount}</> },
+                  { key: 'c3', header: 'Monto', type: 'money', render: ({ line }) => <>{preview.currency} {formatNumber(line.amount)}</> },
                 ]}
               />
                     {preview.canSubmit && (
@@ -668,18 +689,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                         </label>
                       </div>
                     )}
-                    <Button variant="primary"
-                      disabled={
-                        !preview.canSubmit ||
-                        !settlementMeta.cause ||
-                        !settlementMeta.justification ||
-                        !settlementMeta.evidence.trim() ||
-                        busy
-                      }
-                      onClick={() => void createSettlement()}
-                    >
-                      Crear borrador
-                    </Button>
                   </div>
                 )}
               </section>
@@ -730,10 +739,10 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   { key: 'c2', header: 'Salida', render: (row) => <>{row.terminationDate.slice(0, 10)}</> },
                   { key: 'c3', header: 'Estado', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status]}</Badge>) },
                   { key: 'c4', header: 'Neto', render: (row) => <>{row.currency} {row.netPay}</> },
-                  { key: 'c5', header: 'Acciones', render: (row) => (<div className={form.rowActions}>
-                            <Button size="sm" variant="ghost" title={`Ver y gestionar ${row.code}`} aria-label={`Ver y gestionar ${row.code}`} onClick={() => void benefitsGovernanceClient .settlement(row.id) .then(setSelectedSettlement) .catch((error) => toast.error( getBenefitsErrorMessage(error, 'No se pudo abrir el detalle.') ) ) } icon={Eye} />
+                  { key: 'c5', header: 'Acciones', type: 'actions', width: '100px', render: (row) => (<div className={form.rowActions}>
+                            <IconButton size="sm" tooltip="Ver detalle" label={`Ver y gestionar ${row.code}`} onClick={() => void benefitsGovernanceClient .settlement(row.id) .then(setSelectedSettlement) .catch((error) => toast.error( getBenefitsErrorMessage(error, 'No se pudo abrir el detalle.') ) ) } icon={Eye} />
                             {row.status === 'DRAFT' && (
-                              <Button size="sm" variant="ghost" title={`Editar ${row.code}`} aria-label={`Editar ${row.code}`} onClick={() => openSettlementEditor(row)} icon={Pencil} />
+                              <IconButton size="sm" tooltip="Editar" label={`Editar ${row.code}`} onClick={() => openSettlementEditor(row)} icon={Pencil} />
                             )}
                           </div>) },
                 ]}
@@ -743,6 +752,24 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         ) : (
           <>
             <FullScreenModal
+        footer={
+          <>
+        <Button variant="ghost" onClick={() => { setShowPolicy(false); setEditingPolicy(null); }}>
+          Cancelar
+        </Button>
+        <Button variant="primary"
+          disabled={
+            busy ||
+            !policy.sourceReference ||
+            !policy.reason ||
+            (Boolean(editingPolicy) && !policyAdjustmentReason.trim())
+          }
+          onClick={() => void savePolicy()}
+        >
+          {editingPolicy ? 'Guardar ajustes' : 'Guardar borrador'}
+        </Button>
+          </>
+        }
         isOpen={showPolicy}
         onClose={() => {
                 setShowPolicy(false);
@@ -931,7 +958,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                               }
                               label={<span className="sr-only">Exigir soporte</span>}
                             />) },
-                  { key: 'c6', header: 'Acción', render: ({ index }) => (<Button variant="ghost" size="sm" aria-label={`Eliminar categoría ${index + 1}`} title="Eliminar categoría" disabled={policy.travelCategories.length === 1} onClick={() => setPolicy((value) => ({ ...value, travelCategories: value.travelCategories.filter( (_, itemIndex) => itemIndex !== index ), })) } icon={Trash2} />) },
+                  { key: 'c6', header: 'Acción', type: 'actions', width: '100px', render: ({ index }) => (<IconButton size="sm" label={`Eliminar categoría ${index + 1}`} tone="danger" tooltip="Eliminar" disabled={policy.travelCategories.length === 1} onClick={() => setPolicy((value) => ({ ...value, travelCategories: value.travelCategories.filter( (_, itemIndex) => itemIndex !== index ), })) } icon={Trash2} />) },
                 ]}
               />
                 </div>
@@ -949,17 +976,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     }
                   >
                     <Plus size={15} /> Categoría
-                  </Button>
-                  <Button variant="primary"
-                    disabled={
-                      busy ||
-                      !policy.sourceReference ||
-                      !policy.reason ||
-                      (Boolean(editingPolicy) && !policyAdjustmentReason.trim())
-                    }
-                    onClick={() => void savePolicy()}
-                  >
-                    {editingPolicy ? 'Guardar ajustes' : 'Guardar borrador'}
                   </Button>
                 </div>
               </section>
@@ -1000,13 +1016,13 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   { key: 'c2', header: 'Estado', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status] ?? row.status}</Badge>) },
                   { key: 'c3', header: 'Viáticos', render: (row) => <>{row.travelCategories.length} categorías · {row.travelMaxDays} días</> },
                   { key: 'c4', header: 'Préstamos', render: (row) => <>Tope {row.currency} {row.loanMaxAmount} · {row.loanMaxInstallments} cuotas</> },
-                  { key: 'c5', header: 'Acción', render: (row) => (<div className={form.rowActions}>
+                  { key: 'c5', header: 'Acción', type: 'actions', width: '136px', render: (row) => (<div className={form.rowActions}>
                             {row.status === 'DRAFT' && (
-                              <Button size="sm" variant="ghost" title={`Editar versión ${row.version}`} aria-label={`Editar versión ${row.version}`} disabled={busy} onClick={() => openPolicyEditor(row)} icon={Pencil} />
+                              <IconButton size="sm" tooltip="Editar" label={`Editar versión ${row.version}`} disabled={busy} onClick={() => openPolicyEditor(row)} icon={Pencil} />
                             )}
-                            <Button size="sm" variant="ghost" title={`Clonar versión ${row.version}`} aria-label={`Clonar versión ${row.version}`} disabled={busy} onClick={() => openPolicyEditor(row, true)} icon={Copy} />
+                            <IconButton size="sm" tooltip="Duplicar" label={`Clonar versión ${row.version}`} disabled={busy} onClick={() => openPolicyEditor(row, true)} icon={Copy} />
                             {row.status === 'DRAFT' && (
-                              <Button size="sm" variant="ghost" title={`Activar versión ${row.version}`} aria-label={`Activar versión ${row.version}`} disabled={busy} onClick={() => { setPolicyToActivate(row); setPolicyActivationConfirmed(false); }} icon={ShieldCheck} />
+                              <IconButton size="sm" tone="primary" tooltip="Activar" label={`Activar versión ${row.version}`} disabled={busy} onClick={() => { setPolicyToActivate(row); setPolicyActivationConfirmed(false); }} icon={Power} />
                             )}
                           </div>) },
                 ]}
@@ -1016,6 +1032,33 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         )}
       </section>
       <FullScreenModal
+        footer={editingSettlement && draftSettlement ? (
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setEditingSettlement(null);
+                setDraftSettlement(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button variant="primary"
+              disabled={
+                busy ||
+                !draftAdjustmentReason.trim() ||
+                !draftSettlement.cause.trim() ||
+                !draftSettlement.justification.trim() ||
+                draftSettlement.evidenceReferences.length === 0 ||
+                (draftSettlement.lines.some((line) => line.type === 'INDEMNITY') &&
+                  !draftIndemnityJustification.trim())
+              }
+              onClick={() => void saveSettlementDraft()}
+            >
+              Guardar ajustes
+            </Button>
+          </>
+        ) : undefined}
         isOpen={Boolean(editingSettlement && draftSettlement)}
         onClose={() => {
           setEditingSettlement(null);
@@ -1171,7 +1214,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                           value={line.amount}
                           onChange={(event) => updateDraftLine(index, 'amount', event.target.value)}
                         /></>) },
-                  { key: 'c5', header: 'Acción', render: ({ index }) => (<Button variant="ghost" size="sm" aria-label={`Eliminar concepto ${index + 1}`} title="Eliminar concepto" disabled={draftSettlement.lines.length === 1} onClick={() => setDraftSettlement((value) => value ? { ...value, lines: value.lines.filter( (_, lineIndex) => lineIndex !== index ), } : value ) } icon={Trash2} />) },
+                  { key: 'c5', header: 'Acción', type: 'actions', width: '100px', render: ({ index }) => (<IconButton size="sm" label={`Eliminar concepto ${index + 1}`} tone="danger" tooltip="Eliminar" disabled={draftSettlement.lines.length === 1} onClick={() => setDraftSettlement((value) => value ? { ...value, lines: value.lines.filter( (_, lineIndex) => lineIndex !== index ), } : value ) } icon={Trash2} />) },
                 ]}
               />
             </div>
@@ -1217,35 +1260,71 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 onChange={(event) => setDraftAdjustmentReason(event.target.value)}
               />
             </label>
-            <div className={form.actionsEnd}>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setEditingSettlement(null);
-                  setDraftSettlement(null);
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button variant="primary"
-                disabled={
-                  busy ||
-                  !draftAdjustmentReason.trim() ||
-                  !draftSettlement.cause.trim() ||
-                  !draftSettlement.justification.trim() ||
-                  draftSettlement.evidenceReferences.length === 0 ||
-                  (draftSettlement.lines.some((line) => line.type === 'INDEMNITY') &&
-                    !draftIndemnityJustification.trim())
-                }
-                onClick={() => void saveSettlementDraft()}
-              >
-                Guardar ajustes
-              </Button>
-            </div>
           </section>
         )}
       </FullScreenModal>
       <FullScreenModal
+        footer={selectedSettlement ? (
+          settlementAction ? (
+            <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSettlementAction(null);
+                setActionReason('');
+                setActionReference('');
+                setActionConfirmed(false);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button variant="primary"
+              disabled={
+                busy ||
+                !actionConfirmed ||
+                !actionReason.trim() ||
+                (['PAY', 'VOID'].includes(settlementAction) && !actionReference.trim())
+              }
+              onClick={() => void transition(selectedSettlement, settlementAction)}
+            >
+              Continuar
+            </Button>
+            </>
+          ) : (
+            <>
+          {selectedSettlement.allowedActions.map((action) => (
+            <Button
+              size="sm"
+              variant={['REJECT', 'VOID'].includes(action) ? 'danger' : 'secondary'}
+              key={action}
+              disabled={busy}
+              onClick={() => {
+                setSettlementAction(action);
+                setActionReason('');
+                setActionReference('');
+                setActionConfirmed(false);
+              }}
+            >
+              {actionLabel[action] ?? action}
+            </Button>
+          ))}
+          {['APPROVED', 'PAID'].includes(selectedSettlement.status) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void benefitsGovernanceClient.downloadPdf(
+                  selectedSettlement.id,
+                  selectedSettlement.code
+                )
+              }
+            >
+              <FileDown size={15} /> PDF
+            </Button>
+          )}
+            </>
+          )
+        ) : undefined}
         isOpen={Boolean(selectedSettlement)}
         onClose={() => {
           setSelectedSettlement(null);
@@ -1282,7 +1361,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                   { key: 'c0', header: 'Concepto', render: ({ line }) => <>{line.concept}</> },
                   { key: 'c1', header: 'Base/fuente', render: ({ line }) => (<>{line.formulaBasis}
                       <small>{line.sourceReference}</small></>) },
-                  { key: 'c2', header: 'Monto', render: ({ line }) => <>{selectedSettlement.currency} {line.amount}</> },
+                  { key: 'c2', header: 'Monto', type: 'money', render: ({ line }) => <>{selectedSettlement.currency} {formatNumber(line.amount)}</> },
                 ]}
               />
             <div className="governance-total">
@@ -1318,69 +1397,42 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 )}
                 <Checkbox className="governance-check" checked={actionConfirmed}
                     onChange={(event) => setActionConfirmed(event.target.checked)} label={<>Confirmo esta decisión y su efecto en el expediente</>} />
-                <div className={form.actionsEnd}>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setSettlementAction(null);
-                      setActionReason('');
-                      setActionReference('');
-                      setActionConfirmed(false);
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button variant="primary"
-                    disabled={
-                      busy ||
-                      !actionConfirmed ||
-                      !actionReason.trim() ||
-                      (['PAY', 'VOID'].includes(settlementAction) && !actionReference.trim())
-                    }
-                    onClick={() => void transition(selectedSettlement, settlementAction)}
-                  >
-                    Continuar
-                  </Button>
-                </div>
               </div>
-            ) : (
-              <div className={form.actionsEnd}>
-                {selectedSettlement.allowedActions.map((action) => (
-                  <Button
-                    size="sm"
-                    variant={['REJECT', 'VOID'].includes(action) ? 'danger' : 'secondary'}
-                    key={action}
-                    disabled={busy}
-                    onClick={() => {
-                      setSettlementAction(action);
-                      setActionReason('');
-                      setActionReference('');
-                      setActionConfirmed(false);
-                    }}
-                  >
-                    {actionLabel[action] ?? action}
-                  </Button>
-                ))}
-                {['APPROVED', 'PAID'].includes(selectedSettlement.status) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      void benefitsGovernanceClient.downloadPdf(
-                        selectedSettlement.id,
-                        selectedSettlement.code
-                      )
-                    }
-                  >
-                    <FileDown size={15} /> PDF
-                  </Button>
-                )}
-              </div>
-            )}
+            ) : null}
           </div>
         )}
       </FullScreenModal>
       <FullScreenModal
+        footer={policyToActivate ? (
+          <>
+          <Button variant="ghost" onClick={() => setPolicyToActivate(null)}>
+            Cancelar
+          </Button>
+          <Button variant="primary"
+            disabled={busy || !policyActivationConfirmed}
+            onClick={() => {
+              setBusy(true);
+              void benefitsGovernanceClient
+                .activatePolicy(
+                  policyToActivate.id,
+                  policyToActivate.revision,
+                  policyActivationConfirmed
+                )
+                .then(async () => {
+                  toast.success('Política publicada.');
+                  setPolicyToActivate(null);
+                  await load();
+                })
+                .catch((error) =>
+                  toast.error(getBenefitsErrorMessage(error, 'No se pudo activar.'))
+                )
+                .finally(() => setBusy(false));
+            }}
+          >
+            Activar versión
+          </Button>
+          </>
+        ) : undefined}
         isOpen={Boolean(policyToActivate)}
         onClose={() => setPolicyToActivate(null)}
         title="Activar política"
@@ -1396,34 +1448,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
             <p>Por segregación de funciones, quien creó esta versión no puede activarla.</p>
             <Checkbox className="governance-check" checked={policyActivationConfirmed}
                 onChange={(event) => setPolicyActivationConfirmed(event.target.checked)} label={<>Confirmo que revisé vigencia, topes, categorías y fuente</>} />
-            <div className={form.actionsEnd}>
-              <Button variant="ghost" onClick={() => setPolicyToActivate(null)}>
-                Cancelar
-              </Button>
-              <Button variant="primary"
-                disabled={busy || !policyActivationConfirmed}
-                onClick={() => {
-                  setBusy(true);
-                  void benefitsGovernanceClient
-                    .activatePolicy(
-                      policyToActivate.id,
-                      policyToActivate.revision,
-                      policyActivationConfirmed
-                    )
-                    .then(async () => {
-                      toast.success('Política publicada.');
-                      setPolicyToActivate(null);
-                      await load();
-                    })
-                    .catch((error) =>
-                      toast.error(getBenefitsErrorMessage(error, 'No se pudo activar.'))
-                    )
-                    .finally(() => setBusy(false));
-                }}
-              >
-                Activar versión
-              </Button>
-            </div>
           </div>
         )}
       </FullScreenModal>

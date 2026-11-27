@@ -36,7 +36,7 @@ describe('menu y producción usan el design system', () => {
     expect(source).toContain('<FullScreenModal');
     expect(source).toContain('<AppSelect');
     expect(source).toContain('classifyMenu');
-    for (const header of ['Costo', 'Food cost', 'Margen', 'Vendidos (30 días)']) {
+    for (const header of ['Costo', 'Food cost', 'Margen', 'Vend. 30 d']) {
       expect(source).toContain(header);
     }
   });
