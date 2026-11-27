@@ -384,7 +384,7 @@ export default function ProductionOrders() {
     }
 
     const columns: Column<ProductionOrder>[] = [
-        { key: 'code', header: 'Código', width: '1fr', render: (order) => <span className={s.cellTitle}>{order.code}</span> },
+        { key: 'code', header: 'Código / fecha', width: '1fr', render: (order) => <><span className={s.cellTitle}>{order.code}</span><span className={s.cellSub}>{formatDate(order.date)}</span></> },
         {
             key: 'product',
             header: 'Producto',
@@ -463,12 +463,11 @@ export default function ProductionOrders() {
                 return <span className={v.delta > 0 ? s.bad : v.delta < 0 ? s.good : undefined}>{signed(v.delta)} ({formatPercent(v.pct)})</span>;
             },
         },
-        { key: 'date', header: 'Fecha', type: 'date', width: '1fr', hideBelow: 'lg', render: (order) => formatDate(order.date) },
         {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '112px',
+            width: '136px',
             render: (order) => (
                 <div className={s.rowActions}>
                     <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${order.code}`} onClick={() => void handleOpenDetail(order.id)} />
