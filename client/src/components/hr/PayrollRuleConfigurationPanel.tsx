@@ -435,10 +435,9 @@ export default function PayrollRuleConfigurationPanel({
                 rows={brackets.map((bracket, index) => ({ bracket, index }))}
                 rowKey={({ index }) => index}
                 pagination={{ mode: 'client' }}
-                minWidth="56rem"
                 empty={'Sin registros'}
                 columns={[
-                  { key: 'c0', header: 'Tramo', render: ({ index }) => <span className="hr-legal-bracket-number">{index + 1}</span> },
+                  { key: 'c0', header: 'Tramo', type: 'number', render: ({ index }) => <span className="hr-legal-bracket-number">{index + 1}</span> },
                   { key: 'c1', header: 'Desde (C$)', align: 'right', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Inicio tramo ${index + 1}, calculado`} value={bracket.lowerBound} onValueChange={() => undefined} readOnly /></> },
                   { key: 'c2', header: 'Hasta (C$)', align: 'right', render: ({ bracket, index }) => <>{index === brackets.length - 1 ? <span className="hr-legal-open-ended">En adelante</span> : <HrMoneyInput aria-label={`Fin tramo ${index + 1}`} value={bracket.upperBound ?? ''} onValueChange={(value) => updateBracket(index, 'upperBound', value)} required />}</> },
                   { key: 'c3', header: 'Impuesto base (C$)', align: 'right', render: ({ bracket, index }) => <><HrMoneyInput aria-label={`Impuesto base tramo ${index + 1}, calculado`} value={bracket.baseTax} onValueChange={() => undefined} readOnly /></> },
@@ -589,10 +588,9 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
                 rows={statutory.incomeTax.brackets.map((bracket, index) => ({ bracket, index }))}
                 rowKey={({ bracket, index }) => `${bracket.lowerBound}-${index}`}
                 pagination={{ mode: 'client' }}
-                minWidth="40rem"
                 empty={'Sin registros'}
                 columns={[
-                  { key: 'c0', header: 'Tramo', render: ({ index }) => <>{index + 1}</> },
+                  { key: 'c0', header: 'Tramo', type: 'number', render: ({ index }) => <>{index + 1}</> },
                   { key: 'c1', header: 'Desde', type: 'money', render: ({ bracket }) => <>{money(bracket.lowerBound)}</> },
                   { key: 'c2', header: 'Hasta', type: 'money', render: ({ bracket }) => <>{bracket.upperBound === null ? 'En adelante' : money(bracket.upperBound)}</> },
                   { key: 'c3', header: 'Impuesto base', type: 'money', render: ({ bracket }) => <>{money(bracket.baseTax)}</> },
@@ -609,7 +607,6 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
                 rows={statutory.paymentConceptCatalog}
                 rowKey={(concept) => concept.code}
                 pagination={{ mode: 'client' }}
-                minWidth="56rem"
                 empty={'Sin registros'}
                 columns={[
                   { key: 'c0', header: 'Concepto', render: (concept) => <span className={form.cellStack}><span className={form.cellTitle}>{concept.name}</span><span className={form.cellSub}>{concept.code}</span></span> },
@@ -617,7 +614,7 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
                   { key: 'c2', header: 'IR laboral', render: (concept) => <>{concept.incomeTaxTreatment ? taxLabels[concept.incomeTaxTreatment] : concept.incomeTaxDeductible ? 'Deducible' : 'No sujeto'}</> },
                   { key: 'c3', header: 'INSS', render: (concept) => <>{yesNo(concept.socialSecurityApplicable)}</> },
                   { key: 'c4', header: 'INATEC', render: (concept) => <>{yesNo(concept.trainingContributionApplicable)}</> },
-                  { key: 'c5', header: 'Estado', render: (concept) => <span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? 'Activo' : 'Inhabilitado'}</span> },
+                  { key: 'c5', header: 'Estado', type: 'status', render: (concept) => <span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? 'Activo' : 'Inhabilitado'}</span> },
                   { key: 'c6', header: 'Fuente', render: (concept) => <>{concept.sourceReference}</> },
                 ]}
               /></div>

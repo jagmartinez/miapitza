@@ -172,21 +172,21 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
     const money = (value: unknown) => formatMoney(value, symbol);
 
     const previewColumns: Column<ImportItem>[] = [
-        { key: 'rowNumber', header: 'Fila', width: '0.6fr', type: 'number', decimals: 0 },
+        { key: 'rowNumber', header: 'Fila', type: 'number', decimals: 0 },
         {
-            key: 'valid', header: 'Estado', width: '0.7fr',
+            key: 'valid', header: 'Estado', type: 'status',
             render: (it) => (it.isValid
                 ? <Badge tone="success" dot>Válida</Badge>
                 : <Badge tone="danger" dot>Con error</Badge>),
         },
-        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md' },
-        { key: 'name', header: 'Producto', width: '2fr' },
-        { key: 'quantity', header: 'Cantidad', width: '1fr', type: 'qty', render: (it) => `${formatNumber(it.quantity)} ${it.unit}`.trim() },
-        { key: 'purchaseUnit', header: 'Unidad Compra', width: '1fr', hideBelow: 'lg', render: (it) => it.purchaseUnit || 'Por defecto' },
-        { key: 'unitCost', header: `Costo Unit. (${symbol})`, width: '1fr', type: 'money' },
-        { key: 'total', header: `Subtotal (${symbol})`, width: '1fr', type: 'money' },
+        { key: 'sku', header: 'SKU', hideBelow: 'md' },
+        { key: 'name', header: 'Producto' },
+        { key: 'quantity', header: 'Cantidad', type: 'qty', render: (it) => `${formatNumber(it.quantity)} ${it.unit}`.trim() },
+        { key: 'purchaseUnit', header: 'Unidad Compra', hideBelow: 'lg', render: (it) => it.purchaseUnit || 'Por defecto' },
+        { key: 'unitCost', header: `Costo Unit. (${symbol})`, type: 'money' },
+        { key: 'total', header: `Subtotal (${symbol})`, type: 'money' },
         {
-            key: 'errors', header: 'Errores', width: '2fr',
+            key: 'errors', header: 'Errores', type: 'text',
             render: (it) => (it.errors.length ? <span>{it.errors.join(' · ')}</span> : ''),
         },
     ];

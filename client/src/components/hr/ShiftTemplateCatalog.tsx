@@ -86,6 +86,7 @@ export function ShiftTemplateCatalog({
         {
             key: 'hours',
             header: 'Horario',
+            type: 'time',
             render: (template) => `${template.startTime.slice(0, 5)}–${template.endTime.slice(0, 5)}${template.crossesMidnight ? ' (+1 día)' : ''}`,
         },
         { key: 'break', header: 'Descanso', type: 'number', render: (template) => ((template.breakMinutes ?? 0) > 0 ? `${template.breakMinutes} min` : '—') },
@@ -98,6 +99,7 @@ export function ShiftTemplateCatalog({
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (template) => <Badge tone={template.active === false ? 'neutral' : 'success'} dot>{template.active === false ? 'Inactiva' : 'Activa'}</Badge>,
         },
         ...(canManage ? [{

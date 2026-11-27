@@ -8,7 +8,7 @@ import { resolveAssetUrl } from '../utils/assets';
 import styles from './catalog.module.css';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, SegmentedControl, TableToolbar, Textarea, type Column,
+    PageContent, PageHeader, TableToolbar, Tabs, Textarea, type Column,
 } from '@/ui';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -177,6 +177,7 @@ export default function Companies() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (c) => <Badge tone={c.active ? 'success' : 'neutral'} dot>{c.active ? 'Activa' : 'Inactiva'}</Badge>
         },
         {
@@ -212,6 +213,18 @@ export default function Companies() {
                 )}
             />
 
+            <Tabs
+                ariaLabel="Filtrar empresas por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as StatusFilter)}
+                tabs={STATUS_OPTIONS.map((o) => ({
+                    id: o.value,
+                    label: o.label,
+                    badge: o.value === 'all' ? companies.length
+                        : companies.filter((c) => (o.value === 'active' ? c.active : !c.active)).length,
+                }))}
+            />
+
             <DataTable<Company>
                 ariaLabel="Listado de empresas"
                 rows={filteredCompanies}
@@ -239,7 +252,6 @@ export default function Companies() {
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
-                        <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
                     </TableToolbar>
                 )}
             />

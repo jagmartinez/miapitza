@@ -17,7 +17,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import {
-  Badge, Button, DataTable, EmptyState, FullScreenModal, IconButton, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, formatMoney, formatPercent, formatNumber} from '@/ui';
+  Badge, Button, DataTable, EmptyState, FullScreenModal, IconButton, Input, PageHeader, TableToolbar, Tabs, formatMoney, formatPercent} from '@/ui';
 import type {
   HrPayrollAction,
   HrPayrollComponent,
@@ -44,10 +44,6 @@ const ACTION_HELP: Partial<Record<HrPayrollAction, string>> = {
   APPROVE: 'Confirma los importes que serán pagados a los empleados.',
   MARK_PAID: 'Registra el pago y publica las colillas para cada empleado.',
 };
-
-function oneDecimal(value: number): string {
-  return formatNumber(value);
-}
 
 function moneyNumber(value?: string | null): number | null {
   if (value == null || value.trim() === '') return null;
@@ -86,11 +82,6 @@ function moneyOrND(currency: string, value: string | number | null | undefined):
   if (value == null || value === '' || !Number.isFinite(Number(value))) return 'N/D';
   const symbol = currency === 'NIO' ? 'C$' : currency === 'USD' ? 'US$' : currency;
   return formatMoney(value, symbol);
-}
-
-function formatRunTotal(currency: string, value?: string | null) {
-  if (value == null || value === '') return 'Pendiente de cálculo';
-  return moneyOrND(currency, value);
 }
 
 function formatEmployeeMoney(currency: string, value: number | null) {
@@ -132,7 +123,6 @@ export default function PayrollOperationWorkspace({
   onExport,
   onDownloadReceipt,
   onDownloadReceiptBatch,
-  previous,
   onBack,
   stepper,
 }: PayrollOperationWorkspaceProps) {
@@ -184,32 +174,7 @@ export default function PayrollOperationWorkspace({
     };
   }), [run]);
 
-  const indicators = useMemo(() => {
-    const headcount = run.totals?.employeeCount ?? run.snapshot.length;
-    const gross = moneyNumber(run.totals?.grossIncome);
-    const net = moneyNumber(run.totals?.netPay);
-    const deductions = moneyNumber(run.totals?.totalDeductions);
-    const employer = moneyNumber(run.totals?.employerContributions) ?? 0;
-    const previousNet = moneyNumber(previous?.netPay);
-    let inssWithheld = 0;
-    let incomeTax = 0;
-    let overtimeMinutes = 0;
-    for (const row of rows) {
-      inssWithheld += row.inss ?? 0;
-      incomeTax += row.incomeTax ?? 0;
-      overtimeMinutes += row.overtimeMinutes ?? 0;
-    }
-    return {
-      headcount,
-      avgNet: net !== null && headcount > 0 ? net / headcount : null,
-      companyCost: gross !== null ? gross + employer : null,
-      deductionRate: gross && deductions !== null ? (deductions / gross) * 100 : null,
-      variance: net !== null && previousNet ? ((net - previousNet) / previousNet) * 100 : null,
-      inss: inssWithheld,
-      incomeTax,
-      overtimeHours: overtimeMinutes / 60,
-    };
-  }, [previous?.netPay, rows, run.snapshot.length, run.totals]);
+  const indicators = { headcount: run.totals?.employeeCount ?? run.snapshot.length };
 
   const filteredRows = rows.filter((row) => {
     const matchesQuery = row.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
@@ -297,30 +262,13 @@ export default function PayrollOperationWorkspace({
         <div className={form.alertDanger} role="alert">Esta corrida fue anulada. Se conserva únicamente para consulta y auditoría.</div>
       )}
 
-      <section className={form.kpis} aria-label="Indicadores de la corrida">
-        <StatCard
-          tone="primary"
-          label="Neto a pagar"
-          value={formatRunTotal(currency, run.totals?.netPay)}
-          context={`${indicators.variance === null
-            ? (previous ? `${previous.code}: neto ${formatRunTotal(currency, previous.netPay)}` : 'No hay una corrida anterior para comparar')
-            : `${indicators.variance > 0 ? '▲ +' : indicators.variance < 0 ? '▼ ' : ''}${oneDecimal(indicators.variance)} % vs ${previous?.code ?? 'la corrida anterior'}`}${indicators.avgNet === null ? '' : ` · promedio ${moneyOrND(currency, indicators.avgNet)} por colaborador`}${indicators.overtimeHours > 0 ? ` · ${oneDecimal(indicators.overtimeHours)} h extra aprobadas` : ''}`}
-        />
-        <StatCard
-          label="Costo total para la empresa"
-          value={indicators.companyCost === null ? 'Pendiente de cálculo' : moneyOrND(currency, indicators.companyCost)}
-          context={`Bruto ${formatRunTotal(currency, run.totals?.grossIncome)} + aportes patronales ${formatRunTotal(currency, run.totals?.employerContributions)} · retenciones INSS ${moneyOrND(currency, indicators.inss)} e IR ${moneyOrND(currency, indicators.incomeTax)}${indicators.deductionRate !== null ? ` (${oneDecimal(indicators.deductionRate)} % del bruto)` : ''}`}
-        />
-        <StatCard
-          tone={run.blockingAnomalyCount > 0 ? 'danger' : run.status === 'PAID' ? 'success' : 'neutral'}
-          label={run.blockingAnomalyCount > 0 ? 'Bloquean la aprobación' : 'Qué sigue'}
-          value={run.blockingAnomalyCount > 0 ? `${run.blockingAnomalyCount} incidencia(s)` : nextTitle}
-          context={nextHelp}
-          action={run.blockingAnomalyCount > 0 && rows.some((row) => row.anomalies.length > 0)
-            ? { label: 'Ver incidencias', onClick: () => setOnlyIncidents(true) }
-            : undefined}
-        />
-      </section>
+      <div className={run.blockingAnomalyCount > 0 ? form.alertDanger : run.status === 'PAID' ? form.alertSuccess : form.alertInfo} role={run.blockingAnomalyCount > 0 ? 'alert' : 'status'}>
+        <strong>{run.blockingAnomalyCount > 0 ? `${run.blockingAnomalyCount} incidencia(s) bloquean la aprobación` : nextTitle}</strong>{' '}
+        <span>{nextHelp}</span>
+        {run.blockingAnomalyCount > 0 && rows.some((row) => row.anomalies.length > 0) && (
+          <> <Button variant="ghost" onClick={() => setOnlyIncidents(true)}>Ver incidencias</Button></>
+        )}
+      </div>
 
       {run.snapshot.length === 0 ? (
         <EmptyState
@@ -331,6 +279,15 @@ export default function PayrollOperationWorkspace({
         />
       ) : (
         <>
+          <Tabs
+            ariaLabel="Filtrar colaboradores por incidencias"
+            active={onlyIncidents ? 'INCIDENTS' : 'ALL'}
+            onChange={(next) => setOnlyIncidents(next === 'INCIDENTS')}
+            tabs={[
+              { id: 'ALL', label: 'Todos', badge: rows.length },
+              { id: 'INCIDENTS', label: 'Con incidencia', badge: rows.filter((row) => row.anomalies.length > 0).length },
+            ]}
+          />
           <DataTable<PayrollRow>
             ariaLabel="Pago por colaborador"
             rows={filteredRows}
@@ -358,30 +315,23 @@ export default function PayrollOperationWorkspace({
                   onChange={(event) => setQuery(event.target.value)}
                   autoComplete="off"
                 />
-                <SegmentedControl<'ALL' | 'INCIDENTS'>
-                  ariaLabel="Filtro"
-                  options={[{ value: 'ALL', label: 'Todos' }, { value: 'INCIDENTS', label: 'Con incidencia' }]}
-                  value={onlyIncidents ? 'INCIDENTS' : 'ALL'}
-                  onChange={(next) => setOnlyIncidents(next === 'INCIDENTS')}
-                />
               </TableToolbar>
             )}
-            minWidth="64rem"
             rowTone={(row) => (row.anomalies.some((item) => item.blocking) ? 'danger' : undefined)}
             empty={<EmptyState title="No hay colaboradores que coincidan con los filtros." />}
             columns={[
-              { key: 'name', header: 'Colaborador', width: '1.6fr', render: (row) => <span className={form.cellStack}><span className={form.cellTitle}>{row.name}</span><span className={form.cellSub}>{row.branch ?? `ID ${row.userId}`}</span></span> },
-              { key: 'salary', header: 'Salario', width: '1fr', type: 'money', hideBelow: 'lg', total: totalsKnown, accessor: (row) => row.salary, render: (row) => formatEmployeeMoney(currency, row.salary) },
+              { key: 'name', header: 'Colaborador', render: (row) => <span className={form.cellStack}><span className={form.cellTitle}>{row.name}</span><span className={form.cellSub}>{row.branch ?? `ID ${row.userId}`}</span></span> },
+              { key: 'salary', header: 'Salario', type: 'money', hideBelow: 'lg', total: totalsKnown, accessor: (row) => row.salary, render: (row) => formatEmployeeMoney(currency, row.salary) },
               {
-                key: 'overtime', header: 'Horas extra', width: '1fr', type: 'money', hideBelow: 'lg', total: totalsKnown, accessor: (row) => row.overtimePay,
+                key: 'overtime', header: 'Horas extra', type: 'money', hideBelow: 'lg', total: totalsKnown, accessor: (row) => row.overtimePay,
                 render: (row) => <span className={form.cellStack}><span>{formatEmployeeMoney(currency, row.overtimePay)}</span>{row.overtimeMinutes > 0 && <span className={form.cellSub}>{row.overtimeMinutes} min</span>}</span>,
               },
-              { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.gross, render: (row) => formatEmployeeMoney(currency, row.gross) },
-              { key: 'inss', header: 'INSS laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.inss, render: (row) => formatEmployeeMoney(currency, row.inss) },
-              { key: 'ir', header: 'IR laboral', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.incomeTax, render: (row) => formatEmployeeMoney(currency, row.incomeTax) },
-              { key: 'deductions', header: 'Deducciones', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.deductions, render: (row) => formatEmployeeMoney(currency, row.deductions) },
-              { key: 'net', header: 'Neto', width: '1fr', type: 'money', total: totalsKnown, accessor: (row) => row.net, render: (row) => <span className={form.cellTitle}>{formatEmployeeMoney(currency, row.net)}</span> },
-              { key: 'incidents', header: 'Incidencias', width: '1fr', render: (row) => (row.anomalies.length ? <Badge tone={row.anomalies.some((item) => item.blocking) ? 'danger' : 'warning'}>{row.anomalies.length}</Badge> : <span className={form.cellSub}><Check size={14} aria-hidden="true" /> Sin incidencias</span>) },
+              { key: 'gross', header: 'Ingresos', type: 'money', total: totalsKnown, accessor: (row) => row.gross, render: (row) => formatEmployeeMoney(currency, row.gross) },
+              { key: 'inss', header: 'INSS laboral', type: 'money', total: totalsKnown, accessor: (row) => row.inss, render: (row) => formatEmployeeMoney(currency, row.inss) },
+              { key: 'ir', header: 'IR laboral', type: 'money', total: totalsKnown, accessor: (row) => row.incomeTax, render: (row) => formatEmployeeMoney(currency, row.incomeTax) },
+              { key: 'deductions', header: 'Deducciones', type: 'money', total: totalsKnown, accessor: (row) => row.deductions, render: (row) => formatEmployeeMoney(currency, row.deductions) },
+              { key: 'net', header: 'Neto', type: 'money', total: totalsKnown, accessor: (row) => row.net, render: (row) => <span className={form.cellTitle}>{formatEmployeeMoney(currency, row.net)}</span> },
+              { key: 'incidents', header: 'Incidencias', type: 'status', render: (row) => (row.anomalies.length ? <Badge tone={row.anomalies.some((item) => item.blocking) ? 'danger' : 'warning'}>{row.anomalies.length}</Badge> : <span className={form.cellSub}><Check size={14} aria-hidden="true" /> Sin incidencias</span>) },
               {
                 key: 'actions',
                 header: 'Acciones',

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { productionRecipesAPI, productsAPI, unitsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, Skeleton, StatCard, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
+    PageContent, PageHeader, Skeleton, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
     type Column, type Opt, type Tone, LoadErrorState, Tooltip,
 } from '@/ui';
 import { useAuth } from '../hooks/useAuth';
@@ -503,7 +503,6 @@ export default function ProductionRecipes() {
         {
             key: 'product',
             header: 'Producto',
-            width: '2fr',
             render: (recipe) => (
                 <div className={s.cellStack}>
                     <span className={s.cellTitle}>{recipe.product?.name || `#${recipe.productId}`}</span>
@@ -516,7 +515,6 @@ export default function ProductionRecipes() {
         {
             key: 'status',
             header: 'Estado',
-            width: '1fr',
             type: 'status',
             render: (recipe) => <Badge tone={STATUS_TONE_BY_RECIPE[recipe.status].tone}>{STATUS_TONE_BY_RECIPE[recipe.status].label} · v{recipe.version}</Badge>,
         },
@@ -524,7 +522,6 @@ export default function ProductionRecipes() {
             key: 'yield',
             header: 'Rendimiento',
             type: 'qty',
-            width: '1fr',
             hideBelow: 'md',
             render: (recipe) => `${formatNumber(recipe.yieldQuantity, 2)} ${displayedYieldUnit(recipe)}`,
         },
@@ -532,7 +529,6 @@ export default function ProductionRecipes() {
             key: 'unitCost',
             header: `Costo unit. (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             render: (recipe) => recipe.cost
                 ? formatNumber(recipe.cost.unitCost)
                 : <span className={s.bad} title={recipe.costError || undefined}>Revisar UOM</span>,
@@ -541,7 +537,6 @@ export default function ProductionRecipes() {
             key: 'variation',
             header: 'Var. costo',
             type: 'percent',
-            width: '1fr',
             hideBelow: 'lg',
             render: (recipe) => {
                 const v = variationById.get(recipe.id);
@@ -554,7 +549,6 @@ export default function ProductionRecipes() {
             key: 'batchCost',
             header: `Costo lote (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             hideBelow: 'md',
             render: (recipe) => recipe.cost
                 ? formatNumber(recipe.cost.batchCost)
@@ -674,7 +668,6 @@ export default function ProductionRecipes() {
                             {
                                 key: 'name',
                                 header: 'Insumo',
-                                width: '2fr',
                                 render: (row) => (
                                     <div className={s.cellStack}>
                                         <span className={s.cellTitle}>{row.name}</span>
@@ -682,18 +675,18 @@ export default function ProductionRecipes() {
                                     </div>
                                 ),
                             },
-                            { key: 'quantity', header: 'Cantidad', type: 'qty', width: '1fr', render: (row) => `${formatNumber(row.quantity)} ${row.unit}`.trim() },
+                            { key: 'quantity', header: 'Cantidad', type: 'qty', render: (row) => `${formatNumber(row.quantity)} ${row.unit}`.trim() },
                             {
-                                key: 'unitCost', header: `Costo unit. (${symbol})`, type: 'money', width: '1fr',
+                                key: 'unitCost', header: `Costo unit. (${symbol})`, type: 'money',
                                 render: (row) => (row.unitCost === null ? 'N/D' : formatNumber(row.unitCost, row.unitCost !== 0 && Math.abs(row.unitCost) < 1 ? 4 : 2)),
                             },
                             {
-                                key: 'totalCost', header: `Costo (${symbol})`, type: 'money', width: '1fr', total: true,
+                                key: 'totalCost', header: `Costo (${symbol})`, type: 'money', total: true,
                                 accessor: (row) => row.totalCost ?? 0,
                                 render: (row) => (row.totalCost === null ? 'N/D' : formatNumber(row.totalCost)),
                             },
                             {
-                                key: 'weight', header: '% costo', headerTitle: 'Peso del insumo en el costo del lote', type: 'percent', width: '1fr',
+                                key: 'weight', header: '% costo', headerTitle: 'Peso del insumo en el costo del lote', type: 'percent',
                                 render: (row) => (row.weight === undefined ? 'N/D' : formatPercent(row.weight)),
                             },
                         ]}
@@ -738,29 +731,6 @@ export default function ProductionRecipes() {
                 actions={<Button variant="primary" icon={Plus} onClick={handleOpenCreate} disabled={!canManage}>Nueva receta</Button>}
             />
 
-            {(risingCount > 0 || noCostCount > 0) && (
-                <div className={s.stats}>
-                    {risingCount > 0 && (
-                        <StatCard
-                            label="Recetas activas con costo al alza"
-                            value={formatNumber(risingCount, 0)}
-                            context={`El costo unitario subió ${formatNumber(COST_VARIATION_ALERT_PCT, 0)} % o más frente a la versión anterior; revisa el insumo causante.`}
-                            tone="warning"
-                            action={{ label: 'Ver recetas', onClick: () => setFocus('rising') }}
-                        />
-                    )}
-                    {noCostCount > 0 && (
-                        <StatCard
-                            label="Recetas sin costo calculable"
-                            value={formatNumber(noCostCount, 0)}
-                            context="Una unidad o un factor de conversión impide calcular el costo; no entran en ningún total."
-                            tone="danger"
-                            action={{ label: 'Ver recetas', onClick: () => setFocus('nocost') }}
-                        />
-                    )}
-                </div>
-            )}
-
             <Tabs
                 ariaLabel="Filtrar recetas por estado"
                 active={statusFilter}
@@ -768,9 +738,7 @@ export default function ProductionRecipes() {
                 tabs={statusTabs}
             />
 
-            <TableToolbar
-                actions={focus !== 'all' ? <Button variant="ghost" onClick={() => setFocus('all')}>Quitar filtro</Button> : undefined}
-            >
+            <TableToolbar>
                 <Input
                     type="search"
                     aria-label="Buscar receta"
@@ -778,6 +746,18 @@ export default function ProductionRecipes() {
                     prefix={<Search size={14} aria-hidden="true" />}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <AppSelect<'all' | 'rising' | 'nocost'>
+                    aria-label="Filtrar por alerta de costo"
+                    isClearable={false}
+                    isSearchable={false}
+                    options={[
+                        { value: 'all', label: 'Todas las alertas de costo' },
+                        { value: 'rising', label: `Costo al alza (${formatNumber(risingCount, 0)})` },
+                        { value: 'nocost', label: `Sin costo calculable (${formatNumber(noCostCount, 0)})` },
+                    ]}
+                    value={focus}
+                    onChange={(v) => setFocus(v ?? 'all')}
                 />
             </TableToolbar>
 
@@ -950,9 +930,9 @@ export default function ProductionRecipes() {
                                         hidePaginationIfSinglePage
                                         empty="La receta no tiene componentes."
                                         columns={[
-                                            { key: 'name', header: 'Insumo', width: '2fr', render: (line) => <span className={s.cellTitle}>{line.componentName}</span> },
-                                            { key: 'quantity', header: 'Cantidad', type: 'qty', width: '1fr', render: (line) => `${formatNumber(line.quantity)} ${line.unit}`.trim() },
-                                            { key: 'totalCost', header: `Costo (${symbol})`, type: 'money', width: '1fr', accessor: (line) => Number(line.totalCost) },
+                                            { key: 'name', header: 'Insumo', render: (line) => <span className={s.cellTitle}>{line.componentName}</span> },
+                                            { key: 'quantity', header: 'Cantidad', type: 'qty', render: (line) => `${formatNumber(line.quantity)} ${line.unit}`.trim() },
+                                            { key: 'totalCost', header: `Costo (${symbol})`, type: 'money', accessor: (line) => Number(line.totalCost) },
                                         ]}
                                     />
                                     <dl className={s.facts}>

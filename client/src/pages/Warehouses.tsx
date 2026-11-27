@@ -11,7 +11,7 @@ import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse 
 import styles from './catalog.module.css';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
+    LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -300,6 +300,7 @@ export default function Warehouses() {
         {
             key: 'type',
             header: 'Tipo',
+            type: 'status',
             render: (w) => <Badge tone={w.type === 'CENTRAL' ? 'primary' : 'neutral'}>{w.type === 'CENTRAL' ? 'Central' : 'Sucursal'}</Badge>
         },
         { key: 'products', header: 'Productos', type: 'number', decimals: 0, accessor: (w) => w._count?.stocks || 0 },
@@ -331,16 +332,17 @@ export default function Warehouses() {
             )
         },
         { key: 'quantity', header: 'Existencia', type: 'qty', decimals: 2, accessor: (s) => s.quantity },
-        { key: 'unit', header: 'Unidad', width: '7rem', accessor: (s) => s.product.baseUnit?.abbreviation || s.product.unit },
+        { key: 'unit', header: 'Unidad', accessor: (s) => s.product.baseUnit?.abbreviation || s.product.unit },
         { key: 'min', header: 'Mín. agregado', type: 'qty', decimals: 2, accessor: (s) => Number(s.product.minStock) },
     ];
 
     const historyColumns: Column<TransferRow>[] = [
-        { key: 'date', header: 'Fecha', width: '11rem', accessor: (r) => new Date(r.first?.createdAt || Date.now()).toLocaleString('es-NI') },
+        { key: 'date', header: 'Fecha', type: 'date', render: (r) => new Date(r.first?.createdAt || Date.now()).toLocaleString('es-NI') },
         { key: 'product', header: 'Producto', render: (r) => <span className={styles.cellTitle}>{r.first?.product?.name}</span> },
         {
             key: 'route',
             header: 'Ruta',
+            type: 'text',
             accessor: (r) => `${r.source?.warehouse?.name || 'Origen desconocido'} → ${r.destination?.warehouse?.name || 'Destino desconocido'}`
         },
         { key: 'quantity', header: 'Cantidad', type: 'qty', decimals: 2, accessor: (r) => r.first?.quantity || 0 },
@@ -355,20 +357,43 @@ export default function Warehouses() {
             <PageHeader
                 title="Bodegas"
                 description="Bodegas por sucursal, existencias y traslados."
+                actions={canMutateWarehouse ? (
+                    <Button variant="primary" icon={Plus} onClick={openCreate}>Nueva bodega</Button>
+                ) : undefined}
+            />
+
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />}
+
+            <Tabs
+                ariaLabel="Filtrar por tipo de bodega"
+                active={warehouseTypeFilter}
+                onChange={(id) => setWarehouseTypeFilter(id as TypeFilter)}
+                tabs={TYPE_FILTERS.map(({ value, label }) => ({
+                    id: value,
+                    label,
+                    badge: loadError ? undefined : value === 'ALL' ? warehouses.length : warehouses.filter((w) => w.type === value).length,
+                }))}
+            />
+
+            <TableToolbar
                 actions={(
                     <>
                         <Button icon={History} onClick={viewTransferHistory}>Historial de traslados</Button>
                         {canTransferStock && (
                             <Button icon={ArrowRightLeft} onClick={() => setShowTransfer(true)}>Nuevo traslado</Button>
                         )}
-                        {canMutateWarehouse && (
-                            <Button variant="primary" icon={Plus} onClick={openCreate}>Nueva bodega</Button>
-                        )}
                     </>
                 )}
-            />
-
-            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />}
+            >
+                <Input
+                    type="search"
+                    aria-label="Buscar bodega"
+                    placeholder="Buscar por nombre, código o sucursal"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={warehouseSearch}
+                    onChange={(e) => setWarehouseSearch(e.target.value)}
+                />
+            </TableToolbar>
 
             <DataTable<Warehouse>
                 ariaLabel="Listado de bodegas"
@@ -385,24 +410,6 @@ export default function Warehouses() {
                         action={canMutateWarehouse ? <Button variant="primary" onClick={openCreate}>Crear primera bodega</Button> : undefined}
                     />
                 ) : 'Sin resultados. Ajusta o limpia los filtros.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar bodega"
-                            placeholder="Buscar por nombre, código o sucursal"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={warehouseSearch}
-                            onChange={(e) => setWarehouseSearch(e.target.value)}
-                        />
-                        <SegmentedControl
-                            ariaLabel="Tipo de bodega"
-                            options={TYPE_FILTERS}
-                            value={warehouseTypeFilter}
-                            onChange={setWarehouseTypeFilter}
-                        />
-                    </TableToolbar>
-                )}
             />
 
             {/* Create/Edit Warehouse */}

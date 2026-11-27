@@ -6,7 +6,7 @@ import { Search } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
 import catalog from './catalog.module.css';
 import {
-    AppSelect, Button, DataTable, DateInput, PageContent, PageHeader, StatCard, TableToolbar,
+    AppSelect, Badge, Button, DataTable, DateInput, PageContent, PageHeader, TableToolbar,
     formatNumber, formatPercent, type Column, type Tone,
 } from '@/ui';
 
@@ -131,15 +131,44 @@ export default function CostReport() {
                 </p>
             )}
 
+            <TableToolbar actions={(
+                <Button variant="primary" icon={Search} onClick={loadReport} loading={loading}>Aplicar filtros</Button>
+            )}>
+                <DateInput aria-label="Desde" value={filters.dateFrom} onChange={e => setFilters({ ...filters, dateFrom: e.target.value })} />
+                <DateInput aria-label="Hasta" value={filters.dateTo} onChange={e => setFilters({ ...filters, dateTo: e.target.value })} />
+                <AppSelect
+                    aria-label="Sucursal"
+                    options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                    value={filters.branchId || null}
+                    onChange={(v) => setFilters({ ...filters, branchId: v || '' })}
+                    placeholder="Todas las sucursales"
+                    isClearable
+                />
+                <AppSelect
+                    aria-label="Categoría"
+                    options={categories.map((c) => ({ value: c.id.toString(), label: c.name }))}
+                    value={filters.categoryId || null}
+                    onChange={(v) => setFilters({ ...filters, categoryId: v || '' })}
+                    placeholder="Todas las categorías"
+                    isClearable
+                />
+                <AppSelect
+                    aria-label="Proveedor"
+                    options={suppliers.map((s) => ({ value: s.id.toString(), label: s.name }))}
+                    value={filters.supplierId || null}
+                    onChange={(v) => setFilters({ ...filters, supplierId: v || '' })}
+                    placeholder="Todos los proveedores"
+                    isClearable
+                />
+            </TableToolbar>
+
             {summary && (
-                <div className={catalog.kpiGrid}>
-                    <StatCard
-                        label="Margen bruto"
-                        tone={marginTone}
-                        value={formatPercent(summary.grossMargin)}
-                        context={`Ingresos ${formatCurrency(summary.totalRevenue, settings)} − costo de ventas ${formatCurrency(summary.estimatedCOGS, settings)} · compras del período ${formatCurrency(summary.totalPurchaseCost, settings)}`}
-                    />
-                </div>
+                <p className={catalog.summaryLine} role="status">
+                    <span>Margen bruto <Badge tone={marginTone}>{formatPercent(summary.grossMargin)}</Badge></span>
+                    <span>Ingresos <strong>{formatCurrency(summary.totalRevenue, settings)}</strong></span>
+                    <span>Costo de ventas <strong>{formatCurrency(summary.estimatedCOGS, settings)}</strong></span>
+                    <span>Compras del período <strong>{formatCurrency(summary.totalPurchaseCost, settings)}</strong></span>
+                </p>
             )}
 
             <DataTable
@@ -154,38 +183,6 @@ export default function CostReport() {
                 resetKey={`${filters.dateFrom}|${filters.dateTo}|${filters.branchId}|${filters.categoryId}|${filters.supplierId}`}
                 footerLabel={`Total de la página · ${products.length} productos`}
                 empty="Sin datos para los filtros seleccionados"
-                toolbar={(
-                    <TableToolbar actions={(
-                        <Button variant="primary" icon={Search} onClick={loadReport} loading={loading}>Aplicar filtros</Button>
-                    )}>
-                        <DateInput aria-label="Desde" value={filters.dateFrom} onChange={e => setFilters({ ...filters, dateFrom: e.target.value })} />
-                        <DateInput aria-label="Hasta" value={filters.dateTo} onChange={e => setFilters({ ...filters, dateTo: e.target.value })} />
-                        <AppSelect
-                            aria-label="Sucursal"
-                            options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
-                            value={filters.branchId || null}
-                            onChange={(v) => setFilters({ ...filters, branchId: v || '' })}
-                            placeholder="Todas las sucursales"
-                            isClearable
-                        />
-                        <AppSelect
-                            aria-label="Categoría"
-                            options={categories.map((c) => ({ value: c.id.toString(), label: c.name }))}
-                            value={filters.categoryId || null}
-                            onChange={(v) => setFilters({ ...filters, categoryId: v || '' })}
-                            placeholder="Todas las categorías"
-                            isClearable
-                        />
-                        <AppSelect
-                            aria-label="Proveedor"
-                            options={suppliers.map((s) => ({ value: s.id.toString(), label: s.name }))}
-                            value={filters.supplierId || null}
-                            onChange={(v) => setFilters({ ...filters, supplierId: v || '' })}
-                            placeholder="Todos los proveedores"
-                            isClearable
-                        />
-                    </TableToolbar>
-                )}
                 columns={[
                     { key: 'product', header: 'Producto', render: (p) => (
                         <div className={catalog.cellStack}>

@@ -13,7 +13,7 @@ import { MIN_LOCATION_ACCURACY_M } from '../components/hr/attendanceSettingsRule
 import styles from './catalog.module.css';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    LoadErrorState, PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, Textarea, type Column,
+    LoadErrorState, PageContent, PageHeader, Switch, TableToolbar, Tabs, Textarea, type Column,
 } from '@/ui';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
@@ -372,6 +372,7 @@ export default function Branches() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (b) => (
                 <div className={styles.inline}>
                     <Badge tone={b.status === 'ACTIVE' ? 'success' : 'neutral'} dot>{b.status === 'ACTIVE' ? 'Activa' : 'Inactiva'}</Badge>
@@ -416,6 +417,17 @@ export default function Branches() {
             {loadError ? (
                 <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />
             ) : (
+                <>
+                <Tabs
+                    ariaLabel="Filtrar sucursales por estado"
+                    active={statusFilter}
+                    onChange={(id) => setStatusFilter(id as StatusFilter)}
+                    tabs={STATUS_OPTIONS.map((o) => ({
+                        id: o.value,
+                        label: o.label,
+                        badge: o.value === 'ALL' ? branches.length : branches.filter((b) => b.status === o.value).length,
+                    }))}
+                />
                 <DataTable<Branch>
                     ariaLabel="Listado de sucursales"
                     rows={filteredBranches}
@@ -441,10 +453,10 @@ export default function Branches() {
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
-                            <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
                         </TableToolbar>
                     )}
                 />
+                </>
             )}
 
             <FullScreenModal

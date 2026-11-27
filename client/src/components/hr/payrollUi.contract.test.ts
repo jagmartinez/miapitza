@@ -206,9 +206,9 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
   });
 
   it('never presents missing run totals as zero and prefers receipt totals when published', () => {
-    expect(operation).toContain('Pendiente de cálculo');
-    expect(operation).toContain('formatRunTotal(currency, run.totals?.grossIncome)');
-    expect(operation).toContain('formatRunTotal(currency, run.totals?.netPay)');
+    expect(operation).toContain('const totalsKnown = filteredRows.every(');
+    expect(operation).toContain("key: 'gross', header: 'Ingresos', type: 'money', total: totalsKnown");
+    expect(operation).toContain("key: 'net', header: 'Neto', type: 'money', total: totalsKnown");
     expect(operation).not.toContain("run.totals?.grossIncome ?? '0'");
     expect(operation).toContain('authoritativeMoney(receipt?.netPay');
     expect(operation).toContain("const hasCalculation = run.status !== 'DRAFT'");

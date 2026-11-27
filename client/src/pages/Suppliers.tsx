@@ -186,7 +186,7 @@ export default function Suppliers() {
                 </div>
             )
         },
-        { key: 'type', header: 'Tipo', render: (s) => s.supplyType ? <Badge>{s.supplyType}</Badge> : '—' },
+        { key: 'type', header: 'Tipo', type: 'status', render: (s) => s.supplyType ? <Badge>{s.supplyType}</Badge> : '—' },
         { key: 'contact', header: 'Contacto', accessor: (s) => s.contact || '—' },
         { key: 'phone', header: 'Teléfono', accessor: (s) => s.phone || '—' },
         { key: 'email', header: 'Email', accessor: (s) => s.email || '—', hideBelow: 'lg' },
@@ -236,6 +236,25 @@ export default function Suppliers() {
                 ) : undefined}
             />
 
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar proveedor"
+                    placeholder="Buscar por nombre, contacto o tipo"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <AppSelect
+                    options={FIXED_SUPPLY_TYPES.map(type => ({ value: type, label: type }))}
+                    value={supplyTypeFilter}
+                    onChange={(v) => setSupplyTypeFilter(v)}
+                    placeholder="Todos los tipos"
+                    isClearable
+                    aria-label="Filtrar por tipo de suministro"
+                />
+            </TableToolbar>
+
             <DataTable<Supplier>
                 ariaLabel="Listado de proveedores"
                 rows={filteredSuppliers}
@@ -254,26 +273,6 @@ export default function Suppliers() {
                             <Button onClick={() => { setSearchTerm(''); setSupplyTypeFilter(null); }}>Limpiar filtros</Button>
                         ) : undefined}
                     />
-                )}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar proveedor"
-                            placeholder="Buscar por nombre, contacto o tipo"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                        <AppSelect
-                            options={FIXED_SUPPLY_TYPES.map(type => ({ value: type, label: type }))}
-                            value={supplyTypeFilter}
-                            onChange={(v) => setSupplyTypeFilter(v)}
-                            placeholder="Todos los tipos"
-                            isClearable
-                            aria-label="Filtrar por tipo de suministro"
-                        />
-                    </TableToolbar>
                 )}
             />
 

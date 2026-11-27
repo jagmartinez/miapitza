@@ -166,6 +166,7 @@ export default function CateringServices() {
         {
             key: 'name',
             header: 'Servicio',
+            type: 'text',
             render: (s) => (
                 <div className={styles.cellStack}>
                     <span className={styles.cellTitle}>{s.name}</span>

@@ -1,5 +1,4 @@
 /* Menú: reglas que no cubre @/ui. Solo tokens --ui-*; sin cajas anidadas. */
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr)); gap: var(--ui-space-4); }
 .noRecipeBar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); }
 .cellStack { display: flex; flex-direction: column; min-width: 0; }
 .cellTitle { font-weight: 600; overflow-wrap: anywhere; }

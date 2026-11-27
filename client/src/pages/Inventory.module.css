@@ -24,13 +24,6 @@
     padding-left: var(--ui-space-4);
 }
 
-.toolbarStack {
-    display: flex;
-    flex-direction: column;
-    gap: var(--ui-space-2);
-    min-width: 0;
-}
-
 .hiddenFile {
     position: absolute;
     width: 1px;

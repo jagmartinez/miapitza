@@ -5,6 +5,8 @@ import {
     BadgeCheck,
     Building2,
     Eye,
+    LayoutGrid,
+    List,
     Pencil,
     Power,
     Plus,
@@ -14,16 +16,15 @@ import {
 } from 'lucide-react';
 import {
     AppSelect, Button, DataTable, EmptyState, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader,
-    Pagination, StatCard, TableToolbar, type Column,
+    Pagination, SegmentedControl, TableToolbar, Tabs, type Column,
 } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
-import ViewToggle from '../../components/ViewToggle';
 import EmployeeForm from '../../components/hr/EmployeeForm';
 import HrStatusPill from '../../components/hr/HrStatusPill';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import { useConfirmDialog } from '../../context/ConfirmContext';
 import { useAppToast } from '../../context/ToastContext';
-import { useViewMode } from '../../hooks/useViewMode';
+import { useViewMode, type ViewMode } from '../../hooks/useViewMode';
 import type {
     HrEmployee,
     HrEmployeePayload,
@@ -49,7 +50,7 @@ const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
 };
 
 const STATUS_OPTIONS: Array<Option & { value: HrEmploymentStatus | 'ALL' }> = [
-    { value: 'ALL', label: 'Todos los estados' },
+    { value: 'ALL', label: 'Todos' },
     { value: 'ACTIVE', label: 'Activos' },
     { value: 'ON_LEAVE', label: 'Con permiso' },
     { value: 'INACTIVE', label: 'Inactivos' },
@@ -232,11 +233,6 @@ export default function Employees() {
         }
     };
 
-    const pageStats = useMemo(() => ({
-        withoutCompensation: employees.filter((employee) => employee.compensation !== undefined && !currentCompensation(employee)).length,
-        withoutUser: employees.filter((employee) => !employee.user).length,
-    }), [employees]);
-
     const clearFilters = () => {
         setSearch('');
         setStatus('ALL');
@@ -250,6 +246,7 @@ export default function Employees() {
         {
             key: 'employee',
             header: 'Empleado',
+            type: 'text',
             render: (employee) => (
                 <div className={styles.cellStack}>
                     <span className={styles.cellTitle}>{employee.legalName}</span>
@@ -274,7 +271,7 @@ export default function Employees() {
                 </div>
             ),
         },
-        { key: 'position', header: 'Puesto', render: (employee) => employee.jobPosition?.name ?? 'Sin puesto' },
+        { key: 'position', header: 'Puesto', type: 'text', render: (employee) => employee.jobPosition?.name ?? 'Sin puesto' },
         {
             key: 'compensation',
             header: 'Compensación vigente',
@@ -291,9 +288,9 @@ export default function Employees() {
                 );
             },
         },
-        { key: 'branch', header: 'Sucursal principal', render: (employee) => primaryBranch(employee)?.name ?? 'Sin asignar' },
-        { key: 'hireDate', header: 'Ingreso', render: (employee) => displayDate(employee.hireDate) },
-        { key: 'status', header: 'Estado', render: (employee) => <HrStatusPill status={employee.status} /> },
+        { key: 'branch', header: 'Sucursal principal', type: 'text', render: (employee) => primaryBranch(employee)?.name ?? 'Sin asignar' },
+        { key: 'hireDate', header: 'Ingreso', type: 'date', render: (employee) => displayDate(employee.hireDate) },
+        { key: 'status', header: 'Estado', type: 'status', render: (employee) => <HrStatusPill status={employee.status} /> },
         {
             key: 'actions',
             header: 'Acciones',
@@ -325,27 +322,35 @@ export default function Employees() {
             <PageHeader
                 title="Gestión de Personal"
                 description="Expedientes, identificación autorizada y compensación vigente"
-                actions={<Button variant="primary" icon={Plus} onClick={openCreate}>Nuevo empleado</Button>}
-            />
-
-            {!loading && !error && (pageStats.withoutCompensation > 0 || pageStats.withoutUser > 0) && (
-                <section className={styles.kpis} aria-label="Brechas del expediente en esta página">
-                    {pageStats.withoutCompensation > 0 && (
-                        <StatCard tone="danger" label="Sin compensación vigente" value={String(pageStats.withoutCompensation)} context="En esta página · requieren versión salarial." />
-                    )}
-                    {pageStats.withoutUser > 0 && (
-                        <StatCard tone="warning" label="Sin usuario vinculado" value={String(pageStats.withoutUser)} context="En esta página · sin acceso al sistema." />
-                    )}
-                </section>
-            )}
-
-            <TableToolbar
                 actions={(
                     <>
-                        {hasFilters && <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>}
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        <SegmentedControl<ViewMode>
+                            iconOnly
+                            ariaLabel="Vista"
+                            options={[
+                                { value: 'table', label: 'Vista de tabla', icon: List },
+                                { value: 'cards', label: 'Vista de tarjetas', icon: LayoutGrid },
+                            ]}
+                            value={viewMode}
+                            onChange={setViewMode}
+                        />
+                        <Button variant="primary" icon={Plus} onClick={openCreate}>Nuevo empleado</Button>
                     </>
                 )}
+            />
+
+            <Tabs
+                ariaLabel="Filtrar personal por estado"
+                active={status}
+                onChange={(id) => setStatus(id as HrEmploymentStatus | 'ALL')}
+                tabs={STATUS_OPTIONS.map((option) => ({
+                    id: option.value,
+                    label: option.label,
+                }))}
+            />
+
+            <TableToolbar
+                actions={hasFilters ? <Button variant="ghost" onClick={clearFilters}>Limpiar</Button> : undefined}
             >
                 <div className={styles.search} role="search">
                     <Input
@@ -357,10 +362,6 @@ export default function Employees() {
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
                     />
-                </div>
-                <div className={styles.filter}>
-                    <AppSelect<string> aria-label="Estado" options={STATUS_OPTIONS} value={status} isClearable={false}
-                        onChange={(value) => setStatus((value ?? 'ALL') as HrEmploymentStatus | 'ALL')} />
                 </div>
                 <div className={styles.filter}>
                     <AppSelect<string> aria-label="Departamento" placeholder="Departamento" isClearable
@@ -401,7 +402,6 @@ export default function Employees() {
                     onRowClick={setPreview}
                     pagination={{ mode: 'server', page, pageSize: 25, total: totalItems, onChange: (nextPage) => setPage(nextPage) }}
                     pageSizeOptions={[25]}
-                    minWidth="64rem"
                     resetKey={`${page}|${debouncedSearch}|${status}|${departmentId}|${jobPositionId}|${costCenterId}|${branchId}`}
                 />
             ) : loading ? (

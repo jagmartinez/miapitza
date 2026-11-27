@@ -101,9 +101,10 @@ describe('employee self-service UX contract', () => {
     expect(payroll).toContain('LoadErrorState');
     expect(benefits).toContain("tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'");
     expect(benefits).toContain('LoadErrorState');
-    expect(workforce).toContain('En espera');
-    expect(workforce).toContain('Aprobadas');
-    expect(workforce).toContain('Rechazadas o canceladas');
+    // El resumen de solicitudes en espera vive en el inicio de Mi RH; la bandeja no repite tarjetas KPI.
+    expect(landing).toContain('Solicitudes abiertas');
+    expect(workforce).not.toContain('<StatCard');
+    expect(workforce).toContain('<WorkforceStatusPill status={item.status} />');
     expect(workforce).toContain('Promise.allSettled');
     expect(workforce).toContain('partialWarning');
   });

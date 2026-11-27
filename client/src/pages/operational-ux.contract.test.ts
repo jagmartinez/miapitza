@@ -21,7 +21,8 @@ describe('operational UX contracts', () => {
         const layoutSource = read('../components/Layout.tsx');
 
         expect(layoutSource).toContain("const isTableWorkspace = location.pathname === '/kds'");
-        expect(tablesSource).toContain("view === 'plan' ? 'tables-page--map' : 'tables-page--ops'");
+        expect(tablesSource).toContain("const planFull = view === 'plan'");
+        expect(tablesSource).toContain("planFull ? 'tables-page--map' : 'tables-page--ops'");
         expect(tablesStyles).toContain('.tables-page--map .table-map-shell');
         expect(tablesStyles).not.toContain('width: 100dvw !important');
         expect(tablesStyles).toContain('.tables-page:not(.tables-page--map)');

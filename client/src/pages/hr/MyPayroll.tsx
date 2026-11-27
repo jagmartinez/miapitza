@@ -98,7 +98,6 @@ export default function MyPayroll() {
     {
       key: 'runCode',
       header: 'Recibo',
-      width: '1.2fr',
       render: (receipt) => (
         <span className={styles.kind}>
           {receipt.runKind === 'AGUINALDO' ? <Gift size={16} aria-hidden="true" /> : <FileText size={16} aria-hidden="true" />}
@@ -106,16 +105,15 @@ export default function MyPayroll() {
         </span>
       ),
     },
-    { key: 'periodLabel', header: 'Periodo', width: '1.4fr' },
-    { key: 'payDate', header: 'Pago', width: '1fr', render: (receipt) => formatDate(receipt.payDate) },
+    { key: 'periodLabel', header: 'Periodo', type: 'text' },
+    { key: 'payDate', header: 'Pago', type: 'date', render: (receipt) => formatDate(receipt.payDate) },
     {
       key: 'netPay',
       header: 'Neto',
-      width: '1fr',
       type: 'money',
       render: (receipt) => formatHrMoney(receipt.currency, receipt.netPay),
     },
-    { key: 'status', header: 'Estado', width: '0.9fr', render: (receipt) => <PayrollStatusPill status={receipt.status} /> },
+    { key: 'status', header: 'Estado', type: 'status', render: (receipt) => <PayrollStatusPill status={receipt.status} /> },
   ];
 
   return (

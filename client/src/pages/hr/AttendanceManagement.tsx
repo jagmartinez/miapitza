@@ -280,20 +280,18 @@ export default function AttendanceManagement() {
       />
       <OnlineOnlyNotice online={online} />
 
-      {!loading && !error && (
-        <Tabs
-          ariaLabel="Bandejas de asistencia"
-          active={activeTable}
-          onChange={(id) => setActiveTable(id as AttendanceTable)}
-          tabs={([
-            ['DAY', 'Jornadas', summaries.length],
-            ['INCIDENTS', 'Incidencias', incidents.filter((item) => item.status === 'OPEN').length],
-            ['CORRECTIONS', 'Correcciones', corrections.filter((item) => item.status === 'PENDING').length],
-            ['OVERTIME', 'Horas extra', overtime.filter((item) => item.status === 'PENDING').length],
-            ['PERIODS', 'Periodos', periods.length],
-          ] as Array<[AttendanceTable, string, number]>).map(([id, label, badge]) => ({ id, label, badge }))}
-        />
-      )}
+      <Tabs
+        ariaLabel="Bandejas de asistencia"
+        active={activeTable}
+        onChange={(id) => setActiveTable(id as AttendanceTable)}
+        tabs={([
+          ['DAY', 'Jornadas', summaries.length],
+          ['INCIDENTS', 'Incidencias', incidents.filter((item) => item.status === 'OPEN').length],
+          ['CORRECTIONS', 'Correcciones', corrections.filter((item) => item.status === 'PENDING').length],
+          ['OVERTIME', 'Horas extra', overtime.filter((item) => item.status === 'PENDING').length],
+          ['PERIODS', 'Periodos', periods.length],
+        ] as Array<[AttendanceTable, string, number]>).map(([id, label, badge]) => ({ id, label, badge: loading || error ? undefined : badge }))}
+      />
 
       <TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Actualizar</Button>}>
         <DateInput aria-label="Fecha" title="Fecha" value={date} onChange={(event) => setDate(event.target.value)} />
@@ -329,18 +327,17 @@ export default function AttendanceManagement() {
                 rows={summaries}
                 rowKey={(summary) => summary.id}
                 pagination={{ mode: 'client' }}
-                minWidth="64rem"
                 empty={<EmptyState title="No hay jornadas para este filtro" description="Cambia la fecha, sucursal o empleado y actualiza la consulta." action={<Button variant="ghost" onClick={() => void load()} icon={RefreshCw}>Actualizar</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (summary) => <span className={form.cellStack}><span className={form.cellTitle}>{summary.user?.name ?? `Usuario #${summary.userId}`}</span><span className={form.cellSub}>{summary.incidentCount ? `${summary.incidentCount} incidencia(s)` : 'Sin incidencias'}</span></span> },
                   { key: 'c1', header: 'Sucursal', render: (summary) => <>{summary.branch?.name ?? 'Sin sucursal'}</> },
-                  { key: 'c2', header: 'Programado', align: 'right', render: (summary) => <>{summary.scheduledMinutes ?? 0} min</> },
-                  { key: 'c3', header: 'Trabajado', align: 'right', render: (summary) => <>{summary.ordinaryMinutes} min</> },
-                  { key: 'c4', header: 'Descanso', align: 'right', render: (summary) => <>{summary.breakMinutes} min</> },
-                  { key: 'c5', header: 'Tardanza', align: 'right', render: (summary) => <span className={summary.lateMinutes > 0 ? form.cellWarning : undefined}>{summary.lateMinutes} min</span> },
-                  { key: 'c6', header: 'Salida antes', align: 'right', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? form.cellWarning : undefined}>{summary.earlyDepartureMinutes} min</span> },
-                  { key: 'c7', header: 'Extra', align: 'right', render: (summary) => <>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</> },
-                  { key: 'c8', header: 'Estado', render: (summary) => <>{summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : 'Sin periodo'}</> },
+                  { key: 'c2', header: 'Programado', type: 'number', render: (summary) => <>{summary.scheduledMinutes ?? 0} min</> },
+                  { key: 'c3', header: 'Trabajado', type: 'number', render: (summary) => <>{summary.ordinaryMinutes} min</> },
+                  { key: 'c4', header: 'Descanso', type: 'number', render: (summary) => <>{summary.breakMinutes} min</> },
+                  { key: 'c5', header: 'Tardanza', type: 'number', render: (summary) => <span className={summary.lateMinutes > 0 ? form.cellWarning : undefined}>{summary.lateMinutes} min</span> },
+                  { key: 'c6', header: 'Salida antes', type: 'number', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? form.cellWarning : undefined}>{summary.earlyDepartureMinutes} min</span> },
+                  { key: 'c7', header: 'Extra', type: 'number', render: (summary) => <>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</> },
+                  { key: 'c8', header: 'Estado', type: 'status', render: (summary) => <>{summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : 'Sin periodo'}</> },
                   { key: 'c9', header: 'Acciones', width: '100px', type: 'actions', render: (summary) => <div className={form.rowActions}><IconButton size="sm" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} tooltip="Corregir" label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`} icon={Pencil} /><IconButton size="sm" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} tooltip="Horas extra" label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`} icon={Clock3} /></div> },
                 ]}
               />
@@ -352,14 +349,13 @@ export default function AttendanceManagement() {
                 rows={incidents}
                 rowKey={(incident) => incident.id}
                 pagination={{ mode: 'client' }}
-                minWidth="48rem"
                 empty={<EmptyState title="No hay incidencias" description="Las jornadas del filtro actual están al día." action={<Button variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (incident) => <strong>{incident.user?.name ?? `Usuario #${incident.userId}`}</strong> },
-                  { key: 'c1', header: 'Fecha', render: (incident) => <>{dateLabel(incident.date)}</> },
+                  { key: 'c1', header: 'Fecha', type: 'date', render: (incident) => <>{dateLabel(incident.date)}</> },
                   { key: 'c2', header: 'Motivo', render: (incident) => <span className={form.cellStack}><span className={form.cellTitle}>{incident.message}</span><span className={form.cellSub}>{incident.reasonCode ?? incident.type}</span></span> },
-                  { key: 'c3', header: 'Gravedad', render: (incident) => <><WorkforceStatusPill status={incident.severity} /></> },
-                  { key: 'c4', header: 'Estado', render: (incident) => <><WorkforceStatusPill status={incident.status} /></> },
+                  { key: 'c3', header: 'Gravedad', type: 'status', render: (incident) => <><WorkforceStatusPill status={incident.severity} /></> },
+                  { key: 'c4', header: 'Estado', type: 'status', render: (incident) => <><WorkforceStatusPill status={incident.status} /></> },
                   { key: 'c5', header: 'Acción', width: '100px', type: 'actions', render: (incident) => <div className={form.rowActions}><IconButton size="sm" onClick={() => setCreatePanel({ kind: 'correction', incident })} disabled={!online} tooltip="Corregir" label={`Corregir marcaje de ${incident.user?.name ?? incident.userId}`} icon={Pencil} /></div> },
                 ]}
               />
@@ -371,14 +367,13 @@ export default function AttendanceManagement() {
                 rows={corrections}
                 rowKey={(item) => item.id}
                 pagination={{ mode: 'client' }}
-                minWidth="48rem"
                 empty={<EmptyState title="No hay correcciones" description="Cuando alguien solicite un ajuste aparecerá aquí." action={<Button variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
-                  { key: 'c1', header: 'Solicitada', render: (item) => <>{displayDateTime(item.createdAt)}</> },
+                  { key: 'c1', header: 'Solicitada', type: 'date', render: (item) => <>{displayDateTime(item.createdAt)}</> },
                   { key: 'c2', header: 'Tipo', render: (item) => <>{item.type}</> },
                   { key: 'c3', header: 'Motivo', render: (item) => <>{item.reason}</> },
-                  { key: 'c4', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
+                  { key: 'c4', header: 'Estado', type: 'status', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
                   { key: 'c5', header: 'Acción', width: '100px', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><IconButton size="sm" onClick={() => openDecision({ kind: 'correction', item })} disabled={!online} tooltip="Revisar" label={`Revisar corrección de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
                 ]}
               />
@@ -390,15 +385,14 @@ export default function AttendanceManagement() {
                 rows={overtime}
                 rowKey={(item) => item.id}
                 pagination={{ mode: 'client' }}
-                minWidth="56rem"
                 empty={<EmptyState title="No hay solicitudes de horas extra" description="Puedes registrar una desde la jornada de un empleado." action={<Button variant="ghost" onClick={() => setActiveTable('DAY')}>Ver jornadas</Button>} />}
                 columns={[
                   { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
-                  { key: 'c1', header: 'Fecha', render: (item) => <>{dateLabel(item.date)}</> },
-                  { key: 'c2', header: 'Solicitado', align: 'right', render: (item) => <>{item.requestedMinutes} min</> },
-                  { key: 'c3', header: 'Aprobado', align: 'right', render: (item) => <>{item.approvedMinutes ?? '—'}</> },
+                  { key: 'c1', header: 'Fecha', type: 'date', render: (item) => <>{dateLabel(item.date)}</> },
+                  { key: 'c2', header: 'Solicitado', type: 'number', render: (item) => <>{item.requestedMinutes} min</> },
+                  { key: 'c3', header: 'Aprobado', type: 'number', render: (item) => <>{item.approvedMinutes ?? '—'}</> },
                   { key: 'c4', header: 'Motivo', render: (item) => <>{item.reason}</> },
-                  { key: 'c5', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
+                  { key: 'c5', header: 'Estado', type: 'status', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
                   { key: 'c6', header: 'Acción', width: '100px', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><IconButton size="sm" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} tooltip="Revisar" label={`Revisar horas extra de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
                 ]}
               />
@@ -416,16 +410,15 @@ export default function AttendanceManagement() {
                 rows={periods}
                 rowKey={(period) => period.id}
                 pagination={{ mode: 'client' }}
-                minWidth="64rem"
                 empty={<EmptyState title="No hay periodos" description="Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina." action={<Button variant="primary" icon={Plus} onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}>Crear periodo</Button>} />}
                 columns={[
-                  { key: 'c0', header: 'Periodo', render: (period) => <strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong> },
-                  { key: 'c1', header: 'Empleados', align: 'right', render: (period) => <>{period.summaryCount ?? 0}</> },
-                  { key: 'c2', header: 'Incidencias', align: 'right', render: (period) => <span className={(period.unresolvedIncidentCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.unresolvedIncidentCount ?? 0}</span> },
-                  { key: 'c3', header: 'Correcciones', align: 'right', render: (period) => <span className={(period.pendingCorrectionCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingCorrectionCount ?? 0}</span> },
-                  { key: 'c4', header: 'Horas extra', align: 'right', render: (period) => <span className={(period.pendingOvertimeCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingOvertimeCount ?? 0}</span> },
+                  { key: 'c0', header: 'Periodo', type: 'date', render: (period) => <strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong> },
+                  { key: 'c1', header: 'Empleados', type: 'number', render: (period) => <>{period.summaryCount ?? 0}</> },
+                  { key: 'c2', header: 'Incidencias', type: 'number', render: (period) => <span className={(period.unresolvedIncidentCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.unresolvedIncidentCount ?? 0}</span> },
+                  { key: 'c3', header: 'Correcciones', type: 'number', render: (period) => <span className={(period.pendingCorrectionCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingCorrectionCount ?? 0}</span> },
+                  { key: 'c4', header: 'Horas extra', type: 'number', render: (period) => <span className={(period.pendingOvertimeCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingOvertimeCount ?? 0}</span> },
                   { key: 'c5', header: 'Nómina', render: (period) => <>{period.payrollReference ?? 'No vinculada'}</> },
-                  { key: 'c6', header: 'Estado', render: (period) => <><WorkforceStatusPill status={period.status} /></> },
+                  { key: 'c6', header: 'Estado', type: 'status', render: (period) => <><WorkforceStatusPill status={period.status} /></> },
                   { key: 'c7', header: 'Acción', width: '100px', type: 'actions', render: (period) => { const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0); return <div className={form.rowActions}>{period.status === 'CLOSED' ? <IconButton size="sm" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} tooltip="Reabrir" label={`Reabrir periodo ${period.id}`} icon={RotateCcw} /> : <IconButton size="sm" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} tooltip={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} label={`Cerrar periodo ${period.id}`} icon={LockKeyhole} />}</div>; } },
                 ]}
               />

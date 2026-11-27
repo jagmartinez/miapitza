@@ -42,13 +42,19 @@ describe('ProductionRecipes', () => {
     mocks.getById.mockReset().mockImplementation((id: number) => Promise.resolve({ data: { data: [v1, v2, parent, broken].find((r) => r.id === id) } }));
   });
 
-  it('muestra N/D en vez de 0 cuando una receta no tiene costo y avisa con tarjeta accionable', async () => {
+  it('muestra N/D en vez de 0 cuando una receta no tiene costo y ofrece el filtro de alertas de costo sin tarjetas', async () => {
     render(<MemoryRouter><ProductionRecipes /></MemoryRouter>);
     const table = await screen.findByRole('table', { name: 'Recetas de producción' });
     const brokenRow = within(table).getByText('Producto 300').closest('tr') as HTMLElement;
     expect(within(brokenRow).getAllByText('Revisar UOM').length).toBeGreaterThan(0);
-    expect(screen.getByRole('region', { name: 'Recetas sin costo calculable' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Recetas activas con costo al alza' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Recetas sin costo calculable' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Recetas activas con costo al alza' })).toBeNull();
+    // El filtro de alertas detecta 1 receta al alza (v2) y 1 sin costo (Producto 300).
+    await userEvent.click(screen.getByLabelText('Filtrar por alerta de costo'));
+    expect(await screen.findByText('Costo al alza (1)')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Sin costo calculable (1)'));
+    await waitFor(() => expect(within(table).queryByText('Producto 200')).toBeNull());
+    expect(within(table).getByText('Producto 300')).toBeInTheDocument();
   });
 
   it('el detalle avisa la variación contra la versión anterior, el insumo causante y dónde se usa', async () => {

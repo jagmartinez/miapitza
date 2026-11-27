@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
+import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
 // import Input from '../components/Input';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
@@ -13,20 +13,19 @@ import {
     Upload, Download, FileSpreadsheet, Search, Printer,
     Eye
 } from 'lucide-react';
-import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
+import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import { formatCurrency, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
 import { resolveEffectiveUnitCost, type ProductCostResolution } from '../utils/productCost';
 import { newIdempotencyKey } from '../utils/idempotency';
 import s from './Inventory.module.css';
-import { computeInventoryKpis } from '../utils/inventoryKpis';
 import { buildWarehouseBreakdown, type WarehouseStockInput } from '../utils/inventoryWarehouses';
 import { buildInventoryCountSheetHtml } from '../utils/inventoryCountSheet';
 import catalog from './catalog.module.css';
 import {
     AppSelect, Button, Checkbox, Tabs, Field, FormGrid, FormSection, FullScreenModal, Badge, DataTable, EmptyState, IconButton, Input, PageContent,
-    PageHeader, StatCard, TableToolbar, Textarea, Tooltip, formatNumber, formatPercent, type Column,
+    PageHeader, TableToolbar, Textarea, Tooltip, formatNumber, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -227,8 +226,6 @@ export default function Inventory() {
     const [allUnits, setAllUnits] = useState<UnitOfMeasure[]>([]);
     const { symbol } = useCurrency();
     const [settings, setSettings] = useState<CurrencySettings>({});
-    const [stockAlerts, setStockAlerts] = useState<StockAlertItem[]>([]);
-    const [stockAlertSummary, setStockAlertSummary] = useState<{ criticalAlerts?: number; warningAlerts?: number } | null>(null);
     const [loadIssues, setLoadIssues] = useState<Record<string, string>>({});
 
     const setLoadIssue = useCallback((area: string, error?: unknown) => {
@@ -338,12 +335,10 @@ export default function Inventory() {
         const results = await Promise.allSettled([
             productsAPI.getAll({ active: true, limit: 500 }),
             productsAPI.getLowStock(),
-            stockAlertsAPI.getAll(),
-            stockAlertsAPI.getSummary(),
             autoPurchaseOrdersAPI.getSuggestions()
         ]);
 
-        const [productsRes, lowStockRes, alertsRes, alertSummaryRes, suggestionsRes] = results;
+        const [productsRes, lowStockRes, suggestionsRes] = results;
 
         if (productsRes.status === 'fulfilled') {
             setProducts(productsRes.value.data.data || []);
@@ -357,18 +352,6 @@ export default function Inventory() {
             setLoadIssue('Stock bajo');
         } else {
             setLoadIssue('Stock bajo', lowStockRes.reason);
-        }
-        if (alertsRes.status === 'fulfilled') {
-            setStockAlerts(alertsRes.value.data.data || []);
-            setLoadIssue('Alertas');
-        } else {
-            setLoadIssue('Alertas', alertsRes.reason);
-        }
-        if (alertSummaryRes.status === 'fulfilled') {
-            setStockAlertSummary(alertSummaryRes.value.data.data || null);
-            setLoadIssue('Resumen de alertas');
-        } else {
-            setLoadIssue('Resumen de alertas', alertSummaryRes.reason);
         }
         if (suggestionsRes.status === 'fulfilled') {
             setAutoPurchaseSuggestions(suggestionsRes.value.data.data?.suggestions || []);
@@ -825,30 +808,11 @@ export default function Inventory() {
 
 
     const isLowStockProduct = (id: number) => lowStock.some((p) => p.id === id);
-    const kpis = useMemo(() => computeInventoryKpis(products as ProductInventory[]), [products]);
+    const productsFailed = 'Productos' in loadIssues;
     const warehouseBreakdown = useMemo(
         () => buildWarehouseBreakdown(warehouseStocks, products as ProductInventory[]),
         [warehouseStocks, products],
     );
-    const productsTruncated = products.length >= 500;
-    const productsFailed = 'Productos' in loadIssues;
-    const unknownCostCount = Math.max(kpis.unknownCostCount, warehouseBreakdown.unknownCostCount);
-    const unknownCostNote = unknownCostCount > 0
-        ? `${unknownCostCount} ${unknownCostCount === 1 ? 'producto sin costo excluido' : 'productos sin costo excluidos'}`
-        : '';
-    const alertContext = (() => {
-        const critical = Number(stockAlertSummary?.criticalAlerts ?? 0);
-        const warning = Number(stockAlertSummary?.warningAlerts ?? 0);
-        if (critical + warning === 0) return '';
-        const byWarehouse = new Map<string, number>();
-        for (const a of stockAlerts) {
-            if (a.priority === 'URGENT' || Number(a.currentStock) === 0) {
-                byWarehouse.set(a.warehouseName, (byWarehouse.get(a.warehouseName) ?? 0) + 1);
-            }
-        }
-        const top = [...byWarehouse.entries()].sort((a, b) => b[1] - a[1])[0];
-        return `${critical} ${critical === 1 ? 'alerta crítica' : 'alertas críticas'}${top ? ` (más en ${top[0]})` : ''}, ${warning} ${warning === 1 ? 'preventiva' : 'preventivas'}`;
-    })();
 
     const categoryFilterOptions = [
         { value: 'all', label: 'Todas las categorías' },
@@ -867,33 +831,11 @@ export default function Inventory() {
             <PageHeader
                 title="Inventario"
                 description="Existencias valorizadas por bodega, costo promedio ponderado."
-                actions={(
-                    <>
-                        <Button icon={Printer} onClick={handlePrintInventory}>Imprimir</Button>
-                        {canMutateProduct && (
-                            <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla Excel</Button>
-                        )}
-                        {canMutateProduct && (
-                            <Button icon={Upload} onClick={() => { setShowImportSidebar(true); setImportFile(null); setImportValidation(null); }}>
-                                Importar Excel
-                            </Button>
-                        )}
-                        {canCreateAutoPO && (
-                            <Button
-                                icon={FileText}
-                                onClick={() => setShowAutoPurchaseSidebar(true)}
-                                disabled={autoPurchaseSuggestions.length === 0}
-                            >
-                                Crear OC sugerida
-                            </Button>
-                        )}
-                        {canMutateProduct && (
-                            <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>
-                                Nuevo producto
-                            </Button>
-                        )}
-                    </>
-                )}
+                actions={canMutateProduct ? (
+                    <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>
+                        Nuevo producto
+                    </Button>
+                ) : undefined}
             />
 
             {Object.keys(loadIssues).length > 0 && (
@@ -924,37 +866,72 @@ export default function Inventory() {
                 </div>
             )}
 
-            <div className={catalog.kpiGrid}>
-                {productsFailed ? (
+            <Tabs
+                ariaLabel="Filtrar por tipo"
+                active={filter}
+                onChange={(id) => setFilter(id as typeof filter)}
+                tabs={[
+                    { id: 'all', label: 'Todos', badge: productsFailed ? undefined : (products.length >= 500 ? '500+' : products.length) },
+                    { id: 'INGREDIENT', label: 'Ingredientes', badge: productsFailed ? undefined : products.filter((p) => p.type === 'INGREDIENT').length },
+                    { id: 'PRODUCT_FOR_SALE', label: 'Productos', badge: productsFailed ? undefined : products.filter((p) => p.type === 'PRODUCT_FOR_SALE').length },
+                    { id: 'INTERMEDIATE', label: 'Intermedios', badge: productsFailed ? undefined : products.filter((p) => p.type === 'INTERMEDIATE').length },
+                    { id: 'PACKAGING', label: 'Empaques', badge: productsFailed ? undefined : products.filter((p) => p.type === 'PACKAGING').length },
+                    {
+                        id: 'low',
+                        label: 'Stock bajo',
+                        badge: productsFailed || 'Stock bajo' in loadIssues ? undefined : products.filter((p) => isLowStockProduct(p.id)).length,
+                    },
+                ]}
+            />
+
+            <TableToolbar
+                actions={(
                     <>
-                        <StatCard label="Reposición requerida (C$)" value="No disponible" tone="neutral" context={[alertContext, 'No se pudieron cargar los productos'].filter(Boolean).join(' · ')} />
-                        <StatCard label="Concentración del capital" value="No disponible" tone="neutral" context="No se pudieron cargar los productos" />
-                    </>
-                ) : (
-                    <>
-                        <StatCard
-                            label="Reposición requerida (C$)"
-                            value={loading ? '…' : formatNumber(kpis.replenishmentCost)}
-                            tone={kpis.belowMinCount > 0 ? 'warning' : 'success'}
-                            context={[
-                                kpis.belowMinCount > 0
-                                    ? `${kpis.belowMinCount} bajo mínimo, ${kpis.outOfStockCount} agotados${kpis.outOfStockNames.length > 0 ? ` (${kpis.outOfStockNames.join(', ')}${kpis.outOfStockCount > kpis.outOfStockNames.length ? '…' : ''})` : ''}`
-                                    : 'Ningún producto bajo el mínimo',
-                                alertContext,
-                                unknownCostNote,
-                            ].filter(Boolean).join(' · ') + (productsTruncated ? ' · primeros 500 productos' : '')}
-                            action={canCreateAutoPO && autoPurchaseSuggestions.length > 0
-                                ? { label: 'Generar orden de compra sugerida', onClick: () => setShowAutoPurchaseSidebar(true) }
-                                : undefined}
-                        />
-                        <StatCard
-                            label="Concentración del capital"
-                            value={loading ? '…' : formatPercent(kpis.concentrationPct)}
-                            context={[kpis.topNames.length > 0 ? `En: ${kpis.topNames.join(', ')}` : 'Sin existencias valorizadas', unknownCostNote].filter(Boolean).join(' · ')}
-                        />
+                        <Button icon={Printer} onClick={handlePrintInventory}>Imprimir</Button>
+                        {canMutateProduct && (
+                            <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla Excel</Button>
+                        )}
+                        {canMutateProduct && (
+                            <Button icon={Upload} onClick={() => { setShowImportSidebar(true); setImportFile(null); setImportValidation(null); }}>
+                                Importar Excel
+                            </Button>
+                        )}
+                        {canCreateAutoPO && (
+                            <Button
+                                icon={FileText}
+                                onClick={() => setShowAutoPurchaseSidebar(true)}
+                                disabled={autoPurchaseSuggestions.length === 0}
+                            >
+                                Crear OC sugerida
+                            </Button>
+                        )}
                     </>
                 )}
-            </div>
+            >
+                <Input
+                    type="search"
+                    aria-label="Buscar producto"
+                    placeholder="Buscar por código o producto"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                />
+                <AppSelect
+                    aria-label="Filtrar por categoría"
+                    isClearable={false}
+                    options={categoryFilterOptions}
+                    value={selectedCategory}
+                    onChange={(v) => setSelectedCategory(v || 'all')}
+                />
+                <AppSelect
+                    aria-label="Filtrar por almacenamiento"
+                    isClearable={false}
+                    isSearchable={false}
+                    options={storageFilterOptions}
+                    value={storageFilter}
+                    onChange={(v) => setStorageFilter(v || 'all')}
+                />
+            </TableToolbar>
 
             <DataTable<ProductInventory>
                 ariaLabel="Inventario de productos"
@@ -979,51 +956,9 @@ export default function Inventory() {
                         ) : undefined}
                     />
                 )}
-                toolbar={(
-                    <div className={s.toolbarStack}>
-                        <Tabs
-                            ariaLabel="Filtrar por tipo"
-                            active={filter}
-                            onChange={(id) => setFilter(id as typeof filter)}
-                            tabs={[
-                                { id: 'all', label: 'Todos' },
-                                { id: 'INGREDIENT', label: 'Ingredientes' },
-                                { id: 'PRODUCT_FOR_SALE', label: 'Productos' },
-                                { id: 'INTERMEDIATE', label: 'Intermedios' },
-                                { id: 'PACKAGING', label: 'Empaques' },
-                                { id: 'low', label: 'Stock bajo' },
-                            ]}
-                        />
-                        <TableToolbar>
-                            <Input
-                                type="search"
-                                aria-label="Buscar producto"
-                                placeholder="Buscar por código o producto"
-                                prefix={<Search size={14} aria-hidden="true" />}
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                            />
-                            <AppSelect
-                                aria-label="Filtrar por categoría"
-                                isClearable={false}
-                                options={categoryFilterOptions}
-                                value={selectedCategory}
-                                onChange={(v) => setSelectedCategory(v || 'all')}
-                            />
-                            <AppSelect
-                                aria-label="Filtrar por almacenamiento"
-                                isClearable={false}
-                                isSearchable={false}
-                                options={storageFilterOptions}
-                                value={storageFilter}
-                                onChange={(v) => setStorageFilter(v || 'all')}
-                            />
-                        </TableToolbar>
-                    </div>
-                )}
                 columns={[
-                    { key: 'sku', header: 'Código', width: 'minmax(8.5rem,.8fr)', render: (product) => product.sku || '—' },
-                    { key: 'name', header: 'Producto', width: 'minmax(11rem,2.4fr)', render: (product) => (
+                    { key: 'sku', header: 'Código', render: (product) => product.sku || '—' },
+                    { key: 'name', header: 'Producto', type: 'text', render: (product) => (
                         <span className={s.cellStack}>
                             <span>{product.name}</span>
                             {(() => {
@@ -1032,11 +967,11 @@ export default function Inventory() {
                             })()}
                         </span>
                     ) },
-                    { key: 'category', header: 'Categoría', width: 'minmax(8.5rem,1.1fr)', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '—' },
-                                        { key: 'stock', header: 'Existencia', width: 'minmax(8rem,1fr)', type: 'qty', accessor: (product) => product.totalStock ?? 0, render: (product) => `${formatNumber(product.totalStock ?? 0)} ${product.baseUnit?.abbreviation || product.unit || ''}`.trim() },
-                                        { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
-                    { key: 'value', header: 'Valor (C$)', width: '1.2fr', type: 'money', total: true, accessor: (product) => (inventoryCostQuality(product).known ? Number(product.totalStock ?? 0) * inventoryCostQuality(product).value : null), render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
-                    { key: 'status', header: 'Estado', width: '7.5rem', type: 'status', render: (product) => (
+                    { key: 'category', header: 'Categoría', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '—' },
+                    { key: 'stock', header: 'Existencia', type: 'qty', accessor: (product) => product.totalStock ?? 0, render: (product) => `${formatNumber(product.totalStock ?? 0)} ${product.baseUnit?.abbreviation || product.unit || ''}`.trim() },
+                    { key: 'cost', header: 'Costo (C$)', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
+                    { key: 'value', header: 'Valor (C$)', type: 'money', total: true, accessor: (product) => (inventoryCostQuality(product).known ? Number(product.totalStock ?? 0) * inventoryCostQuality(product).value : null), render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
+                    { key: 'status', header: 'Estado', type: 'status', render: (product) => (
                         <Badge tone={isLowStockProduct(product.id) ? 'warning' : 'success'} dot>
                             {isLowStockProduct(product.id) ? 'Stock bajo' : 'OK'}
                         </Badge>
@@ -1524,16 +1459,16 @@ export default function Inventory() {
                                         />
                                     ),
                                 },
-                                { key: 'product', header: 'Producto', width: '2fr', render: (sg) => sg.productName?.trim() || `Producto #${sg.productId}` },
-                                { key: 'warehouse', header: 'Bodega', width: '1.2fr', hideBelow: 'md', render: (sg) => sg.warehouseName || 'Sin bodega' },
+                                { key: 'product', header: 'Producto', render: (sg) => sg.productName?.trim() || `Producto #${sg.productId}` },
+                                { key: 'warehouse', header: 'Bodega', hideBelow: 'md', render: (sg) => sg.warehouseName || 'Sin bodega' },
                                 {
-                                    key: 'priority', header: 'Prioridad', width: '0.9fr',
+                                    key: 'priority', header: 'Prioridad', type: 'status',
                                     render: (sg) => <Badge tone={sg.priority === 'URGENT' ? 'danger' : 'neutral'}>{sg.priority === 'URGENT' ? 'Urgente' : 'Normal'}</Badge>,
                                 },
-                                { key: 'current', header: 'Actual', width: '1fr', type: 'qty', hideBelow: 'md', accessor: (sg) => sg.currentStock || 0 },
-                                { key: 'min', header: 'Mín', width: '1fr', type: 'qty', hideBelow: 'lg', accessor: (sg) => sg.minStock || 0 },
-                                { key: 'suggested', header: 'Sugerido', width: '1fr', type: 'qty', render: (sg) => formatSuggestionQuantity(sg) },
-                                { key: 'cost', header: 'Estimado', width: '1fr', type: 'money', render: (sg) => formatCurrency(Number(sg.estimatedCost || 0), settings) },
+                                { key: 'current', header: 'Actual', type: 'qty', hideBelow: 'md', accessor: (sg) => sg.currentStock || 0 },
+                                { key: 'min', header: 'Mín', type: 'qty', hideBelow: 'lg', accessor: (sg) => sg.minStock || 0 },
+                                { key: 'suggested', header: 'Sugerido', type: 'qty', render: (sg) => formatSuggestionQuantity(sg) },
+                                { key: 'cost', header: 'Estimado', type: 'money', render: (sg) => formatCurrency(Number(sg.estimatedCost || 0), settings) },
                             ] as Column<AutoPurchaseSuggestion>[]}
                         />
                     </FormSection>
@@ -1640,10 +1575,10 @@ export default function Inventory() {
                                     </TableToolbar>
                                 )}
                                 columns={[
-                                    { key: 'rowNumber', header: '#', type: 'number', decimals: 0, width: '4rem' },
+                                    { key: 'rowNumber', header: '#', type: 'number', decimals: 0 },
                                     { key: 'sku', header: 'SKU' },
                                     { key: 'name', header: 'Nombre' },
-                                    { key: 'action', header: 'Acción', render: (item) => (
+                                    { key: 'action', header: 'Acción', type: 'status', render: (item) => (
                                         <Badge tone={item.isUpdate ? 'neutral' : 'success'}>{item.isUpdate ? 'Actualizar' : 'Nuevo'}</Badge>
                                     ) },
                                     { key: 'status', header: 'Estado', type: 'status', render: (item) => (

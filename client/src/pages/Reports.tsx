@@ -405,12 +405,11 @@ function signClass(value: unknown, invert?: boolean): string {
 const nd = <span className="reports-nd" title="Dato no disponible">{ND}</span>;
 
 function toTableColumns(defs: ColDef[], money: (n: number) => string): Column<Row>[] {
-    return defs.map((def, i): Column<Row> => {
+    return defs.map((def): Column<Row> => {
         const base: Column<Row> = {
             key: def.key,
             header: def.header,
             accessor: (r) => r[def.key],
-            width: def.format ? '1fr' : i === 0 ? '1.6fr' : '1.2fr',
         };
         const signed = (r: Row, text: (n: number) => string) =>
             isMissing(r[def.key])

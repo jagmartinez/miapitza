@@ -110,17 +110,17 @@ export function SalesChannelsPanel() {
   };
 
   const columns: Column<SalesChannelConfig>[] = [
-    { key: 'channel', header: 'Canal', width: '1.4fr', render: (ch) => <strong>{CHANNEL_LABEL[ch.channel] ?? ch.channel.replace('_', ' ')}</strong> },
+    { key: 'channel', header: 'Canal', render: (ch) => <strong>{CHANNEL_LABEL[ch.channel] ?? ch.channel.replace('_', ' ')}</strong> },
     {
-      key: 'isActive', header: 'Estado', width: '1fr',
+      key: 'isActive', header: 'Estado', type: 'status',
       render: (ch) => <Switch label={ch.isActive ? 'Activo' : 'Inactivo'} checked={ch.isActive} onChange={(v) => update(channels.indexOf(ch), { isActive: v })} />,
     },
     {
-      key: 'priceMarkupPct', header: 'Recargo de precio', width: '1fr', align: 'right',
+      key: 'priceMarkupPct', header: 'Recargo de precio', type: 'percent', align: 'right',
       render: (ch) => <NumberInput aria-label={`Recargo de precio ${ch.channel}`} value={ch.priceMarkupPct} min={0} suffix="%" onChange={(v) => update(channels.indexOf(ch), { priceMarkupPct: Math.min(v ?? 0, 100) })} />,
     },
     {
-      key: 'commissionPct', header: 'Comisión del canal', width: '1fr', align: 'right',
+      key: 'commissionPct', header: 'Comisión del canal', type: 'percent', align: 'right',
       render: (ch) => <NumberInput aria-label={`Comisión ${ch.channel}`} value={ch.commissionPct} min={0} suffix="%" onChange={(v) => update(channels.indexOf(ch), { commissionPct: Math.min(v ?? 0, 100) })} />,
     },
     {

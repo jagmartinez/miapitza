@@ -17,6 +17,12 @@ th.ui-cell { font-size: 12px; font-weight: 600; color: var(--ui-text-muted); tex
 .ui-cell--numeric { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Encabezados en una sola línea: el mínimo de cada pista (columnTemplate) los hace caber; si no, se recortan con «…» y el título completo queda en el tooltip. */
 th.ui-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; padding-top: var(--ui-space-3); padding-bottom: var(--ui-space-3); }
+.ui-cell--nowrap { white-space: nowrap; }
+/* Medición por contenido (DataTable): por un instante, cada celda a su ancho max-content en una sola línea. */
+.ui-table--measuring thead tr, .ui-table--measuring tbody tr, .ui-table--measuring tfoot tr {
+  grid-template-columns: none !important; grid-auto-flow: column; grid-auto-columns: max-content; width: max-content;
+}
+.ui-table--measuring .ui-cell { white-space: nowrap; }
 .ui-cell--align-left { text-align: left; }
 .ui-cell--align-center { text-align: center; }
 .ui-cell--align-right { text-align: right; }

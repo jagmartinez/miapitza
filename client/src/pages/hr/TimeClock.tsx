@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Clock3, Fingerprint, MapPin, RefreshCw } from 'lucide-react';
-import { Button, EmptyState, FormSection, LoadErrorState, PageContent, PageHeader, StatCard } from '@/ui';
+import { Button, EmptyState, FormSection, LoadErrorState, PageContent, PageHeader } from '@/ui';
 import form from '../../components/hr/hrForm.module.css';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
@@ -13,7 +13,6 @@ import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr
 import { useAppToast } from '../../context/ToastContext';
 import type { HrAttendancePolicy, HrAttendancePunchResult, HrBiometricProfile, HrTodayAttendance } from '../../types/hr-attendance';
 import './attendance.css';
-import styles from './SelfService.module.css';
 
 export default function TimeClock() {
     const navigate = useNavigate();
@@ -79,27 +78,11 @@ export default function TimeClock() {
 
             {!loading && !error && policy && today && (
                 <>
-                    <section className={styles.stats} aria-label="Estado de tu marcaje de hoy">
-                        <StatCard
-                            label="Sucursal a validar"
-                            value={today.targetBranch?.name ?? 'Sin asignación vigente'}
-                            context={today.scheduledShift ? 'Asignada al turno publicado' : 'Resuelta desde tu adscripción RH vigente'}
-                        />
-                        <StatCard
-                            label="Marcaje disponible"
-                            value={nextAction ? ATTENDANCE_ACTION_LABELS[nextAction] : 'Sin acción disponible'}
-                            context={nextAction ? `El servidor habilita ${today.availableActions.length === 1 ? 'esta acción' : `${today.availableActions.length} acciones`} para tu estado actual` : (today.blockingIssue?.message ?? 'El servidor no habilita un nuevo marcaje')}
-                            tone={nextAction ? 'success' : (today.blockingIssue ? 'danger' : 'warning')}
-                        />
-                        <StatCard
-                            label="Validación biométrica"
-                            value={policy.requireBiometric ? (biometricBlocked ? 'Requiere atención' : 'Lista') : 'No requerida'}
-                            context={`${today.punches.length} marcaje${today.punches.length === 1 ? '' : 's'} registrado${today.punches.length === 1 ? '' : 's'}`}
-                            tone={biometricBlocked ? 'warning' : 'success'}
-                            action={biometricBlocked ? { label: 'Gestionar biometría', onClick: () => navigate('/rh/biometria') } : undefined}
-                        />
-                    </section>
-
+                    {!nextAction && (
+                        <div className={today.blockingIssue ? form.alertDanger : form.alertWarning} role="status">
+                            {today.blockingIssue?.message ?? 'El servidor no habilita un nuevo marcaje'}
+                        </div>
+                    )}
                     <div className={form.split}>
                         <div className={`hr-time-clock-action-panel ${form.panel}`} aria-live="polite" aria-label="Acción de marcaje">
                             {!online ? (
@@ -113,6 +96,9 @@ export default function TimeClock() {
                             <FormSection title="Tu registro de asistencia" description={`Hora oficial del servidor: ${timeFormat(today.serverTime, { dateStyle: 'medium', timeStyle: 'short' })}`}>
                                 <span id="hr-today-title" className="sr-only">Jornada de hoy</span>
                                 <dl className={form.facts}>
+                                    <div><dt>Sucursal a validar</dt><dd>{today.targetBranch?.name ?? 'Sin asignación vigente'}<small>{today.scheduledShift ? ' · Asignada al turno publicado' : ' · Resuelta desde tu adscripción RH vigente'}</small></dd></div>
+                                    <div><dt>Marcaje disponible</dt><dd>{nextAction ? ATTENDANCE_ACTION_LABELS[nextAction] : 'Sin acción disponible'}</dd></div>
+                                    <div><dt>Validación biométrica</dt><dd>{policy.requireBiometric ? (biometricBlocked ? 'Requiere atención' : 'Lista') : 'No requerida'}</dd></div>
                                     <div><dt>Turno programado</dt><dd>{today.scheduledShift ? `${timeFormat(today.scheduledShift.startAt, { timeStyle: 'short' })}–${timeFormat(today.scheduledShift.endAt, { timeStyle: 'short' })}` : 'Sin turno publicado'}</dd></div>
                                     <div><dt>Sucursal del turno</dt><dd>{today.scheduledShift ? (today.scheduledShift.branch?.name ?? `Sucursal #${today.scheduledShift.branchId}`) : 'El servidor validará la política aplicable al intentar marcar.'}</dd></div>
                                     <div><dt>Precisión máxima</dt><dd><MapPin size={14} aria-hidden="true" /> ±{effectiveMaxAccuracyM} m</dd></div>

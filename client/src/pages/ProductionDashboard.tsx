@@ -144,60 +144,56 @@ export default function ProductionDashboard() {
     const unitOf = (o: RecentRow) => o.product?.baseUnit?.abbreviation || o.product?.unit || '';
 
     const producedColumns: Column<ProducedRow>[] = [
-        { key: 'name', header: 'Producto', width: '2fr', render: (p) => <span className={s.cellTitle}>{p.name}</span> },
-        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md', render: (p) => p.sku || '-' },
-        { key: 'orders', header: 'Órdenes', type: 'number', width: '0.8fr', decimals: 0 },
-        { key: 'produced', header: 'Producido', type: 'qty', width: '1.2fr', render: (p) => `${formatNumber(p.produced)} ${p.unit}` },
-        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money', width: '1.1fr' },
+        { key: 'name', header: 'Producto', render: (p) => <span className={s.cellTitle}>{p.name}</span> },
+        { key: 'sku', header: 'SKU', hideBelow: 'md', render: (p) => p.sku || '-' },
+        { key: 'orders', header: 'Órdenes', type: 'number', decimals: 0 },
+        { key: 'produced', header: 'Producido', type: 'qty', render: (p) => `${formatNumber(p.produced)} ${p.unit}` },
+        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money' },
         {
             key: 'costVariance',
             header: `Variación (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             render: (p) => <span className={p.costVariance > 0 ? s.bad : s.good}>{formatNumber(p.costVariance)}</span>,
         },
         {
             key: 'yieldPct',
             header: 'Rendimiento',
             type: 'percent',
-            width: '1fr',
             render: (p) => <Badge tone={yieldTone(p.yieldPct)}>{formatPercent(p.yieldPct)}</Badge>,
         },
     ];
 
     const operatorColumns: Column<OperatorRow>[] = [
-        { key: 'name', header: 'Operario', width: '2fr', render: (op) => <span className={s.cellTitle}>{op.name}</span> },
-        { key: 'orders', header: 'Órdenes', type: 'number', width: '1fr', decimals: 0 },
-        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money', width: '1.2fr' },
+        { key: 'name', header: 'Operario', render: (op) => <span className={s.cellTitle}>{op.name}</span> },
+        { key: 'orders', header: 'Órdenes', type: 'number', decimals: 0 },
+        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money' },
     ];
 
     const consumedColumns: Column<ConsumedRow>[] = [
-        { key: 'name', header: 'Insumo', width: '2fr' },
-        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md', render: (c) => c.sku || '-' },
-        { key: 'qty', header: 'Cantidad', type: 'qty', width: '1.2fr', render: (c) => `${formatNumber(c.consumedQuantity)} ${c.unit}` },
-        { key: 'totalCost', header: `Costo total (${symbol})`, type: 'money', width: '1.2fr' },
+        { key: 'name', header: 'Insumo' },
+        { key: 'sku', header: 'SKU', hideBelow: 'md', render: (c) => c.sku || '-' },
+        { key: 'qty', header: 'Cantidad', type: 'qty', render: (c) => `${formatNumber(c.consumedQuantity)} ${c.unit}` },
+        { key: 'totalCost', header: `Costo total (${symbol})`, type: 'money' },
     ];
 
     const recentColumns: Column<RecentRow>[] = [
-        { key: 'code', header: 'Código', width: '1fr', render: (o) => <span className={s.cellTitle}>{o.code}</span> },
-        { key: 'product', header: 'Producto', width: '2fr', render: (o) => o.product?.name || '-' },
+        { key: 'code', header: 'Código', render: (o) => <span className={s.cellTitle}>{o.code}</span> },
+        { key: 'product', header: 'Producto', render: (o) => o.product?.name || '-' },
         {
             key: 'status',
             header: 'Estado',
             type: 'status',
-            width: '1fr',
             render: (o) => <Badge tone={STATUS_META[o.status]?.tone ?? 'neutral'}>{STATUS_META[o.status]?.label || o.status}</Badge>,
         },
-        { key: 'planned', header: 'Plan.', headerTitle: 'Planificado', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.plannedQuantity)} ${unitOf(o)}` },
-        { key: 'produced', header: 'Prod.', headerTitle: 'Producido', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.producedQuantity)} ${unitOf(o)}` },
+        { key: 'planned', header: 'Plan.', headerTitle: 'Planificado', type: 'qty', hideBelow: 'md', render: (o) => `${formatNumber(o.plannedQuantity)} ${unitOf(o)}` },
+        { key: 'produced', header: 'Prod.', headerTitle: 'Producido', type: 'qty', hideBelow: 'md', render: (o) => `${formatNumber(o.producedQuantity)} ${unitOf(o)}` },
         {
             key: 'realCost',
             header: `Costo real (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             render: (o) => (o.status === 'FINISHED' && Number(o.realCost) > 0 ? formatNumber(o.realCost) : <span className={s.nd}>N/D</span>),
         },
-        { key: 'date', header: 'Fecha', type: 'date', width: '1fr', hideBelow: 'lg', render: (o) => fmtDate(o.finishedAt || o.date) },
+        { key: 'date', header: 'Fecha', type: 'date', hideBelow: 'lg', render: (o) => fmtDate(o.finishedAt || o.date) },
     ];
 
     const hasRealized = (kpis?.realizedOrders ?? 0) > 0;

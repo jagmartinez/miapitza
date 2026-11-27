@@ -7,14 +7,14 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { useNavigate } from 'react-router-dom';
 import { branchesAPI, cashRegistersAPI, cashShiftsAPI } from '../services/api';
-import { Unlock, Eye, Plus, Search } from 'lucide-react';
+import { Unlock, Eye, Plus } from 'lucide-react';
 import type { Branch, CashRegister, CashShift } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import styles from './CashRegisters.module.css';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, Field, FormSection, FullScreenModal, IconButton, Input,
-    PageHeader, TableToolbar, Tabs, formatNumber, type Column,
+    PageContent, PageHeader, TableToolbar, Tabs, formatNumber, type Column,
 } from '@/ui';
 
 export default function CashRegisters() {
@@ -217,13 +217,12 @@ export default function CashRegisters() {
     );
 
     const registerColumns: Column<CashRegister>[] = [
-        { key: 'name', header: 'Caja', width: '1.6fr', render: (r) => <strong>{r.name}</strong> },
-        { key: 'branch', header: 'Sucursal', width: '1.4fr', render: (r) => r.branch?.name || 'Sucursal Principal' },
+        { key: 'name', header: 'Caja', render: (r) => <strong>{r.name}</strong> },
+        { key: 'branch', header: 'Sucursal', render: (r) => r.branch?.name || 'Sucursal Principal' },
         {
             key: 'status',
             header: 'Estado',
             type: 'status',
-            width: '0.8fr',
             render: (r) => <Badge tone={r.status === 'OPEN' ? 'success' : 'neutral'} dot>{r.status === 'OPEN' ? 'Abierta' : 'Cerrada'}</Badge>,
         },
         {
@@ -240,28 +239,26 @@ export default function CashRegisters() {
     ];
 
     const shiftColumns: Column<CashShift>[] = [
-        { key: 'id', header: 'Turno', width: '0.6fr', render: (s) => `#${s.id}` },
-        { key: 'register', header: 'Caja', width: '1.2fr', render: (s) => s.register?.name || s.cashRegister?.name || 'Caja' },
-        { key: 'user', header: 'Cajero', width: '1.2fr', render: (s) => s.user?.name || 'N/D' },
+        { key: 'id', header: 'Turno', render: (s) => `#${s.id}` },
+        { key: 'register', header: 'Caja', render: (s) => s.register?.name || s.cashRegister?.name || 'Caja' },
+        { key: 'user', header: 'Cajero', render: (s) => s.user?.name || 'N/D' },
         {
             key: 'startDate',
             header: 'Inicio',
-            width: '1.2fr',
+            type: 'date',
             render: (s) => `${new Date(s.startDate).toLocaleDateString('es-NI')} ${new Date(s.startDate).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}`,
         },
         {
             key: 'state',
             header: 'Estado',
             type: 'status',
-            width: '0.8fr',
             render: (s) => <Badge tone={s.endDate ? 'neutral' : 'success'} dot>{s.endDate ? 'Finalizado' : 'En Curso'}</Badge>,
         },
-        { key: 'startAmount', header: 'Saldo Inicial', type: 'money', width: '1fr', render: (s) => formatMoney(Number(s.startAmount)) },
+        { key: 'startAmount', header: 'Saldo Inicial', type: 'money', render: (s) => formatMoney(Number(s.startAmount)) },
         {
             key: 'difference',
             header: 'Diferencia',
             type: 'money',
-            width: '1fr',
             render: (s) => {
                 if (!s.endDate || s.difference === undefined || s.difference === null) return 'N/D';
                 const diff = Number(s.difference);
@@ -272,7 +269,7 @@ export default function CashRegisters() {
     ];
 
     return (
-        <div className={styles.page}>
+        <PageContent>
             <PageHeader
                 title="Cajas Registradoras"
                 description={viewTab === 'registers'
@@ -299,16 +296,13 @@ export default function CashRegisters() {
             />
 
             <TableToolbar>
-                <Field label="Buscar" htmlFor="cash-search">
-                    <Input
-                        id="cash-search"
-                        type="search"
-                        prefix={<Search size={16} aria-hidden="true" />}
-                        placeholder={viewTab === 'registers' ? 'Buscar caja o sucursal...' : 'Buscar por caja o cajero...'}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </Field>
+                <Input
+                    type="search"
+                    aria-label="Buscar"
+                    placeholder={viewTab === 'registers' ? 'Buscar caja o sucursal...' : 'Buscar por caja o cajero...'}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
                 {viewTab === 'history' && (
                     <>
                         <Field label="Desde" htmlFor="cash-from">
@@ -425,6 +419,6 @@ export default function CashRegisters() {
                 )}
                 </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }

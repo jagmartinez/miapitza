@@ -12,7 +12,7 @@ import type { UnitOfMeasure } from '../types';
 import styles from './catalog.module.css';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, type Column, formatNumber} from '@/ui';
+    PageContent, PageHeader, Switch, TableToolbar, Tabs, type Column, formatNumber} from '@/ui';
 
 type MeasurementTypeOption = UnitOfMeasure['measurementType'];
 type FilterOption = 'all' | 'active' | 'inactive';
@@ -134,12 +134,16 @@ export default function UnitsOfMeasurePage() {
     const [formData, setFormData] = useState(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
 
+    const [loadFailed, setLoadFailed] = useState(false);
+
     const loadUnits = useCallback(async () => {
         try {
             const res = await unitsAPI.getAll({ includeInactive: true });
             setUnits(res.data.data || []);
+            setLoadFailed(false);
         } catch (error) {
             console.error('Error loading units:', error);
+            setLoadFailed(true);
             showError(getApiErrorMessage(error, 'No se pudieron cargar las unidades de medida'));
         } finally {
             setLoading(false);
@@ -280,7 +284,7 @@ export default function UnitsOfMeasurePage() {
                 );
             }
         },
-        { key: 'abbreviation', header: 'Abreviatura', width: '8rem' },
+        { key: 'abbreviation', header: 'Abreviatura' },
         { key: 'type', header: 'Tipo', accessor: (unit) => MEASUREMENT_TYPE_META[unit.measurementType].title },
         {
             key: 'factor',
@@ -290,7 +294,7 @@ export default function UnitsOfMeasurePage() {
         {
             key: 'status',
             header: 'Estado',
-            width: '8rem',
+            type: 'status',
             render: (unit) => <Badge tone={unit.active ? 'success' : 'neutral'} dot>{unit.active ? 'Activa' : 'Inactiva'}</Badge>
         },
         ...(canMutate ? [{
@@ -319,17 +323,34 @@ export default function UnitsOfMeasurePage() {
             <PageHeader
                 title="Unidades de medida"
                 description="Catálogo de unidades y su equivalencia con la unidad del sistema."
-                actions={(
-                    <>
-                        <Button onClick={() => navigate('/inventory')}>Ir a Inventario</Button>
-                        {canMutate && (
-                            <Button variant="primary" icon={Plus} onClick={() => openModal()}>
-                                Nueva unidad
-                            </Button>
-                        )}
-                    </>
-                )}
+                actions={canMutate ? (
+                    <Button variant="primary" icon={Plus} onClick={() => openModal()}>
+                        Nueva unidad
+                    </Button>
+                ) : undefined}
             />
+
+            <Tabs
+                ariaLabel="Filtrar por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as FilterOption)}
+                tabs={FILTER_OPTIONS.map(({ value, label }) => ({
+                    id: value,
+                    label,
+                    badge: loadFailed ? undefined : value === 'all' ? units.length : units.filter((unit) => (value === 'active' ? unit.active : !unit.active)).length,
+                }))}
+            />
+
+            <TableToolbar actions={<Button onClick={() => navigate('/inventory')}>Ir a Inventario</Button>}>
+                <Input
+                    type="search"
+                    aria-label="Buscar unidad"
+                    placeholder="Buscar por nombre o abreviatura"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </TableToolbar>
 
             <DataTable<UnitOfMeasure>
                 ariaLabel="Unidades de medida"
@@ -347,19 +368,6 @@ export default function UnitsOfMeasurePage() {
                         action={canMutate ? <Button variant="primary" onClick={() => openModal()}>Crear primera unidad</Button> : undefined}
                     />
                 ) : 'No hay unidades con este filtro.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar unidad"
-                            placeholder="Buscar por nombre o abreviatura"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                        <SegmentedControl ariaLabel="Estado" options={FILTER_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal

@@ -26,7 +26,7 @@ import styles from './catalog.module.css';
 import userStyles from './Users.module.css';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
+    LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -377,6 +377,7 @@ export default function Users() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (u) => <Badge tone={u.status === 'ACTIVE' ? 'success' : 'neutral'} dot>{u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</Badge>
         },
         {
@@ -430,6 +431,17 @@ export default function Users() {
                     onRetry={() => { void loadData(lastRequestedCompanyId.current, true); }}
                 />
             ) : (
+                <>
+                <Tabs
+                    ariaLabel="Filtrar usuarios por estado"
+                    active={statusFilter}
+                    onChange={(id) => setStatusFilter(id as typeof statusFilter)}
+                    tabs={statusOptions.map((o) => ({
+                        id: o.value,
+                        label: o.label,
+                        badge: o.value === 'all' ? users.length : users.filter((u) => u.status === o.value).length,
+                    }))}
+                />
                 <DataTable<User>
                     ariaLabel="Listado de usuarios"
                     rows={filteredUsers}
@@ -456,10 +468,10 @@ export default function Users() {
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                             <AppSelect isClearable={false} aria-label="Filtrar por rol" options={roleOptions} value={roleFilter} onChange={(v) => { if (v) setRoleFilter(String(v)); }} placeholder="Filtrar por rol" />
-                            <SegmentedControl ariaLabel="Estado" options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
                         </TableToolbar>
                     )}
                 />
+                </>
             )}
 
             <FullScreenModal

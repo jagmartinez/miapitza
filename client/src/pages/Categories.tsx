@@ -10,14 +10,14 @@ import { getCategoryVisibilityLabel } from '../utils/categoryVisibility';
 import styles from './catalog.module.css';
 import {
     Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    NumberInput, PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, Textarea, type Column,
+    NumberInput, PageContent, PageHeader, Switch, TableToolbar, Tabs, Textarea, type Column,
 } from '@/ui';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-    { value: 'all', label: 'Todas' },
-    { value: 'active', label: 'Activas' },
-    { value: 'inactive', label: 'Inactivas' },
+const STATUS_TABS: { id: StatusFilter; label: string }[] = [
+    { id: 'all', label: 'Todas' },
+    { id: 'active', label: 'Activas' },
+    { id: 'inactive', label: 'Inactivas' },
 ];
 
 interface CategoryRow {
@@ -166,6 +166,7 @@ export default function Categories() {
         {
             key: 'name',
             header: 'Categoría',
+            type: 'text',
             render: (c) => (
                 <div className={styles.cellStack}>
                     <span className={styles.cellTitle}>{c.name}</span>
@@ -173,12 +174,13 @@ export default function Categories() {
                 </div>
             )
         },
-        { key: 'prefix', header: 'Prefijo', width: '1fr', accessor: (c) => c.codePrefix || '—' },
+        { key: 'prefix', header: 'Prefijo', type: 'text', accessor: (c) => c.codePrefix || '—' },
         { key: 'items', header: 'Platos', type: 'number', decimals: 0, accessor: (c) => c._count?.menuItems || 0 },
         { key: 'order', header: 'Orden', type: 'number', decimals: 0, accessor: (c) => c.sortOrder ?? 0 },
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (c) => (
                 <div className={styles.inline}>
                     <Badge tone={c.active ? 'success' : 'neutral'} dot>{c.active ? 'Activa' : 'Inactiva'}</Badge>
@@ -228,6 +230,16 @@ export default function Categories() {
                 ) : undefined}
             />
 
+            <Tabs
+                ariaLabel="Filtrar categorías por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as StatusFilter)}
+                tabs={STATUS_TABS.map((t) => ({
+                    ...t,
+                    badge: t.id === 'all' ? categories.length : categories.filter((c) => c.active === (t.id === 'active')).length,
+                }))}
+            />
+
             <TableToolbar>
                 <Input
                     type="search"
@@ -237,7 +249,6 @@ export default function Categories() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
-                <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
             </TableToolbar>
 
             <DataTable<CategoryRow>

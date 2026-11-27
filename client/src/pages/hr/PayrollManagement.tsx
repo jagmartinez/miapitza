@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Calculator, Download, Eye, FilePlus2, Plus, Scale, Search } from 'lucide-react';
-import { AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, formatMoney, formatNumber, formatPercent, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs, Textarea } from '@/ui';
+import { AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, formatMoney, formatNumber, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import { collectAllPages } from '../../components/hr/collectAllPages';
@@ -11,7 +11,7 @@ import PayrollOperationWorkspace from '../../components/hr/payroll-operation-wor
 import PayrollRuleForm from '../../components/hr/PayrollRuleForm';
 import PayrollRunForm from '../../components/hr/PayrollRunForm';
 import PayrollRunStepper from '../../components/hr/PayrollRunStepper';
-import { isRunCalculated, payrollKpis } from '../../components/hr/payrollKpis';
+import { isRunCalculated } from '../../components/hr/payrollKpis';
 import PayrollStatusPill from '../../components/hr/PayrollStatusPill';
 import PayrollTransitionForm from '../../components/hr/PayrollTransitionForm';
 import usePayrollOnline from '../../components/hr/usePayrollOnline';
@@ -356,7 +356,6 @@ export default function PayrollManagement() {
   };
 
   const runs = activeKind === 'REGULAR' ? regularRuns : aguinaldoRuns;
-  const kpis = payrollKpis(runs);
   const filteredRuns = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
     const byStatus = status ? runs.filter((run) => run.status === status) : runs;
@@ -373,13 +372,6 @@ export default function PayrollManagement() {
   }, [runs, searchQuery, status]);
   const activeRules = rules.filter((rule) => rule.status === 'ACTIVE');
   const operationReady = activeRules.length > 0 && (activeKind === 'AGUINALDO' || periods.some((period) => period.status !== 'VOID'));
-
-  const nextPayment = useMemo(() => {
-    const runPayDate = (run: HrPayrollRun) => (run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) ?? null;
-    const openRuns = [...regularRuns, ...aguinaldoRuns].filter((run) => run.status !== 'PAID' && run.status !== 'VOID' && runPayDate(run));
-    const next = openRuns.sort((left, right) => String(runPayDate(left)).localeCompare(String(runPayDate(right))))[0];
-    return next ? { run: next, date: runPayDate(next) } : null;
-  }, [aguinaldoRuns, regularRuns]);
 
   return (
     <PageContent>
@@ -424,48 +416,6 @@ export default function PayrollManagement() {
       />
       <PayrollOnlineNotice online={online} />
 
-      {!loading && !error && (kpis.latest || kpis.blocking.count > 0) && (
-        <section className={form.kpis} aria-label="Indicadores de nómina">
-          {kpis.latest?.totals && (
-            <StatCard
-              tone="primary"
-              label="Neto a pagar"
-              value={runMoney(kpis.latest.totals.currency, kpis.latest.totals.netPay)}
-              context={kpis.netDelta
-                ? `${kpis.netDelta.amount >= 0 ? '+' : ''}${runMoney(kpis.netDelta.currency, kpis.netDelta.amount)}${kpis.netDelta.percent == null ? '' : ` (${formatPercent(kpis.netDelta.percent)})`} frente a ${kpis.previous?.code} · ${kpis.latest.code}`
-                : `${kpis.latest.code} · sin corrida anterior comparable`}
-              action={{ label: 'Abrir corrida', onClick: () => openRun(kpis.latest!) }}
-            />
-          )}
-          {kpis.latest?.totals && (
-            <StatCard
-              label="Costo empresa"
-              value={kpis.companyCost ? runMoney(kpis.companyCost.currency, kpis.companyCost.amount) : 'N/D'}
-              context={kpis.companyCost
-                ? `Ingresos más aportes patronales de ${kpis.latest.code}`
-                : `Los aportes patronales de ${kpis.latest.code} no están disponibles; no se estima el costo.`}
-            />
-          )}
-          {kpis.blocking.count > 0 && (
-            <StatCard
-              tone="danger"
-              label="Incidencias bloqueantes"
-              value={formatNumber(kpis.blocking.count, 0)}
-              context={`En ${kpis.blocking.runs.length} corrida(s) sin pagar; impiden aprobarlas.`}
-              action={{ label: 'Resolver', onClick: () => openRun(kpis.blocking.runs[0]) }}
-            />
-          )}
-          {nextPayment && (
-            <StatCard
-              label="Próximo pago"
-              value={formatDate(nextPayment.date)}
-              context={`${nextPayment.run.code} · ${STATUS_LABELS[nextPayment.run.status]}`}
-              action={{ label: 'Abrir corrida', onClick: () => openRun(nextPayment.run) }}
-            />
-          )}
-        </section>
-      )}
-
       <Tabs
         ariaLabel="Tipo de proceso"
         active={activeKind}
@@ -499,11 +449,11 @@ export default function PayrollManagement() {
             loading={loading}
             pagination={{ mode: 'client' }}
             resetKey={`${activeKind}|${searchQuery}|${status}`}
-            minWidth="64rem"
             onRowClick={openRun}
             toolbar={(
               <TableToolbar actions={activeKind === 'REGULAR' ? <Button variant="ghost" icon={FilePlus2} onClick={() => setCreatePanel({ kind: 'period' })}>Periodos</Button> : undefined}>
                 <Input id="payroll-run-search" type="search" aria-label="Buscar código o periodo" prefix={<Search size={14} aria-hidden="true" />} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Buscar código o periodo (ej. 2026-Q1)" />
+                {/* Excepción documentada: las pestañas segmentan por tipo de corrida; el estado queda como filtro secundario. */}
                 <AppSelect<string>
                   aria-label="Estado"
                   options={[
@@ -524,14 +474,14 @@ export default function PayrollManagement() {
               />
             )}
             columns={[
-              { key: 'code', header: 'Corrida', width: '1.4fr', render: (run) => <span className={form.cellStack}><span className={form.cellTitle}>{run.code}</span><span className={form.cellSub}>Creada {formatDate(run.createdAt)}</span></span> },
-              { key: 'period', header: 'Periodo', width: '1fr', render: (run) => runPeriodLabel(run) },
-              { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (run) => <PayrollStatusPill status={run.status} /> },
-              { key: 'employees', header: 'Empleados', width: '0.8fr', type: 'number', render: (run) => (isRunCalculated(run) && run.totals ? formatNumber(run.totals.employeeCount, 0) : 'N/D') },
-              { key: 'gross', header: 'Ingresos', width: '1fr', type: 'money', render: (run) => (isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.grossIncome) : 'N/D') },
-              { key: 'net', header: 'Neto a pagar', width: '1fr', type: 'money', render: (run) => <span className={form.cellTitle}>{isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.netPay) : 'N/D'}</span> },
-              { key: 'anomalies', header: 'Incidencias', width: '1.1fr', render: (run) => (run.blockingAnomalyCount ? <Badge tone="danger">{run.blockingAnomalyCount} por resolver</Badge> : run.anomalyCount ? `${run.anomalyCount} informativa(s)` : <span className={form.cellSub}>Sin incidencias</span>) },
-              { key: 'payDate', header: 'Pago', width: '1fr', render: (run) => formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) },
+              { key: 'code', header: 'Corrida', render: (run) => <span className={form.cellStack}><span className={form.cellTitle}>{run.code}</span><span className={form.cellSub}>Creada {formatDate(run.createdAt)}</span></span> },
+              { key: 'period', header: 'Periodo', type: 'date', render: (run) => runPeriodLabel(run) },
+              { key: 'status', header: 'Estado', type: 'status', render: (run) => <PayrollStatusPill status={run.status} /> },
+              { key: 'employees', header: 'Empleados', type: 'number', render: (run) => (isRunCalculated(run) && run.totals ? formatNumber(run.totals.employeeCount, 0) : 'N/D') },
+              { key: 'gross', header: 'Ingresos', type: 'money', render: (run) => (isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.grossIncome) : 'N/D') },
+              { key: 'net', header: 'Neto a pagar', type: 'money', render: (run) => <span className={form.cellTitle}>{isRunCalculated(run) && run.totals ? runMoney(run.totals.currency, run.totals.netPay) : 'N/D'}</span> },
+              { key: 'anomalies', header: 'Incidencias', type: 'status', render: (run) => (run.blockingAnomalyCount ? <Badge tone="danger">{run.blockingAnomalyCount} por resolver</Badge> : run.anomalyCount ? `${run.anomalyCount} informativa(s)` : <span className={form.cellSub}>Sin incidencias</span>) },
+              { key: 'payDate', header: 'Pago', type: 'date', render: (run) => formatDate(run.kind === 'AGUINALDO' ? run.cutoffDate : run.period?.payDate) },
               {
                 key: 'actions',
                 header: 'Acciones',

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import {
-    AppSelect, Badge, Button, Checkbox, DataTable, DateInput, StatCard, TableToolbar, type Column, type Tone, formatNumber,
+    AppSelect, Badge, Button, Checkbox, DataTable, DateInput, StatCard, TableToolbar, Tabs, type Column, type Tone, formatNumber,
 } from '@/ui';
 import { kardexHref } from '../../utils/kardexLink';
 import { useCurrency } from '../../hooks/useCurrency';
@@ -162,12 +162,12 @@ export interface InventoryCountListViewProps {
 const buildListColumns = (symbol: string): Column<CountReviewListItem>[] => [
     { key: 'warehouse', header: 'Bodega', render: (r) => <><strong>{r.warehouseName}</strong>{r.branchName && <small className="count-sub">{r.branchName}</small>}</> },
     { key: 'counter', header: 'Contador', render: (r) => r.startedByName },
-    { key: 'started', header: 'Iniciado', render: (r) => dateTime(r.startedAt) },
-    { key: 'submitted', header: 'Enviado', render: (r) => dateTime(r.submittedAt) },
-    { key: 'status', header: 'Estado', render: (r) => <CountStatusBadge status={r.displayStatus} /> },
+    { key: 'started', header: 'Iniciado', type: 'date', render: (r) => dateTime(r.startedAt) },
+    { key: 'submitted', header: 'Enviado', type: 'date', render: (r) => dateTime(r.submittedAt) },
+    { key: 'status', header: 'Estado', type: 'status', render: (r) => <CountStatusBadge status={r.displayStatus} /> },
     { key: 'counted', header: 'Contados', type: 'number', render: (r) => `${r.countedCount}/${r.productCount}` },
     { key: 'diffs', header: 'Diferencias', type: 'number', render: (r) => r.differences },
-    { key: 'net', header: `Valor neto (${symbol})`, type: 'number', render: (r) => <span className={diffTone(r.netValue)}>{fmtSignedNumber(r.netValue)}</span> },
+    { key: 'net', header: `Valor neto (${symbol})`, type: 'money', render: (r) => <span className={diffTone(r.netValue)}>{fmtSignedNumber(r.netValue)}</span> },
 ];
 
 export function InventoryCountListView({
@@ -178,16 +178,13 @@ export function InventoryCountListView({
     const set = (patch: Partial<CountListFilters>) => onFiltersChange({ ...filters, ...patch });
     return (
         <div className="count-review">
+            <Tabs
+                ariaLabel="Filtrar conteos por estado"
+                active={filters.status}
+                onChange={(id) => set({ status: id as CountStatus })}
+                tabs={STATUS_FILTERS.map(({ value, label }) => ({ id: value, label }))}
+            />
             <TableToolbar>
-                <AppSelect<CountStatus>
-                    aria-label="Estado"
-                    inputId="count-status"
-                    isClearable={false}
-                    isSearchable={false}
-                    options={STATUS_FILTERS}
-                    value={filters.status}
-                    onChange={(v) => v && set({ status: v })}
-                />
                 <AppSelect<string>
                     aria-label="Sucursal"
                     inputId="count-branch"
@@ -252,15 +249,15 @@ export function InventoryCountDetailView({
             ),
         }] : []),
         { key: 'product', header: 'Producto', render: (l) => <><strong>{l.name}</strong><small className="count-sub">{l.categoryName}</small></> },
-        { key: 'system', header: 'Sistema al contar', type: 'number', render: (l) => (l.expectedAtCount === null ? '—' : `${fmtQty(l.expectedAtCount)} ${l.baseUnit ?? ''}`) },
+        { key: 'system', header: 'Sistema al contar', type: 'qty', render: (l) => (l.expectedAtCount === null ? '—' : `${fmtQty(l.expectedAtCount)} ${l.baseUnit ?? ''}`) },
         {
-            key: 'counted', header: 'Contado', type: 'number',
+            key: 'counted', header: 'Contado', type: 'qty',
             render: (l) => (l.notCounted ? <span className="count-muted">Sin contar</span>
                 : l.countedBaseQuantity === null ? <span className="count-muted">Pendiente</span>
                     : `${fmtQty(l.countedBaseQuantity)} ${l.baseUnit ?? ''}`),
         },
-        { key: 'diff', header: 'Diferencia', type: 'number', render: (l) => <span className={diffTone(l.diffQuantity)}>{fmtSignedQty(l.diffQuantity)}</span> },
-        { key: 'value', header: `Valor (${symbol})`, type: 'number', render: (l) => (l.diffValue === null ? '—' : <span className={diffTone(l.diffValue)}>{fmtSignedNumber(l.diffValue)}</span>) },
+        { key: 'diff', header: 'Diferencia', type: 'qty', render: (l) => <span className={diffTone(l.diffQuantity)}>{fmtSignedQty(l.diffQuantity)}</span> },
+        { key: 'value', header: `Valor (${symbol})`, type: 'money', render: (l) => (l.diffValue === null ? '—' : <span className={diffTone(l.diffValue)}>{fmtSignedNumber(l.diffValue)}</span>) },
         { key: 'by', header: 'Contó', render: (l) => l.countedByName ?? '—' },
         ...(approved ? [{
             key: 'movement', header: 'Movimiento',

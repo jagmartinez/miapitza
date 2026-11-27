@@ -117,7 +117,7 @@ describe('CashShift (migrado al design system)', () => {
     it('filtra por tipo y busca sin salir de la tabla', async () => {
         setup({ movements: makeMovements(4) });
         await screen.findByRole('table', { name: 'Movimientos del turno' });
-        await userEvent.click(screen.getByRole('button', { name: /Egresos/ }));
+        await userEvent.click(screen.getByRole('tab', { name: /Egresos/ }));
         const table = screen.getByRole('table', { name: 'Movimientos del turno' });
         expect(within(table).getAllByRole('row')).toHaveLength(3);
         await userEvent.type(screen.getByRole('searchbox', { name: 'Buscar' }), 'Movimiento 2');

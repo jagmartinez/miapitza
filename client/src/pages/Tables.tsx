@@ -6,7 +6,6 @@ import {
     Input, NumberInput, PageContent, PageHeader, SegmentedControl, Spinner, TableToolbar, Tabs, formatMoney, formatNumber,
     type Column, type Opt, type Tone,
 } from '@/ui';
-import SalonCards from '../components/SalonCards';
 import TableDetailPanel from '../components/TableDetailPanel';
 import LegacyConsolidationReview from '../components/LegacyConsolidationReview';
 import PaymentModal from '../components/PaymentModal';
@@ -16,7 +15,7 @@ import { useAppToast } from '../context/ToastContext';
 import { canCreatePayment, canVoidKitchenLine } from '../utils/authz';
 import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
 import { getTableAccess } from '../utils/tableAccess';
-import { Grid3x3, Plus, Pencil, Trash2, Eye, MapPin, MapPinned, History, Link2, ShoppingBag } from 'lucide-react';
+import { Grid3x3, Plus, Pencil, Trash2, Eye, MapPin, MapPinned, History, Link2, ShoppingBag, LayoutGrid, List, Map as MapIcon, Search } from 'lucide-react';
 import type {
     ActiveTableConsolidation,
     LegacyTableConsolidationCandidate,
@@ -51,7 +50,6 @@ import {
     renderPreInvoiceLoadingHtml,
     type PrintableInvoiceSnapshot,
 } from '../utils/invoicePrint';
-import { useNavigate } from 'react-router-dom';
 import { getApiErrorMessage } from '../utils/apiError';
 import { markErrorHandled, notifyError } from '../services/notify';
 
@@ -76,7 +74,6 @@ function extractApiError(error: unknown, fallback: string): string {
 
 export default function Tables() {
     const { user } = useAuth();
-    const navigate = useNavigate();
     const { symbol: currencySymbol } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
@@ -95,6 +92,7 @@ export default function Tables() {
     const canPay = canCreatePayment(user);
     const [tables, setTables] = useState<Table[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
+    const [tableSearch, setTableSearch] = useState('');
     const [branchFilter, setBranchFilter] = useState<number | null>(() => user?.branchId ?? null);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -691,13 +689,16 @@ export default function Tables() {
         });
     }, [loadActiveConsolidation, loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
 
-    const filteredTables = statusFilter
-        ? tables.filter((table) =>
-            ['AVAILABLE', 'OCCUPIED', 'PENDING_PAYMENT'].includes(statusFilter)
-                ? resolveTablePresentationState(table) === statusFilter
-                : table.status === statusFilter
-        )
-        : tables;
+    const matchesTableStatus = (table: Table, status: string | null) => !status || (
+        ['AVAILABLE', 'OCCUPIED', 'PENDING_PAYMENT'].includes(status)
+            ? resolveTablePresentationState(table) === status
+            : table.status === status
+    );
+    const tableQuery = tableSearch.trim().toLowerCase();
+    const filteredTables = tables.filter((table) => (
+        matchesTableStatus(table, statusFilter)
+        && (!tableQuery || `${table.number} ${table.location ?? ''}`.toLowerCase().includes(tableQuery))
+    ));
 
     const handleSaveLayout = async (draft: FloorPlanDraft) => {
         if (!mapBranchId) {
@@ -932,15 +933,14 @@ export default function Tables() {
     ];
 
     const tableColumns: Column<Table>[] = [
-        { key: 'number', header: 'Mesa', width: '1.2fr', render: (table) => `Mesa ${table.number}` },
-        ...(canChooseBranch ? [{ key: 'branch', header: 'Sucursal', width: '1.4fr', render: (table: Table) => table.branch?.name || '-' }] : []),
-        { key: 'capacity', header: 'Sillas / comensales', headerTitle: 'Sillas / comensales (relación 1:1)', width: '1fr', type: 'qty' as const, decimals: 0, accessor: (table) => table.capacity },
-        { key: 'location', header: 'Ubicación', width: '1.6fr', hideBelow: 'md' as const, render: (table) => table.location || '-' },
-        { key: 'status', header: 'Estado', width: '1fr', type: 'status' as const, render: (table) => <Badge tone={getStatusTone(table.status)} dot>{getStatusText(table.status)}</Badge> },
+        { key: 'number', header: 'Mesa', render: (table) => `Mesa ${table.number}` },
+        ...(canChooseBranch ? [{ key: 'branch', header: 'Sucursal', render: (table: Table) => table.branch?.name || '-' }] : []),
+        { key: 'capacity', header: 'Sillas / comensales', headerTitle: 'Sillas / comensales (relación 1:1)', type: 'qty' as const, decimals: 0, accessor: (table) => table.capacity },
+        { key: 'location', header: 'Ubicación', hideBelow: 'md' as const, render: (table) => table.location || '-' },
+        { key: 'status', header: 'Estado', type: 'status' as const, render: (table) => <Badge tone={getStatusTone(table.status)} dot>{getStatusText(table.status)}</Badge> },
         {
             key: 'actions',
             header: 'Acciones',
-            width: '8.5rem',
             type: 'actions' as const,
             render: (table) => (
                 <>
@@ -1005,11 +1005,27 @@ export default function Tables() {
         ? tables.find((table) => table.id === selectedTable.id) ?? selectedTable
         : null;
     const selectedMeta = liveSelectedTable ? tableMeta?.get(liveSelectedTable.id) : undefined;
-    const viewOptions: { value: TablesView; label: string }[] = [
-        { value: 'tiles', label: 'Mesas' },
-        { value: 'plan', label: 'Plano' },
-        ...(canCreateTable || canEditTable || canDeleteTable ? [{ value: 'list' as const, label: 'Lista' }] : []),
+    const viewOptions = [
+        { value: 'tiles' as const, label: 'Mesas', icon: LayoutGrid },
+        { value: 'plan' as const, label: 'Plano', icon: MapIcon },
+        ...(canCreateTable || canEditTable || canDeleteTable ? [{ value: 'list' as const, label: 'Lista', icon: List }] : []),
     ];
+    const viewSwitch = (
+        <SegmentedControl<TablesView> ariaLabel="Vista de mesas" iconOnly options={viewOptions} value={view} onChange={changeView} />
+    );
+    // Plano a pantalla completa: sin encabezado de página; título, vista y acciones viajan en la barra del plano.
+    const planFull = view === 'plan' && Boolean(mapBranchId) && floorPlan !== null;
+    const opsActions = (
+        <>
+            {canConsolidate && (
+                <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
+            )}
+            <KitchenNotificationBell inline />
+            {canOperatePOS && (
+                <Button variant="primary" icon={ShoppingBag} onClick={handleOpenTakeout}>Orden para llevar</Button>
+            )}
+        </>
+    );
 
     const branchControl = canChooseBranch && branches.length > 1 ? (
         <div className="table-map-branch-control">
@@ -1071,7 +1087,7 @@ export default function Tables() {
     };
 
     return (
-        <div className={`tables-page ${showMap ? (view === 'plan' ? 'tables-page--map' : 'tables-page--ops') : 'tables-page--list'}`}>
+        <div className={`tables-page ${showMap ? (planFull ? 'tables-page--map' : 'tables-page--ops') : 'tables-page--list'}`}>
             {!showMap && (
                 <PageContent>
                     <PageHeader
@@ -1079,7 +1095,7 @@ export default function Tables() {
                         description="Alta, edición y estado administrativo de las mesas"
                         actions={(
                             <>
-                                <SegmentedControl<TablesView> ariaLabel="Vista de mesas" options={viewOptions} value={view} onChange={changeView} />
+                                {viewSwitch}
                                 {canConsolidate && (
                                     <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
                                 )}
@@ -1092,13 +1108,25 @@ export default function Tables() {
 
                     <Tabs
                         ariaLabel="Estado de la mesa"
-                        tabs={statusSegments.map((segment) => ({ id: segment.value, label: segment.label }))}
+                        tabs={statusSegments.map((segment) => ({
+                            id: segment.value,
+                            label: segment.label,
+                            badge: tables.filter((table) => matchesTableStatus(table, segment.value === 'ALL' ? null : segment.value)).length,
+                        }))}
                         active={statusFilter ?? 'ALL'}
                         onChange={(value) => setStatusFilter(value === 'ALL' ? null : value)}
                     />
 
-                    {canChooseBranch && branches.length > 1 && (
-                        <TableToolbar>
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            prefix={<Search size={16} aria-hidden="true" />}
+                            aria-label="Buscar mesas por número o ubicación"
+                            placeholder="Buscar por número o ubicación..."
+                            value={tableSearch}
+                            onChange={(e) => setTableSearch(e.target.value)}
+                        />
+                        {canChooseBranch && branches.length > 1 && (
                             <AppSelect<number>
                                 aria-label="Filtrar por sucursal"
                                 placeholder="Todas las sucursales"
@@ -1106,15 +1134,15 @@ export default function Tables() {
                                 value={branchFilter}
                                 onChange={setBranchFilter}
                             />
-                        </TableToolbar>
-                    )}
+                        )}
+                    </TableToolbar>
 
                     <DataTable
                         ariaLabel="Mesas"
                         columns={tableColumns}
                         rows={filteredTables}
                         rowKey={(table) => table.id}
-                        resetKey={`${statusFilter}-${branchFilter}`}
+                        resetKey={`${statusFilter}-${branchFilter}-${tableQuery}`}
                         empty={(
                             <EmptyState
                                 icon={Grid3x3}
@@ -1135,40 +1163,33 @@ export default function Tables() {
 
             {showMap && (
                 <div className="tables-ops">
-                    <PageHeader
-                        title="Mesas"
-                        description={`${mapBranchName}${activeZone !== 'ALL' ? ` · ${activeZone}` : ''}`}
-                        actions={(
-                            <>
-                                <SegmentedControl<TablesView> ariaLabel="Vista de mesas" options={viewOptions} value={view} onChange={changeView} />
-                                {canConsolidate && (
-                                    <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
-                                )}
-                                <KitchenNotificationBell inline />
-                                {canOperatePOS && (
-                                    <Button variant="primary" icon={ShoppingBag} onClick={handleOpenTakeout}>Orden para llevar</Button>
-                                )}
-                            </>
-                        )}
-                    />
+                    {!planFull && (
+                        <PageHeader
+                            title="Mesas"
+                            description={`${mapBranchName}${activeZone !== 'ALL' ? ` · ${activeZone}` : ''}`}
+                            actions={(
+                                <>
+                                    {viewSwitch}
+                                    {opsActions}
+                                </>
+                            )}
+                        />
+                    )}
 
-                    {(branchControl || (view === 'tiles' && zones.length > 1)) && (
+                    {!planFull && (branchControl || (view === 'tiles' && zones.length > 1)) && (
                         <TableToolbar>
                             {branchControl}
                             {view === 'tiles' && zones.length > 1 && (
-                                <div className="tables-zone-filter">
-                                    <SegmentedControl
-                                        ariaLabel="Zona"
-                                        options={[{ value: 'ALL', label: 'Todas' }, ...zones.map((zone) => ({ value: zone, label: zone }))]}
-                                        value={activeZone}
-                                        onChange={setZoneFilter}
-                                    />
-                                </div>
+                                <AppSelect<string>
+                                    aria-label="Filtrar por zona"
+                                    options={[{ value: 'ALL', label: 'Todas las zonas' }, ...zones.map((zone) => ({ value: zone, label: zone }))]}
+                                    value={activeZone}
+                                    onChange={(value) => setZoneFilter(value ?? 'ALL')}
+                                    isClearable={false}
+                                />
                             )}
                         </TableToolbar>
                     )}
-
-                    {view !== 'plan' && <SalonCards branchId={mapBranchId} tables={tables} onReviewOrders={() => navigate('/orders')} />}
 
                     <div className="tables-ops__body">
                         <section className="tables-ops__floor" aria-label="Plano de mesas">
@@ -1213,7 +1234,14 @@ export default function Tables() {
                                     onSelect={handleViewOrders}
                                     onSave={handleSaveLayout}
                                     onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
-                                    branchControl={undefined}
+                                    heading={(
+                                        <div className="tables-plan-heading">
+                                            <h1 className="tables-plan-heading__title">Mesas</h1>
+                                            {viewSwitch}
+                                        </div>
+                                    )}
+                                    branchControl={branchControl}
+                                    extraActions={opsActions}
                                 />
                             ) : (
                                 <p className="tables-meta-warning" role="status">Cargando plano…</p>

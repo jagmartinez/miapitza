@@ -152,7 +152,6 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
                 rows={concepts.map((concept, index) => ({ concept, index }))}
                 rowKey={({ concept }) => concept.code}
                 pagination={{ mode: 'client' }}
-                minWidth="56rem"
                 empty={'Sin registros'}
                 columns={[
                   { key: 'c0', header: 'Concepto', render: ({ concept }) => <span className={form.cellStack}><span className={form.cellTitle}>{concept.name}</span><span className={form.cellSub}>{concept.code}</span></span> },
@@ -160,7 +159,7 @@ export default function PayrollPaymentConceptCatalogEditor({ concepts, onChange 
                   { key: 'c2', header: 'IR laboral', render: ({ concept }) => <>{taxLabel(concept)}</> },
                   { key: 'c3', header: 'INSS', render: ({ concept }) => <>{concept.type === 'INCOME' && concept.socialSecurityApplicable ? 'Sí' : 'No'}</> },
                   { key: 'c4', header: 'INATEC', render: ({ concept }) => <>{concept.type === 'INCOME' && concept.trainingContributionApplicable ? 'Sí' : 'No'}</> },
-                  { key: 'c5', header: 'Estado', render: ({ concept }) => <span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? <CheckCircle2 size={14} /> : <Power size={14} />}{concept.active ? 'Activo' : 'Inhabilitado'}</span> },
+                  { key: 'c5', header: 'Estado', type: 'status', render: ({ concept }) => <span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? <CheckCircle2 size={14} /> : <Power size={14} />}{concept.active ? 'Activo' : 'Inhabilitado'}</span> },
                   { key: 'c6', header: 'Acciones', type: 'actions', width: '100px', render: ({ concept, index }) => <div className="hr-legal-row-actions"><IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${concept.name}`} onClick={() => startEdit(index)} disabled={draft !== null} /><IconButton size="sm" icon={Power} tone={concept.active ? 'danger' : 'primary'} tooltip={concept.active ? 'Desactivar' : 'Activar'} label={`${concept.active ? 'Inhabilitar' : 'Activar'} ${concept.name}`} onClick={() => toggleActive(index)} disabled={draft !== null} /></div> },
                 ]}
               />

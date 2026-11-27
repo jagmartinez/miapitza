@@ -36,6 +36,8 @@ interface ActiveShiftStatus {
     shift?: { cashRegister?: { branch?: { id: number } } } | null;
 }
 
+const ORDER_STATUS_TABS = ['all', 'OPEN', 'SENT_TO_KITCHEN', 'READY', 'DELIVERED', 'PAID', 'CANCELLED'] as const;
+
 export default function Orders() {
     const { user } = useAuth();
     const { formatMoney, symbol: currencySymbol } = useCurrency();
@@ -57,6 +59,8 @@ export default function Orders() {
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [page, setPage] = useState(1);
     const [totalOrders, setTotalOrders] = useState(0);
+    // Total por estado (mismo rango y búsqueda) para los badges de todas las pestañas.
+    const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [voidLineItemId, setVoidLineItemId] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<'info' | 'items'>('info');
@@ -122,6 +126,20 @@ export default function Orders() {
                 default:
                     startDate = new Date(now.getTime() - (24 * 60 * 60 * 1000)).toISOString();
             }
+
+            const countBase = { startDate, endDate, ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}) };
+            void Promise.all(ORDER_STATUS_TABS.map(async (status) => {
+                try {
+                    const r = await ordersAPI.getAll({ ...countBase, ...(status !== 'all' ? { status } : {}), page: 1, limit: 1 });
+                    const rows = Array.isArray(r.data?.data) ? r.data.data : [];
+                    return [status as string, readServerPagination(r.data, rows.length, 1, 1).total] as [string, number];
+                } catch {
+                    return null;
+                }
+            })).then((entries) => {
+                if (requestId !== loadOrdersRequestRef.current) return;
+                setStatusCounts(Object.fromEntries(entries.filter((e): e is [string, number] => e !== null)));
+            });
 
             const response = await ordersAPI.getAll({
                 startDate,
@@ -559,7 +577,7 @@ export default function Orders() {
     const filteredOrders = orders.filter(o => statusFilter === 'all'
         || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter));
 
-    const statusOptions: { value: string; label: string }[] = [
+    const statusOptions: { value: (typeof ORDER_STATUS_TABS)[number]; label: string }[] = [
         { value: 'all', label: 'Todas' },
         { value: 'OPEN', label: 'Abierta' },
         { value: 'SENT_TO_KITCHEN', label: 'En cocina' },
@@ -577,15 +595,15 @@ export default function Orders() {
     const rangeLabel = dateOptions.find((o) => o.value === dateRange)?.label ?? '';
 
     const columns: Column<Order>[] = [
-        { key: 'id', header: '#', width: '0.6fr', render: (o) => `#${o.id}` },
-        { key: 'time', header: 'Hora', width: '0.8fr', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
-        { key: 'status', header: 'Estado', width: '1.2fr', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
-        { key: 'financial', header: 'Pago', width: '1.3fr', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
-        { key: 'table', header: 'Mesa', width: '1.2fr', render: (o) => (o.table ? `Mesa ${o.table.number}` : 'Para llevar') },
-        { key: 'waiter', header: 'Mesero', width: '1.4fr', render: (o) => o.user?.name || 'N/D' },
-        { key: 'customer', header: 'Cliente', width: '1.4fr', hideBelow: 'lg', render: (o) => o.customerName || '' },
-        { key: 'items', header: 'Ítems', width: '0.7fr', type: 'qty', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
-        { key: 'total', header: `Total (${currencySymbol})`, width: '1fr', type: 'money', accessor: (o) => Number(o.total) },
+        { key: 'id', header: '#', render: (o) => `#${o.id}` },
+        { key: 'time', header: 'Hora', type: 'time', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+        { key: 'status', header: 'Estado', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
+        { key: 'financial', header: 'Pago', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
+        { key: 'table', header: 'Mesa', render: (o) => (o.table ? `Mesa ${o.table.number}` : 'Para llevar') },
+        { key: 'waiter', header: 'Mesero', render: (o) => o.user?.name || 'N/D' },
+        { key: 'customer', header: 'Cliente', hideBelow: 'lg', render: (o) => o.customerName || '' },
+        { key: 'items', header: 'Ítems', type: 'qty', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
+        { key: 'total', header: `Total (${currencySymbol})`, type: 'money', accessor: (o) => Number(o.total) },
     ];
 
     // Acciones de la orden en el pie del modal: cancelar a la izquierda, el resto a la derecha.
@@ -611,18 +629,14 @@ export default function Orders() {
                 ariaLabel="Estado de la orden"
                 active={statusFilter}
                 onChange={setStatusFilter}
-                tabs={statusOptions.map((o) => ({ id: o.value, label: o.label }))}
+                tabs={statusOptions.map((o) => ({
+                    id: o.value,
+                    label: o.label,
+                    badge: loadError ? undefined : o.value === statusFilter && !loading ? totalOrders : statusCounts[o.value],
+                }))}
             />
 
             <TableToolbar>
-                <AppSelect<'24h' | '7d' | '30d' | 'custom'>
-                    aria-label="Filtrar por fecha"
-                    options={dateOptions}
-                    value={dateRange}
-                    onChange={(v) => { if (v) setDateRange(v); }}
-                    isClearable={false}
-                    placeholder="Filtrar por fecha"
-                />
                 <Input
                     type="search"
                     prefix={<Search size={16} aria-hidden="true" />}
@@ -630,6 +644,14 @@ export default function Orders() {
                     placeholder="Buscar por #, mesa, mesero o cliente..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <AppSelect<'24h' | '7d' | '30d' | 'custom'>
+                    aria-label="Filtrar por fecha"
+                    options={dateOptions}
+                    value={dateRange}
+                    onChange={(v) => { if (v) setDateRange(v); }}
+                    isClearable={false}
+                    placeholder="Filtrar por fecha"
                 />
                 {dateRange === 'custom' && (
                     <DateInput aria-label="Desde" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} />

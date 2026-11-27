@@ -4,7 +4,7 @@ import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import {
     Badge, Button, Checkbox, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    EmptyState, LoadErrorState, NumberInput, PageContent, PageHeader, StatCard, TableToolbar, Tabs, Textarea, formatMoney,
+    EmptyState, LoadErrorState, NumberInput, PageContent, PageHeader, TableToolbar, Tabs, Textarea, formatMoney,
     type Column,
 } from '@/ui';
 import { ToastContainer } from '../components/Toast';
@@ -275,8 +275,8 @@ const BankReconciliation: React.FC = () => {
         ]
         : [];
     const methodColumns: Column<{ key: string; label: string; amount: number }>[] = [
-        { key: 'label', header: 'Método', width: '2fr' },
-        { key: 'amount', header: `Monto (${symbol})`, width: '1fr', type: 'money' },
+        { key: 'label', header: 'Método' },
+        { key: 'amount', header: `Monto (${symbol})`, type: 'money' },
     ];
 
     const pendingColumns: Column<PendingReconciliation>[] = [
@@ -300,16 +300,16 @@ const BankReconciliation: React.FC = () => {
                 />
             ),
         },
-        { key: 'date', header: 'Fecha', width: '1fr', type: 'date' },
-        { key: 'cashRegister', header: 'Caja', width: '1.2fr' },
-        { key: 'user', header: 'Usuario', width: '1.2fr', hideBelow: 'md' },
-        { key: 'startAmount', header: `Monto inicial (${symbol})`, width: '1fr', type: 'money', hideBelow: 'lg' },
-        { key: 'endAmount', header: `Monto final (${symbol})`, width: '1fr', type: 'money' },
+        { key: 'date', header: 'Fecha', type: 'date' },
+        { key: 'cashRegister', header: 'Caja' },
+        { key: 'user', header: 'Usuario', hideBelow: 'md' },
+        { key: 'startAmount', header: `Monto inicial (${symbol})`, type: 'money', hideBelow: 'lg' },
+        { key: 'endAmount', header: `Monto final (${symbol})`, type: 'money' },
         {
-            key: 'difference', header: `Diferencia (${symbol})`, width: '1fr', type: 'money',
+            key: 'difference', header: `Diferencia (${symbol})`, type: 'money',
         },
         {
-            key: 'status', header: 'Estado', width: '1fr',
+            key: 'status', header: 'Estado', type: 'status',
             render: (shift) => (
                 <Badge tone={shift.status === 'BALANCED' ? 'success' : 'warning'} dot>
                     {shift.status === 'BALANCED' ? 'Cuadrado' : 'Con diferencia'}
@@ -319,13 +319,13 @@ const BankReconciliation: React.FC = () => {
     ];
 
     const depositColumns: Column<BankDeposit>[] = [
-        { key: 'date', header: 'Fecha', width: '1fr', type: 'date' },
-        { key: 'reference', header: 'Referencia', width: '1.2fr' },
-        { key: 'bankAccount', header: 'Cuenta', width: '1.6fr', hideBelow: 'md' },
-        { key: 'amount', header: `Monto (${symbol})`, width: '1fr', type: 'money', accessor: (d) => Number(d.amount) },
-        { key: 'shifts', header: 'Turnos', width: '0.7fr', type: 'number', decimals: 0, hideBelow: 'lg', accessor: (d) => d.shifts.length },
+        { key: 'date', header: 'Fecha', type: 'date' },
+        { key: 'reference', header: 'Referencia' },
+        { key: 'bankAccount', header: 'Cuenta', hideBelow: 'md' },
+        { key: 'amount', header: `Monto (${symbol})`, type: 'money', accessor: (d) => Number(d.amount) },
+        { key: 'shifts', header: 'Turnos', type: 'number', decimals: 0, hideBelow: 'lg', accessor: (d) => d.shifts.length },
         {
-            key: 'status', header: 'Estado', width: '1fr',
+            key: 'status', header: 'Estado', type: 'status',
             render: (d) => <Badge tone={d.status === 'ACTIVE' ? 'success' : 'warning'} dot>{d.status === 'ACTIVE' ? 'Activo' : 'Revertido'}</Badge>,
         },
         {
@@ -395,17 +395,17 @@ const BankReconciliation: React.FC = () => {
 
                     {status && !statusLoadError && (
                         <>
-                            <div className={styles.kpiGrid}>
-                                <StatCard
-                                    label="Diferencia de efectivo"
-                                    value={money(difference)}
-                                    tone={difference === 0 ? 'success' : 'warning'}
-                                    context={`${difference > 0 ? 'Sobrante' : difference < 0 ? 'Faltante' : 'Cuadrado'} · ${isReconciled ? 'Conciliado' : 'Pendiente de conciliar'} · esperado ${money(status.reconciliation.cashExpected)}, real ${money(status.reconciliation.cashActual)} en ${status.shifts} turnos`}
-                                    action={!isReconciled && pending.length > 0
-                                        ? { label: 'Ver turnos pendientes', onClick: () => setActiveTab('pending') }
-                                        : undefined}
-                                />
-                            </div>
+                            <p className={styles.summary} role="status">
+                                <Badge tone={difference === 0 ? 'success' : 'warning'} dot>
+                                    {difference > 0 ? 'Sobrante' : difference < 0 ? 'Faltante' : 'Cuadrado'} {money(difference)}
+                                </Badge>
+                                <span>
+                                    {isReconciled ? 'Conciliado' : 'Pendiente de conciliar'} · esperado {money(status.reconciliation.cashExpected)}, real {money(status.reconciliation.cashActual)} en {status.shifts} turnos
+                                </span>
+                                {!isReconciled && pending.length > 0 && (
+                                    <Button size="sm" variant="ghost" onClick={() => setActiveTab('pending')}>Ver turnos pendientes</Button>
+                                )}
+                            </p>
 
                             <DataTable
                                 ariaLabel="Ventas por método de pago"

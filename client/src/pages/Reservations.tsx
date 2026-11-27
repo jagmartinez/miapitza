@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { Calendar, Users, Phone, Plus, CheckCircle2, Ban, ChevronLeft, ChevronRight, Pencil, UserX, Search } from 'lucide-react';
+import { Calendar, CalendarDays, Users, Phone, Plus, CheckCircle2, Ban, ChevronLeft, ChevronRight, Pencil, UserX, Search, Table2 } from 'lucide-react';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal,
     IconButton, Input, LoadErrorState, NumberInput, PageContent, PageHeader, SegmentedControl, TableToolbar, Tabs, Textarea,
     type Column, type Opt, type Tone,
 } from '@/ui';
-import SalonCards from '../components/SalonCards';
 import { branchesAPI, reservationsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { getUserRoleNames } from '../utils/authz';
@@ -436,14 +435,20 @@ export default function Reservations() {
 
     const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
 
-    const statusTabs = [
-        { id: 'all', label: 'Todas' },
-        { id: 'PENDING', label: 'Pendientes' },
-        { id: 'CONFIRMED', label: 'Confirmadas' },
-        { id: 'COMPLETED', label: 'Completadas' },
-        { id: 'CANCELLED', label: 'Canceladas' },
-        { id: 'NO_SHOW', label: 'No asistió' },
-    ];
+    const statusTabs = ([
+        ['all', 'Todas'],
+        ['PENDING', 'Pendientes'],
+        ['CONFIRMED', 'Confirmadas'],
+        ['COMPLETED', 'Completadas'],
+        ['CANCELLED', 'Canceladas'],
+        ['NO_SHOW', 'No asistió'],
+    ] as const).map(([id, label]) => ({
+        id,
+        label,
+        // Sin datos fiables (carga inicial o error) no se muestra 0: el conteo es desconocido.
+        badge: loading && reservations.length === 0 || loadError ? undefined
+            : id === 'all' ? reservations.length : reservations.filter((r) => r.status === id).length,
+    }));
     const branchOptions: Opt<number>[] = branches.map((branch) => ({ value: branch.id, label: branch.name }));
     const reservationStatusOptions: Opt<Reservation['status']>[] = editingReservation
         ? ([
@@ -483,7 +488,6 @@ export default function Reservations() {
         {
             key: 'customer',
             header: 'Cliente',
-            width: '1.6fr',
             render: (r) => (
                 <span>
                     <strong>{r.customerName}</strong>
@@ -491,15 +495,15 @@ export default function Reservations() {
                 </span>
             ),
         },
-        { key: 'people', header: 'Personas', width: '0.8fr', type: 'qty', decimals: 0, accessor: (r) => r.peopleCount },
-        { key: 'table', header: 'Mesa', width: '1fr', render: (r) => r.table?.number || 'Sin asignar' },
-        { key: 'date', header: 'Fecha y hora', width: '2fr', render: (r) => `${formatDate(r.date)} · ${formatTime(r.date)}` },
-        { key: 'email', header: 'Email', width: '1.4fr', hideBelow: 'lg', render: (r) => r.email || '-' },
-        { key: 'status', header: 'Estado', width: '1.2fr', type: 'status', render: (r) => <Badge tone={getStatusTone(r.status)} dot>{getStatusText(r.status)}</Badge> },
+        { key: 'people', header: 'Personas', type: 'qty', decimals: 0, accessor: (r) => r.peopleCount },
+        { key: 'table', header: 'Mesa', render: (r) => r.table?.number || 'Sin asignar' },
+        { key: 'date', header: 'Fecha', type: 'date', render: (r) => formatDate(r.date) },
+        { key: 'time', header: 'Hora', type: 'time', render: (r) => formatTime(r.date) },
+        { key: 'email', header: 'Email', hideBelow: 'lg', render: (r) => r.email || '-' },
+        { key: 'status', header: 'Estado', type: 'status', render: (r) => <Badge tone={getStatusTone(r.status)} dot>{getStatusText(r.status)}</Badge> },
         {
             key: 'actions',
             header: 'Acciones',
-            width: '172px',
             type: 'actions',
             render: (r) => (
                 <>
@@ -532,7 +536,8 @@ export default function Reservations() {
                     <>
                         <SegmentedControl
                             ariaLabel="Vista de reservaciones"
-                            options={[{ value: 'table', label: 'Tabla' }, { value: 'calendar', label: 'Calendario' }]}
+                            iconOnly
+                            options={[{ value: 'table', label: 'Tabla', icon: Table2 }, { value: 'calendar', label: 'Calendario', icon: CalendarDays }]}
                             value={viewMode}
                             onChange={setViewMode}
                         />
@@ -543,14 +548,15 @@ export default function Reservations() {
                 )}
             />
 
-            <SalonCards only="reservation" />
+            {viewMode === 'table' && !loadError && (
+                <Tabs ariaLabel="Estado de la reservación" tabs={statusTabs} active={filterStatus} onChange={setFilterStatus} />
+            )}
 
             {/* Con error de carga no se muestra una agenda desactualizada como si fuera real. */}
             {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadReservations(); }} />}
 
             {!loadError && viewMode === 'table' && (
                 <>
-                    <Tabs ariaLabel="Estado de la reservación" tabs={statusTabs} active={filterStatus} onChange={setFilterStatus} />
                     <TableToolbar>
                         <Input
                             type="search"

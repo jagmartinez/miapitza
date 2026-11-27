@@ -54,7 +54,7 @@ describe('InventoryCountReview list', () => {
         expect(html).toContain('Valor neto (C$)');
         expect(html).toContain('-10.00');
         expect(html).toContain('3/4');
-        expect(html).toMatch(/app-select__single-value[^>]*>En revisión</);
+        expect(html).toMatch(/role="tab" aria-selected="true"[^>]*>En revisión</);
     });
 });
 

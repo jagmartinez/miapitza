@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Button, DataTable, DateInput, EmptyState, Field, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader,
-    SegmentedControl, StatCard, TableToolbar, Textarea,
+    SegmentedControl, TableToolbar, Tabs, Textarea,
 } from '@/ui';
 import type { SingleValue } from '../../components/hr/HrOptionSelect';
 import { AlertTriangle, ClipboardCheck, Eye, Plus, RefreshCw } from 'lucide-react';
@@ -31,7 +31,7 @@ const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], 
 const ACTION_OPTIONS: Option[] = [{ value: '', label: 'Todas las acciones' }, ...Object.entries(ATTENDANCE_ACTION_LABELS).map(([value, label]) => ({ value, label }))];
 /** Etiquetas cortas para el filtro: «Marcaje enviado a revisión» no cabe en el ancho estándar de filtro. */
 const DECISION_FILTER_LABELS: Record<keyof typeof ATTENDANCE_DECISION_LABELS, string> = { ACCEPTED: 'Aceptados', REVIEW_REQUIRED: 'En revisión', REJECTED: 'Rechazados' };
-const DECISION_OPTIONS: Option[] = [{ value: '', label: 'Todos los resultados' }, ...Object.entries(DECISION_FILTER_LABELS).map(([value, label]) => ({ value, label }))];
+const DECISION_OPTIONS: Option[] = [{ value: '', label: 'Todos' }, ...Object.entries(DECISION_FILTER_LABELS).map(([value, label]) => ({ value, label }))];
 
 function todayDate(): string {
     const now = new Date();
@@ -175,8 +175,6 @@ export default function AttendanceReview() {
         }
     };
 
-    const pendingReview = events.filter((item) => item.decision === 'REVIEW_REQUIRED' && !item.reviewedAt).length;
-
     return (
         <PageContent>
             <PageHeader
@@ -193,17 +191,15 @@ export default function AttendanceReview() {
                 </div>
             )}
 
-            {!loading && !error && pendingReview > 0 && (
-                <section className={form.kpis} aria-label="Indicadores de revisión">
-                    <StatCard
-                        tone="warning"
-                        label="Por revisar (página)"
-                        value={String(pendingReview)}
-                        context="Requieren decisión con razón."
-                        action={decision === 'REVIEW_REQUIRED' ? undefined : { label: 'Filtrar por revisar', onClick: () => setDecision('REVIEW_REQUIRED') }}
-                    />
-                </section>
-            )}
+            <Tabs
+                ariaLabel="Filtrar eventos por resultado"
+                active={decision}
+                onChange={setDecision}
+                tabs={DECISION_OPTIONS.map((option) => ({
+                    id: option.value,
+                    label: option.label,
+                }))}
+            />
 
             {error ? (
                 <LoadErrorState message={error} onRetry={() => void loadEvents()} />
@@ -215,7 +211,6 @@ export default function AttendanceReview() {
                     loading={loading}
                     pagination={{ mode: 'server', page, pageSize: 25, total, onChange: (nextPage) => setPage(nextPage) }}
                     pageSizeOptions={[25]}
-                    minWidth="60rem"
                     toolbar={(
                         <TableToolbar>
                             <DateInput aria-label="Desde" title="Desde" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
@@ -223,17 +218,16 @@ export default function AttendanceReview() {
                             <HrFilterSelect label="Sucursal" options={branchOptions} value={branchId} onChange={setBranchId} />
                             <HrFilterSelect label="Usuario" options={userOptions} value={userId} onChange={setUserId} />
                             <HrFilterSelect label="Acción" options={ACTION_OPTIONS} value={action} onChange={setAction} />
-                            <HrFilterSelect label="Resultado" options={DECISION_OPTIONS} value={decision} onChange={setDecision} />
                         </TableToolbar>
                     )}
                     empty={<EmptyState icon={ClipboardCheck} title="No hay eventos para los filtros seleccionados" description="Amplía el rango o cambia los filtros para consultar otros marcajes." />}
                     columns={[
-                        { key: 'employee', header: 'Empleado', width: '1.6fr', render: (attendanceEvent) => <span className={form.cellStack}><span className={form.cellTitle}>{attendanceEvent.user?.name ?? `Usuario #${attendanceEvent.userId}`}</span><span className={form.cellSub}>@{attendanceEvent.user?.username ?? attendanceEvent.userId}</span></span> },
-                        { key: 'action', header: 'Evento', width: '1.4fr', render: (attendanceEvent) => <span className={form.cellStack}><span className={form.cellTitle}>{ATTENDANCE_ACTION_LABELS[attendanceEvent.action]}</span>{attendanceEvent.message && <span className={form.cellSub}>{attendanceEvent.message}</span>}</span> },
-                        { key: 'branch', header: 'Sucursal', width: '1fr', render: (attendanceEvent) => attendanceEvent.branch?.name ?? `Sucursal #${attendanceEvent.branchId ?? '—'}` },
-                        { key: 'occurredAt', header: 'Fecha y hora', width: '1.2fr', render: (attendanceEvent) => <time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time> },
-                        { key: 'decision', header: 'Resultado', width: '1.2fr', render: (attendanceEvent) => <span className={form.cellStack}><span className={form.cellTitle}>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</span>{attendanceEvent.reviewedAt && <span className={form.cellSub}>Revisado {displayDate(attendanceEvent.reviewedAt)}</span>}</span> },
-                        { key: 'evidence', header: 'Evidencia', width: '1.2fr', render: (attendanceEvent) => <span className={form.cellStack}><span>{attendanceEvent.reasonCode ? <code>{attendanceEvent.reasonCode}</code> : 'Sin código'}</span>{attendanceEvent.locationAccuracyM != null && <span className={form.cellSub}>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</span>}</span> },
+                        { key: 'employee', header: 'Empleado', render: (attendanceEvent) => <span className={form.cellStack}><span className={form.cellTitle}>{attendanceEvent.user?.name ?? `Usuario #${attendanceEvent.userId}`}</span><span className={form.cellSub}>@{attendanceEvent.user?.username ?? attendanceEvent.userId}</span></span> },
+                        { key: 'action', header: 'Evento', render: (attendanceEvent) => <span className={form.cellStack}><span className={form.cellTitle}>{ATTENDANCE_ACTION_LABELS[attendanceEvent.action]}</span>{attendanceEvent.message && <span className={form.cellSub}>{attendanceEvent.message}</span>}</span> },
+                        { key: 'branch', header: 'Sucursal', render: (attendanceEvent) => attendanceEvent.branch?.name ?? `Sucursal #${attendanceEvent.branchId ?? '—'}` },
+                        { key: 'occurredAt', header: 'Fecha y hora', type: 'date', render: (attendanceEvent) => <time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time> },
+                        { key: 'decision', header: 'Resultado', type: 'status', render: (attendanceEvent) => <span className={form.cellStack}><span className={form.cellTitle}>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</span>{attendanceEvent.reviewedAt && <span className={form.cellSub}>Revisado {displayDate(attendanceEvent.reviewedAt)}</span>}</span> },
+                        { key: 'evidence', header: 'Evidencia', render: (attendanceEvent) => <span className={form.cellStack}><span>{attendanceEvent.reasonCode ? <code>{attendanceEvent.reasonCode}</code> : 'Sin código'}</span>{attendanceEvent.locationAccuracyM != null && <span className={form.cellSub}>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</span>}</span> },
                         { key: 'actions', header: 'Acción', width: '100px', type: 'actions', render: (attendanceEvent) => <IconButton icon={Eye} size="sm" tooltip="Revisar" onClick={() => openReview(attendanceEvent)} disabled={!online || attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} label={!online ? 'Conéctate para revisar' : attendanceEvent.reviewedAt ? 'Evento ya revisado' : `Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`} /> },
                     ]}
                 />

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { productionOrdersAPI, productsAPI, warehousesAPI, branchesAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, Checkbox, ConfirmDialog, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, SegmentedControl, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
+    PageContent, PageHeader, Skeleton, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
     type Column, type Opt, type Tone, LoadErrorState, Tooltip,
 } from '@/ui';
 import { useCurrency } from '../hooks/useCurrency';
@@ -16,7 +16,7 @@ import {
 import type {
     ProductionOrder, ProductionOrderItem, ProductionOrderStatus, ProductionPreview, ProductionRequirementLine, Product, Warehouse, Branch
 } from '../types';
-import { costVariationOf, monthlyOverrun, monthlyYield } from './productionOrderInsights';
+import { costVariationOf } from './productionOrderInsights';
 import s from './Production.module.css';
 
 const PRODUCIBLE_TYPES = ['INTERMEDIATE', 'PRODUCT_FOR_SALE', 'BOTH'];
@@ -370,8 +370,6 @@ export default function ProductionOrders() {
     }));
     const branchOptions: Opt<string>[] = branches.map((b) => ({ value: b.id.toString(), label: b.name }));
 
-    const overrun = monthlyOverrun(orders);
-    const yieldInfo = monthlyYield(orders);
     const signed = (value: number) => `${value > 0 ? '+' : value < 0 ? '-' : ''}${formatNumber(Math.abs(value))}`;
 
     if (loading) {
@@ -384,11 +382,10 @@ export default function ProductionOrders() {
     }
 
     const columns: Column<ProductionOrder>[] = [
-        { key: 'code', header: 'Código / fecha', width: '1fr', render: (order) => <><span className={s.cellTitle}>{order.code}</span><span className={s.cellSub}>{formatDate(order.date)}</span></> },
+        { key: 'code', header: 'Código / fecha', render: (order) => <><span className={s.cellTitle}>{order.code}</span><span className={s.cellSub}>{formatDate(order.date)}</span></> },
         {
             key: 'product',
             header: 'Producto',
-            width: '2fr',
             render: (order) => (
                 <div className={s.cellStack}>
                     <span className={s.cellTitle}>{order.product?.name ?? '-'}</span>
@@ -400,7 +397,6 @@ export default function ProductionOrders() {
             key: 'planned',
             header: 'Planificado',
             type: 'qty',
-            width: '1.2fr',
             hideBelow: 'md',
             render: (order) => `${formatNumber(order.plannedQuantity)} ${outputUnit(order.product)}`,
         },
@@ -408,7 +404,6 @@ export default function ProductionOrders() {
             key: 'produced',
             header: 'Producido',
             type: 'qty',
-            width: '1.2fr',
             hideBelow: 'md',
             render: (order) => `${formatNumber(order.producedQuantity)} ${outputUnit(order.product)}`,
         },
@@ -416,7 +411,6 @@ export default function ProductionOrders() {
             key: 'yield',
             header: 'Rend.',
             type: 'percent',
-            width: '1fr',
             hideBelow: 'md',
             render: (order) => {
                 const pct = yieldPct(order);
@@ -426,7 +420,6 @@ export default function ProductionOrders() {
         {
             key: 'status',
             header: 'Estado',
-            width: '1fr',
             type: 'status',
             render: (order) => <Badge tone={STATUS_META[order.status].tone}>{STATUS_META[order.status].label}</Badge>,
         },
@@ -434,7 +427,6 @@ export default function ProductionOrders() {
             key: 'estimated',
             header: `Costo est. (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             total: true,
             accessor: (order) => (order.status === 'FINISHED' ? Number(order.estimatedCost) || 0 : 0),
             render: (order) => (Number(order.estimatedCost) > 0 ? formatNumber(order.estimatedCost) : <Tooltip label="Sin costo estimado calculado"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip>),
@@ -443,7 +435,6 @@ export default function ProductionOrders() {
             key: 'real',
             header: `Costo real (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             total: true,
             accessor: (order) => (order.status === 'FINISHED' ? Number(order.realCost) || 0 : 0),
             render: (order) => {
@@ -455,7 +446,6 @@ export default function ProductionOrders() {
             key: 'variation',
             header: 'Variación',
             type: 'money',
-            width: '1.2fr',
             hideBelow: 'lg',
             render: (order) => {
                 const v = costVariationOf(order);
@@ -486,7 +476,6 @@ export default function ProductionOrders() {
         {
             key: 'name',
             header: 'Insumo',
-            width: '2fr',
             render: (line) => (
                 <div className={s.cellStack}>
                     <span>{line.componentName}</span>
@@ -496,45 +485,41 @@ export default function ProductionOrders() {
                 </div>
             ),
         },
-        { key: 'required', header: 'Requerido', type: 'qty', width: '1.2fr', render: (line) => `${formatNumber(line.requiredQuantity)} ${line.unit}` },
-        { key: 'available', header: 'Disponible', type: 'qty', width: '1.2fr', render: (line) => `${formatNumber(line.availableQuantity)} ${line.unit}` },
+        { key: 'required', header: 'Requerido', type: 'qty', render: (line) => `${formatNumber(line.requiredQuantity)} ${line.unit}` },
+        { key: 'available', header: 'Disponible', type: 'qty', render: (line) => `${formatNumber(line.availableQuantity)} ${line.unit}` },
         {
             key: 'state',
             header: 'Estado',
             type: 'status',
-            width: '1fr',
             render: (line) => <Badge tone={line.sufficient ? 'success' : 'danger'}>{line.sufficient ? 'Suficiente' : 'Faltante'}</Badge>,
         },
     ];
 
     const detailColumns: Column<ProductionOrderItem>[] = [
-        { key: 'name', header: 'Insumo', width: '2fr', render: (item) => item.componentProduct?.name ?? `#${item.componentProductId}` },
-        { key: 'required', header: 'Requerido', type: 'qty', width: '1.2fr', render: (item) => `${formatNumber(item.requiredQuantity)} ${unitOf(item)}` },
-        { key: 'consumed', header: 'Consumido', type: 'qty', width: '1.2fr', render: (item) => `${formatNumber(item.consumedQuantity)} ${unitOf(item)}` },
+        { key: 'name', header: 'Insumo', render: (item) => item.componentProduct?.name ?? `#${item.componentProductId}` },
+        { key: 'required', header: 'Requerido', type: 'qty', render: (item) => `${formatNumber(item.requiredQuantity)} ${unitOf(item)}` },
+        { key: 'consumed', header: 'Consumido', type: 'qty', render: (item) => `${formatNumber(item.consumedQuantity)} ${unitOf(item)}` },
         {
             key: 'unitCost',
             header: `Costo unit. (${symbol})`,
             type: 'money',
-            width: '1fr',
             render: (item) => (Number(item.unitCost) > 0 ? formatNumber(item.unitCost) : <span className={s.nd}>N/D</span>),
         },
         {
             key: 'totalCost',
             header: `Costo total (${symbol})`,
             type: 'money',
-            width: '1fr',
             render: (item) => (Number(item.totalCost) > 0 ? formatNumber(item.totalCost) : <span className={s.nd}>N/D</span>),
         },
     ];
 
     const finishColumns: Column<ProductionOrderItem>[] = [
-        { key: 'name', header: 'Insumo', width: '2fr', render: (item) => item.componentProduct?.name ?? `#${item.componentProductId}` },
-        { key: 'required', header: 'Requerido', type: 'qty', width: '1.2fr', render: (item) => `${formatNumber(item.requiredQuantity)} ${unitOf(item)}` },
+        { key: 'name', header: 'Insumo', render: (item) => item.componentProduct?.name ?? `#${item.componentProductId}` },
+        { key: 'required', header: 'Requerido', type: 'qty', render: (item) => `${formatNumber(item.requiredQuantity)} ${unitOf(item)}` },
         {
             key: 'consumed',
             header: 'Consumo real',
             type: 'qty',
-            width: '1.4fr',
             render: (item) => (
                 <Input
                     type="number"
@@ -557,26 +542,37 @@ export default function ProductionOrders() {
                 actions={<Button variant="primary" icon={Plus} onClick={handleOpenCreate} disabled={!canManage}>Nueva producción</Button>}
             />
 
-            {!loadError && (overrun || yieldInfo) && (
-                <div className={s.stats}>
-                    {overrun && (
-                        <StatCard
-                            label="Sobrecosto del mes"
-                            value={`${overrun.overrun > 0 ? '+' : ''}${formatMoney(overrun.overrun)}`}
-                            context={`Real ${formatMoney(overrun.real)} vs estimado ${formatMoney(overrun.estimated)} (${formatPercent(overrun.pct)}) en ${overrun.count} órdenes finalizadas.${overrun.excluded > 0 ? ` ${overrun.excluded} sin costo estimado o real quedan fuera.` : ''}`}
-                            tone={overrun.overrun > 0 ? 'danger' : 'success'}
-                        />
-                    )}
-                    {yieldInfo && (
-                        <StatCard
-                            label="Rendimiento real vs estándar"
-                            value={formatPercent(yieldInfo.avgPct)}
-                            context={`Promedio de ${yieldInfo.count} órdenes finalizadas este mes frente a lo planificado por la receta. La más baja: ${yieldInfo.lowest.code} (${formatPercent(yieldInfo.lowest.pct)}).`}
-                            tone={yieldInfo.avgPct < 95 ? 'warning' : 'success'}
-                        />
-                    )}
-                </div>
-            )}
+            <Tabs
+                ariaLabel="Filtrar por estado"
+                active={statusFilter}
+                onChange={setStatusFilter}
+                tabs={STATUS_FILTERS.map(({ value, label }) => ({
+                    id: value,
+                    label,
+                    badge: loadError ? undefined : value === 'all' ? orders.length : orders.filter((order) => order.status === value).length,
+                }))}
+            />
+
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar orden"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    placeholder="Buscar por código o producto..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                <AppSelect
+                    aria-label="Filtrar por receta"
+                    options={recipeOptions}
+                    value={recipeFilter}
+                    onChange={setRecipeFilter}
+                    placeholder="Todas las recetas"
+                    isClearable
+                />
+            </TableToolbar>
 
             {loadError ? (
                 <LoadErrorState message={loadError} onRetry={() => { void loadOrders(); }} />
@@ -588,33 +584,6 @@ export default function ProductionOrders() {
                 rowKey={(order) => order.id}
                 resetKey={`${statusFilter}-${searchQuery}-${dateFrom}-${dateTo}-${recipeFilter}`}
                 footerLabel="Total finalizadas (página)"
-                toolbar={(
-                    <div className={s.toolbarStack}>
-                        <TableToolbar>
-                            <Input
-                                type="search"
-                                aria-label="Buscar orden"
-                                prefix={<Search size={14} aria-hidden="true" />}
-                                placeholder="Buscar por código o producto..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                            <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                            <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-                            <AppSelect
-                                aria-label="Filtrar por receta"
-                                options={recipeOptions}
-                                value={recipeFilter}
-                                onChange={setRecipeFilter}
-                                placeholder="Todas las recetas"
-                                isClearable
-                            />
-                        </TableToolbar>
-                        <div className={s.segmentWrap}>
-                            <SegmentedControl ariaLabel="Filtrar por estado" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTERS} />
-                        </div>
-                    </div>
-                )}
                 onRowClick={(order) => void handleOpenDetail(order.id)}
                 empty={<EmptyState icon={Factory} title="No se encontraron órdenes de producción" />}
             />
@@ -736,20 +705,16 @@ export default function ProductionOrders() {
                                     rowTone={(line) => (line.sufficient ? undefined : 'danger')}
                                 />
 
-                                <div className={s.stats}>
-                                    <StatCard
-                                        label="Costo estimado total"
-                                        value={Number(preview.estimatedCost) > 0 ? formatMoney(preview.estimatedCost) : 'N/D'}
-                                        context="Con el costo efectivo vigente de cada insumo."
-                                        tone="primary"
-                                    />
-                                    <StatCard
-                                        label="Costo unitario estimado"
-                                        value={Number(preview.estimatedUnitCost) > 0 ? formatMoney(preview.estimatedUnitCost) : 'N/D'}
-                                        context="Costo total entre las unidades base que rinde la orden."
-                                        tone="neutral"
-                                    />
-                                </div>
+                                <dl className={s.facts} aria-label="Costo estimado de la orden">
+                                    <div>
+                                        <dt>Costo estimado total</dt>
+                                        <dd>{Number(preview.estimatedCost) > 0 ? formatMoney(preview.estimatedCost) : 'N/D'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Costo unitario estimado</dt>
+                                        <dd>{Number(preview.estimatedUnitCost) > 0 ? formatMoney(preview.estimatedUnitCost) : 'N/D'}</dd>
+                                    </div>
+                                </dl>
                             </>
                         )}
                     </FormSection>

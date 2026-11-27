@@ -1,5 +1,5 @@
-import { AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea, toneFor } from '@/ui';
-import { useCallback, useEffect, useState, useId } from 'react';
+import { AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input, PageHeader, TableToolbar, Tabs, Textarea, toneFor } from '@/ui';
+import { useCallback, useEffect, useState, useId, type MutableRefObject } from 'react';
 import {
   Search,
   Copy,
@@ -32,7 +32,8 @@ import { formatHrMoney } from '../../utils/hrDisplay';
 import './benefits-governance.css';
 import form from '../../components/hr/hrForm.module.css';
 
-type Tab = 'SETTLEMENTS' | 'POLICIES';
+export type BenefitsGovernanceSection = 'SETTLEMENTS' | 'POLICIES';
+type Tab = BenefitsGovernanceSection;
 const today = new Date().toISOString().slice(0, 10);
 const categorySeed: TravelPolicyCategory[] = [
   {
@@ -113,10 +114,13 @@ const policyPayload = (
   reason: source.reason,
 });
 
-export default function BenefitsGovernance({ embedded = false }: { embedded?: boolean }) {
+export default function BenefitsGovernance({ embedded = false, section, createActionRef }: { embedded?: boolean; section?: Tab; createActionRef?: MutableRefObject<(() => void) | null> }) {
   const fid = useId();
   const toast = useAppToast();
-  const [tab, setTab] = useState<Tab>('SETTLEMENTS');
+  const [tab, setTab] = useState<Tab>(section ?? 'SETTLEMENTS');
+  useEffect(() => {
+    if (section) setTab(section);
+  }, [section]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [settlements, setSettlements] = useState<EmploymentSettlement[]>([]);
@@ -402,8 +406,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
     }));
 
   if (loading) return <HrLoading />;
-  const activePolicy = policies.find((row) => row.status === 'ACTIVE');
-  const draftSettlements = settlements.filter((row) => row.status === 'DRAFT').length;
   const settlementFormId = `${fid}-settlement-form`;
   const policyFormId = `${fid}-policy-form`;
   const draftFormId = `${fid}-draft-form`;
@@ -432,6 +434,13 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         !draftIndemnityJustification.trim()
       )
   );
+  useEffect(() => {
+    if (!createActionRef) return undefined;
+    createActionRef.current = tab === 'SETTLEMENTS' ? () => setShowSettlement(true) : () => openPolicyEditor();
+    return () => {
+      createActionRef.current = null;
+    };
+  });
   return (
     <div className={`benefits-governance-page ${form.stack}`}>
       {!embedded && (
@@ -442,25 +451,17 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
           actions={<Button icon={RefreshCw} onClick={() => void load()}>Actualizar</Button>}
         />
       )}
-      {!embedded && (!activePolicy || draftSettlements > 0) && (
-        <section className={form.kpis} aria-label="Indicadores de liquidaciones y políticas">
-          {!activePolicy && (
-            <StatCard tone="danger" label="Política activa" value="—" context="Sin versión publicada de viáticos y préstamos." action={{ label: 'Ver políticas', onClick: () => setTab('POLICIES') }} />
-          )}
-          {draftSettlements > 0 && (
-            <StatCard tone="warning" label="Borradores en página" value={String(draftSettlements)} context="Liquidaciones sin enviar." action={{ label: 'Ver liquidaciones', onClick: () => setTab('SETTLEMENTS') }} />
-          )}
-        </section>
+      {!embedded && (
+        <Tabs
+          ariaLabel="Secciones"
+          active={tab}
+          onChange={(id) => setTab(id as Tab)}
+          tabs={[
+            { id: 'SETTLEMENTS', label: 'Liquidaciones finales' },
+            { id: 'POLICIES', label: 'Políticas de viáticos y préstamos' },
+          ]}
+        />
       )}
-      <SegmentedControl<'SETTLEMENTS' | 'POLICIES'>
-        ariaLabel="Secciones"
-        options={[
-          { value: 'SETTLEMENTS', label: 'Liquidaciones finales' },
-          { value: 'POLICIES', label: 'Políticas de viáticos y préstamos' },
-        ]}
-        value={tab}
-        onChange={setTab}
-      />
 
       <section
         className={form.stack}
@@ -675,7 +676,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 rows={preview.suggestedLines.map((line, index) => ({ line, index }))}
                 rowKey={({ line, index }) => `${line.type}-${index}`}
                 pagination={{ mode: 'client' }}
-                minWidth="40rem"
                 empty={'Sin registros'}
                 columns={[
                   { key: 'c0', header: 'Concepto', render: ({ line }) => <>{line.concept}</> },
@@ -727,12 +727,11 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 )}
               </form>
             </FullScreenModal>
-            <p className={form.help}>Cada liquidación conserva cálculo, aprobaciones, pago y constancia PDF.</p>
             <div>
               <DataTable
                 ariaLabel="Liquidaciones"
                 toolbar={(
-                  <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setShowSettlement(true)}>Nueva liquidación</Button>}>
+                  <TableToolbar actions={embedded ? undefined : <Button variant="primary" icon={Plus} onClick={() => setShowSettlement(true)}>Nueva liquidación</Button>}>
                     <Input
                       type="search"
                       aria-label="Buscar liquidación"
@@ -765,13 +764,12 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 rowKey={(row) => row.id}
                 pagination={{ mode: 'server', page: pagination.page, pageSize: pagination.pageSize, total: pagination.total, onChange: (nextPage) => setPage(nextPage) }}
                 pageSizeOptions={[pagination.pageSize]}
-                minWidth="48rem"
                 empty={<EmptyState title="No hay liquidaciones en este filtro" description="Crea una liquidación o cambia la búsqueda." />}
                 columns={[
                   { key: 'c0', header: 'Código', render: (row) => <>{row.code}</> },
                   { key: 'c1', header: 'Empleado', render: (row) => (<span className={form.cellStack}><span className={form.cellTitle}>{row.employee.legalName}</span><span className={form.cellSub}>{row.employee.employeeCode}</span></span>) },
-                  { key: 'c2', header: 'Salida', render: (row) => <>{row.terminationDate.slice(0, 10)}</> },
-                  { key: 'c3', header: 'Estado', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status]}</Badge>) },
+                  { key: 'c2', header: 'Salida', type: 'date', render: (row) => <>{row.terminationDate.slice(0, 10)}</> },
+                  { key: 'c3', header: 'Estado', type: 'status', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status]}</Badge>) },
                   { key: 'c4', header: 'Neto', type: 'money', render: (row) => <>{formatHrMoney(row.currency, row.netPay)}</> },
                   { key: 'c5', header: 'Acciones', type: 'actions', width: '100px', render: (row) => (<div className={form.rowActions}>
                             <IconButton size="sm" tooltip="Ver detalle" label={`Ver y gestionar ${row.code}`} onClick={() => void benefitsGovernanceClient .settlement(row.id) .then(setSelectedSettlement) .catch((error) => toast.error( getBenefitsErrorMessage(error, 'No se pudo abrir el detalle.') ) ) } icon={Eye} />
@@ -945,7 +943,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 rows={policy.travelCategories.map((category, index) => ({ category, index }))}
                 rowKey={({ index }) => index}
                 pagination={{ mode: 'client' }}
-                minWidth="56rem"
                 empty={'Sin registros'}
                 columns={[
                   { key: 'c0', header: 'Código', render: ({ category, index }) => (<><Input
@@ -1016,12 +1013,11 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 </FormSection>
               </form>
             </FullScreenModal>
-            <p className={form.help}>Las corridas congelan la versión vigente. Una persona crea y otra activa.</p>
             <div>
               <DataTable
                 ariaLabel="Políticas de beneficios"
                 toolbar={(
-                  <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => openPolicyEditor()}>Nueva versión</Button>}>
+                  <TableToolbar actions={embedded ? undefined : <Button variant="primary" icon={Plus} onClick={() => openPolicyEditor()}>Nueva versión</Button>}>
                     <AppSelect<string>
                       options={[
                         { value: '', label: 'Todos los estados' },
@@ -1043,13 +1039,12 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 rowKey={(row) => row.id}
                 pagination={{ mode: 'server', page: policyPagination.page, pageSize: policyPagination.pageSize, total: policyPagination.total, onChange: (nextPage) => setPolicyPage(nextPage) }}
                 pageSizeOptions={[policyPagination.pageSize]}
-                minWidth="48rem"
                 empty={<EmptyState title="No hay políticas en este filtro" description="Crea una versión o cambia el estado seleccionado." />}
                 columns={[
                   { key: 'c0', header: 'Versión', render: (row) => (<span className={form.cellStack}><span className={form.cellTitle}>v{row.version}</span><span className={form.cellSub}>{row.sourceReference}</span></span>) },
-                  { key: 'c1', header: 'Vigencia', render: (row) => (<>{row.effectiveFrom.slice(0, 10)}
+                  { key: 'c1', header: 'Vigencia', type: 'date', render: (row) => (<>{row.effectiveFrom.slice(0, 10)}
                           {row.effectiveTo ? ` — ${row.effectiveTo.slice(0, 10)}` : ''}</>) },
-                  { key: 'c2', header: 'Estado', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status] ?? row.status}</Badge>) },
+                  { key: 'c2', header: 'Estado', type: 'status', render: (row) => (<Badge tone={toneFor(row.status)} dot>{statusLabel[row.status] ?? row.status}</Badge>) },
                   { key: 'c3', header: 'Viáticos', render: (row) => <>{row.travelCategories.length} categorías · {row.travelMaxDays} días</> },
                   { key: 'c4', header: 'Préstamos', render: (row) => <>Tope {formatHrMoney(row.currency, row.loanMaxAmount)} · {row.loanMaxInstallments} cuotas</> },
                   { key: 'c5', header: 'Acción', type: 'actions', width: '136px', render: (row) => (<div className={form.rowActions}>
@@ -1198,7 +1193,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 rows={draftSettlement.lines.map((line, index) => ({ line, index }))}
                 rowKey={({ line, index }) => `${index}-${line.type}`}
                 pagination={{ mode: 'client' }}
-                minWidth="48rem"
                 empty={'Sin registros'}
                 columns={[
                   { key: 'c0', header: 'Tipo', render: ({ line, index }) => (<AppSelect<string>
@@ -1383,7 +1377,6 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 rows={selectedSettlement.lines.map((line, index) => ({ line, index }))}
                 rowKey={({ line, index }) => `${line.type}-${index}`}
                 pagination={{ mode: 'client' }}
-                minWidth="40rem"
                 empty={'Sin registros'}
                 columns={[
                   { key: 'c0', header: 'Concepto', render: ({ line }) => <>{line.concept}</> },

@@ -530,7 +530,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
 
     const lineColumns: Column<LineRow>[] = [
         {
-            key: 'product', header: 'Producto', width: '2fr',
+            key: 'product', header: 'Producto',
             render: (r) => (
                 <span>
                     {r.name}
@@ -539,7 +539,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             ),
         },
         {
-            key: 'quantity', header: 'Cant.', width: '1fr', type: 'qty',
+            key: 'quantity', header: 'Cant.', type: 'qty',
             render: (r) => (isNew
                 ? (
                     <NumberInput
@@ -552,11 +552,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 : formatNumber(r.quantity)),
         },
         ...(showReceiptColumns ? [
-            { key: 'received', header: 'Recibido', width: '1fr', type: 'qty' as const, render: (r: LineRow) => formatQty(r.received) },
-            { key: 'pending', header: 'Pendiente', width: '1fr', type: 'qty' as const, render: (r: LineRow) => formatQty(r.pending) },
+            { key: 'received', header: 'Recibido', type: 'qty' as const, render: (r: LineRow) => formatQty(r.received) },
+            { key: 'pending', header: 'Pendiente', type: 'qty' as const, render: (r: LineRow) => formatQty(r.pending) },
         ] : []),
         {
-            key: 'cost', header: `Costo (${symbol})`, width: '1fr', type: 'money',
+            key: 'cost', header: `Costo (${symbol})`, type: 'money',
             render: (r) => (isNew
                 ? (
                     <NumberInput
@@ -569,7 +569,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 )
                 : formatPurchaseUnitCost(r.cost)),
         },
-        { key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (r) => r.quantity * r.cost },
+        { key: 'total', header: `Total (${symbol})`, type: 'money', accessor: (r) => r.quantity * r.cost },
         ...(isDraft ? [{
             key: 'actions', header: '', width: '100px', type: 'actions' as const,
             render: (r: LineRow) => (
@@ -580,7 +580,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
 
     const receiveColumns: Column<PurchaseOrderItem>[] = [
         {
-            key: 'product', header: 'Producto', width: '2fr',
+            key: 'product', header: 'Producto',
             render: (item) => (
                 <span>
                     {item.product?.name}
@@ -588,11 +588,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 </span>
             ),
         },
-        { key: 'ordered', header: 'Pedido', width: '1fr', type: 'qty', render: (item) => formatQty(Number(item.quantity)) },
-        { key: 'received', header: 'Recibido', width: '1fr', type: 'qty', render: (item) => formatQty(Number(item.receivedQuantity ?? 0)) },
-        { key: 'pending', header: 'Pendiente', width: '1fr', type: 'qty', render: (item) => formatQty(remainingQuantity(item)) },
+        { key: 'ordered', header: 'Pedido', type: 'qty', render: (item) => formatQty(Number(item.quantity)) },
+        { key: 'received', header: 'Recibido', type: 'qty', render: (item) => formatQty(Number(item.receivedQuantity ?? 0)) },
+        { key: 'pending', header: 'Pendiente', type: 'qty', render: (item) => formatQty(remainingQuantity(item)) },
         {
-            key: 'now', header: 'Recibir ahora', width: '1.4fr', type: 'qty',
+            key: 'now', header: 'Recibir ahora', type: 'qty',
             render: (item) => (
                 <NumberInput
                     aria-label={`Recibir ahora ${item.product?.name ?? ''}`}

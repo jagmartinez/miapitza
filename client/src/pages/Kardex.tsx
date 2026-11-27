@@ -266,13 +266,50 @@ export default function Kardex() {
             <PageHeader
                 title={`Kardex de inventario${kardexData ? `: ${kardexData.product.name}` : ''}`}
                 description="Entradas, salidas y saldo valorizado por producto."
-                actions={(
-                    <>
-                        <Button icon={ArrowLeft} variant="ghost" onClick={() => navigate('/inventory')}>Volver a Inventario</Button>
-                        <Button icon={Download} onClick={handleExport} disabled={!kardexData}>Excel</Button>
-                    </>
-                )}
+                actions={<Button icon={ArrowLeft} variant="ghost" onClick={() => navigate('/inventory')}>Volver a Inventario</Button>}
             />
+
+            <TableToolbar actions={(
+                <>
+                    <Button icon={Download} onClick={handleExport} disabled={!kardexData}>Excel</Button>
+                    <Button variant="primary" icon={Filter} onClick={loadKardex} disabled={!selectedProduct} loading={loading}>
+                        Aplicar
+                    </Button>
+                </>
+            )}>
+                <AppSelect<number>
+                    aria-label="Producto"
+                    options={products.map((p) => ({ value: p.id, label: `${p.name}${p.sku ? ` (${p.sku})` : ''}` }))}
+                    value={selectedProduct}
+                    onChange={(v) => setSelectedProduct(v ?? null)}
+                    placeholder="Selecciona un producto..."
+                    isClearable
+                />
+                <AppSelect<number>
+                    aria-label="Almacén"
+                    options={warehouses.map(w => ({ value: w.id, label: w.name }))}
+                    value={selectedWarehouse}
+                    onChange={(v) => setSelectedWarehouse(v ?? null)}
+                    placeholder="Todos los almacenes"
+                    isClearable
+                />
+                <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                <AppSelect<string>
+                    aria-label="Tipo de movimiento"
+                    isClearable={false}
+                    isSearchable={false}
+                    options={[
+                        { value: '', label: 'Todos los tipos' },
+                        { value: 'IN', label: 'Entrada' },
+                        { value: 'OUT', label: 'Salida' },
+                        { value: 'ADJUSTMENT', label: 'Ajuste' },
+                        { value: 'TRANSFER', label: 'Transferencia' }
+                    ]}
+                    value={movementType}
+                    onChange={(v) => setMovementType(v || '')}
+                />
+            </TableToolbar>
 
             {kardexData && (
                 <p className={catalog.summaryLine} role="status">
@@ -298,52 +335,12 @@ export default function Kardex() {
                         description={kardexData ? undefined : 'Elige un producto y aplica los filtros para ver entradas, salidas y saldo.'}
                     />
                 )}
-                toolbar={(
-                    <TableToolbar actions={(
-                        <Button variant="primary" icon={Filter} onClick={loadKardex} disabled={!selectedProduct} loading={loading}>
-                            Aplicar
-                        </Button>
-                    )}>
-                        <AppSelect<number>
-                            aria-label="Producto"
-                            options={products.map((p) => ({ value: p.id, label: `${p.name}${p.sku ? ` (${p.sku})` : ''}` }))}
-                            value={selectedProduct}
-                            onChange={(v) => setSelectedProduct(v ?? null)}
-                            placeholder="Selecciona un producto..."
-                            isClearable
-                        />
-                        <AppSelect<number>
-                            aria-label="Almacén"
-                            options={warehouses.map(w => ({ value: w.id, label: w.name }))}
-                            value={selectedWarehouse}
-                            onChange={(v) => setSelectedWarehouse(v ?? null)}
-                            placeholder="Todos los almacenes"
-                            isClearable
-                        />
-                        <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                        <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-                        <AppSelect<string>
-                            aria-label="Tipo de movimiento"
-                            isClearable={false}
-                            isSearchable={false}
-                            options={[
-                                { value: '', label: 'Todos los tipos' },
-                                { value: 'IN', label: 'Entrada' },
-                                { value: 'OUT', label: 'Salida' },
-                                { value: 'ADJUSTMENT', label: 'Ajuste' },
-                                { value: 'TRANSFER', label: 'Transferencia' }
-                            ]}
-                            value={movementType}
-                            onChange={(v) => setMovementType(v || '')}
-                        />
-                    </TableToolbar>
-                )}
                 columns={[
                     { key: 'date', header: 'Fecha', type: 'date' },
-                    { key: 'type', header: 'Tipo', render: (movement) => (
+                    { key: 'type', header: 'Tipo', type: 'status', render: (movement) => (
                         <Badge tone={MOVEMENT_TONE[movement.type] ?? 'neutral'}>{MOVEMENT_LABEL[movement.type] ?? movement.type}</Badge>
                     ) },
-                    { key: 'reference', header: 'Referencia' },
+                    { key: 'reference', header: 'Referencia', type: 'text' },
                     { key: 'in', header: 'Entrada', type: 'qty', render: (movement) => (
                         <span className={catalog.cellStack}>
                             {movement.in ? `${formatNumber(num(movement.in), 3)} ${unitLabel}` : '—'}

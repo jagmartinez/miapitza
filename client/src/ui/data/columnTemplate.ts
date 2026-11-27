@@ -11,6 +11,7 @@ const TYPE_MIN: Record<ColumnType, number> = {
   money: 104,
   percent: 88,
   date: 104,
+  time: 88,
   status: 104,
   actions: 0,
 };
@@ -22,6 +23,7 @@ const TYPE_FR: Record<ColumnType, string> = {
   money: '1fr',
   percent: '1fr',
   date: '1fr',
+  time: '1fr',
   status: '1fr',
   actions: '1fr',
 };
@@ -106,4 +108,97 @@ export function columnsMinWidth(cols: ColLike[]): number {
     const mm = /^minmax\(\s*([^,]+),/.exec(w);
     return sum + (mm ? toPx(mm[1]) ?? 0 : 0);
   }, 0);
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Distribución por contenido (después de medir en el navegador).
+ * ---------------------------------------------------------------------------------------------- */
+
+/** Medición de una columna: ancho max-content (con padding) del encabezado y de la celda más ancha. */
+export interface ColumnMeasure {
+  type?: ColumnType;
+  width?: string;
+  header?: ReactNode;
+  /** Ancho max-content del encabezado en px (0 si no se pudo medir). */
+  headerPx: number;
+  /** Ancho max-content de la celda más ancha (cuerpo y totales) en px. */
+  contentPx: number;
+}
+
+/** Tipos que nunca se parten: su mínimo es su contenido. */
+const SHORT_TYPES: ColumnType[] = ['date', 'time', 'number', 'money', 'qty', 'percent', 'status', 'actions'];
+/** Texto cuyo contenido (sin padding) mide hasta esto se trata como corto. */
+export const SHORT_TEXT_PX = 140;
+/** Mínimo de una columna de texto largo (se parte en varias líneas por debajo de su contenido). */
+export const LONG_TEXT_MIN_PX = 160;
+/** Tope del contenido que cuenta para el peso: un texto de 2000 px no se lleva todo el sobrante. */
+export const LONG_TEXT_CAP_PX = 480;
+const LONG_WEIGHT_UNIT = 120;
+
+function fmtFr(n: number): string {
+  return `${Number(n.toFixed(2))}fr`;
+}
+
+/** Un ancho explícito que no es `Nfr` (px, rem, minmax, max-content…) se respeta tal cual. */
+function fixedWidth(w: string | undefined): string | null {
+  const t = w?.trim();
+  return t && !FR.test(t) ? t : null;
+}
+
+function fixedMinPx(w: string): number {
+  const px = toPx(w);
+  if (px != null) return px;
+  const mm = /^minmax\(\s*([^,]+),/.exec(w);
+  return mm ? toPx(mm[1]) ?? 0 : 0;
+}
+
+/**
+ * Plantilla de grid a partir de lo medido. Función pura:
+ * - ancho explícito no-fr → tal cual;
+ * - `actions` sin ancho → su contenido en px (no crece);
+ * - columnas cortas (fecha, hora, números, estado o texto ≤ 140 px) → `minmax(<contenido>px, 1fr)`: no se parten;
+ * - texto largo → `minmax(max(160, encabezado)px, <peso>fr)` con peso ∝ contenido (tope 480 px), siempre ≥ 1;
+ * - los mínimos nunca bajan del mínimo por tipo ni del encabezado (celdas con inputs al 100 % miden ~0).
+ * Los pesos `Nfr` explícitos solo sirven para la primera pinta (estimada); aquí se ignoran.
+ * Devuelve también la suma de mínimos: por debajo de ella la tabla se desplaza en horizontal.
+ */
+/** Fracción del crecimiento que reciben las columnas cortas frente al texto largo. */
+const SHORT_GROWTH = 0.25;
+
+export function measuredTemplate(cols: ColumnMeasure[]): { template: string; minWidth: number } {
+  let minWidth = 0;
+  const tracks = cols.map((c, i) => {
+    const type = c.type ?? 'text';
+    const fixed = fixedWidth(c.width);
+    if (fixed) {
+      minWidth += fixedMinPx(fixed);
+      return fixed;
+    }
+    const header = Math.ceil(Math.max(c.headerPx, headerMinPx(c.header)));
+    const content = Math.ceil(Math.max(c.contentPx, header));
+    const typeFloor = i === 0 && type === 'text' ? 0 : TYPE_MIN[type];
+    if (type === 'actions') {
+      const w = Math.max(content, 48);
+      minWidth += w;
+      return `${w}px`;
+    }
+    const short = SHORT_TYPES.includes(type) || content - CELL_PADDING_X <= SHORT_TEXT_PX;
+    if (short) {
+      const min = Math.max(content, typeFloor);
+      minWidth += min;
+      // Las columnas cortas casi no crecen: el espacio sobrante va al texto largo.
+      return `minmax(${min}px,${fmtFr(Math.max(0.1, (content / LONG_WEIGHT_UNIT) * SHORT_GROWTH))})`;
+    }
+    const min = Math.min(content, Math.max(LONG_TEXT_MIN_PX, header));
+    const weight = Math.max(1, Math.min(content, LONG_TEXT_CAP_PX) / LONG_WEIGHT_UNIT);
+    minWidth += min;
+    return `minmax(${min}px,${fmtFr(weight)})`;
+  });
+  // Con suma de fr < 1 la fila no llena el ancho: se normaliza a 1 manteniendo las proporciones.
+  const frOf = (t: string) => /([\d.]+)fr\)?$/.exec(t);
+  const sum = tracks.reduce((acc, t) => acc + (frOf(t) ? parseFloat(frOf(t)![1]) : 0), 0);
+  const out = sum > 0 && sum < 1
+    ? tracks.map((t) => t.replace(/([\d.]+)fr(\)?)$/, (_m, n: string, close: string) => `${fmtFr(parseFloat(n) / sum)}${close}`))
+    : tracks;
+  return { template: out.join(' '), minWidth };
 }

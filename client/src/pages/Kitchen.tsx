@@ -383,19 +383,21 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
         );
     }
 
+    const matchesFilters = (order: Order, status: string) => {
+        // Status filter
+        if (status !== 'all' && order.status !== status) return false;
+
+        // Table filter
+        if (debouncedTableFilter && order.table?.number?.toString() !== debouncedTableFilter) return false;
+
+        // Date filter (only apply when status is 'all')
+        if (status === 'all' && !isWithinDateRange(getKitchenReceivedAt(order))) return false;
+
+        return true;
+    };
+    const statusCount = (status: string) => loadError ? undefined : orders.filter((order) => matchesFilters(order, status)).length;
     const sortedOrders = [...orders]
-        .filter(order => {
-            // Status filter
-            if (statusFilter !== 'all' && order.status !== statusFilter) return false;
-
-            // Table filter
-            if (debouncedTableFilter && order.table?.number?.toString() !== debouncedTableFilter) return false;
-
-            // Date filter (only apply when statusFilter is 'all')
-            if (statusFilter === 'all' && !isWithinDateRange(getKitchenReceivedAt(order))) return false;
-
-            return true;
-        })
+        .filter((order) => matchesFilters(order, statusFilter))
         .sort((a, b) =>
             new Date(getKitchenReceivedAt(a)).getTime() - new Date(getKitchenReceivedAt(b)).getTime()
         );
@@ -588,10 +590,10 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 active={statusFilter}
                 onChange={setStatusFilter}
                 tabs={[
-                    { id: 'all', label: 'Todas' },
-                    { id: 'SENT_TO_KITCHEN', label: 'En cola' },
-                    { id: 'IN_PREPARATION', label: 'En preparación' },
-                    { id: 'READY', label: 'Listas' },
+                    { id: 'all', label: 'Todas', badge: statusCount('all') },
+                    { id: 'SENT_TO_KITCHEN', label: 'En cola', badge: statusCount('SENT_TO_KITCHEN') },
+                    { id: 'IN_PREPARATION', label: 'En preparación', badge: statusCount('IN_PREPARATION') },
+                    { id: 'READY', label: 'Listas', badge: statusCount('READY') },
                 ]}
             />
 

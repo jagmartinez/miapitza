@@ -5,7 +5,7 @@ import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } f
 import api from '../services/api';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, Skeleton,
-    IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea, Tooltip,
+    IconButton, Input, NumberInput, PageContent, PageHeader, TableToolbar, Tabs, Textarea, Tooltip,
     formatMoney, formatNumber,
     type Column, LoadErrorState,
 } from '@/ui';
@@ -98,6 +98,7 @@ export default function PurchaseOrders() {
     const [loading, setLoading] = useState(true);
     const [ordersLoadError, setOrdersLoadError] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState('all');
+    const [paymentFilter, setPaymentFilter] = useState<'all' | 'due' | 'overdue'>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [showSuggestionsSidebar, setShowSuggestionsSidebar] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -265,7 +266,12 @@ export default function PurchaseOrders() {
         // balance stay visible outside the range; see purchaseOrderDateVisibility.
         const matchesDate = purchaseOrderDateVisibility(order, { startDate, endDate, statusFilter }).visible;
 
-        return matchesStatus && matchesSearch && matchesDate;
+        const owesSupplier = order.invoiceType === 'CREDIT' && order.paymentStatus !== 'PAID'
+            && order.status !== 'CANCELLED' && order.status !== 'DRAFT';
+        const matchesPayment = paymentFilter === 'all'
+            || (owesSupplier && (paymentFilter === 'due' || (!!order.paymentDueDate && new Date(order.paymentDueDate).getTime() < Date.now())));
+
+        return matchesStatus && matchesSearch && matchesDate && matchesPayment;
     });
 
 
@@ -499,26 +505,6 @@ export default function PurchaseOrders() {
     const symbol = settings.currency_symbol || 'C$';
     const money = (value: unknown) => formatMoney(value, symbol);
 
-    const pendingPaymentOrders = orders.filter(o =>
-        (o.status === 'RECEIVED' || o.status === 'PARTIALLY_RECEIVED') && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
-    );
-    const overduePayments = pendingPaymentOrders.filter(o => {
-        const days = getDaysRemaining(o.paymentDueDate);
-        return days !== null && days < 0;
-    });
-    const payableBalance = pendingPaymentOrders.reduce(
-        (sum, o) => sum + Math.max(0, purchaseOrderPayable(o) - (Number(o.paidAmount) || 0)), 0);
-    const mostOverdueOrder = [...overduePayments].sort(
-        (a, b) => (getDaysRemaining(a.paymentDueDate) ?? 0) - (getDaysRemaining(b.paymentDueDate) ?? 0))[0]
-        ?? pendingPaymentOrders[0];
-
-    const issuedOrders = orders.filter(o => o.status === 'ISSUED');
-    const committedAmount = issuedOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-    const issuedOverdue = issuedOrders.filter(o => {
-        const days = getDaysRemaining(o.paymentDueDate);
-        return days !== null && days < 0;
-    });
-
     const renderPaymentCell = (order: PurchaseOrder) => {
         // CASH is paid on delivery: nothing is settled before a receipt.
         if (order.invoiceType !== 'CREDIT') {
@@ -539,16 +525,16 @@ export default function PurchaseOrders() {
     };
 
     const orderColumns: Column<PurchaseOrder>[] = [
-        { key: 'id', header: 'Orden', width: '0.7fr', render: (o) => `#${o.id}` },
-        { key: 'supplier', header: 'Proveedor', width: '1.8fr', render: (o) => o.supplier?.name ?? 'N/D' },
-        { key: 'invoiceNumber', header: 'Nº Factura', width: '1fr', hideBelow: 'md', render: (o) => o.invoiceNumber || '-' },
-        { key: 'date', header: 'Fecha', width: '1fr', type: 'date' },
+        { key: 'id', header: 'Orden', render: (o) => `#${o.id}` },
+        { key: 'supplier', header: 'Proveedor', render: (o) => o.supplier?.name ?? 'N/D' },
+        { key: 'invoiceNumber', header: 'Nº Factura', hideBelow: 'md', render: (o) => o.invoiceNumber || '-' },
+        { key: 'date', header: 'Fecha', type: 'date' },
         {
-            key: 'invoiceType', header: 'Tipo', width: '0.8fr', hideBelow: 'lg',
+            key: 'invoiceType', header: 'Tipo', type: 'status', hideBelow: 'lg',
             render: (o) => <Badge tone={o.invoiceType === 'CREDIT' ? 'warning' : 'neutral'}>{o.invoiceType === 'CREDIT' ? 'Crédito' : 'Contado'}</Badge>,
         },
         {
-            key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (o) => Number(o.total) || 0,
+            key: 'total', header: `Total (${symbol})`, type: 'money', accessor: (o) => Number(o.total) || 0,
             render: (o) => (o.status === 'PARTIALLY_RECEIVED' ? (
                 <span className={styles.cellStack}>
                     <span>{formatNumber(Number(o.total) || 0)}</span>
@@ -556,9 +542,9 @@ export default function PurchaseOrders() {
                 </span>
             ) : formatNumber(Number(o.total) || 0)),
         },
-        { key: 'payment', header: 'Pago', width: '1.4fr', hideBelow: 'lg', render: renderPaymentCell },
+        { key: 'payment', header: 'Pago', type: 'status', hideBelow: 'lg', render: renderPaymentCell },
         {
-            key: 'status', header: 'Estado', width: '0.9fr',
+            key: 'status', header: 'Estado', type: 'status',
             render: (o) => (
                 <span className={styles.cellStack}>
                     <Badge tone={STATUS_TONE[o.status] ?? 'neutral'} dot>{STATUS_LABEL[o.status] ?? o.status}</Badge>
@@ -623,16 +609,16 @@ export default function PurchaseOrders() {
                 />
             ),
         },
-        { key: 'product', header: 'Producto', width: '2fr', render: (s) => s.productName?.trim() || `Producto #${s.productId}` },
-        { key: 'warehouse', header: 'Bodega', width: '1.2fr', hideBelow: 'md', render: (s) => s.warehouseName || 'Sin bodega' },
+        { key: 'product', header: 'Producto', render: (s) => s.productName?.trim() || `Producto #${s.productId}` },
+        { key: 'warehouse', header: 'Bodega', hideBelow: 'md', render: (s) => s.warehouseName || 'Sin bodega' },
         {
-            key: 'priority', header: 'Prioridad', width: '0.9fr',
+            key: 'priority', header: 'Prioridad', type: 'status',
             render: (s) => <Badge tone={s.priority === 'URGENT' ? 'danger' : 'neutral'}>{s.priority === 'URGENT' ? 'Urgente' : 'Normal'}</Badge>,
         },
-        { key: 'current', header: 'Actual', width: '1fr', type: 'qty', hideBelow: 'md', render: (s) => `${formatNumber(s.currentStock || 0)} ${s.unit || ''}`.trim() },
-        { key: 'min', header: 'Mín', width: '1fr', type: 'qty', hideBelow: 'lg', render: (s) => `${formatNumber(s.minStock || 0)} ${s.unit || ''}`.trim() },
-        { key: 'suggested', header: 'Sugerido', width: '1fr', type: 'qty', render: (s) => formatSuggestionQuantity(s) },
-        { key: 'cost', header: `Estimado (${symbol})`, width: '1fr', type: 'money', accessor: (s) => Number(s.estimatedCost) || 0 },
+        { key: 'current', header: 'Actual', type: 'qty', hideBelow: 'md', render: (s) => `${formatNumber(s.currentStock || 0)} ${s.unit || ''}`.trim() },
+        { key: 'min', header: 'Mín', type: 'qty', hideBelow: 'lg', render: (s) => `${formatNumber(s.minStock || 0)} ${s.unit || ''}`.trim() },
+        { key: 'suggested', header: 'Sugerido', type: 'qty', render: (s) => formatSuggestionQuantity(s) },
+        { key: 'cost', header: `Estimado (${symbol})`, type: 'money', accessor: (s) => Number(s.estimatedCost) || 0 },
     ];
 
 
@@ -645,44 +631,65 @@ export default function PurchaseOrders() {
                 title="Órdenes de Compra"
                 description="Compras a proveedores, recepción y pagos."
                 actions={(
+                    <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders}>
+                        Nueva orden
+                    </Button>
+                )}
+            />
+
+            {ordersLoadError && <LoadErrorState message={ordersLoadError} onRetry={() => { void loadOrders(); }} />}
+
+            <Tabs
+                ariaLabel="Filtrar por estado de la orden"
+                active={statusFilter}
+                onChange={setStatusFilter}
+                tabs={STATUS_OPTIONS.map(({ value, label }) => ({
+                    id: value,
+                    label,
+                    badge: ordersLoadError ? undefined : value === 'all' ? orders.length : orders.filter((order) => order.status === value).length,
+                }))}
+            />
+
+            <TableToolbar
+                actions={(
                     <>
+                        {(startDate || endDate) && (
+                            <Button variant="ghost" onClick={() => { setStartDate(''); setEndDate(''); }}>
+                                Quitar fechas
+                            </Button>
+                        )}
                         <Button icon={Zap} onClick={loadAutoSuggestions} loading={loadingSuggestions} disabled={!canManagePurchaseOrders}>
                             Auto-Generar
                         </Button>
                         <Button icon={FileDown} onClick={() => setIsImportSidebarOpen(true)} disabled={!canManagePurchaseOrders}>
                             Carga Masiva
                         </Button>
-                        <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders}>
-                            Nueva orden
-                        </Button>
                     </>
                 )}
-            />
-
-            {ordersLoadError && <LoadErrorState message={ordersLoadError} onRetry={() => { void loadOrders(); }} />}
-
-            {!loading && (orders.length > 0 || !ordersLoadError) && (
-                <div className={styles.kpiGrid}>
-                    <StatCard
-                        label="Comprometido sin recibir"
-                        value={money(committedAmount)}
-                        tone={issuedOverdue.length > 0 ? 'warning' : 'neutral'}
-                        context={`${issuedOrders.length} órdenes emitidas · ${issuedOverdue.length} con fecha de vencimiento ya pasada`}
-                        action={issuedOrders.length > 0 ? { label: 'Ver emitidas', onClick: () => setStatusFilter('ISSUED') } : undefined}
-                    />
-                    <StatCard
-                        label="Por pagar a proveedores"
-                        value={money(payableBalance)}
-                        tone={overduePayments.length > 0 ? 'danger' : 'neutral'}
-                        context={pendingPaymentOrders.length === 0
-                            ? 'Sin facturas a crédito pendientes de pago'
-                            : `${overduePayments.length} vencidas de ${pendingPaymentOrders.length} facturas a crédito recibidas`}
-                        action={canManagePurchaseOrders && mostOverdueOrder
-                            ? { label: `Registrar pago OC #${mostOverdueOrder.id}`, onClick: () => { void handleOpenPayment(mostOverdueOrder); } }
-                            : undefined}
-                    />
-                </div>
-            )}
+            >
+                <Input
+                    id="po-search"
+                    type="search"
+                    aria-label="Buscar orden"
+                    placeholder="Buscar por ID, proveedor o factura..."
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <AppSelect
+                    inputId="po-payment-filter"
+                    aria-label="Filtrar por pago a proveedor"
+                    options={[
+                        { value: 'all', label: 'Pago: todos' },
+                        { value: 'due', label: 'Por pagar (crédito)' },
+                        { value: 'overdue', label: 'Vencidas' },
+                    ]}
+                    value={paymentFilter}
+                    onChange={(v) => setPaymentFilter((v || 'all') as 'all' | 'due' | 'overdue')}
+                />
+                <DateInput id="po-from" aria-label="Desde" title="Desde" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                <DateInput id="po-to" aria-label="Hasta" title="Hasta" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </TableToolbar>
 
             <DataTable
                 ariaLabel="Órdenes de compra"
@@ -690,36 +697,9 @@ export default function PurchaseOrders() {
                 rows={filteredOrders}
                 rowKey={(o) => o.id}
                 loading={loading}
-                resetKey={`${statusFilter}|${searchQuery}|${startDate}|${endDate}`}
+                resetKey={`${statusFilter}|${paymentFilter}|${searchQuery}|${startDate}|${endDate}`}
                 onRowClick={canManagePurchaseOrders ? (o) => handleOpenForm(o.id) : undefined}
                 empty="No se encontraron órdenes de compra"
-                toolbar={(
-                    <TableToolbar
-                        actions={(startDate || endDate) ? (
-                            <Button variant="ghost" onClick={() => { setStartDate(''); setEndDate(''); }}>
-                                Quitar fechas
-                            </Button>
-                        ) : undefined}
-                    >
-                        <Input
-                            id="po-search"
-                            type="search"
-                            aria-label="Buscar orden"
-                            placeholder="Buscar por ID, proveedor o factura..."
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                        <SegmentedControl
-                            ariaLabel="Estado de la orden"
-                            options={STATUS_OPTIONS}
-                            value={statusFilter}
-                            onChange={setStatusFilter}
-                        />
-                        <DateInput id="po-from" aria-label="Desde" title="Desde" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                        <DateInput id="po-to" aria-label="Hasta" title="Hasta" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal

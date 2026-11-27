@@ -286,14 +286,13 @@ export default function PayrollLegalSettings() {
             rows={rules}
             rowKey={(rule) => rule.id}
             pagination={{ mode: 'client' }}
-            minWidth="40rem"
             rowTone={(rule) => (String(rule.id) === selectedRuleId ? 'primary' : undefined)}
             onRowClick={(rule) => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }}
             empty={<EmptyState title="Sin versiones" />}
             columns={[
               { key: 'version', header: 'Versión', render: (rule) => <span className={form.cellStack}><span className={form.cellSub}>Versión {rule.version}</span><span className={form.cellTitle}>{rule.name}</span></span> },
-              { key: 'validity', header: 'Vigencia', render: (rule) => <span className={form.cellStack}><span className={form.cellTitle}>{formatLegalDate(rule.effectiveFrom)}</span><span className={form.cellSub}>Hasta {formatLegalDate(rule.effectiveTo).toLocaleLowerCase()}</span></span> },
-              { key: 'status', header: 'Estado', render: (rule) => <PayrollStatusPill status={rule.status} /> },
+              { key: 'validity', header: 'Vigencia', type: 'date', render: (rule) => <span className={form.cellStack}><span className={form.cellTitle}>{formatLegalDate(rule.effectiveFrom)}</span><span className={form.cellSub}>Hasta {formatLegalDate(rule.effectiveTo).toLocaleLowerCase()}</span></span> },
+              { key: 'status', header: 'Estado', type: 'status', render: (rule) => <PayrollStatusPill status={rule.status} /> },
               { key: 'configuration', header: 'Configuración', render: (rule) => <span className={form.cellStack}><span className={form.cellTitle}>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}</span><span className={form.cellSub}>{rule.configurationSummary || 'Sin revisión validada'}</span></span> },
               {
                 key: 'actions',

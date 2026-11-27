@@ -22,7 +22,7 @@ export interface SurveyReportViewProps {
 const dateTime = (iso: string) => new Date(iso).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' });
 
 const rankingColumns: Column<SurveyRankingItem>[] = [
-    { key: 'rank', header: '#', render: (r) => r.rank },
+    { key: 'rank', header: '#', type: 'number', decimals: 0, render: (r) => r.rank },
     { key: 'name', header: 'Mesero', render: (r) => r.name || '—' },
     { key: 'branch', header: 'Sucursal', render: (r) => r.branchName ?? '—' },
     { key: 'responses', header: 'Respuestas', type: 'number', render: (r) => r.responses },
@@ -32,7 +32,7 @@ const rankingColumns: Column<SurveyRankingItem>[] = [
 ];
 
 const responseColumns: Column<SurveyResponseRow>[] = [
-    { key: 'date', header: 'Fecha', render: (r) => dateTime(r.createdAt) },
+    { key: 'date', header: 'Fecha', type: 'date', render: (r) => dateTime(r.createdAt) },
     { key: 'branch', header: 'Sucursal', render: (r) => r.branchName },
     { key: 'waiter', header: 'Mesero', render: (r) => r.waiterName },
     { key: 'nps', header: 'NPS', type: 'number', render: (r) => <span className={`survey-nps survey-nps-${r.nps <= 6 ? 'detractor' : r.nps >= 9 ? 'promoter' : 'passive'}`}>{r.nps}</span> },

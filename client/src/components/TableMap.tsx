@@ -44,8 +44,10 @@ interface TableMapProps {
     onReturnToAdministration?: () => void;
     branchControl?: ReactNode;
     themeControl?: ReactNode;
-    /** Indicadores del salón (tarjetas KPI); se despliegan desde el botón Indicadores. */
-    insights?: ReactNode;
+    /** Título y selector de vista de la página: el plano ocupa la pantalla y su barra hace de encabezado. */
+    heading?: ReactNode;
+    /** Acciones de página (históricos, avisos de cocina, orden para llevar) al final de la barra del plano. */
+    extraActions?: ReactNode;
     /** Minutos abiertos y consumo por mesa; amount null = N/D. Si se omite, no se muestra. */
     tableMeta?: Map<number, { minutes: number; amount: number | null }>;
     /** Las órdenes no se pudieron cargar: minutos y consumo se muestran como N/D. */
@@ -177,7 +179,8 @@ export default function TableMap({
     onReturnToAdministration,
     branchControl,
     themeControl,
-    insights
+    heading,
+    extraActions
 }: TableMapProps) {
     const createDraft = () => {
         const nextAreas = plan.areas.length ? plan.areas.map(normalizeArea) : [newArea(0)];
@@ -193,7 +196,6 @@ export default function TableMap({
     const [canvasHeight, setCanvasHeight] = useState(plan.canvasHeight);
     const [editing, setEditing] = useState(false);
     const [zoom, setZoom] = useState(1);
-    const [showInsights, setShowInsights] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [selection, setSelection] = useState<Selection | null>(null);
     const [deletedAreaIds, setDeletedAreaIds] = useState<number[]>([]);
@@ -446,10 +448,13 @@ export default function TableMap({
     return (
         <section className={`table-map-shell ${editing ? 'is-editing' : ''}`} aria-label="Mapa de mesas">
             <div className="table-map-toolbar">
-                <div className="table-map-title-block">
-                    <strong>{editing ? 'Gestión de mesas · Editor del plano' : 'Gestión de mesas · Mapa operativo'}</strong>
-                    <span>{editing ? 'Selecciona un salón o mesa para cambiar tamaño, forma y rotación' : `${layout.length} ${layout.length === 1 ? 'mesa' : 'mesas'} · ${areas.length} ${areas.length === 1 ? 'salón' : 'salones'} · selecciona una mesa para operarla`}</span>
-                </div>
+                {heading && <div className="table-map-heading">{heading}</div>}
+                {editing && (
+                    <div className="table-map-title-block">
+                        <strong>Editor del plano</strong>
+                        <span>Selecciona un salón o mesa para cambiar tamaño, forma y rotación</span>
+                    </div>
+                )}
                 <div className="table-map-actions">
                     {!editing && (
                         <div className="table-map-status-filter">
@@ -464,16 +469,17 @@ export default function TableMap({
                     )}
                     {!editing && zoneOptions.length > 2 && (
                         <div className="table-map-zone-filter">
-                            <SegmentedControl ariaLabel="Zona del salón" size="sm" options={zoneOptions} value={activeZone} onChange={setZoneFilter} />
+                            <AppSelect<string>
+                                aria-label="Filtrar por zona"
+                                options={zoneOptions}
+                                value={activeZone}
+                                onChange={(value) => setZoneFilter(value ?? 'ALL')}
+                                isClearable={false}
+                            />
                         </div>
                     )}
                     {!editing && branchControl}
                     {!editing && themeControl}
-                    {!editing && insights && (
-                        <Button variant={showInsights ? 'primary' : 'secondary'} icon={LayoutDashboard} className={styles.touch} aria-expanded={showInsights} aria-controls="table-map-insights" onClick={() => setShowInsights((value) => !value)}>
-                            Indicadores
-                        </Button>
-                    )}
                     {!editing && onCreateTable && <Button variant="primary" icon={Plus} className={styles.touch} onClick={onCreateTable}>Nueva mesa</Button>}
                     {!editing && onReturnToAdministration && <Button variant="secondary" icon={LayoutDashboard} className={styles.touch} onClick={onReturnToAdministration}>Administración</Button>}
                     {editing && (
@@ -496,10 +502,9 @@ export default function TableMap({
                     {editing && <Button variant="secondary" icon={CopyPlus} className={styles.touch} onClick={addArea}>Agregar salón</Button>}
                     {canEdit && <Button variant="secondary" icon={editing ? Unlock : Lock} className={styles.touch} onClick={toggleEditing}>{editing ? 'Salir' : 'Editar plano'}</Button>}
                     {editing && <Button variant="primary" icon={Save} className={styles.touch} loading={saving} disabled={saving || !dirty} onClick={() => void save()}>{saving ? 'Guardando…' : 'Guardar plano'}</Button>}
+                    {!editing && extraActions}
                 </div>
             </div>
-
-            {!editing && insights && showInsights && <div id="table-map-insights" className="table-map-insights">{insights}</div>}
 
             {!editing && areas.length > 0 && (
                 <nav className="table-map-mobile-areas" aria-label="Enfocar salón">

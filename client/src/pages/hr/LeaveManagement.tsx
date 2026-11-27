@@ -2,6 +2,8 @@ import { formatHrNumber } from '../../utils/hrDisplay';
 import { useCallback, useEffect, useState, useId } from 'react';
 import { Tags,
   AlertTriangle,
+  CalendarDays,
+  List,
   Ban,
   ListChecks,
   Eye,
@@ -12,7 +14,7 @@ import { Tags,
   RefreshCw,
   SlidersHorizontal,
 } from 'lucide-react';
-import { AppSelect, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, SegmentedControl, StatCard, TableToolbar, Tabs, Textarea } from '@/ui';
+import { AppSelect, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar, Tabs, Textarea } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import LeaveCalendarGrid from '../../components/hr/LeaveCalendarGrid';
@@ -42,7 +44,6 @@ import type {
 } from '../../types/hr-workforce';
 import form from '../../components/hr/hrForm.module.css';
 
-const LOW_BALANCE_DAYS = 2;
 const UNIT_LABEL: Record<string, string> = { DAYS: 'Días', HOURS: 'Horas', MINUTES: 'Minutos' };
 const unitText = (unit?: string | null) => (unit ? (UNIT_LABEL[unit] ?? unit).toLowerCase() : '');
 const MOVEMENT_LABEL: Record<string, string> = { ACCRUAL: 'Devengo', USAGE: 'Uso', ADJUSTMENT: 'Ajuste', REVERSAL: 'Reversión' };
@@ -296,12 +297,6 @@ export default function LeaveManagement() {
     setActionReason('');
   };
 
-  const pendingCount = requests.filter((item) => item.status === 'PENDING').length;
-  const draftCount = requests.filter((item) => item.status === 'DRAFT').length;
-  const lowBalanceCount = new Set(
-    balances.filter((balance) => balance.unit === 'DAYS' && Number(balance.available) <= LOW_BALANCE_DAYS).map((balance) => balance.userId)
-  ).size;
-
   return (
     <PageContent>
       <PageHeader
@@ -310,6 +305,18 @@ export default function LeaveManagement() {
         description="Aprueba solicitudes, consulta ausencias del equipo y controla los días disponibles"
         actions={
           <>
+            {!loading && !error && activeTable === 'CALENDAR' && (
+              <SegmentedControl<'grid' | 'list'>
+                iconOnly
+                ariaLabel="Vista del calendario"
+                options={[
+                  { value: 'grid', label: 'Vista de calendario', icon: CalendarDays },
+                  { value: 'list', label: 'Vista de lista', icon: List },
+                ]}
+                value={calendarView}
+                onChange={setCalendarView}
+              />
+            )}
             <Button variant="ghost" icon={Tags} onClick={() => openType()} disabled={!online}>Nuevo tipo de ausencia</Button>
             <Button icon={SlidersHorizontal} onClick={() => setPanel('adjustment')} disabled={!online}>Ajustar saldo</Button>
             <Button variant="primary" icon={Plus} onClick={() => setPanel('request')} disabled={!online}>Nueva solicitud</Button>
@@ -317,58 +324,21 @@ export default function LeaveManagement() {
         }
       />
       <OnlineOnlyNotice online={online} />
-      {!loading && !error && (pendingCount > 0 || lowBalanceCount > 0) && (
-        <section className={form.kpis} aria-label="Indicadores de permisos y vacaciones">
-          {pendingCount > 0 && (
-            <StatCard
-              tone="warning"
-              label="Solicitudes pendientes"
-              value={String(pendingCount)}
-              context={draftCount > 0 ? `${draftCount} borrador${draftCount === 1 ? '' : 'es'} sin enviar` : 'Esperan revisión'}
-              action={{ label: 'Revisar solicitudes', onClick: () => setActiveTable('REQUESTS') }}
-            />
-          )}
-          {lowBalanceCount > 0 && (
-            <StatCard
-              tone="danger"
-              label="Saldo bajo"
-              value={String(lowBalanceCount)}
-              context={`Colaboradores con ≤ ${LOW_BALANCE_DAYS} días disponibles`}
-              action={{ label: 'Ver saldos', onClick: () => setActiveTable('BALANCES') }}
-            />
-          )}
-        </section>
-      )}
-
-      {!loading && !error && (
-        <Tabs
-          ariaLabel="Bandejas de permisos y vacaciones"
-          active={activeTable}
-          onChange={(id) => setActiveTable(id as LeaveTable)}
-          tabs={([
-            ['REQUESTS', 'Solicitudes', requests.filter((item) => item.status === 'PENDING').length],
-            ['CALENDAR', 'Calendario', calendar.length],
-            ['BALANCES', 'Saldos', balances.length],
-            ['TYPES', 'Tipos de ausencia', leaveTypes.length],
-            ['HISTORY', 'Movimientos', ledger.length],
-          ] as Array<[LeaveTable, string, number]>).map(([id, label, badge]) => ({ id, label, badge }))}
-        />
-      )}
+      <Tabs
+        ariaLabel="Bandejas de permisos y vacaciones"
+        active={activeTable}
+        onChange={(id) => setActiveTable(id as LeaveTable)}
+        tabs={([
+          ['REQUESTS', 'Solicitudes', requests.filter((item) => item.status === 'PENDING').length],
+          ['CALENDAR', 'Calendario', calendar.length],
+          ['BALANCES', 'Saldos', balances.length],
+          ['TYPES', 'Tipos de ausencia', leaveTypes.length],
+          ['HISTORY', 'Movimientos', ledger.length],
+        ] as Array<[LeaveTable, string, number]>).map(([id, label, badge]) => ({ id, label, badge: loading || error ? undefined : badge }))}
+      />
 
       <TableToolbar
-        actions={(
-          <>
-            {!loading && !error && activeTable === 'CALENDAR' && (
-              <SegmentedControl<'grid' | 'list'>
-                ariaLabel="Vista del calendario"
-                options={[{ value: 'grid', label: 'Calendario' }, { value: 'list', label: 'Lista' }]}
-                value={calendarView}
-                onChange={setCalendarView}
-              />
-            )}
-            <Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Actualizar</Button>
-          </>
-        )}
+        actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Actualizar</Button>}
       >
         <DateInput aria-label="Desde" title="Desde" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
         <DateInput aria-label="Hasta" title="Hasta" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
@@ -404,16 +374,15 @@ export default function LeaveManagement() {
                 rows={requests}
                 rowKey={(item) => item.id}
                 pagination={{ mode: 'client' }}
-                minWidth="56rem"
                 rowTone={(item) => (focusedRequestId === item.id ? 'primary' : undefined)}
                 empty={<EmptyState title="No hay solicitudes en este periodo" description="Puedes registrar una solicitud en nombre de un empleado." action={<Button variant="primary" onClick={() => setPanel('request')} disabled={!online} aria-label="Crear ausencia" icon={Plus}>Nueva solicitud</Button>} />}
                 columns={[
-                  { key: 'c0', header: 'Empleado', width: '1.6fr', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
-                  { key: 'c1', header: 'Tipo', width: '1fr', render: (item) => <>{item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}</> },
-                  { key: 'c2', header: 'Fechas', width: '1fr', render: (item) => <span className={form.cellStack}><span>{dateLabel(item.startDate)}</span><span className={form.cellSub}>{item.endDate !== item.startDate ? `hasta ${dateLabel(item.endDate)}` : 'Un día'}</span></span> },
-                  { key: 'c3', header: 'Duración', width: '1fr', render: (item) => <span className={form.cellStack}><span>{fractionLabel(item.fraction)}</span>{item.requestedAmount != null && <span className={form.cellSub}>{formatHrNumber(item.requestedAmount)} {unitText(item.balanceUnit)}</span>}</span> },
-                  { key: 'c4', header: 'Motivo', width: '2fr', render: (item) => <span className={form.clamp2} title={item.reason}>{item.reason}</span> },
-                  { key: 'c5', header: 'Estado', width: '1fr', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
+                  { key: 'c0', header: 'Empleado', render: (item) => <strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong> },
+                  { key: 'c1', header: 'Tipo', render: (item) => <>{item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}</> },
+                  { key: 'c2', header: 'Fechas', type: 'date', render: (item) => <span className={form.cellStack}><span>{dateLabel(item.startDate)}</span><span className={form.cellSub}>{item.endDate !== item.startDate ? `hasta ${dateLabel(item.endDate)}` : 'Un día'}</span></span> },
+                  { key: 'c3', header: 'Duración', render: (item) => <span className={form.cellStack}><span>{fractionLabel(item.fraction)}</span>{item.requestedAmount != null && <span className={form.cellSub}>{formatHrNumber(item.requestedAmount)} {unitText(item.balanceUnit)}</span>}</span> },
+                  { key: 'c4', header: 'Motivo', render: (item) => <span className={form.clamp2} title={item.reason}>{item.reason}</span> },
+                  { key: 'c5', header: 'Estado', type: 'status', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
                   { key: 'c6', header: 'Acciones', width: '100px', type: 'actions', render: (item) => <div className={form.rowActions}>{item.status === 'DRAFT' && <IconButton size="sm" onClick={() => void submitDraft(item)} disabled={!online || saving} tooltip="Enviar" label={`Enviar solicitud de ${item.user?.name ?? item.userId}`} icon={Send} />}{item.status === 'PENDING' && <IconButton size="sm" onClick={() => openRequestAction(item, 'decide')} disabled={!online} tooltip="Revisar" label={`Revisar solicitud de ${item.user?.name ?? item.userId}`} icon={Eye} />}{(item.status === 'DRAFT' || item.status === 'PENDING') && <IconButton size="sm" onClick={() => openRequestAction(item, 'cancel')} disabled={!online} tone="danger" tooltip="Cancelar" label={`Cancelar solicitud de ${item.user?.name ?? item.userId}`} icon={Ban} />}</div> },
                 ]}
               />
@@ -425,15 +394,14 @@ export default function LeaveManagement() {
                 rows={calendar}
                 rowKey={(entry) => entry.id}
                 pagination={{ mode: 'client' }}
-                minWidth="56rem"
                 empty={<EmptyState title="No hay ausencias aprobadas" description="Amplía el rango de fechas o revisa las solicitudes pendientes." action={<Button variant="ghost" onClick={() => setActiveTable('REQUESTS')}>Ver solicitudes</Button>} />}
                 columns={[
-                  { key: 'c0', header: 'Fecha', render: (entry) => <strong>{dateLabel(entry.date)}</strong> },
+                  { key: 'c0', header: 'Fecha', type: 'date', render: (entry) => <strong>{dateLabel(entry.date)}</strong> },
                   { key: 'c1', header: 'Empleado', render: (entry) => <>{entry.user?.name ?? `Usuario #${entry.userId}`}</> },
                   { key: 'c2', header: 'Tipo', render: (entry) => <>{entry.leaveType?.name ?? `Tipo #${entry.leaveTypeId}`}</> },
                   { key: 'c3', header: 'Duración', render: (entry) => <>{fractionLabel(entry.fraction)}</> },
                   { key: 'c4', header: 'Sucursal', render: (entry) => <>{entry.branch?.name ?? 'Sin sucursal'}</> },
-                  { key: 'c5', header: 'Estado', render: (entry) => <><WorkforceStatusPill status={entry.status} /></> },
+                  { key: 'c5', header: 'Estado', type: 'status', render: (entry) => <><WorkforceStatusPill status={entry.status} /></> },
                   { key: 'c6', header: 'Acciones', width: '100px', type: 'actions', render: (entry) => <div className={form.rowActions}><IconButton size="sm" onClick={() => { setFocusedRequestId(entry.leaveRequestId); setActiveTable('REQUESTS'); }} tooltip="Ver detalle" label={`Ver solicitud de ${entry.user?.name ?? entry.userId}`} icon={Eye} /></div> },
                 ]}
               />
@@ -445,17 +413,16 @@ export default function LeaveManagement() {
                 rows={balances}
                 rowKey={(balance) => balance.id}
                 pagination={{ mode: 'client' }}
-                minWidth="64rem"
                 empty={<EmptyState title="No hay saldos configurados" description="Registra un ajuste inicial para comenzar el control." action={<Button variant="primary" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button>} />}
                 columns={[
-                  { key: 'c0', header: 'Empleado', width: '1.6fr', render: (balance) => <strong>{balance.user?.name ?? `Usuario #${balance.userId}`}</strong> },
+                  { key: 'c0', header: 'Empleado', render: (balance) => <strong>{balance.user?.name ?? `Usuario #${balance.userId}`}</strong> },
                   { key: 'c1', header: 'Tipo', render: (balance) => <>{balance.leaveType?.name ?? 'Vacaciones'}</> },
                   { key: 'c2', header: 'Periodo', render: (balance) => <>{balance.periodLabel ?? 'Vigente'}</> },
                   { key: 'c3', header: 'Devengado', type: 'number', render: (balance) => <>{formatHrNumber(balance.accrued)} {unitText(balance.unit)}</> },
                   { key: 'c4', header: 'Usado', type: 'number', render: (balance) => <>{formatHrNumber(balance.used)} {unitText(balance.unit)}</> },
                   { key: 'c5', header: 'Pendiente', type: 'number', render: (balance) => <>{formatHrNumber(balance.pending)} {unitText(balance.unit)}</> },
                   { key: 'c6', header: 'Disponible', type: 'number', render: (balance) => <strong>{formatHrNumber(balance.available)} {unitText(balance.unit)}</strong> },
-                  { key: 'c7', header: 'Actualizado', render: (balance) => <>{dateLabel(balance.asOf)}</> },
+                  { key: 'c7', header: 'Actualizado', type: 'date', render: (balance) => <>{dateLabel(balance.asOf)}</> },
                   { key: 'c8', header: 'Acciones', width: '100px', type: 'actions', render: (balance) => <div className={form.rowActions}><IconButton size="sm" onClick={() => { setAdjustment((current) => ({ ...current, userId: String(balance.userId), balanceId: String(balance.id), unit: balance.unit })); setPanel('adjustment'); }} disabled={!online} tooltip="Ajustar" label={`Ajustar saldo de ${balance.user?.name ?? balance.userId}`} icon={SlidersHorizontal} /></div> },
                 ]}
               />
@@ -467,16 +434,15 @@ export default function LeaveManagement() {
                 rows={leaveTypes}
                 rowKey={(type) => type.id}
                 pagination={{ mode: 'client' }}
-                minWidth="64rem"
                 empty={<EmptyState title="No hay tipos de ausencia" description="Crea vacaciones, permisos, subsidios u otras políticas." action={<Button variant="primary" onClick={() => openType()} disabled={!online} icon={Plus}>Crear tipo</Button>} />}
                 columns={[
-                  { key: 'c0', header: 'Nombre', width: '2fr', render: (type) => <span className={form.cellStack}><span className={form.cellTitle}>{type.name}</span><span className={form.cellSub}>{type.description || 'Sin descripción'}</span></span> },
+                  { key: 'c0', header: 'Nombre', render: (type) => <span className={form.cellStack}><span className={form.cellTitle}>{type.name}</span><span className={form.cellSub}>{type.description || 'Sin descripción'}</span></span> },
                   { key: 'c1', header: 'Código', render: (type) => <code>{type.code}</code> },
                   { key: 'c2', header: 'Pago', render: (type) => <>{type.paid ? 'Remunerado' : 'No remunerado'}</> },
                   { key: 'c3', header: 'Control de saldo', render: (type) => <>{type.balanceTracked ? 'Sí, descuenta saldo' : 'No'}</> },
                   { key: 'c4', header: 'Unidad', render: (type) => <>{UNIT_LABEL[type.unit] ?? type.unit}</> },
                   { key: 'c5', header: 'Adjunto', render: (type) => <>{type.requiresAttachment ? 'Obligatorio' : 'Opcional'}</> },
-                  { key: 'c6', header: 'Estado', render: (type) => <><WorkforceStatusPill status={type.active ? 'ACTIVE' : 'INACTIVE'} /></> },
+                  { key: 'c6', header: 'Estado', type: 'status', render: (type) => <><WorkforceStatusPill status={type.active ? 'ACTIVE' : 'INACTIVE'} /></> },
                   { key: 'c7', header: 'Acciones', width: '100px', type: 'actions', render: (type) => <div className={form.rowActions}><IconButton size="sm" onClick={() => openType(type)} disabled={!online} tooltip="Editar" label={`Editar ${type.name}`} icon={Pencil} /></div> },
                 ]}
               />
@@ -488,14 +454,13 @@ export default function LeaveManagement() {
                 rows={ledger}
                 rowKey={(entry) => entry.id}
                 pagination={{ mode: 'client' }}
-                minWidth="64rem"
                 empty={<EmptyState title="No hay movimientos" description="Los devengos, usos y ajustes aparecerán aquí." action={<Button variant="ghost" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button>} />}
                 columns={[
-                  { key: 'c0', header: 'Fecha', render: (entry) => <>{dateLabel(entry.effectiveDate)}</> },
+                  { key: 'c0', header: 'Fecha', type: 'date', render: (entry) => <>{dateLabel(entry.effectiveDate)}</> },
                   { key: 'c1', header: 'Empleado', render: (entry) => <>{users.find((user) => user.id === entry.userId)?.name ?? `Usuario #${entry.userId}`}</> },
                   { key: 'c2', header: 'Movimiento', render: (entry) => <>{MOVEMENT_LABEL[entry.type] ?? entry.type}</> },
                   { key: 'c3', header: 'Cantidad', type: 'number', render: (entry) => <>{formatHrNumber(entry.amount)} {unitText(entry.unit)}</> },
-                  { key: 'c4', header: 'Motivo', width: '2fr', render: (entry) => <span className={form.clamp2} title={entry.reason}>{entry.reason}</span> },
+                  { key: 'c4', header: 'Motivo', render: (entry) => <span className={form.clamp2} title={entry.reason}>{entry.reason}</span> },
                   { key: 'c5', header: 'Referencia', render: (entry) => <>{entry.reference ?? `Movimiento #${entry.id}`}</> },
                   { key: 'c6', header: 'Saldo resultante', type: 'number', render: (entry) => <>{entry.resultingBalance != null ? `${formatHrNumber(entry.resultingBalance)} ${unitText(entry.unit)}` : '—'}</> },
                   { key: 'c7', header: 'Acciones', width: '100px', type: 'actions', render: (entry) => <div className={form.rowActions}><IconButton size="sm" onClick={() => { setAdjustment((current) => ({ ...current, userId: String(entry.userId), balanceId: String(entry.balanceId), unit: entry.unit })); setPanel('adjustment'); }} disabled={!online} tooltip="Ajustar" label={`Ajustar saldo del movimiento ${entry.id}`} icon={SlidersHorizontal} /></div> },

@@ -6,7 +6,7 @@ import { Plus, Pencil, Ticket, Power, Trash2, Search } from 'lucide-react';
 import { useCurrency } from '../hooks/useCurrency';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    NumberInput, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
+    NumberInput, PageContent, PageHeader, SegmentedControl, TableToolbar, Tabs, type Column,
 } from '@/ui';
 import { useAuth } from '../hooks/useAuth';
 import { formatPromotionDateKey, promotionDateInput, promotionDatePayload, type PromotionDateFields } from '../utils/promotionDates';
@@ -85,11 +85,11 @@ const TYPE_OPTIONS: Array<{ value: PromotionType; label: string }> = [
 ];
 
 type StatusFilter = 'all' | 'active' | 'expired' | 'inactive';
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-    { value: 'all', label: 'Todas' },
-    { value: 'active', label: 'Activas' },
-    { value: 'expired', label: 'Expiradas' },
-    { value: 'inactive', label: 'Inactivas' },
+const STATUS_TABS: { id: StatusFilter; label: string }[] = [
+    { id: 'all', label: 'Todas' },
+    { id: 'active', label: 'Activas' },
+    { id: 'expired', label: 'Expiradas' },
+    { id: 'inactive', label: 'Inactivas' },
 ];
 
 export default function Promotions() {
@@ -284,6 +284,7 @@ export default function Promotions() {
         {
             key: 'name',
             header: 'Promoción',
+            type: 'text',
             render: (p) => (
                 <div className={styles.cellStack}>
                     <span className={styles.cellTitle}>{p.name}</span>
@@ -291,11 +292,12 @@ export default function Promotions() {
                 </div>
             )
         },
-        { key: 'type', header: 'Tipo', width: '1fr', accessor: (p) => promotionTypeLabel(p.type) },
+        { key: 'type', header: 'Tipo', type: 'text', accessor: (p) => promotionTypeLabel(p.type) },
         { key: 'value', header: 'Valor', type: 'number', render: (p) => describePromotionValue(p, formatMoney) },
         {
             key: 'scope',
             header: 'Aplica a',
+            type: 'text',
             render: (p) => (
                 <div className={styles.cellStack}>
                     <span>{describePromotionScope(p)}</span>
@@ -306,11 +308,12 @@ export default function Promotions() {
         {
             key: 'validity',
             header: 'Vigencia',
+            type: 'text',
             render: (p) => {
                 const schedule = describePromotionSchedule(p);
                 return (
                     <div className={styles.cellStack}>
-                        <span>{`${formatDate(p.validFrom, p.validFromDate)} — ${formatDate(p.validTo, p.validToDate)}`}</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>{`${formatDate(p.validFrom, p.validFromDate)} — ${formatDate(p.validTo, p.validToDate)}`}</span>
                         {schedule && <span className={styles.muted}>{schedule}</span>}
                     </div>
                 );
@@ -320,6 +323,7 @@ export default function Promotions() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (p) => {
                 const status = getStatus(p);
                 const tone = status === 'active' ? 'success' : status === 'expired' ? 'warning' : 'neutral';
@@ -352,6 +356,16 @@ export default function Promotions() {
                 )}
             />
 
+            <Tabs
+                ariaLabel="Filtrar promociones por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as StatusFilter)}
+                tabs={STATUS_TABS.map((t) => ({
+                    ...t,
+                    badge: t.id === 'all' ? promotions.length : promotions.filter((p) => getStatus(p) === t.id).length,
+                }))}
+            />
+
             <TableToolbar>
                 <Input
                     type="search"
@@ -361,7 +375,6 @@ export default function Promotions() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
-                <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
             </TableToolbar>
 
             <DataTable<PromotionRow>

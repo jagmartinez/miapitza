@@ -6,15 +6,14 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import {
   AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-  LoadErrorState, PageContent, PageHeader, Skeleton, StatCard, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
+  LoadErrorState, PageContent, PageHeader, SegmentedControl, Skeleton, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
   type Column, type Opt, type Tone, formatQty} from '@/ui';
 import {
   Plus, Utensils, Trash2,
   ImagePlus, Pencil, Save,
-  SlidersHorizontal, Package, Eye
+  SlidersHorizontal, Package, Eye, LayoutGrid, Table2
 } from 'lucide-react';
-import ViewToggle from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
+import { useViewMode, type ViewMode } from '../hooks/useViewMode';
 import { formatLocalDateInput } from '../utils/dateInput';
 import type { Branch, MenuItem, MenuBrand, MenuRecipe, Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
 import {
@@ -24,10 +23,10 @@ import {
 } from '../utils/menuRecipe';
 
 type MenuStatusFilter = 'active' | 'inactive' | 'all';
-const STATUS_FILTER_OPTIONS: Opt<MenuStatusFilter>[] = [
-  { value: 'active', label: 'Activos' },
-  { value: 'inactive', label: 'Inactivos' },
-  { value: 'all', label: 'Activos e inactivos' },
+const STATUS_TABS: { id: MenuStatusFilter; label: string }[] = [
+  { id: 'all', label: 'Todos' },
+  { id: 'active', label: 'Activos' },
+  { id: 'inactive', label: 'Inactivos' },
 ];
 const INVENTORY_EFFECT_OPTIONS: Opt<ModifierInventoryEffect>[] = [
   { value: 'ADD', label: 'Agrega consumo (extra)' },
@@ -40,7 +39,7 @@ import ImageViewer from '../components/ImageViewer';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
 import {
-  MENU_CLASS_HINT, MENU_CLASS_LABEL, classifyMenu, summarizeMenu,
+  MENU_CLASS_HINT, MENU_CLASS_LABEL, classifyMenu,
   type MenuClass, type MenuSalesRow,
 } from './menuEngineering';
 import s from './Menu.module.css';
@@ -886,9 +885,6 @@ export default function Menu() {
   };
 
   const visibleItems = filteredItems.filter((item) => selectedClass === 'all' || itemClass(item) === selectedClass);
-  const summary = engineering ? summarizeMenu(engineering) : null;
-  const dogCount = menuItems.filter((item) => itemClass(item) === 'PERRO').length;
-  const noRecipeCount = menuItems.filter((item) => itemClass(item) === 'SIN_RECETA').length;
   const nd = (reason: string) => <span className={s.nd} title={reason}>N/D</span>;
 
   const classOptions: Opt<string>[] = [
@@ -901,7 +897,7 @@ export default function Menu() {
     {
       key: 'name',
       header: 'Plato',
-      width: '2.2fr',
+      type: 'text',
       render: (item) => (
         <div className={s.cellStack}>
           <span className={s.cellTitle}>{item.name}</span>
@@ -912,7 +908,7 @@ export default function Menu() {
     {
       key: 'category',
       header: 'Categoría',
-      width: 'minmax(170px,1.6fr)',
+      type: 'text',
       hideBelow: 'md',
       render: (item) => (
         <div className={s.cellStack}>
@@ -923,14 +919,13 @@ export default function Menu() {
         </div>
       ),
     },
-    { key: 'price', header: `Precio (${symbol})`, type: 'money', width: '1fr', accessor: (item) => Number(item.price) },
+    { key: 'price', header: "Precio", type: 'money', accessor: (item) => Number(item.price) },
     ...(showCosts
       ? ([
           {
             key: 'cost',
-            header: `Costo (${symbol})`,
+            header: "Costo",
             type: 'money',
-            width: '1fr',
             render: (item) => {
               const row = costRow(item);
               if (row) return formatNumber(row.cost);
@@ -941,7 +936,6 @@ export default function Menu() {
             key: 'foodCost',
             header: 'Food cost',
             type: 'percent',
-            width: '1fr',
             render: (item) => {
               const row = costRow(item);
               return row && row.price > 0 ? formatPercent((row.cost / row.price) * 100) : nd('Sin costo conocido');
@@ -949,9 +943,8 @@ export default function Menu() {
           },
           {
             key: 'margin',
-            header: `Margen (${symbol})`,
+            header: "Margen",
             type: 'money',
-            width: '1fr',
             render: (item) => {
               const row = costRow(item);
               return row ? formatNumber(row.margin) : nd('Sin costo conocido');
@@ -962,13 +955,12 @@ export default function Menu() {
             header: 'Vend. 30 d',
             headerTitle: 'Unidades vendidas en los últimos 30 días',
             type: 'number',
-            width: '1fr',
             render: (item) => (engineering ? formatNumber(salesById.get(item.id)?.qtySold ?? 0, 0) : nd('No se pudieron cargar las ventas')),
           },
           {
             key: 'class',
             header: 'Clasificación',
-            width: '1.4fr',
+            type: 'status',
             render: (item) => {
               const cls = itemClass(item);
               if (!cls) return nd('No se pudo cargar la clasificación');
@@ -982,7 +974,7 @@ export default function Menu() {
     {
       key: 'status',
       header: 'Estado',
-      width: '1.2fr',
+      type: 'status',
       render: (item) => (
         <span className={s.rowActions}>
           <Badge tone={item.active ? 'success' : 'neutral'}>{item.active ? 'Activo' : 'Inactivo'}</Badge>
@@ -1013,7 +1005,7 @@ export default function Menu() {
     {
       key: 'name',
       header: 'Ingrediente',
-      width: '2fr',
+      type: 'text',
       render: ({ ing }) => (
         <div className={s.cellStack}>
           <span className={s.cellTitle}>{ing.productName}</span>
@@ -1024,7 +1016,7 @@ export default function Menu() {
     {
       key: 'quantity',
       header: 'Cantidad',
-      width: '1.2fr',
+      width: '140px',
       type: 'qty',
       render: ({ ing, index }) => canMutateMenu ? (
         <Input
@@ -1040,7 +1032,7 @@ export default function Menu() {
     ...(canMutateMenu ? ([{
       key: 'unit',
       header: 'Unidad',
-      width: '1.6fr',
+      width: '200px',
       render: ({ ing, index }: RecipeRow) => {
         const allowedUnits = recipeUnitsByProduct[ing.productId] || [];
         const unitOptions: Opt<string>[] = allowedUnits.map((unit) => ({
@@ -1065,7 +1057,6 @@ export default function Menu() {
       key: 'cost',
       header: 'Costo',
       type: 'money',
-      width: '1fr',
       render: ({ ing }) => (ing.unitConfigured ? formatMoney(calculateIngredientLineCost(ing)) : 'N/D'),
     },
     ...(canMutateMenu ? ([{
@@ -1080,11 +1071,11 @@ export default function Menu() {
   ];
 
   const detailComponentColumns: Column<DetailComponentRow>[] = [
-    { key: 'index', header: '#', width: '48px', type: 'number', decimals: 0, render: ({ index }) => index + 1 },
+    { key: 'index', header: '#', type: 'number', decimals: 0, render: ({ index }) => index + 1 },
     {
       key: 'name',
       header: 'Insumo',
-      width: '2fr',
+      type: 'text',
       render: ({ component }) => (
         <div className={s.cellStack}>
           <span className={s.cellTitle}>{component.product.name}</span>
@@ -1096,14 +1087,12 @@ export default function Menu() {
       key: 'quantity',
       header: 'Cantidad',
       type: 'qty',
-      width: '1fr',
       render: ({ component }) => `${formatQty(component.quantity)} ${component.unit || component.unitOfMeasure?.abbreviation || component.product.unit || ''}`,
     },
     {
       key: 'cost',
       header: 'Costo unitario ref.',
       type: 'money',
-      width: '1.2fr',
       render: ({ component }) => formatMoney(effectiveUnitCost(component.product.currentAverageCost, component.product.cost)),
     },
   ];
@@ -1112,20 +1101,19 @@ export default function Menu() {
     {
       key: 'name',
       header: 'Modificador',
-      width: '1.6fr',
+      type: 'text',
       render: (modifier) => <span className={s.cellTitle}>{modifier.name}</span>,
     },
     {
       key: 'price',
       header: 'Precio extra',
       type: 'money',
-      width: '1fr',
       render: (modifier) => (Number(modifier.price) > 0 ? `+${formatMoney(Number(modifier.price))}` : 'Sin costo'),
     },
     {
       key: 'inventory',
       header: 'Inventario',
-      width: '2.4fr',
+      type: 'text',
       render: (modifier) => {
         if (modifier.productId && modifier.inventoryEffect === 'REMOVE') {
           return (
@@ -1166,7 +1154,7 @@ export default function Menu() {
     {
       key: 'branch',
       header: 'Sucursal',
-      width: '2fr',
+      type: 'text',
       render: ({ branch, existing }) => (
         <div className={s.cellStack}>
           <span className={s.cellTitle}>{branch.name}</span>
@@ -1181,7 +1169,7 @@ export default function Menu() {
       key: 'price',
       header: 'Precio',
       type: 'money',
-      width: '1.4fr',
+      width: '180px',
       render: ({ branch, existing }) => (
         <Input
           type="number"
@@ -1241,9 +1229,16 @@ export default function Menu() {
       description={`${visibleItems.length} platos catalogados en el sistema`}
       actions={
         <>
-          {canSetBranchPrices && (
-            <Button icon={SlidersHorizontal} onClick={openModifierModal}>Modificadores</Button>
-          )}
+          <SegmentedControl<ViewMode>
+            ariaLabel="Vista"
+            iconOnly
+            options={[
+              { value: 'cards', label: 'Tarjetas', icon: LayoutGrid },
+              { value: 'table', label: 'Tabla', icon: Table2 },
+            ]}
+            value={viewMode}
+            onChange={setViewMode}
+          />
           {canMutateMenu && (
             <Button variant="primary" icon={Plus} onClick={() => void handleOpenSidebar()}>Nuevo plato</Button>
           )}
@@ -1258,44 +1253,25 @@ export default function Menu() {
       />
     )}
 
-    {showCosts && summary && (
-      <div className={s.stats}>
-        <StatCard
-          label="Margen ponderado (30 días)"
-          value={summary.weightedMarginPct === null ? 'N/D' : formatPercent(summary.weightedMarginPct)}
-          context={
-            summary.weightedMarginPct === null
-              ? 'Ningún plato vendido tiene costo conocido.'
-              : `Utilidad ${formatMoney(summary.profit)} sobre ventas a precio de lista de ${formatMoney(summary.revenue)} en ${summary.costedCount} platos con costo.${summary.excludedWithoutCost > 0 ? ` ${summary.excludedWithoutCost} platos vendidos sin costo quedan fuera.` : ''}`
-          }
-          tone={summary.excludedWithoutCost > 0 ? 'warning' : 'primary'}
-        />
-        {dogCount > 0 && (
-          <StatCard
-            label="Platos por revisar (Perro)"
-            value={formatNumber(dogCount, 0)}
-            context="Venden poco y dejan poco margen en 30 días: candidatos a rediseñar, subir de precio o retirar."
-            tone="warning"
-            action={{ label: 'Ver platos', onClick: () => setSelectedClass('PERRO') }}
-          />
-        )}
-        {noRecipeCount > 0 && (
-          <StatCard
-            label="Platos sin receta"
-            value={formatNumber(noRecipeCount, 0)}
-            context="No tienen costo ni descuentan inventario al venderse."
-            tone="danger"
-            action={{ label: 'Ver platos', onClick: () => setSelectedClass('SIN_RECETA') }}
-          />
-        )}
-      </div>
-    )}
+    <Tabs
+      ariaLabel="Filtrar platos por estado"
+      active={selectedStatus}
+      onChange={(id) => setSelectedStatus(id as MenuStatusFilter)}
+      tabs={STATUS_TABS.map((t) => ({
+        ...t,
+        badge: t.id === 'all' ? menuItems.length : menuItems.filter((item) => item.active === (t.id === 'active')).length,
+      }))}
+    />
 
-    <TableToolbar actions={<ViewToggle value={viewMode} onChange={setViewMode} />}>
+    <TableToolbar
+      actions={canSetBranchPrices ? (
+        <Button icon={SlidersHorizontal} onClick={openModifierModal}>Modificadores</Button>
+      ) : undefined}
+    >
       <Input
         type="search"
         aria-label="Buscar plato"
-        placeholder="Buscar por nombre o descripción..."
+        placeholder="Buscar plato..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
       />
@@ -1322,13 +1298,6 @@ export default function Menu() {
           isClearable={false}
         />
       )}
-      <AppSelect<MenuStatusFilter>
-        aria-label="Filtrar por estado"
-        options={STATUS_FILTER_OPTIONS}
-        value={selectedStatus}
-        onChange={(v) => setSelectedStatus(v ?? 'active')}
-        isClearable={false}
-      />
       {showCosts && engineering && (
         <AppSelect<string>
           aria-label="Filtrar por clasificación"
@@ -1340,7 +1309,7 @@ export default function Menu() {
       )}
     </TableToolbar>
 
-    {missingRecipeCount > 0 && !(showCosts && summary && noRecipeCount > 0) && (
+    {missingRecipeCount > 0 && (
       <div className={s.noRecipeBar} role="status">
         <Badge tone="warning">
           {missingRecipeCount} {missingRecipeCount === 1 ? 'producto no tiene' : 'productos no tienen'} receta y no descuentan inventario al venderse.

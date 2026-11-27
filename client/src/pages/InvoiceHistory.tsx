@@ -4,7 +4,7 @@ import { notifyError } from '../services/notify';
 import { Ban, CreditCard, Download, FileMinus, RotateCcw } from 'lucide-react';
 import {
     AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input, NumberInput,
-    PageContent, PageHeader, TableToolbar, Textarea, formatMoney, formatNumber,
+    PageContent, PageHeader, TableToolbar, Tabs, Textarea, formatMoney, formatNumber,
     type Column,
 } from '@/ui';
 import { ordersAPI, invoicesAPI, settingsAPI, paymentsAPI, warehousesAPI } from '../services/api';
@@ -421,14 +421,14 @@ export default function InvoiceHistory() {
     };
 
     const paymentColumns: Column<Payment>[] = [
-        { key: 'id', header: 'Pago', width: '0.7fr', render: (payment) => `#${payment.id}` },
-        { key: 'method', header: 'Método', width: '1.2fr', render: (payment) => payment.paymentMethod?.name || 'No disponible' },
-        { key: 'amount', header: `Monto (${symbol})`, width: '1fr', type: 'money', accessor: (payment) => Number(payment.amount) },
-        { key: 'payer', header: 'Pagador', width: '1.2fr', hideBelow: 'md', render: (payment) => payment.payerName || 'No indicado' },
-        { key: 'reference', header: 'Referencia', width: '1.2fr', hideBelow: 'md', render: (payment) => payment.reference || 'Sin referencia' },
-        { key: 'createdAt', header: 'Fecha', width: '1.5fr', render: (payment) => formatPaymentDate(payment.createdAt) },
+        { key: 'id', header: 'Pago', render: (payment) => `#${payment.id}` },
+        { key: 'method', header: 'Método', render: (payment) => payment.paymentMethod?.name || 'No disponible' },
+        { key: 'amount', header: `Monto (${symbol})`, type: 'money', accessor: (payment) => Number(payment.amount) },
+        { key: 'payer', header: 'Pagador', hideBelow: 'md', render: (payment) => payment.payerName || 'No indicado' },
+        { key: 'reference', header: 'Referencia', hideBelow: 'md', render: (payment) => payment.reference || 'Sin referencia' },
+        { key: 'createdAt', header: 'Fecha', type: 'date', render: (payment) => formatPaymentDate(payment.createdAt) },
         {
-            key: 'status', header: 'Estado', width: '1.6fr', type: 'status',
+            key: 'status', header: 'Estado', type: 'status',
             render: (payment) => {
                 const reversed = payment.status === 'REVERSED';
                 return (
@@ -445,7 +445,7 @@ export default function InvoiceHistory() {
             },
         },
         ...(mayReversePayments ? [{
-            key: 'actions', header: '', width: '0.5fr', type: 'actions' as const,
+            key: 'actions', header: '', width: '64px', type: 'actions' as const,
             render: (payment: Payment) => payment.status === 'REVERSED' ? null : (
                 <IconButton
                     size="sm"
@@ -461,20 +461,20 @@ export default function InvoiceHistory() {
     ];
 
     const columns: Column<Invoice>[] = [
-        { key: 'invoiceNumber', header: 'Número', width: '1.2fr' },
+        { key: 'invoiceNumber', header: 'Número' },
         {
-            key: 'date', header: 'Fecha', width: '1.3fr',
+            key: 'date', header: 'Fecha', type: 'date',
             render: (invoice) => {
                 const d = new Date(invoice.date);
                 return `${d.toLocaleDateString('es-NI')} ${d.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}`;
             },
         },
-        { key: 'customer', header: 'Cliente', width: '1.4fr', hideBelow: 'md', render: (invoice) => invoice.customerName || 'Cliente General' },
-        { key: 'waiterName', header: 'Mesero', width: '1.2fr', hideBelow: 'lg' },
-        { key: 'paymentMethod', header: 'Método de Pago', width: '1.1fr', hideBelow: 'lg', render: (invoice) => <Badge>{invoice.paymentMethod}</Badge> },
-        { key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money' },
+        { key: 'customer', header: 'Cliente', hideBelow: 'md', render: (invoice) => invoice.customerName || 'Cliente General' },
+        { key: 'waiterName', header: 'Mesero', hideBelow: 'lg' },
+        { key: 'paymentMethod', header: 'Método de Pago', type: 'status', hideBelow: 'lg', render: (invoice) => <Badge>{invoice.paymentMethod}</Badge> },
+        { key: 'total', header: `Total (${symbol})`, type: 'money' },
         {
-            key: 'fiscalStatus', header: 'Estado fiscal', width: '1.4fr',
+            key: 'fiscalStatus', header: 'Estado fiscal', type: 'status',
             render: (invoice) => (
                 <Badge tone={invoice.fiscalStatus === 'ISSUED' ? 'success' : invoice.fiscalStatus === 'CANCELLED' ? 'neutral' : 'warning'} dot>
                     {fiscalLabel(invoice)}
@@ -538,26 +538,21 @@ export default function InvoiceHistory() {
                     )}
             />
 
+            <Tabs
+                ariaLabel="Período de facturas"
+                active={dateFilter}
+                onChange={(id) => setDateFilter(id)}
+                tabs={DATE_FILTERS.map((f) => ({ id: f.value, label: f.label }))}
+            />
+
             <TableToolbar>
-                <Field label="Período" htmlFor="invoice-period">
-                    <AppSelect<string>
-                        inputId="invoice-period"
-                        isClearable={false}
-                        options={DATE_FILTERS}
-                        value={dateFilter}
-                        onChange={(v) => setDateFilter(v ?? 'month')}
-                    />
-                </Field>
-                <Field label="Buscar" htmlFor="invoice-search">
-                    <Input
-                        id="invoice-search"
-                        type="search"
-                        aria-label="Buscar facturas por número, cliente o NIT"
-                        placeholder="Buscar por número, cliente o NIT..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </Field>
+                <Input
+                    type="search"
+                    aria-label="Buscar facturas por número, cliente o NIT"
+                    placeholder="Buscar por número, cliente o NIT..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
             </TableToolbar>
 
             <DataTable

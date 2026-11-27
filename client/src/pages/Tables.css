@@ -11,11 +11,6 @@
 /* La lista y el mosaico usan el ancho de contenido; solo el plano ocupa todo el alto disponible. */
 .tables-page:not(.tables-page--map) { min-width: 0; }
 
-/* El plano editable ocupa el ancho del área de contenido (el riel de navegación queda visible). */
-.tables-page--map .table-map-shell {
-    flex: 1;
-    min-height: 32rem;
-}
 
 .tables-loading {
     display: flex;
@@ -57,11 +52,6 @@ body:has(.table-pos-workspace) {
 
 .tables-ops > .ui-pageheader,
 .tables-ops > .ui-toolbar { margin-bottom: 0; }
-
-/* La zona puede tener muchos salones: la barra se desplaza dentro de su espacio. */
-.ui-toolbar__filters > .tables-zone-filter { flex: 0 1 auto; max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
-
-.tables-ops .salon-cards { margin-bottom: 0; }
 
 .tables-ops__body {
     display: flex;
@@ -198,16 +188,34 @@ body:has(.table-pos-workspace) {
 .tables-tile__amount { margin-left: auto; font-weight: 600; color: var(--ui-text); white-space: nowrap; }
 .tables-tile__foot > :first-child { white-space: nowrap; }
 
-/* Vista Plano: el mapa ocupa toda la altura disponible bajo la barra superior; el detalle solo aparece con una mesa elegida. */
-.tables-page--map { max-width: none; }
-.tables-page--map .tables-ops { height: calc(100dvh - 56px - 2 * var(--ui-space-6)); min-height: 32rem; }
-.tables-page--map .tables-ops__body { flex: 1; min-height: 0; flex-wrap: nowrap; align-items: stretch; }
-.tables-page--map .tables-ops__floor { min-height: 0; }
-.tables-page--map .tables-ops__floor .table-map-shell { flex: 1; min-height: 0; }
-.tables-page--map .tables-ops__detail { flex: 0 0 22rem; position: static; max-height: none; }
+/* Vista Plano a pantalla completa: ocupa todo el área de contenido (bajo la barra superior, junto al riel),
+   sin encabezado de página ni marco; la barra del plano va arriba y la leyenda abajo. */
+.ui-shell__inner:has(.tables-page--map) { max-width: none; }
+.tables-page--map {
+    display: flex;
+    flex-direction: column;
+    max-width: none;
+    height: calc(100dvh - 56px);
+    margin: calc(-1 * var(--ui-space-6)) calc(-1 * (var(--ui-space-6) + 15px));
+    overflow: hidden;
+}
+.tables-page--map .tables-ops { flex: 1; min-height: 0; gap: 0; }
+.tables-page--map .tables-ops__body { flex: 1; min-height: 0; flex-wrap: nowrap; align-items: stretch; gap: 0; }
+.tables-page--map .tables-ops__floor { min-height: 0; gap: 0; }
+.tables-page--map .table-map-shell { flex: 1; min-height: 0; }
+.tables-page--map .tables-ops__detail { flex: 0 0 22rem; position: static; max-height: none; border-left: 1px solid var(--ui-border); }
 .tables-page--map .tables-ops__detail.is-idle { display: none; }
+
+.tables-plan-heading { display: flex; align-items: center; gap: var(--ui-space-3); min-width: 0; }
+.tables-plan-heading__title { margin: 0; font-size: var(--ui-text-lg); font-weight: 700; color: var(--ui-text); white-space: nowrap; }
+
 @media (max-width: 1023px) {
-    .tables-page--map .tables-ops { height: auto; }
-    .tables-page--map .tables-ops__body { flex-wrap: wrap; }
-    .tables-page--map .tables-ops__detail { flex: 1 1 100%; }
+    /* Sin mesa elegida el plano llena la pantalla; el detalle aparece debajo al elegir una. */
+    .tables-page--map { height: auto; min-height: calc(100dvh - 56px); overflow: visible; }
+    .tables-page--map .tables-ops__body { flex-direction: column; }
+    .tables-page--map .tables-ops__floor { flex: none; height: calc(100dvh - 56px); }
+    .tables-page--map .tables-ops__detail { flex: 1 1 auto; border-left: 0; border-top: 1px solid var(--ui-border); }
+}
+@media (max-width: 767px) {
+    .tables-page--map { margin: calc(-1 * var(--ui-space-4)); }
 }

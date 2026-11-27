@@ -5,7 +5,7 @@ import {
     Download,
     Trash2, AlertCircle, DollarSign, ConciergeBell,
     ChevronLeft, ChevronRight, Phone,
-    Eye, Undo2
+    Eye, Undo2, LayoutGrid, Table2, CalendarDays
 } from 'lucide-react';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton,
@@ -79,14 +79,13 @@ interface CateringInventoryPreviewLine {
 }
 
 const FINISH_PREVIEW_COLUMNS: Column<CateringInventoryPreviewLine>[] = [
-    { key: 'productName', header: 'Ingrediente', width: '1.6fr' },
-    { key: 'warehouseName', header: 'Bodega', width: '1.4fr', render: (line) => `${line.warehouseName}${line.routed ? ' (regla)' : ''}` },
-    { key: 'required', header: 'Requerido', type: 'qty', width: '1fr', render: (line) => `${formatQty(line.required)} ${line.unit ?? ''}` },
+    { key: 'productName', header: 'Ingrediente', type: 'text' },
+    { key: 'warehouseName', header: 'Bodega', type: 'text', render: (line) => `${line.warehouseName}${line.routed ? ' (regla)' : ''}` },
+    { key: 'required', header: 'Requerido', type: 'qty', render: (line) => `${formatQty(line.required)} ${line.unit ?? ''}` },
     {
         key: 'available',
         header: 'Disponible',
         type: 'qty',
-        width: '1.4fr',
         render: (line) => `${formatQty(line.available)} ${line.unit ?? ''}${line.shortage > 0 ? ` (faltan ${formatQty(line.shortage)})` : ''}`,
     },
 ];
@@ -719,7 +718,7 @@ export default function Catering() {
         {
             key: 'event',
             header: 'Evento',
-            width: '2fr',
+            type: 'text',
             render: (event) => (
                 <div className="catering-cell-stack">
                     <span className="catering-cell-title">{event.title}</span>
@@ -730,21 +729,20 @@ export default function Catering() {
                 </div>
             ),
         },
-        { key: 'date', header: 'Fecha y hora', width: '1.4fr', render: (event) => formatEventDateTime(event.date) },
-        { key: 'people', header: 'Personas', type: 'number', decimals: 0, width: '0.8fr', accessor: (event) => event.peopleCount },
-        { key: 'location', header: 'Ubicación', width: '1.4fr', render: (event) => event.location || 'Sin ubicación' },
-        { key: 'total', header: 'Total', type: 'money', width: '1fr', render: (event) => formatMoney(Number(event.totalAmount || 0)) },
+        { key: 'date', header: 'Fecha y hora', type: 'date', render: (event) => formatEventDateTime(event.date) },
+        { key: 'people', header: 'Personas', type: 'number', decimals: 0, accessor: (event) => event.peopleCount },
+        { key: 'location', header: 'Ubicación', type: 'text', render: (event) => event.location || 'Sin ubicación' },
+        { key: 'total', header: 'Total', type: 'money', render: (event) => formatMoney(Number(event.totalAmount || 0)) },
         {
             key: 'status',
             header: 'Estado',
-            width: '1fr',
+            type: 'status',
             render: (event) => <Badge tone={STATUS_TONE[event.status] ?? 'neutral'} dot>{getStatusText(event.status)}</Badge>,
         },
         {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '172px',
             render: (event) => (
                 <>
                     <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver evento ${event.title}`} onClick={() => void handleOpenSidebar(event, 'info')} />
@@ -792,13 +790,13 @@ export default function Catering() {
         onRemove: (index: number) => void,
         removeLabel: string,
     ): Column<ItemRow<T>>[] => [
-        { key: 'name', header: nameHeader, width: '2fr', render: ({ item }) => <span className="catering-cell-title">{nameOf(item)}</span> },
-        { key: 'price', header: 'Precio', type: 'money', width: '1fr', render: ({ item }) => formatMoney(Number(item.unitPrice)) },
+        { key: 'name', header: nameHeader, type: 'text', render: ({ item }) => <span className="catering-cell-title">{nameOf(item)}</span> },
+        { key: 'price', header: 'Precio', type: 'money', render: ({ item }) => formatMoney(Number(item.unitPrice)) },
         {
             key: 'quantity',
             header: 'Cant.',
             type: 'number',
-            width: '1fr',
+            width: '120px',
             render: ({ item, index }) => (
                 <NumberInput
                     aria-label={`Cantidad de ${nameOf(item)}`}
@@ -809,7 +807,7 @@ export default function Catering() {
                 />
             ),
         },
-        { key: 'subtotal', header: 'Subtotal', type: 'money', width: '1fr', render: ({ item }) => formatMoney(Number(item.quantity * item.unitPrice)) },
+        { key: 'subtotal', header: 'Subtotal', type: 'money', render: ({ item }) => formatMoney(Number(item.quantity * item.unitPrice)) },
         {
             key: 'actions',
             header: 'Acciones',
@@ -824,13 +822,13 @@ export default function Catering() {
     const menuColumns = itemColumns<CateringMenuEntry>('Plato', (item) => item.menuItem?.name || 'Plato', setMenuQuantity, removeMenuItem, 'Quitar plato');
 
     const paymentColumns: Column<CateringPaymentEntry>[] = [
-        { key: 'date', header: 'Fecha', width: '1fr', render: (p) => (p.date ? new Date(p.date).toLocaleDateString('es-NI') : '-') },
-        { key: 'method', header: 'Método', width: '1.2fr', render: (p) => p.paymentMethod?.name ?? '' },
-        { key: 'amount', header: 'Monto', type: 'money', width: '1fr', render: (p) => formatMoney(Number(p.amount)) },
+        { key: 'date', header: 'Fecha', type: 'date', render: (p) => (p.date ? new Date(p.date).toLocaleDateString('es-NI') : '-') },
+        { key: 'method', header: 'Método', type: 'text', render: (p) => p.paymentMethod?.name ?? '' },
+        { key: 'amount', header: 'Monto', type: 'money', render: (p) => formatMoney(Number(p.amount)) },
         {
             key: 'status',
             header: 'Estado',
-            width: '1.6fr',
+            type: 'text',
             render: (p) => (p.status === 'REVERSED'
                 ? <Badge tone="neutral">{`Revertido${p.reversalReason ? `: ${p.reversalReason}` : ''}`}</Badge>
                 : <Badge tone="success">Activo</Badge>),
@@ -1152,11 +1150,26 @@ export default function Catering() {
             <PageHeader
                 title="Servicios de Catering"
                 description="Cotizaciones, reservas, pagos y contratos de eventos"
-                actions={canManageCatering ? (
-                    <Button variant="primary" icon={Plus} onClick={() => void handleOpenSidebar()}>
-                        Nuevo evento
-                    </Button>
-                ) : undefined}
+                actions={(
+                    <>
+                        <SegmentedControl<CateringViewMode>
+                            ariaLabel="Vista"
+                            iconOnly
+                            options={[
+                                { value: 'grid', label: 'Tarjetas', icon: LayoutGrid },
+                                { value: 'table', label: 'Tabla', icon: Table2 },
+                                { value: 'calendar', label: 'Calendario', icon: CalendarDays },
+                            ]}
+                            value={viewMode}
+                            onChange={setViewMode}
+                        />
+                        {canManageCatering && (
+                            <Button variant="primary" icon={Plus} onClick={() => void handleOpenSidebar()}>
+                                Nuevo evento
+                            </Button>
+                        )}
+                    </>
+                )}
             />
 
             {viewMode !== 'calendar' && (
@@ -1179,21 +1192,8 @@ export default function Catering() {
                 />
             )}
 
-            <TableToolbar
-                actions={(
-                    <SegmentedControl<CateringViewMode>
-                        ariaLabel="Vista"
-                        options={[
-                            { value: 'grid', label: 'Tarjetas' },
-                            { value: 'table', label: 'Tabla' },
-                            { value: 'calendar', label: 'Calendario' },
-                        ]}
-                        value={viewMode}
-                        onChange={setViewMode}
-                    />
-                )}
-            >
-                {viewMode !== 'calendar' && (
+            {viewMode !== 'calendar' && (
+                <TableToolbar>
                     <Input
                         type="search"
                         aria-label="Buscar evento o cliente"
@@ -1201,8 +1201,8 @@ export default function Catering() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
-                )}
-            </TableToolbar>
+                </TableToolbar>
+            )}
 
             {contractPdfBusyId !== null && (
                 <p className="catering-status" role="status" aria-live="polite">Preparando contrato PDF…</p>

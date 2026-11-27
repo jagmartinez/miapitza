@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Button, FullScreenModal, LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar } from '@/ui';
+import { Button, FullScreenModal, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs } from '@/ui';
 import {
     ShiftTemplateCatalog,
     ShiftTemplateForm,
@@ -179,10 +179,10 @@ export default function ShiftTemplates() {
 
     const activeCount = templates.filter((template) => template.active !== false).length;
     const inactiveCount = templates.length - activeCount;
-    const statusOptions: { value: StatusFilter; label: string }[] = [
-        { value: 'ALL', label: `Todas (${templates.length})` },
-        { value: 'ACTIVE', label: `Activas (${activeCount})` },
-        { value: 'INACTIVE', label: `Inactivas (${inactiveCount})` },
+    const statusTabs: { id: StatusFilter; label: string; badge?: number }[] = [
+        { id: 'ALL', label: 'Todas', badge: loading ? undefined : templates.length },
+        { id: 'ACTIVE', label: 'Activas', badge: loading ? undefined : activeCount },
+        { id: 'INACTIVE', label: 'Inactivas', badge: loading ? undefined : inactiveCount },
     ];
 
     return (
@@ -194,10 +194,16 @@ export default function ShiftTemplates() {
                 actions={(
                     <>
                         <Button variant="ghost" icon={ArrowLeft} onClick={() => navigate('/rh/horarios')} disabled={busy}>Volver a horarios</Button>
-                        <Button variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading || busy}>Actualizar</Button>
                         {canManage && <Button variant="primary" icon={Plus} onClick={openCreate} disabled={loading || busy}>Nueva jornada</Button>}
                     </>
                 )}
+            />
+
+            <Tabs
+                ariaLabel="Filtrar jornadas por estado"
+                active={statusFilter}
+                onChange={(key) => { if (!busy) setStatusFilter(key as StatusFilter); }}
+                tabs={statusTabs}
             />
 
             {!loading && loadError ? (
@@ -212,14 +218,7 @@ export default function ShiftTemplates() {
                     onEdit={openEdit}
                     onToggleActive={(template) => void toggleActive(template)}
                     toolbar={(
-                        <TableToolbar>
-                            <SegmentedControl<StatusFilter>
-                                ariaLabel="Filtrar jornadas por estado"
-                                options={statusOptions}
-                                value={statusFilter}
-                                onChange={(key) => { if (!busy) setStatusFilter(key); }}
-                            />
-                        </TableToolbar>
+                        <TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading || busy}>Actualizar</Button>} />
                     )}
                 />
             )}

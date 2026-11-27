@@ -9,6 +9,7 @@ import {
     formatNumber, toneFor, type Column, type Tone,
 } from '@/ui';
 import { RESERVATION_STATUS } from './dashboard/reservationStatus';
+import { SalonStatCardsLoader } from './dashboard/SalonStatCards';
 import './Dashboard.css';
 
 interface ApiResponse {
@@ -189,22 +190,22 @@ export default function Dashboard() {
 
     // ── Columnas reutilizables ──
     const orderColumns: Column<RecentOrder>[] = useMemo(() => [
-        { key: 'id', header: 'Orden', width: '0.8fr' },
-        { key: 'table', header: 'Mesa', width: '1fr' },
-        { key: 'total', header: 'Total', width: '1fr', align: 'right', render: (row) => money(row.total) },
+        { key: 'id', header: 'Orden' },
+        { key: 'table', header: 'Mesa' },
+        { key: 'total', header: 'Total', type: 'money', render: (row) => money(row.total) },
         {
-            key: 'status', header: 'Estado', width: '1.2fr',
+            key: 'status', header: 'Estado', type: 'status',
             render: (row) => <Badge tone={toneFor(row.status.toUpperCase())} dot>{orderStatusLabel(row.status)}</Badge>,
         },
     ], [money]);
 
     const kitchenColumns: Column<KitchenQueueItem>[] = useMemo(() => [
-        { key: 'id', header: 'Orden', width: '0.8fr' },
-        { key: 'table', header: 'Mesa', width: '1fr', render: (row) => `Mesa ${row.table}` },
-        { key: 'items', header: 'Platos', width: '0.8fr', type: 'number', decimals: 0 },
-        { key: 'elapsed', header: 'Min', headerTitle: 'Minutos en cola', width: '0.8fr', type: 'number', decimals: 0 },
+        { key: 'id', header: 'Orden' },
+        { key: 'table', header: 'Mesa', render: (row) => `Mesa ${row.table}` },
+        { key: 'items', header: 'Platos', type: 'number', decimals: 0 },
+        { key: 'elapsed', header: 'Min', headerTitle: 'Minutos en cola', type: 'number', decimals: 0 },
         {
-            key: 'status', header: 'Estado', width: '1.2fr',
+            key: 'status', header: 'Estado', type: 'status',
             render: (row) => {
                 const meta = KITCHEN_STATUS[row.status] ?? { label: 'Lista', tone: 'success' as Tone };
                 return <Badge tone={meta.tone} dot>{meta.label}</Badge>;
@@ -213,39 +214,39 @@ export default function Dashboard() {
     ], []);
 
     const dishColumns: Column<TopDishItem>[] = [
-        { key: 'name', header: 'Plato', width: '1.6fr' },
-        { key: 'totalQuantity', header: 'Pedidos', width: '1fr', type: 'number', decimals: 0 },
+        { key: 'name', header: 'Plato' },
+        { key: 'totalQuantity', header: 'Pedidos', type: 'number', decimals: 0 },
     ];
 
     const productColumns: Column<TopProduct>[] = useMemo(() => [
-        { key: 'name', header: 'Producto', width: '1.6fr' },
-        { key: 'totalQuantity', header: 'Vendidos', width: '1fr', type: 'number', decimals: 0 },
-        { key: 'totalRevenue', header: 'Ingreso', width: '1fr', align: 'right', render: (row) => money(row.totalRevenue) },
+        { key: 'name', header: 'Producto' },
+        { key: 'totalQuantity', header: 'Vendidos', type: 'number', decimals: 0 },
+        { key: 'totalRevenue', header: 'Ingreso', type: 'money', render: (row) => money(row.totalRevenue) },
     ], [money]);
 
     const lowStockColumns: Column<LowStockProduct>[] = [
-        { key: 'name', header: 'Producto', width: '1.6fr' },
+        { key: 'name', header: 'Producto' },
         {
-            key: 'current', header: 'Existencia', width: '1.2fr', align: 'right',
+            key: 'current', header: 'Existencia', type: 'qty', align: 'right',
             render: (row) => (
                 <span className={row.current === 0 ? 'dashboard-stock dashboard-stock--out' : 'dashboard-stock dashboard-stock--low'}>
                     {formatNumber(row.current)} {row.unit}
                 </span>
             ),
         },
-        { key: 'min', header: 'Mínimo', width: '1fr', type: 'number' },
+        { key: 'min', header: 'Mínimo', type: 'number' },
     ];
 
     const consumedColumns: Column<ConsumedProduct>[] = [
-        { key: 'name', header: 'Producto', width: '1.6fr' },
-        { key: 'consumed', header: 'Consumo', width: '1.2fr', align: 'right', render: (row) => `${formatNumber(row.consumed)} ${row.unit}` },
+        { key: 'name', header: 'Producto' },
+        { key: 'consumed', header: 'Consumo', type: 'qty', align: 'right', render: (row) => `${formatNumber(row.consumed)} ${row.unit}` },
     ];
 
     const movementColumns: Column<MovementItem>[] = [
-        { key: 'product', header: 'Producto', width: '1.6fr' },
-        { key: 'reason', header: 'Motivo', width: '1.2fr', render: (row) => row.reason || row.type },
+        { key: 'product', header: 'Producto' },
+        { key: 'reason', header: 'Motivo', render: (row) => row.reason || row.type },
         {
-            key: 'quantity', header: 'Cantidad', width: '1.2fr', align: 'right',
+            key: 'quantity', header: 'Cantidad', type: 'qty', align: 'right',
             render: (row) => (
                 <span className={row.type === 'IN' ? 'dashboard-stock dashboard-stock--in' : 'dashboard-stock dashboard-stock--out'}>
                     {row.type === 'IN' ? '+' : '-'}{formatNumber(row.quantity)} {row.unit}
@@ -255,15 +256,15 @@ export default function Dashboard() {
     ];
 
     const paymentColumns: Column<PaymentBreakdownItem>[] = useMemo(() => [
-        { key: 'method', header: 'Método', width: '1.6fr' },
-        { key: 'total', header: 'Total', width: '1fr', align: 'right', render: (row) => money(row.total) },
+        { key: 'method', header: 'Método' },
+        { key: 'total', header: 'Total', type: 'money', render: (row) => money(row.total) },
     ], [money]);
 
     const reservationColumns: Column<ReservationSummary>[] = [
-        { key: 'when', header: 'Cuándo', width: '1fr', render: (row) => [row.day, row.time].filter(Boolean).join(' ') },
-        { key: 'name', header: 'Cliente', width: '1.6fr' },
-        { key: 'pax', header: 'Personas', width: '0.8fr', type: 'number', decimals: 0 },
-        { key: 'status', header: 'Estado', width: '1fr', render: (row) => <Badge tone={toneFor(row.status.toUpperCase())} dot>{RESERVATION_STATUS[row.status] ?? row.status}</Badge> },
+        { key: 'when', header: 'Cuándo', type: 'date', render: (row) => [row.day, row.time].filter(Boolean).join(' ') },
+        { key: 'name', header: 'Cliente' },
+        { key: 'pax', header: 'Personas', type: 'number', decimals: 0 },
+        { key: 'status', header: 'Estado', type: 'status', render: (row) => <Badge tone={toneFor(row.status.toUpperCase())} dot>{RESERVATION_STATUS[row.status] ?? row.status}</Badge> },
     ];
 
     if (loading) {
@@ -488,6 +489,7 @@ export default function Dashboard() {
                         action={{ label: 'Ir a Caja', to: '/cash-registers' }}
                     />
                 )}
+                <SalonStatCardsLoader />
             </>
         );
         body = (

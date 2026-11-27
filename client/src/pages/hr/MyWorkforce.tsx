@@ -10,7 +10,7 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
-import { Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs, Textarea } from '@/ui';
+import { Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, Textarea } from '@/ui';
 import form from '../../components/hr/hrForm.module.css';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
@@ -26,7 +26,6 @@ import {
   getWorkforceErrorMessage,
   workforceClient,
 } from '../../components/hr/workforceClient';
-import { selectVacationBalance } from '../../components/hr/vacationBalance';
 import { useAppToast } from '../../context/ToastContext';
 import type {
   HrAttendanceCorrection,
@@ -241,16 +240,6 @@ export default function MyWorkforce() {
     setCancelReason('');
   };
 
-  const workflowItems = [
-    ...workforce.corrections,
-    ...workforce.overtimeRequests,
-    ...workforce.leaveRequests,
-  ];
-  const pendingCount = workflowItems.filter((item) => item.status === 'DRAFT' || item.status === 'PENDING').length;
-  const approvedCount = workflowItems.filter((item) => item.status === 'APPROVED' || item.status === 'APPLIED').length;
-  const rejectedCount = workflowItems.filter((item) => item.status === 'REJECTED' || item.status === 'CANCELLED').length;
-
-  const vacation = selectVacationBalance(workforce.vacationBalances);
   const ready = !loading && !error;
   const serverTimeLabel = workforce.serverTime
     ? new Intl.DateTimeFormat('es-NI', {
@@ -294,45 +283,16 @@ export default function MyWorkforce() {
         </div>
       )}
 
-      {ready && (
-        <section className={form.kpis} aria-label="Resumen de mi gestión laboral">
-          <StatCard
-            tone={vacation ? 'primary' : 'neutral'}
-            label="Saldo de vacaciones"
-            value={vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()}` : 'Sin saldo'}
-            context={vacation ? `Al ${vacation.asOf}` : 'Disponibilidad emitida por el servidor'}
-          />
-          <StatCard
-            tone={pendingCount > 0 ? 'warning' : 'neutral'}
-            label="En espera"
-            value={String(pendingCount)}
-            context={`Borradores o pendientes · Aprobadas ${approvedCount} · Rechazadas o canceladas ${rejectedCount}`}
-            action={pendingCount > 0 ? { label: 'Ver solicitudes', onClick: () => setActiveWorkspace('REQUESTS') } : undefined}
-          />
-          {workforce.incidents.length > 0 && (
-            <StatCard
-              tone="danger"
-              label="Incidencias"
-              value={String(workforce.incidents.length)}
-              context="En el rango consultado; revisa el motivo antes de pedir corrección."
-              action={{ label: 'Ver asistencia', onClick: () => setActiveWorkspace('ATTENDANCE') }}
-            />
-          )}
-        </section>
-      )}
-
-      {ready && (
-        <Tabs
-          ariaLabel="Bandejas de mi gestión laboral"
-          active={activeWorkspace}
-          onChange={(id) => setActiveWorkspace(id as WorkforceWorkspace)}
-          tabs={[
-            { id: 'ATTENDANCE', label: 'Asistencia', badge: summaries.length + workforce.incidents.length },
-            { id: 'REQUESTS', label: 'Solicitudes', badge: workforce.overtimeRequests.length + workforce.leaveRequests.length },
-            { id: 'BALANCES', label: 'Vacaciones', badge: workforce.vacationBalances.length },
-          ]}
-        />
-      )}
+      <Tabs
+        ariaLabel="Bandejas de mi gestión laboral"
+        active={activeWorkspace}
+        onChange={(id) => setActiveWorkspace(id as WorkforceWorkspace)}
+        tabs={[
+          { id: 'ATTENDANCE', label: 'Asistencia', badge: ready ? summaries.length + workforce.incidents.length : undefined },
+          { id: 'REQUESTS', label: 'Solicitudes', badge: ready ? workforce.overtimeRequests.length + workforce.leaveRequests.length : undefined },
+          { id: 'BALANCES', label: 'Vacaciones', badge: ready ? workforce.vacationBalances.length : undefined },
+        ]}
+      />
 
       <TableToolbar
         actions={(
@@ -359,7 +319,6 @@ export default function MyWorkforce() {
                   rows={summaries}
                   rowKey={(summary) => summary.id}
                   pagination={{ mode: 'client' }}
-                  minWidth="64rem"
                   toolbar={(
                     <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>Horas extra</Button>}>
                       <span className={form.help}>Minutos calculados por el servidor, no por este dispositivo.</span>
@@ -367,13 +326,13 @@ export default function MyWorkforce() {
                   )}
                   empty={<EmptyState icon={Clock3} title="Sin resúmenes en el rango." />}
                   columns={[
-                    { key: 'date', header: 'Fecha', render: (summary) => <span className={form.cellStack}><span className={form.cellTitle}>{summary.date}</span><span className={form.cellSub}>{summary.branch?.name ?? 'Sin sucursal'}</span></span> },
+                    { key: 'date', header: 'Fecha', type: 'date', render: (summary) => <span className={form.cellStack}><span className={form.cellTitle}>{summary.date}</span><span className={form.cellSub}>{summary.branch?.name ?? 'Sin sucursal'}</span></span> },
                     { key: 'ordinary', header: 'Ordinarios', type: 'number', render: (summary) => `${summary.ordinaryMinutes} min` },
                     { key: 'break', header: 'Descanso', type: 'number', render: (summary) => `${summary.breakMinutes} min` },
                     { key: 'late', header: 'Tardanza', type: 'number', render: (summary) => <span className={summary.lateMinutes > 0 ? form.cellWarning : undefined}>{summary.lateMinutes} min</span> },
                     { key: 'early', header: 'Salida temprana', type: 'number', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? form.cellWarning : undefined}>{summary.earlyDepartureMinutes} min</span> },
                     { key: 'extra', header: 'Extra (aprobado / candidato)', type: 'number', render: (summary) => `${summary.approvedOvertimeMinutes ?? 0} / ${summary.candidateOvertimeMinutes} min` },
-                    { key: 'status', header: 'Periodo', render: (summary) => (summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : <span className={form.cellSub}>Revisión {summary.sourceRevision ?? '—'}</span>) },
+                    { key: 'status', header: 'Periodo', type: 'status', render: (summary) => (summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : <span className={form.cellSub}>Revisión {summary.sourceRevision ?? '—'}</span>) },
                     {
                       key: 'actions', header: 'Acciones', type: 'actions', width: '100px', render: (summary) => (
                         <div className={form.rowActions}>

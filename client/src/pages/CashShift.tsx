@@ -7,7 +7,7 @@ import { cashShiftsAPI, cashArqueoAPI, suppliersAPI } from '../services/api';
 import { buildCashShiftReportHtml, getMovementAuditLabel, getMovementCategoryLabel, getMovementPaymentOrigin } from './cashShiftReport';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, Input,
-    LoadErrorState, PageContent, PageHeader, SegmentedControl, StatusBadge, TableToolbar, Textarea,
+    LoadErrorState, PageContent, PageHeader, SegmentedControl, StatusBadge, TableToolbar, Tabs, Textarea,
     formatMoney as formatMoneyUi, formatNumber,
     type Column, type Opt,
 } from '@/ui';
@@ -443,14 +443,14 @@ export default function CashShiftPage() {
     );
 
     const movementColumns: Column<CashMovement>[] = [
-        { key: 'time', header: 'Hora', width: '1fr', render: m => new Date(m.createdAt).toLocaleTimeString('es-NI') },
+        { key: 'time', header: 'Hora', type: 'time', render: m => new Date(m.createdAt).toLocaleTimeString('es-NI') },
         {
-            key: 'type', header: 'Tipo', width: '1fr',
+            key: 'type', header: 'Tipo', type: 'status',
             render: m => <Badge tone={m.type === 'IN' ? 'success' : 'danger'}>{m.type === 'IN' ? 'Ingreso' : 'Egreso'}</Badge>
         },
-        { key: 'document', header: 'Documento', width: '1.2fr', render: m => m.documentNumber || '-' },
+        { key: 'document', header: 'Documento', render: m => m.documentNumber || '-' },
         {
-            key: 'origin', header: 'Forma de pago / origen', width: '1.6fr',
+            key: 'origin', header: 'Forma de pago / origen',
             render: m => (
                 <span className={styles.originCell}>
                     <span>{getMovementPaymentOrigin(m)}</span>
@@ -458,10 +458,10 @@ export default function CashShiftPage() {
                 </span>
             )
         },
-        { key: 'description', header: 'Descripción', width: '2fr', render: m => m.description || '-' },
-        { key: 'supplier', header: 'Proveedor', width: '1.5fr', render: m => m.supplier?.name || '-' },
+        { key: 'description', header: 'Descripción', render: m => m.description || '-' },
+        { key: 'supplier', header: 'Proveedor', render: m => m.supplier?.name || '-' },
         {
-            key: 'amount', header: 'Monto', width: '1.2fr', type: 'money',
+            key: 'amount', header: 'Monto', type: 'money',
             render: m => (
                 <span className={m.type === 'IN' ? styles.amountIn : styles.amountOut}>
                     {m.type === 'IN' ? '+' : '-'}{formatMoney(Math.abs(Number(m.amount)))}
@@ -816,26 +816,24 @@ export default function CashShiftPage() {
                     <h2 id="cash-moves-title" className={styles.cardTitle}>Movimientos del turno</h2>
                     <span className={styles.muted}>Ventas, ingresos y egresos registrados en la caja</span>
                 </div>
+                <Tabs
+                    ariaLabel="Tipo de movimiento"
+                    active={filterType}
+                    onChange={(id) => setFilterType(id as 'all' | 'IN' | 'OUT')}
+                    tabs={[
+                        { id: 'all', label: 'Todos', badge: movementCount },
+                        { id: 'IN', label: 'Ingresos', badge: inCount },
+                        { id: 'OUT', label: 'Egresos', badge: outCount },
+                    ]}
+                />
                 <TableToolbar>
-                    <SegmentedControl<'all' | 'IN' | 'OUT'>
-                        ariaLabel="Tipo de movimiento"
-                        value={filterType}
-                        onChange={setFilterType}
-                        options={[
-                            { value: 'all', label: `Todos (${movementCount})` },
-                            { value: 'IN', label: `Ingresos (${inCount})` },
-                            { value: 'OUT', label: `Egresos (${outCount})` }
-                        ]}
+                    <Input
+                        type="search"
+                        aria-label="Buscar"
+                        placeholder="Buscar..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                     />
-                    <Field label="Buscar" htmlFor="movement-search">
-                        <Input
-                            id="movement-search"
-                            type="search"
-                            placeholder="Buscar..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </Field>
                 </TableToolbar>
                 <DataTable
                     ariaLabel="Movimientos del turno"

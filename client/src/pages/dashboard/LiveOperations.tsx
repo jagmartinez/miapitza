@@ -3,6 +3,8 @@ import { reportsAPI, ordersAPI, productsAPI } from '../../services/api';
 import { Button, DataTable, EmptyState, LoadErrorState, Skeleton, StatCard, formatMoney, formatNumber, formatPercent, type Column } from '@/ui';
 import { useSection } from './useSection';
 import { RESERVATION_STATUS } from './reservationStatus';
+import { SalonStatCards, useMinuteClock } from './SalonStatCards';
+import type { Order } from '../../types';
 
 interface LiveStats {
     todaySales: number;
@@ -27,6 +29,8 @@ export function LiveOperations() {
     const stats = useSection<LiveStats>(async () => (await reportsAPI.getDashboardStats()).data.data, [], 'No se pudieron cargar los indicadores de hoy.');
     const kitchen = useSection<KitchenOrder[]>(async () => asArray<KitchenOrder>((await ordersAPI.getKitchenQueue()).data.data).filter((o) => KITCHEN_STATUSES.includes(o.status)), [], 'No se pudo cargar la cola de cocina.');
     const reservations = useSection<ReservationRow[]>(async () => asArray<ReservationRow>((await reportsAPI.getTodaysReservations(undefined, 7)).data.data), [], 'No se pudieron cargar las reservaciones.');
+    // Salón: mismas órdenes activas de mesa que alimentaban las tarjetas del plano de mesas.
+    const salon = useSection<Order[]>(async () => asArray<Order>((await ordersAPI.getActive(undefined, true)).data.data), [], 'No se pudo cargar el consumo de las mesas.');
     const lowStock = useSection<LowStockItem[]>(async () => asArray<LowStockItem>((await productsAPI.getLowStock()).data.data), [], 'No se pudo cargar el inventario.');
 
     // Una fuente que falló no aporta (ni "0 pendientes"): se avisa aparte y se excluye.
@@ -58,15 +62,18 @@ export function LiveOperations() {
         stats.error && 'indicadores de hoy',
         kitchen.error && 'cola de cocina',
         reservations.error && 'reservaciones',
+        salon.error && 'consumo de mesas',
         lowStock.error && 'inventario',
     ].filter(Boolean) as string[];
 
+    const now = useMinuteClock();
+
     const columns: Column<ReservationRow>[] = [
-        { key: 'day', header: 'Día', width: '1.3fr', accessor: (r) => r.day ?? '' },
-        { key: 'time', header: 'Hora', width: '1fr' },
-        { key: 'name', header: 'Cliente', width: '3fr' },
-        { key: 'pax', header: 'Personas', type: 'number', decimals: 0, width: '1fr' },
-        { key: 'status', header: 'Estado', width: '1.5fr', accessor: (r) => RESERVATION_STATUS[r.status] ?? r.status },
+        { key: 'day', header: 'Día', accessor: (r) => r.day ?? '' },
+        { key: 'time', header: 'Hora', type: 'time' },
+        { key: 'name', header: 'Cliente' },
+        { key: 'pax', header: 'Personas', type: 'number', decimals: 0 },
+        { key: 'status', header: 'Estado', type: 'status', accessor: (r) => RESERVATION_STATUS[r.status] ?? r.status },
     ];
 
     const statsLoading = stats.loading && !stats.data;
@@ -101,12 +108,13 @@ export function LiveOperations() {
                         action={{ label: 'Abrir cocina', to: '/kitchen' }}
                     />
                 ) : null}
+                {salon.data ? <SalonStatCards orders={salon.data} now={now} /> : null}
             </div>
 
             {failed.length > 0 ? (
                 <div className="bi-notice" role="status">
                     <span>No disponible: {failed.join(', ')}. Se excluye de lo que requiere atención.</span>
-                    <Button variant="ghost" size="sm" onClick={() => { stats.reload(); kitchen.reload(); reservations.reload(); lowStock.reload(); }}>Reintentar</Button>
+                    <Button variant="ghost" size="sm" onClick={() => { stats.reload(); kitchen.reload(); reservations.reload(); salon.reload(); lowStock.reload(); }}>Reintentar</Button>
                 </div>
             ) : null}
 

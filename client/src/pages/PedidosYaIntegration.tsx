@@ -10,7 +10,7 @@ import {
     AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
     LoadErrorState, PageContent, PageHeader, Switch, TableToolbar, Tabs, toneFor,
 } from '@/ui';
-import { Zap, RefreshCw, Search, Plus, Trash2 } from 'lucide-react';
+import { Zap, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import styles from './PedidosYaIntegration.module.css';
 
 interface PYConfig {
@@ -247,6 +247,8 @@ export default function PedidosYaIntegration() {
                             Guardar configuración
                         </Button>
                     </>
+                ) : activeTab === 'mappings' && !loading && !loadError ? (
+                    <Button variant="primary" icon={Plus} onClick={() => setMappingSidebarOpen(true)}>Nuevo mapeo</Button>
                 ) : undefined}
             />
 
@@ -348,17 +350,14 @@ export default function PedidosYaIntegration() {
                     {/* ── MAPPINGS TAB ── */}
                     {activeTab === 'mappings' && (
                         <>
-                            <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setMappingSidebarOpen(true)}>Nuevo mapeo</Button>}>
-                                <Field label="Buscar" htmlFor="pedidosya-mapping-search">
-                                    <Input
-                                        id="pedidosya-mapping-search"
-                                        type="search"
-                                        placeholder="Buscar mapeo"
-                                        prefix={<Search size={16} aria-hidden="true" />}
-                                        value={mappingSearch}
-                                        onChange={e => setMappingSearch(e.target.value)}
-                                    />
-                                </Field>
+                            <TableToolbar>
+                                <Input
+                                    type="search"
+                                    aria-label="Buscar mapeo"
+                                    placeholder="Buscar mapeo"
+                                    value={mappingSearch}
+                                    onChange={e => setMappingSearch(e.target.value)}
+                                />
                             </TableToolbar>
                             <DataTable<ProductMapping>
                                 ariaLabel="Mapeo de productos PedidosYa"
@@ -373,12 +372,12 @@ export default function PedidosYaIntegration() {
                                 onRetry={() => void loadMappings()}
                                 empty={mappings.length === 0 ? 'No hay mapeos configurados. Los mapeos se crean automáticamente al recibir pedidos o puedes crearlos manualmente.' : 'Ningún mapeo coincide con la búsqueda.'}
                                 columns={[
-                                    { key: 'externalId', header: 'ID externo', width: '1.2fr', render: (m) => <code>{m.externalId}</code> },
-                                    { key: 'externalName', header: 'Nombre PedidosYa', width: '1.6fr' },
-                                    { key: 'menuItem', header: 'Producto interno', width: '1.6fr', render: (m) => m.menuItem
+                                    { key: 'externalId', header: 'ID externo', render: (m) => <code>{m.externalId}</code> },
+                                    { key: 'externalName', header: 'Nombre PedidosYa' },
+                                    { key: 'menuItem', header: 'Producto interno', render: (m) => m.menuItem
                                         ? m.menuItem.name
                                         : <Badge tone="warning">Sin mapear</Badge> },
-                                    { key: 'isActive', header: 'Estado', width: '0.8fr', render: (m) => (
+                                    { key: 'isActive', header: 'Estado', type: 'status', render: (m) => (
                                         <Badge tone={m.isActive ? 'success' : 'neutral'} dot>{m.isActive ? 'Activo' : 'Inactivo'}</Badge>
                                     ) },
                                     { key: 'actions', header: 'Acciones', type: 'actions', width: '100px', render: (m) => (
@@ -403,13 +402,13 @@ export default function PedidosYaIntegration() {
                                 onRetry={() => void loadOrderSyncs()}
                                 empty="No hay órdenes sincronizadas todavía."
                                 columns={[
-                                    { key: 'externalId', header: 'ID externo', width: '1.2fr', render: (s) => <code>{s.externalId}</code> },
-                                    { key: 'order', header: 'Orden interna', width: '1fr', render: (s) => `#${s.order.id}` },
-                                    { key: 'externalStatus', header: 'Estado externo', width: '1.1fr', render: (s) => <Badge>{s.externalStatus || '—'}</Badge> },
-                                    { key: 'internalStatus', header: 'Estado interno', width: '1.1fr', render: (s) => <Badge>{s.internalStatus || '—'}</Badge> },
-                                    { key: 'syncDirection', header: 'Dirección', width: '1fr', render: (s) => s.syncDirection === 'INBOUND' ? '← Entrante' : '→ Saliente' },
-                                    { key: 'total', header: 'Total', width: '1fr', type: 'money', accessor: (s) => Number(s.order.total) },
-                                    { key: 'lastSyncAt', header: 'Última sync', width: '1.4fr', render: (s) => new Date(s.lastSyncAt).toLocaleString('es-NI') },
+                                    { key: 'externalId', header: 'ID externo', render: (s) => <code>{s.externalId}</code> },
+                                    { key: 'order', header: 'Orden interna', render: (s) => `#${s.order.id}` },
+                                    { key: 'externalStatus', header: 'Estado externo', type: 'status', render: (s) => <Badge>{s.externalStatus || '—'}</Badge> },
+                                    { key: 'internalStatus', header: 'Estado interno', type: 'status', render: (s) => <Badge>{s.internalStatus || '—'}</Badge> },
+                                    { key: 'syncDirection', header: 'Dirección', render: (s) => s.syncDirection === 'INBOUND' ? '← Entrante' : '→ Saliente' },
+                                    { key: 'total', header: 'Total', type: 'money', accessor: (s) => Number(s.order.total) },
+                                    { key: 'lastSyncAt', header: 'Última sync', type: 'date', render: (s) => new Date(s.lastSyncAt).toLocaleString('es-NI') },
                                 ]}
                             />
                         </>
@@ -429,11 +428,11 @@ export default function PedidosYaIntegration() {
                                 onRetry={() => void loadWebhookLogs()}
                                 empty="No hay logs de webhook. Los eventos aparecerán cuando PedidosYa envíe notificaciones."
                                 columns={[
-                                    { key: 'eventType', header: 'Evento', width: '1.4fr', render: (l) => <code>{l.eventType}</code> },
-                                    { key: 'externalId', header: 'ID externo', width: '1.2fr', render: (l) => l.externalId || '—' },
-                                    { key: 'status', header: 'Estado', width: '1fr', render: (l) => <Badge tone={toneFor(l.status)}>{l.status}</Badge> },
-                                    { key: 'errorMessage', header: 'Error', width: '2fr', render: (l) => l.errorMessage || '—' },
-                                    { key: 'createdAt', header: 'Fecha', width: '1.4fr', render: (l) => new Date(l.createdAt).toLocaleString('es-NI') },
+                                    { key: 'eventType', header: 'Evento', render: (l) => <code>{l.eventType}</code> },
+                                    { key: 'externalId', header: 'ID externo', render: (l) => l.externalId || '—' },
+                                    { key: 'status', header: 'Estado', type: 'status', render: (l) => <Badge tone={toneFor(l.status)}>{l.status}</Badge> },
+                                    { key: 'errorMessage', header: 'Error', render: (l) => l.errorMessage || '—' },
+                                    { key: 'createdAt', header: 'Fecha', type: 'date', render: (l) => new Date(l.createdAt).toLocaleString('es-NI') },
                                 ]}
                             />
                         </>
