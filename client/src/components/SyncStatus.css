@@ -137,7 +137,7 @@
 
 .sync-retry-btn {
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .sync-retry-btn:hover {

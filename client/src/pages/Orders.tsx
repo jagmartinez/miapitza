@@ -8,7 +8,7 @@ import { useDebounce } from '../utils/useDebounce';
 import PaymentModal from '../components/PaymentModal';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, Input,
-    PageContent, PageHeader, SegmentedControl, Tabs, Textarea,
+    PageContent, PageHeader, TableToolbar, Tabs, Textarea,
     type Column, type Opt, type Tone,
 } from '@/ui';
 import {
@@ -571,16 +571,21 @@ export default function Orders() {
     const rangeLabel = dateOptions.find((o) => o.value === dateRange)?.label ?? '';
 
     const columns: Column<Order>[] = [
-        { key: 'id', header: '#', width: '0.8fr', render: (o) => `#${o.id}` },
-        { key: 'time', header: 'Hora', width: '1fr', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
-        { key: 'status', header: 'Estado', width: '1.5fr', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
-        { key: 'financial', header: 'Pago', width: '1.7fr', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
+        { key: 'id', header: '#', width: '4.5rem', render: (o) => `#${o.id}` },
+        { key: 'time', header: 'Hora', width: '6.5rem', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+        { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
+        { key: 'financial', header: 'Pago', width: 'minmax(9.5rem,1fr)', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
         { key: 'table', header: 'Mesa', width: '1.3fr', render: (o) => (o.table ? `Mesa ${o.table.number}` : 'Para llevar') },
-        { key: 'waiter', header: 'Mesero', width: '1fr', render: (o) => o.user?.name || 'N/D' },
-        { key: 'customer', header: 'Cliente', width: '1fr', hideBelow: 'lg', render: (o) => o.customerName || '' },
-        { key: 'items', header: 'Items', width: '0.8fr', type: 'number', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
+        { key: 'waiter', header: 'Mesero', width: 'minmax(9rem,1.3fr)', render: (o) => o.user?.name || 'N/D' },
+        { key: 'customer', header: 'Cliente', width: 'minmax(8rem,1.3fr)', hideBelow: 'lg', render: (o) => o.customerName || '' },
+        { key: 'items', header: 'Ítems', width: '5.5rem', type: 'number', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
         { key: 'total', header: `Total (${currencySymbol})`, width: '1.3fr', type: 'money', accessor: (o) => Number(o.total) },
     ];
+
+    // Acciones de la orden en el pie del modal: cancelar a la izquierda, el resto a la derecha.
+    const orderActions = selectedOrder ? getActionButtons(selectedOrder) : [];
+    const orderFooterStart = orderActions.filter((b) => b.key === 'cancel');
+    const orderFooterEnd = orderActions.filter((b) => b.key !== 'cancel');
 
     return (
         <PageContent>
@@ -589,8 +594,14 @@ export default function Orders() {
                 description={`Control operativo de sala y cocina · ${rangeLabel}`}
             />
 
-            <div className="orders-filters">
-                <SegmentedControl ariaLabel="Estado de la orden" options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+            <Tabs
+                ariaLabel="Estado de la orden"
+                active={statusFilter}
+                onChange={setStatusFilter}
+                tabs={statusOptions.map((o) => ({ id: o.value, label: o.label }))}
+            />
+
+            <TableToolbar>
                 <div className="orders-filters__field">
                     <AppSelect<'24h' | '7d' | '30d' | 'custom'>
                         aria-label="Filtrar por fecha"
@@ -616,7 +627,7 @@ export default function Orders() {
                         <DateInput aria-label="Hasta" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} />
                     </div>
                 )}
-            </div>
+            </TableToolbar>
 
             {loadError && (
                 <div className="orders-warning" role="alert">
@@ -643,6 +654,8 @@ export default function Orders() {
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={`Orden #${selectedOrder?.id ?? ''}`}
+                footerStart={orderFooterStart.length > 0 ? orderFooterStart : undefined}
+                footer={orderFooterEnd.length > 0 ? orderFooterEnd : undefined}
             >
                 {selectedOrder && (
                     <div className="order-detail-content">
@@ -792,10 +805,6 @@ export default function Orders() {
                             )}
                         </div>
 
-                        {/* Actions */}
-                        <div className="action-bar-sticky">
-                            {getActionButtons(selectedOrder)}
-                        </div>
                     </div>
                 )}
             </FullScreenModal>

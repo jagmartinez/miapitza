@@ -53,7 +53,7 @@ describe('RH and Catering UI design-system contract', () => {
     expect(schedules).toContain('<FullScreenModal');
     expect(shiftForm).toContain('hr-shift-modal-content');
     expect(shiftForm).toContain('<Tabs');
-    expect(shiftForm).toContain('className="hr-modal-form-footer"');
+    expect(shiftForm).toContain('<HrModalFormActions');
   });
 
   it('styles attendance controls without leaking into React Select internals', () => {

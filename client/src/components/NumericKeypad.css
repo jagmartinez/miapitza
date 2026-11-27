@@ -133,7 +133,7 @@
     width: 100%;
     padding: var(--spacing-lg);
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     border: none;
     border-radius: var(--radius-lg);
     font-size: var(--font-size-lg);

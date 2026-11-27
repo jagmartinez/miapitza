@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SingleValue } from './HrOptionSelect';
 import { Clock3 } from 'lucide-react';
 import { Button, DateInput, Field, FormGrid, FormSection, Input, Tabs, Textarea } from '@/ui';
 import styles from './hrForm.module.css';
 import Select from './HrOptionSelect';
+import { HrModalFormActions } from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrScheduleShift, HrScheduleShiftInput, HrShiftTemplate } from '../../types/hr-schedule';
 import { addDaysDateOnly, isDateInWeek, shiftCrossesMidnight } from './scheduleDates';
@@ -75,6 +76,7 @@ export default function ScheduleShiftForm({
     onSubmit,
 }: ScheduleShiftFormProps) {
     const contextualCreate = !shift && Boolean(initialAssignment);
+    const formRef = useRef<HTMLFormElement>(null);
     const [form, setForm] = useState(() => stateFor(weekStart, shift, initialAssignment));
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<FormTab>(contextualCreate ? 'schedule' : 'assignment');
@@ -191,7 +193,7 @@ export default function ScheduleShiftForm({
                     { id: 'schedule', label: 'Jornada' },
                 ]}
             />}
-            <form className="hr-modal-form" onSubmit={submit} aria-label="Turno">
+            <form ref={formRef} className="hr-modal-form" onSubmit={submit} aria-label="Turno">
               <div className={styles.form}>
                 {error && <div className={styles.alertDanger} role="alert">{error}</div>}
                 {conflicts.length > 0 && (
@@ -305,7 +307,7 @@ export default function ScheduleShiftForm({
                 </FormSection>}
                 </section>}
               </div>
-              <div className="hr-modal-form-footer">
+              <HrModalFormActions formRef={formRef}>
                 <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
                 {!contextualCreate && activeTab === 'assignment'
                     ? <Button variant="primary" type="button" onClick={(event) => {
@@ -313,7 +315,7 @@ export default function ScheduleShiftForm({
                         setActiveTab('schedule');
                     }}>Continuar</Button>
                     : <Button variant="primary" type="submit" loading={saving} disabled={contextualCreate && !form.templateId}>{shift ? 'Guardar turno' : contextualCreate ? 'Asignar jornada' : 'Agregar turno'}</Button>}
-              </div>
+              </HrModalFormActions>
             </form>
         </div>
     );

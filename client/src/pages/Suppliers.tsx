@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import { Plus, Trash2, Truck, Search, History, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Truck, Search, History, Pencil } from 'lucide-react';
 import type { Supplier } from '../types';
 import styles from './catalog.module.css';
 import {
@@ -189,11 +189,12 @@ export default function Suppliers() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '136px',
             render: (s) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={History} label={`Historial de precios de ${s.name}`} onClick={() => viewPriceHistory(s)} />
-                    {canManageSupplier && <IconButton size="sm" icon={Edit2} label={`Editar ${s.name}`} onClick={() => handleOpenModal(s)} />}
-                    {canDeleteSupplier && <IconButton size="sm" icon={Trash2} label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />}
+                    {canManageSupplier && <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${s.name}`} onClick={() => handleOpenModal(s)} />}
+                    <IconButton size="sm" icon={History} tooltip="Historial" label={`Historial de precios de ${s.name}`} onClick={() => viewPriceHistory(s)} />
+                    {canDeleteSupplier && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />}
                 </div>
             )
         }

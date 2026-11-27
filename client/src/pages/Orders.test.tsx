@@ -49,11 +49,11 @@ describe('Orders (design system)', () => {
         expect(within(table).getAllByRole('columnheader').some((h) => h.textContent === 'Total (C$)')).toBe(true);
     });
 
-    it('filtra por estado con el control segmentado', async () => {
+    it('filtra por estado con las pestañas', async () => {
         getAll.mockResolvedValue({ data: { data: [order(1, 100), order(2, 50, { status: 'CANCELLED' })] } });
         render(<Orders />);
         await screen.findByRole('table', { name: 'Órdenes' });
-        await userEvent.click(screen.getByRole('button', { name: 'Cancelada' }));
+        await userEvent.click(screen.getByRole('tab', { name: 'Cancelada' }));
         const table = screen.getByRole('table', { name: 'Órdenes' });
         expect(within(table).queryByText('#1')).toBeNull();
         expect(within(table).getByText('#2')).toBeInTheDocument();

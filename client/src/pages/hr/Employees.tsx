@@ -4,11 +4,11 @@ import {
     Briefcase,
     BadgeCheck,
     Building2,
-    Edit2,
     Eye,
+    Pencil,
+    Power,
     Plus,
     Search,
-    UserMinus,
     UsersRound,
     WalletCards,
 } from 'lucide-react';
@@ -298,12 +298,13 @@ export default function Employees() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '136px',
             render: (employee) => (
                 <div className={styles.rowActions} onClick={(event) => event.stopPropagation()}>
-                    <IconButton icon={Eye} size="sm" label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)} />
-                    <IconButton icon={Edit2} size="sm" label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)} />
+                    <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)} />
+                    <IconButton icon={Pencil} size="sm" tooltip="Editar" label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)} />
                     {employee.status === 'ACTIVE' && (
-                        <IconButton icon={UserMinus} size="sm" label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)} />
+                        <IconButton icon={Power} size="sm" tone="danger" tooltip="Desactivar" label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)} />
                     )}
                 </div>
             ),
@@ -414,8 +415,8 @@ export default function Employees() {
                             <div className="entity-card-body">
                                 <div className="hr-employee-card-heading">
                                     <div className="hr-employee-avatar" aria-hidden="true">{initials(employee)}</div>
-                                    <div>
-                                        <h3 className="entity-card-title">{employee.legalName}</h3>
+                                    <div style={{ minWidth: 0 }}>
+                                        <h3 className="entity-card-title" title={employee.legalName}>{employee.legalName}</h3>
                                         <span className="entity-card-tag">{employee.employeeCode}</span>
                                     </div>
                                 </div>
@@ -439,9 +440,9 @@ export default function Employees() {
                                 </div>
                             </div>
                             <div className={styles.cardActions}>
-                                <Button size="sm" variant="ghost" icon={Eye} aria-label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)}>Ver</Button>
-                                <Button size="sm" variant="ghost" icon={Edit2} aria-label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)}>Editar</Button>
-                                {employee.status === 'ACTIVE' && <Button size="sm" variant="ghost" icon={UserMinus} aria-label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)}>Desactivar</Button>}
+                                <IconButton icon={Eye} size="sm" tooltip="Ver expediente" label={`Ver expediente de ${employee.legalName}`} onClick={() => navigate(`/rh/personal/${employee.id}`)} />
+                                <IconButton icon={Pencil} size="sm" tooltip="Editar" label={`Editar ${employee.legalName}`} onClick={() => void openEdit(employee)} />
+                                {employee.status === 'ACTIVE' && <IconButton icon={Power} size="sm" tone="danger" tooltip="Desactivar" label={`Desactivar ${employee.legalName}`} onClick={() => void deactivate(employee)} />}
                             </div>
                         </article>
                     ))}
@@ -461,7 +462,7 @@ export default function Employees() {
                 subtitle={preview ? `${preview.jobPosition?.name ?? 'Sin puesto'} · ${preview.department?.name ?? 'Sin departamento'}` : undefined}
                 footer={preview ? (
                     <>
-                        <Button variant="secondary" icon={Edit2} onClick={() => { const target = preview; setPreview(null); void openEdit(target); }}>Editar</Button>
+                        <Button variant="secondary" icon={Pencil} onClick={() => { const target = preview; setPreview(null); void openEdit(target); }}>Editar</Button>
                         <Button variant="primary" icon={Eye} onClick={() => navigate(`/rh/personal/${preview.id}`)}>Abrir expediente completo</Button>
                     </>
                 ) : undefined}

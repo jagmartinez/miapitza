@@ -116,12 +116,12 @@
 }
 
 /* Filtros de la barra (como Menú): búsqueda más ancha que los selects. */
-.search { flex: 2 1 16rem; min-width: 0; }
-.filter { flex: 1 1 12rem; min-width: 0; max-width: 100%; }
+.search { min-width: 0; }
+.filter { min-width: 0; }
 
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
   gap: var(--ui-space-4);
   min-width: 0;
 }
@@ -179,9 +179,10 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--ui-space-1);
-  padding: var(--ui-space-3) var(--ui-space-4);
+  padding: var(--ui-space-2) var(--ui-space-4);
   border-top: 1px solid var(--ui-border);
 }
+.cardActions :global(.ui-icon-button) { border: 1px solid var(--ui-border); }
 
 /* Marco de una vista que no es DataTable (matriz semanal, calendario): mismo borde que las tablas. */
 .frame {
@@ -200,18 +201,29 @@
   padding-left: var(--ui-space-5);
 }
 
-/* Navegación por semanas dentro de la barra de filtros. */
+/* Navegación por semanas: un solo control compacto (‹ semana › Hoy) con la altura de los filtros. */
 .weekNav {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--ui-space-1);
+  justify-self: start;
+  flex: 0 0 auto;
+  gap: 2px;
+  height: var(--ui-control-md);
+  padding: 0 4px;
   min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
 }
+.weekNav :global(.ui-icon-button) { width: 30px; height: 30px; }
+.weekNav :global(.ui-button) { height: 30px; }
 
 .weekNav > strong {
-  flex: 1 1 auto;
   min-width: 0;
-  font-size: var(--ui-text-sm);
+  padding: 0 var(--ui-space-2);
+  font-size: var(--ui-text-md);
+  font-variant-numeric: tabular-nums;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -452,3 +464,19 @@
 .disclosure[open] > summary {
   margin-bottom: var(--ui-space-3);
 }
+
+/* Texto largo en celdas: máximo dos líneas, el completo queda en el tooltip. */
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Acuse de horario publicado: una franja por versión, sin caja anidada. */
+.ackList { display: flex; flex-direction: column; gap: var(--ui-space-2); margin: 0; padding: 0; list-style: none; }
+.ackList > li {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3);
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 1px solid var(--ui-border); border-left-width: 3px; border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
+}
+.ackList > li.ackPending { border-left-color: var(--ui-primary); background: var(--ui-primary-soft); }
+.ackText { flex: 1 1 18rem; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ackText > strong { font-size: var(--ui-text-md); color: var(--ui-text); }
+.ackText > span { font-size: var(--ui-text-sm); color: var(--ui-text-muted); }

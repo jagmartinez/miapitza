@@ -1,6 +1,5 @@
 import {
-  Badge, Button, Checkbox, DataTable, EmptyState, Field, FormSection, FullScreenModal, Input, LoadErrorState, PageContent, PageHeader,
-} from '@/ui';
+  Badge, Button, Checkbox, DataTable, EmptyState, Field, FormSection, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, formatPercent} from '@/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays,
@@ -35,6 +34,7 @@ import type {
 } from '../../types/hr-payroll';
 import './payroll.css';
 import './payroll-legal.css';
+import { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import form from '../../components/hr/hrForm.module.css';
 
 function formatLegalDate(value?: string | null) {
@@ -298,11 +298,11 @@ export default function PayrollLegalSettings() {
               {
                 key: 'actions',
                 header: 'Acciones',
-                width: '12rem',
+                width: '100px',
                 type: 'actions',
                 render: (rule) => {
                   const isSelected = String(rule.id) === selectedRuleId;
-                  return <div className={form.rowActions}><Button type="button" size="sm" variant={isSelected ? 'secondary' : 'ghost'} aria-label={`Abrir ${rule.name}`} onClick={() => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }}><Eye size={15} aria-hidden="true" /> {isSelected ? 'Abierta' : 'Abrir'}</Button>{rule.activeConfigurationRevisionId && <Button type="button" size="sm" variant="ghost" aria-label={`Clonar ${rule.name} para editar`} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(rule); setCreateOpen(true); }}><Copy size={15} aria-hidden="true" /> Clonar</Button>}</div>;
+                  return <div className={form.rowActions}><IconButton size="sm" icon={Eye} tone={isSelected ? 'primary' : 'default'} tooltip={isSelected ? 'Abierta' : 'Abrir'} label={`Abrir ${rule.name}`} aria-pressed={isSelected} onClick={() => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }} />{rule.activeConfigurationRevisionId && <IconButton size="sm" icon={Copy} tooltip="Duplicar" label={`Clonar ${rule.name} para editar`} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(rule); setCreateOpen(true); }} />}</div>;
                 },
               },
             ]}
@@ -363,8 +363,8 @@ export default function PayrollLegalSettings() {
 
             <FormSection title="Obligaciones configuradas">
               <dl className={form.facts}>
-                <div><dt>INSS</dt><dd>{statutory ? `${(Number(statutory.inss.employeeRate) * 100).toLocaleString('es-NI', { maximumFractionDigits: 4 })}% laboral` : 'Pendiente'}</dd><dd className={form.cellSub}>{statutory ? `${statutory.inss.regime} · patronal ${(Number(statutory.inss.employerRateBelowThreshold) * 100).toLocaleString('es-NI')}% / ${(Number(statutory.inss.employerRateAtOrAboveThreshold) * 100).toLocaleString('es-NI')}%` : 'Sin revisión configurada'}</dd></div>
-                <div><dt>INATEC</dt><dd>{statutory ? `${(Number(statutory.inatec.employerRate) * 100).toLocaleString('es-NI', { maximumFractionDigits: 4 })}% patronal` : 'Pendiente'}</dd><dd className={form.cellSub}>{statutory?.inatec.applicability === 'DOES_NOT_APPLY' ? 'Excepción documentada' : 'Costo de la empresa; no deduce al empleado'}</dd></div>
+                <div><dt>INSS</dt><dd>{statutory ? `${formatPercent(Number(statutory.inss.employeeRate) * 100)} laboral` : 'Pendiente'}</dd><dd className={form.cellSub}>{statutory ? `${statutory.inss.regime} · patronal ${formatPercent(Number(statutory.inss.employerRateBelowThreshold) * 100)} / ${formatPercent(Number(statutory.inss.employerRateAtOrAboveThreshold) * 100)}` : 'Sin revisión configurada'}</dd></div>
+                <div><dt>INATEC</dt><dd>{statutory ? `${formatPercent(Number(statutory.inatec.employerRate) * 100)} patronal` : 'Pendiente'}</dd><dd className={form.cellSub}>{statutory?.inatec.applicability === 'DOES_NOT_APPLY' ? 'Excepción documentada' : 'Costo de la empresa; no deduce al empleado'}</dd></div>
                 <div><dt>IR laboral</dt><dd>{statutory ? `${statutory.incomeTax.brackets.length} tramos` : 'Pendiente'}</dd><dd className={form.cellSub}>{statutory?.companyTaxRegime.incomeTaxApplicability === 'DOES_NOT_APPLY' ? 'No aplica por régimen' : `Régimen ${statutory?.companyTaxRegime.code ?? 'pendiente'}`}</dd></div>
                 <div><dt>Uso en nómina</dt><dd>{selectedRule.status === 'ACTIVE' ? 'En uso' : selectedRule.status === 'RETIRED' ? 'Retirada' : validatedRevision ? 'Lista para activar' : 'Aún no'}</dd><dd className={form.cellSub}>{activeRevision ? `Revisión ${activeRevision.revision} · ${activeRevision.status === 'VALIDATED' ? 'validada' : activeRevision.status === 'UPLOADED' ? 'en validación' : 'rechazada'}` : 'Requiere carga y validación'}</dd></div>
               </dl>
@@ -373,7 +373,7 @@ export default function PayrollLegalSettings() {
         </section>
       </>}
 
-      <FullScreenModal isOpen={createOpen} onClose={() => { if (!saving) { setCreateOpen(false); setCloneSource(null); } }} breadcrumb={['Recursos humanos', 'Nómina', 'Configuración legal']} title={cloneSource ? 'Clonar como nuevo borrador' : 'Nueva versión legal de nómina'}><PayrollRuleForm key={cloneSource?.id ?? 'new'} initial={cloneSource ? { ...cloneSource, effectiveFrom: '', effectiveTo: null } : null} online={online} saving={saving} onSubmit={saveRule} onCancel={() => { setCreateOpen(false); setCloneSource(null); }} notice={cloneSource ? <div className={form.alertInfo}>Se copiarán tasas, tramos y conceptos. Define la nueva vigencia; el perfil fiscal se actualizará desde Empresa y la copia deberá validarse antes de activarse.</div> : undefined} /></FullScreenModal>
+      <FullScreenModal footer={<HrModalFooterSlot />} isOpen={createOpen} onClose={() => { if (!saving) { setCreateOpen(false); setCloneSource(null); } }} breadcrumb={['Recursos humanos', 'Nómina', 'Configuración legal']} title={cloneSource ? 'Clonar como nuevo borrador' : 'Nueva versión legal de nómina'}><PayrollRuleForm key={cloneSource?.id ?? 'new'} initial={cloneSource ? { ...cloneSource, effectiveFrom: '', effectiveTo: null } : null} online={online} saving={saving} onSubmit={saveRule} onCancel={() => { setCreateOpen(false); setCloneSource(null); }} notice={cloneSource ? <div className={form.alertInfo}>Se copiarán tasas, tramos y conceptos. Define la nueva vigencia; el perfil fiscal se actualizará desde Empresa y la copia deberá validarse antes de activarse.</div> : undefined} /></FullScreenModal>
     </PageContent>
   );
 }

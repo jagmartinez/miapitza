@@ -571,9 +571,9 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         },
         { key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (r) => r.quantity * r.cost },
         ...(isDraft ? [{
-            key: 'actions', header: '', width: '3.5rem', type: 'actions' as const,
+            key: 'actions', header: '', width: '100px', type: 'actions' as const,
             render: (r: LineRow) => (
-                <IconButton icon={Trash2} size="sm" label={`Quitar ${r.name}`} onClick={() => void handleRemoveItem(r.removeKey)} />
+                <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Quitar" label={`Quitar ${r.name}`} onClick={() => void handleRemoveItem(r.removeKey)} />
             ),
         }] : []),
     ];
@@ -660,6 +660,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                     <Button onClick={requestClose}>Cancelar</Button>
                     {!isNew && order?.status === 'DRAFT' && (
                         <Button icon={CheckCircle} onClick={() => void handleStatusChange('ISSUED')}>Emitir</Button>
+                    )}
+                    {activeTab === 'receive' && (order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED') && (
+                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId || receiving} loading={receiving}>
+                            Confirmar Recepción
+                        </Button>
                     )}
                     {isDraft && (
                         <Button variant="primary" icon={Save} type="submit" form="po-form" loading={saving} disabled={saving}>
@@ -886,11 +891,6 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                         rows={order?.items ?? []}
                                         rowKey={(item) => item.id}
                                     />
-                                    <div>
-                                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId || receiving} loading={receiving}>
-                                            Confirmar Recepción
-                                        </Button>
-                                    </div>
                                 </>
                             ) : order?.status === 'RECEIVED' ? (
                                 <p className={styles.muted}>Esta orden ya fue recibida y los ítems ingresaron al inventario.</p>

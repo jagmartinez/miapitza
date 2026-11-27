@@ -6,17 +6,18 @@ import {
   CalendarPlus,
   Clock3,
   ClipboardList as FilePenLine,
+  Pencil,
   Plus,
   RefreshCw,
 } from 'lucide-react';
 import {
-  Button, DataTable, DateInput, EmptyState, FormSection, FullScreenModal, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs,
+  Button, DataTable, DateInput, EmptyState, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs,
   Textarea,
 } from '@/ui';
 import form from '../../components/hr/hrForm.module.css';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
-import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import LeaveRequestForm from '../../components/hr/LeaveRequestForm';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -376,10 +377,10 @@ export default function MyWorkforce() {
                     { key: 'extra', header: 'Extra (aprobado / candidato)', type: 'number', render: (summary) => `${summary.approvedOvertimeMinutes ?? 0} / ${summary.candidateOvertimeMinutes} min` },
                     { key: 'status', header: 'Periodo', render: (summary) => (summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : <span className={form.cellSub}>Revisión {summary.sourceRevision ?? '—'}</span>) },
                     {
-                      key: 'actions', header: 'Acciones', type: 'actions', width: '13rem', render: (summary) => (
+                      key: 'actions', header: 'Acciones', type: 'actions', width: '100px', render: (summary) => (
                         <div className={form.rowActions}>
-                          <Button size="sm" variant="ghost" onClick={() => setPanel({ kind: 'correction', summary })} disabled={!online}>Corregir</Button>
-                          <Button size="sm" onClick={() => setPanel({ kind: 'overtime', summary })} disabled={!online}>Solicitar extra</Button>
+                          <IconButton size="sm" icon={Pencil} tooltip="Corregir" label="Corregir" onClick={() => setPanel({ kind: 'correction', summary })} disabled={!online} />
+                          <IconButton size="sm" icon={Clock3} tooltip="Horas extra" label="Solicitar extra" onClick={() => setPanel({ kind: 'overtime', summary })} disabled={!online} />
                         </div>
                       ),
                     },
@@ -518,6 +519,7 @@ export default function MyWorkforce() {
       )}
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(panel)}
         onClose={() => !saving && setPanel(null)}
         breadcrumb={['Mi RH', 'Gestión laboral']}
@@ -566,6 +568,7 @@ export default function MyWorkforce() {
       </FullScreenModal>
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(cancelPanel)}
         onClose={() => !saving && setCancelPanel(null)}
         title="Cancelar solicitud"

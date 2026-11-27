@@ -1,7 +1,7 @@
 /* Reglas propias del módulo Compras que no cubre @/ui. */
 .kpiGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
   gap: var(--ui-space-4);
   min-width: 0;
 }
@@ -29,8 +29,7 @@
 }
 
 .search {
-  min-width: min(100%, 16rem);
-  flex: 1 1 16rem;
+  min-width: min(100%, 14rem);
 }
 
 .rowActions {

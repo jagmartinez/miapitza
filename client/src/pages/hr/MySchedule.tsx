@@ -57,9 +57,7 @@ export default function MySchedule() {
     }, [weekStart]);
 
     useEffect(() => { void loadWeek(); }, [loadWeek]);
-
     const published = useMemo(() => schedules.filter((schedule) => schedule.status === 'PUBLISHED'), [schedules]);
-    const pendingAcknowledgements = published.filter((schedule) => schedule.viewerHasShift && !schedule.acknowledgedAt);
     const hasShifts = published.some((schedule) => schedule.shifts.length > 0);
 
     const acknowledge = async (schedule: HrWeeklySchedule) => {
@@ -104,21 +102,27 @@ export default function MySchedule() {
             </TableToolbar>
 
             {!loading && !error && published.length > 0 && (
-                <ul className={form.list} aria-label="Versiones publicadas">
+                <ul className={form.ackList} aria-label="Versiones publicadas">
                     {published.map((schedule) => (
-                        <li key={schedule.id}>
-                            <span className={form.actions}><ScheduleStatusPill status={schedule.status} /><span>Versión {schedule.version}</span></span>
-                            {!schedule.viewerHasShift
-                                ? <span className={form.cellSub}>Sin turno personal esta semana</span>
-                                : schedule.acknowledgedAt
+                        <li key={schedule.id} className={schedule.viewerHasShift && !schedule.acknowledgedAt ? form.ackPending : undefined}>
+                            <ScheduleStatusPill status={schedule.status} />
+                            <span className={form.ackText}>
+                                <strong>Versión {schedule.version}</strong>
+                                <span>
+                                    {!schedule.viewerHasShift
+                                        ? 'No tienes turnos en esta versión.'
+                                        : schedule.acknowledgedAt
+                                            ? 'Ya confirmaste que recibiste este horario.'
+                                            : 'Revisa tus turnos y confirma que recibiste el horario. Confirmar no modifica los turnos.'}
+                                </span>
+                            </span>
+                            {schedule.viewerHasShift && (schedule.acknowledgedAt
                                 ? <Badge tone="success"><CheckCheck size={14} aria-hidden="true" /> Recibido</Badge>
-                                : <Button variant="primary" size="sm" loading={acknowledgingId === schedule.id} onClick={() => void acknowledge(schedule)} disabled={acknowledgingId !== null || fromCache}>Confirmar recepción</Button>}
+                                : <Button variant="primary" size="sm" loading={acknowledgingId === schedule.id} onClick={() => void acknowledge(schedule)} disabled={acknowledgingId !== null || fromCache}>Confirmar recepción</Button>)}
                         </li>
                     ))}
                 </ul>
             )}
-
-            {pendingAcknowledgements.length > 0 && <p className={form.help}>Confirma cada versión publicada después de revisar tus turnos. El acuse registra recepción, no modifica el horario.</p>}
 
             {loading && <HrLoading text="Cargando horarios del equipo…" />}
             {!loading && error && <LoadErrorState message={error} onRetry={() => void loadWeek()} />}
@@ -135,7 +139,7 @@ export default function MySchedule() {
                 />
             )}
             {!loading && !error && hasShifts && (
-                <section className={form.frame} aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
+                <section aria-label={`Turnos de la semana ${weekLabel(weekStart)}`}>
                     <ScheduleWeekView weekStart={weekStart} schedules={published} holidays={holidays} readOnly />
                 </section>
             )}

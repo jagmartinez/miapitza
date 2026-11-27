@@ -5,7 +5,7 @@
   gap: var(--spacing-sm, 8px) var(--spacing-md, 12px);
   margin-bottom: var(--spacing-md, 12px);
 }
-.orders-filters__field { flex: 1 1 14rem; min-width: 0; max-width: 22rem; }
+.orders-filters__field { min-width: 0; }
 .orders-filters__dates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .orders-warning {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;

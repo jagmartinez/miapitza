@@ -54,8 +54,8 @@ describe('ProductionRecipes', () => {
   it('el detalle avisa la variación contra la versión anterior, el insumo causante y dónde se usa', async () => {
     render(<MemoryRouter><ProductionRecipes /></MemoryRouter>);
     const table = await screen.findByRole('table', { name: 'Recetas de producción' });
-    const row = within(table).getAllByText('Producto 100').map((el) => el.closest('tr') as HTMLElement).find((tr) => within(tr).queryByText('v2'))!;
-    await userEvent.click(within(row).getByText('v2'));
+    const row = within(table).getAllByText('Producto 100').map((el) => el.closest('tr') as HTMLElement).find((tr) => within(tr).queryByText(/· v2/))!;
+    await userEvent.click(within(row).getByText(/· v2/));
     const panel = await screen.findByTestId('production-recipe-detail');
     await waitFor(() => expect(within(panel).getByRole('status')).toHaveTextContent('subió'));
     expect(within(panel).getByRole('status')).toHaveTextContent('Aceite');

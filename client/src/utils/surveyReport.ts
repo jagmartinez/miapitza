@@ -1,3 +1,4 @@
+import { formatNumber } from '../ui/format/number';
 import { formatLocalDateInput } from './dateInput';
 
 export type NpsTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -124,5 +125,5 @@ export function monthLabel(month: string) {
     return `${MONTHS[Number(m) - 1] ?? m} ${y}`;
 }
 
-export const fmtAvg = (v: number | null) => (v === null ? '—' : v.toFixed(1));
+export const fmtAvg = (v: number | null) => (v === null ? '—' : formatNumber(v));
 export const fmtNps = (v: number | null) => (v === null ? '—' : String(v));

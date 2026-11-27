@@ -121,31 +121,30 @@ export function SalesChannelsPanel() {
           <Button variant="primary" icon={Truck} onClick={() => void ensureDefaults()}>Crear canales por defecto</Button>
         </div>
       ) : (
-        <ul className="settings-extra__channels">
+        <div className="settings-channels" role="table" aria-label="Comisión y recargo por canal">
+          <div className="settings-channels__row settings-channels__row--head" role="row">
+            <span role="columnheader">Canal</span>
+            <span role="columnheader">Estado</span>
+            <span role="columnheader" className="is-num">Recargo de precio</span>
+            <span role="columnheader" className="is-num">Comisión del canal</span>
+            <span role="columnheader" aria-label="Acciones" />
+          </div>
           {channels.map((ch, idx) => (
-            <li key={ch.channel} className={ch.isActive ? '' : 'is-inactive'}>
-              <div className="settings-extra__channel-head">
-                <strong>{ch.channel.replace('_', ' ')}</strong>
-                <Switch label="Activo" checked={ch.isActive} onChange={(v) => update(idx, { isActive: v })} />
-              </div>
-              <div className="settings-extra__channel-fields">
-                <label>
-                  <span>Recargo de precio</span>
-                  <NumberInput aria-label={`Recargo de precio ${ch.channel}`} value={ch.priceMarkupPct} min={0} suffix="%" onChange={(v) => update(idx, { priceMarkupPct: Math.min(v ?? 0, 100) })} />
-                </label>
-                <label>
-                  <span>Comisión del canal</span>
-                  <NumberInput aria-label={`Comisión ${ch.channel}`} value={ch.commissionPct} min={0} suffix="%" onChange={(v) => update(idx, { commissionPct: Math.min(v ?? 0, 100) })} />
-                </label>
-              </div>
-              <Button loading={savingChannel === ch.channel} onClick={() => void save(ch)}>Guardar canal</Button>
-            </li>
+            <div key={ch.channel} role="row" className={`settings-channels__row ${ch.isActive ? '' : 'is-inactive'}`}>
+              <strong role="cell" className="settings-channels__name">{CHANNEL_LABEL[ch.channel] ?? ch.channel.replace('_', ' ')}</strong>
+              <span role="cell"><Switch label={ch.isActive ? 'Activo' : 'Inactivo'} checked={ch.isActive} onChange={(v) => update(idx, { isActive: v })} /></span>
+              <span role="cell"><NumberInput aria-label={`Recargo de precio ${ch.channel}`} value={ch.priceMarkupPct} min={0} suffix="%" onChange={(v) => update(idx, { priceMarkupPct: Math.min(v ?? 0, 100) })} /></span>
+              <span role="cell"><NumberInput aria-label={`Comisión ${ch.channel}`} value={ch.commissionPct} min={0} suffix="%" onChange={(v) => update(idx, { commissionPct: Math.min(v ?? 0, 100) })} /></span>
+              <span role="cell" className="settings-channels__action"><Button size="md" loading={savingChannel === ch.channel} onClick={() => void save(ch)}>Guardar</Button></span>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
 }
+
+const CHANNEL_LABEL: Record<string, string> = { RESTAURANT: 'Restaurante', DELIVERY: 'Delivery propio', PEDIDOSYA: 'PedidosYa', TAKEOUT: 'Para llevar' };
 
 /** Respaldo manual de la base de datos: solo SUPERADMIN. */
 export function BackupPanel() {

@@ -7,7 +7,7 @@ import {
     Grid3x3, List, CalendarDays, ChevronLeft, ChevronRight, Phone,
     Eye
 } from 'lucide-react';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, PageHeader, type Column } from '@/ui';
+import { AppSelect, Button, DataTable, EmptyState, Field, FullScreenModal, IconButton, Input, PageContent, PageHeader, TableToolbar, Tabs, type Column } from '@/ui';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, warehousesAPI } from '../services/api';
 import { getCateringStatusOptions, isCateringStatusTerminal } from '../utils/cateringStatus';
@@ -23,6 +23,7 @@ import { newIdempotencyKey } from '../utils/idempotency';
 import { filterMenuItemsByCategory, getMenuCategoryOptions } from '../utils/cateringMenuFilter';
 import { activateOnKeyboard } from '../utils/keyboardActivation';
 import './CateringMod.css';
+import '../components/ViewToggle.css';
 import { getApiErrorMessage } from '../utils/apiError';
 
 interface CateringClausesForm {
@@ -752,50 +753,25 @@ export default function Catering() {
         {
             key: 'actions',
             header: 'Acciones',
-            type: 'number',
+            type: 'actions',
+            width: '172px',
             render: (event) => (
                 <div className="catalog-table-actions">
-                    <button
-                        type="button"
-                        className="catalog-action-btn"
-                        onClick={() => void handleOpenSidebar(event, 'info')}
-                        title="Ver evento"
-                        aria-label={`Ver evento ${event.title}`}
-                    >
-                        <Eye size={16} />
-                    </button>
-                    <button
-                        type="button"
-                        className="catalog-action-btn"
-                        onClick={() => void handleOpenSidebar(event, 'financial')}
-                        title="Ver pagos"
-                        aria-label={`Ver pagos de ${event.title}`}
-                    >
-                        <DollarSign size={16} />
-                    </button>
-                    <button
-                        type="button"
-                        className="catalog-action-btn"
+                    <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver evento ${event.title}`} onClick={() => void handleOpenSidebar(event, 'info')} />
+                    <IconButton size="sm" icon={DollarSign} tooltip="Pagos" label={`Ver pagos de ${event.title}`} onClick={() => void handleOpenSidebar(event, 'financial')} />
+                    <IconButton
+                        size="sm"
+                        icon={Download}
+                        tooltip={contractPdfBusyId === event.id ? 'Generando contrato' : 'Descargar contrato'}
                         onClick={() => void handleDownloadContract(event)}
                         disabled={contractPdfBusyId !== null}
                         aria-busy={contractPdfBusyId === event.id}
-                        title={contractPdfBusyId === event.id ? 'Generando contrato PDF' : 'Descargar contrato PDF'}
-                        aria-label={contractPdfBusyId === event.id
+                        label={contractPdfBusyId === event.id
                             ? `Generando contrato de ${event.title}`
                             : `Descargar contrato de ${event.title}`}
-                    >
-                        <Download size={16} />
-                    </button>
+                    />
                     {canManageCatering && (
-                        <button
-                            type="button"
-                            className="catalog-action-btn danger"
-                            onClick={() => void handleDeleteEvent(event)}
-                            title="Eliminar evento"
-                            aria-label={`Eliminar evento ${event.title}`}
-                        >
-                            <Trash2 size={16} />
-                        </button>
+                        <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar evento ${event.title}`} onClick={() => void handleDeleteEvent(event)} />
                     )}
                 </div>
             ),
@@ -881,13 +857,14 @@ export default function Catering() {
     const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 ? configuredTaxRate : 15;
 
     return (
+        <PageContent>
         <div className="catering-page">
             {/* Header */}
             <PageHeader
                 title="Servicios de Catering"
                 actions={
                     <div className="ui-page-actions">
-                    <div className="view-toggle">
+                    <div className="view-toggle catalog-view-toggle" role="group" aria-label="Vista">
                         <button
                             type="button"
                             className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
@@ -920,70 +897,44 @@ export default function Catering() {
                         </button>
                     </div>
                     {canManageCatering && (
-                        <Button variant="primary" onClick={() => handleOpenSidebar()}>
-                            <Plus size={20} />
-                            Nuevo Evento
+                        <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>
+                            Nuevo evento
                         </Button>
                     )}
                 </div>
                 }
             />
 
-            {/* Filters apply to card and table views. */}
+            {/* Filtros (tarjetas y tabla): pestañas por estado y búsqueda. */}
             {viewMode !== 'calendar' && (
-                <div className="catering-filters">
-                    {/* Status Filters */}
-                    <div className="filter-buttons">
-                        <button
-                            className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('all')}
-                        >
-                            Todos
-                        </button>
-                        <button
-                            className={`filter-btn quoted ${filterStatus === 'QUOTED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('QUOTED')}
-                        >
-                            Cotizados
-                        </button>
-                        <button
-                            className={`filter-btn reserved ${filterStatus === 'RESERVED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('RESERVED')}
-                        >
-                            Reservados
-                        </button>
-                        <button
-                            className={`filter-btn paid ${filterStatus === 'PAID' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('PAID')}
-                        >
-                            Pagados
-                        </button>
-                        <button
-                            className={`filter-btn finished ${filterStatus === 'FINISHED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('FINISHED')}
-                        >
-                            Finalizados
-                        </button>
-                        <button
-                            className={`filter-btn cancelled ${filterStatus === 'CANCELLED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('CANCELLED')}
-                        >
-                            Cancelados
-                        </button>
-                    </div>
-
-                    {/* Stats and Search */}
-                    <div className="filter-right-section">
-                        {/* Stats Counters */}
-                        <input
-                            type="text"
+                <>
+                    <Tabs
+                        ariaLabel="Filtrar eventos por estado"
+                        active={filterStatus}
+                        onChange={(id) => setFilterStatus(id as typeof filterStatus)}
+                        tabs={([
+                            ['all', 'Todos'],
+                            ['QUOTED', 'Cotizados'],
+                            ['RESERVED', 'Reservados'],
+                            ['PAID', 'Pagados'],
+                            ['FINISHED', 'Finalizados'],
+                            ['CANCELLED', 'Cancelados'],
+                        ] as const).map(([id, label]) => ({
+                            id,
+                            label,
+                            badge: id === 'all' ? events.length : events.filter((event) => event.status === id).length,
+                        }))}
+                    />
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            aria-label="Buscar evento o cliente"
                             placeholder="Buscar evento o cliente..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="search-input catering-search"
                         />
-                    </div>
-                </div>
+                    </TableToolbar>
+                </>
             )}
 
             {contractPdfBusyId !== null && (
@@ -1144,10 +1095,11 @@ export default function Catering() {
                     )}
                 </div>
             ) : filteredEvents.length === 0 ? (
-                <div className="empty-state">
-                    <FileText size={64} opacity={0.2} />
-                    <p>No se encontraron eventos</p>
-                </div>
+                <EmptyState
+                    icon={FileText}
+                    title={events.length === 0 ? 'Aún no hay eventos de catering' : 'No hay eventos con estos filtros'}
+                    description={events.length === 0 ? 'Registra la primera cotización para empezar.' : undefined}
+                />
             ) : viewMode === 'table' ? (
                 <div className="catering-events-table">
                     <DataTable<CateringEvent>
@@ -1938,6 +1890,7 @@ export default function Catering() {
 
                     </form>
             </FullScreenModal>
-        </div >
+        </div>
+        </PageContent>
     );
 }

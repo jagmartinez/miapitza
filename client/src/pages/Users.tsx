@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
-import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Lock, Search } from 'lucide-react';
+import { Users as UsersIcon, Plus, Pencil, Power, Lock, Search } from 'lucide-react';
 import type { User, Branch, Company, UserAccountType } from '../types';
 
 interface UserSavePayload {
@@ -375,13 +375,16 @@ export default function Users() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (u) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${u.name}`} onClick={() => handleOpenSidebar(u)} />
+                    <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${u.name}`} onClick={() => handleOpenSidebar(u)} />
                     {canManageUserStatus && (
                         <IconButton
                             size="sm"
-                            icon={u.status === 'ACTIVE' ? UserX : UserCheck}
+                            icon={Power}
+                            tone={u.status === 'ACTIVE' ? 'danger' : 'primary'}
+                            tooltip={u.status === 'ACTIVE' ? 'Desactivar' : 'Activar'}
                             label={u.status === 'ACTIVE' ? `Inhabilitar ${u.name} sin borrar historial` : `Reactivar ${u.name}`}
                             onClick={() => handleStatusChange(u)}
                         />

@@ -39,7 +39,7 @@ describe('reportInsights', () => {
             format: (_c, v) => `C$ ${v}`,
         });
         expect(lines[0]).toContain('3 registros');
-        expect(lines[1]).toBe('Producto con mayor monto: A (C$ 75, 75.0% del total).');
+        expect(lines[1]).toBe('Producto con mayor monto: A (C$ 75, 75.00 % del total).');
         expect(lines[2]).toContain('1 fila sin dato de monto (N/D)');
     });
 

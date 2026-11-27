@@ -6,7 +6,7 @@ import {
 import { HrSettingRow, HrSettingsBlock, HrSettingsSection } from '../../components/hr/HrSettingsSection';
 import form from '../../components/hr/hrForm.module.css';
 import HrLoading from '../../components/hr/HrLoading';
-import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import PendingBiometricEnrollmentsPanel from '../../components/hr/PendingBiometricEnrollmentsPanel';
 import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
@@ -566,6 +566,7 @@ export default function AttendanceSettings() {
       )}
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={devicePanelOpen}
         onClose={() => !saving && setDevicePanelOpen(false)}
         breadcrumb={['Recursos humanos', 'Reglas para el marcaje']}
@@ -631,6 +632,7 @@ export default function AttendanceSettings() {
         )}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(deviceToRevoke)}
         onClose={() => !saving && setDeviceToRevoke(null)}
         title="Revocar dispositivo"

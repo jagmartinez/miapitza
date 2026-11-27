@@ -7,11 +7,10 @@ import { hasAnyRole } from '../utils/authz';
 import {
   AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
   PageContent, PageHeader, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
-  type Column, type Opt, type Tone,
-} from '@/ui';
+  type Column, type Opt, type Tone, formatQty} from '@/ui';
 import {
   Plus, Utensils, Trash2, Image as ImageIcon,
-  Info, ImagePlus, DollarSign, Edit2,
+  Info, ImagePlus, DollarSign, Pencil,
   SlidersHorizontal, Package, Eye, Layers, Building2, Tag
 } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
@@ -896,22 +895,27 @@ export default function Menu() {
     {
       key: 'name',
       header: 'Plato',
-      width: '2.4fr',
+      width: '2.2fr',
       render: (item) => (
         <div className={s.cellStack}>
           <span className={s.cellTitle}>{item.name}</span>
-          {item.description && <span className={s.cellSub}>{item.description}</span>}
+          {item.description && <span className={s.cellSub1} title={item.description}>{item.description}</span>}
         </div>
       ),
     },
-    { key: 'category', header: 'Categoría', width: '1.2fr', hideBelow: 'md', render: (item) => item.category?.name || '-' },
-    { key: 'brand', header: 'Marca', width: '1fr', hideBelow: 'lg', render: (item) => item.brand?.name || 'Común' },
     {
-      key: 'branch',
-      header: 'Sucursal',
-      width: '1fr',
-      hideBelow: 'lg',
-      render: (item) => (!item.branchId ? 'Global' : branches.find((b) => b.id === item.branchId)?.name || '-'),
+      key: 'category',
+      header: 'Categoría',
+      width: 'minmax(170px,1.6fr)',
+      hideBelow: 'md',
+      render: (item) => (
+        <div className={s.cellStack}>
+          <span>{item.category?.name || '-'}</span>
+          <span className={s.cellSub}>
+            {[item.brand?.name || 'Común', !item.branchId ? 'Global' : branches.find((b) => b.id === item.branchId)?.name || '-'].join(' · ')}
+          </span>
+        </div>
+      ),
     },
     { key: 'price', header: `Precio (${symbol})`, type: 'money', width: '1fr', accessor: (item) => Number(item.price) },
     ...(showCosts
@@ -949,7 +953,8 @@ export default function Menu() {
           },
           {
             key: 'sold',
-            header: 'Vendidos (30 días)',
+            header: 'Vend. 30 d',
+            headerTitle: 'Unidades vendidas en los últimos 30 días',
             type: 'number',
             width: '1fr',
             render: (item) => (engineering ? formatNumber(salesById.get(item.id)?.qtySold ?? 0, 0) : nd('No se pudieron cargar las ventas')),
@@ -987,12 +992,12 @@ export default function Menu() {
       key: 'actions',
       header: 'Acciones',
       type: 'actions',
-      width: '8rem',
+      width: '136px',
       render: (item) => (
         <div className={s.rowActions}>
-          <IconButton icon={Eye} size="sm" label={`Ver detalle de ${item.name}`} onClick={() => void handleOpenDetail(item)} />
-          {canMutateMenu && <IconButton icon={Edit2} size="sm" label={`Editar ${item.name}`} onClick={() => void handleOpenSidebar(item)} />}
-          {canMutateMenu && <IconButton icon={Trash2} size="sm" label={`Eliminar ${item.name}`} onClick={() => handleDelete(item.id)} />}
+          <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${item.name}`} onClick={() => void handleOpenDetail(item)} />
+          {canMutateMenu && <IconButton icon={Pencil} size="sm" tooltip="Editar" label={`Editar ${item.name}`} onClick={() => void handleOpenSidebar(item)} />}
+          {canMutateMenu && <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Eliminar" label={`Eliminar ${item.name}`} onClick={() => handleDelete(item.id)} />}
         </div>
       ),
     },
@@ -1190,7 +1195,7 @@ export default function Menu() {
             {canMutateMenu && (
               <Button
                 variant="primary"
-                icon={Edit2}
+                icon={Pencil}
                 onClick={() => {
                   const item = viewingItem;
                   setDetailOpen(false);
@@ -1286,7 +1291,7 @@ export default function Menu() {
                         <article key={component.id} className="menu-detail-component">
                           <span className="menu-detail-component-index">{index + 1}</span>
                           <div><strong>{component.product.name}</strong><span>Insumo #{component.product.id}</span></div>
-                          <div className="menu-detail-number"><span>Cantidad</span><strong>{Number(component.quantity).toLocaleString('es-NI', { maximumFractionDigits: 6 })} {unit}</strong></div>
+                          <div className="menu-detail-number"><span>Cantidad</span><strong>{formatQty(component.quantity)} {unit}</strong></div>
                           <div className="menu-detail-number"><span>Costo unitario ref.</span><strong>{formatMoney(referenceCost)}</strong></div>
                         </article>
                       );
@@ -1584,13 +1589,13 @@ export default function Menu() {
                                 </div>
                               </>
                             ) : (
-                              <span className="recipe-ingredient-measure">{ing.quantity} {ing.unit}</span>
+                              <span className="recipe-ingredient-measure">{formatQty(ing.quantity)} {ing.unit}</span>
                             )}
                             <div className="recipe-ingredient-cost">
                               {ing.unitConfigured ? formatMoney(calculateIngredientLineCost(ing)) : 'N/D'}
                             </div>
                             {canMutateMenu ? (
-                              <IconButton icon={Trash2} size="sm" label={`Quitar ${ing.productName}`} onClick={() => removeIngredient(i)} />
+                              <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Quitar" label={`Quitar ${ing.productName}`} onClick={() => removeIngredient(i)} />
                             ) : null}
                           </div>
                         );
@@ -1613,7 +1618,7 @@ export default function Menu() {
                     {i === 0 && <span className={s.galleryMain}>Principal</span>}
                     {canMutateMenu ? (
                       <span className={s.galleryRemove}>
-                        <IconButton icon={Trash2} size="sm" label={`Quitar imagen ${i + 1}`} onClick={() => removeImage(i)} />
+                        <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Quitar" label={`Quitar imagen ${i + 1}`} onClick={() => removeImage(i)} />
                       </span>
                     ) : null}
                   </div>
@@ -1755,8 +1760,8 @@ export default function Menu() {
                       )}
                     </div>
                     <div className="modifier-list-actions">
-                      <IconButton icon={Edit2} size="sm" label={`Editar ${modifier.name}`} onClick={() => handleEditModifier(modifier)} />
-                      <IconButton icon={Trash2} size="sm" label={`Eliminar ${modifier.name}`} onClick={() => handleDeleteModifier(modifier)} />
+                      <IconButton icon={Pencil} size="sm" tooltip="Editar" label={`Editar ${modifier.name}`} onClick={() => handleEditModifier(modifier)} />
+                      <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Eliminar" label={`Eliminar ${modifier.name}`} onClick={() => handleDeleteModifier(modifier)} />
                     </div>
                   </div>
                 ))}

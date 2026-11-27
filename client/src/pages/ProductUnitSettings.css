@@ -62,7 +62,7 @@
     height: 32px;
     border-radius: 50%;
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     font-size: 14px;
     font-weight: 700;
     flex-shrink: 0;
@@ -105,7 +105,7 @@
     height: 40px;
     border-radius: var(--radius-md);
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     flex-shrink: 0;
 }
 

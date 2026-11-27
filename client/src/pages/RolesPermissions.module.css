@@ -4,4 +4,3 @@
 .actions { display: flex; gap: 4px; justify-content: flex-end; }
 .permList { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
 .permItem { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--ui-border); }
-.footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; }

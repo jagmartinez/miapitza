@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import { Plus, Tag, Edit2, Trash2, Search } from 'lucide-react';
+import { Plus, Tag, Pencil, Trash2, Search } from 'lucide-react';
 import { getCategoryVisibilityLabel } from '../utils/categoryVisibility';
 import styles from './catalog.module.css';
 import {
@@ -187,12 +187,15 @@ export default function Categories() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (c: CategoryRow) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${c.name}`} onClick={() => openModal(c)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${c.name}`} tooltip="Editar" onClick={() => openModal(c)} />
                     <IconButton
                         size="sm"
                         icon={Trash2}
+                        tone="danger"
+                        tooltip="Eliminar"
                         label={`Eliminar ${c.name}`}
                         onClick={() => handleDelete(c.id)}
                         disabled={Number(c._count?.menuItems || 0) > 0}

@@ -49,7 +49,7 @@
 
 .status-filter-btn-new.active {
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 /* Additional Filters */
@@ -173,7 +173,7 @@
     letter-spacing: 0.8px;
     border-radius: 0 0 0 5px;
     z-index: 10;
-    color: white;
+    color: var(--ui-primary-fg);
     line-height: 1;
     display: inline-block;
 }
@@ -370,7 +370,7 @@
 .kitchen-detail-identity { display: grid; align-content: center; gap: 12px; min-width: 0; }
 .kitchen-detail-eyebrow { color: var(--ui-primary); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .kitchen-detail-table-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.kitchen-detail-icon { width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 14px; color: white; background: var(--ui-primary); }
+.kitchen-detail-icon { width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 14px; color: var(--ui-primary-fg); background: var(--ui-primary); }
 .kitchen-detail-table-row h3 { margin: 0; color: var(--ui-text); font-size: 1.45rem; }
 .kitchen-detail-table-row p { margin: 3px 0 0; color: var(--ui-text-muted); font-size: .8rem; }
 .kitchen-detail-identity .kitchen-waiter-chip { width: fit-content; }
@@ -737,7 +737,7 @@
     .status-badge-new {
         padding: 4px 10px;
         font-size: 9px;
-        color: white !important;
+        color: var(--ui-primary-fg) !important;
     }
 }
 
@@ -793,11 +793,6 @@
     border-color: var(--ui-primary);
 }
 
-.problem-modal-actions {
-    display: flex;
-    gap: var(--spacing-md);
-}
-
 .btn-cancel-problem,
 .btn-submit-problem {
     flex: 1;
@@ -821,7 +816,7 @@
 
 .btn-submit-problem {
     background: var(--ui-danger);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .btn-submit-problem:hover {

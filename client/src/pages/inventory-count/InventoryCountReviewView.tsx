@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { AppSelect, Button, DataTable, DateInput, Field, type Column } from '@/ui';
+import { AppSelect, Button, DataTable, DateInput, Field, type Column, formatNumber } from '@/ui';
 import { kardexHref } from '../../utils/kardexLink';
 import './InventoryCountReview.css';
 
@@ -86,11 +86,11 @@ const STATUS_TONE: Record<CountDisplayStatus, string> = {
     DEVUELTO: 'danger',
 };
 
-const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (n: number) => formatNumber(n);
 export const fmtMoney = (n: number) => `C$ ${money(n)}`;
 /** Signed value: surplus "+C$ 5.00", shortage "-C$ 5.00". */
 export const fmtSigned = (n: number) => (n === 0 ? fmtMoney(0) : `${n > 0 ? '+' : '-'}C$ ${money(Math.abs(n))}`);
-export const fmtQty = (n: number | null) => (n === null ? '—' : String(Number(n.toFixed(6))));
+export const fmtQty = (n: number | null) => (n === null ? '—' : formatNumber(n));
 const fmtSignedQty = (n: number | null) => (n === null ? '—' : n > 0 ? `+${fmtQty(n)}` : fmtQty(n));
 const dateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const diffTone = (n: number | null) => (n === null || n === 0 ? '' : n < 0 ? 'count-neg' : 'count-pos');

@@ -16,7 +16,7 @@ import { useAppToast } from '../context/ToastContext';
 import { canCreatePayment, canVoidKitchenLine } from '../utils/authz';
 import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
 import { getTableAccess } from '../utils/tableAccess';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, MapPin, MapPinned, History, Link2, ShoppingBag } from 'lucide-react';
+import { Grid3x3, Plus, Pencil, Trash2, Eye, MapPin, MapPinned, History, Link2, ShoppingBag } from 'lucide-react';
 import type {
     ActiveTableConsolidation,
     LegacyTableConsolidationCandidate,
@@ -936,13 +936,13 @@ export default function Tables() {
         {
             key: 'actions',
             header: 'Acciones',
-            width: '8rem',
+            width: '136px',
             type: 'actions' as const,
             render: (table) => (
                 <>
-                    <IconButton icon={Eye} label={`Ver órdenes de la mesa ${table.number}`} onClick={() => void handleViewOrders(table)} />
-                    {canEditTable && <IconButton icon={Edit2} label={`Editar mesa ${table.number}`} onClick={() => handleOpenSidebar(table)} />}
-                    {canDeleteTable && <IconButton icon={Trash2} label={`Eliminar mesa ${table.number}`} onClick={() => void handleDelete(table.id)} />}
+                    <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver órdenes de la mesa ${table.number}`} onClick={() => void handleViewOrders(table)} />
+                    {canEditTable && <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar mesa ${table.number}`} onClick={() => handleOpenSidebar(table)} />}
+                    {canDeleteTable && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar mesa ${table.number}`} onClick={() => void handleDelete(table.id)} />}
                 </>
             ),
         },
@@ -1152,7 +1152,7 @@ export default function Tables() {
                         )}
                     </header>
 
-                    <SalonCards branchId={mapBranchId} tables={tables} onReviewOrders={() => navigate('/orders')} />
+                    {view !== 'plan' && <SalonCards branchId={mapBranchId} tables={tables} onReviewOrders={() => navigate('/orders')} />}
 
                     <div className="tables-ops__body">
                         <section className="tables-ops__floor" aria-label="Plano de mesas">
@@ -1203,7 +1203,7 @@ export default function Tables() {
                             )}
                         </section>
 
-                        <div ref={detailPanelRef} className="tables-ops__detail">
+                        <div ref={detailPanelRef} className={`tables-ops__detail ${view === 'plan' && !liveSelectedTable ? 'is-idle' : ''}`}>
                             <TableDetailPanel
                                 table={liveSelectedTable}
                                 orders={tableOrders}
@@ -1250,7 +1250,7 @@ export default function Tables() {
                                 }}
                                 onReverseConsolidation={handleReverseConsolidation}
                                 extraActions={liveSelectedTable && canEditTable ? (
-                                    <Button variant="ghost" icon={Edit2} onClick={() => handleOpenSidebar(liveSelectedTable)}>Editar mesa</Button>
+                                    <Button variant="ghost" icon={Pencil} onClick={() => handleOpenSidebar(liveSelectedTable)}>Editar mesa</Button>
                                 ) : undefined}
                             />
                         </div>

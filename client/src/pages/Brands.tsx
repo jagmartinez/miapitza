@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import { Plus, Tags, Edit2, Trash2, Search } from 'lucide-react';
+import { Plus, Tags, Pencil, Trash2, Search } from 'lucide-react';
 import type { MenuBrand } from '../types';
 import styles from './catalog.module.css';
 import {
@@ -151,12 +151,15 @@ export default function Brands() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (b: MenuBrand) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${b.name}`} onClick={() => openModal(b)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${b.name}`} tooltip="Editar" onClick={() => openModal(b)} />
                     <IconButton
                         size="sm"
                         icon={Trash2}
+                        tone="danger"
+                        tooltip="Eliminar"
                         label={`Eliminar ${b.name}`}
                         onClick={() => handleDelete(b)}
                         disabled={Number(b._count?.menuItems || 0) > 0}

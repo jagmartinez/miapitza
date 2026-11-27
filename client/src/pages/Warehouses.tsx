@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import { newIdempotencyKey } from '../utils/idempotency';
-import { Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Eye, Trash2, Edit2, Search, History } from 'lucide-react';
+import { Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Eye, Trash2, Pencil, Search, History } from 'lucide-react';
 import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse } from '../types';
 import styles from './catalog.module.css';
 import {
@@ -308,11 +308,12 @@ export default function Warehouses() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '136px',
             render: (w) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Eye} label={`Ver stock de ${w.name}`} onClick={() => viewStock(w)} />
-                    {canMutateWarehouse && <IconButton size="sm" icon={Edit2} label={`Editar ${w.name}`} onClick={() => openEdit(w)} />}
-                    {canDeleteWarehouse && <IconButton size="sm" icon={Trash2} label={`Eliminar ${w.name}`} onClick={() => handleDelete(w.id)} />}
+                    <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver stock de ${w.name}`} onClick={() => viewStock(w)} />
+                    {canMutateWarehouse && <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${w.name}`} onClick={() => openEdit(w)} />}
+                    {canDeleteWarehouse && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar ${w.name}`} onClick={() => handleDelete(w.id)} />}
                 </div>
             )
         }

@@ -9,7 +9,7 @@ import {
 } from '@/ui';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
-import { CheckCircle2, Plus, RotateCcw, Search } from 'lucide-react';
+import { Ban, CheckCircle2, Plus, Search } from 'lucide-react';
 import styles from './compras.module.css';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -311,12 +311,12 @@ const BankReconciliation: React.FC = () => {
             render: (d) => <Badge tone={d.status === 'ACTIVE' ? 'success' : 'warning'} dot>{d.status === 'ACTIVE' ? 'Activo' : 'Revertido'}</Badge>,
         },
         {
-            key: 'actions', header: 'Acciones', width: '8rem', type: 'actions',
+            key: 'actions', header: 'Acciones', width: '100px', type: 'actions',
             render: (d) => (
                 <span className={styles.rowActions}>
                     {d.status === 'ACTIVE' && (
                         <IconButton
-                            icon={RotateCcw} size="sm" label="Revertir depósito" disabled={loading}
+                            icon={Ban} size="sm" tone="danger" tooltip="Anular" label="Revertir depósito" disabled={loading}
                             onClick={() => void handleReverseDeposit(d)}
                         />
                     )}
@@ -383,20 +383,10 @@ const BankReconciliation: React.FC = () => {
                         <>
                             <div className={styles.kpiGrid}>
                                 <StatCard
-                                    label="Ventas del período"
-                                    value={money(status.totals.totalSales)}
-                                    context={`${status.shifts} turnos cerrados · efectivo ${money(status.totals.byMethod.cash)}`}
-                                />
-                                <StatCard
-                                    label="Efectivo en cajas"
-                                    value={money(status.totals.cashInRegisters)}
-                                    context={`Esperado ${money(status.reconciliation.cashExpected)} · real ${money(status.reconciliation.cashActual)}`}
-                                />
-                                <StatCard
                                     label="Diferencia de efectivo"
                                     value={money(difference)}
                                     tone={difference === 0 ? 'success' : 'warning'}
-                                    context={`${difference > 0 ? 'Sobrante' : difference < 0 ? 'Faltante' : 'Cuadrado'} · ${isReconciled ? 'Conciliado' : 'Pendiente de conciliar'}`}
+                                    context={`${difference > 0 ? 'Sobrante' : difference < 0 ? 'Faltante' : 'Cuadrado'} · ${isReconciled ? 'Conciliado' : 'Pendiente de conciliar'} · esperado ${money(status.reconciliation.cashExpected)}, real ${money(status.reconciliation.cashActual)} en ${status.shifts} turnos`}
                                     action={!isReconciled && pending.length > 0
                                         ? { label: 'Ver turnos pendientes', onClick: () => setActiveTab('pending') }
                                         : undefined}

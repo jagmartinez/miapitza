@@ -7,13 +7,12 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
-import { Plus, Ruler, Edit2, Power, PowerOff, Weight, Beaker, Hash, Search, Package as PackageIcon } from 'lucide-react';
+import { Plus, Ruler, Pencil, Power, Weight, Beaker, Hash, Search, Package as PackageIcon } from 'lucide-react';
 import type { UnitOfMeasure } from '../types';
 import styles from './catalog.module.css';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, type Column,
-} from '@/ui';
+    PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, type Column, formatNumber} from '@/ui';
 
 type MeasurementTypeOption = UnitOfMeasure['measurementType'];
 type FilterOption = 'all' | 'active' | 'inactive';
@@ -115,6 +114,9 @@ function apiErrorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
     return 'Error';
 }
+
+/** Conversion factors below 1 (e.g. 0.001) keep up to 6 decimals so they do not collapse to 0.00. */
+const formatFactor = (n: number) => formatNumber(n, Math.abs(n) > 0 && Math.abs(n) < 1 ? 6 : 2);
 
 export default function UnitsOfMeasurePage() {
     const navigate = useNavigate();
@@ -261,7 +263,7 @@ export default function UnitsOfMeasurePage() {
         const factor = Number(formData.systemFactor);
         if (!Number.isFinite(factor) || factor <= 0) return '';
         const abbr = formData.abbreviation.trim() || 'unidad';
-        return `1 ${abbr} equivale a ${factor.toLocaleString()} ${currentTypeMeta.baseLabel}`;
+        return `1 ${abbr} equivale a ${formatFactor(factor)} ${currentTypeMeta.baseLabel}`;
     }, [formData.systemFactor, formData.abbreviation, currentTypeMeta]);
 
     const columns: Column<UnitOfMeasure>[] = [
@@ -283,7 +285,7 @@ export default function UnitsOfMeasurePage() {
         {
             key: 'factor',
             header: 'Equivalencia',
-            render: (unit) => `1 ${unit.abbreviation} = ${Number(unit.systemFactor).toLocaleString('es-NI')} ${MEASUREMENT_TYPE_META[unit.measurementType].baseLabel}`
+            render: (unit) => `1 ${unit.abbreviation} = ${formatFactor(Number(unit.systemFactor))} ${MEASUREMENT_TYPE_META[unit.measurementType].baseLabel}`
         },
         {
             key: 'status',
@@ -295,12 +297,15 @@ export default function UnitsOfMeasurePage() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (unit: UnitOfMeasure) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${unit.name}`} onClick={() => openModal(unit)} />
+                    <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${unit.name}`} onClick={() => openModal(unit)} />
                     <IconButton
                         size="sm"
-                        icon={unit.active ? PowerOff : Power}
+                        icon={Power}
+                        tone={unit.active ? 'danger' : 'primary'}
+                        tooltip={unit.active ? 'Desactivar' : 'Activar'}
                         label={`${unit.active ? 'Inhabilitar' : 'Habilitar'} ${unit.name}`}
                         onClick={() => handleToggleActive(unit)}
                     />

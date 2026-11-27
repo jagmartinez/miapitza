@@ -1,12 +1,12 @@
 /* ===== CATERING MODULE REDESIGN (MATCHING RESERVATIONS EXACTLY) ===== */
 
 .catering-page {
-    padding: var(--spacing-lg);
-    max-width: 1700px;
-    margin: 0 auto;
-    background: var(--ui-bg);
-    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-4);
+    min-width: 0;
 }
+.catering-page > .ui-pageheader { margin-bottom: 0; }
 
 /* View Toggle */
 .view-toggle {
@@ -35,7 +35,7 @@
 
 .view-toggle-btn.active {
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .view-toggle-btn+.view-toggle-btn {
@@ -97,11 +97,11 @@
 }
 
 .filter-btn.active {
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .filter-btn.active:not(.quoted):not(.reserved):not(.paid):not(.finished):not(.cancelled) {
-    background: var(--ui-text);
+    background: var(--ui-primary);
 }
 
 .filter-btn.quoted.active {
@@ -224,7 +224,7 @@
 .today-btn {
     padding: var(--spacing-sm) var(--spacing-lg);
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     border: none;
     border-radius: var(--radius-md);
     cursor: pointer;
@@ -284,7 +284,7 @@
 
 .calendar-day.today .calendar-day-number {
     background: var(--ui-primary);
-    color: white;
+    color: var(--ui-primary-fg);
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -421,14 +421,14 @@
     letter-spacing: 0.8px;
     border-radius: 0 0 0 5px;
     z-index: 10;
-    color: white;
+    color: var(--ui-primary-fg);
     line-height: 1;
     display: inline-block;
 }
 
 .status-badge-new.status-quoted {
     background: var(--ui-surface-2);
-    /* Slate 500 */
+    color: var(--ui-text);
 }
 
 .status-badge-new.status-reserved {
@@ -451,6 +451,7 @@
 /* Dark mode overrides */
 .dark .status-badge-new.status-quoted {
     background: var(--ui-surface-2);
+    color: var(--ui-text);
     /* Slate 600 */
 }
 
@@ -854,7 +855,7 @@
 
 .catering-page .remove-btn:hover {
     background: var(--ui-danger);
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 /* Availability Alert */
@@ -953,11 +954,11 @@
 }
 
 .catering-page .summary-item.highlighted .label {
-    color: color-mix(in srgb, var(--ui-surface) 80%, transparent);
+    color: color-mix(in srgb, var(--ui-primary-fg) 80%, transparent);
 }
 
 .catering-page .summary-item.highlighted .value {
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .catering-page .summary-item.success {
@@ -1283,7 +1284,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: white;
+    color: var(--ui-primary-fg);
 }
 
 .status-badge-new.status-quoted {
@@ -1409,7 +1410,7 @@
     place-items: center;
     border-radius: 999px;
     background: var(--dialog-accent);
-    color: white;
+    color: var(--ui-primary-fg);
     font-size: 9px;
 }
 

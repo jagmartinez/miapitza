@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { branchesAPI, categoriesAPI, menuAPI, promotionsAPI } from '../services/api';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { Plus, Edit, Ticket, XCircle, Trash2, Search } from 'lucide-react';
+import { Plus, Pencil, Ticket, Power, Trash2, Search } from 'lucide-react';
 import { useCurrency } from '../hooks/useCurrency';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
@@ -325,10 +325,11 @@ export default function Promotions() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (p) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit} label={`Editar ${p.name}`} onClick={() => handleOpen(p)} />
-                    {p.active && <IconButton size="sm" icon={XCircle} label={`Desactivar ${p.name}`} onClick={() => handleDeactivate(p.id)} />}
+                    <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${p.name}`} onClick={() => handleOpen(p)} />
+                    {p.active && <IconButton size="sm" icon={Power} tone="danger" tooltip="Desactivar" label={`Desactivar ${p.name}`} onClick={() => handleDeactivate(p.id)} />}
                 </div>
             )
         }

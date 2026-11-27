@@ -3,6 +3,7 @@ export * from './format/number';
 export { Button } from './primitives/Button';
 export type { ButtonProps } from './primitives/Button';
 export { IconButton } from './primitives/IconButton';
+export { Tooltip } from './primitives/Tooltip';
 export { Badge } from './primitives/Badge';
 export { StatusBadge } from './primitives/StatusBadge';
 export { Spinner } from './primitives/Spinner';

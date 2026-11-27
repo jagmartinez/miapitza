@@ -104,7 +104,7 @@ export default function SalonCards({ branchId, tables, onReviewOrders, only }: {
             ))}
             {reservations.status === 'error' ? (
                 <StatCard label="Próxima reserva" value="N/D" context="No disponible: no se pudieron cargar las reservas." tone="warning" action={retry} />
-            ) : (
+            ) : reservations.status === 'loading' || next ? (
                 <StatCard
                     label="Próxima reserva"
                     value={reservations.status === 'loading' ? '...' : next
@@ -113,7 +113,7 @@ export default function SalonCards({ branchId, tables, onReviewOrders, only }: {
                     context={reservationContext}
                     tone={next?.mustRelease ? 'danger' : 'neutral'}
                 />
-            )}
+            ) : null}
         </div>
     );
 }

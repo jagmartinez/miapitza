@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Armchair, CopyPlus, LayoutDashboard, Link2, Lock, Maximize2, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
-import { AppSelect, Button, Field, Input, SegmentedControl, formatMoney } from '@/ui';
+import { AppSelect, Button, Field, Input, SegmentedControl, formatMoney, formatNumber } from '@/ui';
 import { getChairPlacements } from './tableChairLayout';
 import { resolveTablePresentationState, type TablePresentationState } from '../utils/tablePresentation';
 import './TableMap.css';
@@ -594,15 +594,20 @@ export default function TableMap({
                                         <span className="map-table-surface">
                                             <span className="map-table-state-dot" aria-hidden="true" />
                                             {group && <span className="map-table-group-badge"><Link2 size={10} /> {isGroupPrimary ? `Grupo de ${groupMembers.length} mesas` : `Mesa ${groupPosition}/${groupMembers.length}`}</span>}
-                                            <span className="map-table-number">{table.number}</span>
+                                            <span className="map-table-number" title={table.number}>{table.number}</span>
+                                            {/* El estado se lee por color, punto y leyenda; el texto queda para lectores de pantalla. */}
                                             <span className="map-table-status">{presentationLabel}</span>
-                                            <span className="map-table-capacity">{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'}</span>
-                                            {isOpen && (
+                                            {isOpen ? (
                                                 <span className="map-table-consumption">
-                                                    {tableMetaUnavailable
-                                                        ? 'N/D'
-                                                        : `${meta ? `${meta.minutes} min` : 'N/D'} · ${meta?.amount != null ? formatMoney(meta.amount, currencySymbol || 'C$') : 'N/D'}`}
+                                                    {tableMetaUnavailable ? 'N/D' : (
+                                                        <>
+                                                            <span>{meta?.amount != null ? formatMoney(meta.amount, currencySymbol || 'C$') : 'N/D'}</span>
+                                                            <span className="map-table-minutes">{meta ? `${formatNumber(meta.minutes, 0)} min` : 'N/D'}</span>
+                                                        </>
+                                                    )}
                                                 </span>
+                                            ) : (
+                                                <span className="map-table-capacity">{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'}</span>
                                             )}
                                         </span>
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar mesa ${table.number}`} onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'RESIZE')} />}

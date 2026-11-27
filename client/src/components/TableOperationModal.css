@@ -1,6 +1,6 @@
 .table-operation-form { display: grid; gap: var(--spacing-lg); }
 .table-operation-guide { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--ui-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--ui-primary) 5%, var(--ui-surface)); }
-.table-operation-guide > span { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: var(--ui-primary); color: white; font-weight: 800; }
+.table-operation-guide > span { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: var(--ui-primary); color: var(--ui-primary-fg); font-weight: 800; }
 .table-operation-guide > div { display: grid; gap: 2px; }
 .table-operation-guide strong { color: var(--ui-text); }
 .table-operation-guide small { color: var(--ui-text-muted); }

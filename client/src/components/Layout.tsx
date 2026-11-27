@@ -58,12 +58,14 @@ export default function Layout() {
                 collapsed={collapsed}
                 onToggleCollapsed={toggleCollapsed}
                 bare={isTableWorkspace}
-                footer={logoutButton}
                 topbar={
                     <Topbar
                         nav={nav}
                         breadcrumb={currentGroup && currentItem ? [currentGroup.label, currentItem.label] : undefined}
                         userName={user?.name}
+                        userDetail={user?.username ? `@${user.username}` : undefined}
+                        onLogout={handleLogout}
+                        logoutLabel={t('common.logout')}
                         accentColor={getUserAccentColor(user)}
                         controls={
                             <>

@@ -66,3 +66,6 @@
     border-color: var(--ui-primary);
     background: var(--ui-primary-soft);
 }
+
+.cellStack { display: flex; flex-direction: column; min-width: 0; }
+.cellSub { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }

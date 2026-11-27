@@ -7,6 +7,7 @@ import {
     ShiftTemplateForm,
     type ShiftTemplateFormValues,
 } from '../../components/hr/ShiftTemplateCatalog';
+import { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import { getScheduleErrorMessage, scheduleClient } from '../../components/hr/scheduleClient';
 import { ROLES, HR_OWNER } from '../../constants/roles';
 import { useConfirmDialog } from '../../context/ConfirmContext';
@@ -224,6 +225,7 @@ export default function ShiftTemplates() {
             )}
 
             <FullScreenModal
+              footer={<HrModalFooterSlot />}
                 isOpen={editorOpen}
                 onClose={closeEditor}
                 breadcrumb={['Recursos humanos', 'Jornadas configuradas']}

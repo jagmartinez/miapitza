@@ -7,7 +7,7 @@ import type { SingleValue } from '../../components/hr/HrOptionSelect';
 import { AlertTriangle, ClipboardCheck, Eye, Plus, RefreshCw } from 'lucide-react';
 import HrFilterSelect from '../../components/hr/HrFilterSelect';
 import Select from '../../components/hr/HrOptionSelect';
-import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
 import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
@@ -29,7 +29,9 @@ type ReviewForm = { decision: HrAttendanceReviewDecision; reason: string };
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
 const ACTION_OPTIONS: Option[] = [{ value: '', label: 'Todas las acciones' }, ...Object.entries(ATTENDANCE_ACTION_LABELS).map(([value, label]) => ({ value, label }))];
-const DECISION_OPTIONS: Option[] = [{ value: '', label: 'Todos los resultados' }, ...Object.entries(ATTENDANCE_DECISION_LABELS).map(([value, label]) => ({ value, label }))];
+/** Etiquetas cortas para el filtro: «Marcaje enviado a revisión» no cabe en el ancho estándar de filtro. */
+const DECISION_FILTER_LABELS: Record<keyof typeof ATTENDANCE_DECISION_LABELS, string> = { ACCEPTED: 'Aceptados', REVIEW_REQUIRED: 'En revisión', REJECTED: 'Rechazados' };
+const DECISION_OPTIONS: Option[] = [{ value: '', label: 'Todos los resultados' }, ...Object.entries(DECISION_FILTER_LABELS).map(([value, label]) => ({ value, label }))];
 
 function todayDate(): string {
     const now = new Date();
@@ -232,12 +234,13 @@ export default function AttendanceReview() {
                         { key: 'occurredAt', header: 'Fecha y hora', width: '1.2fr', render: (attendanceEvent) => <time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time> },
                         { key: 'decision', header: 'Resultado', width: '1.2fr', render: (attendanceEvent) => <span className={form.cellStack}><span className={form.cellTitle}>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</span>{attendanceEvent.reviewedAt && <span className={form.cellSub}>Revisado {displayDate(attendanceEvent.reviewedAt)}</span>}</span> },
                         { key: 'evidence', header: 'Evidencia', width: '1.2fr', render: (attendanceEvent) => <span className={form.cellStack}><span>{attendanceEvent.reasonCode ? <code>{attendanceEvent.reasonCode}</code> : 'Sin código'}</span>{attendanceEvent.locationAccuracyM != null && <span className={form.cellSub}>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</span>}</span> },
-                        { key: 'actions', header: 'Acción', width: '5rem', type: 'actions', render: (attendanceEvent) => <IconButton icon={Eye} size="sm" onClick={() => openReview(attendanceEvent)} disabled={!online || attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} label={!online ? 'Conéctate para revisar' : attendanceEvent.reviewedAt ? 'Evento ya revisado' : `Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`} /> },
+                        { key: 'actions', header: 'Acción', width: '100px', type: 'actions', render: (attendanceEvent) => <IconButton icon={Eye} size="sm" tooltip="Revisar" onClick={() => openReview(attendanceEvent)} disabled={!online || attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} label={!online ? 'Conéctate para revisar' : attendanceEvent.reviewedAt ? 'Evento ya revisado' : `Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`} /> },
                     ]}
                 />
             )}
 
             <FullScreenModal
+              footer={<HrModalFooterSlot />}
                 isOpen={Boolean(selected)}
                 onClose={() => !saving && setSelected(null)}
                 breadcrumb={['Recursos humanos', 'Asistencia']}
@@ -274,6 +277,7 @@ export default function AttendanceReview() {
             </FullScreenModal>
 
             <FullScreenModal
+              footer={<HrModalFooterSlot />}
                 isOpen={manualOpen}
                 onClose={() => !saving && setManualOpen(false)}
                 breadcrumb={['Recursos humanos', 'Asistencia']}

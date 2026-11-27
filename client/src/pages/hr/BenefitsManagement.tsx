@@ -5,6 +5,7 @@ import {
   AppSelect, Button, DataTable, EmptyState, FormSection, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, StatCard,
   TableToolbar, Tabs,
 } from '@/ui';
+import { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import HrLoading from '../../components/hr/HrLoading';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
@@ -137,7 +138,7 @@ function sumByCurrency(rows: Array<{ currency: string; amount?: string | null }>
     totals.set(key, (totals.get(key) ?? 0) + (Number.isFinite(numeric) ? numeric : 0));
   });
   if (totals.size === 0) return money('NIO', '0');
-  return [...totals.entries()].map(([currency, total]) => money(currency, total.toFixed(2))).join(' · ');
+  return [...totals.entries()].map(([currency, total]) => money(currency, String(total))).join(' · ');
 }
 
 export default function BenefitsManagement() {
@@ -514,9 +515,9 @@ export default function BenefitsManagement() {
               { key: 'c3', header: tab === 'LOAN' ? 'Saldo' : 'Importe', type: 'money', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; const amount = resource === 'TRAVEL' ? money( (item as HrTravelRequest).currency, (item as HrTravelRequest).approvedAmount ?? (item as HrTravelRequest).requestedAmount ) : resource === 'LOAN' ? money( (item as HrLoan).currency, (item as HrLoan).outstandingBalance ) : money( (item as HrDeduction).currency, (item as HrDeduction).applicableAmount ); return <span className={form.cellTitle}>{amount}</span>; } },
               { key: 'c4', header: 'Estado', render: (entry) => { const item = entry as HrTravelRequest | HrLoan | HrDeduction; return <BenefitsStatusPill status={item.status} />; } },
               { key: 'c5', header: 'Siguiente paso', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; const nextAction = item.allowedActions[0]; const nextLabel = !nextAction ? 'Sin acciones pendientes' : resource === 'TRAVEL' ? TRAVEL_ACTION_LABELS[ nextAction as HrTravelRequest['allowedActions'][number] ] : resource === 'LOAN' ? LOAN_ACTION_LABELS[nextAction as HrLoan['allowedActions'][number]] : DEDUCTION_ACTION_LABELS[ nextAction as HrDeduction['allowedActions'][number] ]; return <>{nextLabel}</>; } },
-              { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; return (
+              { key: 'c6', header: 'Acción', width: '100px', type: 'actions', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; return (
                 <div className={form.rowActions}>
-                  <IconButton icon={Eye} size="sm" label={`Ver y gestionar ${item.code}`} onClick={() => void openDetail({ resource, item } as Selected)} />
+                  <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver y gestionar ${item.code}`} onClick={() => void openDetail({ resource, item } as Selected)} />
                 </div>
               ); } },
             ]}
@@ -692,6 +693,7 @@ export default function BenefitsManagement() {
         ) : null}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(createPanel)}
         onClose={() => {
           if (!saving) {
@@ -751,6 +753,7 @@ export default function BenefitsManagement() {
         )}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar transición"

@@ -11,13 +11,13 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import {
-  AppSelect, Button, DataTable, DateInput, EmptyState, FullScreenModal, Input, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs,
+  AppSelect, Button, DataTable, DateInput, EmptyState, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs,
   Textarea,
 } from '@/ui';
 import HrLoading from '../../components/hr/HrLoading';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
-import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import OvertimeRequestForm from '../../components/hr/OvertimeRequestForm';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -343,7 +343,7 @@ export default function AttendanceManagement() {
                   { key: 'c6', header: 'Salida antes', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? form.cellWarning : undefined}>{summary.earlyDepartureMinutes} min</span> },
                   { key: 'c7', header: 'Extra', render: (summary) => <>{summary.approvedOvertimeMinutes ?? 0} / {summary.candidateOvertimeMinutes} min</> },
                   { key: 'c8', header: 'Estado', render: (summary) => <>{summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : 'Sin periodo'}</> },
-                  { key: 'c9', header: 'Acciones', width: '6rem', type: 'actions', render: (summary) => <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`} icon={Pencil} /><Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} title="Registrar horas extra" aria-label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`} icon={Clock3} /></div> },
+                  { key: 'c9', header: 'Acciones', width: '100px', type: 'actions', render: (summary) => <div className={form.rowActions}><IconButton size="sm" onClick={() => setCreatePanel({ kind: 'correction', summary })} disabled={!online} tooltip="Corregir" label={`Corregir marcaje de ${summary.user?.name ?? summary.userId}`} icon={Pencil} /><IconButton size="sm" onClick={() => setCreatePanel({ kind: 'overtime', summary })} disabled={!online} tooltip="Horas extra" label={`Registrar horas extra de ${summary.user?.name ?? summary.userId}`} icon={Clock3} /></div> },
                 ]}
               />
             )}
@@ -362,7 +362,7 @@ export default function AttendanceManagement() {
                   { key: 'c2', header: 'Motivo', render: (incident) => <span className={form.cellStack}><span className={form.cellTitle}>{incident.message}</span><span className={form.cellSub}>{incident.reasonCode ?? incident.type}</span></span> },
                   { key: 'c3', header: 'Gravedad', render: (incident) => <><WorkforceStatusPill status={incident.severity} /></> },
                   { key: 'c4', header: 'Estado', render: (incident) => <><WorkforceStatusPill status={incident.status} /></> },
-                  { key: 'c5', header: 'Acción', width: '6rem', type: 'actions', render: (incident) => <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => setCreatePanel({ kind: 'correction', incident })} disabled={!online} title="Corregir marcaje" aria-label={`Corregir marcaje de ${incident.user?.name ?? incident.userId}`} icon={Pencil} /></div> },
+                  { key: 'c5', header: 'Acción', width: '100px', type: 'actions', render: (incident) => <div className={form.rowActions}><IconButton size="sm" onClick={() => setCreatePanel({ kind: 'correction', incident })} disabled={!online} tooltip="Corregir" label={`Corregir marcaje de ${incident.user?.name ?? incident.userId}`} icon={Pencil} /></div> },
                 ]}
               />
             )}
@@ -381,7 +381,7 @@ export default function AttendanceManagement() {
                   { key: 'c2', header: 'Tipo', render: (item) => <>{item.type}</> },
                   { key: 'c3', header: 'Motivo', render: (item) => <>{item.reason}</> },
                   { key: 'c4', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
-                  { key: 'c5', header: 'Acción', width: '6rem', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => openDecision({ kind: 'correction', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar corrección de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
+                  { key: 'c5', header: 'Acción', width: '100px', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><IconButton size="sm" onClick={() => openDecision({ kind: 'correction', item })} disabled={!online} tooltip="Revisar" label={`Revisar corrección de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
                 ]}
               />
             )}
@@ -401,7 +401,7 @@ export default function AttendanceManagement() {
                   { key: 'c3', header: 'Aprobado', render: (item) => <>{item.approvedMinutes ?? '—'}</> },
                   { key: 'c4', header: 'Motivo', render: (item) => <>{item.reason}</> },
                   { key: 'c5', header: 'Estado', render: (item) => <><WorkforceStatusPill status={item.status} /></> },
-                  { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><Button size="sm" variant="ghost" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} title="Revisar y decidir" aria-label={`Revisar horas extra de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
+                  { key: 'c6', header: 'Acción', width: '100px', type: 'actions', render: (item) => <>{item.status === 'PENDING' ? <div className={form.rowActions}><IconButton size="sm" onClick={() => openDecision({ kind: 'overtime', item })} disabled={!online} tooltip="Revisar" label={`Revisar horas extra de ${item.user?.name ?? item.userId}`} icon={Eye} /></div> : <span className={form.cellSub}>Finalizada</span>}</> },
                 ]}
               />
             )}
@@ -428,7 +428,7 @@ export default function AttendanceManagement() {
                   { key: 'c4', header: 'Horas extra', render: (period) => <span className={(period.pendingOvertimeCount ?? 0) > 0 ? form.cellWarning : undefined}>{period.pendingOvertimeCount ?? 0}</span> },
                   { key: 'c5', header: 'Nómina', render: (period) => <>{period.payrollReference ?? 'No vinculada'}</> },
                   { key: 'c6', header: 'Estado', render: (period) => <><WorkforceStatusPill status={period.status} /></> },
-                  { key: 'c7', header: 'Acción', width: '6rem', type: 'actions', render: (period) => { const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0); return <div className={form.rowActions}>{period.status === 'CLOSED' ? <Button size="sm" variant="ghost" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} title="Reabrir periodo" aria-label={`Reabrir periodo ${period.id}`} icon={RotateCcw} /> : <Button size="sm" variant="ghost" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} title={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} aria-label={`Cerrar periodo ${period.id}`} icon={LockKeyhole} />}</div>; } },
+                  { key: 'c7', header: 'Acción', width: '100px', type: 'actions', render: (period) => { const blockers = (period.unresolvedIncidentCount ?? 0) + (period.pendingCorrectionCount ?? 0) + (period.pendingOvertimeCount ?? 0); return <div className={form.rowActions}>{period.status === 'CLOSED' ? <IconButton size="sm" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} tooltip="Reabrir" label={`Reabrir periodo ${period.id}`} icon={RotateCcw} /> : <IconButton size="sm" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} tooltip={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} label={`Cerrar periodo ${period.id}`} icon={LockKeyhole} />}</div>; } },
                 ]}
               />
               </>
@@ -436,6 +436,7 @@ export default function AttendanceManagement() {
         </div>
       )}
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(createPanel)}
         onClose={() => !saving && setCreatePanel(null)}
         breadcrumb={['Recursos humanos', 'Jornadas']}
@@ -540,6 +541,7 @@ export default function AttendanceManagement() {
       </FullScreenModal>
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(decisionPanel)}
         onClose={() => !saving && setDecisionPanel(null)}
         title={

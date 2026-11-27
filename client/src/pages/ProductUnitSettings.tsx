@@ -13,7 +13,7 @@ import type { Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
 import './Inventory.css';
 import './UnitsOfMeasure.css';
 import './ProductUnitSettings.css';
-import { AppSelect, Field, Button, PageHeader } from '@/ui';
+import { AppSelect, Field, Button, PageHeader, formatNumber as formatNumberUi } from '@/ui';
 
 
 interface EditableAllowedUnit {
@@ -56,11 +56,8 @@ function apiErrorMessage(error: unknown): string {
 
 function formatNumber(n: number): string {
     if (!Number.isFinite(n)) return '';
-    if (n === 0) return '0';
-    const abs = Math.abs(n);
-    if (abs >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    if (abs >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
-    return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    // Factors below 1 keep up to 6 decimals so they do not collapse to 0.00.
+    return formatNumberUi(n, Math.abs(n) > 0 && Math.abs(n) < 1 ? 6 : 2);
 }
 
 export default function ProductUnitSettings() {

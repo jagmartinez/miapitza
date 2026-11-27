@@ -423,7 +423,7 @@ export default function Dashboard() {
     const settledOrdersCount = (stats as DashboardStats).settledOrdersCount || 0;
     const kpisUnavailable = Boolean(loadError?.includes('indicadores')) && !statsHydrated;
     const formatKpiMoney = (value: number) => (kpisUnavailable ? '—' : formatCurrency(Number(value)));
-    const formatKpiNumber = (value: number, suffix = '') => (kpisUnavailable ? '—' : `${value.toLocaleString()}${suffix}`);
+    const formatKpiNumber = (value: number, suffix = '') => (kpisUnavailable ? '—' : `${formatNumber(value)}${suffix}`);
 
     if (loading) {
         return <LoadingOverlay text="Cargando panel..." />;
@@ -531,7 +531,7 @@ export default function Dashboard() {
                             {(myStats.topDishes || []).map((p: TopDishItem, i: number) => (
                                 <div key={p.menuItemId} className="lb-compact-row">
                                     <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{p.totalQuantity} pedidos</span></div>
+                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{formatNumber(p.totalQuantity, 0)} pedidos</span></div>
                                 </div>
                             ))}
                             {(!myStats.topDishes || myStats.topDishes.length === 0) && <div className="widget-empty">Sin datos aún</div>}
@@ -573,7 +573,7 @@ export default function Dashboard() {
                             {(myStats.topDishes || []).map((p: TopDishItem, i: number) => (
                                 <div key={p.menuItemId} className="lb-compact-row">
                                     <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{p.totalQuantity} pedidos</span></div>
+                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{formatNumber(p.totalQuantity, 0)} pedidos</span></div>
                                 </div>
                             ))}
                             {(!myStats.topDishes || myStats.topDishes.length === 0) && <div className="widget-empty">Sin datos aún</div>}
@@ -685,7 +685,7 @@ export default function Dashboard() {
                                     </div>
                                     <div className="invoice-right">
                                         <span className="inv-amount" style={{ color: m.type === 'IN' ? 'var(--ui-success)' : 'var(--ui-danger)' }}>
-                                            {m.type === 'IN' ? '+' : '-'}{m.quantity} {m.unit}
+                                            {m.type === 'IN' ? '+' : '-'}{formatNumber(m.quantity)} {m.unit}
                                         </span>
                                         <span className={`inv-status status-${m.type === 'IN' ? 'paid' : 'cancelled'}`}>{m.type}</span>
                                     </div>
@@ -817,7 +817,7 @@ export default function Dashboard() {
                             {(myStats.topProducts || []).map((p: TopProduct, i: number) => (
                                 <div key={p.menuItemId} className="lb-compact-row">
                                     <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
-                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{p.totalQuantity} vendidos</span></div>
+                                    <div className="lb-info"><span className="lb-name">{p.name}</span><span className="lb-sub">{formatNumber(p.totalQuantity, 0)} vendidos</span></div>
                                     <span className="lb-revenue-right">{formatCurrency(p.totalRevenue)}</span>
                                 </div>
                             ))}
@@ -1113,7 +1113,7 @@ export default function Dashboard() {
                                 <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
                                 <div className="lb-info">
                                     <span className="lb-name">{p.name}</span>
-                                    <span className="lb-sub">{p.totalQuantity} vendidos</span>
+                                    <span className="lb-sub">{formatNumber(p.totalQuantity, 0)} vendidos</span>
                                 </div>
                                 {p.totalRevenue && <span className="lb-revenue-right">{formatCurrency(p.totalRevenue)}</span>}
                             </div>
@@ -1245,7 +1245,7 @@ export default function Dashboard() {
                         </div>
                         <div className="detail-stats-grid">
                             <div className="detail-stat">
-                                <span className="detail-stat-value">{selectedProduct.totalQuantity}</span>
+                                <span className="detail-stat-value">{formatNumber(selectedProduct.totalQuantity, 0)}</span>
                                 <span className="detail-stat-label">Unidades Vendidas</span>
                             </div>
                             <div className="detail-stat">

@@ -10,7 +10,7 @@ import { kardexUrlFilters } from '../utils/kardexLink';
 import { FileText, Download, Filter, ArrowLeft } from 'lucide-react';
 import catalog from './catalog.module.css';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, PageContent, PageHeader, StatCard, TableToolbar,
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, PageContent, PageHeader, TableToolbar,
     formatNumber, type Column, type Tone,
 } from '@/ui';
 
@@ -275,30 +275,12 @@ export default function Kardex() {
             />
 
             {kardexData && (
-                <div className={catalog.kpiGrid}>
-                    <StatCard
-                        label="Saldo inicial"
-                        value={`${formatNumber(num(kardexData.openingBalance.quantity), 3)} ${unitLabel}`}
-                        context={`Valorizado en ${formatCurrency(kardexData.openingBalance.cost, settings)}`}
-                    />
-                    <StatCard
-                        label="Total entradas"
-                        tone="success"
-                        value={`${formatNumber(num(kardexData.totals.totalIn), 3)} ${unitLabel}`}
-                        context="Compras, producción, ajustes y traslados recibidos en el período"
-                    />
-                    <StatCard
-                        label="Total salidas"
-                        tone="warning"
-                        value={`${formatNumber(num(kardexData.totals.totalOut), 3)} ${unitLabel}`}
-                        context="Ventas, consumo, mermas y traslados enviados en el período"
-                    />
-                    <StatCard
-                        label="Saldo final"
-                        value={`${formatNumber(num(kardexData.closingBalance.quantity), 3)} ${unitLabel}`}
-                        context={`Valorizado en ${formatCurrency(kardexData.closingBalance.cost, settings)}`}
-                    />
-                </div>
+                <p className={catalog.summaryLine} role="status">
+                    <span>Saldo inicial <strong>{formatNumber(num(kardexData.openingBalance.quantity))} {unitLabel}</strong> ({formatCurrency(kardexData.openingBalance.cost, settings)})</span>
+                    <span>Entradas <strong>{formatNumber(num(kardexData.totals.totalIn))} {unitLabel}</strong></span>
+                    <span>Salidas <strong>{formatNumber(num(kardexData.totals.totalOut))} {unitLabel}</strong></span>
+                    <span>Saldo final <strong>{formatNumber(num(kardexData.closingBalance.quantity))} {unitLabel}</strong> ({formatCurrency(kardexData.closingBalance.cost, settings)})</span>
+                </p>
             )}
 
             <DataTable
