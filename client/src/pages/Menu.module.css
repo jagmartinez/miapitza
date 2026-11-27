@@ -16,6 +16,9 @@
 .addProduct { flex: 2 1 14rem; min-width: 0; }
 .addQty { flex: 0 1 8rem; min-width: 0; }
 .addUnit { flex: 1 1 10rem; min-width: 0; }
+/* Alta de grupo de modificadores: campo + botón con texto alineados por la base, como toolbar. */
+.groupToolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ui-space-2); min-width: 0; }
+.groupToolbarField { flex: 1 1 16rem; min-width: 0; max-width: 28rem; }
 .sectionLabel { margin: 0 0 var(--ui-space-2); font-size: var(--ui-text-sm); font-weight: 600; color: var(--ui-text); }
 
 /* Galería de imágenes del plato. */

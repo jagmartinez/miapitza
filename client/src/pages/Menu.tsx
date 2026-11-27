@@ -1828,17 +1828,19 @@ export default function Menu() {
             <EmptyState icon={SlidersHorizontal} title="Aún no hay grupos" description="Crea uno para empezar." />
           )}
 
-          <div className={s.addRow}>
-            <div className={s.addProduct}>
-              <Input
-                aria-label="Nuevo grupo"
-                placeholder="Nuevo grupo (ej: Extras, Tamaño)"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleCreateGroup(); } }}
-              />
+          <div className={s.groupToolbar} role="group" aria-label="Agregar grupo de modificadores">
+            <div className={s.groupToolbarField}>
+              <Field label="Nuevo grupo" htmlFor="menu-new-modifier-group">
+                <Input
+                  id="menu-new-modifier-group"
+                  placeholder="Ej: Extras, Tamaño"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleCreateGroup(); } }}
+                />
+              </Field>
             </div>
-            <IconButton icon={Plus} tooltip="Crear grupo" label="Crear grupo" onClick={() => void handleCreateGroup()} disabled={!newGroupName.trim()} />
+            <Button icon={Plus} onClick={() => void handleCreateGroup()} disabled={!newGroupName.trim()}>Agregar grupo</Button>
           </div>
         </FormSection>
 

@@ -19,6 +19,8 @@
 
 .payment-mode-tabs .ui-segmented { width: 100%; }
 .payment-mode-tabs .ui-segmented__btn { flex: 1 1 0; min-width: 0; height: var(--ui-control-md); padding-inline: var(--ui-space-2); font-size: var(--ui-text-sm); }
+/* Icono sobre la etiqueta: el aside es estrecho y tres etiquetas con icono en línea no caben. */
+.payment-mode-tabs .ui-segmented__btn--icon { flex-direction: column; gap: 2px; height: auto; min-height: var(--ui-control-md); padding-block: var(--ui-space-1); line-height: 1.2; white-space: normal; text-align: center; }
 
 .payment-total-card {
     display: grid;

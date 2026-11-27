@@ -23,11 +23,19 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { createLatestRequestGuard } from '../utils/latestRequest';
 import styles from './catalog.module.css';
+import userStyles from './Users.module.css';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
     LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
+
+/**
+ * Color por defecto que muestra el selector nativo cuando el usuario aún no tiene color.
+ * Es un dato de usuario (se guarda como hex en su perfil), no un color de tema: el
+ * `<input type="color">` solo acepta hex, por eso no puede ser un token var(--ui-*).
+ */
+const DEFAULT_USER_COLOR = '#6B7280';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
     return payload as unknown as Record<string, unknown>;
@@ -569,9 +577,8 @@ export default function Users() {
                                             <input
                                                 id="user-color"
                                                 type="color"
-                                                className={styles.colorInput}
-                                                style={{ width: 56 }}
-                                                value={formData.color || '#6B7280'}
+                                                className={userStyles.colorSwatch}
+                                                value={formData.color || DEFAULT_USER_COLOR}
                                                 onChange={e => setFormData({ ...formData, color: e.target.value })}
                                             />
                                             {formData.color && (

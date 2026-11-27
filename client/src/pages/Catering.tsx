@@ -1236,26 +1236,7 @@ export default function Catering() {
                     </>
                 )}
                 footer={({ requestClose }) => (activeTab === 'financial' && selectedEvent ? (
-                    <>
-                        <Button onClick={requestClose}>Cerrar</Button>
-                        {!selectedEvent.fiscalInvoice && (
-                            <Button
-                                onClick={() => void handleIssueFiscalInvoice()}
-                                disabled={!canManageCatering || fiscalBusy || !['PAID', 'FINISHED'].includes(selectedEvent.status)}
-                                loading={fiscalBusy}
-                            >
-                                Emitir factura fiscal
-                            </Button>
-                        )}
-                        {!selectedEvent.fiscalCreditNote && selectedEvent.fiscalInvoice?.status === 'ISSUED' && (
-                            <Button onClick={() => void handleIssueFiscalCreditNote()} disabled={!canManageCatering || fiscalBusy} loading={fiscalBusy}>
-                                Emitir nota de crédito total
-                            </Button>
-                        )}
-                        <Button variant="primary" onClick={() => void handleAddPayment()} disabled={!canManageCatering || addingPayment} loading={addingPayment}>
-                            Agregar pago
-                        </Button>
-                    </>
+                    <Button onClick={requestClose}>Cerrar</Button>
                 ) : (
                     <>
                         <Button onClick={requestClose}>Cancelar</Button>
@@ -1635,7 +1616,27 @@ export default function Catering() {
                                 </dl>
                             </FormSection>
 
-                            <FormSection title="Documentos fiscales">
+                            <FormSection
+                                title="Documentos fiscales"
+                                actions={(
+                                    <>
+                                        {!selectedEvent.fiscalInvoice && (
+                                            <Button
+                                                onClick={() => void handleIssueFiscalInvoice()}
+                                                disabled={!canManageCatering || fiscalBusy || !['PAID', 'FINISHED'].includes(selectedEvent.status)}
+                                                loading={fiscalBusy}
+                                            >
+                                                Emitir factura fiscal
+                                            </Button>
+                                        )}
+                                        {!selectedEvent.fiscalCreditNote && selectedEvent.fiscalInvoice?.status === 'ISSUED' && (
+                                            <Button onClick={() => void handleIssueFiscalCreditNote()} disabled={!canManageCatering || fiscalBusy} loading={fiscalBusy}>
+                                                Emitir nota de crédito total
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
+                            >
                                 {selectedEvent.fiscalInvoice ? (
                                     <p className="catering-line">
                                         Factura <strong>{selectedEvent.fiscalInvoice.number}</strong> · {selectedEvent.fiscalInvoice.status === 'CREDITED' ? 'Acreditada' : 'Emitida'}
@@ -1682,7 +1683,14 @@ export default function Catering() {
                                 )}
                             </FormSection>
 
-                            <FormSection title="Registrar pago">
+                            <FormSection
+                                title="Registrar pago"
+                                actions={(
+                                    <Button variant="primary" icon={Plus} onClick={() => void handleAddPayment()} disabled={!canManageCatering || addingPayment} loading={addingPayment}>
+                                        Agregar pago
+                                    </Button>
+                                )}
+                            >
                                 <FormGrid columns="repeat(auto-fit, minmax(12rem, 1fr))">
                                     <Field label="Monto" htmlFor="catering-payment-amount">
                                         <NumberInput

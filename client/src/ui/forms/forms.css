@@ -68,12 +68,19 @@
 .ui-segmented__btn:hover:not(.is-active) { color: var(--ui-text); }
 .ui-segmented__btn:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: -2px; }
 .ui-segmented__btn.is-active { background: var(--ui-surface); color: var(--ui-primary); box-shadow: 0 1px 2px var(--ui-overlay); }
+.ui-segmented__btn--icon { display: inline-flex; align-items: center; justify-content: center; gap: var(--ui-space-1); }
+.ui-segmented__icon { flex: none; }
 
 .ui-form-section { display: flex; flex-direction: column; gap: var(--ui-space-4); }
-.ui-form-section__head { display: flex; align-items: flex-start; gap: var(--ui-space-3); }
+.ui-form-section__head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--ui-space-3); }
 .ui-form-section__step {
   width: 24px; height: 24px; border-radius: 50%; flex: none; display: inline-flex; align-items: center;
   justify-content: center; font-size: 13px; font-weight: 700; background: var(--ui-primary-soft); color: var(--ui-primary);
+}
+.ui-form-section__heading { flex: 1 1 auto; min-width: 0; }
+.ui-form-section__actions {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ui-space-2);
+  margin-left: auto; flex: 0 1 auto; min-width: 0;
 }
 .ui-form-section__title { margin: 0; font-size: 15px; font-weight: 700; color: var(--ui-text); }
 .ui-form-section__desc { margin: 2px 0 0; font-size: 13px; color: var(--ui-text-muted); }

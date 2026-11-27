@@ -8,9 +8,11 @@ import {
 import {
     Banknote,
     CreditCard,
+    Layers3,
     Plus,
     Smartphone,
     Trash2,
+    Users,
 } from 'lucide-react';
 import { paymentsAPI, splitBillAPI } from '../services/api';
 import type { Order, PaymentMethodType } from '../types';
@@ -859,9 +861,9 @@ export default function PaymentModal({
                                 value={mode}
                                 onChange={changeMode}
                                 options={[
-                                    { value: 'single', label: 'Pago único' },
-                                    { value: 'mixed', label: 'Pago mixto' },
-                                    { value: 'split', label: 'Dividir cuenta' },
+                                    { value: 'single', label: 'Pago único', icon: CreditCard },
+                                    { value: 'mixed', label: 'Pago mixto', icon: Layers3 },
+                                    { value: 'split', label: 'Dividir cuenta', icon: Users },
                                 ]}
                             />
                         </fieldset>

@@ -11,10 +11,13 @@ interface NumericKeypadProps {
 
 export default function NumericKeypad({ onConfirm, onClose, initialValue = 1 }: NumericKeypadProps) {
     const [display, setDisplay] = useState(initialValue.toString());
+    // The initial/reset value is a placeholder: the first digit typed replaces it.
+    const [fresh, setFresh] = useState(true);
 
     const handleNumber = (num: string) => {
-        if (display === '0') {
+        if (fresh || display === '0') {
             setDisplay(num);
+            setFresh(num === '0');
         } else if (display.length < 3) {
             setDisplay(display + num);
         }
@@ -22,6 +25,7 @@ export default function NumericKeypad({ onConfirm, onClose, initialValue = 1 }: 
 
     const handleClear = () => {
         setDisplay('1');
+        setFresh(true);
     };
 
     const handleBackspace = () => {
@@ -29,6 +33,7 @@ export default function NumericKeypad({ onConfirm, onClose, initialValue = 1 }: 
             setDisplay(display.slice(0, -1));
         } else {
             setDisplay('1');
+            setFresh(true);
         }
     };
 
